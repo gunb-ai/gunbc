@@ -1,0 +1,723 @@
+module v2.workflow.roster_rehome
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_at }
+import v2.std.node { Node, content_hash, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_from_node }
+import v2.std.provenance { SpanIndex }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.namespace_alias { AliasBindingRow }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, list_snoc_item, list_at_optional }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.integer { int_to_decimal_string }
+import std.optional { Absent, Optional, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.types { List, Bool }
+import v2.workflow.roster_import_sweep {
+  ImportDeclFact,
+  RosterHeldLock,
+  RosterHomeClosure,
+  RosterClosureRead,
+  RefusalImportClosesCycle,
+  RefusalHomeClosureUnread,
+  RefusalModuleNameUnread,
+  roster_cycle_refusal,
+  roster_escape_replacement,
+  roster_home_closure_read,
+  roster_import_decl_facts,
+  roster_join,
+  roster_last_decl_end,
+  roster_lock_acquire,
+  roster_lock_release,
+  roster_lock_still_held,
+  roster_module_header_end,
+  roster_node_byte_range,
+  roster_path_admitted,
+  roster_qn_text,
+  roster_refusal_text,
+  roster_render_import,
+  roster_repository_bindings,
+  roster_scalar_boundary,
+  roster_target_refusal,
+  roster_target_unchanged,
+  RosterLockAcquired,
+  RosterLockRefused
+}
+
+// DECLARED-TO-DECLARED REHOMING (NAMESPACE-XL, tidy-ant-251's approved design, 2026-10-20). A wave of
+// v2.workflow.roster_import_sweep turns an AMBIENT name into a declared import. This module moves a name that is
+// already declared-and-imported from one home to another: every import of the old declaration becomes an import of the
+// new one, and every qualified use spelled through the old home is respelled through the new one.
+//
+// IDENTITY, NEVER SPELLING. A site is in scope only when what it names IS the old declaration: an import binding whose
+// target is <from_home>.<name>, or a qualified use whose spelling is that fully qualified name. A homonym imported from a
+// third module, or a local declaration of the same spelling, is not touched.
+//
+// A RENAME, NOT A RETYPE. The pair is admitted only when the two declarations are the same kind and the same shape
+// (rehome_pair_verdict, read from v2.std.decl_index). Same shape here is the declaration nodes' structural digest
+// (v2.std.node content_hash, which ignores occurrences), so labels, fields, variants and parameter types all agree and
+// no label rename is needed. A pair that differs in shape is a representation change (tidy-ant-251's ruling A on the
+// N7 Int pair) and refuses rehome-signature-differs: the generator never retypes values.
+//
+// ONE ROW PER RUN, by construction: every entry takes exactly one (name, from_home, to_home), so two rows cannot be
+// admitted against one closure snapshot (the reasoning of #14513's apply-needs-one-home).
+//
+// THE PLANNER RECORD. Every write is a list of RehomeSplice, each carrying the exact bytes it expects to replace, and
+// rehome_applied derives from the SAME list both the new text and one RehomeRewrite per splice: its base extent, its head
+// extent in the FINAL head text, and, where the extent covers an occurrence's own bytes, where the spelling sits inside
+// it on both sides. That record is what sunny-bee-153's binding-diff join admits instead of refusing
+// EditCoversOccurrence; the join never re-derives a mapping.
+
+type RehomeRow {
+  name: String
+  from_home: String
+  to_home: String
+}
+
+type RehomeRewriteKind
+  = ImportBlockRewrite
+  | QualifiedUseRewrite
+
+type RehomeSplice {
+  start: Int
+  end: Int
+  expect: String
+  replacement: String
+  kind: RehomeRewriteKind
+  spelling_base_offset: Int?
+  spelling_head_offset: Int?
+}
+
+type RehomeRewrite {
+  base_start: Int
+  base_end: Int
+  head_start: Int
+  head_end: Int
+  kind: RehomeRewriteKind
+  spelling_base_offset: Int?
+  spelling_head_offset: Int?
+}
+
+type RehomeRefusal
+  = RehomeKindDiffers
+  | RehomeSignatureDiffers
+  | RehomeTargetUnresolved { qualified_name: String }
+  | RehomeTargetAmbiguous { qualified_name: String }
+  | RehomeAliasUnsupported
+  | RehomeExtentMismatch
+  | RehomeNoImportAnchor
+  | RehomeTokenizeRefused
+  | RehomeParseRefused
+  | RehomeNormalizeRefused
+  | RehomeUnreadable
+  | RehomeGrammarUnprepared
+  | RehomeWriteFailed
+  | RehomeStaleRead
+  | RehomeLockNotHeld
+  | RehomeSweep { reason: String }
+
+fn rehome_refusal_text(r: RehomeRefusal) -> String {
+  match r {
+    RehomeKindDiffers => "rehome-kind-differs"
+    RehomeSignatureDiffers => "rehome-signature-differs"
+    RehomeTargetUnresolved { qualified_name: q } => "rehome-target-unresolved " + q
+    RehomeTargetAmbiguous { qualified_name: q } => "rehome-target-ambiguous " + q
+    RehomeAliasUnsupported => "rehome-alias-unsupported"
+    RehomeExtentMismatch => "rehome-extent-mismatch"
+    RehomeNoImportAnchor => "rehome-no-import-anchor"
+    RehomeTokenizeRefused => "tokenize-refused"
+    RehomeParseRefused => "parse-refused"
+    RehomeNormalizeRefused => "normalize-refused"
+    RehomeUnreadable => "unreadable"
+    RehomeGrammarUnprepared => "grammar-unprepared"
+    RehomeWriteFailed => "write-failed"
+    RehomeStaleRead => "stale-read"
+    RehomeLockNotHeld => "lock-not-held"
+    RehomeSweep { reason: t } => t
+  }
+}
+
+type RehomeOutcome
+  = RehomeClean
+  | RehomeRefused { reason: RehomeRefusal }
+  | RehomeSplices { splices: List<RehomeSplice> }
+
+// ---- the pair verdict: same kind and same shape, from v2.std.decl_index -----------------------------------------------
+
+type RehomePairVerdict
+  = RehomePairSame
+  | RehomePairRefused { reason: RehomeRefusal }
+
+fn rehome_pool_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
+  match rehome_sole_fact(qualified_name: row.from_home + "." + row.name) {
+    RehomePairRefused { reason: r } => RehomePairRefused { reason: r }
+    RehomeFactFound { fact: from } =>
+      match rehome_sole_fact(qualified_name: row.to_home + "." + row.name) {
+        RehomePairRefused { reason: r } => RehomePairRefused { reason: r }
+        RehomeFactFound { fact: to } => rehome_facts_verdict(from: from, to: to)
+      }
+  }
+}
+
+type RehomeFactLookup
+  = RehomeFactFound { fact: DeclFact }
+  | RehomePairRefused { reason: RehomeRefusal }
+
+fn rehome_sole_fact(qualified_name: String) -> RehomeFactLookup {
+  match decl_facts_at(pool_roots: rehome_pool_roots(), qualified_name: qualified_name) {
+    Empty => RehomePairRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
+    Cons { head: f, tail: Empty } => RehomeFactFound { fact: f }
+    _ => RehomePairRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
+  }
+}
+
+fn rehome_facts_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
+  if rehome_kind_text(k: from.kind) != rehome_kind_text(k: to.kind) {
+    RehomePairRefused { reason: RehomeKindDiffers }
+  } else if content_hash(n: from.node) != content_hash(n: to.node) {
+    RehomePairRefused { reason: RehomeSignatureDiffers }
+  } else {
+    RehomePairSame
+  }
+}
+
+fn rehome_kind_text(k: ItemKind) -> String {
+  match k {
+    FnItem => "fn"
+    TypeItem => "type"
+    DataItem => "data"
+    ServiceItem => "service"
+    OtherItem => "other"
+  }
+}
+
+// ---- one file: the splices ----------------------------------------------------------------------------------------------
+
+// The file's splices for one row, given the pair verdict and the new home's closure (both read once per run).
+fn rehome_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+    Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeTokenizeRefused }
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module_prepared(tokens: stream, prepared: prepared) {
+        Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeParseRefused }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+            Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeNormalizeRefused }
+            Accepted { value: scoped, diagnostics: _ } =>
+              rehome_parsed(text: text, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
+          }
+      }
+  }
+}
+
+fn rehome_parsed(text: String, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
+  let old_qn = row.from_home + "." + row.name
+  let bound_old = fold_list(xs: imported, empty: [], cons: fn(acc, b) { if roster_qn_text(qn: b.target) == old_qn { list_snoc_item(xs: acc, item: b) } else { acc } })
+  let uses = rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: old_qn)
+  if is_empty(xs: bound_old) && is_empty(xs: uses) {
+    RehomeClean
+  } else {
+    match pair {
+      RehomePairRefused { reason: r } => RehomeRefused { reason: r }
+      RehomePairSame =>
+        if fold_list(xs: bound_old, empty: false, cons: fn(f, b) { f || symbol_lexeme(sym: b.binding) != row.name }) {
+          RehomeRefused { reason: RehomeAliasUnsupported }
+        } else {
+          match rehome_cycle(parse_root: parse_root, closures: closures, row: row, needs_import: !is_empty(xs: bound_old)) {
+            Present { value: reason } => RehomeRefused { reason: reason }
+            Absent =>
+              match rehome_import_splices(text: text, parse_root: parse_root, spans: spans, imported: imported, row: row, moves_import: !is_empty(xs: bound_old)) {
+                RehomeRefused { reason: r } => RehomeRefused { reason: r }
+                RehomeClean => rehome_with_uses(splices: [], uses: uses, row: row)
+                RehomeSplices { splices: ss } => rehome_with_uses(splices: ss, uses: uses, row: row)
+              }
+          }
+        }
+    }
+  }
+}
+
+fn rehome_with_uses(splices: List<RehomeSplice>, uses: List<RehomeUse>, row: RehomeRow) -> RehomeOutcome {
+  let all = fold_list(xs: uses, empty: splices, cons: fn(acc, u) {
+    list_snoc_item(xs: acc, item: RehomeSplice {
+      start: u.start,
+      end: u.end,
+      expect: row.from_home + "." + row.name,
+      replacement: row.to_home + "." + row.name,
+      kind: QualifiedUseRewrite,
+      spelling_base_offset: Present { value: 0 },
+      spelling_head_offset: Present { value: 0 }
+    })
+  })
+  if is_empty(xs: all) { RehomeClean } else { RehomeSplices { splices: all } }
+}
+
+fn rehome_cycle(parse_root: Node, closures: List<RosterHomeClosure>, row: RehomeRow, needs_import: Bool) -> Optional<RehomeRefusal> {
+  if !needs_import {
+    Absent
+  } else {
+    match qualified_name_from_module_node(root: parse_root) {
+      Rejected { diagnostics: _ } => Present { value: RehomeSweep { reason: roster_refusal_text(reason: RefusalModuleNameUnread) } }
+      Accepted { value: qn, diagnostics: _ } =>
+        match roster_cycle_refusal(closures: closures, home: row.to_home, module: roster_qn_text(qn: qn)) {
+          Present { value: r } => Present { value: RehomeSweep { reason: roster_refusal_text(reason: r) } }
+          Absent => Absent
+        }
+    }
+  }
+}
+
+// THE IMPORT MOVE. The name leaves every import declaration of from_home that lists it (a declaration it empties is
+// deleted with its line) and joins to_home's: an existing to_home declaration is extended, otherwise a new one takes
+// the slot of an emptied from_home declaration, or the #14486 anchor (after the last import, else after the header).
+// A file that already imports the name from to_home only loses the old binding.
+fn rehome_import_splices(text: String, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RehomeRow, moves_import: Bool) -> RehomeOutcome {
+  if !moves_import {
+    RehomeClean
+  } else {
+    let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
+    let olds = fold_list(xs: decls, empty: [], cons: fn(acc, d) { if d.module_name == row.from_home && rehome_lists(names: d.names, name: row.name) { list_snoc_item(xs: acc, item: d) } else { acc } })
+    let news = fold_list(xs: decls, empty: [], cons: fn(acc, d) { if d.module_name == row.to_home { list_snoc_item(xs: acc, item: d) } else { acc } })
+    let already = fold_list(xs: news, empty: false, cons: fn(f, d) { f || rehome_lists(names: d.names, name: row.name) })
+    let removals = list_map(xs: olds, f: fn(d) { rehome_removal(text: text, d: d, row: row) })
+    if already {
+      RehomeSplices { splices: removals }
+    } else {
+      match news {
+        Cons { head: n, tail: _ } =>
+          RehomeSplices { splices: rehome_sorted_insert(xs: removals, item: RehomeSplice {
+            start: n.start,
+            end: n.end,
+            expect: roster_render_import(home: qualified_name_from_dotted_string(dotted: row.to_home), names: n.names),
+            replacement: roster_render_import(home: qualified_name_from_dotted_string(dotted: row.to_home), names: list_snoc_item(xs: n.names, item: row.name)),
+            kind: ImportBlockRewrite,
+            spelling_base_offset: Absent,
+            spelling_head_offset: Absent
+          }) }
+        Empty => rehome_with_new_import(text: text, parse_root: parse_root, spans: spans, decls: decls, removals: removals, row: row)
+      }
+    }
+  }
+}
+
+fn rehome_lists(names: List<String>, name: String) -> Bool {
+  fold_list(xs: names, empty: false, cons: fn(f, n) { f || n == name })
+}
+
+// Removing the name from one from_home declaration: the declaration re-rendered without it, or, when it was the only
+// name, the declaration and its line deleted.
+fn rehome_removal(text: String, d: ImportDeclFact, row: RehomeRow) -> RehomeSplice {
+  let rest = fold_list(xs: d.names, empty: [], cons: fn(acc, n) { if n == row.name { acc } else { list_snoc_item(xs: acc, item: n) } })
+  let rendered = roster_render_import(home: qualified_name_from_dotted_string(dotted: row.from_home), names: d.names)
+  if is_empty(xs: rest) {
+    RehomeSplice { start: d.start, end: d.end + 1, expect: rendered + "\n", replacement: "", kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent }
+  } else {
+    RehomeSplice { start: d.start, end: d.end, expect: rendered, replacement: roster_render_import(home: qualified_name_from_dotted_string(dotted: row.from_home), names: rest), kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent }
+  }
+}
+
+// No to_home declaration yet: the new import replaces an emptied from_home declaration in place when there is one (so
+// the two splices never meet), otherwise it is inserted at the anchor.
+fn rehome_with_new_import(text: String, parse_root: Node, spans: SpanIndex, decls: List<ImportDeclFact>, removals: List<RehomeSplice>, row: RehomeRow) -> RehomeOutcome {
+  let line = roster_render_import(home: qualified_name_from_dotted_string(dotted: row.to_home), names: [row.name])
+  match rehome_first_deletion(splices: removals) {
+    Present { value: del } =>
+      RehomeSplices { splices: list_map(xs: removals, f: fn(s) { if s.start == del.start { RehomeSplice { start: s.start, end: s.end, expect: s.expect, replacement: line + "\n", kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent } } else { s } }) }
+    Absent =>
+      match roster_last_decl_end(decls: decls) {
+        Present { value: at } => RehomeSplices { splices: rehome_sorted_insert(xs: removals, item: RehomeSplice { start: at, end: at, expect: "", replacement: "\n" + line, kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent }) }
+        Absent =>
+          match roster_module_header_end(parse_root: parse_root, spans: spans) {
+            Present { value: at } => RehomeSplices { splices: rehome_sorted_insert(xs: removals, item: RehomeSplice { start: at, end: at, expect: "", replacement: "\n\n" + line, kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent }) }
+            Absent => RehomeRefused { reason: RehomeNoImportAnchor }
+          }
+      }
+  }
+}
+
+fn rehome_first_deletion(splices: List<RehomeSplice>) -> Optional<RehomeSplice> {
+  fold_list(xs: splices, empty: Absent, cons: fn(acc, s) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if s.replacement == "" { Present { value: s } } else { Absent }
+    }
+  })
+}
+
+// Splices are kept in ascending start order, which rehome_applied requires.
+fn rehome_sorted_insert(xs: List<RehomeSplice>, item: RehomeSplice) -> List<RehomeSplice> {
+  let placed = fold_list(xs: xs, empty: RehomeInsertion { out: [], done: false }, cons: fn(acc, s) {
+    if !acc.done && item.start <= s.start {
+      RehomeInsertion { out: list_snoc_item(xs: list_snoc_item(xs: acc.out, item: item), item: s), done: true }
+    } else {
+      RehomeInsertion { out: list_snoc_item(xs: acc.out, item: s), done: acc.done }
+    }
+  })
+  if placed.done { placed.out } else { list_snoc_item(xs: placed.out, item: item) }
+}
+
+type RehomeInsertion {
+  out: List<RehomeSplice>
+  done: Bool
+}
+
+// ---- qualified uses: every qualified-name production spelled exactly <from_home>.<name> ----------------------------------
+
+type RehomeUse {
+  start: Int
+  end: Int
+}
+
+fn rehome_qualified_uses(parse_root: Node, spans: SpanIndex, qualified_name: String) -> List<RehomeUse> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if id == ^dag_surface_qualified_name && rehome_node_spells(node: n, qualified_name: qualified_name) {
+          match roster_node_byte_range(node: n, spans: spans) {
+            Present { value: r } => list_snoc_item(xs: acc, item: RehomeUse { start: r.start, end: r.end })
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn rehome_node_spells(node: Node, qualified_name: String) -> Bool {
+  match qualified_name_from_node(root: node) {
+    Accepted { value: qn, diagnostics: _ } => roster_qn_text(qn: qn) == qualified_name
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ---- the pure apply and the planner record --------------------------------------------------------------------------------
+
+type RehomeApplied
+  = RehomeWritten { content: String, rewrites: List<RehomeRewrite> }
+  | RehomeApplyRefused { reason: RehomeRefusal }
+
+// ONE PASS, ASCENDING: each splice's base bytes must equal its `expect` (the stale-read check per splice, in place of a
+// byte-shape guess), splices may not overlap, and the head extent of each is its base start moved by every earlier
+// splice's octet delta. The content and the record come from the same fold, so they cannot disagree.
+fn rehome_applied(before: String, splices: List<RehomeSplice>) -> RehomeApplied {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: before))
+  let state = fold_list(xs: splices, empty: RehomeFold { out: "", base_scalar: 0, base_byte: 0, delta: 0, rewrites: [], refused: false }, cons: fn(acc, s) {
+    if acc.refused { acc } else {
+      let from = roster_scalar_boundary(octets: octets, byte: s.start)
+      let to = roster_scalar_boundary(octets: octets, byte: s.end)
+      if from < 0 || to < from || s.start < acc.base_byte || substring(s: before, start: from, end: to) != s.expect {
+        RehomeFold { out: acc.out, base_scalar: acc.base_scalar, base_byte: acc.base_byte, delta: acc.delta, rewrites: acc.rewrites, refused: true }
+      } else {
+        let head_start = s.start + acc.delta
+        let added = rehome_octet_length(text: s.replacement)
+        RehomeFold {
+          out: acc.out + substring(s: before, start: acc.base_scalar, end: from) + s.replacement,
+          base_scalar: to,
+          base_byte: s.end,
+          delta: acc.delta + added - (s.end - s.start),
+          rewrites: list_snoc_item(xs: acc.rewrites, item: RehomeRewrite {
+            base_start: s.start,
+            base_end: s.end,
+            head_start: head_start,
+            head_end: head_start + added,
+            kind: s.kind,
+            spelling_base_offset: s.spelling_base_offset,
+            spelling_head_offset: s.spelling_head_offset
+          }),
+          refused: false
+        }
+      }
+    }
+  })
+  if state.refused {
+    RehomeApplyRefused { reason: RehomeExtentMismatch }
+  } else {
+    RehomeWritten { content: state.out + substring(s: before, start: state.base_scalar, end: string_length(s: before)), rewrites: state.rewrites }
+  }
+}
+
+type RehomeFold {
+  out: String
+  base_scalar: Int
+  base_byte: Int
+  delta: Int
+  rewrites: List<RehomeRewrite>
+  refused: Bool
+}
+
+fn rehome_octet_length(text: String) -> Int {
+  length(xs: bytes_octets(b: utf8_encode_bytes(s: text)))
+}
+
+// ---- rows: report and apply, one row per run ------------------------------------------------------------------------------
+
+//   REHOME <path> <start> <end> <replacement>      replacement escaped as roster_escape_replacement escapes it
+//   REWRITE <path> <kind> <base_start> <base_end> <head_start> <head_end> <spelling_base|-> <spelling_head|->
+//   REFUSE <path> <cause>
+fn rehome_render(path: String, before: String, outcome: RehomeOutcome) -> String {
+  match outcome {
+    RehomeClean => ""
+    RehomeRefused { reason: r } => "REFUSE " + path + " " + rehome_refusal_text(r: r) + "\n"
+    RehomeSplices { splices: ss } =>
+      match rehome_applied(before: before, splices: ss) {
+        RehomeApplyRefused { reason: r } => "REFUSE " + path + " " + rehome_refusal_text(r: r) + "\n"
+        RehomeWritten { content: _, rewrites: rws } =>
+          fold_list(xs: ss, empty: "", cons: fn(acc, s) { acc + "REHOME " + path + " " + int_to_decimal_string(value: s.start) + " " + int_to_decimal_string(value: s.end) + " " + roster_escape_replacement(text: s.replacement) + "\n" })
+            + fold_list(xs: rws, empty: "", cons: fn(acc, w) { acc + rehome_rewrite_row(path: path, w: w) })
+      }
+  }
+}
+
+fn rehome_rewrite_row(path: String, w: RehomeRewrite) -> String {
+  "REWRITE " + path + " " + rehome_kind_name(k: w.kind) + " " + int_to_decimal_string(value: w.base_start) + " " + int_to_decimal_string(value: w.base_end)
+    + " " + int_to_decimal_string(value: w.head_start) + " " + int_to_decimal_string(value: w.head_end)
+    + " " + rehome_offset_text(o: w.spelling_base_offset) + " " + rehome_offset_text(o: w.spelling_head_offset) + "\n"
+}
+
+fn rehome_kind_name(k: RehomeRewriteKind) -> String {
+  match k {
+    ImportBlockRewrite => "import-block"
+    QualifiedUseRewrite => "qualified-use"
+  }
+}
+
+fn rehome_offset_text(o: Int?) -> String {
+  match o {
+    Present { value: v } => int_to_decimal_string(value: v)
+    Absent => "-"
+  }
+}
+
+fn rehome_row_of(name: String, from_home: String, to_home: String) -> RehomeRow {
+  RehomeRow { name: name, from_home: from_home, to_home: to_home }
+}
+
+// THE REPORT: rows for every path, writing nothing. Exit 0 means no file has anything to move.
+fn rehome_sweep_exit(paths_csv: String, name: String, from_home: String, to_home: String) -> ProcessExit {
+  let rows = rehome_sweep(root: "", paths_csv: paths_csv, row: rehome_row_of(name: name, from_home: from_home, to_home: to_home))
+  if rows == "" { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+fn rehome_sweep(root: String, paths_csv: String, row: RehomeRow) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * " + rehome_refusal_text(r: RehomeGrammarUnprepared) + "\n"
+    Accepted { value: prepared, diagnostics: _ } => {
+      let pair = rehome_pair_verdict(row: row)
+      let closures = [roster_home_closure_read(home: row.to_home, bindings: roster_repository_bindings(root: root))]
+      fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, path) {
+        acc + rehome_sweep_path(path: path, prepared: prepared, lex: dag_prepared_lex(), row: row, pair: pair, closures: closures)
+      })
+    }
+  }
+}
+
+fn rehome_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    rehome_render(path: path, before: read.content, outcome: rehome_text(path: path, text: read.content, prepared: prepared, lex: lex, row: row, pair: pair, closures: closures))
+  } else {
+    "REFUSE " + path + " " + rehome_refusal_text(r: RehomeUnreadable) + "\n"
+  }
+}
+
+// THE APPLY: one row, under the roster's apply lock, with the roster's target and stale-read checks, then the same pure
+// rehome_applied the report renders. Success is silent.
+fn rehome_apply_exit(root_dir: String, paths_csv: String, name: String, from_home: String, to_home: String) -> ProcessExit {
+  let row = rehome_row_of(name: name, from_home: from_home, to_home: to_home)
+  let report = match roster_lock_acquire(root_dir: root_dir) {
+    RosterLockRefused { reason: r } => "REFUSE * " + roster_refusal_text(reason: r) + "\n"
+    RosterLockAcquired { held: held } => {
+      let out = rehome_apply_locked(held: held, paths_csv: paths_csv, row: row)
+      if roster_lock_release(held: held) { out } else { out + "REFUSE * apply-lock-not-released\n" }
+    }
+  }
+  if report == "" { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn rehome_apply_locked(held: RosterHeldLock, paths_csv: String, row: RehomeRow) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * " + rehome_refusal_text(r: RehomeGrammarUnprepared) + "\n"
+    Accepted { value: prepared, diagnostics: _ } => {
+      let pair = rehome_pair_verdict(row: row)
+      let closures = [roster_home_closure_read(home: row.to_home, bindings: roster_repository_bindings(root: held.root))]
+      fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, path) {
+        acc + rehome_apply_path(held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), row: row, pair: pair, closures: closures)
+      })
+    }
+  }
+}
+
+fn rehome_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> String {
+  if !roster_path_admitted(path: path) {
+    "REFUSE " + path + " path-outside-root\n"
+  } else {
+    let read = Filesystem.Read(path: held.root + "/" + path)
+    if !read.success {
+      "REFUSE " + path + " " + rehome_refusal_text(r: RehomeUnreadable) + "\n"
+    } else {
+      match rehome_text(path: path, text: read.content, prepared: prepared, lex: lex, row: row, pair: pair, closures: closures) {
+        RehomeClean => ""
+        RehomeRefused { reason: r } => "REFUSE " + path + " " + rehome_refusal_text(r: r) + "\n"
+        RehomeSplices { splices: ss } => rehome_write(held: held, path: path, before: read.content, splices: ss)
+      }
+    }
+  }
+}
+
+fn rehome_write(held: RosterHeldLock, path: String, before: String, splices: List<RehomeSplice>) -> String {
+  if !roster_lock_still_held(held: held) {
+    "REFUSE " + path + " " + rehome_refusal_text(r: RehomeLockNotHeld) + "\n"
+  } else {
+    match roster_target_refusal(root: held.root, path: path) {
+      Present { value: r } => "REFUSE " + path + " " + roster_refusal_text(reason: r) + "\n"
+      Absent =>
+        if !roster_target_unchanged(root: held.root, path: path, before: before) {
+          "REFUSE " + path + " " + rehome_refusal_text(r: RehomeStaleRead) + "\n"
+        } else {
+          match rehome_applied(before: before, splices: splices) {
+            RehomeApplyRefused { reason: r } => "REFUSE " + path + " " + rehome_refusal_text(r: r) + "\n"
+            RehomeWritten { content: c, rewrites: _ } =>
+              if c == before { "" } else if Filesystem.Write(path: held.root + "/" + path, content: c).success { "" } else { "REFUSE " + path + " " + rehome_refusal_text(r: RehomeWriteFailed) + "\n" }
+          }
+        }
+    }
+  }
+}
+
+// ---- controls ----------------------------------------------------------------------------------------------------------------
+
+// gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_rehome.dag --function rehome_controls_exit
+fn rehome_controls_exit() -> ProcessExit {
+  let report = rehome_controls_report()
+  if report == "" { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn rehome_control_row() -> RehomeRow {
+  RehomeRow { name: "Token", from_home: "c.old", to_home: "c.new" }
+}
+
+// The controls' closure for the new home is a supplied value holding no c.* fixture module.
+fn rehome_control_closures() -> List<RosterHomeClosure> {
+  [RosterClosureRead { home: "c.new", modules: ["c.new"] }]
+}
+
+fn rehome_controls_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => {
+      let lex = dag_prepared_lex()
+      rehome_control_moves(name: "sole-import", prepared: prepared, lex: lex,
+        before: "module c.user\n\nimport c.old { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n",
+        after: "module c.user\n\nimport c.new { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n")
+        + rehome_control_moves(name: "shared-block", prepared: prepared, lex: lex,
+          before: "module c.user\n\nimport c.old { Other, Token }\nimport c.new { Kept }\n\nfn f(t: Token, o: Other, k: Kept) -> Token {\n  t\n}\n",
+          after: "module c.user\n\nimport c.old { Other }\nimport c.new { Kept, Token }\n\nfn f(t: Token, o: Other, k: Kept) -> Token {\n  t\n}\n")
+        + rehome_control_moves(name: "qualified-use", prepared: prepared, lex: lex,
+          before: "module c.user\n\nimport c.base { Unit }\n\nfn f(t: c.old.Token, u: Unit) -> c.old.Token {\n  t\n}\n",
+          after: "module c.user\n\nimport c.base { Unit }\n\nfn f(t: c.new.Token, u: Unit) -> c.new.Token {\n  t\n}\n")
+        + rehome_control_untouched(name: "homonym", prepared: prepared, lex: lex,
+          text: "module c.user\n\nimport c.other { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n")
+        + rehome_control_refuses(name: "kind-differs", prepared: prepared, lex: lex, pair: RehomePairRefused { reason: RehomeKindDiffers }, closures: rehome_control_closures(), want: "rehome-kind-differs")
+        + rehome_control_refuses(name: "signature-differs", prepared: prepared, lex: lex, pair: RehomePairRefused { reason: RehomeSignatureDiffers }, closures: rehome_control_closures(), want: "rehome-signature-differs")
+        + rehome_control_refuses(name: "closes-cycle", prepared: prepared, lex: lex, pair: RehomePairSame, closures: [RosterClosureRead { home: "c.new", modules: ["c.new", "c.user"] }], want: "import-closes-cycle home=c.new module=c.user")
+        + rehome_control_record()
+        + rehome_control_pair_inhabited()
+    }
+  }
+}
+
+// A rehome writes exactly `after`, its planner record maps every rewritten extent to bytes of `after` equal to the splice's
+// replacement, and the fixed point (the same row over `after`) is Clean.
+fn rehome_control_moves(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, before: String, after: String) -> String {
+  match rehome_text(path: "control/user.dag", text: before, prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeSplices { splices: ss } =>
+      match rehome_applied(before: before, splices: ss) {
+        RehomeApplyRefused { reason: r } => "CONTROL-FAIL rehome " + name + ": apply refused " + rehome_refusal_text(r: r) + "\n"
+        RehomeWritten { content: c, rewrites: rws } =>
+          if c != after { "CONTROL-FAIL rehome " + name + ": wrote the wrong text\n" }
+          else if !rehome_record_lands(after: after, splices: ss, rewrites: rws) { "CONTROL-FAIL rehome " + name + ": the planner record does not map onto the head text\n" }
+          else {
+            match rehome_text(path: "control/user.dag", text: after, prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+              RehomeClean => ""
+              _ => "CONTROL-FAIL rehome " + name + ": pass 2 is not Clean\n"
+            }
+          }
+      }
+    RehomeClean => "CONTROL-FAIL rehome " + name + ": nothing moved\n"
+    RehomeRefused { reason: r } => "CONTROL-FAIL rehome " + name + ": refused " + rehome_refusal_text(r: r) + "\n"
+  }
+}
+
+fn rehome_record_lands(after: String, splices: List<RehomeSplice>, rewrites: List<RehomeRewrite>) -> Bool {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: after))
+  if length(xs: splices) != length(xs: rewrites) { false } else {
+    fold_list(xs: rewrites, empty: RehomeZip { index: 0, ok: true }, cons: fn(acc, w) {
+      match list_at_optional(xs: splices, index: acc.index) {
+        Present { value: s } =>
+          RehomeZip { index: acc.index + 1, ok: acc.ok && substring(s: after, start: roster_scalar_boundary(octets: octets, byte: w.head_start), end: roster_scalar_boundary(octets: octets, byte: w.head_end)) == s.replacement }
+        Absent => RehomeZip { index: acc.index + 1, ok: false }
+      }
+    }).ok
+  }
+}
+
+type RehomeZip {
+  index: Int
+  ok: Bool
+}
+
+fn rehome_control_untouched(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, text: String) -> String {
+  match rehome_text(path: "control/user.dag", text: text, prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeClean => ""
+    _ => "CONTROL-FAIL rehome " + name + ": a declaration that is not the old one was touched\n"
+  }
+}
+
+fn rehome_control_refuses(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, pair: RehomePairVerdict, closures: List<RosterHomeClosure>, want: String) -> String {
+  match rehome_text(path: "control/user.dag", text: "module c.user\n\nimport c.old { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n", prepared: prepared, lex: lex, row: rehome_control_row(), pair: pair, closures: closures) {
+    RehomeRefused { reason: r } => if rehome_refusal_text(r: r) == want { "" } else { "CONTROL-FAIL rehome " + name + ": refused " + rehome_refusal_text(r: r) + ", wanted " + want + "\n" }
+    _ => "CONTROL-FAIL rehome " + name + ": not refused\n"
+  }
+}
+
+// A splice whose base bytes are not what it expects refuses; the record's head extents follow earlier splices' deltas.
+fn rehome_control_record() -> String {
+  let before = "ab c.old.T cd c.old.T"
+  let splices = [
+    RehomeSplice { start: 3, end: 10, expect: "c.old.T", replacement: "c.newer.T", kind: QualifiedUseRewrite, spelling_base_offset: Present { value: 0 }, spelling_head_offset: Present { value: 0 } },
+    RehomeSplice { start: 14, end: 21, expect: "c.old.T", replacement: "c.newer.T", kind: QualifiedUseRewrite, spelling_base_offset: Present { value: 0 }, spelling_head_offset: Present { value: 0 } }
+  ]
+  let moved = match rehome_applied(before: before, splices: splices) {
+    RehomeWritten { content: c, rewrites: rws } =>
+      if c == "ab c.newer.T cd c.newer.T" && rehome_record_lands(after: c, splices: splices, rewrites: rws) { "" } else { "CONTROL-FAIL rehome record: the second extent did not move by the first splice's delta\n" }
+    RehomeApplyRefused { reason: _ } => "CONTROL-FAIL rehome record: a valid splice list refused\n"
+  }
+  let stale = match rehome_applied(before: before, splices: [RehomeSplice { start: 0, end: 2, expect: "zz", replacement: "q", kind: ImportBlockRewrite, spelling_base_offset: Absent, spelling_head_offset: Absent }]) {
+    RehomeApplyRefused { reason: _ } => ""
+    RehomeWritten { content: _, rewrites: _ } => "CONTROL-FAIL rehome record: a splice over unexpected bytes was written\n"
+  }
+  moved + stale
+}
+
+// THE INHABITANCE CLAIM for the supplied pair verdicts: v2.std.decl_index, on the real corpus, resolves the N7 Int pair to
+// two declarations of one kind whose shapes differ (GroupCompletion record vs NonNegative | Negative), so the real path
+// refuses it as a signature change -- tidy-ant-251's ruling A.
+fn rehome_control_pair_inhabited() -> String {
+  match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer" }) {
+    RehomePairRefused { reason: RehomeSignatureDiffers } => ""
+    RehomePairRefused { reason: r } => "CONTROL-FAIL rehome pair-inhabited: the real Int pair refused " + rehome_refusal_text(r: r) + "\n"
+    RehomePairSame => "CONTROL-FAIL rehome pair-inhabited: the real Int pair read as the same shape\n"
+  }
+}
