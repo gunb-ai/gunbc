@@ -514,6 +514,32 @@ fn ipmi_credential_after_env(seen: IpmiArgvCredentialOption?) -> IpmiArgvCredent
   )
 }
 
+// THE CREDENTIAL TRANSITION FOR ONE OPTION WORD, as a function of the word's effect rather than as a test
+// written where the record happens to be built. Same shape as the pending slot's transition above: the
+// effect decides, and the arms are the kinds. EffectReadsEnv is -E, the only modelled letter that reads a
+// secret from the environment; every other effect leaves whatever already landed alone.
+//
+// This exists as a function and not as an inline `if` inside the record literal because the DAG parser
+// cannot read a labelled call in an if-branch that sits in a record field -- it reads the call's ':' as the
+// start of a record literal and fails with "expected RParen, found Colon" (the same trap src/v2/test/claim/
+// long/vacuity_consumer_witness_long.dag records for a variant name). Writing the decision as a function of
+// the effect is both what parses and what should have been written: the transition is one fact about the
+// effect, not a detail of the literal.
+fn ipmi_credential_after_option_effect(
+  seen: IpmiArgvCredentialOption?,
+  effect: IpmiOptionEffect,
+) -> IpmiArgvCredentialOption? {
+  match effect {
+    EffectReadsEnv => ipmi_credential_after_env(seen: seen)
+    EffectPendingTransport => seen
+    EffectPendingCredential => seen
+    EffectPendingHost => seen
+    EffectPendingTuning => seen
+    EffectSkip => seen
+    EffectUnmodelled => seen
+  }
+}
+
 fn ipmi_command_walk_init() -> IpmiCommandWalkState {
   IpmiCommandWalkState {
     pending: optional_absent(), host_seen: false,
@@ -665,11 +691,7 @@ fn ipmi_command_walk_step(state: IpmiCommandWalkState, word: String) -> IpmiComm
       // -- it is decoration that reads like one, which is the reason the per-letter unmodelled branches
       // were deleted from the effect table. What the ordering guarantees is stated where the ordering
       // lives, not restated at every place it happens to protect.
-      credential: if effect == EffectReadsEnv {
-        ipmi_credential_after_env(seen: state.credential)
-      } else {
-        state.credential
-      },
+      credential: ipmi_credential_after_option_effect(seen: state.credential, effect: effect),
       unmodelled: if effect == EffectUnmodelled && state.unmodelled == "" { word } else { state.unmodelled },
       verb: state.verb,
     }
