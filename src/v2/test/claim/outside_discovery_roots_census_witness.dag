@@ -496,10 +496,15 @@ data probe_subject_path: String = "src/v1/tests/claim/escape_json_string_differe
 
 // THE NAMES THAT FILE DECLARES, read from its text by a person and pinned here as the thing the parse route
 // is held to. Names, not a count: "three" is satisfiable by any three tokens, these are not.
+// Read out of the file with `grep -n '^test fn' src/v1/tests/claim/escape_json_string_differential.dag`
+// at this commit, and transcribed EXACTLY -- including the third name's `RED_` prefix, which is part of
+// the identifier, not a standing. The first version of this list invented three plausible
+// escape_json_string_* names that do not exist anywhere in the repo; the claim below FAILED on them,
+// which is precisely what holding the parse route to names rather than a count is for.
 data probe_subject_expected_names: List<String> = [
-  "escape_json_string_matches_the_rust_authority_for_the_control_set",
-  "escape_json_string_matches_the_rust_authority_for_the_hard_cases",
-  "escape_json_string_is_the_identity_for_the_empty_subject"
+  "the_seed_copy_spells_every_control_code_point_per_rfc_8259",
+  "the_seed_copy_leaves_quote_backslash_non_ascii_and_a_plain_word_per_rfc_8259",
+  "RED_the_seed_copy_escapes_nul_and_backspace"
 ]
 
 type ParseMarkers
