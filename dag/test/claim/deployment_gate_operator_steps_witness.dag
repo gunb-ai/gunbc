@@ -252,6 +252,14 @@ fn ownership_for(
   // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_protection_read_naming_another_environment_never_becomes_a_standing"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_same_named_repository_in_another_account_is_a_different_subject"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
     ),
     decl_ref(
@@ -532,6 +540,10 @@ fn admitted_pair() -> ReviewerRemovalAdmission
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "an_observation_stamped_in_the_future_is_not_fresh"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "historical_evidence_does_not_outlive_the_rule"
     ),
     decl_ref(
@@ -627,6 +639,10 @@ fn standing_at(
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_from_another_attempt_or_an_aged_one_is_not_spendable"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "an_observation_stamped_in_the_future_is_not_fresh"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1055,7 +1071,15 @@ fn protection_for(
   admit_callers: [
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_protection_read_naming_another_environment_never_becomes_a_standing"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_same_named_repository_in_another_account_is_a_different_subject"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1087,6 +1111,28 @@ fn protection_for(
       environment: environment,
       reviewer_present: reviewer_present,
       main_only: main_only,
+    ),
+  )
+}
+
+// A PROTECTION READ WHOSE RESPONSE NAMES A DIFFERENT ENVIRONMENT THAN WAS ASKED FOR (round-6 blocker 1a).
+// The upstream response carries its own `name`, so "a read of the sibling" is expressible -- and therefore
+// refusable. Today the mint copies the REQUESTED label beside `settings` and never reads `settings.name`,
+// so this seals successfully and the join then agrees with it: one mismatched response becomes a licence to
+// weaken a boundary it was never a read of. Asserted with the wildcard arm so the claim is red today rather
+// than refusing the index; GREEN names the arm it must be.
+fn mismatched_protection_read(
+  requested: NonEmptyStr,
+  named_in_response: NonEmptyStr,
+) -> EnvironmentProtectionObservation {
+  observe_environment_protection(
+    owner: gate_owner,
+    repo: gate_repo,
+    environment_name: requested,
+    settings: protection_read(
+      environment: named_in_response,
+      reviewer_present: true,
+      main_only: true,
     ),
   )
 }
@@ -1172,11 +1218,19 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_same_named_repository_in_another_account_is_a_different_subject"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_from_another_attempt_or_an_aged_one_is_not_spendable"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "an_observation_stamped_in_the_future_is_not_fresh"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -2303,6 +2357,162 @@ fn act_with_clock(reading: Optional<ObservedInstant>) -> ReviewerRemovalStepDeci
     removal_attempt: standing_attempt(),
     now: reading,
   )
+}
+
+// ─── 7c. THE SUBJECT IS COMPARED WHOLE, AND AN INSTANT ONLY COUNTS IF IT IS IN THE PAST ───
+// Round 6, from the side chat via the manager (msg_789e3167). Three holes, each of which let a genuine
+// read certify the WRONG SUBJECT or the wrong TIME: a protection response naming another environment was
+// sealed under the requested label; no comparison anywhere read `owner`, so a same-named repository in
+// another account joined and completed happily; and the age bound accepted a negative age, so a read
+// stamped in the future counted as fresh. Each claim below is red until its model change lands.
+
+test fn a_protection_read_naming_another_environment_never_becomes_a_standing() -> Bool {
+  // THE CONTROL: a response naming the environment that was asked for is accepted, so a refusal below is
+  // about the NAME and not about the shape of the fixture.
+  (match join_protection_to_ownership(
+    protection: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    ownership: ownership_for(
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+    ),
+  ) {
+    ProtectionJoinEstablished { protection: p } => p.environment_name == gate_env
+    ProtectionJoinRefused { because: _ } => false
+  })
+    // THE MUTATION: same owner, same repo, same REQUESTED environment -- but the response body is the
+    // sibling's. The pair must never reach a standing at all.
+    && (match join_protection_to_ownership(
+      protection: mismatched_protection_read(
+        requested: gate_env,
+        named_in_response: sibling_env,
+      ),
+      ownership: ownership_for(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+      ),
+    ) {
+      ProtectionJoinRefused { because: _ } => true
+      ProtectionJoinEstablished { protection: _ } => false
+    })
+    // WHY THE JOIN IS THE RIGHT PLACE TO ASSERT THIS TODAY: the mint has no way to say "this response is
+    // not about the environment I asked for" -- it returns one record and no refusal, so the pair reaches
+    // the join and the join, which compares only repo and environment_name, agrees with a lie it was told.
+    // The model change adds that refusal to the mint; the claim here is the one that is red either way.
+}
+
+test fn a_same_named_repository_in_another_account_is_a_different_subject() -> Bool {
+  // THE CONTROL: same everything, joins.
+  (match join_protection_to_ownership(
+    protection: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    ownership: ownership_for(
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+    ),
+  ) {
+    ProtectionJoinEstablished { protection: _ } => true
+    ProtectionJoinRefused { because: _ } => false
+  })
+    // THE MUTATION: the protection was read for gunbc UNDER ANOTHER ACCOUNT. Repositories are addressed by
+    // (owner, name); srv1-production in someone else's gunbc says nothing about this boundary's reviewers,
+    // yet repo NAME and environment both match, so every comparison written today is satisfied.
+    && (match join_protection_to_ownership(
+      protection: protection_for(
+        owner: "someone-else",
+        repo: gate_repo,
+        environment: gate_env,
+        reviewer_present: true,
+        main_only: true,
+      ),
+      ownership: ownership_for(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+      ),
+    ) {
+      ProtectionJoinRefused { because: _ } => true
+      ProtectionJoinEstablished { protection: _ } => false
+    })
+    // THE COMPLETION SIDE, WHICH IS THE PART THAT RELEASES THE BOUNDARY: a post-removal read of another
+    // account's same-named repository must not certify that THIS boundary's reviewer is gone.
+    && (match observe_reviewer_removal(
+      boundary: srv1_deployment_gate_boundary,
+      after: protection_for(
+        owner: "someone-else",
+        repo: gate_repo,
+        environment: gate_env,
+        reviewer_present: false,
+        main_only: true,
+      ),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      ReviewerRemovalCompletionRefused { because: _ } => true
+      ReviewerRemovalCompletionObserved { receipt: _ } => false
+    })
+}
+
+test fn an_observation_stamped_in_the_future_is_not_fresh() -> Bool {
+  // THE CONTROL: the same read, measured against an instant AFTER it, is aged and refused for the right
+  // reason -- so the value below is refused for being in the future, not for being unusable.
+  (match reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_fixture(
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    removal_attempt: standing_attempt(),
+    now: clock_read(instant: standing_instant_stale),
+  ) {
+    ReviewerRemovalBlocked { missing: _ } => true
+    ReviewerRemovalReady { admitted: _ } => false
+  })
+    // THE MUTATION: the standing is stamped 13:00 and the act's clock reads 12:00 -- the read is an hour in
+    // the FUTURE, which happens whenever a clock steps backward (NTP correcting a fast clock is the routine
+    // case, not a exotic one). The age is negative, and a negative age has never once meant "recent": it
+    // means the two clocks disagree about which one is now. The bound is a maximum, and `<=` alone lets any
+    // negative number through it.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_at(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        reviewer_present: true,
+        main_only: true,
+        attempt: standing_attempt(),
+        observed_at: clock_read(instant: standing_instant_stale),
+      ),
+      removal_attempt: standing_attempt(),
+      now: clock_read(instant: standing_instant),
+    ) {
+      ReviewerRemovalBlocked { missing: _ } => true
+      ReviewerRemovalReady { admitted: _ } => false
+    })
 }
 
 // (A) A NON-CANONICAL READING YIELDS NO INSTANT, and the same door returns one for a canonical reading.

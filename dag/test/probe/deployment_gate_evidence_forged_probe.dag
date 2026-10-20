@@ -59,6 +59,7 @@ import gunbc.auth.deployment_gate_authorization {
   observe_removal_boundary_standing,
   RemovalBoundaryStandingObservation,
   ProtectionOwnershipJoin,
+  standing_from_join,
   DeploymentGateBoundary,
   ObservedInstant,
   read_observed_instant,
@@ -352,3 +353,25 @@ data forged_instant_text: Timestamp = "2026-10-19T12:00:00Z"
 // is stamped with, then blocker 2's freshness bound measures a number the caller chose. The text beside it
 // is a well-formed UTC instant -- a shape check is not what is being refused here.
 data forged_instant: ObservedInstant = ObservedInstant { instant: forged_instant_text }
+
+// (k) THE STANDING HELPER, FROM OUTSIDE (round-6 blocker 2). `standing_from_join` consumed the join and
+// stamped the standing, so for four rounds it was the door the census never looked at: a foreign module
+// holding a valid ProtectionOwnershipJoin could call the HELPER and obtain a standing, bypassing the
+// confined mint and the clock door together. A mint with an open proxy beside it is a mint with the confine
+// painted on the wall. The instant here is a PARAMETER again: what is under test is whether a stranger can
+// reach the helper at all, not whether it can write a time. (The `.instant` projection is the RED phase's
+// concession: today the helper still takes a raw Timestamp, which is itself the defect. GREEN replaces it
+// with the sealed value and this line loses the projection.)
+fn forge_the_standing_via_the_helper(
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: ObservedInstant,
+) -> RemovalBoundaryStandingObservation {
+  standing_from_join(
+    joined: joined,
+    boundary: boundary,
+    attempt: attempt,
+    observed_at: observed_at.instant,
+  )
+}
