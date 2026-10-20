@@ -18063,6 +18063,18 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
+  // RAVEN PROBE CONTROL, on scratch branch agent/v1-param-binder-control cut from main, never merged.
+  // Byte-identical to the row on agent/v1-param-binder-probe; nothing else about this branch's compiler
+  // differs from main (no lane edits at all). It is the control for whether std.measure's abandonment
+  // before items is a pre-existing condition or something my lane introduced.
+  let raven_module = authored_name_at(source_indices: source_indices, node: resolved.module)
+  let raven_rows = if raven_module == "std.measure" { [
+    inference_error(
+      message: concat(concat(concat(concat(concat(concat(concat(concat(concat("RAVENMOD|", raven_module), "|enverrors="), to_string(env_errors |> count)), "|envdiags="), to_string(env_diags |> count)), "|items="), to_string(module_items(n: resolved.module) |> count)), "|progress="), if env_errors |> count > 0 { "AbandonedBeforeItems" } else { "items_analyzed" }),
+      span: resolved.module.span,
+      module_name: raven_module
+    )
+  ] } else { [] }
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
