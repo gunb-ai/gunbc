@@ -55,3 +55,9 @@ test fn ci_origin_reader_discriminates_the_three_families_holds() -> Bool {
     && (type_variable_origin(sym: binder_var) == TypeVariableOfBinder)
     && (type_variable_origin(sym: symbol_intern_lexeme(lexeme: "T")) == TypeVariableRigid)
 }
+
+fn ci_let_present() -> Outcome<ResolvedTree> { ers_assemble(body: "fn p() -> Int? {\n  let x = Present { value: 1 }\n  x\n}\n") }
+fn ci_let_solved_call() -> Outcome<ResolvedTree> { ers_assemble(body: "fn id2<T>(a: T?, b: T?) -> T? { a }\n\nfn q() -> Int? {\n  let x = id2(Present { value: 1 }, Absent)\n  x\n}\n") }
+// An unannotated let whose constructor variable IS solved keeps accepting: the unsolved-let refusal is not a blanket reject.
+test fn ci_unannotated_let_of_present_accepts_holds() -> Bool { ers_infer_accepted(o: ci_let_present()) }
+test fn ci_unannotated_let_of_solved_call_accepts_holds() -> Bool { ers_infer_accepted(o: ci_let_solved_call()) }

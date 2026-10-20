@@ -4754,7 +4754,7 @@ type InferTypePair {
 // instances that close them (infer_close_produced_at_declared) through the same
 // infer_match_generic_formal used for generic formals -- produced as the formal, declared as
 // the instance source. Not a second solver.
-fn infer_produced_open_type_params(produced: Node, declarations: SymbolIndex) -> List<Symbol> {
+fn infer_produced_open_type_params(produced: Node) -> List<Symbol> {
   fold(node_subtree_nodes(root: produced), init: Empty, f: fn(acc, m) {
     match m.kind {
       TypeNode { connective: Atom { identity: id } } =>
@@ -4778,7 +4778,7 @@ fn infer_close_produced_at_declared(
 ) -> List<TypeVariableInstance> {
   let declared_n = infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings)
   let produced_n = infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings)
-  let open_params = infer_produced_open_type_params(produced: produced_n, declarations: declarations)
+  let open_params = infer_produced_open_type_params(produced: produced_n)
   match open_params {
     Empty => instances
     Cons { head: _, tail: _ } =>
@@ -6071,7 +6071,7 @@ fn infer_unannotated_let_unsolved_refusal(node: Node, entries: Map<Node, List<In
           match inferred_facts_resolved_type_optional(facts: facts) {
             Absent => outcome_accepted(entries)
             Present { value: produced } =>
-              match infer_produced_open_type_params(produced: produced, declarations: resolved.resolved_declarations) {
+              match infer_produced_open_type_params(produced: produced) {
                 Empty => outcome_accepted(entries)
                 Cons { head: _, tail: _ } => outcome_rejected(infer_unsolved_constructor_type_variable_diagnostic(node: bound))
               }
