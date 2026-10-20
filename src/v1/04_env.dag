@@ -1793,6 +1793,7 @@ type TypeReferenceDeclarationReading
   = TypeReferenceNamesDeclaration { declaration: DeclarationRef }
   | TypeReferenceIsKernelType { name: String }
   | TypeReferenceIsTypeVariable { id: String }
+  | TypeReferenceUninstantiatedTypeParameter { name: String }
   | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
 
 fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
@@ -1812,7 +1813,11 @@ fn type_reference_declaration_reading(n: Node, source_indices: Map<String, Newli
   }
 }
 
-// The type parameters a builtin generic signature declares (NamedTemplate names of v1.compiler.method builtin_signatures).
+// The type parameters a builtin generic signature declares (NamedTemplate names of
+// v1.compiler.method builtin_signatures). A match binding over a generic builtin's result (list_head(xs: List<String>) -> Present { value: c })
+// carries the callee's UNINSTANTIATED parameter as its type: it has no declaration and is no kernel, but it is
+// not an unknown head either. BOUNDED RUNG DROP (gunbc.rung_drop declared_type_wall_uninstantiated_type_parameter):
+// only this reading is unjudged by the declared-type wall; every other Unidentified head refuses.
 fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
@@ -1823,6 +1828,7 @@ fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, au
     Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
     _ =>
       if is_kernel_type(name: nm) { TypeReferenceIsKernelType { name: nm } }
+      else if is_type_variable_name(name: nm) || is_type_variable_name(name: n.name) { TypeReferenceUninstantiatedTypeParameter { name: nm } }
       else if node_is_kernel_mint(n: n) { TypeReferenceIsKernelType { name: nm } }
       else { TypeReferenceUnidentified { authored: authored, resolved: resolved } }
   }
@@ -1946,6 +1952,7 @@ fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
         TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
         TypeReferenceIsKernelType { name: _ } => NotText
         TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceUninstantiatedTypeParameter { name: _ } => NotText
         TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
       }
   }
@@ -1988,6 +1995,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
       TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
       TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
       TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceUninstantiatedTypeParameter { name: _ } => NotText
       TypeReferenceNamesDeclaration { declaration: d } =>
         if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
           text_element_is_char(n: n, env: env)
