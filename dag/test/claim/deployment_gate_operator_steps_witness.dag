@@ -120,7 +120,7 @@ import gunbc.auth.deployment_gate_authorization {
   gate_app_permission_set_is_exact,
   GateInstallationClaim,
 
-  standing_is_within_age_bound,}
+}
 // THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
 import gunbc.auth.deployment_gate_operator_steps {
   reviewer_removal_observation_window,
@@ -1128,31 +1128,6 @@ fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
 // banding happens where the instant is DECLARED, which is also where it belongs: an unannotated
 // string is not an instant, and the mint should never see one.
 data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
-
-// SCRATCH (deleted once read): is the refusal per-declaration or module-wide inside
-// gunbc.auth.deployment_gate_authorization? standing_is_within_age_bound is a PLAIN unconfined fn in
-// the very module whose two mints refuse the same row, with two Timestamp parameters. Accepted here and
-// refused at the mints => the difference is per-fn; refused here too => the alias resolves differently
-// module-wide and the fix belongs to the model's own vocabulary.
-test fn scratch_plain_fn_in_the_same_module() -> Bool {
-  standing_is_within_age_bound(
-    observed_at: standing_instant,
-    now: standing_instant_stale,
-  )
-}
-
-// SCRATCH: the same row, one hop away, through a local annotated parameter -- mirrors line 648.
-fn scratch_forward(instant: Timestamp) -> Bool {
-  standing_is_within_age_bound(observed_at: instant, now: instant)
-}
-
-test fn scratch_forwarded_param() -> Bool {
-  scratch_forward(instant: standing_instant_fresh)
-}
-
-// AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
-// needs both, and needs them as REAL instants rather than as a Bool somebody set.
-data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z"
 
 data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
 
