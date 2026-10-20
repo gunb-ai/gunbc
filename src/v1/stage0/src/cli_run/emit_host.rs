@@ -165,7 +165,7 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
                 resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
                     .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
             record_fixture_closure(&sources);
-            compile_fixture_rendering_only_what_is_read(sources, None)
+            compile_fixture_rendering_only_what_is_read(sources, None, &module_index)
         })
     }));
     let result = match compiled {
@@ -448,7 +448,14 @@ pub fn compile_dag_multi_module_fixture(
         })
         .collect();
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        // A hermetic fixture's pool is empty: its manifest is its whole closure, so a generated
+        // provider outside it refuses (GeneratedProviderUnavailable) instead of reaching the tree.
+        let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+            files,
+            &|_: &str| false,
+            &|module: &str| Err(format!("hermetic fixture: no pool holds '{module}'")),
+        )
+        .unwrap_or_else(|cause| unreachable!("an empty pool never asks for acquisition: {cause}"));
         let module_count = match resolved.graph.clone() {
             Some(g) => g.modules.len() as i64,
             None => 0,
@@ -2006,7 +2013,8 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     record_fixture_closure(&sources);
-    let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
+    let result =
+        compile_fixture_rendering_only_what_is_read(sources, Some(file_path), &module_index)?;
     let hard_diagnostics = result
         .diagnostics
         .iter()
@@ -2070,8 +2078,23 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 pub(crate) fn compile_fixture_rendering_only_what_is_read(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     read_path: Option<&str>,
+    pool: &HashMap<String, String>,
 ) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
-    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    // The witness-root module index is this surface's pool for generated providers: a demanded
+    // module joins with its own import closure, read the way the fixture's imports were.
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| pool.contains_key(module),
+        &|module: &str| {
+            let path = pool
+                .get(module)
+                .ok_or_else(|| format!("generated provider '{module}' left the pool"))?;
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("generated provider '{module}' at {path}: {e}"))?;
+            resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
+        },
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     let selection = fixture_render_selection(&resolved, read_path)?;
     Ok(v1_compiler_compile::emit_resolved_for_target_selected(
         resolved,

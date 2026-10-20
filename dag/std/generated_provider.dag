@@ -222,14 +222,12 @@ fn generated_provider_unavailable_cause_label(c: GeneratedProviderUnavailableCau
   }
 }
 
-// ONE RENDERING OF THE REFUSAL, shared by every builder: the declaration, why it is unavailable, and
-// every site that demanded it, at the authored boundary each site names.
-fn render_generated_provider_unavailable(u: GeneratedProviderUnavailable) -> String {
-  let d = u.demand.declaration
-  let sites = [u.demand.sites.head] |> concat(u.demand.sites.tail)
+// ONE MESSAGE FOR THE REFUSAL, read by v1.compiler.core's GeneratedProviderUnavailable diagnostic,
+// which every closure builder raises once per demanding site at the authored boundary that site names.
+fn generated_provider_unavailable_message(declaration: DeclarationRef, cause: GeneratedProviderUnavailableCause) -> String {
   concat(
-    "generated provider unavailable: ", d.module_path, ".", d.decl_name, " -- ",
-    generated_provider_unavailable_cause_label(c: u.cause), "; demanded by ",
-    join(sites |> map(s => concat(generated_provider_cause_label(c: s.cause), " at ", s.at.file, ":", to_string(s.at.start), "..", to_string(s.at.end))), ", ")
+    "generated provider unavailable: ", declaration.module_path, ".", declaration.decl_name, " -- ",
+    generated_provider_unavailable_cause_label(c: cause),
+    "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
   )
 }

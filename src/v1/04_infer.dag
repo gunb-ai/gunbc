@@ -257,7 +257,8 @@ import v1.compiler.infer_access {
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.generated_provider {
   GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
-  ModuleInClosure, ModuleInPool, ModuleNotInPool, observe_provider_demand, provider_acquisition_step
+  ModuleInClosure, ModuleInPool, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -18636,6 +18637,22 @@ fn closure_provider_acquisition_step(demands: List<GeneratedProviderDemand>, mod
       |> filter(n => n != "")
       |> map(n => n as NonEmptyStr)
   )
+}
+
+// A REFUSED ACQUISITION, AS THE COMPILER'S OWN DIAGNOSTICS: one GeneratedProviderUnavailable per
+// demanding site, located at the authored boundary that site names, so every builder reports the
+// refusal through the same channel as any other blocking diagnostic.
+fn generated_provider_unavailable_diagnostics(step: ProviderAcquisitionStep) -> List<ErrorNode> {
+  match step {
+    ProviderAcquisitionRefused { refusals: rs } =>
+      ([rs.head] |> concat(rs.tail)) |> flat_map(r =>
+        ([r.demand.sites.head] |> concat(r.demand.sites.tail)) |> map(site =>
+          make_error_node(diagnostic: GeneratedProviderUnavailable { declaration: r.demand.declaration, cause: r.cause, span: site.at }, module_name: "")
+        )
+      )
+    AcquisitionComplete => []
+    AcquireModules { modules: _ } => []
+  }
 }
 
 // THE PASS OUTPUT: the typed program and, beside it rather than inside it, the provider demands its

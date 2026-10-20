@@ -2075,7 +2075,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
-    let typed =
+    let (typed, provider_demands) =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
     // `typed` carries the completed per-module typecheck and its diagnostics. Record the
     // verdict before testing whether it is positive: a blocking diagnostic is stronger
@@ -2105,6 +2105,53 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             )
         })?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
+
+    // GENERATED PROVIDERS ARE SETTLED BEFORE THE TYPE VERDICT. A generated reference whose provider
+    // is outside this closure is "needs acquisition", not yet a type error (operator ruling on
+    // option 1b): the model observes every grouped demand against the checked closure and decides.
+    // On Acquire, each acquired module's own closure joins the sources and the whole closure is
+    // checked again; the closure only grows and the model refuses a module it already holds, so the
+    // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
+    match super::provider_acquire::judge_closure(
+        &provider_demands,
+        typed.modules.clone(),
+        source_indices.clone(),
+        &|m: &str| index.source_files.contains_key(m),
+    ) {
+        super::provider_acquire::ClosureProviderStep::Complete => {}
+        super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
+            return Err(format_error_nodes(&diagnostics, &source_indices));
+        }
+        super::provider_acquire::ClosureProviderStep::Acquire(modules) => {
+            let mut merged = sources.clone();
+            for module in &modules {
+                let provider = index.source_files.get(module).cloned().ok_or_else(|| {
+                    format!(
+                        "generated provider acquisition: the pool answered for '{module}' and then                          had no source for it"
+                    )
+                })?;
+                for s in load_sources_for_entry_with_pool(index, &provider.path)? {
+                    if !merged.iter().any(|x| x.path == s.path) {
+                        merged.push(s);
+                    }
+                }
+            }
+            if merged.len() == sources.len() {
+                return Err(format!(
+                    "generated provider acquisition made no progress: acquiring {modules:?} added                      no source to the closure"
+                ));
+            }
+            let acquired =
+                resolved_graph_from_sources_with_index(index, merged, phase_label, memo_share)?;
+            if memo_share == ResolvedGraphMemoShare::Memoize {
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject.clone(), acquired.clone());
+            }
+            return Ok(acquired);
+        }
+    }
 
     let has_type_errors = typed
         .diagnostics

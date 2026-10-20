@@ -13,7 +13,7 @@ import std.generated_provider {
   AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused,
   generated_provider_demand, group_provider_demands, provider_acquisition_step,
   GeneratedProviderUnavailable, ModuleInClosure, ModuleInPool, ModuleNotInPool,
-  observe_provider_demand, render_generated_provider_unavailable
+  observe_provider_demand, generated_provider_unavailable_message
 }
 
 // Supplied inputs at the std.generated_provider interface (DESIGN section 3, a witness discriminates
@@ -153,15 +153,7 @@ test fn module_in_closure_without_the_declaration_is_declaration_absent_not_modu
     && observe_provider_demand(demand: d, fact: ModuleNotInPool).observation == ProviderModuleAbsent
 }
 
-test fn refusal_rendering_names_the_declaration_the_cause_and_every_site() -> Bool {
-  let d = group_provider_demands(demands: [
-    generated_provider_demand(declaration: unfold_ref(), site: site(start: 10)),
-    generated_provider_demand(declaration: unfold_ref(), site: site(start: 20))
-  ])
-  match d |> first {
-    Present { value: g } =>
-      render_generated_provider_unavailable(u: GeneratedProviderUnavailable { demand: g, cause: UnavailableDeclarationAbsent })
-        == "generated provider unavailable: std.coercion.unicode_scalar_unfold -- its module does not declare it; demanded by conversion route at fixture.dag:10..11, conversion route at fixture.dag:20..21"
-    Absent => false
-  }
+test fn refusal_message_names_the_declaration_and_the_cause() -> Bool {
+  generated_provider_unavailable_message(declaration: unfold_ref(), cause: UnavailableDeclarationAbsent)
+    == "generated provider unavailable: std.coercion.unicode_scalar_unfold -- its module does not declare it; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
 }
