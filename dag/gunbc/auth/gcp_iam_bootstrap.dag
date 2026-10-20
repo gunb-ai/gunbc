@@ -642,7 +642,7 @@ type TagResourceStanding = TagResourcePresent { name: NonEmptyStr } | TagResourc
 
 fn tag_create_standing(what: String, done: Bool?, error: GoogleRpcStatus?) -> TagResourceStanding {
   match error {
-    Present { value: e } => TagResourceRefused { reason: join([what, ": create failed: ", e.message], "") }
+    Present { value: e } => TagResourceRefused { reason: join([what, ": create failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], "") }
     Absent => TagResourcePending { what: what }
   }
 }
@@ -685,7 +685,7 @@ fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token:
     Present { value: false } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
       RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
       RestAnswered { answer: a } => match a.error {
-        Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", e.message], ""))
+        Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], ""))
         Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
           Present { value: true } => TrustRootTagsBound
           Present { value: false } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
