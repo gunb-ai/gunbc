@@ -28,7 +28,7 @@ REPO=${REPO:-https://github.com/gunb-ai/gunbc.git}
 # The ONE mirror this change drives. 04_infer.dag emits v1_compiler_infer.rs and nothing else; a
 # wider set here would install the emitter's opinion about files this change does not touch.
 REGEN_TARGETS=${REGEN_TARGETS:-"v1_compiler_infer.rs"}
-CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/root/gunbc_target_pr1}
+CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/tmp/gunbc_target_pr1_regen}
 export CARGO_TARGET_DIR CARGO_PROFILE_DEV_DEBUG=0
 LOGS=${LOGS:-/tmp/pr1_regen_logs}
 WORK=${WORK:-/tmp/pr1_regen_tree}
@@ -91,6 +91,17 @@ while :; do
   brc=$?
   if [ $brc -ne 0 ]; then
     echo "FATAL emitter build rc=$brc round=$round"; grep -aE "^error" "$LOGS/emitter_build_$round.log" | head -8; exit 6
+  fi
+  # Executability is ASSERTED, not assumed. Two rounds of this instrument died with
+  # `timeout: failed to run command '<target>/release/claim_executor': Permission denied` after cargo
+  # reported Finished rc=0: the runner's /root persistence is per-container and a directory freshly
+  # created there this dispatch can yield a binary that will not exec. Print the mode, chmod, retest;
+  # only then run --required-regen, or fail with a reason instead of an rc=126 that looks like drift.
+  if [ ! -x "$CE_BIN" ]; then
+    echo "PRE-X not executable: $(ls -l "$CE_BIN" 2>&1 | cut -c1-120)  umask=$(umask)"
+    chmod +x "$CE_BIN" 2>/dev/null || echo "CHMOD_FAILED"
+    [ -x "$CE_BIN" ] || { echo "FATAL emitter binary not executable at $CE_BIN (target dir on this runner cannot exec what cargo wrote; run with CARGO_TARGET_DIR under /tmp)"; exit 6; }
+    echo "POST-X chmod repaired it"
   fi
   rm -rf target/stage0-regen-candidate
   timeout -k 60 "${REGEN_TIMEOUT:-1800}" "$CE_BIN" --required-regen \
