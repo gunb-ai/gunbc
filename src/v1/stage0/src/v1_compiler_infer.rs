@@ -8152,63 +8152,79 @@ pub fn build_call_argument_formal_correspondence(
     value_params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CallArgumentFormalCorrespondence> {
-    Rc::new(
-        arguments
-            .clone()
+    {
+        let selections = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                arguments
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
             .iter()
             .cloned()
-            .enumerate()
-            .map(|(i, v)| (i as i64, v))
-            .collect::<Vec<_>>(),
-    )
-    .iter()
-    .cloned()
-    .fold(
-        Rc::new(CallArgumentFormalCorrespondence {
-            selections: Rc::new(vec![]),
-            claimants_by_formal: v1_rt::rc_empty_map::<i64, Rc<Vec<Rc<CallArgumentClaimant>>>>(),
-        }),
-        |acc: Rc<CallArgumentFormalCorrespondence>, pair: (i64, Rc<Node>)| {
-            let selection = select_formal_for_call_argument(
-                pair.1.clone(),
-                pair.0.clone(),
-                arguments.clone(),
-                value_params.clone(),
-                source_indices.clone(),
-            );
-            let extended = Rc::new(CallArgumentFormalCorrespondence {
-                selections: v1_rt::concat(acc.selections.clone(), Rc::new(vec![selection.clone()])),
-                claimants_by_formal: acc.claimants_by_formal.clone(),
-            });
-            match (*selection.clone()).clone() {
-                CallArgumentFormalSelection::CallArgumentFormalSelected {
-                    formal_index: selected,
-                    ..
-                } => Rc::new(CallArgumentFormalCorrespondence {
-                    selections: extended.selections.clone(),
-                    claimants_by_formal: v1_rt::rc_map_insert(
-                        acc.claimants_by_formal.clone(),
-                        selected.clone(),
-                        v1_rt::concat(
-                            match v1_rt::map_get(&acc.claimants_by_formal.clone(), selected.clone())
-                            {
-                                Some(claimants) => claimants.clone(),
-                                std::option::Option::None => Rc::new(vec![]),
-                            },
-                            Rc::new(vec![Rc::new(CallArgumentClaimant {
-                                argument_index: pair.0.clone(),
-                                caller_label: crate::v1_std_core::arg_name_at(
-                                    pair.1.clone(),
-                                    source_indices.clone(),
-                                ),
-                            })]),
-                        ),
-                    ),
-                }),
-                CallArgumentFormalSelection::CallArgumentFormalUnavailable => extended.clone(),
+            {
+                __result.push(select_formal_for_call_argument(
+                    pair.1.clone(),
+                    pair.0.clone(),
+                    arguments.clone(),
+                    value_params.clone(),
+                    source_indices.clone(),
+                ));
             }
-        },
-    )
+            __result
+        });
+        let claimant_seed = v1_rt::rc_empty_map::<i64, Rc<Vec<Rc<CallArgumentClaimant>>>>();
+        let claimants = Rc::new(
+            arguments
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            claimant_seed.clone(),
+            |acc: Rc<HashMap<i64, Rc<Vec<Rc<CallArgumentClaimant>>>>>, pair: (i64, Rc<Node>)| {
+                match selections.clone().get((pair.0.clone()) as usize).cloned() {
+                    Some(selection) => match (*selection.clone()).clone() {
+                        CallArgumentFormalSelection::CallArgumentFormalSelected {
+                            formal_index: selected,
+                            ..
+                        } => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            selected.clone(),
+                            v1_rt::concat(
+                                match v1_rt::map_get(&acc, selected.clone()) {
+                                    Some(existing) => existing.clone(),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                                Rc::new(vec![Rc::new(CallArgumentClaimant {
+                                    argument_index: pair.0.clone(),
+                                    caller_label: crate::v1_std_core::arg_name_at(
+                                        pair.1.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                })]),
+                            ),
+                        ),
+                        CallArgumentFormalSelection::CallArgumentFormalUnavailable => acc.clone(),
+                    },
+                    std::option::Option::None => acc.clone(),
+                }
+            },
+        );
+        Rc::new(CallArgumentFormalCorrespondence {
+            selections: selections.clone(),
+            claimants_by_formal: claimants.clone(),
+        })
+    }
 }
 
 pub fn call_argument_selection_at(
