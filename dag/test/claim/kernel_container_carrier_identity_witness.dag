@@ -2,7 +2,7 @@ module test.claim.kernel_container_carrier_identity_witness
 
 import std.types { String, Bool, Int, List }
 import std.algebra { string_contains, carrier_container_alias_rows, carrier_container_arity_rows }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import gunbc.instruments.multi_module_compile_fixture {
@@ -218,6 +218,24 @@ test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
 // declaration carrying the real carrier in its comment) -- but never TOGETHER on one declaration
 // line. The per-line predicate refuses. This input is what the retired whole-text form would have
 // PASSED; it is the executed proof that the split is load-bearing and the guard is not a decoration.
+// THE DISSOLUTION IS CONSUMED, not declared-and-abandoned (§3c): the trigger's text is read by a
+// check, so an edit that blurs the condition goes red, and the reader of this file sees who depends
+// on the row. Corpus idiom: cli_run_floor_lens_oracle_witness reads its trigger the same way.
+test fn the_dissolution_trigger_names_its_rung() -> Bool {
+  string_contains(
+    s: dissolution_description(condition: single_authority_alias_dissolve_on),
+    pattern: "generated-declaration form"
+  )
+    && string_contains(
+      s: dissolution_description(condition: single_authority_alias_dissolve_on),
+      pattern: "pascal_alias_spelling"
+    )
+    && string_contains(
+      s: dissolution_description(condition: single_authority_alias_dissolve_on),
+      pattern: "single-authority-alias"
+    )
+}
+
 test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
   let crossed = "module std.types\ntype List<element>\ntype Set<element> = FreeMonoid<element>\n"
   !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: crossed)
@@ -233,4 +251,4 @@ test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Boo
 // unwritable -- this claim's subject disappears: there is one declaration to agree with, and both
 // the claim and its controls are deleted. Until then this is the named next rung, not a pretense.
 data single_authority_alias_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "the .dag substrate gains a generated-declaration form that emits std/types' container alias declarations (List/Set/Map) from the std/algebra carrier roster's pascal_alias_spelling rows, making the hand-written alias bodies and this drift guard both unnecessary; delete this claim file's alias section then")
+  description: "single-authority-alias (#14597): the .dag substrate gains a generated-declaration form that emits std/types' container alias declarations (List/Set/Map) from the std/algebra carrier roster's pascal_alias_spelling rows, making the hand-written alias bodies and this drift guard both unnecessary; when it lands, delete this file's std_types_declares_alias_of predicate, its four controls, and this trigger")
