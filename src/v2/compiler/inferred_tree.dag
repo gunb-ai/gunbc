@@ -7,7 +7,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePendi
 import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 import v2.std.inhabitance { TypeVariableInstance }
@@ -58,33 +58,6 @@ type NotDerivedSite
 // through solve_constraints with the singleton candidate set [root], and the resulting grounding
 // carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
 // itself, and every downstream consumer read that as an established judgment.
-
-// The site's spelling, for a census that groups by cause. Exhaustive over NotDerivedSite, so an arm added to the
-// coproduct refuses here until it is spelled.
-fn not_derived_site_symbol(site: NotDerivedSite) -> Symbol {
-  match site {
-    BinderTypeNodeUnfacted => ^BinderTypeNodeUnfacted
-    BinderTypeUnjudged => ^BinderTypeUnjudged
-    DeclarationWrapperEvidenceEdgesAbsent => ^DeclarationWrapperEvidenceEdgesAbsent
-    ProductEvidenceEdgesAbsent => ^ProductEvidenceEdgesAbsent
-    LexicalReferenceValued => ^LexicalReferenceValued
-    LexicalReferenceUntyped => ^LexicalReferenceUntyped
-    LiteralTypeUnknown => ^LiteralTypeUnknown
-    RosterMemberTypeAbsent => ^RosterMemberTypeAbsent
-    ProjectionReceiverUnderived => ^ProjectionReceiverUnderived
-    ReferenceRejectedGrounding => ^ReferenceRejectedGrounding
-    DeclarationReferenceWithoutPath => ^DeclarationReferenceWithoutPath
-    ReferenceLookupMiss => ^ReferenceLookupMiss
-    VariantArmValueNotDerived => ^VariantArmValueNotDerived
-    CallableEvidenceAbsent => ^CallableEvidenceAbsent
-    MatchFrontier => ^MatchFrontier
-    EqualityNotDerived => ^EqualityNotDerived
-    LiteralPayloadMember => ^LiteralPayloadMember
-    ConstructFieldsUnbound => ^ConstructFieldsUnbound
-    ConstructFormalsAuthored => ^ConstructFormalsAuthored
-    ConstructTypeAbsent => ^ConstructTypeAbsent
-  }
-}
 
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }

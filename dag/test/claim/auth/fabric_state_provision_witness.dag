@@ -2,23 +2,21 @@ module test.claim.auth.fabric_state_provision_witness
 
 import std.types { Bool, String }
 import gunbc.fabric.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable, fabric_state_provision_token_variable }
-import gunbc.auth.approved_secret_grants { secret_grants_intent, secret_grant_token_variable }
-import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row, fleet_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row }
+import gunbc.auth.gcp_iam_converge { fleet_roster_grants }
+import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateRefused, GateAdmitted }
 import gunbc.auth.approval_request_client { PollApproved }
 
-// THE MATERIAL APPROVAL AND THE ACCESSOR-POLICY APPROVAL ARE DIFFERENT INTENTS, and each request
-// digests only its intent, so a decision recorded for one cannot match the other's revision. Both
-// claims below read the intents (no interpreted SHA-256); the digest-and-gate real path is the one
-// inhabitance claim at the end of this module.
-test fn material_approval_cannot_authorize_accessor_policy() -> Bool {
-  match secret_grants_intent(grants: [fleet_accessor_grant(row: fabric_state_key_accessor_row)], member: "serviceAccount:fixture@example.invalid", attempt: "fixture-run-1") {
-    Absent => false
-    Present { value: policy } =>
-      fabric_state_provision_intent(attempt: "fixture-run-1") != policy
-        && fabric_state_provision_token_variable != secret_grant_token_variable
-  }
+// THE MATERIAL APPROVAL CANNOT AUTHORIZE AN ACCESSOR-POLICY CHANGE BECAUSE NO ACCESSOR-POLICY ENTRY
+// SHARES ITS ROUTE: the accessor cell is a fleet roster row the GCP IAM converge binds under its own
+// approval (gunbc.auth.gcp_iam_converge fleet_roster_grants), whose request is a different escalation
+// family and a different intent. The intent comparison against the deleted secret-grants route that
+// stood here went with that route (gunbc.auth.approved_secret_grants, cut 2026-10-19).
+test fn the_fabric_state_accessor_cell_is_the_converges() -> Bool {
+  any(fleet_roster_grants(), g => (g.target.secret as String) == (fabric_state_key_accessor_row.target.secret as String))
+    && fabric_state_provision_token_variable != iam_converge_token_env
 }
 
 test fn material_approval_is_bound_to_its_run_attempt() -> Bool {

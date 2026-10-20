@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // unlabelled call and swiftc refuses "missing argument label".
 //
 // The CALL refuses typed: Swift's declaration reference spells `Gunbc.<module>.<name>`, but the closure
-// emitter prints bare top-level `func` and no `enum Gunbc { enum v2 { ... } }` wrapper (gunbc#12239), so
+// emitter prints bare top-level `func` and no `enum Gunbc { enum v2 { ... } }` wrapper (gunbc#12239; gunbc.guarantee_stall.swift_declaration_reference_call_namespace_unrealized_stall), so
 // the qualified spelling does not resolve. swift_declaration_reference_form carries CalleeScopeUnrealized
 // and the callee arm rejects with target_declaration_reference_namespace_unrealized until that layout lands.
 
