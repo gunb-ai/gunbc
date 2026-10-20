@@ -49,6 +49,7 @@ type CssPropertyName
   | Cursor
   | Display
   | Fill
+  | FillOpacity
   | Flex
   | FlexDirection
   | FlexWrap
@@ -73,19 +74,27 @@ type CssPropertyName
   | MarginLeft
   | MarginRight
   | MarginTop
+  | MaxHeight
   | MaxWidth
   | MinHeight
   | MinWidth
   | Opacity
   | Outline
+  | OutlineOffset
   | Overflow
   | OverflowX
   | Padding
   | PaddingBlock
+  | PaddingBottom
   | PaddingLeft
   | PaddingTop
   | Position
   | Stroke
+  | StrokeDasharray
+  | StrokeLinecap
+  | StrokeLinejoin
+  | StrokeOpacity
+  | StrokeWidth
   | TextAlign
   | TextDecoration
   | TextOverflow
@@ -127,6 +136,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Cursor => "cursor"
     Display => "display"
     Fill => "fill"
+    FillOpacity => "fill-opacity"
     Flex => "flex"
     FlexDirection => "flex-direction"
     FlexWrap => "flex-wrap"
@@ -151,19 +161,27 @@ fn css_property_wire(p: CssPropertyName) -> String {
     MarginLeft => "margin-left"
     MarginRight => "margin-right"
     MarginTop => "margin-top"
+    MaxHeight => "max-height"
     MaxWidth => "max-width"
     MinHeight => "min-height"
     MinWidth => "min-width"
     Opacity => "opacity"
     Outline => "outline"
+    OutlineOffset => "outline-offset"
     Overflow => "overflow"
     OverflowX => "overflow-x"
     Padding => "padding"
     PaddingBlock => "padding-block"
+    PaddingBottom => "padding-bottom"
     PaddingLeft => "padding-left"
     PaddingTop => "padding-top"
     Position => "position"
     Stroke => "stroke"
+    StrokeDasharray => "stroke-dasharray"
+    StrokeLinecap => "stroke-linecap"
+    StrokeLinejoin => "stroke-linejoin"
+    StrokeOpacity => "stroke-opacity"
+    StrokeWidth => "stroke-width"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
     TextOverflow => "text-overflow"
