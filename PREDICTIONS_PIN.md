@@ -183,3 +183,20 @@ PREDICTED MUTANT -- three outcomes, named in advance so I cannot retrofit to whi
        WITH an added note that naive substitution manufactures a second defect.
 Prior expectation: (ii) or (iii), because the diagnostic is produced where a receiver type is turned into a
 variant owner, not where bindings settle -- but the run decides, not this sentence.
+
+## Harness post-mortem: three capture bugs in one lane, all mine, all silent-exit-0
+
+The prereq-(b) A/B lost its verdict three times and every cause was in my own dispatch line, not in the
+code under test. All three exited 0, so none of them announced itself:
+1. `tail -c 4000` on a gate whose last act is a single 200 KB base64 return-tar -> the verdict was cut off
+   and I nearly read the absence as a result. Fix: awk between explicit BEGIN/END markers.
+2. A grep pattern listing `VOID|ABORT|FATAL` but not `panicked` -> a probe that crashed before printing
+   anything looked like a run that simply had nothing to say. Fix: capture `panicked` too, and make the
+   probe print a MARK before and after every step so an early exit names itself.
+3. The run function wrote `$3` while the read loop grepped a name built from `$2`, so both sides executed
+   (rc=0) and both logs were then searched under the wrong filenames. Fix: write and read must share ONE
+   variable, and the read must echo the byte count so a missing file cannot masquerade as an empty verdict.
+General lesson for this repo, where an exit code routinely says nothing about whether a verdict was
+produced: a measurement is only as trustworthy as its capture, and the capture must be able to distinguish
+"no diagnostics" from "no data". Two of these three would have been caught by asserting the log is non-empty
+before grepping it.
