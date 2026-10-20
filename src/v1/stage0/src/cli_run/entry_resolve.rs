@@ -1760,6 +1760,44 @@ pub fn resolve_entry_with_index(
     resolve_entry_with_parse_cache(index, entry_file)
 }
 
+/// Why an entry did not resolve, split by what the refusal says about the claim.
+///
+/// A missing entry file or route means the claim's subject was never reached: no observation.
+/// A diagnostic inside the entry's closure (a name or type error) is a defect of the corpus the
+/// claim stands on: a finding, because nothing compensates a failure at the compiler floor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryResolveRefusal {
+    EntryMissing { message: String },
+    ClosureDiagnostics { message: String },
+}
+
+impl EntryResolveRefusal {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::EntryMissing { message } | Self::ClosureDiagnostics { message } => message,
+        }
+    }
+}
+
+/// `resolve_entry_with_index` with the refusal's cause kept typed. The entry's own source is
+/// asked for first (`entry_source_from_index_or_disk` fails only when the entry is absent or
+/// unreadable); every refusal after that is the closure's.
+pub fn resolve_entry_with_index_typed(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    EntryResolveRefusal,
+> {
+    entry_source_from_index_or_disk(&index.source_files, entry_file)
+        .map_err(|message| EntryResolveRefusal::EntryMissing { message })?;
+    resolve_entry_with_index(index, entry_file)
+        .map_err(|message| EntryResolveRefusal::ClosureDiagnostics { message })
+}
+
 /// Cumulative per-worker stage attribution across every entry resolve this thread
 /// has run (the per-entry slot folded in at each reset, plus the live slot). Read by
 /// `claim_batch`'s `[assembly-split]` receipt, which — unlike `claim_executor`'s
@@ -3613,5 +3651,55 @@ mod strict_refusal_counts_blocking_diagnostics {
             .expect("failed to spawn thread")
             .join();
         result.expect("one_blocker_is_counted_and_named_and_the_advisory_is_not panicked");
+    }
+}
+
+#[cfg(test)]
+mod entry_resolve_refusal_tests {
+    use super::{resolve_entry_with_index_typed, EntryResolveRefusal};
+    use crate::cli_run::build_multi_entry_index;
+    use std::fs;
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let dir = crate::cli_run::workspace_root()
+            .join("target")
+            .join(format!("entry-refusal-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    /// An entry that is not a file never reached its subject (`EntryMissing`); an entry that
+    /// exists is never classified missing, whatever its closure then says. The closure's own
+    /// name/type refusal is exercised end to end through `claim_batch` (exit 1, FAIL line), not
+    /// here: a resolve in a bare unit test is refused by the host memory budget, which would make
+    /// a `ClosureDiagnostics` assertion pass for the wrong reason.
+    #[test]
+    fn a_non_file_entry_is_missing_and_an_existing_entry_is_not() {
+        let dir = scratch("split");
+        fs::write(dir.join("ok.dag"), "module k.ok\nfn base() -> Int { 10 }\n").unwrap();
+        fs::write(
+            dir.join("bad.dag"),
+            "module k.bad\nimport k.ok { zz_no_such_name }\nfn f() -> Int { 1 }\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("adir.dag")).unwrap();
+        let roots = vec![dir.to_string_lossy().to_string()];
+        let index = build_multi_entry_index(&roots);
+        let entry = |n: &str| dir.join(n).to_string_lossy().to_string();
+        assert!(matches!(
+            resolve_entry_with_index_typed(&index, &entry("adir.dag")),
+            Err(EntryResolveRefusal::EntryMissing { .. })
+        ));
+        for existing in ["ok.dag", "bad.dag"] {
+            assert!(
+                !matches!(
+                    resolve_entry_with_index_typed(&index, &entry(existing)),
+                    Err(EntryResolveRefusal::EntryMissing { .. })
+                ),
+                "{existing} exists and must not be classified missing"
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 }
