@@ -4,12 +4,11 @@ import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, list_append }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import extdeps.bmc.redfish_memory_inventory { redfish_document }
-import std.citation { http_status_is_success }
-import extdeps.ietf.http_semantics { http_unauthorized, http_forbidden, http_not_found }
+import extdeps.ietf.http_semantics { HttpStatusClass, Successful, Informational, Redirection, ClientError, ServerError, http_status_class_of, http_unauthorized, http_forbidden, http_not_found }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
-import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, BootOptionsAxis, SecureBootAxis, BiosVersionAxis,
   ReadRoute, RedfishGetRoute, OpenBmcRedfishGetRoute, MegaRacRestGetRoute,
@@ -67,6 +66,17 @@ fn redfish_status_refusal(status: HttpStatus, detail: NonEmptyStr) -> FirmwareRe
   else { UnexpectedHttpStatus { status: status, detail: detail } }
 }
 
+// 2xx is the RFC 9110 Successful class; the match is exhaustive so a new class cannot be read as success.
+fn status_is_successful(status: HttpStatus) -> Bool {
+  match http_status_class_of(status: status) {
+    Successful => true
+    Informational => false
+    Redirection => false
+    ClientError => false
+    ServerError => false
+  }
+}
+
 fn shape_refusal(detail: String) -> FirmwareReadRefusal {
   ReplyShapeUnrecognized { detail: detail as NonEmptyStr }
 }
@@ -76,10 +86,10 @@ fn read_doc(get: RestExchangeObservation) -> RedfishDocRead {
   match get {
     RestExchangeRefused { cause: _ } => RedfishDocNoResponse
     RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
-      if http_status_is_success(status: s) { RedfishDocRefused { refusal: ReplyShapeUnrecognized { detail: c } } }
+      if status_is_successful(status: s) { RedfishDocRefused { refusal: ReplyShapeUnrecognized { detail: c } } }
       else { RedfishDocRefused { refusal: redfish_status_refusal(status: s, detail: c) } }
     RestResponseObserved { status: s, body: RestBodyRead { body: b } } =>
-      if http_status_is_success(status: s) {
+      if status_is_successful(status: s) {
         match redfish_document(body: b) {
           ObservationEstablished { observed: d } => RedfishDocParsed { doc: d }
           ObservationRefused { cause: c } => RedfishDocRefused { refusal: ReplyShapeUnrecognized { detail: c } }

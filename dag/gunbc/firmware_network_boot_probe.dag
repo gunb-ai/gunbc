@@ -487,10 +487,10 @@ data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution
   trigger: DeclarationAppears { ref: firmware_boot_axis_reader_ref() },
 }
 
-// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares a decoder yet, so this ref names the
+// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares the reader yet, so this ref names the
 // declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
-// observe_redfish_boot_axes: the declaration that consumes ACTUAL bound transport observations, one subject, endpoint, row, route and receipt, and mints the SuppliedProbeInput; the supplied-body decoder decode_supplied_redfish_boot_reads is not it). The witness pins the literal; renaming the
-// future decoder means editing this one fn and that pin, and until then the status stays Pending
+// observe_redfish_boot_axes: the declaration that consumes ACTUAL bound transport observations, one subject, endpoint, row, route and receipt, and mints the SuppliedProbeInput; the supplied-body decoder decode_redfish_boot_reads exists and is not it). The witness pins the literal; renaming the
+// future reader means editing this one fn and that pin, and until then the status stays Pending
 // on purpose rather than reporting a discharge nobody earned.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")

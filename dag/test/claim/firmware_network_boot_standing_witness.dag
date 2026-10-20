@@ -172,6 +172,7 @@ import gunbc.firmware_network_boot_standing {
   SecureBootUnobserved,
   AuthenticationRequired,
   AuthorizationDenied,
+  UnexpectedHttpStatus,
   ReplyShapeUnrecognized,
   ResourceNotFound,
   FirmwareReadRefused,
@@ -3758,6 +3759,14 @@ test fn an_enumeration_grounding_on_an_attribute_slot_refuses_rather_than_binds(
 test fn authorization_denied_survives_to_the_final_refusal() -> Bool {
   match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthorizationDenied { detail: "role lacks ConfigureComponents" } })) {
     Refused { cause: FirmwareReadRefused { refusal: AuthorizationDenied { detail: d } }, gaps: _ } => d == "role lacks ConfigureComponents"
+    _ => false
+  }
+}
+
+// A supplied 500 keeps its status through to the final refusal; the status is decision-bearing, not decoration.
+test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: UnexpectedHttpStatus { status: 500, detail: "the service answered with a non-success HTTP status" } })) {
+    Refused { cause: FirmwareReadRefused { refusal: UnexpectedHttpStatus { status: st, detail: _ } }, gaps: _ } => st == 500
     _ => false
   }
 }

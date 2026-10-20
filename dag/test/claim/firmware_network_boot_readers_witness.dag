@@ -17,7 +17,7 @@ import gunbc.firmware_network_boot_probe {
 }
 import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
 import gunbc.firmware_network_boot_readers {
-  RedfishBootReads, redfish_axis_replies, decode_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome, RedfishUnread,
+  RedfishBootReads, redfish_axis_replies, decode_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome, RedfishUnread, SystemExchange, SecureBootExchange, RedfishExchange,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -225,6 +225,44 @@ test fn a_megarac_proprietary_route_row_is_not_decoded_as_redfish() -> Bool {
       match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
         RedfishRouteNotRedfish { route: _ } => true
         RedfishDecoded { replies: _, unread: _ } => false
+      }
+  }
+}
+
+fn unread_has(o: RedfishDecodeOutcome, exchange: RedfishExchange, cause: NonEmptyStr) -> Bool {
+  match o {
+    RedfishDecoded { replies: _, unread: us } => fold(us, init: false, f: (a, u) => a || (u.exchange == exchange && u.cause == cause))
+    RedfishRouteNotRedfish { route: _ } => false
+  }
+}
+
+// Each refused exchange is paired with its OWN cause: causes may not be swapped or collapsed.
+test fn a_secure_boot_refusal_keeps_its_exchange_and_cause() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestExchangeRefused { cause: "secure-timeout" })) {
+        o => unread_has(o: o, exchange: SecureBootExchange, cause: "secure-timeout") && unread_count(o: o) == 1
+      }
+  }
+}
+
+test fn a_system_refusal_keeps_its_exchange_and_cause() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "system-reset" }, secure: secure_on())) {
+        o => unread_has(o: o, exchange: SystemExchange, cause: "system-reset") && unread_count(o: o) == 1
+      }
+  }
+}
+
+test fn a_no_response_batch_keeps_both_distinct_causes_paired() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "system-reset" }, secure: RestExchangeRefused { cause: "secure-timeout" })) {
+        o => unread_has(o: o, exchange: SystemExchange, cause: "system-reset") && unread_has(o: o, exchange: SecureBootExchange, cause: "secure-timeout") && !unread_has(o: o, exchange: SystemExchange, cause: "secure-timeout") && !unread_has(o: o, exchange: SecureBootExchange, cause: "system-reset")
       }
   }
 }
