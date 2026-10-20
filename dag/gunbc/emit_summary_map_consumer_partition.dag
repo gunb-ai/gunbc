@@ -129,7 +129,7 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
   },
   {
     site: decl_ref(module_path: "v1.compiler.infer", decl_name: "enum_variant_shape_sets_for_item"),
-    keys_on: "authored_name_at of the item being folded",
+    keys_on: "node_authored_text of the item being folded",
     ask: NodeHeldAtAsk { holder_expression: "item -- the declaration Node itself, together with its own module's source_indices" },
     use: SpellingEscapesToCaller { escapes_as: "concat(item_name, colon-colon, variant name) inserted into the fielded and positional_payload sets", consumed_by: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "variant_has_fields") },
     lookup_expression_count: 1,
@@ -220,7 +220,7 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
   },
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_field_value_with_context"),
-    keys_on: "authored_name_at of the struct node, guarded by its ident_span",
+    keys_on: "node_authored_text of the struct node, guarded by its ident_span",
     ask: NodeHeldAtAsk { holder_expression: "struct_node -- the resolved type node of the enclosing literal" },
     use: ReKeyedIntoSameMap { second_key_source: "map_get(summary.field_type_map, field_name), whose value is then passed to variant_belongs_to_enum as enum_name", second_lookup_decides: "which enum a nested variant literal is corrected to -- a THIRD hop keyed on the spelling the second returned" },
     lookup_expression_count: 1,
@@ -424,19 +424,19 @@ data emit_summary_map_severance_points: List<SeverancePoint> = [
   {
     fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_field_type_map"),
     holder_at_discard: "ft, bound by the arm Present { value: Resolved { node: ft } } on the child's inferred type",
-    stores_instead: "authored_name_at of normalize_access_type_node(n: ft)",
+    stores_instead: "node_authored_text of normalize_access_type_node(n: ft)",
     fills_summary_field: "field_type_map",
   },
   {
     fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"),
     holder_at_discard: "peeled, and the Resolved rt it recurses into",
-    stores_instead: "authored_name_at of each, accumulated as a List<String>",
+    stores_instead: "node_authored_text of each, accumulated as a List<String>",
     fills_summary_field: "field_import_surface_names",
   },
   {
     fold: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"),
     holder_at_discard: "child, each variant declaration node of the item being summarised",
-    stores_instead: "authored_name_at of the variant, as a map key",
+    stores_instead: "node_authored_text of the variant, as a map key",
     fills_summary_field: "variant_name_set",
   },
   {

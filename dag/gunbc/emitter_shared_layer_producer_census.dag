@@ -126,7 +126,7 @@ data emitter_shared_layer_producers: List<SharedLayerProducer> = [
   {
     producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_call"),
     position: "the record-update form with(base, { .. }) in call position",
-    authority: SpellingKeyed { key_expression: "set_contains(shared_types, type_name), type_name from qualified_last_segment(authored_name_at(resolved_type(base_arg)))" },
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, type_name), type_name from qualified_last_segment(node_authored_text(resolved_type(base_arg)))" },
     divergence: DivergesOnScalarOrCardinality { why: "the key is leaf-reduced at this site, so the reachable divergence is the two missing conjuncts" },
     carrier_node: NodeInScope { holder_expression: "resolved_type(n: base_arg)" },
   },
@@ -168,7 +168,7 @@ data emitter_shared_layer_producers: List<SharedLayerProducer> = [
   {
     producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_data_def"),
     position: "a module-scope data row: ONE needs_rc decides both the emitted return type and, threaded into emit_data_def_body, the value",
-    authority: SpellingKeyed { key_expression: "set_contains(shared_types, authored_name_at(node: type_node))" },
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, node_authored_text(node: type_node))" },
     divergence: DivergesOnAllThree { why: "MEASURED, not derived. The key is the ANNOTATION's authored spelling with none of the authority's three conjuncts, and on the brand-preserving arm the rendered declared type has already lost its cardinality, so the spelling key then added a reference layer on top of the loss. Executed on the pre-repair emitter: a row at a SHARED carrier and OPTIONAL cardinality emitted `-> Rc<ZzNode>` over a body of `Some(Rc::new(..))`, at 0 diagnostics -- silent wrongness below the DESIGN section 5 floor. The single-axis control is the same shape at an UNSHARED carrier, which emitted `Option<ZzPlain>` correctly" },
     carrier_node: NodeInScope { holder_expression: "type_node, the annotation node the key is already taken from" },
   },
