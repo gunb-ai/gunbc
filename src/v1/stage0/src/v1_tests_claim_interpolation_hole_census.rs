@@ -866,13 +866,16 @@ pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Ve
     Rc::new({
         let mut __result = Vec::new();
         for k in Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&tally)).iter().cloned().collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|k: String| k.clone())(a.clone());
-                let __kb = (|k: String| k.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&tally))
+                .iter()
+                .cloned()
+                .map(|__e: String| {
+                    let __k = (|k: String| k.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         })
         .iter()
         .cloned()

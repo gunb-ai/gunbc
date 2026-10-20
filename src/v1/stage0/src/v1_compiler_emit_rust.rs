@@ -7509,13 +7509,16 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
         let lines = Rc::new({
             let mut __result = Vec::new();
             for path in Rc::new({
-                let mut __sorted: Vec<_> = declared.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|path: String| path.clone())(a.clone());
-                    let __kb = (|path: String| path.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = declared
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|path: String| path.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
@@ -34480,7 +34483,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                 if ((candidates.clone().len() as i64) > 1) {
                                     {
                                         let candidate_names = Rc::new({
-                                            let mut __sorted: Vec<_> = Rc::new({
+                                            let mut __keyed: Vec<_> = Rc::new({
                                                 let mut __result = Vec::new();
                                                 for c in candidates.iter().cloned() {
                                                     __result.push(c.name.clone());
@@ -34489,13 +34492,19 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             })
                                             .iter()
                                             .cloned()
+                                            .map(|__e: String| {
+                                                let __k =
+                                                    (|name: String| name.clone())(__e.clone());
+                                                (__k, __e)
+                                            })
                                             .collect();
-                                            __sorted.sort_by(|a: &String, b: &String| {
-                                                let __ka = (|name: String| name.clone())(a.clone());
-                                                let __kb = (|name: String| name.clone())(b.clone());
-                                                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                            __keyed.sort_by(|__x, __y| {
+                                                v1_rt::canonical_key_cmp(&__x.0, &__y.0)
                                             });
-                                            __sorted
+                                            __keyed
+                                                .into_iter()
+                                                .map(|(_, __e)| __e)
+                                                .collect::<Vec<_>>()
                                         });
                                         Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
     candidates: candidate_names.clone(),
