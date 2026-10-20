@@ -645,7 +645,7 @@ fn standing_at(
     ),
     boundary: standing_boundary_for(environment: environment, identity_repo: identity_repo),
     attempt: attempt as AttemptIdentity,
-    observed_at: standing_ts(s: observed_at as String),
+    observed_at: observed_at,
   )
 }
 
@@ -1428,7 +1428,7 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
            boundary: srv1_deployment_gate_boundary,
            attempt: standing_attempt(),
-           observed_at: standing_ts(s: standing_instant),
+           observed_at: "2026-10-19T12:00:00Z" as Timestamp,
          ) {
            StandingRead { standing: _ } => false
            StandingRefused { because: _ } => true
@@ -1454,7 +1454,7 @@ fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
     ),
     boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
     attempt: standing_attempt(),
-    observed_at: standing_ts(s: standing_instant),
+    observed_at: "2026-10-19T12:00:00Z" as Timestamp,
   )
 }
 
@@ -1691,7 +1691,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_ts(s: standing_instant_fresh),
+    observed_at: "2026-10-19T12:01:00Z" as Timestamp,
   ) {
     ReviewerRemovalCompletionRecorded { receipt } =>
       receipt.reviewer_removed && receipt.main_only_policy_present
@@ -1708,7 +1708,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: true,
       main_only: true,
     ),
-    observed_at: standing_ts(s: standing_instant_fresh),
+    observed_at: "2026-10-19T12:01:00Z" as Timestamp,
   ) {
     ReviewerRemovalCompletionRefused { because: ReviewerIsStillPresent { environment: e } } => e == gate_env
     _ => false
@@ -1722,7 +1722,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: false,
     ),
-    observed_at: standing_ts(s: standing_instant_fresh),
+    observed_at: "2026-10-19T12:01:00Z" as Timestamp,
   ) {
     ReviewerRemovalCompletionRefused { because: BranchPolicyWentWithTheReviewer { environment: e } } =>
       e == gate_env
@@ -1737,7 +1737,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_ts(s: standing_instant_fresh),
+    observed_at: "2026-10-19T12:01:00Z" as Timestamp,
   ) {
     ReviewerRemovalCompletionRecorded { receipt } => receipt.boundary.environment_name == sibling_env
     _ => false
@@ -1751,7 +1751,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_ts(s: standing_instant_fresh),
+    observed_at: "2026-10-19T12:01:00Z" as Timestamp,
   ) {
     ReviewerRemovalCompletionRefused {
       because: CompletionReadIsOfAnotherSubject { subject: m },
