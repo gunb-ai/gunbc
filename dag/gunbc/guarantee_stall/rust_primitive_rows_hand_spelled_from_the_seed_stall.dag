@@ -20,5 +20,5 @@ data rust_primitive_rows_hand_spelled_from_the_seed_stall: GuaranteeStall = Guar
       "v2.extdeps.languages.rust::rust_primitive_realization_rows join (mirrors rust_simple_method_specs)",
       "v2.extdeps.languages.rust::rust_primitive_realization_rows to_string (transcribed from v1.compiler.emit_rust control flow)"
     ] },
-  next_rung_trigger: climbs_when(capability: "native emit of std.primitives derives the Rust spelling of each contract from the contract, so the rows are generated and the v1.compiler.emit_rust and rt_function_registry readings, and the differential witness over them, are deleted. NOT satisfied by adding more hand-spelled rows or a second differential.")
+  next_rung_trigger: climbs_when(capability: "native emit of std.primitives derives the Rust spelling of each contract from the contract, so the rows are generated and the hand-spelled rows are deleted. The seed differential (test.claim.emit.rust_primitive_seed_differential) stays enrolled as a regression control comparing the native derivation against the seed (DESIGN 4b, dissolution on climb deletes production machinery, never the evidence). NOT satisfied by adding more hand-spelled rows or a second differential.")
 }
