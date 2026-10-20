@@ -86,8 +86,8 @@ import v2.std.node {
 }
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
-import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
+import v2.std.text { Char, CharAbsent, CharFound, String, string_any_char_in, string_head, string_tail }
+import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
 import std.host_text { chars }
 
 type TargetSemanticDeclDecorationLine {
@@ -2145,6 +2145,14 @@ fn target_semantic_decl_surface_with_imports(
   }
 }
 
+// A leading line is ONE line of the target's line comment: a line break inside it ends the comment and the rest
+// of the text would print as code, so such a line refuses (located) rather than printing.
+data target_semantic_decl_line_break_alphabet: String = "\n\r"
+
+fn target_semantic_decl_lines_break(lines: List<String>) -> Bool {
+  !(for_all(xs: lines, predicate: fn(line) { !string_any_char_in(s: line, alphabet: target_semantic_decl_line_break_alphabet) }))
+}
+
 fn target_semantic_decl_header_line_surface(line: String) -> Node {
   target_semantic_decl_surface_conj(
     children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: symbol_intern_lexeme(lexeme: line))) ]
@@ -2171,6 +2179,13 @@ fn target_semantic_decl_surface_with_header(
             })
       }
     HeaderLeadingLines =>
+      if target_semantic_decl_lines_break(lines: header) {
+        outcome_rejected(d: Diagnostic {
+              reason: ^target_semantic_decl_header_line_break,
+              at: node_locus(node: surface),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+      } else {
       outcome_accepted(
         value: Node {
           kind: surface.kind,
@@ -2191,6 +2206,7 @@ fn target_semantic_decl_surface_with_header(
           occurrence_id: surface.occurrence_id
         }
       )
+      }
   }
 }
 
