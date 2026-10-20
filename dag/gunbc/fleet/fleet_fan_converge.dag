@@ -4,6 +4,9 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound }
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -26,6 +29,12 @@ import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPo
 // and, in that same change, retires the overlapping authorities: gunbc.bmc.bmc_intent
 // fleet_bmc_valid_state's fan fields (it becomes derived), and megarac_fan_boot_phase_desire (the boot
 // change deletes it). Until then this fold is the single policy and those are the named leftovers.
+//
+// gunbc.bmc.bmc_fan_converge SURVIVES as the per-host apply realization (BmcFanRequestedAction and its
+// backup/restore receipts); it is not a second decision. This fold decides Noop/Refuse from the fleet
+// policy and consumes the SAME per-family route, gunbc.fleet.fleet_fan_converge_routes
+// fan_converge_route_for_family, that bmc_fan_route_admission judges; the write change makes the
+// BmcFanRequestedAction derived from FleetFanPolicy rather than authored beside it.
 //
 // ADMISSION PRECEDES EVERYTHING: the desired control is admitted for the family first, so an
 // inexpressible target can never be Noop or Converged by happening to equal an observation.
@@ -129,8 +138,16 @@ fn fleet_fan_same_subject(a: FanObserveHost, b: FanObserveHost) -> Bool {
     && fleet_fan_family_of(subject: a) == fleet_fan_family_of(subject: b)
 }
 
-fn fleet_fan_no_projection() -> NonEmptyStr {
-  "no projection from FleetFanControl to the family writer target exists yet" as NonEmptyStr
+// A DIVERGENCE CAN ONLY BE CLOSED BY THE FAMILY'S CONVERGE ROUTE, so the refusal names what that route
+// lacks: the family's own read obligation when the route is unbound (MegaRAC today), and the missing
+// FleetFanControl projection when it is bound (OpenBMC). The route per family is the single authority
+// of gunbc.fleet.fleet_fan_converge_routes; nothing here restates it.
+fn fleet_fan_no_projection(family: BmcFirmwareFamily) -> NonEmptyStr {
+  match fan_converge_route_for_family(family: family) {
+    ConvergeRouteUnbound { authority: _, read_obligation: o } => o
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } =>
+      "no projection from FleetFanControl to the family writer target exists yet" as NonEmptyStr
+  }
 }
 
 fn fleet_fan_outcome(policy: FleetFanPolicy, subject: FanObserveHost, observed: FleetFanObserved) -> FleetFanOutcome {
@@ -146,7 +163,7 @@ fn fleet_fan_outcome(policy: FleetFanPolicy, subject: FanObserveHost, observed: 
             if seen == policy.control {
               FleetFanNoop { deciding: observed.receipt }
             } else {
-              FleetFanRefuse { cause: fleet_fan_no_projection() }
+              FleetFanRefuse { cause: fleet_fan_no_projection(family: fleet_fan_family_of(subject: subject)) }
             }
         }
       }
@@ -196,3 +213,5 @@ fn fleet_fan_standing(decision: FleetFanDecision, readback: FleetFanObserved) ->
       }
   }
 }
+
+data fleet_fan_standing_first_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when (1) the boot admission gate reads FleetFanConvergenceStanding as a CONSUMER (never a writer), after the post-power-on fan read lands, and (2) a wire-read adapter mints FleetFanObserved from a real BMC response, retiring the sole-constructor admission to test.claim.fleet_fan_converge_witness. Until then fleet_fan_decide and fleet_fan_standing execute only in that witness, over supplied evidence. A host merely appearing in the managed-host registry does not retire this row - a boot path consuming the standing does.")

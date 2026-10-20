@@ -8,6 +8,8 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcObservedIdentity }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor, fleet_fan_policy }
+import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound }
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_fan_converge {
   FleetFanConverged,
@@ -130,7 +132,18 @@ test fn witness_matching_control_is_noop() -> Bool {
 test fn witness_divergence_refuses_for_the_bound_family() -> Bool {
   match real_subject() {
     Absent => false
-    Present { value: s } => decided_refused(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: seen_held(30)))))
+    Present { value: s } => {
+      let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: seen_held(30))))
+      decided_refused(d: d) && refused_with(d: d, why: megarac_route_obligation())
+    }
+  }
+}
+
+// THE DIVERGENCE CAUSE IS THE FAMILY ROUTE'S OWN READ OBLIGATION, not a string authored here.
+fn megarac_route_obligation() -> NonEmptyStr? {
+  match fan_converge_route_for_family(family: AmiMegaRac) {
+    ConvergeRouteUnbound { authority: _, read_obligation: o } => Present { value: o }
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => Absent
   }
 }
 
