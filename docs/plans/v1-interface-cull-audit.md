@@ -1091,3 +1091,8 @@ Lane P (P1.2) may start once lane A lands and O2 has been split into parse failu
     3. `git diff`, printed to the log.
   - Then extract the printed patch and apply it locally.
   - The heal job's later zero-diff pass proves the result is a fixed point. Never hand-edit a mirror.
+- **Runner limits and baselines (lane C handoff).**
+  - The BuildBuddy runner hard-caps one dispatch at 1 h and wipes `target/` between dispatches. A full regen + seed build + emit A/B does not fit, so run A/Bs on srv1 through the proxy.
+  - `claim_batch` reads the `.dag` authority directly, so witnesses exercise `.dag` edits before the mirror is regenerated.
+  - Fixture witnesses take exactly `--source-root dag --source-root src/v2`. Adding `src` trips `SharedIndexSecondResidentPool`.
+  - The `v1_src_dag_parse` sweep has pre-existing STALE and ABSENT rows at baseline. Compare against the baseline, not against zero.
