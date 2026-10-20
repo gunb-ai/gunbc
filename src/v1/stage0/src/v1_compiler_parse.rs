@@ -85,7 +85,7 @@ use crate::v1_std_core::TokenShape::{
 };
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, authored_ident, authored_ident_in, authored_ident_refusal_message,
+    arg_name_at, arg_value, authored_ident_in, authored_ident_refusal_message,
     authored_ident_refusal_span, authored_name_at, byte_to_line_col, empty_intern_table,
     error_type, expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
     field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
@@ -98,15 +98,16 @@ pub use crate::v1_std_core::{
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, named_ident, no_span, node_ident, node_name_span,
     param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
-    service_config_properties, shell_transport_node, source_index_at, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, type_param_kind_property_name,
-    variant_node_fields, variant_node_name_at, with_required_cardinality, AuthoredIdent,
-    AuthoredIdentRefusal, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
-    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, SourceIndexOutcome,
-    StringPart, Token, TokenShape, UnaryOpKind,
+    service_config_properties, shell_transport_node, source_index_at, synthetic_ident,
+    transport_auth_basic_key, transport_body_key, transport_headers_key, transport_method_key,
+    transport_path_key, transport_path_template_key, transport_query_key,
+    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
+    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
+    with_required_cardinality, AuthoredIdent, AuthoredIdentRefusal, Cardinality,
+    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
+    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
+    OperationModifier, ParsedModuleItemKind, SourceIndexOutcome, StringPart, Token, TokenShape,
+    UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1316,10 +1317,10 @@ pub fn parsed_sole_constructor_properties(
                         span.clone(),
                     ),
                     span.clone(),
-                    crate::v1_std_core::authored_ident(
+                    Some(crate::v1_std_core::synthetic_ident(
                         crate::v1_std_core::no_span(),
                         "sole_constructor".to_string(),
-                    ),
+                    )),
                 )]),
                 ctx: property_mint.ctx.clone(),
             })
@@ -1355,7 +1356,10 @@ pub fn mint_parsed_bool_property(
                     span.clone(),
                 ),
                 span.clone(),
-                crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                Some(crate::v1_std_core::authored_ident_in(
+                    ctx.source_index.clone(),
+                    span.clone(),
+                )),
             ),
             ctx: property_mint.ctx.clone(),
         })
@@ -1388,7 +1392,10 @@ pub fn mint_parsed_optional_int_property(
                         span.clone(),
                     ),
                     span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        span.clone(),
+                    )),
                 )]),
                 ctx: property_mint.ctx.clone(),
             })
@@ -3276,7 +3283,7 @@ pub fn leaf_type_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     span: Rc<SourceSpan>,
-    ident: Rc<AuthoredIdent>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
@@ -3357,7 +3364,10 @@ pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "".to_string(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                            Some(crate::v1_std_core::synthetic_ident(
+                                span.clone(),
+                                "".to_string(),
+                            )),
                         ),
                         tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
@@ -3453,7 +3463,10 @@ pub fn node_inferred_to_outputs(
             std::option::Option::None,
             Rc::new(vec![]),
             rt.span.clone(),
-            crate::v1_std_core::authored_ident(crate::v1_std_core::no_span(), "value".to_string()),
+            Some(crate::v1_std_core::synthetic_ident(
+                crate::v1_std_core::no_span(),
+                "value".to_string(),
+            )),
         )])
     }
 }
@@ -4949,7 +4962,10 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
             false,
             Rc::new(vec![]),
             start_span.clone(),
-            crate::v1_std_core::authored_ident(start_span.clone(), "".to_string()),
+            Some(crate::v1_std_core::synthetic_ident(
+                start_span.clone(),
+                "".to_string(),
+            )),
         );
         let r = expect(
             tokens.clone(),
@@ -5023,10 +5039,10 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     false,
                     names.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         mod_path_span.clone(),
-                    ),
+                    )),
                 );
                 let imp_ir = crate::v1_std_core::intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = parse_context_with_intern_table(minted.ctx.clone(), imp_ir.table.clone());
@@ -5053,10 +5069,10 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     true,
                     Rc::new(vec![]),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         mod_path_span.clone(),
-                    ),
+                    )),
                 );
                 let imp_ir = crate::v1_std_core::intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = parse_context_with_intern_table(minted.ctx.clone(), imp_ir.table.clone());
@@ -5080,7 +5096,7 @@ pub fn parsed_name_leaf(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     span: Rc<SourceSpan>,
-    ident: Rc<AuthoredIdent>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(
         occurrence_identity.clone(),
@@ -5131,7 +5147,10 @@ pub fn parse_import_names_acc(
                 minted.identity.clone(),
                 r.name.clone(),
                 r.span.clone(),
-                crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), r.span.clone()),
+                Some(crate::v1_std_core::authored_ident_in(
+                    ctx.source_index.clone(),
+                    r.span.clone(),
+                )),
             );
             tokens = skip_newlines(r.tokens.clone());
             let e = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
@@ -5959,10 +5978,10 @@ pub fn parse_type_after_kw(
                                     type_mint.identity.clone(),
                                     name.clone(),
                                     name_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         name_span.clone(),
-                                    ),
+                                    )),
                                 ),
                             })),
                             return_cardinality: Cardinality::Required,
@@ -6159,10 +6178,10 @@ pub fn parse_type_body_from_prefix(
                                     type_mint.identity.clone(),
                                     name.clone(),
                                     name_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         prefix.ctx.source_index.clone(),
                                         name_span.clone(),
-                                    ),
+                                    )),
                                 ),
                             })),
                             return_cardinality: Cardinality::Required,
@@ -6791,7 +6810,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                 zero_span.clone(),
             ),
             zero_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), zero_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                zero_span.clone(),
+            )),
         );
         let r = expect_name(tokens.clone(), ctx.env.clone());
         if has_err(r.err.clone()) {
@@ -6854,10 +6876,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -6908,10 +6930,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -6962,10 +6984,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -7016,10 +7038,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -7070,10 +7092,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -7137,10 +7159,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         zero_span.clone(),
-                                    ),
+                                    )),
                                 )
                             },
                         )
@@ -7188,10 +7210,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                 zero_span.clone(),
                             ),
                             zero_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 zero_span.clone(),
-                            ),
+                            )),
                         )
                     },
                 ),
@@ -7220,10 +7242,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                 zero_span.clone(),
                             ),
                             zero_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 zero_span.clone(),
-                            ),
+                            )),
                         )
                     },
                 ),
@@ -7393,7 +7415,7 @@ pub fn parse_positional_variant_type_fields(
     from: tokens.clone(),
     to: r.tokens.clone(),
 }));
-let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), r.type_expr.span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::kernel_span("0".to_string()), "0".to_string()));
+let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), r.type_expr.span.clone(), Some(crate::v1_std_core::synthetic_ident(crate::v1_std_core::kernel_span("0".to_string()), "0".to_string())));
 Rc::new(FieldsResult {
     fields: Rc::new(vec![field.clone()]),
     tokens: r.tokens.clone(),
@@ -7423,10 +7445,10 @@ pub fn parse_variant_fields(
                             vname.clone(),
                             Rc::new(vec![]),
                             start_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 vname_span.clone(),
-                            ),
+                            )),
                         ),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
@@ -7442,10 +7464,10 @@ pub fn parse_variant_fields(
                             vname.clone(),
                             Rc::new(vec![]),
                             start_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 vname_span.clone(),
-                            ),
+                            )),
                         ),
                         tokens: r2.tokens.clone(),
                         ctx: r.ctx.clone(),
@@ -7464,10 +7486,10 @@ pub fn parse_variant_fields(
                     vname.clone(),
                     r.fields.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         vname_span.clone(),
-                    ),
+                    )),
                 );
                 Rc::new(VariantResult {
                     variant: v.clone(),
@@ -7487,10 +7509,10 @@ pub fn parse_variant_fields(
                                     vname.clone(),
                                     Rc::new(vec![]),
                                     start_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         vname_span.clone(),
-                                    ),
+                                    )),
                                 ),
                                 tokens: r.tokens.clone(),
                                 ctx: r.ctx.clone(),
@@ -7505,10 +7527,10 @@ pub fn parse_variant_fields(
                                     vname.clone(),
                                     Rc::new(vec![]),
                                     start_span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         vname_span.clone(),
-                                    ),
+                                    )),
                                 ),
                                 tokens: r2.tokens.clone(),
                                 ctx: r.ctx.clone(),
@@ -7527,10 +7549,10 @@ pub fn parse_variant_fields(
                             vname.clone(),
                             r.fields.clone(),
                             start_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 vname_span.clone(),
-                            ),
+                            )),
                         );
                         Rc::new(VariantResult {
                             variant: v.clone(),
@@ -7551,10 +7573,10 @@ pub fn parse_variant_fields(
                             vname.clone(),
                             Rc::new(vec![]),
                             vname_span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 vname_span.clone(),
-                            ),
+                            )),
                         );
                         Rc::new(VariantResult {
                             variant: v.clone(),
@@ -7655,7 +7677,10 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "".to_string(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                            Some(crate::v1_std_core::synthetic_ident(
+                                span.clone(),
+                                "".to_string(),
+                            )),
                         ),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
@@ -7670,7 +7695,10 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "".to_string(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                            Some(crate::v1_std_core::synthetic_ident(
+                                span.clone(),
+                                "".to_string(),
+                            )),
                         ),
                         tokens: r2.tokens.clone(),
                         ctx: r.ctx.clone(),
@@ -7735,7 +7763,10 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "".to_string(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                            Some(crate::v1_std_core::synthetic_ident(
+                                span.clone(),
+                                "".to_string(),
+                            )),
                         ),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
@@ -7754,7 +7785,10 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "".to_string(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                            Some(crate::v1_std_core::synthetic_ident(
+                                span.clone(),
+                                "".to_string(),
+                            )),
                         ),
                         tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
@@ -7773,7 +7807,10 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "".to_string(),
                     span.clone(),
-                    crate::v1_std_core::authored_ident(span.clone(), "".to_string()),
+                    Some(crate::v1_std_core::synthetic_ident(
+                        span.clone(),
+                        "".to_string(),
+                    )),
                 ),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
@@ -7796,7 +7833,10 @@ pub fn parse_callable_type_expr(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             start_span.clone(),
-            crate::v1_std_core::authored_ident(start_span.clone(), "".to_string()),
+            Some(crate::v1_std_core::synthetic_ident(
+                start_span.clone(),
+                "".to_string(),
+            )),
         );
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
@@ -7928,10 +7968,10 @@ pub fn parse_callable_param_types(
             r.type_expr.clone(),
             std::option::Option::None,
             r.type_expr.span.clone(),
-            crate::v1_std_core::authored_ident_in(
+            Some(crate::v1_std_core::authored_ident_in(
                 ctx.source_index.clone(),
                 r.type_expr.span.clone(),
-            ),
+            )),
         );
         acc = v1_rt::rc_list_push(acc.clone(), param.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -7979,7 +8019,10 @@ pub fn finish_type_expr_from_name(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             type_name.clone(),
             start_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), start_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                start_span.clone(),
+            )),
         );
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -8055,10 +8098,10 @@ pub fn finish_type_expr_from_name(
                     minted.identity.clone(),
                     type_name.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         start_span.clone(),
-                    ),
+                    )),
                 );
                 maybe_optional(
                     tokens.clone(),
@@ -8127,7 +8170,10 @@ pub fn collect_type_param_names(
                 type_mint.identity.clone(),
                 r.name.clone(),
                 span.clone(),
-                crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                Some(crate::v1_std_core::authored_ident_in(
+                    ctx.source_index.clone(),
+                    span.clone(),
+                )),
             );
             let kind_result =
                 parse_optional_type_param_kind(r.tokens.clone(), type_mint.ctx.clone());
@@ -8144,7 +8190,10 @@ pub fn collect_type_param_names(
                 type_expr.clone(),
                 std::option::Option::None,
                 span.clone(),
-                crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                Some(crate::v1_std_core::authored_ident_in(
+                    ctx.source_index.clone(),
+                    span.clone(),
+                )),
             );
             let param = with_type_param_kind_property(bare_param.clone(), kind_result.kind.clone());
             let next_params = v1_rt::rc_list_push(params.clone(), param.clone());
@@ -8206,7 +8255,10 @@ pub fn parse_optional_type_param_kind(
                     kind_mint.identity.clone(),
                     r.name.clone(),
                     r.span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), r.span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        r.span.clone(),
+                    )),
                 )),
                 tokens: r.tokens.clone(),
                 ctx: kind_mint.ctx.clone(),
@@ -8229,10 +8281,10 @@ pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) ->
                 crate::v1_std_core::type_param_kind_property_name(),
                 k.clone(),
                 k.span.clone(),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     crate::v1_std_core::type_param_kind_property_name(),
-                ),
+                )),
             );
             Rc::new(Node {
                 occurrence_identity: param.occurrence_identity.clone(),
@@ -8448,13 +8500,19 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 "".to_string(),
                 start_span.clone(),
-                crate::v1_std_core::authored_ident(start_span.clone(), "".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    start_span.clone(),
+                    "".to_string(),
+                )),
             ),
             Cardinality::Required,
             std::option::Option::None,
             Rc::new(vec![]),
             start_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), start_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                start_span.clone(),
+            )),
         );
         let r = expect_name(tokens.clone(), ctx.env.clone());
         if has_err(r.err.clone()) {
@@ -8534,10 +8592,10 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     Some(r4.expr.clone()),
                     from_key_properties.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 );
                 Rc::new(FieldResult {
                     field: f.clone(),
@@ -8562,10 +8620,10 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     std::option::Option::None,
                     from_key_properties.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 );
                 Rc::new(FieldResult {
                     field: f.clone(),
@@ -8622,20 +8680,20 @@ pub fn parse_optional_from_key(
                                     Rc::new(vec![]),
                                     std::option::Option::None,
                                     token_span(tok2.clone()),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         token_span(tok2.clone()),
-                                    ),
+                                    )),
                                 );
                                 let property = crate::v1_std_core::make_field_init_node(
                                     property_mint.identity.clone(),
                                     field_from_key_property_name(),
                                     value.clone(),
                                     token_span(tok.clone()),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         ctx.source_index.clone(),
                                         token_span(tok.clone()),
-                                    ),
+                                    )),
                                 );
                                 Rc::new(FromKeyResult {
                                     properties: Rc::new(vec![property.clone()]),
@@ -9117,10 +9175,16 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 "".to_string(),
                 start_span.clone(),
-                crate::v1_std_core::authored_ident(start_span.clone(), "".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    start_span.clone(),
+                    "".to_string(),
+                )),
             ),
             start_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), start_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                start_span.clone(),
+            )),
         );
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -9213,7 +9277,10 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     name.clone(),
                     res_node.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), r.span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        r.span.clone(),
+                    )),
                 );
                 Rc::new(ResUseResult {
                     resource_use: ru.clone(),
@@ -9235,7 +9302,10 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     name.clone(),
                     r3.type_expr.clone(),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), r.span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        r.span.clone(),
+                    )),
                 );
                 Rc::new(ResUseResult {
                     resource_use: ru.clone(),
@@ -9325,7 +9395,10 @@ pub fn parse_resource_config_acc(
             field_name.clone(),
             r3.expr.clone(),
             zero_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), r.span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                r.span.clone(),
+            )),
         );
         acc = v1_rt::rc_list_push(acc.clone(), fi.clone());
         match (*eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -9563,10 +9636,10 @@ pub fn parse_service_after_kw(
                 start_span.clone(),
             ),
             start_span.clone(),
-            crate::v1_std_core::authored_ident(
+            Some(crate::v1_std_core::synthetic_ident(
                 crate::v1_std_core::no_span(),
                 "namespace_root".to_string(),
-            ),
+            )),
         );
         let svc_props = match r.config.clone() {
             Some(cfg) => crate::v1_std_core::service_config_properties(
@@ -10551,10 +10624,10 @@ pub fn parse_rest_fields(
                                                 fname.clone(),
                                                 r3.expr.clone(),
                                                 crate::v1_std_core::no_span(),
-                                                crate::v1_std_core::authored_ident(
+                                                Some(crate::v1_std_core::synthetic_ident(
                                                     crate::v1_std_core::no_span(),
                                                     fname.clone(),
-                                                ),
+                                                )),
                                             );
                                             {
                                                 let __tco_0 = tokens;
@@ -12161,10 +12234,10 @@ pub fn parse_exit_entries_acc(
                 prop_name.clone(),
                 r3.type_expr.clone(),
                 r3.type_expr.span.clone(),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     prop_name.clone(),
-                ),
+                )),
             );
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -12228,7 +12301,10 @@ pub fn parse_op_requires_clause(
                     "requires".to_string(),
                     word_value.clone(),
                     span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        span.clone(),
+                    )),
                 );
                 if tok_is_comma(token_stream_first(rest.clone())) {
                     Rc::new(ModsResult {
@@ -12297,7 +12373,10 @@ pub fn parse_op_requires_members(
             "requires".to_string(),
             r.type_expr.clone(),
             span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                span.clone(),
+            )),
         );
         let next = v1_rt::rc_list_push(acc.clone(), property.clone());
         if tok_is_comma(token_stream_first(r.tokens.clone())) {
@@ -12796,16 +12875,16 @@ pub fn parse_response_entries_acc(
                     Rc::new(vec![]),
                     std::option::Option::None,
                     r3.type_expr.span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         r3.type_expr.span.clone(),
-                    ),
+                    )),
                 ),
                 r3.type_expr.span.clone(),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     prop_name.clone(),
-                ),
+                )),
             );
             let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -12972,10 +13051,10 @@ pub fn parse_mock_response_entries_acc(
                 prop_name.clone(),
                 body.clone(),
                 crate::v1_std_core::no_span(),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     prop_name.clone(),
-                ),
+                )),
             );
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -13379,10 +13458,10 @@ pub fn parse_resource_entries(
                             fname.clone(),
                             r3.expr.clone(),
                             crate::v1_std_core::no_span(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 r.span.clone(),
-                            ),
+                            )),
                         );
                         {
                             let __tco_0 = skip_newlines(r3.tokens.clone());
@@ -13981,10 +14060,10 @@ pub fn parse_alias_after_kw(
                 r.span.clone(),
             ),
             start_span.clone(),
-            crate::v1_std_core::authored_ident(
+            Some(crate::v1_std_core::synthetic_ident(
                 crate::v1_std_core::no_span(),
                 "namespace_alias_target".to_string(),
-            ),
+            )),
         );
         let item = Rc::new(Node {
             occurrence_identity: item_mint.identity.clone(),
@@ -14293,11 +14372,17 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 "".to_string(),
                 start_span.clone(),
-                crate::v1_std_core::authored_ident(start_span.clone(), "".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    start_span.clone(),
+                    "".to_string(),
+                )),
             ),
             std::option::Option::None,
             start_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), start_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                start_span.clone(),
+            )),
         );
         let r = expect_name(tokens.clone(), ctx.env.clone());
         if has_err(r.err.clone()) {
@@ -14370,10 +14455,10 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     type_expr.clone(),
                     Some(r4.expr.clone()),
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 );
                 Rc::new(ParamResult {
                     param: p.clone(),
@@ -14396,10 +14481,10 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     type_expr.clone(),
                     std::option::Option::None,
                     start_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 );
                 Rc::new(ParamResult {
                     param: p.clone(),
@@ -15321,10 +15406,10 @@ pub fn parse_expr_loop(
                                                 Rc::new(vec![lhs.clone()]),
                                                 std::option::Option::None,
                                                 loop_span.clone(),
-                                                crate::v1_std_core::authored_ident_in(
+                                                Some(crate::v1_std_core::authored_ident_in(
                                                     ctx.source_index.clone(),
                                                     r.span.clone(),
-                                                ),
+                                                )),
                                             );
                                             {
                                                 let __tco_0 = r.tokens.clone();
@@ -15540,10 +15625,10 @@ pub fn parse_pipe_callee_rest(
                     Rc::new(vec![]),
                     std::option::Option::None,
                     name_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 ),
                 Some(base) => crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
@@ -15554,10 +15639,10 @@ pub fn parse_pipe_callee_rest(
                     Rc::new(vec![base.clone()]),
                     std::option::Option::None,
                     name_span.clone(),
-                    crate::v1_std_core::authored_ident_in(
+                    Some(crate::v1_std_core::authored_ident_in(
                         ctx.source_index.clone(),
                         name_span.clone(),
-                    ),
+                    )),
                 ),
             };
             {
@@ -15657,10 +15742,10 @@ pub fn parse_pipe_rhs(
                             std::option::Option::None,
                             receiver.clone(),
                             receiver.span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 receiver.span.clone(),
-                            ),
+                            )),
                         ),
                     ]),
                     ctx: wrapper_mint.ctx.clone(),
@@ -15703,10 +15788,10 @@ pub fn parse_pipe_rhs(
                                             ),
                                             crate::v1_std_core::arg_value(na.clone()),
                                             na.span.clone(),
-                                            crate::v1_std_core::authored_ident_in(
+                                            Some(crate::v1_std_core::authored_ident_in(
                                                 ctx.source_index.clone(),
                                                 crate::v1_std_core::node_name_span(na.clone()),
-                                            ),
+                                            )),
                                         ));
                                     }
                                     __result
@@ -15714,10 +15799,10 @@ pub fn parse_pipe_rhs(
                             ),
                             std::option::Option::None,
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 callee.method_span.clone(),
-                            ),
+                            )),
                         )
                     },
                 )
@@ -15737,10 +15822,10 @@ pub fn parse_pipe_rhs(
                         leading_result.nodes.clone(),
                         std::option::Option::None,
                         span.clone(),
-                        crate::v1_std_core::authored_ident_in(
+                        Some(crate::v1_std_core::authored_ident_in(
                             ctx.source_index.clone(),
                             callee.method_span.clone(),
-                        ),
+                        )),
                     )
                 },
             )
@@ -15883,10 +15968,10 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                     Rc::new(vec![]),
                     std::option::Option::None,
                     call_span.clone(),
-                    crate::v1_std_core::authored_ident(
+                    Some(crate::v1_std_core::synthetic_ident(
                         crate::v1_std_core::kernel_span("discriminant".to_string()),
                         "discriminant".to_string(),
-                    ),
+                    )),
                 );
                 let call_mint = mint_parsed_node_identity(
                     callee_mint.ctx.clone(),
@@ -16243,10 +16328,10 @@ pub fn parse_ident_expr(
                                     param_mint.identity.clone(),
                                     name.clone(),
                                     span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         param_mint.ctx.source_index.clone(),
                                         span.clone(),
-                                    ),
+                                    )),
                                 )]),
                             ),
                             std::option::Option::None,
@@ -16277,10 +16362,10 @@ pub fn parse_ident_expr(
                         Rc::new(vec![]),
                         std::option::Option::None,
                         span.clone(),
-                        crate::v1_std_core::authored_ident_in(
+                        Some(crate::v1_std_core::authored_ident_in(
                             ctx.source_index.clone(),
                             span.clone(),
-                        ),
+                        )),
                     )
                 })
             }
@@ -16724,7 +16809,10 @@ pub fn parse_constraint_list(
             kw_name.clone(),
             r.expr.clone(),
             crate::v1_std_core::no_span(),
-            crate::v1_std_core::authored_ident(crate::v1_std_core::no_span(), kw_name.clone()),
+            Some(crate::v1_std_core::synthetic_ident(
+                crate::v1_std_core::no_span(),
+                kw_name.clone(),
+            )),
         );
         acc = v1_rt::rc_list_push(acc.clone(), fi.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -16811,7 +16899,10 @@ pub fn make_call_expr(
             args.clone(),
             std::option::Option::None,
             lhs.span.clone(),
-            crate::v1_std_core::authored_ident(crate::v1_std_core::no_span(), "<expr>".to_string()),
+            Some(crate::v1_std_core::synthetic_ident(
+                crate::v1_std_core::no_span(),
+                "<expr>".to_string(),
+            )),
         ),
     }
 }
@@ -17029,7 +17120,10 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
             std::option::Option::None,
             parse_recovery_placeholder(),
             span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                span.clone(),
+            )),
         );
         let tok = token_stream_first(tokens.clone());
         let is_name_token =
@@ -17060,10 +17154,10 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                             std::option::Option::None,
                             r.expr.clone(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 span.clone(),
-                            ),
+                            )),
                         );
                         Rc::new(ArgResult {
                             arg: arg.clone(),
@@ -17099,10 +17193,10 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 Some(name_r.name.clone()),
                                 r.expr.clone(),
                                 span.clone(),
-                                crate::v1_std_core::authored_ident_in(
+                                Some(crate::v1_std_core::authored_ident_in(
                                     ctx.source_index.clone(),
                                     name_r.span.clone(),
-                                ),
+                                )),
                             );
                             Rc::new(ArgResult {
                                 arg: arg.clone(),
@@ -17134,10 +17228,10 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 std::option::Option::None,
                                 r.expr.clone(),
                                 span.clone(),
-                                crate::v1_std_core::authored_ident_in(
+                                Some(crate::v1_std_core::authored_ident_in(
                                     ctx.source_index.clone(),
                                     span.clone(),
-                                ),
+                                )),
                             );
                             Rc::new(ArgResult {
                                 arg: arg.clone(),
@@ -17172,7 +17266,10 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                     std::option::Option::None,
                     r.expr.clone(),
                     span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        span.clone(),
+                    )),
                 );
                 Rc::new(ArgResult {
                     arg: arg.clone(),
@@ -17310,7 +17407,10 @@ pub fn parse_expr_bp_no_brace(
                     Rc::new(vec![]),
                     std::option::Option::None,
                     span.clone(),
-                    crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), span.clone()),
+                    Some(crate::v1_std_core::authored_ident_in(
+                        ctx.source_index.clone(),
+                        span.clone(),
+                    )),
                 );
                 parse_expr_loop_no_brace(
                     token_stream_advance(tokens.clone(), 1),
@@ -17491,10 +17591,10 @@ pub fn parse_expr_loop_no_brace(
                                                 Rc::new(vec![lhs.clone()]),
                                                 std::option::Option::None,
                                                 loop_span.clone(),
-                                                crate::v1_std_core::authored_ident_in(
+                                                Some(crate::v1_std_core::authored_ident_in(
                                                     ctx.source_index.clone(),
                                                     r.span.clone(),
-                                                ),
+                                                )),
                                             );
                                             {
                                                 let __tco_0 = r.tokens.clone();
@@ -18335,10 +18435,10 @@ pub fn parse_variant_pattern(
                         "0".to_string(),
                         r.pattern.clone(),
                         span.clone(),
-                        crate::v1_std_core::authored_ident(
+                        Some(crate::v1_std_core::synthetic_ident(
                             crate::v1_std_core::kernel_span("0".to_string()),
                             "0".to_string(),
-                        ),
+                        )),
                     );
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
@@ -18476,10 +18576,10 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name.clone(),
                         r2.pattern.clone(),
                         bind_span.clone(),
-                        crate::v1_std_core::authored_ident_in(
+                        Some(crate::v1_std_core::authored_ident_in(
                             ctx.source_index.clone(),
                             field_name_span.clone(),
-                        ),
+                        )),
                     );
                     {
                         let __tco_0 = tokens;
@@ -18531,10 +18631,10 @@ pub fn parse_variant_bindings_brace_acc(
                             ),
                         }),
                         bind_span.clone(),
-                        crate::v1_std_core::authored_ident_in(
+                        Some(crate::v1_std_core::authored_ident_in(
                             ctx.source_index.clone(),
                             field_name_span.clone(),
-                        ),
+                        )),
                     );
                     {
                         let __tco_0 = tokens;
@@ -18820,10 +18920,10 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                             Rc::new(vec![r3.expr.clone()]),
                             std::option::Option::None,
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 name_span.clone(),
-                            ),
+                            )),
                         )
                     },
                 )
@@ -18944,7 +19044,10 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
             Rc::new(vec![collection.clone(), body.clone()]),
             std::option::Option::None,
             span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), var_name_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                var_name_span.clone(),
+            )),
         );
         Rc::new(ExprResult {
             expr: for_expr.clone(),
@@ -19042,7 +19145,10 @@ pub fn parse_record_literal_named(
                 r.fields.clone(),
                 std::option::Option::None,
                 span.clone(),
-                crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), name_span.clone()),
+                Some(crate::v1_std_core::authored_ident_in(
+                    ctx.source_index.clone(),
+                    name_span.clone(),
+                )),
             )
         })
     }
@@ -19187,7 +19293,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
             "".to_string(),
             parse_recovery_placeholder(),
             zero_span.clone(),
-            crate::v1_std_core::authored_ident_in(ctx.source_index.clone(), zero_span.clone()),
+            Some(crate::v1_std_core::authored_ident_in(
+                ctx.source_index.clone(),
+                zero_span.clone(),
+            )),
         );
         let tok = token_stream_first(tokens.clone());
         if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone(), ctx.env.clone())) {
@@ -19226,10 +19335,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             n.clone(),
                             r.expr.clone(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 name_r.span.clone(),
-                            ),
+                            )),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
@@ -19256,10 +19365,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             Rc::new(vec![]),
                             std::option::Option::None,
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 name_r.span.clone(),
-                            ),
+                            )),
                         );
                         let field_mint = mint_parsed_node_identity(
                             value_mint.ctx.clone(),
@@ -19273,10 +19382,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             n.clone(),
                             value.clone(),
                             span.clone(),
-                            crate::v1_std_core::authored_ident_in(
+                            Some(crate::v1_std_core::authored_ident_in(
                                 ctx.source_index.clone(),
                                 name_r.span.clone(),
-                            ),
+                            )),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
@@ -19315,10 +19424,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         str_name.clone(),
                         r.expr.clone(),
                         span.clone(),
-                        crate::v1_std_core::authored_ident(
+                        Some(crate::v1_std_core::synthetic_ident(
                             crate::v1_std_core::no_span(),
                             str_name.clone(),
-                        ),
+                        )),
                     );
                     Rc::new(FieldInitResult {
                         field: fi.clone(),
@@ -19350,10 +19459,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         "_".to_string(),
                         r.expr.clone(),
                         span.clone(),
-                        crate::v1_std_core::authored_ident(
+                        Some(crate::v1_std_core::synthetic_ident(
                             crate::v1_std_core::no_span(),
                             "_".to_string(),
-                        ),
+                        )),
                     );
                     Rc::new(FieldInitResult {
                         field: fi.clone(),
@@ -19556,10 +19665,10 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                                     p.occurrence_identity.clone(),
                                                     p.name.clone(),
                                                     p.span.clone(),
-                                                    crate::v1_std_core::authored_ident_in(
+                                                    Some(crate::v1_std_core::authored_ident_in(
                                                         r.ctx.source_index.clone(),
                                                         p.span.clone(),
-                                                    ),
+                                                    )),
                                                 ));
                                             }
                                             __result
@@ -19674,10 +19783,10 @@ pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                                     p.occurrence_identity.clone(),
                                     p.name.clone(),
                                     p.span.clone(),
-                                    crate::v1_std_core::authored_ident_in(
+                                    Some(crate::v1_std_core::authored_ident_in(
                                         body_r.ctx.source_index.clone(),
                                         p.span.clone(),
-                                    ),
+                                    )),
                                 ));
                             }
                             __result

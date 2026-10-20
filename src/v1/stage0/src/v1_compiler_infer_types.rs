@@ -62,10 +62,10 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    authored_container_spelling_verdict, authored_ident, authored_name_at, bool_type, error_type,
-    find_child_named, float_type, has_inferred, int_type, is_compiler_error, kernel_ident,
-    kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node,
-    make_param_node, no_span, none_type, param_node_type_expr, qualified_last_segment, string_type,
+    authored_container_spelling_verdict, authored_name_at, bool_type, error_type, find_child_named,
+    float_type, has_inferred, int_type, is_compiler_error, kernel_ident, kernel_span,
+    leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node, make_param_node,
+    no_span, none_type, param_node_type_expr, qualified_last_segment, string_type, synthetic_ident,
     type_name_compatible, unit_type, with_optional_cardinality, with_required_cardinality,
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
@@ -526,7 +526,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "Map".to_string(),
                 span: crate::v1_std_core::no_span(),
-                ident_span: Some(crate::v1_std_core::authored_ident(
+                ident_span: Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     "Map".to_string(),
                 )),
@@ -535,7 +535,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: key_id.clone(),
                         span: crate::v1_std_core::no_span(),
-                        ident_span: Some(crate::v1_std_core::authored_ident(
+                        ident_span: Some(crate::v1_std_core::synthetic_ident(
                             crate::v1_std_core::no_span(),
                             key_id.clone(),
                         )),
@@ -564,7 +564,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: val_id.clone(),
                         span: crate::v1_std_core::no_span(),
-                        ident_span: Some(crate::v1_std_core::authored_ident(
+                        ident_span: Some(crate::v1_std_core::synthetic_ident(
                             crate::v1_std_core::no_span(),
                             val_id.clone(),
                         )),
@@ -620,7 +620,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Set".to_string(),
             span: crate::v1_std_core::no_span(),
-            ident_span: Some(crate::v1_std_core::authored_ident(
+            ident_span: Some(crate::v1_std_core::synthetic_ident(
                 crate::v1_std_core::no_span(),
                 "Set".to_string(),
             )),
@@ -628,7 +628,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: elem_id.clone(),
                 span: crate::v1_std_core::no_span(),
-                ident_span: Some(crate::v1_std_core::authored_ident(
+                ident_span: Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::no_span(),
                     elem_id.clone(),
                 )),
@@ -1107,10 +1107,10 @@ pub fn algebra_method_field(
                     t.clone(),
                     std::option::Option::None,
                     crate::v1_std_core::no_span(),
-                    crate::v1_std_core::authored_ident(
+                    Some(crate::v1_std_core::synthetic_ident(
                         crate::v1_std_core::no_span(),
                         "_".to_string(),
-                    ),
+                    )),
                 ));
             }
             __result
@@ -1185,7 +1185,7 @@ pub fn nominal_type_ref(name: String) -> Rc<Node> {
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.clone(),
         crate::v1_std_core::kernel_span(name.clone()),
-        crate::v1_std_core::kernel_ident(name.clone()),
+        Some(crate::v1_std_core::kernel_ident(name.clone())),
     )
 }
 
@@ -1372,10 +1372,10 @@ pub fn instantiate_algebra_type(
                                     pn.clone(),
                                     std::option::Option::None,
                                     crate::v1_std_core::no_span(),
-                                    crate::v1_std_core::authored_ident(
+                                    Some(crate::v1_std_core::synthetic_ident(
                                         crate::v1_std_core::no_span(),
                                         "_".to_string(),
-                                    ),
+                                    )),
                                 ));
                             }
                             __result
@@ -2076,10 +2076,10 @@ pub fn apply_type_substitution(
                                     pn.clone(),
                                     std::option::Option::None,
                                     crate::v1_std_core::no_span(),
-                                    crate::v1_std_core::authored_ident(
+                                    Some(crate::v1_std_core::synthetic_ident(
                                         crate::v1_std_core::no_span(),
                                         "_".to_string(),
-                                    ),
+                                    )),
                                 ));
                             }
                             __result

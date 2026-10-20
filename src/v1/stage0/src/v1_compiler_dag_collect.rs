@@ -192,7 +192,7 @@ pub fn dag_collect_call_formals(
                     application_plan: plan,
                     ..
                 } => plan.iter().cloned().fold(
-                    slots,
+                    slots.clone(),
                     |acc: Rc<HashMap<String, Rc<DagCollectSlot>>>,
                      application: Rc<ResolvedCallFormal>| {
                         let acc = dag_collect_insert_slots(
@@ -212,11 +212,11 @@ pub fn dag_collect_call_formals(
                         )
                     },
                 ),
-                _ => slots,
+                _ => slots.clone(),
             },
-            std::option::Option::None => slots,
+            std::option::Option::None => slots.clone(),
         },
-        _ => slots,
+        _ => slots.clone(),
     }
 }
 
