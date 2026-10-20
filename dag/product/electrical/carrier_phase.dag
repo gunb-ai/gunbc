@@ -631,7 +631,7 @@ fn gap_text(g: PhaseGap) -> String {
 fn module_text(c: BenchConditions) -> String {
   match c.module {
     ModuleRemoved => "module absent"
-    ModuleInstalled => "module installed"
+    ModuleInstalled { asset } => join(["module installed: ", asset as String], "")
     ModuleUnrecorded => "module state unrecorded"
   }
 }

@@ -57,6 +57,12 @@ import product.electrical.bench_session {
   PairValuedOnOneRange,
   PairRangeUnread,
   pair_range_standing,
+  PairPolarityStanding,
+  ReadsAlikeBothWays,
+  ReadsDirectionally,
+  ReadOneWayOnly,
+  PairPolarityUnread,
+  pair_polarity_standing,
   RangeUnrecorded,
   MeterRange,
   RangeFullScale,
@@ -303,6 +309,8 @@ import product.p4261_carrier_layout {
   e1_u500_contact,
   e1_front_chain_resistances,
   terminals_reading_at_most,
+  e1_u500_pad,
+  e1_pad_read,
   e1_u51_pin,
   e1_u51_resistances,
   e1_ranged_read,
@@ -1911,7 +1919,7 @@ test fn the_carrier_phases_classify_from_their_records() -> Bool {
     && phase_arm(layout: live, key: "p3-after-j30-tap") == 3
     && phase_arm(layout: live, key: "p0-bias-module-installed") == 0 && phase_arm(layout: live, key: "p1-s2-domain-module-installed") == 1
     && phase_arm(layout: live, key: "p2-s1-sequence-module-installed") == 2 && phase_arm(layout: live, key: "p3-settled-module-installed") == 3
-    && phase_text_in(layout: live, key: "p3-settled-module-installed").contains("phase 'p3-settled-module-installed' (module installed)")
+    && phase_text_in(layout: live, key: "p3-settled-module-installed").contains("phase 'p3-settled-module-installed' (module installed: gh200-dv5-b)")
     && phase_text_in(layout: live, key: "p3-settled").contains("phase 'p3-settled' (module absent)")
     && phase_text_in(layout: live, key: "p3-after-j30-tap").contains("(module state unrecorded)")
   let texts = phase_text_in(layout: live, key: "p0-bias").contains("INPUT BIAS ONLY (13 mA, not above the 13 mA bias draw, nothing lit)")
@@ -2120,6 +2128,15 @@ fn range_bounds(s: PairRangeStanding) -> List<Nat> {
   }
 }
 
+fn polarity_arm(s: PairPolarityStanding) -> Nat {
+  match s {
+    ReadsAlikeBothWays { red_on_first_ohms: _, red_on_second_ohms: _ } => 0
+    ReadsDirectionally { red_on_first_ohms: _, red_on_second_ohms: _ } => 1
+    ReadOneWayOnly { readings: _ } => 2
+    PairPolarityUnread => 3
+  }
+}
+
 fn supplied_ranged(ohms: Nat, range: MeterRange) -> ResistanceObservation {
   let r = e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: ohms, full_scale: 1, polarity: PolarityUnrecorded, said: "supplied")
   ResistanceObservation { asset: r.asset, first: r.first, second: r.second, record: r.record, conditions: r.conditions, polarity: r.polarity, range: range, display: r.display, stability: r.stability, certainty: r.certainty, order: r.order, evidence: r.evidence }
@@ -2173,7 +2190,9 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
     && range_arm(s: supplied_pin8_standing(rs: [])) == 3
 }
 
-// U500 MEETS THE GATE NETWORK AT ONE CONTACT. Live, fourteen front-side readings (the withdrawn 400 ohm
+// U500 MEETS THE GATE NETWORK AT ONE CONTACT. Live, seventeen front-side readings (the pad above U500 to
+// the return and to Q300's lead b each read with the probes each way: DIRECTIONAL, a junction path; the
+// U500 contact pair one way only; supplied 500 / 540 alike, 500 / 560 directional, nothing unread) (the withdrawn 400 ohm
 // kept hedged and moving beside the 800 ohm that replaced it): exactly one of U500's
 // eight contacts reads at or below 500 ohm from Q300's lead b on the 2k range (the upper-right, where the
 // trace from the 500 ohm pad arrives), three at or below 800 (adding the ground contact and nothing
@@ -2186,7 +2205,14 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
   let rs = e1_measured.bench.resistances
   let low = terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500)
   let doubled = map(e1_front_chain_resistances, o => if reads_pair(o: o, a: e1_q300_lead_b, b: e1_u500_contact(n: "lower-right contact")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 500, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
-  count(e1_front_chain_resistances) == 14
+  count(e1_front_chain_resistances) == 17
+    && polarity_arm(s: pair_polarity_standing(os: rs, a: e1_u500_pad, b: e1_ground_ref)) == 1
+    && polarity_arm(s: pair_polarity_standing(os: rs, a: e1_q300_lead_b, b: e1_u500_pad)) == 1
+    && polarity_arm(s: pair_polarity_standing(os: rs, a: e1_q300_lead_b, b: e1_u500_contact(n: "upper-right contact"))) == 2
+    && polarity_arm(s: pair_polarity_standing(os: [], a: e1_q300_lead_b, b: e1_u500_pad)) == 3
+    && polarity_arm(s: pair_polarity_standing(os: [e1_pad_read(a: e1_u500_pad, b: e1_ground_ref, ohms: 500, polarity: RedOnFirst), e1_pad_read(a: e1_ground_ref, b: e1_u500_pad, ohms: 540, polarity: RedOnFirst)], a: e1_u500_pad, b: e1_ground_ref)) == 0
+    && polarity_arm(s: pair_polarity_standing(os: [e1_pad_read(a: e1_u500_pad, b: e1_ground_ref, ohms: 500, polarity: RedOnFirst), e1_pad_read(a: e1_ground_ref, b: e1_u500_pad, ohms: 560, polarity: RedOnFirst)], a: e1_u500_pad, b: e1_ground_ref)) == 1
+    && carrier_input_reading(layout: p4261_e1_layout).contains("the pad above U500 to J20's black lead reads DIRECTIONALLY (500 ohm with red on")
     && count(filter(e1_front_chain_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
     && low == ["upper-right contact"]
     && count(terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 800)) == 2

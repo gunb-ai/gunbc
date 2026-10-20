@@ -369,6 +369,60 @@ fn pair_range_text(s: PairRangeStanding) -> String {
   }
 }
 
+// ONE PAIR READ WITH THE PROBES EACH WAY. The meter's resistance source has a polarity, so a path holding
+// a junction reads differently with the probes swapped and a resistor does not. The tolerance is
+// declared, not measured: the two values agree when they differ by at most a tenth of the larger,
+// pending a modeled accuracy figure for the meter. Which probe touched which point is read from each
+// observation's own polarity against the pair's order, so the standing does not depend on how the
+// pair was written down.
+data polarity_agreement_tenths: Nat = 1
+
+type PairPolarityStanding
+  = ReadsAlikeBothWays { red_on_first_ohms: Nat, red_on_second_ohms: Nat }
+  | ReadsDirectionally { red_on_first_ohms: Nat, red_on_second_ohms: Nat }
+  | ReadOneWayOnly { readings: List<ResistanceObservation> }
+  | PairPolarityUnread
+
+fn red_was_on(o: ResistanceObservation, a: ElectricalTerminalRef) -> Bool {
+  match o.polarity {
+    RedOnFirst => terminal_ref_equal(a: o.first, b: a)
+    RedOnSecond => terminal_ref_equal(a: o.second, b: a)
+    PolarityUnrecorded => false
+  }
+}
+
+fn valued_with_red_on(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef, red: ElectricalTerminalRef) -> List<Nat> {
+  flat_map(filter(os, o => observation_reads_pair(o: o, a: a, b: b) && red_was_on(o: o, a: red)), o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+}
+
+fn pair_polarity_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairPolarityStanding {
+  let on_a = valued_with_red_on(os: os, a: a, b: b, red: a)
+  let on_b = valued_with_red_on(os: os, a: a, b: b, red: b)
+  match on_a.first() {
+    Absent => match on_b.first() {
+      Absent => PairPolarityUnread
+      Present { value: _ } => ReadOneWayOnly { readings: filter(os, o => observation_reads_pair(o: o, a: a, b: b)) }
+    }
+    Present { value: x } => match on_b.first() {
+      Absent => ReadOneWayOnly { readings: filter(os, o => observation_reads_pair(o: o, a: a, b: b)) }
+      Present { value: y } => {
+        let larger = nat_max(a: x, b: y)
+        let diff = larger - nat_min(a: x, b: y)
+        if diff * 10 <= larger * polarity_agreement_tenths { ReadsAlikeBothWays { red_on_first_ohms: x, red_on_second_ohms: y } } else { ReadsDirectionally { red_on_first_ohms: x, red_on_second_ohms: y } }
+      }
+    }
+  }
+}
+
+fn pair_polarity_text(s: PairPolarityStanding, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> String {
+  match s {
+    ReadsAlikeBothWays { red_on_first_ohms, red_on_second_ohms } => join(["reads alike both ways (", to_string(red_on_first_ohms), " ohm with red on ", terminal_text(t: a), ", ", to_string(red_on_second_ohms), " ohm with red on ", terminal_text(t: b), ")"], "")
+    ReadsDirectionally { red_on_first_ohms, red_on_second_ohms } => join(["reads DIRECTIONALLY (", to_string(red_on_first_ohms), " ohm with red on ", terminal_text(t: a), ", ", to_string(red_on_second_ohms), " ohm with red on ", terminal_text(t: b), "): a path holding a junction, not a resistor"], "")
+    ReadOneWayOnly { readings } => join(["is read with the probes one way only (", to_string(count(readings)), " readings), so whether it holds a junction is unread"], "")
+    PairPolarityUnread => "has no valued reading with a recorded probe polarity"
+  }
+}
+
 fn inspection_text(d: DamageInspection) -> String {
   match d {
     NoDamageSeen { looked_at } => join(["no damage seen (", looked_at as String, ")"], "")
