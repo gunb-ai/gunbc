@@ -54,8 +54,9 @@ import gunbc.runner.runner_service_activation {
   runner_transition_affected_set_identity,
   runner_host_activation_units,
 }
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
 import gunbc.fleet.fleet_converge_plan {
-  fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile, fleet_converge_desired_caps,
+  fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile,
 }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
