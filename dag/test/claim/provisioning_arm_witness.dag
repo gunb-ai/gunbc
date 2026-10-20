@@ -30,7 +30,6 @@ import gunbc.provisioning.provisioning_arm {
   VirtualMediaUnavailable,
   VirtualMediaUnobserved,
   AttemptBinding,
-  provisioning_arm_consumer_ref,
   DeliveryEvidence,
   FirmwarePreparation,
   FirmwarePreparedVia,
