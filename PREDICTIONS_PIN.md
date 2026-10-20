@@ -411,3 +411,22 @@ S5  the F5 fold divergence: if the strip head still diverges on F5, the boundary
     (already ruled out: F5 diverges on main and the Acc head, where the widening is absent); the
     next discriminator is the 3-head set parent named (main / Acc head / Acc head minus alias
     machinery), on F5 alone.
+
+## CORRECTION to the "fold does not return on a four-line module" blocker (measured by reading the builtin)
+stern-bat-401's ruling treats a fold that hangs on a four-line module as a PR-2 blocker in its own right.
+The fixture F5 IS four lines of SOURCE, and I stated it as if it were four lines of WORK. It is not, and
+that was checkable before the run. The census builtin's own body (src/v1/stage0/src/cli_run/emit_host.rs,
+compile_dag_diagnostic_census_uncached) does, per call:
+  build_module_path_index_from_witness_roots()      <- indexes the witness-root corpus
+  resolve_virtual_source_with_imports(...)          <- closes the fixture's imports over that index
+  compile_fixture_rendering_only_what_is_read(...)  <- the FULL v1 pipeline to the Rust render target
+and it is UNCACHED: its doc comment says the prepared-inventory guard that armed the content-keyed memo
+was deleted with run_required_floor. F5's source contains `import std.algebra { empty_map, map_insert }`,
+and std.algebra is Charter 6's single largest native resolve root (~7948 modules downstream, per
+stern-bat-401's own routing). So a 200s non-return on F5 does NOT establish that the type checker hangs
+on trivial input; it is confounded by corpus-scale work the fixture never asked for.
+CONSEQUENCE: the blocker must be re-measured on a FOLD-ONLY path before it can stand. The census .dag
+itself demonstrates that path — it calls unify_generics directly on hand-built nodes with an empty acc
+and TextNotAsked text (src/v1/tests/claim/generic_identity_census.dag, bound_from_basis /
+bound_by_name_alone), touching no corpus. That is the input for the three-head discriminator parent named
+(main / Acc head / Acc head minus the alias machinery), and it costs one test binary, not a corpus build.
