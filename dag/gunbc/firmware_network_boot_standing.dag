@@ -2685,11 +2685,26 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
 // `sorted_map_keys` is contracted `work: "n * log(n)"`. No option-by-option scan remains anywhere in
 // the fold.
 //
-// THE BUCKET KEYS ARE VISITED IN SORTED ORDER because the receipt names a specific pair, and a receipt
-// whose content moved when the BMC reordered its enumeration is the order-dependence this fold exists
-// to eliminate. This is also why the keys are visited at all rather than the values: `map_values` has
-// no documented order, and a first-conflict taken from unordered values would make the witness
-// flaky in exactly the way a reviewer is right to refuse.
+// WHAT SORTING DOES AND DOES NOT STABILIZE, stated in three parts so no part is over-claimed (round 4
+// HOLD, merry-fox-82).
+//  (1) WHICH BUCKET IS REPORTED is fixed by the SORTED KEY ORDER: the fold walks `sorted_map_keys` and
+//     the `Optional` accumulator short-circuits, so the first conflict in KEY order wins and nothing
+//     after it is examined -- independent of the order the BMC listed the enumeration. This is why the
+//     keys are visited rather than the values: `map_values` has no documented order, and a
+//     first-conflict taken from unordered values would make the witness flaky in exactly the way a
+//     reviewer is right to refuse.
+//  (2) ORDER WITHIN THE PAIR IT RECEIVES is fixed by `ordered_reading_pair`, which ranks the two
+//     readings it is handed (and breaks a rank tie on the upstream wire spelling). So the SAME pair
+//     yields byte-identical receipts whichever way the BMC listed them -- the published control
+//     `one_reference_read_two_ways_refuses_whichever_way_the_bmc_lists_it` pins exactly this, both
+//     orderings, same pair, same order.
+//  (3) WHICH READINGS FORM THE PAIR is NOT claimed invariant for a bucket holding three or more
+//     MUTUALLY DISTINCT readings: `first_disagreeing` scans the bucket in the BMC's enumeration order,
+//     so `[Pxe,Hdd,Cd]` and `[Pxe,Cd,Hdd]` can name different pairs. That is enumeration-dependent,
+//     not a physical fact, and the fold does not claim it is. What is stable under that case is the
+//     REFUSAL and its KEY -- the reference every reading in the bucket shares -- which is what the
+//     operator's receipt is keyed by. The published controls pin (1) and (2) for buckets of two
+//     readings, and no control claims (3) is invariant, because it is not.
 fn conflicting_reference_readings(
   options: List<BootOption>
 ) -> Optional<ConflictingReferenceReadings> {

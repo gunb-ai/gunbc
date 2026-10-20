@@ -2330,57 +2330,40 @@ data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(
 // probe uses -- blocker, join, available, existence, observed_bios_version -- and hands them to the
 // module's UNGATED sibling path, `admissible_readiness_for`, the readiness fold that answers the same
 // catalog question without minting a verdict (and so without caller admission). This is what makes the
-// pair differential in the sense that matters: every builder call, literal and import the probe needs
-// is exercised by a source that is NOT refused. If a builder were broken, a literal malformed, or an
-// import missing, the control would carry the blocking row too -- and the shared-comparator claim
-// below (all rows equal outside the target key) turns that into a RED test rather than a story.
-// (Round 3, merry-fox-82: the earlier control built only `join` and `available` and called
-// redirect_target, so the probe's `existence` and `observed_bios_version` expressions were exercised
-// NOWHERE clean, and a bug in them was invisible to the pair.)
+// pair differential in the sense that matters: every builder call and literal the probe needs is
+// exercised by a source that is NOT refused, so the refusal below is attributable to the call to
+// `prepare` rather than to the builders or the literals. (Round 3, merry-fox-82: the earlier control
+// built only `join` and `available` and called redirect_target, so the probe's `existence` and
+// `observed_bios_version` expressions were exercised NOWHERE clean, and a bug in them was invisible
+// to the pair.)
+// WHAT THIS PAIR DOES NOT DEPEND ON, STATED SO IT IS NOT ASSUMED: the census does NOT certify that
+// the fixtures' import lists and call sites are the intended ones. A mutation that dropped
+// `network_option_existence` from the SHARED import list, or that substituted another expression for
+// one of the five arguments at the call site, left every census count unchanged -- the census is blind
+// to unbound names, and it reported the mint's refusal and nothing about the dropped name (measured:
+// rows R2G2 and R2G3 of the published mutation table). So a broken import or a substituted argument
+// would NOT have placed a row on the control, and no count here attests vocabulary coverage. That
+// coverage comes from the SOURCE-TEXT control -- the mechanical test below, which pins the shared
+// import header and then requires every builder call and the full argument spine, by name, in BOTH
+// fixtures of the pair -- and from nowhere else.
 data lawful_call_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> Bool {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  let join = join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option])\n  let available = available_network_options(options: [enabled_network_option])\n  let existence = network_option_existence(options: [enabled_network_option])\n  let redirect = redirect_target(join: join, available: available)\n  let readiness = admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  0 <= length(xs: readiness)\n}\n"
 
-// THE CONTROL MUST BE CLEAN IN ITSELF, AND THE PAIR MUST BE DIFFERENTIAL -- stated through the SHARED
-// comparator, not through arithmetic on totals (merry-fox-82, round 3). Three claims, each checkable:
-//  (a) THE CONTROL COMPILED, in the strong sense: its census ran (a census that could not run yields
-//      `none`, never an empty row list -- so this is not `0 <= total`, which only showed the census
-//      executed and said nothing about compiling), AND it carries ZERO blocking rows anywhere. The
-//      control constructs and consumes all five `prepare` inputs with the probe's own expressions, so
-//      'zero blocking rows' covers those expressions too, which the old two-argument control could
-//      not claim.
-//  (b) THE PROBE IS REFUSED FOR EXACTLY ONE THING: exactly one blocking row in the whole census, and
-//      it sits at the target key -- the admission refusal for `prepare`. 'Exactly one row' plus 'it is
-//      the target key' replaces 'at least one row of a class', which a second refusal would have
-//      satisfied.
-//  (c) THE DIFFERENCE IS EXACTLY THE TARGET KEY, by gunbc.compile_diagnostic_census's own comparator:
-//      the target key is +1 on the probe side and EVERY OTHER KEY IS BYTE-IDENTICAL between the two
-//      censuses. That is the property a difference of totals cannot establish -- equal totals can
-//      hide an offsetting pair of changes -- and it is defined once for the whole tree instead of
-//      being restated here as `probe == control + 1`.
-// WHAT THE COMPARATOR STILL DOES NOT ESTABLISH, MEASURED AND STATED (not assumed): a mutation that
-// dropped `network_option_existence` from the SHARED import list left every count unchanged -- the
-// census reported the mint's refusal and nothing about the unbound name -- so dropping an item while
-// still importing its module adds no blocking diagnostic in this census, and counts do not attest
-// declared-import coverage. The probe's and control's own vocabulary is therefore pinned by text, by
-// the mechanical test below, rather than inferred from a count.
-// THE PAIR, claim by claim, one test per claim (merry-fox-82, round 3: an `&&`-chain over three
-// claims reports ONE FAIL for three assertions, which is how a wrong claim survives). The control
-// constructs and consumes all five `prepare` inputs with the probe's own expressions and hands them
-// to the module's UNGATED sibling, `admissible_readiness_for` -- the readiness fold that answers the
-// same catalog question without minting a verdict and so without caller admission. The two sources
-// share one header string, so whatever the shared imports themselves draw is present on both sides
-// and cancels in the comparison; what may not differ is anything else.
-//
-// 'RAN' IS ASSERTED BY THE MATCH, NOT BY AN INEQUALITY. `census_rows_for` yields `none` exactly when
-// the census could not run, and `Present` when it did run and produced rows -- so the old `0 <=
-// total_blocking_count_for(...)`, which was true of a census that never executed, is retired
-// (merry-fox-82, round 3). 'Ran' is NOT 'compiled clean': a synthetic fragment importing this much of
-// the fleet reports blocking rows of its own (see the note below the pair), so cleanliness is claimed
-// only AT THE TARGET KEY, and equality is claimed between the two censuses rather than against zero.
-//
-// WHAT THE COMPARISON DOES NOT COVER, MEASURED AND STATED: dropping `network_option_existence` from
-// the SHARED import list while still importing its module added no blocking diagnostic in this
-// census -- counts do not attest declared-import coverage. The fixture vocabulary is pinned by text
-// instead, in the mechanical test below.
+// THE PAIR'S CLAIMS, EACH IN ITS OWN TEST (merry-fox-82, round 3: an `&&`-chain over several claims
+// reports ONE FAIL for several assertions, which is how a wrong claim survives). The pair asserts
+// exactly four things, and nothing beyond them:
+//   both censuses RAN -- `census_rows_for` yields `none` exactly when a census could not run, so each
+//   test matches on `Present` and a never-run census fails its test rather than satisfying it
+//   vacuously, which retires the old `0 <= total_blocking_count_for(...)`;
+//   the CONTROL has 0 blocking rows AT THE TARGET KEY (the `ConstructorCallAdmissionRefused` row at
+//   `prepare`) and the PROBE has exactly 1 there. Cleanliness is claimed ONLY at the target key: a
+//   synthetic fragment importing this much of the fleet draws blocking rows of its own (see the note
+//   below the pair), so 'zero blocking rows anywhere' for the control and 'exactly one blocking row in
+//   the whole census' for the probe were tried, are permanently RED, and are NOT claimed anywhere;
+//   EVERY OTHER KEY IS UNCHANGED between the two censuses, by gunbc.compile_diagnostic_census's own
+//   comparator -- not by arithmetic on totals, because equal totals can hide an offsetting pair of
+//   changes, which is exactly what `probe == control + 1` used to paper over;
+//   the fixtures' IMPORT and ARGUMENT-SPINE COVERAGE comes from the source-text control, the
+//   mechanical test below, and not from any census count (see the paragraph above the control).
 // (a) THE CONTROL RAN. A census that could not run yields none on both sides, and the claim below is
 // then false rather than vacuously true.
 test fn the_control_census_ran() -> Bool {
@@ -2467,15 +2450,15 @@ test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
 }
 
 // THE CENSUS DOES NOT SEE UNBOUND NAMES, so the probe's own vocabulary is pinned by text instead.
-// MEASURED, not assumed: deleting `network_option_existence` from the shared import list (R2G) left
-// total_blocking_count_for and every class-and-subject count EXACTLY as they were -- the probe stayed
-// at control+1 and every row here stayed green -- because the ephemeral compile reports the mint's
+// MEASURED, not assumed: deleting `network_option_existence` from the shared import list (row R2G2 of the published mutation table) left
+// total_blocking_count_for and every class-and-subject count EXACTLY as they were -- the pair's two target counts stayed
+// at 0 and 1 and every row here stayed green -- because the ephemeral compile reports the mint's
 // admission refusal and is silent about a call whose name is no longer in scope. A fixture can
 // therefore LOSE an argument builder and still look like a fixture. Nothing about the two rows above
 // can catch that, so it is caught here, against the same strings the sources are built from: if the
 // import list stops carrying one of the builders, or a source stops APPLYING one, this test goes red.
 // The pair (imported, applied) matters: a name can sit in the import list while a mutation quietly
-// removes its call, and the reverse -- a call with no import -- is the R2G case.
+// removes its call, and the reverse -- a call with no import -- is the R2G2 case.
 test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Bool {
   // EVERY builder named below must be imported by the shared header AND appear as a call in BOTH
   // sources: the control now carries all five of prepare's inputs with the probe's expressions, which
