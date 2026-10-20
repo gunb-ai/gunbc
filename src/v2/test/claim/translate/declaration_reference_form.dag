@@ -133,7 +133,7 @@ test fn a_bare_atom_still_emits_through_the_atom_row_holds() -> Bool {
 
 fn drf_form_is_module_scoped(form: DeclarationReferenceForm) -> Bool {
   match form {
-    ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _ } => true
+    ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: _ } => true
     NoDeclarationReferenceForm => false
   }
 }

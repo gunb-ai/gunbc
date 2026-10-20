@@ -6080,11 +6080,14 @@ fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<
                     },
                     f: fn(projection) {
                       bind_outcome(
-                        o: target_type_expr_declaration_reference_emitted(
-                          projection: projection,
-                          path: path,
-                          reference: child
-                        ),
+                        o: match projection.declaration_reference_form {
+                          ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: CalleeScopeUnrealized } =>
+                            outcome_rejected(target_declaration_reference_namespace_unrealized_diagnostic(node: child))
+                          ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: CalleeScopeRealized } =>
+                            target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: child)
+                          NoDeclarationReferenceForm =>
+                            target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: child)
+                        },
                         f: fn(emitted) {
                           match list_at_optional(xs: positional_child_target_nodes(node: emitted), index: 0) {
                             Present { value: spelled } =>
@@ -11009,11 +11012,21 @@ type TargetTypeExpressionProjection {
 // multi-token declaration-reference emission in the type-expression layer -- an atom row takes one
 // identity, so this needs a path form that emits a token sequence; when that exists these three
 // become token classes and the concat here is deleted with it.
+// WHETHER A CALL THROUGH THE FORM IS SPELLABLE. A type-position reference only needs the spelling; a
+// CALL additionally needs the scope the spelling names to EXIST in the emitted text. A target whose
+// emitted modules do not yet declare that scope (Swift: the nested `enum Gunbc { enum v2 { ... } }`
+// wrappers of the closure-emit layout, gunbc#12239, are not emitted) declares
+// CalleeScopeUnrealized and the callee arm refuses typed rather than print a qualified call that
+// resolves to nothing. The call-position half of the form, kept apart from the spelling because a
+// spelling can be valid at a type position while its scope is unrealized for calls.
+type DeclarationCalleeScope = CalleeScopeRealized | CalleeScopeUnrealized
+
 type DeclarationReferenceForm
   = ModuleScopedPath {
       root_text: String
       scope_separator_text: String
       module_segment_joiner: String
+      callee_scope: DeclarationCalleeScope
     }
   | NoDeclarationReferenceForm
 
@@ -11051,6 +11064,14 @@ fn declaration_reference_spelling(
   }
 }
 
+fn target_declaration_reference_namespace_unrealized_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_declaration_reference_namespace_unrealized,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
 fn target_declaration_reference_form_absent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_declaration_reference_form_absent,
@@ -11081,7 +11102,7 @@ fn target_type_expr_declaration_reference_emitted(
   match projection.declaration_reference_form {
     NoDeclarationReferenceForm =>
       outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: reference))
-    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner, callee_scope: _ } =>
       match declaration_reference_spelling(
         root_text: root,
         scope_separator_text: sep,
@@ -11103,7 +11124,7 @@ fn target_type_expr_declaration_reference_emitted(
 fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceForm) -> List<Edge> {
   match form {
     NoDeclarationReferenceForm => Empty
-    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner, callee_scope: callee_scope } =>
       Cons {
         head: target_model_named_edge(
           name: ^target_type_expr_field_declaration_reference,
@@ -11121,6 +11142,10 @@ fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceFo
               target_model_named_edge(
                 name: ^target_type_expr_field_reference_module_joiner,
                 target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: joiner))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_callee_scope,
+                target: target_type_expr_symbol_atom(id: declaration_callee_scope_symbol(scope: callee_scope))
               )
             ],
             occurrence_id: OccurrenceSynthetic
@@ -11128,6 +11153,13 @@ fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceFo
         ),
         tail: Empty
       }
+  }
+}
+
+fn declaration_callee_scope_symbol(scope: DeclarationCalleeScope) -> Symbol {
+  match scope {
+    CalleeScopeRealized => ^target_callee_scope_realized
+    CalleeScopeUnrealized => ^target_callee_scope_unrealized
   }
 }
 
@@ -11158,11 +11190,17 @@ fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<Declaration
                 bind_outcome(
                   o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_module_joiner),
                   f: fn(joiner) {
-                    outcome_accepted(
-                      ModuleScopedPath {
-                        root_text: symbol_lexeme(sym: root),
-                        scope_separator_text: symbol_lexeme(sym: sep),
-                        module_segment_joiner: symbol_lexeme(sym: joiner)
+                    bind_outcome(
+                      o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_callee_scope),
+                      f: fn(scope) {
+                        outcome_accepted(
+                          ModuleScopedPath {
+                            root_text: symbol_lexeme(sym: root),
+                            scope_separator_text: symbol_lexeme(sym: sep),
+                            module_segment_joiner: symbol_lexeme(sym: joiner),
+                            callee_scope: if scope == ^target_callee_scope_unrealized { CalleeScopeUnrealized } else { CalleeScopeRealized }
+                          }
+                        )
                       }
                     )
                   }
