@@ -637,3 +637,33 @@ argument of the wrong ground type: fn takes_int(x: Int) -> Int { 0 }; fn bad() -
   could never catch ANY drift shape of this kind; the route is rejected on the stronger structural
   ground. Same reply, different evidence.
 - H3: != -1 passes (the census ran) either way; if it fails, the harness is broken and NOTHING is concluded.
+
+## 2026-10-20T22:5x dispatch I: is the compiler's List-at-FreeMonoid acceptance SENSITIVE to std/types.dag's alias body?
+On a scratch clone (instruments-scratch), run the accepted probe (alias_drift_list_ok_probe: List<Int>
+actual at FreeMonoid<Int> formal, census blocking_total == 0 measured) after mutating dag/std/types.dag:
+- I1 rename `type List<element> = FreeMonoid<element>` -> `type QList<...>`: the probe's `List` import
+  stops resolving -> blocking_total >= 1 (or census not runnable). The NAME List is bound by std/types.dag.
+- I2 wrong body `type List<element> = PointwisePower<element>`:
+  (a) acceptance CHANGES to refusal (blocking_total >= 1) => the alias BODY drives the judgment =>
+      a live-tree compile route CAN catch drift => adopt semantic route, retire text grep.
+  (b) acceptance STAYS == 0 => the seed/kernel binds the carrier identity independently of the alias
+      body (kernel_container_carrier_verdict by DeclarationRef) => std/types' alias body is DECORATIVE
+      for judgment => no executing compile route can observe the drift => the text check over the
+      declared line is the only instrument that sees it. Report (b) verbatim to review 83586.
+- I3: baseline (no mutation) re-run stays == 0; if not, harness broken, nothing concluded.
+
+## 2026-10-20T22:5x dispatch H+I SCORED (branch instruments-scratch, BUILD_RC=0, H_RC=0)
+
+H: PASS the_typecheck_control_census_could_run, PASS the_typecheck_control_is_refused -> **H1 held**:
+the census DOES typecheck call arguments (an Int formal receiving a String actual is BLOCKING).
+Therefore dispatch G's wrong-carrier `== 0` is a REAL ACCEPTANCE, not an absent check. G1/G2/G3 held
+(>=1 FAIL, ==0 PASS, !=-1 PASS).
+I: baseline PASS (I3). I1 (alias head renamed QList in dag/std/types.dag, verified at line 120): the
+member line disappeared -- the run no longer reaches it (consistent with `List` no longer resolving;
+raw diagnostics to be captured in dispatch K before that is asserted anywhere). I2 (body repointed to
+PointwisePower, verified at line 120): `list_is_accepted_at_its_roster_carrier` PASS, identical to
+baseline -> **I2(b) holds**: the container-compatibility judgment is INSENSITIVE to std/types' declared
+alias BODY. Combined with the in-file fixture contract (multi_module_compile_fixture: "no module index,
+no corpus roots, and no filesystem read") and the empty .dag parse-lens grep, no executing compile route
+observes the fact this claim guards => the text check over the declared line is the only instrument that
+sees it. NAME binding does come from that file (I1); BODY binding does not (I2).
