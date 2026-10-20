@@ -2,7 +2,7 @@ module gunbc.runner.runner_host_cap_bracket
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.measure { Second, second, second_count, Minute, minute }
+import std.measure { Second, second, second_count }
 import std.types { EpochMs }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -100,14 +100,6 @@ data runner_host_cap_step_budget_env_name: String = "RUNNER_HOST_CAP_STEP_BUDGET
 // WHAT A STEP MUST HOLD FOR THE WHOLE BRACKET: drain, operations and release, in seconds.
 fn host_cap_bracket_budget(policy: HostCapDrainPolicy) -> Second {
   second(count: second_count(s: policy.wait_bound) + second_count(s: policy.operations_allowance) + second_count(s: policy.release_allowance))
-}
-
-fn host_cap_bracket_budget_minutes(policy: HostCapDrainPolicy) -> Minute {
-  minute(count: (second_count(s: host_cap_bracket_budget(policy: policy)) + 59) / 60)
-}
-
-fn host_cap_release_budget_minutes(policy: HostCapDrainPolicy) -> Minute {
-  minute(count: (second_count(s: policy.release_allowance) + 59) / 60)
 }
 
 // REFUSE BEFORE MASKING when the budget the bracket was given cannot cover it: a step killed mid-wait
