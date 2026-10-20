@@ -31,11 +31,13 @@ import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.required_floor { long_home_prefixes, required_gate_admits }
 import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline, quarantine_outside_gate_declines }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { Cons, Empty, fold_list, empty_map, map_insert, map_lookup }
 
 import std.optional { Absent, Present }
 import v2.std.text { String }
-import std.types { NonEmptyStr, List, Map }
+import std.types { NonEmptyStr, List, Map, Int, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
+import std.algebra { Cons, Empty, fold_list, empty_map, map_insert, map_lookup }
 
 // THE LIVE JOIN plus its discriminating controls. The model is in
 // gunbc.quarantine_probe_disposition; this file supplies the three live populations from the
@@ -146,11 +148,34 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
 // and so cannot be evaluated from inside it. Mirroring the literal here would be a second
 // representation that drifts silently. Unmeasured and zero are different states, and this guard
 // exists to refuse exactly that conflation, so it does not commit it in its own witness.
-test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
-  quarantine_probe_dispositions_all_hold(
-    subjects: live_quarantine_probe_subjects(),
-    facts: live_quarantine_probe_facts()
+//
+// THE ALL-HOLD CLAIM, now with a reason. Its name and entry are unchanged (the
+// `gunbc_claim_execution_contract` row in `gunbc.roadmap.roadmap_authority` names this function, and
+// the harness maps `ExitSuccess` to a pass), so converting the return type adds the localization
+// without moving the obligation. As a Bool this printed `FAIL <fn>` and NOTHING else: the fold gave a
+// single bit, so an owner could not tell which probe was unheld, whether it was held by nothing or by
+// two carriers, or how many were affected. The reason now names the count, the population size, and
+// the first offending identity with its entry file. It is also no longer ANDed with anything: the
+// population check that used to sit in a second claim repeated this exact fold as one conjunct among
+// five, so a population going empty and a probe going unheld printed the same one-word verdict.
+test fn every_quarantine_probe_derives_exactly_one_disposition() -> ProcessExit {
+  let ds = live_dispositions()
+  let offenders = fold_list(
+    xs: ds,
+    empty: 0,
+    cons: fn(acc, d) { if quarantine_probe_disposition_holds(disposition: d) { acc } else { acc + 1 } }
   )
+  if offenders == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat("live quarantine probes not deriving exactly one holder: ", int_to_decimal_string(value: offenders)),
+        concat(" of ", concat(int_to_decimal_string(value: length(xs: ds)), "; first: ", first_unheld_identity(ds: ds)))
+      )
+    }
+  }
 }
 
 // THE LIVE CLAIM IS NOT VACUOUS: every supplied live population holds at least one live probe.
@@ -180,17 +205,187 @@ fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(Quar
   fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || disposition_holds_by(d: d, kind: kind) })
 }
 
-test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
-  let ds = live_dispositions()
-  fold_list(xs: ds, empty: true, cons: fn(acc, d) { acc && quarantine_probe_disposition_holds(disposition: d) })
-    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { FloorExpectedRedHeld => true  _ => false } })
-    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { RouteGapHeldNoVerdict => true  _ => false } })
-    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedByHomePolicy { matched_prefix: _ } => true  _ => false } })
-    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedOutsideGate { module: _, trigger: _ } => true  _ => false } })
+// WHY THIS IS FIVE CLAIMS AND NOT ONE. The single Bool above folded five assertions together: "all
+// dispositions hold" AND "population A has a member" AND ... AND "population D has a member". A FAIL
+// line from claim_batch carries the function name and, for a Bool, nothing else (claim_batch prints
+// `FAIL <fn>` with no reason channel for a false return), so an owner got no localization — the same
+// failure mode the group-C wet reds have, and the same root cause: a Bool claim with no reason. Split
+// one claim per population, each returning ProcessExit so the harness prints the typed reason
+// (claim_batch.rs `ClaimOutcome::ExitFailure` prints `FAIL <fn> (returned ProcessExit::ExitFailure,
+// code N: <reason>)` — the carrier the emit_host_gate forensics made the single narration surface).
+//
+// WHY THIS IS NOT THE REFUSED MUTATION FORM AGAIN. The comment above this block records that the
+// earlier mutation shape paid the live join FIVE TIMES INSIDE ONE CLAIM and was refused at 808,294
+// eval steps (CI run 36656467027). That is a different cost shape from this one: the witness eval
+// budget is armed PER CLAIM (cli_run `set_witness_eval_budget`, claim_batch `--eval-budget-ms`), and
+// claim_batch resolves an entry ONCE for the whole batch (its own log line: "resolving <entry> once
+// (N witness(es))"), so five claims here re-pay the resolve once and each stays under its own eval
+// budget. This is the shape the probes that found the defect used — two ProcessExit claims in one
+// batch, resolved once — so the split's affordability is measured, not argued. DESIGN 6: the defect is
+// re-paying one entry's resolve across chunked children; it is not "two claims read the same thing".
+fn population_member_count(
+  ds: List<QuarantineProbeDisposition>,
+  is_kind: fn(QuarantineProbeHolder) -> Bool
+) -> Int {
+  fold_list(
+    xs: ds,
+    empty: 0,
+    cons: fn(acc, d) { if disposition_holds_by(d: d, kind: is_kind) { acc + 1 } else { acc } }
+  )
 }
 
-fn probe_no_strings() -> List<String> {
-  Empty {}
+fn first_unheld_identity(ds: List<QuarantineProbeDisposition>) -> String {
+  fold_list(
+    xs: ds,
+    empty: "",
+    cons: fn(acc, d) {
+      if acc != "" {
+        acc
+      } else {
+        match d {
+          QuarantineProbeNowPassing { identity: i, entry: e, function: _ } => concat(i, concat(" @ ", e))
+          QuarantineProbeHeldByMoreThanOne { identity: i, holders: _ } => i
+          HeldByExactlyOne { identity: _, holder: _ } => ""
+        }
+      }
+    }
+  )
+}
+
+// ONE CLAIM PER REQUIRED POPULATION. Each states its own size and its own verdict, so a FAIL names
+// which population stopped being load-bearing rather than pointing at a conjunction.
+fn population_is_load_bearing(
+  label: String,
+  ds: List<QuarantineProbeDisposition>,
+  is_kind: fn(QuarantineProbeHolder) -> Bool
+) -> ProcessExit {
+  let n = population_member_count(ds: ds, is_kind: is_kind)
+  if n > 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat(label, ": no live probe is held by this population any more (n="),
+        concat(int_to_decimal_string(value: n), "); the live all-hold claim would go red on its own.")
+      )
+    }
+  }
+}
+
+test fn the_enrolled_red_population_is_load_bearing() -> ProcessExit {
+  population_is_load_bearing(label: "FloorExpectedRedHeld", ds: live_dispositions(), is_kind: fn(h) { match h { FloorExpectedRedHeld => true _ => false } })
+}
+
+test fn the_route_gap_population_is_load_bearing() -> ProcessExit {
+  population_is_load_bearing(label: "RouteGapHeldNoVerdict", ds: live_dispositions(), is_kind: fn(h) { match h { RouteGapHeldNoVerdict => true _ => false } })
+}
+
+test fn the_home_policy_population_is_load_bearing() -> ProcessExit {
+  population_is_load_bearing(
+    label: "NeverRunDeclinedByHomePolicy",
+    ds: live_dispositions(),
+    is_kind: fn(h) { match h { NeverRunDeclinedByHomePolicy { matched_prefix: _ } => true _ => false } }
+  )
+}
+
+test fn the_outside_gate_population_is_load_bearing() -> ProcessExit {
+  population_is_load_bearing(
+    label: "NeverRunDeclinedOutsideGate",
+    ds: live_dispositions(),
+    is_kind: fn(h) { match h { NeverRunDeclinedOutsideGate { module: _, trigger: _ } => true _ => false } }
+  )
+}
+
+// THE STRUCTURAL CLAIM: every admitted probe row has at least one holder. WHY IT IS THE FIX AND NOT
+// THE SYMPTOM. The four rows this PR repairs were invisible to every census. The fold reports an
+// admitted probe with no holder as an alarm (QuarantineProbeNowPassing), but nothing asserted over the
+// ledger that no row may reach that arm, and this file's live claims are not in
+// `local_repo_wet_schedule`, so no fleet run executed them either: an admission could sit unheld
+// forever and the only thing that would notice is someone running these two claims by hand. That is
+// DESIGN 6's silent degradation — the state was reachable, unowned, and printed nothing. This claim
+// turns it into a local, loud failure at the place the rows are authored, and it is the reason the four
+// repairs below are not enough on their own: without it, the fifth row does the same thing next month.
+//
+// It reads the ADMISSION LEDGER as the single authority (through `quarantine_probe_admissions`, the
+// same filter `live_quarantine_probe_subjects()` uses), so it cannot be pacified by deleting a row —
+// deleting a row removes its obligation, which is why the repair for a dissolved row is deletion and
+// the repair for a live red is giving it a standing. It also cannot be pacified by adding a holder that
+// is merely textually similar: `a_roster_row_that_merely_contains_the_identity_does_not_hold_it` proves
+// the substring case does not count.
+test fn every_admitted_probe_row_has_at_least_one_holder() -> ProcessExit {
+  let unheld = unheld_admitted_rows(ds: live_dispositions())
+  if length(xs: unheld) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat("admitted quarantine probe rows with NO holder in any carrier (n=", int_to_decimal_string(value: length(xs: unheld))),
+        concat("): ", first_text(xs: unheld))
+      )
+    }
+  }
+}
+
+// THE PURE HALF, so the state can be exercised by a fixture and not only by live data. Kept as a
+// function over dispositions rather than inlined, because the claim below needs the SAME predicate the
+// live claim runs — a fixture that tested a different predicate would prove nothing.
+fn unheld_admitted_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
+  fold_list(
+    xs: ds,
+    empty: Empty {},
+    cons: fn(acc, d) {
+      if quarantine_probe_disposition_holds(disposition: d) {
+        acc
+      } else {
+        Cons { head: disposition_identity(d: d), tail: acc }
+      }
+    }
+  )
+}
+
+// THE RED FOR THE STRUCTURAL CLAIM, supplied as a fixture: an admission held by NO carrier, which is
+// exactly the arm the four repaired rows reached. The live claim above cannot show its own failure
+// shape (when the ledger is clean there is nothing to point at), so this arm runs the same predicate
+// over the file's synthetic identity with every carrier emptied and requires it to name exactly that
+// identity. Delete the alarm arm, or let a substring count as a holder, and this goes red.
+test fn a_fixture_admission_with_no_holder_is_named_by_the_ledger_claim() -> ProcessExit {
+  let unheld = unheld_admitted_rows(ds: Cons { head: fixture_disposition(facts: probe_fixture_no_facts()), tail: Empty {} })
+  match unheld {
+    Cons { head: h, tail: t } =>
+      match t {
+        Empty {} =>
+          if h == concat(probe_fixture_identity(), concat(" @ ", probe_fixture_entry)) {
+            ExitSuccess
+          } else {
+            ExitFailure { code: 1, reason: concat("the zero-holder row was named wrongly: ", h) }
+          }
+        _ => ExitFailure { code: 1, reason: "the zero-holder fixture produced more than one offender" }
+      }
+    Empty {} => ExitFailure {
+      code: 1,
+      reason: concat(
+        "an admission with every carrier emptied was NOT reported unheld: ",
+        probe_fixture_identity()
+      )
+    }
+  }
+}
+
+fn first_text(xs: List<String>) -> String {
+  match xs {
+    Cons { head: h, tail: _ } => h
+    Empty {} => "(none)"
+  }
+}
+
+fn disposition_identity(d: QuarantineProbeDisposition) -> String {
+  match d {
+    QuarantineProbeNowPassing { identity: i, entry: e, function: _ } => concat(i, concat(" @ ", e))
+    QuarantineProbeHeldByMoreThanOne { identity: i, holders: _ } => i
+    HeldByExactlyOne { identity: i, holder: _ } => i
+  }
 }
 
 fn probe_no_declines() -> List<QuarantineOutsideGateDecline> {

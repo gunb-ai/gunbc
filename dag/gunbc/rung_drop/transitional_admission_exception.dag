@@ -23,7 +23,7 @@ data transitional_admission_exception_identities: FreeSemigroup<String> = FreeSe
   // these identities was exempted. Their cadence is UNCHANGED — they are not re-routed onto a cadence
   // that would pretend to run them, because nothing does: the falsifier.yml executor was deleted at
   // 611fd02770 (#8283) and dag/gunbc/ci/ci_layer_roots.dag records that no live executor runs this
-  // probe batch. Until the exit condition below fires, these eighteen rows produce ZERO OBSERVATIONS:
+  // probe batch. Until the exit condition below fires, these rows produce ZERO OBSERVATIONS:
   // they are admitted as data, never executed. EXIT CONDITION (§4b obligation 3, stated as a
   // CAPABILITY): a scheduled executor runs the QuarantineProbeExpectRed batch. That capability is
   // already registered and already owns this wait — gunbc.rung_drop.shared_capability
@@ -37,7 +37,23 @@ data transitional_admission_exception_identities: FreeSemigroup<String> = FreeSe
   // are kept here until that change lands, because this list gates rows that still exist on main: an
   // enrolment missing a live row turns the wall red, while a leftover identity for a row that has been
   // deleted can never match anything and is inert. Drop those two in the same merge that takes #14152.
-  "dag/test/claim/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse", "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse", "src/v2/test/claim/body_lowering/map_literal.dag::ml_an_elaborated_map_infers_holds", "src/v2/test/claim/body_lowering/map_literal.dag::ml_a_same_module_generic_entry_construct_infers_holds", "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag::w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", "dag/test/claim/algebra_receiver_callable_witness.dag::shorthand_match_binder_is_callable", "dag/test/claim/algebra_receiver_callable_witness.dag::explicit_match_binder_pool_free_name_is_callable", "dag/test/claim/algebra_receiver_callable_witness.dag::shorthand_match_binder_pool_free_name_is_callable", "dag/test/claim/algebra_receiver_callable_witness.dag::explicit_match_binder_colliding_name_is_callable", "dag/test/claim/algebra_receiver_callable_witness.dag::nested_let_in_match_arm_is_callable", "dag/test/claim/algebra_receiver_callable_witness.dag::function_parameter_is_callable", "dag/test/claim/algebra_receiver_alias_witness.dag::alias_return_is_a_refusal_fixture", "dag/test/claim/algebra_receiver_alias_witness.dag::alias_field_is_a_refusal_fixture", "dag/test/claim/algebra_receiver_alias_witness.dag::explicit_initializer_is_an_acceptance_fixture", "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::let_alias_is_proven_suspect", "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::named_step_fold_refuses_accumulator_unread", "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::report_counters_state_the_domain", "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::declared_named_step_fold_copy_is_caught"] }
+  "dag/test/claim/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
+  "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
+  "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag::w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::shorthand_match_binder_is_callable",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::explicit_match_binder_pool_free_name_is_callable",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::shorthand_match_binder_pool_free_name_is_callable",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::explicit_match_binder_colliding_name_is_callable",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::nested_let_in_match_arm_is_callable",
+  "dag/test/claim/algebra_receiver_callable_witness.dag::function_parameter_is_callable",
+  "dag/test/claim/algebra_receiver_alias_witness.dag::alias_return_is_a_refusal_fixture",
+  "dag/test/claim/algebra_receiver_alias_witness.dag::alias_field_is_a_refusal_fixture",
+  "dag/test/claim/algebra_receiver_alias_witness.dag::explicit_initializer_is_an_acceptance_fixture",
+  "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::let_alias_is_proven_suspect",
+  "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::named_step_fold_refuses_accumulator_unread",
+  "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::report_counters_state_the_domain",
+  "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::declared_named_step_fold_copy_is_caught",
+]
 
 // CONSTRUCTOR — derives the RungDrop from the single identity list authority.
 // DESIGN §3 single authority: the population field reads from the data above,
