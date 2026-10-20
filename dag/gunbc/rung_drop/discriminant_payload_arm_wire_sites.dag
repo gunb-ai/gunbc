@@ -1,0 +1,37 @@
+module gunbc.rung_drop.discriminant_payload_arm_wire_sites
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for a hollow payload-arm value reaching `discriminant` (DESIGN 4b(3)).
+// The tag-reference waiver used to be granted to every `discriminant(v: X {})` call by its callee
+// name. It is dead for the 147 non-test sites naming a FIELDLESS arm (no field is owed, so no
+// MissingField is raised) and live only for a PAYLOAD arm written `X {}`, which is a hollow value. It
+// is now granted at five functions of v2.std.compilers.target_model, the canonical-operation wire
+// form, where the arm NAME is the wire identity (producers write it as an Atom identity, consumers
+// compare an identity read off a wire node). Those sites hold a String, not a value of the type,
+// so same_arm over ConstructorTag cannot replace them.
+data discriminant_payload_arm_wire_sites: RungDrop = RungDrop {
+  identity: "discriminant_payload_arm_wire_sites" as NonEmptyStr,
+
+  subject: "a hollow payload-arm value (a fields-declaring variant written `X {}`) reaching the argument of discriminant, waived by v1.compiler.infer discriminant_payload_arm_wire_site",
+
+  declared: "2026-10-20",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "ConstructorTag<T> with the arm-reference elaboration entry types the position for comparison; the arm NAME as a String from a resolved arm has no carrier yet" },
+    population: [
+      "v2.std.compilers.target_model target_model_canonical_operation_wire_node: AlgebraPrimitive, AlgebraInverseCompose, OrderingComparison, EqualityComparison, CoercionCrossing",
+      "v2.std.compilers.target_model target_model_canonical_operation_wire_predicate_type: OrderingComparison, EqualityComparison",
+      "v2.std.compilers.target_model canonical_operation_from_wire_node: AlgebraPrimitive, AlgebraInverseCompose, OrderingComparison, EqualityComparison, CoercionCrossing",
+      "v2.std.compilers.target_model target_model_operator_shape_wire_node: InfixToken, PrefixToken, CallIdent, MethodIdent",
+      "v2.std.compilers.target_model target_operator_shape_from_wire_node: InfixToken, PrefixToken, CallIdent, MethodIdent",
+    ],
+    restoration_trigger: "an arm-name capability from a resolved arm (an authored arm-reference form or the canonical-operation wire identity modeled as data keyed by the arm's declaration) replaces the String the wire form carries; the waiver and discriminant_payload_arm_wire_site then delete together",
+  }
+}

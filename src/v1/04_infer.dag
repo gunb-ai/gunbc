@@ -10928,15 +10928,27 @@ fn sole_constructor_construction_diags(
   } else { [] }
 }
 
-data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier."
+data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. NARROWED AGAIN 2026-10-20: the waiver is dead for a fieldless arm (no field is owed) and a payload arm written `X {}` is a hollow value, so it is now granted only at the enumerated wire-form functions of v2.std.compilers.target_model (discriminant_payload_arm_wire_site; gunbc.rung_drop discriminant_payload_arm_wire_sites). DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the waiver and that list delete together."
 
-// THE RULING'S SEAM. A call `discriminant(v: X {})` whose sole argument is a zero-field literal
-// naming a coproduct variant is a tag reference: the argument is inferred as any other
-// expression (so its typed node, type and every other diagnostic are unchanged), and only the
-// MissingField rows the wall raised for X on that literal are waived. A call through a body
-// binding named `discriminant` is a function value, not the builtin, and is not the idiom.
+// THE RULING'S SEAM, NOW AN ENUMERATED RESIDUAL (rung drop gunbc.rung_drop
+// discriminant_payload_arm_wire_sites). A zero-field literal naming a FIELDLESS arm needs no waiver
+// at all (no field is owed, so no MissingField is raised) and a payload arm written `X {}` is a hollow
+// value. The waiver therefore survives only at the five functions of
+// v2.std.compilers.target_model that write and parse the canonical-operation wire form, where the arm
+// NAME is the wire identity; it is keyed on (module, enclosing declaration), never on the callee
+// spelling alone. A call through a body binding named `discriminant` is a function value, not the
+// builtin, and is not the idiom.
+fn discriminant_payload_arm_wire_site(module_name: String, caller_decl_name: String) -> Bool {
+  module_name == "v2.std.compilers.target_model" && (
+    caller_decl_name == "target_model_canonical_operation_wire_node"
+    || caller_decl_name == "target_model_canonical_operation_wire_predicate_type"
+    || caller_decl_name == "canonical_operation_from_wire_node"
+    || caller_decl_name == "target_model_operator_shape_wire_node"
+    || caller_decl_name == "target_operator_shape_from_wire_node")
+}
+
 fn variant_tag_reference_argument_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
-  if func_name != "discriminant" || callee_is_body_binding || (results |> count) != 1 {
+  if func_name != "discriminant" || callee_is_body_binding || (results |> count) != 1 || !discriminant_payload_arm_wire_site(module_name: scope.module_name, caller_decl_name: scope.caller_decl_name) {
     results
   } else {
     results |> map(air =>
