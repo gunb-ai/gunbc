@@ -108,5 +108,6 @@ data decl_ref_disposition_roster: List<DeclRefDisposition> = [
   DeclRefDisposition { subject: "v2.workflow.floor_unimported_bare_provider_debt", reason: StaleCitationDebt },
   DeclRefDisposition { subject: "v2.workflow.floor_unimported_bare_provider_debt_roster", reason: StaleCitationDebt },
   DeclRefDisposition { subject: "v2.workflow.floor_wet_route", reason: StaleCitationDebt },
-  DeclRefDisposition { subject: "v2.workflow.source_root_ingest_gate", reason: StaleCitationDebt }
+  DeclRefDisposition { subject: "v2.workflow.source_root_ingest_gate", reason: StaleCitationDebt },
+  DeclRefDisposition { subject: "test.claim.witness_floor_workflow_consolidation_witness.w_RED_fabric_evidence_executes_without_gating", reason: StaleCitationDebt }
 ]
