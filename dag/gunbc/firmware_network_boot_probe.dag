@@ -55,8 +55,8 @@ type FamilyKey {
 // arm here writes: there is no boot-override, boot-order-change or power route in this type, so a
 // row cannot select one and probe() cannot be handed one. A route that mutates would be a new
 // instrument with its own admission, not an arm added to this union.
-type ReadRoute
-  = RedfishGetRoute
+type RedfishGetRoute {}
+type ReadRoute = RedfishGetRoute
 
 // ONE ROUTE BECAUSE ONE READER: gunbc.firmware_network_boot_readers decodes every family as DMTF Redfish
 // GET results, so a MegaRAC or OpenBMC row names the route that is actually read. A MegaRAC REST route
@@ -300,10 +300,18 @@ fn probe(row: FirmwareBootFamilyRow, subject: ProbeSubject, contact: BmcContact)
 // its Redfish/IPMI surface read against the firmware's own reference yet (DESIGN 4d); each names
 // the read that closes it.
 
+// OUR GAP, NOT THE FIRMWARE'S (review 83302): no decoder reads the BootOptions collection yet, so
+// the row says the transport cannot answer THIS AXIS and resolve_axis yields Unobserved with this
+// reason, instead of a ReplyRefusedByBmc that would blame the BMC. Restored by a reference-keyed
+// BootOptions read, which also needs a source for each option's kind.
+fn boot_options_not_read() -> AxisCoverage {
+  TransportCannotAnswer { axis: BootOptionsAxis, why: "no decoder reads the Redfish BootOptions collection yet, so BootOption references and kinds are not observed" }
+}
+
 fn all_axes_answered() -> List<AxisCoverage> {
   [
     TransportAnswers { axis: BootOrderAxis },
-    TransportAnswers { axis: BootOptionsAxis },
+    boot_options_not_read(),
     TransportAnswers { axis: NicsAxis },
     TransportAnswers { axis: SecureBootAxis },
     TransportAnswers { axis: BiosVersionAxis },
@@ -317,7 +325,7 @@ fn secure_boot_not_exposed() -> AxisCoverage {
 fn megarac_coverage() -> List<AxisCoverage> {
   [
     TransportAnswers { axis: BootOrderAxis },
-    TransportAnswers { axis: BootOptionsAxis },
+    boot_options_not_read(),
     TransportAnswers { axis: NicsAxis },
     secure_boot_not_exposed(),
     TransportAnswers { axis: BiosVersionAxis },
@@ -329,31 +337,31 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the AMI MegaRAC SP-X Redfish and IPMI references for the boot-parameter and BIOS inventory surface; extdeps.bmc.megarac holds the transport." },
-      route: RedfishGetRoute,
+      route: RedfishGetRoute {},
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: Present { value: "2.11.104000" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the MegaRAC 2.11.104000 release notes for which Redfish Systems properties it serves; extdeps.bmc.megarac holds the transport." },
-      route: RedfishGetRoute,
+      route: RedfishGetRoute {},
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "3.22" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read bmcweb's Redfish Systems schema for the OpenBMC 3.22 build (extdeps.bmc.openbmc); cite the release that serves Boot and SecureBoot." },
-      route: RedfishGetRoute,
+      route: RedfishGetRoute {},
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: none, reach: SharedHostNic },
       authority: TranscribedUncited { read_obligation: "Read the board's manual for how the shared-NIC management port behaves while the host NIC is down; the Redfish surface is extdeps.bmc.openbmc's." },
-      route: RedfishGetRoute,
+      route: RedfishGetRoute {},
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: RedfishOnlyStack, release_line: none, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read Supermicro's Redfish reference guide for the Systems/Boot and SecureBoot GETs; only GETs are modeled (extdeps.bmc.redfish)." },
-      route: RedfishGetRoute,
+      route: RedfishGetRoute {},
       coverage: all_axes_answered()
     ),
   ]

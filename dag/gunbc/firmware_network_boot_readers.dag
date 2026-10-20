@@ -9,8 +9,8 @@ import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
 import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
-  AxisReply, ObservationAxis, BootOrderAxis, BootOptionsAxis, NicsAxis, SecureBootAxis, BiosVersionAxis,
-  ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
+  AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, SecureBootAxis, BiosVersionAxis,
+  ReplyBootOrder, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
 }
 
 // THE REDFISH READERS FOR THE FIRMWARE NETWORK-BOOT PROBE: the obligor of the frontier that
@@ -33,7 +33,7 @@ import gunbc.firmware_network_boot_probe {
 // The decoder claims the schema; a real capture is a separate receipt in the observing layer.
 //
 // NO KIND IS GUESSED. BootOrder entries carry a reference and no kind (standing's ruling); the
-// BootOptions axis, where a kind lives, is refused until a reference-keyed read is modeled. An empty
+// BootOptions axis, where a kind lives, is not read here and the rows declare it unanswerable. An empty
 // list is likewise a refusal and never an Observed empty list.
 
 type RedfishGet
@@ -108,20 +108,6 @@ fn boot_order_reply(system: RedfishDocRead) -> AxisReply {
   }
 }
 
-// BootOptions are keyed by BootOptionReference and each carries the kind the firmware reports, but
-// the only Redfish list this reader holds that names kinds is `BootSourceOverrideTarget@Redfish.
-// AllowableValues`, which has no reference. Joining a kind to a reference there would invent the
-// key the standing module says a join may be keyed on, so this axis is a typed refusal until a
-// BootOptions collection read (reference, DisplayName, BootOptionEnabled and a kind source) is
-// modeled; it is never an Observed empty list and never a guessed kind.
-fn boot_options_reply(system: RedfishDocRead) -> AxisReply {
-  match system {
-    RedfishDocRefused { refusal: r } => refused_axis(axis: BootOptionsAxis, refusal: r)
-    RedfishDocParsed { doc: _ } =>
-      refused_axis(axis: BootOptionsAxis, refusal: shape_refusal(detail: "the ComputerSystem publishes BootSourceOverrideTarget allowable values without BootOptionReferences, and a BootOption is keyed by reference; the BootOptions collection is not read by this decoder"))
-  }
-}
-
 fn bios_version_reply(system: RedfishDocRead) -> AxisReply {
   match system {
     RedfishDocRefused { refusal: r } => refused_axis(axis: BiosVersionAxis, refusal: r)
@@ -168,12 +154,13 @@ fn nics_reply(get: RedfishGet) -> AxisReply {
   }
 }
 
-// One reply per axis, always five: an axis never silently drops out of the result.
+// One reply per axis this decoder reads, always four: BootOrder, NICs, SecureBoot and BIOS version.
+// BootOptions has no reply because no decoder reads it; the probe's rows say so as TransportCannotAnswer,
+// so the gap is stated by us and never attributed to the BMC.
 fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
   let system = read_doc(get: reads.system)
   [
     boot_order_reply(system: system),
-    boot_options_reply(system: system),
     nics_reply(get: reads.nics),
     secure_boot_reply(get: reads.secure_boot),
     bios_version_reply(system: system),

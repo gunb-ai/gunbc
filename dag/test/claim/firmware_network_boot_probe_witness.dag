@@ -126,7 +126,7 @@ test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
   let row = firmware_boot_family_row(
     family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
     authority: TranscribedUncited { read_obligation: "witness row" },
-    route: RedfishGetRoute,
+    route: RedfishGetRoute {},
     coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
   )
   match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "Boot0001", label: "pxe")] }, ReplySecureBootEnabled] }) {
@@ -156,7 +156,7 @@ test fn a_sixth_family_probes_without_touching_the_instrument() -> Bool {
   let sixth = firmware_boot_family_row(
     family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.99" }, reach: DedicatedManagementPort },
     authority: TranscribedUncited { read_obligation: "hypothetical sixth family" },
-    route: RedfishGetRoute,
+    route: RedfishGetRoute {},
     coverage: [TransportAnswers { axis: BootOrderAxis }]
   )
   match probe(row: sixth, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "Boot0001", label: "net")] }] }) {
