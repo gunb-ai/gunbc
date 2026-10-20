@@ -104,6 +104,12 @@ for target in $TARGETS; do
   if [ -s "$hl" ] && [ -s "$ml" ]; then
     python3 $LOGS/hard_diag_by_identity.py "$hl" "$ml" $LOGS/cmp_${target}.hd.json
     echo "comparator rc=$? json=$( [ -s $LOGS/cmp_${target}.hd.json ] && wc -c < $LOGS/cmp_${target}.hd.json || echo MISSING)"
+    # The JSON IS the per-module, by-identity table the gate exists to produce. An earlier revision
+    # printed only its byte count, so a run could complete while producing no readable per-module
+    # result -- and the return tar carrying it was lost in transport twice. Print it, in full.
+    echo "----CMP-JSON $target----"
+    cat $LOGS/cmp_${target}.hd.json 2>/dev/null || echo "CMP_JSON_MISSING $target"
+    echo "----END-CMP-JSON $target----"
   else
     echo "CANNOT COMPARE $target: head log $([ -s "$hl" ] && echo present || echo MISSING/empty), main log $([ -s "$ml" ] && echo present || echo MISSING/empty). NOT reported as green."
   fi
