@@ -721,7 +721,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -17557,7 +17559,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);

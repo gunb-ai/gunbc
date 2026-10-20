@@ -1767,21 +1767,56 @@ pub fn resolve_entry_with_index(
 /// claim stands on: a finding, because nothing compensates a failure at the compiler floor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryResolveRefusal {
-    EntryMissing { message: String },
-    ClosureDiagnostics { message: String },
+    EntryMissing {
+        message: String,
+    },
+    ClosureDiagnostics {
+        message: String,
+    },
+    /// The resolve did not run to a verdict on the corpus (a host budget that cannot be read, an
+    /// assembly attribution refusal, an unreadable source): no observation, not a finding.
+    ResolveInfrastructure {
+        message: String,
+    },
+}
+
+/// Why `resolved_graph_from_sources_with_index` refused. `Diagnostics` is the corpus's own
+/// parse, resolve, type or ownership errors; every other refusal reaching it as a `String`
+/// (`?` through `From<String>`) is infrastructure, so an unclassified cause fails toward
+/// "no observation" and never toward a finding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ResolveFailure {
+    Diagnostics(String),
+    Infrastructure(String),
+}
+
+impl From<String> for ResolveFailure {
+    fn from(message: String) -> Self {
+        Self::Infrastructure(message)
+    }
+}
+
+impl ResolveFailure {
+    pub(crate) fn into_message(self) -> String {
+        match self {
+            Self::Diagnostics(m) | Self::Infrastructure(m) => m,
+        }
+    }
 }
 
 impl EntryResolveRefusal {
     pub fn message(&self) -> &str {
         match self {
-            Self::EntryMissing { message } | Self::ClosureDiagnostics { message } => message,
+            Self::EntryMissing { message }
+            | Self::ClosureDiagnostics { message }
+            | Self::ResolveInfrastructure { message } => message,
         }
     }
 }
 
 /// `resolve_entry_with_index` with the refusal's cause kept typed. The entry's own source is
 /// asked for first (`entry_source_from_index_or_disk` fails only when the entry is absent or
-/// unreadable); every refusal after that is the closure's.
+/// unreadable); after that the resolver's own `ResolveFailure` decides finding versus no observation.
 pub fn resolve_entry_with_index_typed(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -1794,8 +1829,16 @@ pub fn resolve_entry_with_index_typed(
 > {
     entry_source_from_index_or_disk(&index.source_files, entry_file)
         .map_err(|message| EntryResolveRefusal::EntryMissing { message })?;
-    resolve_entry_with_index(index, entry_file)
-        .map_err(|message| EntryResolveRefusal::ClosureDiagnostics { message })
+    resolve_entry_with_parse_cache_typed(index, entry_file).map_err(EntryResolveRefusal::from)
+}
+
+impl From<ResolveFailure> for EntryResolveRefusal {
+    fn from(failure: ResolveFailure) -> Self {
+        match failure {
+            ResolveFailure::Diagnostics(message) => Self::ClosureDiagnostics { message },
+            ResolveFailure::Infrastructure(message) => Self::ResolveInfrastructure { message },
+        }
+    }
 }
 
 /// Cumulative per-worker stage attribution across every entry resolve this thread
@@ -1910,6 +1953,19 @@ pub(crate) fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    resolve_entry_with_parse_cache_typed(index, entry_file).map_err(ResolveFailure::into_message)
+}
+
+pub(crate) fn resolve_entry_with_parse_cache_typed(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    ResolveFailure,
+> {
     let depth = resolve_span_enter();
     let span_started = std::time::Instant::now();
     let out = resolve_entry_with_parse_cache_inner(index, entry_file);
@@ -1925,7 +1981,7 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
         Rc<v1_compiler_compile::ResolvedGraph>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
     ),
-    String,
+    ResolveFailure,
 > {
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
@@ -2007,7 +2063,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         Rc<HashMap<String, Rc<NewlineIndex>>>,
         Rc<im::Vector<Rc<ErrorNode>>>,
     ),
-    String,
+    ResolveFailure,
 > {
     let entry_file = phase_label;
     index
@@ -2052,7 +2108,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        return Err(parse_error_msgs.join("\n"));
+        return Err(ResolveFailure::Diagnostics(parse_error_msgs.join("\n")));
     }
 
     let source_indices = Rc::new(si_map);
@@ -2068,7 +2124,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+        return Err(ResolveFailure::Diagnostics(format_error_nodes(
+            &graph.diagnostics,
+            &source_indices,
+        )));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -2106,7 +2165,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm_diags, &source_indices));
+        return Err(ResolveFailure::Diagnostics(format_error_nodes(
+            &norm_diags,
+            &source_indices,
+        )));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -2155,7 +2217,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(msgs.join("\n"));
+        return Err(ResolveFailure::Diagnostics(msgs.join("\n")));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -2190,7 +2252,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&ownership_diags, &source_indices));
+        return Err(ResolveFailure::Diagnostics(format_error_nodes(
+            &ownership_diags,
+            &source_indices,
+        )));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
@@ -3674,6 +3739,22 @@ mod entry_resolve_refusal_tests {
     /// name/type refusal is exercised end to end through `claim_batch` (exit 1, FAIL line), not
     /// here: a resolve in a bare unit test is refused by the host memory budget, which would make
     /// a `ClosureDiagnostics` assertion pass for the wrong reason.
+    #[test]
+    fn an_unclassified_or_budget_refusal_is_infrastructure_and_only_diagnostics_are_findings() {
+        let budget =
+            ResolveFailure::from("HostBudgetUnreadable: no modeled host memory source".to_string());
+        assert!(matches!(
+            EntryResolveRefusal::from(budget),
+            EntryResolveRefusal::ResolveInfrastructure { .. }
+        ));
+        assert!(matches!(
+            EntryResolveRefusal::from(ResolveFailure::Diagnostics(
+                "name 'N' not found".to_string()
+            )),
+            EntryResolveRefusal::ClosureDiagnostics { .. }
+        ));
+    }
+
     #[test]
     fn a_non_file_entry_is_missing_and_an_existing_entry_is_not() {
         let dir = scratch("split");

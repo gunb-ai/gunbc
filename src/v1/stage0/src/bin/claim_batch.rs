@@ -602,7 +602,9 @@ enum RunWitnessesRefusal {
 /// A group whose entry did not resolve is counted, never aborted on (each run would otherwise
 /// reveal only the NEXT red class). A missing entry or route never reached the claim's subject:
 /// UNOBSERVED, exit 2. A name or type error in the closure is a finding in the corpus the claim
-/// stands on: FAIL, exit 1, because nothing compensates a failure at the compiler floor.
+/// stands on: FAIL, exit 1, because nothing compensates a failure at the compiler floor. A
+/// resolve that never reached a verdict (host budget unreadable, assembly attribution refusal) is
+/// no observation either: UNOBSERVED, exit 2, never a finding against the corpus.
 fn report_unresolved_group(
     group: &EntryGroup,
     refusal: &EntryResolveRefusal,
@@ -614,6 +616,15 @@ fn report_unresolved_group(
                 println!(
                     "UNOBSERVED {} (entry resolve failed: {})",
                     function, group.entry
+                );
+                timings.any_unobserved = true;
+            }
+            EntryResolveRefusal::ResolveInfrastructure { .. } => {
+                println!(
+                    "UNOBSERVED {} (resolve did not reach a verdict on {}: {})",
+                    function,
+                    group.entry,
+                    refusal.message().lines().next().unwrap_or("")
                 );
                 timings.any_unobserved = true;
             }
