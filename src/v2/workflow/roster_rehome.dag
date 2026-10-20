@@ -203,6 +203,9 @@ type RehomeFactLookup
 // `v2.` removed (the seed's decl_logical_qualified_name), so v2.std.integer.Int and std.integer.Int share the key
 // std.integer.Int and a keyed read returns both. The home's file is derived by the one name-to-path rule
 // (v2.compiler.source_authority module_file over v2.cli.repository_layout), and exactly one candidate must come from it.
+// INTERIM, both halves (review 83179): the `v2.` stripping below repeats the seed's key rule, and the file filter works
+// around it. TRIGGER: when decl_index keys by the module's own name (adhoc-0f4309c5-074), delete BOTH, and this becomes a
+// plain keyed read of <home>.<name>.
 fn rehome_sole_fact(home: String, name: String) -> RehomeFactLookup {
   let qualified_name = home + "." + name
   match module_file(layout: repository_storage_layout(), name: home) {
@@ -244,11 +247,16 @@ fn rehome_facts_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
 fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
   if rehome_kind_text(k: from.kind) == rehome_kind_text(k: to.kind) {
     RehomePairSame
-  } else if rehome_kind_text(k: from.kind) == "other" || rehome_kind_text(k: to.kind) == "other" {
+  } else if rehome_is_alias_gap_pair(a: rehome_kind_text(k: from.kind), b: rehome_kind_text(k: to.kind)) {
     RehomePairSame
   } else {
     RehomePairRefused { reason: RehomeKindDiffers }
   }
+}
+
+// Exactly the gap's pair, in either order: an aliased type read OtherItem against a TypeItem (review 83179).
+fn rehome_is_alias_gap_pair(a: String, b: String) -> Bool {
+  (a == "other" && b == "type") || (a == "type" && b == "other")
 }
 
 fn rehome_kind_text(k: ItemKind) -> String {
@@ -905,11 +913,20 @@ fn rehome_control_representation(prepared: PreparedGrammar, lex: PreparedLexRule
   refused + moved + kinds
 }
 
-// A declared representation still refuses a real kind difference (review 83176): fn against type refuses.
+// A declared representation still refuses a real kind difference (reviews 83176, 83179): fn against type and an OtherItem
+// against fn both refuse; only the alias gap's own pair (OtherItem against TypeItem) is admitted.
 fn rehome_facts_kind_control() -> String {
-  match rehome_kind_verdict(from: DeclFact { qualified_name: "c.old.Token", name: "Token", kind: FnItem, node: rehome_control_node(), rel_path: "c/old.dag" }, to: DeclFact { qualified_name: "c.new.Token", name: "Token", kind: TypeItem, node: rehome_control_node(), rel_path: "c/new.dag" }) {
-    RehomePairRefused { reason: RehomeKindDiffers } => ""
-    _ => "CONTROL-FAIL rehome representation: a declared representation admitted a fn-to-type kind change\n"
+  rehome_kind_case(name: "fn-to-type", from: FnItem, to: TypeItem, admitted: false)
+    + rehome_kind_case(name: "other-to-fn", from: OtherItem, to: FnItem, admitted: false)
+    + rehome_kind_case(name: "other-to-type", from: OtherItem, to: TypeItem, admitted: true)
+}
+
+fn rehome_kind_case(name: String, from: ItemKind, to: ItemKind, admitted: Bool) -> String {
+  let verdict = rehome_kind_verdict(from: DeclFact { qualified_name: "c.old.Token", name: "Token", kind: from, node: rehome_control_node(), rel_path: "c/old.dag" }, to: DeclFact { qualified_name: "c.new.Token", name: "Token", kind: to, node: rehome_control_node(), rel_path: "c/new.dag" })
+  match verdict {
+    RehomePairSame => if admitted { "" } else { "CONTROL-FAIL rehome kind " + name + ": a declared representation admitted a kind change\n" }
+    RehomePairRefused { reason: RehomeKindDiffers } => if admitted { "CONTROL-FAIL rehome kind " + name + ": the alias gap's pair was refused\n" } else { "" }
+    RehomePairRefused { reason: r } => "CONTROL-FAIL rehome kind " + name + ": refused " + rehome_refusal_text(r: r) + "\n"
   }
 }
 
