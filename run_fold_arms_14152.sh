@@ -69,9 +69,15 @@ for SPEC in "STRIP:refs/heads/scratch/acc-without-equality-widening" "ACC_HEAD:r
     safe=${t//::/_}
     "$BIN" --exact "$t" --nocapture --test-threads=1 > "/tmp/fold_${LABEL}_${safe}.log" 2>&1
     rc=$?
-    verdict=PASS
-    [ $rc -ne 0 ] && verdict=FAIL
-    grep -q "test result: ok. 1 passed" "/tmp/fold_${LABEL}_${safe}.log" || verdict=VOID_NO_MATCH
+    # VERDICT LOGIC, corrected after a run exposed it. A row that PANICKED on its own assertion exits 101
+    # AND prints 'test result: FAILED' -- that is a FAIL, the result we most want. A filter that matched
+    # nothing also exits 101 but prints '0 passed; 0 failed'. The earlier version keyed only on the ok-line,
+    # so it labelled real REDs VOID_NO_MATCH: an instrument that turns a red into a void is worse than one
+    # with no reds at all.
+    if grep -q "test result: ok. 1 passed" "/tmp/fold_${LABEL}_${safe}.log"; then verdict=PASS
+    elif grep -q "test result: FAILED" "/tmp/fold_${LABEL}_${safe}.log"; then verdict=FAIL
+    elif grep -qE "0 passed; 0 failed" "/tmp/fold_${LABEL}_${safe}.log"; then verdict=VOID_NO_MATCH
+    else verdict="VOID_UNRECOGNISED_rc${rc}"; fi
     echo "$LABEL $verdict rc=$rc $t"
     sed 's/^/'"$LABEL"'   | /' "/tmp/fold_${LABEL}_${safe}.log" | head -20
   done

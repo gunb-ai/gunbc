@@ -546,3 +546,41 @@ that it equals carrier_container_alias_rows() -- one direction per alias. It mus
 perturbed in isolation (rename the declared alias, or drop the carrier's pascal_alias_spelling), which is
 what proves it is a real cross-authority check rather than a restatement. Then the fix is to make ONE side
 cite the other, and the claim turns green and keeps being the guard.
+
+## FOLD-ARM DISPOSITION RESULT (executed at two heads). STRIP 406dc6d43f7 vs ACC HEAD 97e47f8e562.
+Both BUILD_RC=0, INSTRUMENT_ROWS_LISTED=7 at each head, rows byte-identical (ROWS_SHA256=2d61dde6ca04240c),
+head identity self-reported by each row from the compiled mirror (strip=1 occurrence, Acc head=3).
+Row outcomes are read from the RAW log lines, not from the runner's verdict labels: the label logic keyed
+only on the ok-line and mislabelled genuine panics rc=101 as VOID_NO_MATCH (fixed here; a red turned into a
+void is worse than no red).
+
+  ROW                                        PREDICTED                     MEASURED
+  D1 one declaration / equal arguments       FAIL strip, PASS Acc head     EXACTLY THAT (strip refused=true,
+                                                                             Acc head refused=false) -> the
+                                                                             over-refusal is REAL and arm 2 fixes it
+  D2 one spelling / two declarations         PASS (refuse) at both         PASS at both -> the widening does NOT
+                                                                             over-admit at the fold
+  D3 no declarations at all                  PASS (refuse) at both         PASS at both
+  D4 List vs FreeMonoid                      PASS at BOTH (via arm 1)      FAIL at strip, PASS at Acc head ->
+                                                                             arm 1 ALSO lives inside
+                                                                             type_heads_agree: the widening created
+                                                                             BOTH arms, not just the declaration one
+  D5 Map pair, no declarations               predicted refused at both     ACCEPTED at both -> FALSIFIED, and it
+                                                                             falsifies MY OWN earlier attribution
+  D6 Map pair, one declaration both sides    PASS Acc head / FAIL strip    PASS at both (same mechanism as D5)
+  D7 Disj children invisible to renderer     PASS (blind) at both          PASS at both -> blind at BOTH heads
+
+MECHANISM READ AFTER THE RUN (04_types.dag node_type_equals_core, arms in order): the both_maps arm descends
+the two Map arguments pairwise and NEVER compares the head or the declarations; the container arm calls
+type_heads_agree first; the applied/applied arm calls type_heads_agree then compares arity and children.
+So D5/D6 pass at both heads for a reason the widening does not touch, and the dominant corpus Map family
+(59 of the Acc head's 76) CANNOT be attributed to arm 2 -- my earlier claim that "Map is not a carrier so its
+rows can only reach arm 2" is WITHDRAWN as falsified by measurement. Those rows differ in something the
+synthetic pair does not reproduce (candidate: the fabricated-placeholder actuals and different head names in
+the real rows, not equal-head pairs).
+CONSEQUENCES. (1) D1 and D4 are a genuine executed RED/GREEN pair for the widening -- the discriminator
+PR-2a was held for lacking (msg_37357ae1). Per ruling (d) PR-2's SHIPPED discriminators must be .dag claims,
+so D1/D4 are the property to re-express there, not the carriers themselves. (2) D2/D3 green at both heads is
+the over-admission guard holding at the fold: the widening never makes two distinct declarations, or two
+bare spellings, equal. (3) D7 says the 89% identical-print class is genuine renderer blindness at BOTH heads,
+so printed-shape triage is unusable until item 4 lands.
