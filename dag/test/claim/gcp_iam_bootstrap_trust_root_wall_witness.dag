@@ -4,15 +4,18 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { gcp_tag_condition_expression }
-import extdeps.cloud.gcp.iam_deny { GcpDenyPolicyRule }
+import extdeps.cloud.gcp.iam { IamCondition, GcpTagBindingWire, gcp_tag_condition_expression }
+import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, iam_converge_service_account, iam_observe_service_account }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_trust_root_tag_condition, iam_bootstrap_trust_root_tagged_accounts, iam_bootstrap_delta_principal,
   iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_deny_rules_match, iam_bootstrap_trust_root_wall_rule,
+  TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
+  iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions,
 }
-import gunbc.auth.gcp_iam_bootstrap { BootstrapTrustRootTags, BootstrapDeny, BootstrapIdentities, iam_bootstrap_stage_admitted }
+import gunbc.auth.gcp_iam_bootstrap { BootstrapTrustRootTags, BootstrapDeny, BootstrapIdentities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapCapabilities, BootstrapAuthorityCleanup, BootstrapProbeCleanup, iam_bootstrap_stage_admitted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -94,4 +97,90 @@ test fn the_wall_is_its_own_deny_policy_with_the_rendered_tag_condition() -> Boo
 test fn the_tags_exist_before_the_deny_that_names_them() -> Bool {
   !iam_bootstrap_stage_admitted(stage: BootstrapDeny, completed: [BootstrapIdentities])
     && iam_bootstrap_stage_admitted(stage: BootstrapDeny, completed: [BootstrapIdentities, BootstrapTrustRootTags])
+}
+
+// ── BLOCKER 1 (side chat at db00846da5): the PRODUCTION deny matcher compares conditions exactly ──
+// A correctly created wall must read back; the wall stripped of its condition (which would refuse
+// target-account writes too) and a condition naming another tag value must not.
+fn wall_with_condition(c: IamCondition?) -> GcpDenyPolicyRule {
+  match iam_bootstrap_trust_root_wall_rule().deny_rule {
+    Absent => iam_bootstrap_trust_root_wall_rule()
+    Present { value: r } => GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: r.denied_principals,
+      denied_permissions: r.denied_permissions, exception_principals: r.exception_principals, exception_permissions: r.exception_permissions,
+      denial_condition: c } } }
+  }
+}
+
+fn wall_condition() -> IamCondition? {
+  match iam_bootstrap_trust_root_wall_rule().deny_rule { Absent => none  Present { value: r } => r.denial_condition }
+}
+
+test fn the_exact_conditioned_wall_reads_back() -> Bool {
+  iam_bootstrap_deny_rules_match(observed: Present { value: [iam_bootstrap_trust_root_wall_rule()] }, declared: [iam_bootstrap_trust_root_wall_rule()])
+}
+
+test fn the_wall_without_its_condition_is_refused() -> Bool {
+  !iam_bootstrap_deny_rules_match(observed: Present { value: [wall_with_condition(c: none)] }, declared: [iam_bootstrap_trust_root_wall_rule()])
+}
+
+test fn a_wall_naming_another_tag_value_is_refused() -> Bool {
+  match wall_condition() {
+    Absent => false
+    Present { value: c } => !iam_bootstrap_deny_rules_match(
+      observed: Present { value: [wall_with_condition(c: Present { value: IamCondition { title: c.title, description: c.description,
+        expression: "resource.matchTag('gunbai-secrets/gunbc-trust-root', 'other')" } })] },
+      declared: [iam_bootstrap_trust_root_wall_rule()])
+  }
+}
+
+test fn the_unconditioned_boundary_policies_still_read_back_and_refuse_a_condition() -> Bool {
+  let unconditioned = filter(iam_bootstrap_deny_policies(), d => (d.policy_id as String) != (iam_bootstrap_trust_root_wall_policy_id as String))
+  count(unconditioned) == 2
+    && all(unconditioned, d => iam_bootstrap_deny_rules_match(observed: Present { value: d.rules }, declared: d.rules))
+    && match wall_condition() {
+      Absent => false
+      Present { value: c } => all(unconditioned, d => !iam_bootstrap_deny_rules_match(observed: Present { value: map(d.rules, r => match r.deny_rule {
+        Absent => r
+        Present { value: x } => GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: x.denied_principals, denied_permissions: x.denied_permissions,
+          exception_principals: x.exception_principals, exception_permissions: x.exception_permissions, denial_condition: Present { value: c } } } }
+      }) }, declared: d.rules))
+    }
+}
+
+// ── BLOCKER 2: a tag binding is established only by an exact row of a complete-enough listing ──────
+data parent_a: String = "//iam.googleapis.com/projects/gunbai-secrets/serviceAccounts/a@gunbai-secrets.iam.gserviceaccount.com"
+data parent_b: String = "//iam.googleapis.com/projects/gunbai-secrets/serviceAccounts/b@gunbai-secrets.iam.gserviceaccount.com"
+data wanted_value: NonEmptyStr = "tagValues/281475000000001"
+
+fn binding_row(parent: String, value: String) -> GcpTagBindingWire {
+  GcpTagBindingWire { name: none, parent: parent, tag_value: Present { value: value }, tag_value_namespaced_name: none }
+}
+
+test fn a_row_with_the_value_on_another_parent_establishes_nothing() -> Bool {
+  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: wanted_value as String)] }, next_page_token: none) {
+    TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false
+  }
+}
+
+test fn the_exact_row_establishes_the_binding() -> Bool {
+  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: "tagValues/9"), binding_row(parent: parent_a, value: wanted_value as String)] }, next_page_token: Present { value: "more" }) {
+    TagBindingEstablished => true  TagBindingAbsent => false  TagBindingIncomplete => false
+  }
+}
+
+test fn an_unmatched_page_with_another_page_is_incomplete_never_absent() -> Bool {
+  (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
+    TagBindingEstablished => false  TagBindingAbsent => false  TagBindingIncomplete => true })
+    && (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: none, next_page_token: Present { value: "" }) {
+    TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false })
+}
+
+// ── BLOCKER 3: iam-bootstrap's effective tag-detach authority is probed on every trust root ─────────
+test fn the_detach_probe_runs_as_iam_bootstrap_on_every_trust_root_before_workflow_trust() -> Bool {
+  any(iam_bootstrap_probe_accounts, a => (a as String) == (iam_bootstrap_service_account as String))
+    && all(iam_bootstrap_trust_root_tagged_accounts(), t => any(iam_bootstrap_probe_accounts, a => (a as String) == (t as String)))
+    && iam_bootstrap_tag_detach_permissions == ["iam.serviceAccounts.deleteTagBinding"]
+    && iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapProbeAuthority])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapProbeCleanup, BootstrapTrustRootTags])
 }

@@ -43,6 +43,8 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
   iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
+  TagBindingReading, TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
+  iam_bootstrap_tag_detach_permissions, iam_bootstrap_probe_accounts, iam_bootstrap_trust_root_tagged_accounts,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
@@ -91,7 +93,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
     BootstrapJournalBucket => [BootstrapIdentities]
     BootstrapProbeAuthority => [BootstrapCapabilities]
-    BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapProbeAuthority]
+    BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority]
     BootstrapProbeCleanup => [BootstrapProbeAuthority]
     BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback, BootstrapProbeCleanup]
   }
@@ -671,24 +673,26 @@ fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResou
   }
 }
 
-fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> Bool? {
+fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingReading? {
   match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
     RestRefused { refusal: _ } => none
-    RestAnswered { answer: l } => Present { value: match l.tag_bindings { Absent => false  Present { value: bs } => any(bs, b => match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) } }
+    RestAnswered { answer: l } => Present { value: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
   }
 }
 
 fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token: Secret) -> TrustRootTagsOutcome {
   match tag_bound_on(parent: parent, value_name: value_name, token: token) {
     Absent => trust_root_tags_refused(reason: concat(parent, ": tag bindings unreadable"))
-    Present { value: true } => TrustRootTagsBound
-    Present { value: false } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
+    Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
+    Present { value: TagBindingEstablished } => TrustRootTagsBound
+    Present { value: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
       RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
       RestAnswered { answer: a } => match a.error {
         Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], ""))
         Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-          Present { value: true } => TrustRootTagsBound
-          Present { value: false } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          Present { value: TagBindingEstablished } => TrustRootTagsBound
+          Present { value: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
           Absent => trust_root_tags_refused(reason: concat(parent, ": tag binding readback unreadable"))
         }
       }
@@ -845,6 +849,23 @@ fn iam_bootstrap_negative_probes(token: Secret) -> String {
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: grant_set_payload_permissions, expected: [], token: token) }) }
 }
 
+// iam-bootstrap's EFFECTIVE tag-detach authority on each trust root, read as itself, is empty; the
+// operator's answer on the same probe holding it is the control that the probe discriminates.
+fn iam_bootstrap_tag_detach_probe(token: Secret) -> String {
+  match iam_bootstrap_probe_token(token: token, account: iam_bootstrap_service_account, remaining: 85) {
+    BootstrapProbeTokenRefused { reason } => concat("bootstrap-account readback credential unavailable; workflow trust withheld: ", reason)
+    BootstrapProbeTokenReady { access_token: bootstrap_token } => fold(iam_bootstrap_trust_root_tagged_accounts(), init: "", f: (prior, account) =>
+      if prior != "" { prior } else {
+        let control = iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: iam_bootstrap_tag_detach_permissions, expected: iam_bootstrap_tag_detach_permissions, token: token)
+        if control != "" { concat("tag-detach probe does not discriminate (the operator's answer lacks it); workflow trust withheld: ", control) }
+        else {
+          let denied = iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: iam_bootstrap_tag_detach_permissions, expected: [], token: bootstrap_token)
+          if denied != "" { concat("iam-bootstrap holds tag-detach authority on a trust root; workflow trust withheld: ", denied) } else { "" }
+        }
+      })
+  }
+}
+
 fn iam_bootstrap_is_forbidden(refusal: RestRefusal) -> Bool {
   match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
@@ -877,7 +898,8 @@ fn iam_bootstrap_privilege_readback(token: Secret) -> String {
       let positive = iam_bootstrap_positive_probes(token: apply_token)
       if positive != "" { positive } else {
         let negative = iam_bootstrap_negative_probes(token: apply_token)
-        if negative != "" { negative } else {
+        let detach = if negative != "" { negative } else { iam_bootstrap_tag_detach_probe(token: token) }
+        if detach != "" { detach } else {
           match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 85) {
             BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
             BootstrapProbeTokenReady { access_token: observer_token } => {
@@ -1407,7 +1429,7 @@ fn iam_bootstrap_probe_authority_converge(token: Secret, withdrawing: Bool) -> S
   else {
     let actor = if withdrawing { "" } else { iam_bootstrap_operator_readback(token: token) }
     if actor != "" { actor } else {
-      fold([iam_converge_service_account, iam_observe_service_account], init: "", f: (prior, account) => {
+      fold(iam_bootstrap_probe_accounts, init: "", f: (prior, account) => {
         let cell = iam_bootstrap_probe_cell(intent: intent)
         let subject = BootstrapAccount { account: account }
         let result = if prior != "" && !withdrawing { prior } else {

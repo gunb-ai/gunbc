@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_model
 import std.types { String, NonEmptyStr, List, Bool }
 import std.list { distinct_by_key }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, gcp_tag_condition_expression, gcp_service_account_full_resource_name }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
 import gunbc.auth.gcp_iam_converge {
@@ -341,7 +341,21 @@ fn deny_rule_matches(observed: GcpDenyRule, declared: GcpDenyRule) -> Bool {
     && same_key_set(a: observed.denied_permissions, b: declared.denied_permissions)
     && match observed.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
     && match observed.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
-    && match observed.denial_condition { Absent => true  Present { value: _ } => false }
+    && deny_condition_matches(observed: observed.denial_condition, declared: declared.denial_condition)
+}
+
+// A DENY CONDITION READS BACK ONLY AS ITSELF (side chat at db00846da5, blocker 1): absent with absent, or
+// present with present on the exact expression, title and description. A mixed pair is a mismatch both
+// ways: an unconditioned wall would also refuse the target accounts' writes, and a conditioned boundary
+// would no longer cover every account.
+fn deny_condition_matches(observed: IamCondition?, declared: IamCondition?) -> Bool {
+  match declared {
+    Absent => match observed { Absent => true  Present { value: _ } => false }
+    Present { value: want } => match observed {
+      Absent => false
+      Present { value: got } => got.expression == want.expression && got.title == want.title && got.description == want.description
+    }
+  }
 }
 
 // EXACTLY THE DECLARED RULES, no more: an existing policy that differs is refused, never adopted.
@@ -492,6 +506,32 @@ data iam_bootstrap_trust_root_walled_permissions: List<String> = [
   "iam.googleapis.com/serviceAccounts.enable",
   "iam.googleapis.com/serviceAccounts.undelete",
 ]
+
+// ── A TAG BINDING IS ESTABLISHED BY AN EXACT ROW (side chat at db00846da5, blocker 2) ──────────────
+// A listing establishes the binding only through a row whose parent IS the requested resource and whose
+// value IS the requested value; the right value on another parent establishes nothing. A listing with
+// another page and no exact row is incomplete, never absence. An empty next-page token is no page.
+type TagBindingReading = TagBindingEstablished | TagBindingAbsent | TagBindingIncomplete
+
+fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
+  let rows = match bindings { Absent => []  Present { value: bs } => bs }
+  if any(rows, b => b.parent == parent && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
+  else { match next_page_token { Present { value: t } => if t != "" { TagBindingIncomplete } else { TagBindingAbsent }  Absent => TagBindingAbsent } }
+}
+
+// ── TAG-DETACH AUTHORITY IS OBSERVED ABSENT (side chat at db00846da5, blocker 3) ────────────────────
+// Detaching a tag from a service account needs resourcemanager.tagValueBindings.delete on the value AND
+// iam.serviceAccounts.deleteTagBinding on the account (docs.cloud.google.com/iam/docs/service-accounts-tags,
+// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and requires its effective
+// answer on each trust root to hold neither permission named here, with the operator's answer holding it
+// as the positive control that the probe discriminates. Absence on the account axis alone already rules
+// detaching out; the tag-value axis is an unmet obligation on gunbc.rung_drop
+// gcp_iam_bootstrap_trust_root_wall_in_code (no tag-value permission probe is modeled).
+data iam_bootstrap_tag_detach_permissions: List<String> = ["iam.serviceAccounts.deleteTagBinding"]
+
+// The accounts the temporary probe authority may mint a token for: the two the readback already reads
+// as, and iam-bootstrap, whose own effective authority is what the detach probe observes.
+data iam_bootstrap_probe_accounts: List<ServiceAccountEmail> = [iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account]
 
 fn iam_bootstrap_trust_root_wall_rule() -> GcpDenyPolicyRule {
   GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
