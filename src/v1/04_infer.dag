@@ -5852,11 +5852,12 @@ fn select_formal_for_call_argument(argument: Node, argument_index: Int, argument
 // (0.64% shape diags + 0.45% its fold + 0.73% the plan's inverse search) making up all of it
 // (§5a D.2, `direct_call_shape_diags` re-runs the rule over every earlier argument). This type
 // holds the correspondence for ONE call over ONE (arguments, value_params) domain: `selections` is
-// index-aligned with `arguments` and answers WHICH formal an argument selects; `labels` is
-// index-aligned with the caller labels the rule itself reads; `arguments_by_formal` answers the
-// inverse the plan needs, and it records the claimants for each formal ASCENDING by construction --
-// reading its head is the FIRST argument that selected that formal, which is exactly what every
-// prior consumer asked for (filter-then-first over ascending argument indices). WHAT DISAPPEARS: the second round's recompute (it now reads the
+// index-aligned with `arguments` and answers WHICH formal an argument selects; `claimants_by_formal`
+// answers the inverse the plan and the duplicate wall need, recording the claimants for each formal
+// ASCENDING by construction -- reading its head is the FIRST argument that selected that formal,
+// which is exactly what every prior consumer asked for (filter-then-first over ascending argument
+// indices) -- and each claimant carries its OWN caller label as the Optional its reader already
+// was, so no consumer looks a label up by index at all. WHAT DISAPPEARS: the second round's recompute (it now reads the
 // table the first round built over the same domain), the plan's per-formal re-run of the rule over
 // all arguments, and the duplicate check's re-run over every earlier argument. WHAT STAYS
 // UNCHANGED: the selection rule itself, in one place, still the only authority that maps an
@@ -5875,52 +5876,43 @@ fn select_formal_for_call_argument(argument: Node, argument_index: Int, argument
 // (generics removed); those are different domains and merging them would change which formal an
 // argument selects -- the two builds are the honest statement of that difference.
 // `selections` is index-aligned with `arguments`: which formal each argument selects, exactly what
-// select_formal_for_call_argument returned for that argument. `labels` is index-aligned too -- the
-// caller label the rule itself reads, as TEXT with "" meaning no label. That encoding is exact, not
-// lossy: the rule reads the label through arg_name_at, which returns none exactly when the authored
-// name text is "", so "" is a name no argument can carry and the none-vs-text distinction of
-// arg_name_at round-trips through it (two unlabeled arguments still compare equal, an unlabeled
-// argument never equals a labeled one). It is stored as plain text because the only consumer, the
-// formal-identity duplicate wall, compares labels for equality and never branches on
-// present-vs-absent. `arguments_by_formal` is the inverse the application plan and the duplicate
-// wall ask: for each formal, the argument indices that selected it, ASCENDING by construction (the
-// fold walks arguments in index order and appends), which is what makes
-// `call_argument_first_index_for_formal` return the first claimant the way the old
-// filter-then-first did.
-type CallArgumentFormalCorrespondence {
-  selections: List<CallArgumentFormalSelection>
-  labels: List<String>
-  arguments_by_formal: Map<Int, List<Int>>
+// select_formal_for_call_argument returned for that argument. `claimants_by_formal` is the inverse
+// the application plan and the formal-identity duplicate wall ask: for each formal, the arguments
+// that selected it, ASCENDING by construction (the fold walks arguments in index order and
+// appends), so the head is the first claimant the way the old filter-then-first produced it. Each
+// claimant carries ITS OWN caller label, as the Optional its reader already was: the wall compares
+// labels of arguments it names, so the label travels with the claim instead of being re-looked-up
+// by index -- there is no index whose out-of-range answer could be mistaken for a real label, and
+// no sentinel: absence is the declared Absent of Optional, per `gunbc.design_ruling
+// dag_absence_is_one_meaning` (the `String?` field is the canonical std.optional carrier, §3b, the
+// same carrier `matched_argument_index: Int?` on ResolvedCallFormal already uses).
+type CallArgumentClaimant {
+  argument_index: Int
+  caller_label: String?
 }
 
-// The caller label as text, "" for no label -- the exact round-trip of arg_name_at (see the type
-// comment: arg_name_at returns none exactly when the authored name is "").
-fn call_argument_label_text(argument: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match arg_name_at(n: argument, source_indices: source_indices) {
-    Present { value: label } => label
-    Absent => ""
-  }
+type CallArgumentFormalCorrespondence {
+  selections: List<CallArgumentFormalSelection>
+  claimants_by_formal: Map<Int, List<CallArgumentClaimant>>
 }
 
 fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalCorrespondence {
   fold(
     arguments |> enumerate,
-    init: CallArgumentFormalCorrespondence { selections: [], labels: [], arguments_by_formal: empty_map() },
+    init: CallArgumentFormalCorrespondence { selections: [], claimants_by_formal: empty_map() },
     f: (acc, pair) =>
       let selection = select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices)
       let extended = CallArgumentFormalCorrespondence {
         selections: concat(acc.selections, [selection]),
-        labels: concat(acc.labels, [call_argument_label_text(argument: pair.second, source_indices: source_indices)]),
-        arguments_by_formal: acc.arguments_by_formal
+        claimants_by_formal: acc.claimants_by_formal
       }
       match selection {
         CallArgumentFormalSelected { formal_index: selected, formal: _ } => CallArgumentFormalCorrespondence {
           selections: extended.selections,
-          labels: extended.labels,
-          arguments_by_formal: map_insert(acc.arguments_by_formal, selected, concat(match map_get(acc.arguments_by_formal, selected) {
+          claimants_by_formal: map_insert(acc.claimants_by_formal, selected, concat(match map_get(acc.claimants_by_formal, selected) {
             Present { value: claimants } => claimants
             Absent => []
-          }, [pair.first]))
+          }, [CallArgumentClaimant { argument_index: pair.first, caller_label: arg_name_at(n: pair.second, source_indices: source_indices) }]))
         }
         CallArgumentFormalUnavailable => extended
       }
@@ -5938,22 +5930,18 @@ fn call_argument_selection_at(correspondence: CallArgumentFormalCorrespondence, 
   }
 }
 
-fn call_argument_label_at(correspondence: CallArgumentFormalCorrespondence, argument_index: Int) -> String {
-  match correspondence.labels |> skip(argument_index) |> first {
-    Present { value: label } => label
-    Absent => ""
-  }
-}
-
 fn call_argument_first_index_for_formal(correspondence: CallArgumentFormalCorrespondence, formal_index: Int) -> Int? {
-  match map_get(correspondence.arguments_by_formal, formal_index) {
-    Present { value: claimants } => claimants |> first
+  match map_get(correspondence.claimants_by_formal, formal_index) {
+    Present { value: claimants } => match claimants |> first {
+      Present { value: claimant } => Present { value: claimant.argument_index }
+      Absent => none
+    }
     Absent => none
   }
 }
 
-fn call_argument_indices_for_formal(correspondence: CallArgumentFormalCorrespondence, formal_index: Int) -> List<Int> {
-  match map_get(correspondence.arguments_by_formal, formal_index) {
+fn call_argument_claimants_for_formal(correspondence: CallArgumentFormalCorrespondence, formal_index: Int) -> List<CallArgumentClaimant> {
+  match map_get(correspondence.claimants_by_formal, formal_index) {
     Present { value: claimants } => claimants
     Absent => []
   }
@@ -6791,10 +6779,10 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
   let formal_identity_duplicate_diags = typed_args |> enumerate |> flat_map(pair =>
     match call_argument_selection_at(correspondence: shape_arg_formal_correspondence, argument_index: pair.first) {
       CallArgumentFormalSelected { formal_index: mine, formal: chosen } =>
-        let my_label = call_argument_label_at(correspondence: shape_arg_formal_correspondence, argument_index: pair.first)
-        let earlier_same_formal = call_argument_indices_for_formal(correspondence: shape_arg_formal_correspondence, formal_index: mine) |> any(other_index =>
-               other_index < pair.first
-                 && !(call_argument_label_at(correspondence: shape_arg_formal_correspondence, argument_index: other_index) == my_label))
+        let my_label = arg_name_at(n: pair.second, source_indices: source_indices)
+        let earlier_same_formal = call_argument_claimants_for_formal(correspondence: shape_arg_formal_correspondence, formal_index: mine) |> any(claimant =>
+               claimant.argument_index < pair.first
+                 && !(claimant.caller_label == my_label))
         if earlier_same_formal {
           [make_error_node(
             diagnostic: CallArgumentDuplicate { callee: func_name, argument: authored_name_at(source_indices: source_indices, node: chosen), span: pair.second.span },
