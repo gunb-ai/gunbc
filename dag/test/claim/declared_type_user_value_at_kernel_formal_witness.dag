@@ -131,14 +131,40 @@ test fn ut_user_type_named_uint8_at_itself_still_compiles() -> Bool {
   compile_dag_rust_emit_check(ut_named_uint8_control_source(), "src/ut_probe.rs", [], [])
 }
 
-// EXPECT-RED PROBE of the bounded rung drop gunbc.rung_drop declared_type_wall_uninstantiated_type_parameter:
+// EXPECT-RED PROBE of the below-ceiling residual on gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel:
 // a match binding over a generic builtin's result carries the callee's UNINSTANTIATED parameter, so a
 // user Opt<Int> reaching a String formal through it is NOT judged. The assertion RUNS and returns false
-// (the source is accepted); it greens when match-binding instantiation of generic results lands.
+// (the source is accepted); it greens when pattern bindings carry the instantiated type (C1.2b, C1.2c, C1.2d).
 fn ut_list_head_opt_binding_source() -> String {
   "module ut.probe\n\nimport std.algebra { list_head }\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: String) -> String {\n  x\n}\n\nfn probe(xs: List<Opt<Int>>) -> String {\n  match list_head(xs: xs) {\n    Absent => \"\"\n    Present { value: c } => takes(x: c)\n  }\n}\n"
 }
 
 test fn ut_list_head_opt_binding_at_string_formal_must_refuse() -> Bool {
   !compile_dag_rust_emit_check(ut_list_head_opt_binding_source(), "src/ut_probe.rs", [], [])
+}
+
+// A USER TYPE NAMED LIKE A TYPE PARAMETER is identified by its own declaration and judged: the carve-out is keyed by
+// an enclosing declaration declaring the parameter, never by the spelling T or V.
+fn ut_named_t_source() -> String {
+  "module ut.probe\n\ntype T {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: T) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_t_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_t_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_v_source() -> String {
+  "module ut.probe\n\ntype V {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: V) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_v_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_v_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_t_control_source() -> String {
+  "module ut.probe\n\ntype T {\n  value: Int\n}\n\nfn takes(x: T) -> T {\n  x\n}\n\nfn probe(q: T) -> T {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_t_at_itself_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_named_t_control_source(), "src/ut_probe.rs", [], [])
 }
