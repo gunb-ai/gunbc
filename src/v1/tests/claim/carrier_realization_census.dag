@@ -514,3 +514,19 @@ test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness
     Absent => false
   }
 }
+
+fn crc_realize_generation_body(startup: Bool) -> String {
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
+  match (file.content |> split(delimiter: "fn realize_generation(")).last() {
+    Present { value: tail } => tail
+    Absent => ""
+  }
+}
+
+test fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait() -> Bool {
+  let body = crc_realize_generation_body(startup: true)
+  string_contains(s: body, pattern: "started_rx.recv_timeout(ready_within).is_err()")
+    && !string_contains(s: body, pattern: "AtomicBool")
+    && !string_contains(s: body, pattern: "started.load")
+    && !string_contains(s: body, pattern: "started_flag")
+}

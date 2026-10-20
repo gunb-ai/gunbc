@@ -20182,7 +20182,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
       "        \};", "\n",
-      "        started_flag.store(true, std::sync::atomic::Ordering::SeqCst);", "\n")
+      "        let _ = started_tx.send(());", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -20192,16 +20192,16 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
-  let started_decl = if startup { "    let started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));\n    let started_flag = started.clone();\n" } else { "" }
-  let timeout_arm = if startup {
+  let started_decl = if startup { "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n" } else { "" }
+  let startup_wait = if startup {
     concat(
-      "        Err(_) => \{", "\n",
-      "            if !started.load(std::sync::atomic::Ordering::SeqCst) \{", "\n",
-      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
-      "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
-      "            \}", "\n",
-      "            Err(\"the worker ended before it reported ready\".to_string())", "\n",
-      "        \}", "\n")
+      "    if started_rx.recv_timeout(ready_within).is_err() \{", "\n",
+      "        eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
+      "        std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "    \}", "\n")
+  } else { "" }
+  let timeout_arm = if startup {
+    "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
   } else {
     "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
   }
@@ -20374,6 +20374,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            \}", "\n",
       "        \}", "\n",
       "    \});", "\n",
+      startup_wait,
       "    match readiness.recv_timeout(ready_within) \{", "\n",
       "        Ok(Ok(())) => Ok(Generation \{ calls, state \}),", "\n",
       "        Ok(Err(cause)) => Err(cause),", "\n",
