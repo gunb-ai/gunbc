@@ -211,7 +211,7 @@ fn path_is_governed(path: String) -> Bool {
 // declared" the way a widening would.
 // ---------------------------------------------------------------------------
 
-test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> Bool {
+test fn findings_inside_and_outside_the_note_subject_are_kept_apart() -> Bool {
   let listing = concat(subject_population_expected, ["src/v2/lens/not_a_governed_tree_at_all.dag"])
   let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: subject_population_expected))
   let vouched = findings_under_note_subject(findings: findings)
@@ -727,4 +727,58 @@ test fn the_test_suffixed_subject_file_is_named_after_the_module_rule_strips_it(
     && registry_names_path(registry: read.content, path: tco)
     && ends_with(s: tco, suffix: "_test.dag")
     && !(string_contains(s: emitted_registry_token(path: tco), pattern: "_test.rs"))
+}
+
+// ---------------------------------------------------------------------------
+// THE ANTI-DROP DIRECTION: THE LITERAL IS A CLOSED UNIVERSE, NOT A COPY.
+//
+// Every claim above runs ONE way -- each path in `subject_population_expected` is named by the emitter. That
+// direction alone cannot catch the failure review 83348 named: a hand-copied list that quietly LOSES a member
+// passes every subset claim and reports a smaller census as clean. So the join must run the other way too,
+// over a DISCOVERY rather than over the list twice.
+//
+// The discovery is independent of the list: the registry's own lines are read and kept by PREFIX
+// (`// src/v1_tests_claim_` ... `.rs`), so what comes back is the emitter's decision, not a restatement of
+// what this file already remembers. The claim then requires every token that filter yields to land on a path
+// in `subject_population_expected` UNION the zero-claim helpers. A member dropped from either list now fails
+// at IDENTITY, on a named path, rather than changing a count.
+//
+// This is the §5 exemption read literally -- "a monotone debt contract over a closed, independently discovered
+// universe checked at identity grain": closed because completeness is asserted, independently discovered
+// because the universe comes from the emitter, identity grain because both directions compare paths and never
+// totals. It is falsified by RED-G, which deletes one line from the list.
+// ---------------------------------------------------------------------------
+
+// The discovery: every emitter line naming a file under the subject, kept by prefix rather than enumerated.
+fn registry_subject_tokens(registry: String) -> List<String> {
+  filter(
+    xs: split(s: registry, delimiter: "\n"),
+    predicate: fn(line) {
+      line.starts_with(prefix: "// src/v1_tests_claim_") && line.ends_with(suffix: ".rs")
+    }
+  )
+}
+
+// `// src/v1_tests_claim_<stem>.rs` -> the subject paths that token could be naming: the plain reconstruction
+// and the `_test`-restored one. Both are offered because the emitter strips `_test` for exactly one subject
+// file; a claim that accepted only the plain reconstruction would fail on that file and invite me to drop it
+// from the population, which is how a census quietly shrinks.
+fn registry_token_candidate_paths(token_line: String) -> List<String> {
+  let stem = replace(s: replace(s: token_line, from: "// src/v1_tests_claim_", to: ""), from: ".rs", to: "")
+  [concat("src/v1/tests/claim/", concat(stem, ".dag")), concat("src/v1/tests/claim/", concat(stem, "_test.dag"))]
+}
+
+test fn every_emitter_named_subject_file_is_in_the_expected_population() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  let covered = concat(subject_population_expected, subject_helpers_declare_nothing)
+  let tokens = registry_subject_tokens(registry: read.content)
+  read.success
+    && !(is_empty(tokens))
+    && all(xs: tokens, predicate: fn(line) {
+      any(xs: covered, predicate: fn(path) {
+        any(xs: registry_token_candidate_paths(token_line: line), predicate: fn(candidate) {
+          candidate == path
+        })
+      })
+    })
 }
