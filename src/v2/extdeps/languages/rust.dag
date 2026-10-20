@@ -2137,13 +2137,17 @@ fn rust_host_build_environment() -> HostBuildEnvironment {
 }
 
 fn rust_host_transport_descriptor() -> HostTransportDescriptor {
+  rust_host_transport_descriptor_with_main(manifest: rust_emit_host_cargo_manifest, main_suffix: rust_emit_host_main_suffix)
+}
+
+fn rust_host_transport_descriptor_with_main(manifest: String, main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
     build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_identity,
     workspace: [
       WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: FixedText { text: manifest }
       },
       WorkspaceFile {
         path: "rust-toolchain.toml",
@@ -2151,7 +2155,7 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
       },
       WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_emit_host_main_suffix }
+        content: EmittedWithSuffix { suffix: main_suffix }
       }
     ],
     build: [
@@ -2165,6 +2169,35 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+// The semantic-decl route derives serde::Serialize/Deserialize on a record (record_derive_traits_heap), so a
+// program holding its output needs the serde crate; the plain driver manifest declares no dependency.
+data rust_emit_host_serde_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nserde = { version = \"1.0.228\", features = [\"derive\"] }\n\n[lints.rust]\nunused_parens = \"allow\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
+
+// The type-declaration smoke driver: the emitted structure is built, its associated constant is read through
+// the `impl` the member row printed, and the verdict leaves as the five-byte runtime value. The fault driver
+// compares the constant against a wrong text, so a build that ignored the member would still be told apart.
+data rust_emit_host_member_decl_main_suffix: String = "\n\nfn main() { let p = Point { x: 2 }; let ok = p.x == 2 && Point::VERSION == \"V1\"; let bytes = [0u8, if ok { 5u8 } else { 4u8 }, 0, 0, 0]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+data rust_emit_host_member_decl_inject_fault_main_suffix: String = "\n\nfn main() { let p = Point { x: 2 }; let ok = p.x == 2 && Point::VERSION == \"V2\"; let bytes = [0u8, if ok { 5u8 } else { 4u8 }, 0, 0, 0]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_member_decl_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_host_transport_descriptor_with_main(manifest: rust_emit_host_serde_cargo_manifest, main_suffix: rust_emit_host_member_decl_main_suffix),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_member_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_host_transport_descriptor_with_main(manifest: rust_emit_host_serde_cargo_manifest, main_suffix: rust_emit_host_member_decl_inject_fault_main_suffix),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
   }
 }
 
