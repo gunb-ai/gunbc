@@ -30,9 +30,7 @@ pub struct ParsedDagFile {
 /// is the SILENCE, not the signature: before this, the ErrorNode — message, file, offset —
 /// was in scope at the collapse and dropped, so every layer above could only name the file
 /// it was handed (`claim_batch: cannot parse --entry <path> while validating functions`).
-/// Three 20-minute cold-rebuild dispatches were spent guessing syntax while the true error
-/// (a constructor-admission refusal elsewhere in the tree) sat inside this function. A
-/// parse failure now renders its message with its position (the same located-render the
+/// A parse failure now renders its message with its position (the same located-render the
 /// parse sweep carries) BEFORE the None is returned. Absence may still be the correct
 /// READING of a parse failure for a given caller — but "could not look" is no longer
 /// allowed to be unspeakable (DESIGN section 5: an answer must not hide that nothing was

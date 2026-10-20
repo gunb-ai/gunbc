@@ -711,10 +711,13 @@ test fn owed_and_drifted_render_distinct_words() -> Bool {
 //
 // The base's observe run ignored run.cap_phase entirely: a cgroup grep exit 2 or a malformed
 // memory.max gave SlotCapsUnread, the receipt printed OBSERVED-UNREAD, and terminal=succeeded /
-// ExitSuccess followed. These controls carry the phase FROM THE REAL SCRIPTED OBSERVE ROUTE (the
-// same observe/owed_legs/drifted_legs machinery the read controls drive) into the actual
-// runner_host_file_run_succeeded + receipt decision, with every OTHER observation scripted to
-// succeed -- so the only fact that moves the verdict is the cap phase's read quality. Every negative
+// ExitSuccess followed. These controls feed the actual runner_host_file_run_succeeded + receipt
+// decision with a cap phase that is the ONLY moving part -- every OTHER observation scripted to
+// succeed -- so the only fact that moves the verdict is the cap phase's read quality. Four of the
+// eight carry a ROUTE-PRODUCED phase (observed_cap_phase over the same observe machinery the read
+// controls drive: fully-read success, missing-file, malformed, owed/drifted); four supply their
+// phase directly (Withheld, hand-fabricated NotOwed, empty readings, apply-shaped) because
+// production's observe arm cannot produce those arms -- they are the refusal shapes. Every negative
 // asserts its OWN scripted cause in the receipt text and rejects the scenario's gap phrase, so none
 // can be green via the unmatched-command arm; and because a missing subject yields the empty text,
 // no control can be green via an absent subject either.
