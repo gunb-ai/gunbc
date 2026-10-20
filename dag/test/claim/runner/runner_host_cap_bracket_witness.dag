@@ -29,6 +29,28 @@ import gunbc.runner.runner_host_cap_bracket {
   bracket_wait_step,
   host_cap_drain_ticks,
   runner_host_cap_drain_policy,
+  BracketObligation,
+  bracket_obligation_key,
+  bracket_obligation_text,
+  obligation_reading_of_text,
+  ObligationHeld,
+  ObligationDischarged,
+  ObligationStale,
+  ObligationUnreadable,
+  ObligationAbsent,
+  ObligationReading,
+  release_decision_of,
+  ReleaseNothingOwed,
+  ReleaseOwes,
+  ReleaseAlreadyDischarged,
+  ReleaseObligationUntrusted,
+  ReleaseDecision,
+  owned_set_of,
+  OwnedSet,
+  OwnedSetUnproven,
+  release_unit_needs_activation,
+  release_fits_cancellation_envelope,
+  HostCapDrainPolicy,
 }
 
 // THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
@@ -190,4 +212,51 @@ test fn a_fabric_slot_is_never_in_the_released_set() -> Bool {
       length(runner_host_fabric_member_units(host: "srv3" as HostIdentity)) > 0
         && all(runner_host_fabric_member_units(host: "srv3" as HostIdentity), f => !any(sj.desired_units, d => (d as String) == (f as String)))
   }
+}
+
+fn okey() -> String { bracket_obligation_key(run_id: "7", attempt: "1", host: "srv3") }
+fn held_text() -> String { bracket_obligation_text(o: BracketObligation { key: okey(), units: [u(n: "01")] }, discharged: false) }
+
+test fn a_held_obligation_with_this_key_owes_exactly_its_units() -> Bool {
+  match release_decision_of(reading: obligation_reading_of_text(text: held_text(), expected_key: okey())) {
+    ReleaseOwes { units: us } => length(us) == 1 && (us[0] as String) == (u(n: "01") as String)
+    _ => false
+  }
+}
+
+test fn an_obligation_of_another_attempt_is_untrusted_not_released() -> Bool {
+  match release_decision_of(reading: obligation_reading_of_text(text: held_text(), expected_key: bracket_obligation_key(run_id: "7", attempt: "2", host: "srv3"))) {
+    ReleaseObligationUntrusted { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn a_discharged_obligation_owes_only_readback() -> Bool {
+  match release_decision_of(reading: obligation_reading_of_text(text: bracket_obligation_text(o: BracketObligation { key: okey(), units: [u(n: "01")] }, discharged: true), expected_key: okey())) {
+    ReleaseAlreadyDischarged => true
+    _ => false
+  }
+}
+
+test fn no_obligation_file_owes_nothing_and_a_garbled_one_is_untrusted() -> Bool {
+  (match release_decision_of(reading: ObligationAbsent) { ReleaseNothingOwed => true _ => false })
+    && (match release_decision_of(reading: obligation_reading_of_text(text: "garbage", expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
+}
+
+// a unit masked by someone else is not owned; an unread unit leaves ownership unproven
+test fn the_owned_set_is_the_unmasked_units_and_an_unread_one_refuses() -> Bool {
+  (match owned_set_of(readings: [unmasked(n: "01"), drained(n: "02")]) { OwnedSet { units: us } => length(us) == 1 OwnedSetUnproven { units: _ } => false })
+    && (match owned_set_of(readings: [SlotDrainReading { unit: u(n: "03"), masked: false, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "x" as NonEmptyStr } }]) { OwnedSetUnproven { units: us } => length(us) == 1 OwnedSet { units: _ } => false })
+}
+
+test fn a_never_masked_unit_is_issued_no_activation() -> Bool {
+  match slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\n")) {
+    SlotReadRefused { reason: _ } => false
+    r => !release_unit_needs_activation(read: r)
+  }
+}
+
+test fn the_declared_release_fits_the_cancellation_envelope() -> Bool {
+  release_fits_cancellation_envelope(policy: runner_host_cap_drain_policy)
+    && !release_fits_cancellation_envelope(policy: HostCapDrainPolicy { wait_bound: runner_host_cap_drain_policy.wait_bound, poll_interval: runner_host_cap_drain_policy.poll_interval, operations_allowance: runner_host_cap_drain_policy.operations_allowance, release_allowance: second(count: 400), cancellation_envelope: runner_host_cap_drain_policy.cancellation_envelope, release_startup_allowance: runner_host_cap_drain_policy.release_startup_allowance })
 }
