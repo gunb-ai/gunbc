@@ -16,13 +16,13 @@ import std.optional { Absent, Optional, Present }
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
-import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, logical_qualified_name_from_module }
+import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
 // to exactly one declaration_identity in decl_facts over a declared module, or refuses with one of
 // five typed arms — module absent, declaration absent, field absent, ambiguous, or resolved.
-// Qualified-name join uses logical_qualified_name_from_module — the same strip-v2. rule as
+// Qualified-name join uses qualified_name_from_module — the same key (the module's own name, `v2.` included) as
 // decl_facts rows. Module membership reads module_declaration_facts — the containment-tree module
 // census, not text scan. Ambiguity is its own arm: two or more decl_facts rows for one logical
 // qualified name returns DeclarationRefAmbiguous with every candidate identity BEFORE any fact.node
@@ -56,7 +56,7 @@ fn declaration_identity_from_fact(fact: DeclFact) -> DeclarationIdentity {
 }
 
 fn declaration_ref_target_qualified_name(ref: DeclarationRef) -> String {
-  logical_qualified_name_from_module(
+  qualified_name_from_module(
     module_name: ref.module_path as String,
     name: ref.decl_name as String
   )
