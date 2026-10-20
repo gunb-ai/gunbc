@@ -22,7 +22,7 @@ data user_manager_worker_write_boundary_unenforced: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "system-manager transients with User= started by gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_launch_cli from the root-owned sha-addressed launcher release (sudoers grant emitted by gunbc.live_deploy.emit attempt_system_unit_grant_steps). The launcher is modeled; it is not live on srv1 until that grant is installed on a runner host and the wet launcher claims execute. A property-membership witness is not the replacement.",
+      replacement: "system-manager transients with User= started by gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_launch_cli from the root-owned sha-addressed launcher release (sudoers grant installed by gunbc.live_deploy.apply_legs deploy_apply_attempt_grant_plan). The launcher is modeled; it is not live on srv1 until that grant is installed on a runner host and the wet launcher claims execute. A property-membership witness is not the replacement.",
     },
     population: [
       "every dashboard attempt worker started through systemd-run --user on srv1, including gunbc-attempt-* transients under the live and lab instances",

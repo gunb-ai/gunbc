@@ -4606,8 +4606,8 @@ fn observe_slot_population_over_host_effect_transport(
 
 // THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
 //
-// Everything below this function takes the decision as a parameter -- `live_deploy_apply_script_for`,
-// `apply_intent_from_effects`, `deploy_memory_cap_apply_steps` -- so this is the single visible point
+// Everything below this function takes the decision as a parameter -- `deploy_apply_plan_legs` and
+// `deploy_apply_memory_cap_plan` (gunbc.live_deploy.apply_legs) -- so this is the single visible point
 // at which a real one is provided. An earlier revision supplied a HARDCODED `CapConvergeWithheld`
 // here whose cause said no caller could obtain the evidence. That was safe and it was also wrong
 // about itself: this realize is the EFFECTFUL layer -- it holds the transport and already executes a
@@ -4641,10 +4641,9 @@ fn observe_slot_population_over_host_effect_transport(
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE SHARED DEPLOY PREAMBLE, as TYPED EFFECTS.
 //
-// This block SHADOWS the bash body emitted by gunbc.live_deploy.emit deploy_apply_preamble_steps until the apply route takes it (that function's dissolution row names the trigger),
-// which shipped through retained_srvn / realize_shell_on_host. The script it reproduces is
-// gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_stmts followed by
-// gunbc.live_deploy.emit deploy_publication_principal_ensure_command, in that order:
+// Both the apply and the retract route open with this block; the bash preamble it replaced
+// (the deploy sudoers install, then the publication principal's ensure) is deleted. The script
+// lines it realizes, in order:
 //
 //   cat > "$_gunbc_stage/gunbc-deploy.sudoers" <<EOF …   -> PreambleStdin  (SudoersStage)
 //   sudo -n visudo -cf "$stage" || exit 1                -> PreambleArgv   (SudoersVisudoCheck)
@@ -7560,9 +7559,8 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
 }
 
 // WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
-// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
-// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
-// mutation (gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// live_deploy_apply_preamble_on_host, whose first legs install the deploy principal's sudoers drop-in
+// and then probe the whole roster against it, refusing on a miss before any other mutation. So before them
 // the gate demands only what that install spends; demanding the rest would require the grant the
 // gated step exists to install. Every other effect installs nothing and is gated on the full roster.
 // It narrows the VERDICT only: the scripts are emitted from the full DeployAccess, so the preamble's

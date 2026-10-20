@@ -59,6 +59,18 @@ fn grant_boom() -> Optional<String> {
   Present { value: "grant-boom" }
 }
 
+fn root_grant_boom() -> Optional<String> {
+  Present { value: "root-grant-boom" }
+}
+
+fn broker_tree_boom() -> Optional<String> {
+  Present { value: "broker-tree-boom" }
+}
+
+fn dependency_boom() -> Optional<String> {
+  Present { value: "dependency-boom" }
+}
+
 fn ports(command_code: Int, stdin_code: Int) -> DeployApplyPorts {
   ports_serving(command_code: command_code, stdin_code: stdin_code, source: ObjectSourceCannotServe { source: "/src", cause: "source-boom" })
 }
@@ -70,9 +82,9 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
-    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
-    dependency: fn(d) { Present { value: "dependency-boom" } },
+    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    broker_tree: fn(r) { broker_tree_boom() },
+    dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
 }
@@ -311,9 +323,9 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
-    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
-    dependency: fn(d) { Present { value: "dependency-boom" } },
+    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    broker_tree: fn(r) { broker_tree_boom() },
+    dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
 }
@@ -489,9 +501,9 @@ test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
-    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
-    dependency: fn(d) { Present { value: "dependency-boom" } },
+    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    broker_tree: fn(r) { broker_tree_boom() },
+    dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
   match deploy_apply_run_legs(legs: legs, ports: ok_ports) {

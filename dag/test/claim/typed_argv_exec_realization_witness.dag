@@ -10,10 +10,7 @@ import extdeps.sudo.nopasswd_execute_probe {
   NopasswdGrantListCheck,
 }
 import extdeps.sudo.nopasswd_execute_probe_check_op {
-  sudo_nopasswd_execute_probe_argv,
-  sudo_nopasswd_grant_list_argv,
-  sudo_nopasswd_grant_list_admits_probe,
-  sudo_nopasswd_all_grant_line_ere,
+  sudo_nopasswd_execute_probe_argv, sudo_nopasswd_grant_list_argv, sudo_nopasswd_grant_list_admits_probe,
 }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
@@ -272,13 +269,6 @@ test fn witness_sudo_grant_list_exact_nopasswd_row_accepts() -> Bool {
     listing: "    (ALL) NOPASSWD: /usr/bin/tailscale",
     probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
   )
-}
-
-// THE ALL GRANT (review 78587). The shell twin's run-as alternation is derived from the typed reading's
-// row, so the rendered ERE names exactly the row's spellings with parentheses escaped; an (ALL) ALL
-// line admits any command and a non-root run-as ALL line admits nothing.
-test fn witness_sudo_all_grant_ere_is_derived_from_the_runas_row() -> Bool {
-  sudo_nopasswd_all_grant_line_ere() == "[[:space:]]*(\\(ALL\\)|\\(ALL : ALL\\)|\\(root\\))[[:space:]]+NOPASSWD:[[:space:]]*ALL[[:space:]]*"
 }
 
 test fn witness_sudo_all_grant_under_all_runas_admits_any_command() -> Bool {

@@ -536,7 +536,7 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
 // may separate the two outcomes. A drop arm that ignored identity (every overrun admitted) fails the
 // RED; one that never fired fails the control; one that dropped the figures fails both.
 fn drop_member_identity() -> String {
-  "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback"
+  "test.claim.roadmap.roadmap_authority.witness_projected_dependency_edges_include_active_edges"
 }
 
 fn drop_probe_steps() -> EvalStepCount {
@@ -626,21 +626,3 @@ test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
   floor_eval_step_cost_drop_has_duplicate() == false
 }
 
-// THE APPLY-RENDER LIST IS A SECOND DROP, SAME TEST. If membership is only the live-roadmap four,
-// this identity stays EvalStepsOverBudget and the C2 changed-witness floor refuses.
-fn apply_render_drop_member_identity() -> String {
-  "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants"
-}
-
-test fn an_over_budget_apply_render_drop_member_is_reported_not_refused() -> Bool {
-  floor_eval_step_cost_drop_holds(name: apply_render_drop_member_identity())
-    && match claim_eval_step_standing_for_identity(
-      identity: apply_render_drop_member_identity(),
-      observed_eval_steps: drop_probe_steps(),
-      budget_steps: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
-    ) {
-      EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
-      EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => false
-      EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: _, budget_steps: _ } => true
-    }
-}

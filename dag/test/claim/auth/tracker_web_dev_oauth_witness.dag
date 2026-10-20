@@ -41,12 +41,7 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oauth_frontier_rows,
 }
 import gunbc.live_deploy.emit {
-  apply_step_effects, apply_oidc_config_steps_at,
-  apply_oidc_fragments, compose_host_script_decide_steps, compose_host_script_mutate_steps,
-  oidc_readback_refused_poison,
-  live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
-  LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
-  live_deploy_oidc_unit_env_at, LiveDeployOidcEnvAdmitted, LiveDeployOidcEnvRefused,
+  oidc_readback_refused_poison, live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, live_deploy_oidc_unit_env_at, LiveDeployOidcEnvAdmitted, LiveDeployOidcEnvRefused,
 }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
@@ -269,48 +264,6 @@ test fn console_readback_is_independent_and_expires() -> Bool {
         })
       _ => false
     }
-}
-
-test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
-  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let plan = deploy_witness_full_install_plan(spec: spec)
-  let effects = apply_empty_host_effects(spec: spec)
-  match filter(spec.steps, st => match st {
-    ArtifactStep { step: art } => match art.kind {
-      ComposeOwned { kind: OidcConfigArtifact } => true
-      _ => false
-    }
-    Dependency { step: _ } => false
-  }).first() {
-    Absent => false
-    Present { value: step } =>
-      let sh = pipeline_steps_text(steps: apply_step_effects(principal: fleet_posix_ci_runner_principal(), step: step, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()))
-      string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
-        && string_contains(s: sh, pattern: "0600")
-        && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
-  }
-}
-
-test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
-  match tracker_web_test_console_readback_valid_until_epoch {
-    Absent => false
-    Present { value: until } =>
-      let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-      let fragments = apply_oidc_fragments(spec: spec, oidc_now: Present { value: until })
-      let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
-      string_contains(s: sh, pattern: oidc_readback_refused_poison)
-        && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
-        && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
-  }
-}
-
-test fn lab_apply_oidc_refuses_without_an_observer_clock() -> Bool {
-  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let fragments = apply_oidc_fragments(spec: spec, oidc_now: Absent)
-  let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
-  string_contains(s: sh, pattern: oidc_readback_refused_poison)
-    && string_contains(s: sh, pattern: "observer clock unreadable")
-    && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
 }
 
 test fn lab_serve_unit_emission_refuses_when_console_readback_expired() -> Bool {

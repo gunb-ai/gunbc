@@ -3,7 +3,6 @@ module test.claim.live_deploy.provider_state_member_witness
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.live_deploy.spec { deployment_directory_demands }
 import gunbc.live_deploy.desired { deployment_spec_srv1, spec_owned_identities }
-import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity { DirectoryRoot, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path }
@@ -24,15 +23,6 @@ fn srv1_provider_state_root() -> String {
 test fn the_provider_state_demand_is_the_instance_provider_state_path() -> Bool {
   (owned_directory_path(t: dashboard_instance_provider_state_directory(instance: srv1_live_dashboard_instance())) as String) == srv1_provider_state_root()
     && any(deployment_directory_demands(spec: deployment_spec_srv1()), t => (owned_directory_path(t: t) as String) == srv1_provider_state_root())
-}
-
-// THE PRODUCTION APPLY EMITS ITS INSTALL when the plan makes no claim about it.
-test fn the_production_apply_emits_the_provider_state_install() -> Bool {
-  let spec = deployment_spec_srv1()
-  string_contains(
-    s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: srv1_provider_state_root()), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
-    pattern: srv1_provider_state_root(),
-  )
 }
 
 // The same directory is read back as a member, so a host whose provider login has nowhere to write
