@@ -438,11 +438,19 @@ fn rehome_representation_sites(tokens: List<Token>, parse_root: Node, spans: Spa
     Present { value: rep } => {
       let bare = rehome_last_segment(qualified_name: rep.constructor)
       let bound = fold_list(xs: imported, empty: false, cons: fn(f, b) { f || (symbol_lexeme(sym: b.binding) == bare && roster_qn_text(qn: b.target) == rep.constructor) })
-      let bare_sites = if bound { rehome_token_sites(tokens: tokens, lexeme: bare, what: "constructor") } else { [] }
+      let imports = roster_import_decl_facts(parse_root: parse_root, spans: spans)
+      let bare_sites = if bound { rehome_outside_imports(sites: rehome_token_sites(tokens: tokens, lexeme: bare, what: "constructor"), imports: imports) } else { [] }
       let spelled = list_map(xs: rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: rep.constructor), f: fn(u) { RehomeSite { start: u.start, end: u.end, what: "constructor" } })
       fold_list(xs: rep.fields, empty: list_append_sites(a: bare_sites, b: spelled), cons: fn(acc, field) { list_append_sites(a: acc, b: rehome_field_read_sites(tokens: tokens, field: field)) })
     }
   }
+}
+
+// An import declaration's own block names the constructor without using it; those tokens are not representation sites.
+fn rehome_outside_imports(sites: List<RehomeSite>, imports: List<ImportDeclFact>) -> List<RehomeSite> {
+  fold_list(xs: sites, empty: [], cons: fn(acc, site) {
+    if fold_list(xs: imports, empty: false, cons: fn(inside, d) { inside || (site.start >= d.start && site.end <= d.end) }) { acc } else { list_snoc_item(xs: acc, item: site) }
+  })
 }
 
 fn list_append_sites(a: List<RehomeSite>, b: List<RehomeSite>) -> List<RehomeSite> {
