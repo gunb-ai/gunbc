@@ -29,7 +29,9 @@ import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
 import v2.std.node { Node, Symbol, Edge, Authored, Positional, StructuralLabel }
 import v2.std.node_query { child_lookup_step, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
 import std.algebra { list_append }
-import std.types { List }
+import std.decl_ref { DeclarationRef, NamedField }
+import std.types { List, NonEmptyStr }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -298,4 +300,36 @@ test fn rust_primitive_method_call_emits_both_arguments_in_order() -> Bool {
       target_value_expression_binding_ref(binding: ^rust_binding_param_x)
     ]
   ) == "(x).method_probe(y, &x)"
+}
+
+// RED for the identity join (review 83167): a row keyed by a NAMED FIELD of the contract is a different
+// DeclarationRef from the whole declaration, so it must not realize a whole-declaration callee. The lookup
+// joins on std.decl_ref declaration_ref_eq; comparing module_path and decl_name alone drops the field and
+// would match here, printing `string_length(&x)` from a row that names something else.
+fn rust_primitive_named_field_rows() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired {
+    rows: [
+      TargetPrimitiveRealization {
+        primitive: DeclarationRef {
+          module_path: primitive_contract_declaration_ref(head: ^string_length).module_path,
+          decl_name: primitive_contract_declaration_ref(head: ^string_length).decl_name,
+          field: NamedField { field_name: "x" as NonEmptyStr }
+        },
+        form: rust_primitive_by_shared_reference_row(head: ^string_length).form,
+        arguments: rust_primitive_by_shared_reference_row(head: ^string_length).arguments,
+        result: rust_primitive_by_shared_reference_row(head: ^string_length).result
+      }
+    ]
+  }
+}
+
+test fn rust_named_field_row_does_not_realize_a_whole_declaration_callee() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: rust_primitive_named_field_rows()
+    ),
+    reason: ^target_primitive_realization_missing
+  )
 }
