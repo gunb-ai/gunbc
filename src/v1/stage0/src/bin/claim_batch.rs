@@ -27,6 +27,21 @@ struct ResolveTimings {
     witnesses: u64,
     witness_ms: u128,
     any_failed: bool,
+    /// A group whose entry did not resolve: no claim in it was evaluated, so it is neither held
+    /// nor failed (`SubjectUnresolved` in `v2.workflow.floor_terminal_ledger`).
+    any_unobserved: bool,
+}
+
+/// Exit composition, 2 (no observation) > 1 (a finding) > 0 (clean): a batch with any unresolved
+/// group exits 2 even when other groups ran and failed, while every group's lines still print.
+fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
+    if any_unobserved {
+        2
+    } else if any_failed {
+        1
+    } else {
+        0
+    }
 }
 
 fn peak_rss_lines() -> String {
@@ -321,7 +336,12 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     })
 }
 
-fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) {
+fn report_outcome(
+    function: &str,
+    outcome: ClaimOutcome,
+    any_failed: &mut bool,
+    any_unobserved: &mut bool,
+) {
     match outcome {
         ClaimOutcome::Pass => println!("PASS {}", function),
         ClaimOutcome::Fail => {
@@ -390,19 +410,17 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
-        // ALSO A FAILURE HERE, and deliberately so despite not being a verdict. This
-        // transport reports one line per row and has no third channel; between "green" and
-        // "failed", a claim that never reached its subject must not be green. The line says
-        // what it actually is, so the reader is not told the witness answered false.
+        // A ROUTE GAP, NOT A VERDICT (`RouteGapBeforeVerdict` in `v2.workflow.floor_terminal_ledger`).
+        // The hermetic route has no arm for the capability the claim requested, so the claim never
+        // reached its subject: it is unobserved, not a false assertion, and reads as exit 2.
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             println!(
-                "FAIL {} (hermetic route has no arm for {}: {} — the claim never reached its \
-                 subject, so this is a route gap and not a verdict)",
+                "UNOBSERVED {} (hermetic route has no arm for {}: {} — route gap; re-run with --wet)",
                 function,
                 operation,
                 v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
             );
-            *any_failed = true;
+            *any_unobserved = true;
         }
         // BOTH BUDGET ARMS RENDER THROUGH `ClaimOutcome::budget_figure_phrase`, the single
         // authority for a budget figure, so this transport and the required floor's cannot
@@ -495,7 +513,12 @@ fn run_claim_timed(
     timings: &mut ResolveTimings,
 ) {
     let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
-    report_outcome(function, outcome, &mut timings.any_failed);
+    report_outcome(
+        function,
+        outcome,
+        &mut timings.any_failed,
+        &mut timings.any_unobserved,
+    );
     eprintln!("{}", witness_report_line(function, &receipt));
     print_eval_profile(function);
     timings.witnesses += 1;
@@ -861,34 +884,47 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             group.entry,
             group.functions.len()
         );
-        let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        eprintln!(
-            "claim_batch: resolved {}; running {} witness(es)",
-            group.entry,
-            group.functions.len()
-        );
-        let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
-            eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
-            ExitCode::from(1)
-        })?;
-        let ctx = make_eval_context_with_runtime_options(
-            &graph,
-            source_indices,
-            execution_mode,
-            fixture_store.clone(),
-            whole_tree_published_keys.clone(),
-        );
-        ctx.set_witness_eval_budget(eval_budget_ms);
-        for function in &group.functions {
-            run_claim_timed(&ctx, &closure_subject, function, &mut timings);
-            // Witness frame exit on the single-entry fast path too — this is
-            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
-            // must not retain values across witnesses sharing this ctx).
-            v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
-            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
-        }
-        if stats_requested {
-            print_interp_stats(&ctx, flatten_baseline);
+        match resolve_timed(&index, &group.entry, &mut timings) {
+            Err(_) => {
+                for function in &group.functions {
+                    println!(
+                        "UNOBSERVED {} (entry resolve failed: {})",
+                        function, group.entry
+                    );
+                }
+                timings.any_unobserved = true;
+            }
+            Ok((graph, source_indices)) => {
+                eprintln!(
+                    "claim_batch: resolved {}; running {} witness(es)",
+                    group.entry,
+                    group.functions.len()
+                );
+                let closure_subject =
+                    closure_subject_for_entry(&index, &group.entry).map_err(|e| {
+                        eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
+                        ExitCode::from(1)
+                    })?;
+                let ctx = make_eval_context_with_runtime_options(
+                    &graph,
+                    source_indices,
+                    execution_mode,
+                    fixture_store.clone(),
+                    whole_tree_published_keys.clone(),
+                );
+                ctx.set_witness_eval_budget(eval_budget_ms);
+                for function in &group.functions {
+                    run_claim_timed(&ctx, &closure_subject, function, &mut timings);
+                    // Witness frame exit on the single-entry fast path too — this is
+                    // the exact path the 6-witness 20GiB-kill recipe runs (the memo
+                    // must not retain values across witnesses sharing this ctx).
+                    v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
+                    v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
+                }
+                if stats_requested {
+                    print_interp_stats(&ctx, flatten_baseline);
+                }
+            }
         }
     } else {
         for group in &entry_groups {
@@ -898,8 +934,8 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
                 group.functions.len()
             );
             // A group whose resolve fails is COUNTED — every enrolled witness in
-            // it reports FAIL and the batch continues (exit stays 1 via
-            // any_failed). Aborting the whole batch on the first red entry
+            // it reports UNOBSERVED and the batch continues (exit 2 via
+            // any_unobserved). Aborting the whole batch on the first red entry
             // truncated the measurement: each run revealed only the NEXT red
             // class, and everything alphabetically after it went unmeasured.
             if run_witnesses(
@@ -914,9 +950,12 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             .is_err()
             {
                 for function in &group.functions {
-                    println!("FAIL {} (entry resolve failed: {})", function, group.entry);
+                    println!(
+                        "UNOBSERVED {} (entry resolve failed: {})",
+                        function, group.entry
+                    );
                 }
-                timings.any_failed = true;
+                timings.any_unobserved = true;
             }
         }
         if stats_requested {
@@ -927,8 +966,8 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     partition.mark("entries");
 
     eprintln!(
-        "[resolve-summary] {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
-        timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
+        "[resolve-summary] mode={:?}; {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
+        execution_mode, timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
     // The expectation frontier: effect sites that dispatched WITHOUT declaring
     // `expect:`, counted at their located `service.op`. This receipt is the whole
@@ -1057,11 +1096,10 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
         eprintln!("{line}");
     }
 
-    if timings.any_failed {
-        return Ok(ExitCode::from(1));
-    }
-
-    Ok(ExitCode::SUCCESS)
+    Ok(ExitCode::from(batch_exit_code(
+        timings.any_unobserved,
+        timings.any_failed,
+    )))
 }
 
 fn main() -> ExitCode {
@@ -1118,6 +1156,14 @@ mod cli_path_resolution_wiring_tests {
     }
 
     /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
+    #[test]
+    fn exit_composition_is_unobserved_over_failed_over_clean() {
+        assert_eq!(batch_exit_code(false, false), 0);
+        assert_eq!(batch_exit_code(false, true), 1);
+        assert_eq!(batch_exit_code(true, false), 2);
+        assert_eq!(batch_exit_code(true, true), 2);
+    }
+
     #[test]
     fn absolute_existing_args_parse_and_survive_resolution() {
         let ws = workspace_root();

@@ -1,0 +1,19 @@
+module gunbc.claim_batch_exit_composition_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the exit composition claim_batch gained with SubjectUnresolved.
+// HAND-ITEM DELTA: +1 citable declaration in v1_compiler.bin.claim_batch (batch_exit_code, three
+// lines of code). The existing ResolveTimings, report_outcome and the two resolve-failure sites
+// were MODIFIED, not added, and no deletion is netted against the one new item.
+data claim_batch_exit_composition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "batch_exit_code", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: claim_batch is a seed-host CLI whose process exit code is produced before any .dag evaluation frame exists. batch_exit_code composes the three exit classes of the gunbc test contract, 2 (no observation) over 1 (a finding) over 0, from the two flags the resolve and report sites set. The VOCABULARY is modeled: v2.workflow.floor_terminal_ledger ClaimAttemptTerminal.SubjectUnresolved and .RouteGap project to the dispositions that mean no observation; this function is the seed's mirror of that projection at the process boundary.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete batch_exit_code when claim_batch's verdict fold is the .dag fold over ClaimDisposition and the process exit is derived from its typed standing rather than from two booleans.",
+  current_boundary: "Pure over two booleans: any unobserved group or route gap yields 2 even when other groups ran and failed, a finding without an unobserved yields 1, otherwise 0. Every group's lines still print before the exit, so no measurement is dropped to reach 2."
+}
