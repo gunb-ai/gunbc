@@ -34,7 +34,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_param_list_binder_atoms
 }
 import v2.compiler.fold_lowering { ArrowLambdaValue, FnLiteralValue, FunctionValueKind, function_value_parts_optional }
-import v2.compiler.lexical_scope { arrow_slot, ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlot, ArrowTypeParamsSlot }
+import v2.compiler.lexical_scope { arrow_slot, node_value_frame, ArrowValueFrame, ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlot, ArrowTypeParamsSlot }
 import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_named_arg_name_node_optional,
@@ -65,6 +65,7 @@ import v2.std.node {
   BinderDefaultEdge,
   BinderStructureEdge,
   BinderTypeEdge,
+  BodyTermLoweredEdge,
   CastTargetEdge,
   ConstantMemberEdge,
   ConstructTagEdge,
@@ -518,8 +519,12 @@ fn position_under_marker(marker: CoreEdgeLabel) -> Optional<ReferencePosition> {
 // (measured: id equals caused_by on every projected atom of the specimen). Position from the position,
 // identity from the cause -- one fact, one producer each.
 fn reference_position_step(inherited: ReferencePosition, parent: Node, edge: Edge, ordinal: Int) -> ReferencePosition {
-  if parent_is_arrow_node(n: parent) {
-    match arrow_slot(e: edge, ordinal: ordinal) {
+  // The slot table is about an Arrow's children, and THE ONLY reader that decides "is this parent an
+  // Arrow" is v2.compiler.lexical_scope node_value_frame -- the same call the value-frame walk makes
+  // (v2.compiler.reference_site_collector reads it for the frame). The step ASKS THAT AUTHORITY rather
+  // than re-reading the connective: slot and frame agree by construction because they ARE one reading.
+  match node_value_frame(n: parent) {
+    ArrowValueFrame { params: _ } => match arrow_slot(e: edge, ordinal: ordinal) {
       // The codomain is the Arrow's RESULT: a type mention, and the one position no marker carries.
       ArrowCodomainSlot => ReturnPosition
       ArrowTypeParamsSlot => TypeAnnotationPosition
@@ -533,30 +538,15 @@ fn reference_position_step(inherited: ReferencePosition, parent: Node, edge: Edg
       ArrowCarriedSlot => LabelPosition
       ArrowResourceRequirementsSlot => position_of_marker_or(inherited: inherited, edge: edge)
     }
-  } else {
-    position_of_marker_or(inherited: inherited, edge: edge)
+    _ => position_of_marker_or(inherited: inherited, edge: edge)
   }
 }
 
-// The step needs to know whether the PARENT is an Arrow, because the slot table is about an Arrow's
-// children. It is the ISSUER that reads the kind: a consumer hands over only the facts of its own walk
-// (parent, edge, ordinal) and decides nothing. v2.compiler.lexical_scope node_value_frame reads the same
-// connective to build the frame, so slot and frame agree by construction, not by an agreement test.
-fn parent_is_arrow_node(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: c } =>
-      match c {
-        Arrow => true
-        Conj => false
-        Disj => false
-        Atom { identity: _ } => false
-        Occupancy => false
-        Instantiation => false
-      }
-    ComputationNode { behavior: _ } => false
-  }
-}
-
+// THE CLOSED ENUMERATION (review 83367c): the label-carrying arm delegates to the exhaustive marker table (whose own
+// Absent arms are the declared transparent MARKERS); the other three arms are the transparent EDGE-SHAPE cases,
+// enumerated rather than defaulted, so a future EdgeLabel variant cannot slip through as "inherited" by default -- it
+// must be decided here. 'Absent => inherited' inside the marker arm STAYS: that is the marker table's own answer for
+// markers that carry no position (DeclarationReferenceEdge, BinderStructureEdge, ...), not a catch-all.
 fn position_of_marker_or(inherited: ReferencePosition, edge: Edge) -> ReferencePosition {
   match edge.label {
     StructuralLabel { label: CoreMarker { marker: m } } =>
@@ -564,7 +554,9 @@ fn position_of_marker_or(inherited: ReferencePosition, edge: Edge) -> ReferenceP
         Present { value: p } => p
         Absent => inherited
       }
-    _ => inherited
+    Authored { name: _ } => inherited
+    Positional => inherited
+    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => inherited
   }
 }
 

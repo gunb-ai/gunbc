@@ -1096,7 +1096,7 @@ fn roster_needed_rows(sites: FreeMonoid<ScopedReferenceSite>, imported: List<Ali
 // table today) is never a refusal. The decision itself is v2.workflow.roster_home_kind's verdict: KindUnclassified is
 // reached only from an unbound head at a value or type position whose home's keyed rows classify nothing. Bound,
 // label/tag, and undecided heads cannot reach it, so this refuses NOTHING that the binding fact alone passed before.
-fn roster_any_unclassified_head(sites: FreeMonoid<ScopedReferenceSite>, candidates: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
+fn roster_any_unclassified_head(sites: FreeMonoid<ScopedReferenceSite>, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
   fold_list(
     xs: candidates,
     empty: Absent,
@@ -1105,7 +1105,7 @@ fn roster_any_unclassified_head(sites: FreeMonoid<ScopedReferenceSite>, candidat
         Present { value: r } => Present { value: r }
         Absent =>
           if fold_list(xs: sites, empty: false, cons: fn(f, st) {
-            f || (roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_verdict_is_unclassified(site: st, home: roster_qn_text(qn: row.home), import_name: row.import_name))
+            f || (roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_verdict_is_unclassified(site: st, home: roster_qn_text(qn: row.home), import_name: row.import_name, imported_from_home: roster_symbol_imported(imported: imported, row: row)))
           }) {
             Present { value: RefusalHomeKindUnclassified { home: roster_qn_text(qn: row.home), name: row.import_name } }
           } else {
@@ -1208,7 +1208,7 @@ fn roster_sweep_rows(
     imported: list_map(xs: imported, f: fn(row) { row.binding })
   ).sites
   let needed = roster_needed_rows(sites: sites, imported: imported, candidates: candidates)
-  match roster_any_unclassified_head(sites: sites, candidates: candidates) {
+  match roster_any_unclassified_head(sites: sites, imported: imported, candidates: candidates) {
     // THE REFUSAL OUTRANKS CLEAN: a module whose census-unc classifiable free head sits among rows that need nothing is
     // exactly the "finished as if it succeeded" reading the review named; silence there is a fabricated Clean.
     Present { value: reason } => RosterRefused { reason: reason }
@@ -1521,6 +1521,7 @@ fn roster_controls_report() -> String {
         + roster_control_called_parameter(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_nested_call_label(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_sites_disagree(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_label_pass2_clean(prepared: prepared, lex: dag_prepared_lex())
         + roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_positional_past_unreadable()
         + roster_control_edit_splices()
@@ -1715,6 +1716,55 @@ fn roster_control_label_sites_disagree(prepared: PreparedGrammar, lex: PreparedL
     RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL label-sites-disagree: import [" + t + "] with no label edit\n"
     RosterLabelEdits { edits: edits } => "CONTROL-FAIL label-sites-disagree: " + int_to_decimal_string(value: length(xs: edits)) + " label edits with no import\n"
     RosterRefused { reason: r } => "CONTROL-FAIL label-sites-disagree: refused " + roster_refusal_text(reason: r) + "; the type-position annotation `y: chars` must not be counted as a free site\n"
+  }
+}
+
+// THE SECOND PASS OVER THE APPLIED EDIT (review 83367c). Pass 1 above plans the chars import AND the label rename in one
+// write; the file it lands is re-swept here, and the imported `chars` heads read HeadBindingUndecided -- the branch this
+// review caught skipping the position-x-kind check. With the fix, only the CALL head (Value position, value home) stays a
+// candidate: pass 2 = Clean, `y: chars` untouched, exactly the call's label renamed (pass 1 already landed it). With the
+// branch reverted to the unconditional KindMatched, the imported annotation head joins the candidates, the label plan
+// counts 2 free against 1 primary head, and pass 2 refuses LabelsAmbiguous -- RED -- while pass 1 stays green (its heads
+// are unbound, not undecided). That pair of outcomes is the whole point: the imported branch is exercised where it is
+// load-bearing, and no second filter in this module decides what the authority already decided.
+fn roster_control_label_pass2_clean(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.disagree\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String, y: chars) -> Int {\n  count(xs: chars(s: x))\n}\n"
+  match roster_sweep_text(path: "control/disagree.dag", text: before, prepared: prepared, lex: lex) {
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: labels } =>
+      if t != "import std.host_text { chars }" || length(xs: labels) != 1 {
+        "CONTROL-FAIL label-pass2-clean: pass 1 planned [" + t + "] with " + int_to_decimal_string(value: length(xs: labels)) + " labels\n"
+      } else {
+        match roster_applied(before: before, outcome: roster_sweep_text(path: "control/disagree.dag", text: before, prepared: prepared, lex: lex)) {
+          RosterApplyRefused { reason: r } => "CONTROL-FAIL label-pass2-clean: applying pass 1 refused " + roster_refusal_text(reason: r) + "\n"
+          RosterApplyWritten { content: after } =>
+            if !string_contains(s: after, pattern: "import std.host_text { chars }") {
+              "CONTROL-FAIL label-pass2-clean: the applied file lost the chars import\n"
+            } else if !string_contains(s: after, pattern: "y: chars") {
+              "CONTROL-FAIL label-pass2-clean: the applied file edited the type-position annotation `y: chars`\n"
+            } else if !string_contains(s: after, pattern: "chars(text: x)") {
+              "CONTROL-FAIL label-pass2-clean: the applied file did not rename the call's label to text:\n"
+            } else {
+              // The invariants pass 2 must hold: it never RE-PLANS the chars import (that row is done), and it never
+              // REFUSES -- LabelsAmbiguous at pass 2 is exactly the imported annotation head joining the label
+              // candidates, the defect this control exists to catch (the OFF-UNDECIDED flip turns this branch RED).
+              // Anything else -- Clean, or the sweep iterating to its next home -- is the correct fixpoint behavior.
+              match roster_sweep_text(path: "control/disagree.dag", text: after, prepared: prepared, lex: lex) {
+                RosterClean => ""
+                RosterRefused { reason: r } => "CONTROL-FAIL label-pass2-clean: re-sweeping the applied file refused " + roster_refusal_text(reason: r) + " -- the imported annotation head is being counted as a free candidate\n"
+                RosterEdit { start: _, end: _, text: t2, own_line: _ } =>
+                  if string_contains(s: t2, pattern: "std.host_text") { "CONTROL-FAIL label-pass2-clean: re-sweep RE-PLANNED the chars import [" + t2 + "]\n" } else { "" }
+                RosterLabelEdits { edits: e } =>
+                  if length(xs: e) > 0 { "" } else { "CONTROL-FAIL label-pass2-clean: re-sweep planned an empty label pass\n" }
+                RosterEditWithLabels { start: _, end: _, text: t2, own_line: _, labels: l } =>
+                  if string_contains(s: t2, pattern: "std.host_text") { "CONTROL-FAIL label-pass2-clean: re-sweep RE-PLANNED the chars import [" + t2 + "]\n" } else if length(xs: l) > 0 { "" } else { "CONTROL-FAIL label-pass2-clean: re-sweep planned an import and no labels [" + t2 + "]\n" }
+              }
+            }
+        }
+      }
+    RosterClean => "CONTROL-FAIL label-pass2-clean: pass 1 came back Clean; the fixture no longer exercises the imported-head path\n"
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL label-pass2-clean: pass 1 planned [" + t + "] with no label edit; pass 2 has nothing to exercise\n"
+    RosterLabelEdits { edits: e } => "CONTROL-FAIL label-pass2-clean: pass 1 planned only " + int_to_decimal_string(value: length(xs: e)) + " label edits\n"
+    RosterRefused { reason: r } => "CONTROL-FAIL label-pass2-clean: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
   }
 }
 
