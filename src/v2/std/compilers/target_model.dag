@@ -1809,10 +1809,8 @@ type TargetCallApplyShape {
 // (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (DESIGN 3: a
 // string key is a nickname).
 //
-// Argument labels: only the unlabeled arm has a producer (the Rust rows). A labeled arm returns with the first
-// Swift primitive row that needs it, in the same change as that row.
-type TargetPrimitiveArgumentLabel
-  = PrimitiveArgumentUnlabeled
+// Argument labels have no producer yet (Rust rows carry none), so there is no label slot; a label returns with the
+// first Swift primitive row that needs it, in the same change as that row.
 
 // How the argument reaches the callee. Rust's string_length takes `&str`, so the String argument is passed by shared
 // reference; the prefix is the target's own token, not a Rust spelling in this module.
@@ -1821,7 +1819,6 @@ type TargetPrimitiveArgumentPassing
   | PrimitivePassBySharedReference { prefix_token: Symbol }
 
 type TargetPrimitiveArgument {
-  label: TargetPrimitiveArgumentLabel
   passing: TargetPrimitiveArgumentPassing
 }
 
@@ -8813,16 +8810,11 @@ type TargetPrimitiveArgumentFold {
 }
 
 fn target_primitive_argument_prefix_tokens(argument: TargetPrimitiveArgument) -> List<ConcreteSyntaxToken> {
-  list_append(
-    left: match argument.label {
-      PrimitiveArgumentUnlabeled => Empty
-    },
-    right: match argument.passing {
-      PrimitivePassByValue => Empty
-      PrimitivePassBySharedReference { prefix_token: t } =>
-        Cons { head: FixedToken { token_class: t }, tail: Empty }
-    }
-  )
+  match argument.passing {
+    PrimitivePassByValue => Empty
+    PrimitivePassBySharedReference { prefix_token: t } =>
+      Cons { head: FixedToken { token_class: t }, tail: Empty }
+  }
 }
 
 fn target_primitive_arguments_to_tokens(
