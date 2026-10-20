@@ -1,7 +1,7 @@
 module v2.workflow.effect_plan_bash_materialize
 
 import std.types { List }
-import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_command_with_words, bash_build_exit, bash_build_pipe, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var }
+import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_command_with_words, bash_build_exit, bash_build_pipe, bash_build_subshell_from_stmts, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var }
 import std.algebra { list_head, list_tail, list_at_optional }
 import v2.std.text { string_all_chars_in, string_any_char_in }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
@@ -356,45 +356,43 @@ fn effect_plan_bash_observed_statement(
   write: ObservedSha256EnvWrite,
   observer_argv: List<String>
 ) -> Node {
-  bash_build_and_then(
-    left: bash_build_or_else(
+  bash_build_subshell_from_stmts(stmts: [
+    bash_build_or_else(
       left: bash_build_assign(
         name: effect_plan_bash_observed_digest_var,
         value: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: observer_argv))
       ),
       right: effect_plan_bash_observed_exit(cause: ObservationFailed)
     ),
-    right: bash_build_and_then(
-      left: bash_build_or_else(
-        left: bash_build_pipe(
-          left: effect_plan_bash_observed_printf(format: "%s"),
-          right: bash_build_command_from_lits(lits: [
-            grep_program().invocation as String,
-            "-Eq",
-            effect_plan_bash_sha256_line_ere()
-          ])
-        ),
-        right: effect_plan_bash_observed_exit(cause: DigestShapeInvalid)
+    bash_build_or_else(
+      left: bash_build_pipe(
+        left: effect_plan_bash_observed_printf(format: "%s"),
+        right: bash_build_command_from_lits(lits: [
+          grep_program().invocation as String,
+          "-Eq",
+          effect_plan_bash_sha256_line_ere()
+        ])
       ),
-      right: bash_build_pipe(
-        left: effect_plan_bash_observed_printf(
-          format: concat(write.env_name, concat("=%.", concat(to_string(sha256_hex_digit_count), "s\\n")))
-        ),
-        right: bash_build_command_from_lits(lits: concat(
-          sudo_elevate_argv(command: [
-            coreutils_install_binary_name as String,
-            coreutils_install_mode_flag as String,
-            write.mode as String,
-            coreutils_install_owner_flag as String,
-            write.owner as String,
-            coreutils_install_group_flag as String,
-            write.owner as String
-          ]),
-          ["/dev/stdin", write.dest]
-        ))
-      )
+      right: effect_plan_bash_observed_exit(cause: DigestShapeInvalid)
+    ),
+    bash_build_pipe(
+      left: effect_plan_bash_observed_printf(
+        format: concat(write.env_name, concat("=%.", concat(to_string(sha256_hex_digit_count), "s\\n")))
+      ),
+      right: bash_build_command_from_lits(lits: concat(
+        sudo_elevate_argv(command: [
+          coreutils_install_binary_name as String,
+          coreutils_install_mode_flag as String,
+          write.mode as String,
+          coreutils_install_owner_flag as String,
+          write.owner as String,
+          coreutils_install_group_flag as String,
+          write.owner as String
+        ]),
+        ["/dev/stdin", write.dest]
+      ))
     )
-  )
+  ])
 }
 
 fn effect_plan_bash_encode_observed_sha256_env_write(
