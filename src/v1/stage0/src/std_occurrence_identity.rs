@@ -712,9 +712,9 @@ pub fn occurrence_transport_role_index_build(
             },
         );
         match declaration_build.refusal.clone() {
-            Some(_) => declaration_build.clone(),
+            Some(_) => declaration_build,
             std::option::Option::None => references.iter().cloned().fold(
-                declaration_build.clone(),
+                declaration_build,
                 |build: Rc<OccurrenceTransportRoleIndexBuild>,
                  reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
                     Some(_) => build.clone(),

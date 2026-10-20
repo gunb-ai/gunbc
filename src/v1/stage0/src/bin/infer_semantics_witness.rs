@@ -1661,8 +1661,8 @@ fn authored_leaf_node(name: &str, text: &str) -> Rc<Node> {
     leaf_node_with_span(
         Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.to_string(),
-        span,
-        Some(synthetic_ident(span.clone(), name.to_string())),
+        span.clone(),
+        Some(synthetic_ident(span, name.to_string())),
     )
 }
 

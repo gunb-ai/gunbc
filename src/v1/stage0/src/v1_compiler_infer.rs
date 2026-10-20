@@ -14694,7 +14694,7 @@ Rc::new(InferResult {
 })
 }
                                         } else {
-                                            match infer_variant_constructor_call(texpr.occurrence_identity.clone(), func_name.clone(), call_args.clone(), span.clone(), crate::v1_std_core::node_name_span(texpr.clone()), scope.clone(), expected.clone()) {
+                                            match infer_variant_constructor_call(texpr.occurrence_identity.clone(), func_name.clone(), call_args.clone(), span.clone(), crate::v1_std_core::node_name_span(texpr.clone()), crate::v1_std_core::node_ident(texpr.clone()), scope.clone(), expected.clone()) {
     Some(ctor_result) => ctor_result.clone(),
     std::option::Option::None => {
                                                 let type_match = type_match_for_direct_call_target(scope.type_env.clone(), func_name.clone(), call_target.clone());
@@ -15744,6 +15744,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 field_inits.clone(),
                 span.clone(),
                 crate::v1_std_core::node_name_span(texpr.clone()),
+                crate::v1_std_core::node_ident(texpr.clone()),
                 scope.clone(),
                 expected.clone(),
             )
@@ -16670,6 +16671,7 @@ pub fn infer_variant_constructor_call(
     call_args: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
 ) -> Option<Rc<InferResult>> {
@@ -16729,6 +16731,7 @@ pub fn infer_variant_constructor_call(
                                                     Rc::new(vec![payload_init.clone()]),
                                                     span.clone(),
                                                     name_span.clone(),
+                                                    ident.clone(),
                                                     scope.clone(),
                                                     if ((expected.clone()
                                                         == std::option::Option::None)
@@ -17896,6 +17899,7 @@ pub fn infer_record_lit(
     field_inits: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
@@ -17922,7 +17926,7 @@ pub fn infer_record_lit(
 }),
     std::option::Option::None => match map_literal_expected_keyed_node(type_name.clone(), expected.clone(), scope.clone()) {
     Some(map_node) => infer_map_literal(occurrence_identity.clone(), map_node.clone(), field_inits.clone(), span.clone(), scope.clone()),
-    std::option::Option::None => infer_record_lit_structural(occurrence_identity.clone(), type_name.clone(), field_inits.clone(), span.clone(), name_span.clone(), scope.clone(), record_lit_expected_through_generic_alias(expected.clone(), scope.clone(), 8)),
+    std::option::Option::None => infer_record_lit_structural(occurrence_identity.clone(), type_name.clone(), field_inits.clone(), span.clone(), name_span.clone(), ident.clone(), scope.clone(), record_lit_expected_through_generic_alias(expected.clone(), scope.clone(), 8)),
 },
 }
     }
@@ -18362,6 +18366,7 @@ pub fn infer_record_lit_structural(
     field_inits: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
@@ -19241,10 +19246,7 @@ Rc::new(FieldInferResult {
                         node: resolved_node.clone(),
                     })),
                     span.clone(),
-                    Some(crate::v1_std_core::synthetic_ident(
-                        name_span.clone(),
-                        rl_name.clone(),
-                    )),
+                    crate::v1_std_core::named_ident(rl_name.clone(), ident.clone()),
                 );
                 let presence_ambiguity_diags = if ((type_diags.clone().len() as i64) > 0) {
                     Rc::new(vec![])

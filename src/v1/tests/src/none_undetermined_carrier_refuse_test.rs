@@ -27,7 +27,10 @@ fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
         name: "T".to_string(),
         ident: None,
         span: span.clone(),
-        ident_span: Some(span),
+        ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(
+            span,
+            "T".to_string(),
+        )),
         children: Rc::new(im::Vector::new()),
         connective: Connective::NoConnective,
         params: Rc::new(im::Vector::new()),

@@ -16,6 +16,15 @@ mod compiler_tests {
         }
     }
 
+    /// The source authority a parse needs: the newline index of the file the tokens came from
+    fn source_indices_of(
+        file: &str,
+        source: &str,
+    ) -> std::rc::Rc<im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>> {
+        let index = crate::v1_std_core::build_newline_index(file.to_string(), source.to_string());
+        std::rc::Rc::new(im::HashMap::new().update(file.to_string(), index))
+    }
+
     /// Read a .dag file from the workspace
     fn read_dag(path: &str) -> String {
         let full = workspace_root().join(path);
@@ -172,12 +181,13 @@ mod compiler_tests {
 
     #[test]
     fn parse_trivial_module() {
+        let src = "module test\ntype Foo { x: Int }\n";
         let tokens = tokenize(
-            "module test\ntype Foo { x: Int }\n".to_string(),
+            src.to_string(),
             "test.dag".to_string(),
             crate::extdeps_languages_dag_syntax::dag_parse_environment(),
         );
-        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        let result = crate::v1_compiler_parse::parse(tokens, source_indices_of("test.dag", src));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -212,7 +222,7 @@ mod compiler_tests {
                     crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                 );
                 let result =
-                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                    crate::v1_compiler_parse::parse(tokens, source_indices_of("test.dag", src));
                 let verdict = (|| {
                     if result.error.is_some() {
                         return Err(format!("parse error: {:?}", result.error));
@@ -303,6 +313,7 @@ mod compiler_tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 let source = read_dag("src/v1/01_tokenize.dag");
+                let source_text = source.clone();
                 let tokens = tokenize(
                     source,
                     "src/v1/01_tokenize.dag".to_string(),
@@ -321,8 +332,10 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result =
-                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let result = crate::v1_compiler_parse::parse(
+                    tokens,
+                    source_indices_of("src/v1/01_tokenize.dag", &source_text),
+                );
 
                 assert!(
                     result.module.is_some(),
@@ -362,7 +375,7 @@ mod compiler_tests {
                     crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                 );
                 let result =
-                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                    crate::v1_compiler_parse::parse(tokens, source_indices_of("test.dag", src));
                 let verdict = match (&result.error, &result.module) {
                     (Some(e), _) => Err(format!("{:?}", e)),
                     (None, Some(m)) => Ok(crate::v1_std_core::module_items(m.clone())
@@ -996,7 +1009,7 @@ mod compiler_tests {
                     Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
                     other => panic!("mk body untyped: {other:?}"),
                 };
-                let decl_file = ty.ident_span.as_ref().map(|s| s.file.clone()).unwrap_or_default();
+                let decl_file = ty.ident_span.as_ref().map(|s| s.span.file.clone()).unwrap_or_default();
                 assert_eq!(decl_file, "probe_user_opt.dag", "a user-declared Optional keeps its own declaration, not std.optional's; typed as {} from {}", ty.name, decl_file);
                 assert!((ty.children.len() as i64) == 2, "user Optional keeps its own two fields, got {}", ty.children.len());
             })
@@ -4335,7 +4348,7 @@ mod compiler_tests {
             name: name.to_string(),
             ident: None,
             span: span.clone(),
-            ident_span: Some(span),
+            ident_span: Some(crate::v1_std_core::synthetic_ident(span, name.to_string())),
             children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(im::Vector::new()),
@@ -4848,7 +4861,7 @@ mod compiler_tests {
                 name: name.to_string(),
                 ident: None,
                 span: span.clone(),
-                ident_span: Some(span),
+                ident_span: Some(crate::v1_std_core::synthetic_ident(span, name.to_string())),
                 children: std::rc::Rc::new(im::Vector::new()),
                 connective: crate::v1_std_core::Connective::NoConnective,
                 params: std::rc::Rc::new(im::Vector::new()),
@@ -5082,11 +5095,14 @@ mod compiler_tests {
         ) -> std::rc::Rc<crate::v1_std_core::Node> {
             let base = shaped_type_node(name, Vec::new());
             std::rc::Rc::new(crate::v1_std_core::Node {
-                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
-                    file: ident_file,
-                    start: 0,
-                    end: 0,
-                })),
+                ident_span: Some(crate::v1_std_core::synthetic_ident(
+                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                        file: ident_file,
+                        start: 0,
+                        end: 0,
+                    }),
+                    name.to_string(),
+                )),
                 ..(*base).clone()
             })
         }
@@ -5219,11 +5235,14 @@ mod compiler_tests {
         ) -> std::rc::Rc<crate::v1_std_core::Node> {
             let base = shaped_type_node(name, Vec::new());
             std::rc::Rc::new(crate::v1_std_core::Node {
-                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
-                    file: file.to_string(),
-                    start: 0,
-                    end: 0,
-                })),
+                ident_span: Some(crate::v1_std_core::synthetic_ident(
+                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                        file: file.to_string(),
+                        start: 0,
+                        end: 0,
+                    }),
+                    name.to_string(),
+                )),
                 module_item_kind: kind,
                 inferred: resolved.map(|rt| {
                     std::rc::Rc::new(crate::v1_std_core::InferredNode::Resolved { node: rt })

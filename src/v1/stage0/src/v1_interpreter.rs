@@ -28054,7 +28054,10 @@ mod map_shell_outputs_optional_stream_tests {
             None,
             Rc::new(vec![].into()),
             span.clone(),
-            span.clone(),
+            Some(crate::v1_std_core::synthetic_ident(
+                span.clone(),
+                from_key.to_string(),
+            )),
         );
         // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
         // MINTED UNDER THE AUTHORITY, not under a literal. The fixture used to
@@ -28073,7 +28076,10 @@ mod map_shell_outputs_optional_stream_tests {
                 span.clone(),
             ),
             span.clone(),
-            span.clone(),
+            Some(crate::v1_std_core::synthetic_ident(
+                span.clone(),
+                crate::v1_std_core::field_from_key_property_name(),
+            )),
         );
         Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
         let return_type = Rc::new(Node {
