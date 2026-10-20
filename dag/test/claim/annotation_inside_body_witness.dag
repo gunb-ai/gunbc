@@ -7,7 +7,7 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
   census_blocking_rows,
   census_total_count,
-  census_key_delta,
+  census_histograms_equal,
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -44,8 +44,7 @@ fn blocking_total(source: String) -> Int {
 }
 
 fn rows_agree(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
-  (a |> all(r => census_key_delta(r: r, red: a, green: b) == 0))
-    && (b |> all(r => census_key_delta(r: r, red: a, green: b) == 0))
+  census_histograms_equal(a: a, b: b)
 }
 
 // THE WALL: comments in every in-body position change no diagnostic, blocking or advisory.
