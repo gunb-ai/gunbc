@@ -5147,6 +5147,25 @@ fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcom
   }
 }
 
+// PURE STEPS OF dark_run_leg: what a leg's observed outcome becomes, separated from observing it so a
+// claim can supply the outcome (dark_run_leg calls exactly these).
+fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => DarkFailed { step: step, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if !o.success { DarkFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: step, reason: join(["expected no output, got: ", o.stdout], "") } }
+      else { DarkOk }
+  }
+}
+
+fn dark_same_hash_state(step: DarkInstallStep, left: String, right: String, agreement: Sha256Agreement) -> DarkState {
+  match sha256_disagreement_text(agreement: agreement) {
+    Absent => DarkOk
+    Present { value: why } => DarkFailed { step: step, reason: join([left, " and ", right, " differ (", why, ")"], "") }
+  }
+}
+
 fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
   match state {
     DarkFailed { step: _, reason: _ } => state
@@ -5157,18 +5176,9 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
         DarkLegStdin { step: s, command: c, payload: p } =>
           dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
         DarkLegExpectEmpty { step: s, command: c } =>
-          match run_argv_over_host_effect_transport(command: c, transport: transport) {
-            RunArgvTransportRefused { reason: r } => DarkFailed { step: s, reason: r }
-            RunArgvTransportObserved { observed: o } =>
-              if !o.success { DarkFailed { step: s, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
-              else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: s, reason: join(["expected no output, got: ", o.stdout], "") } }
-              else { DarkOk }
-          }
+          dark_expect_empty_state(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
         DarkLegSameHash { step: s, left: l, right: r } =>
-          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport)) {
-            Absent => DarkOk
-            Present { value: why } => DarkFailed { step: s, reason: join([l, " and ", r, " differ (", why, ")"], "") }
-          }
+          dark_same_hash_state(step: s, left: l, right: r, agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport))
       }
   }
 }
