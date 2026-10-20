@@ -2747,7 +2747,7 @@ mod field_binder_default_tests {
             type_expr.clone(),
             Cardinality::Required,
             Some(default),
-            Rc::new(vec![]),
+            Rc::new(im_vec![]),
             span(),
             span(),
         );
