@@ -413,6 +413,61 @@ type DocumentedGuarantee
 // WHICH ONE HOLDS, and what was read to find out. The three surfaces are the ones this module cites:
 // the REST review endpoint's own page, the webhook event page, and the pinned OpenAPI operation. None
 // of them states, either way, that a review is refused for a run whose delivery the App never got.
+// ---------------------------------------------------------------------------
+// How these gates COMPOSE: the obligation is cited, the composition is not.
+// -------------------------------------------------------------------------
+//
+// An environment can carry a custom rule AND required reviewers AND a wait timer at once, and the
+// model has to say what happens then, because gunbc.auth's safety case depends on it: the staged plan
+// keeps the human RequiredReviewers in place until the App's rule has been witnessed answering a real
+// dispatch both ways, so the two gates are live together BY DESIGN for the whole of stages 1-4.
+//
+// THE OBLIGATION IS CITED, on the environments how-to, read 2026-10-17: "A job that references an
+// environment must follow any protection rules for the environment before running or accessing the
+// environment's secrets." That is the half this repository depends on -- a job cannot proceed by
+// satisfying SOME of the rules -- so it carries its document.
+//
+// THE COMPOSITION DOES NOT. Nothing in the citation set states that GitHub requires ALL of an
+// environment's protection rules to pass, nor that an App answering its own rule leaves a required-
+// reviewer wait pending. The inference from the wait-timer page ("A job that references an environment
+// with a required reviewer or wait timer will not run until a permitted reviewer approves or rejects
+// the deployment") plus the poll endpoint's own description ("Returns any pending deployments for the
+// environment that its reviewer has yet to approve or reject") is that the gates are SEPARATE waits on
+// SEPARATE review surfaces and a job proceeds only when every one of them has passed. The surfaces
+// below are the ones read looking for a statement; there is none, so this is carried as undocumented
+// rather than written as fact (§3b: an external fact this repository has not observed gets an owner, a
+// consequence and a trigger, not a confident sentence).
+//
+// THE CONSEQUENCE IS SAFE IN BOTH DIRECTIONS, which is what makes proceeding affordable. If the reading
+// is right -- the expected case -- the App's approve receipt releases only its own rule, the human wait
+// stays pending, the job does not start, and required-reviewer removal waits for stage 5 where a human
+// removes it deliberately. If the reading is wrong and answering the App's rule also releases the human
+// gate, the operator loses a second click they were not asked for and no approval boundary is crossed
+// that a tap did not authorize, because the tap is what mints the receipt. Either way no run starts
+// that the operator did not tap for.
+//
+// THE TRIGGER: the stage-4 trial dispatches a real gated job with the App rule enabled AND a required
+// reviewer configured, and records whether the deployment stayed pending after the App's approve was
+// accepted. Expected: it stayed pending. A deployment that starts instead means answering one gate
+// released both; that retires this row to a cited fact with the opposite content and pulls the
+// required-reviewer removal forward in the plan carrier, rather than leaving a human reviewer that
+// nothing waits on.
+data gate_composition_documented_guarantee: DocumentedGuarantee = GuaranteeUndocumented {
+  surfaces_checked: [
+    "actions/how-tos — configure-custom-protection-rules (rule enablement, 30-day ceiling)",
+    "actions/reference — limits (the general approval ceiling; says nothing about composition)",
+    "rest/api/actions — review-custom-deployment-protection-rules-for-a-workflow-run",
+    "rest/api/actions — list-pending-deployments-for-a-workflow-run",
+    "rest/api/deployments/environments — protection_rules[].type values",
+  ],
+}
+
+// The cited half, as its own row so a reader never mistakes the bet for the citation, and a consumer
+// can demand the document instead of taking the composition on faith.
+data protection_rules_are_binding_guarantee: DocumentedGuarantee = GuaranteeDocumented {
+  cited_in: environments_how_to_authority,
+}
+
 data rule_delivery_documented_guarantee: DocumentedGuarantee = GuaranteeUndocumented {
   surfaces_checked: [
     "rest/api/actions — review-custom-deployment-protection-rules-for-a-workflow-run",
@@ -610,6 +665,46 @@ type DeploymentProtectionRuleReview {
   environment_name: NonEmptyStr,
   state: ReviewState,
   comment: NonEmptyStr?,
+}
+
+// The same census for the HUMAN surface, in the upstream's spelling: the pinned blob gives that
+// request exactly three fields and requires all three -- "environment_ids" (a LIST of environment
+// ids, not names), "state" with values "approved"/"rejected", and "comment". Set it beside the App's
+// own body, environment_name / state / comment: an id list where a name is required, a singular name
+// where a list is required. That is the interface half of why answering a required-reviewer wait is a
+// DIFFERENT call rather than a variant of this one -- a caller cannot survive the substitution by
+// accident. It is data rather than prose because the auth layer's barrier claim compares against it,
+// so a hand-fed list of strings cannot keep a barrier green.
+data human_review_body_documented_field_names: List<NonEmptyStr> = [
+  "environment_ids",
+  "state",
+  "comment",
+]
+
+fn human_review_body_matches_the_documented_fields(body: List<NonEmptyStr>) -> Bool {
+  length(xs: body) == length(xs: human_review_body_documented_field_names)
+    && human_review_body_documented_field_names |> all(f => body |> any(x => x == f))
+}
+
+// THE TWO SURFACES ARE NOT INTERCHANGEABLE, stated as a claim rather than as an impression. The bodies
+// share the words "state" and "comment" and differ in everything a gate answer is made of, so any
+// function that could describe both would be a broker able to post to either endpoint. Each clause is
+// load-bearing: drop the first and a caller could pass the App's body to the human route; drop the
+// last and the two censuses could silently grow into the same list.
+fn the_two_review_surfaces_are_distinguishable() -> Bool {
+  !human_review_body_matches_the_documented_fields(
+    body: [
+      review_endpoint_body_environment_name_field,
+      review_endpoint_body_state_field,
+      review_endpoint_body_comment_field,
+    ]
+  )
+    && human_review_body_matches_the_documented_fields(
+      body: human_review_body_documented_field_names
+    )
+    && !(human_review_body_documented_field_names
+      |> any(f => f == review_endpoint_body_environment_name_field))
+    && review_endpoint_path != human_review_endpoint_path
 }
 
 fn review_body_field_names(review: DeploymentProtectionRuleReview) -> List<NonEmptyStr> {

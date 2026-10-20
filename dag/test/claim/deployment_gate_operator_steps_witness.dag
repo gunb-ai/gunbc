@@ -66,6 +66,7 @@ import gunbc.auth.deployment_gate_operator_steps {
   all_steps_are_fleet_once,
   reviewer_removal_act_identity,
 }
+import gunbc.auth.approval_run_identity {attempt_identity_of}
 import gunbc.auth.deployment_gate_authorization {
   mint_accepted_rule_review,
   AcceptedRuleReviewReceipt,
@@ -106,6 +107,8 @@ import gunbc.auth.deployment_gate_authorization {
   GateInstallationClaim,
 }
 import gunbc.auth.deployment_gate_operator_steps {
+  // THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
+  reviewer_removal_observation_window,
   reviewer_removal_act_for,
   ReviewerRemovalStepDecision,
   ReviewerRemovalReady,
@@ -235,7 +238,15 @@ fn ownership_for(
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_fixture"
+    ),    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "joined_pair"
     ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+    ),
+
   ]
 {
   ownership_with_enabled(
@@ -507,7 +518,11 @@ fn admitted_pair() -> ReviewerRemovalAdmission
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "the_ready_act_is_discharged_at_the_mint"
+      decl_name: "the_ready_act_claims_no_completion_before_the_human_acts"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "completion_is_a_read_after_the_removal_not_the_admission"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -564,46 +579,79 @@ fn standing_fixture(
   rule_id: Int,
   reviewer_present: Bool,
   main_only: Bool
+) -> RemovalBoundaryStandingObservation {
+  standing_at(
+    environment: environment,
+    installation_id: installation_id,
+    identity_repo: identity_repo,
+    rule_id: rule_id,
+    reviewer_present: reviewer_present,
+    main_only: main_only,
+    attempt: standing_attempt(),
+    observed_at: standing_instant,
+  )
+}
+
+// THE STANDING, AT A CHOSEN ATTEMPT AND INSTANT. The two coordinates blocker 2 adds are PARAMETERS here
+// rather than constants, because the staleness and replay reds have to be able to name a second attempt
+// and a past instant; a fixture that hard-codes them can only ever demonstrate the honest case. Everything
+// still goes through the one sealed mint, so nothing in this file can hold a standing it did not read.
+fn standing_at(
+  environment: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int,
+  reviewer_present: Bool,
+  main_only: Bool,
+  attempt: AttemptIdentity,
+  observed_at: Timestamp
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
-  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
-  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
-  // could call the helper and obtain a sealed record without ever being named by the mint. The
-  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
-  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
-  // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_for_trial"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "historical_evidence_does_not_outlive_the_rule"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_no_reviewer"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_no_branch_rule"
+      decl_name: "standing_fixture"
     ),
   ]
 {
   observe_removal_boundary_standing(
-    ownership: ownership_for(
-      environment: environment,
-      installation_id: installation_id,
-      identity_repo: identity_repo,
-      rule_id: rule_id,
+    // THE JOIN FIRST. This is the only door to a standing in the whole corpus, and it now takes the two
+    // reads as a JOINED pair: a witness cannot hand the mint an ownership and a protection that name
+    // different environments, because it cannot hand it anything the join has not already agreed about.
+    joined: join_protection_to_ownership(
+      protection: protection_for(
+        owner: gate_owner,
+        repo: identity_repo,
+        environment: environment,
+        reviewer_present: reviewer_present,
+        main_only: main_only,
+      ),
+      ownership: ownership_for(
+        environment: environment,
+        installation_id: installation_id,
+        identity_repo: identity_repo,
+        rule_id: rule_id,
+      ),
     ),
-    protection: protection_read(
-      environment: environment,
-      reviewer_present: reviewer_present,
-      main_only: main_only,
-    ),
+    boundary: standing_boundary_for(environment: environment, identity_repo: identity_repo),
+    attempt: attempt,
+    observed_at: observed_at,
   )
+}
+
+fn standing_boundary_for(
+  environment: NonEmptyStr,
+  identity_repo: NonEmptyStr
+) -> DeploymentGateBoundary {
+  DeploymentGateBoundary {
+    repository: Repository {
+      owner: gate_owner as String,
+      name: identity_repo as String,
+      full_name: concat(gate_owner as String, concat("/", identity_repo as String)),
+      private: false,
+      default_branch: "main",
+    },
+    environment_name: environment,
+  }
 }
 
 // THE CURRENT STATE OF THE BOUNDARY, AS READ. Built from the shape gunbc.auth.github_deployment_environment
@@ -634,13 +682,10 @@ fn protection_read(
 // against, this repository, and a protection that still carries both properties.
 fn standing_for_trial() -> RemovalBoundaryStandingObservation
   admit_callers: [
-  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
-  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
-  // could call the helper and obtain a sealed record without ever being named by the mint. The
-  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
-  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
-  // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "ready_act"
@@ -651,7 +696,7 @@ fn standing_for_trial() -> RemovalBoundaryStandingObservation
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "the_ready_act_is_discharged_at_the_mint"
+      decl_name: "the_ready_act_claims_no_completion_before_the_human_acts"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -659,13 +704,8 @@ fn standing_for_trial() -> RemovalBoundaryStandingObservation
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "historical_evidence_does_not_outlive_the_rule"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
     ),
-
   ]
 {
   standing_fixture(
@@ -682,7 +722,9 @@ fn standing_for_trial() -> RemovalBoundaryStandingObservation
 // stand-in that would let a Blocked be cited as "the standing was checked".
 fn standing_never_read() -> RemovalBoundaryStandingObservation {
   StandingRefused {
-    because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+    because: JoinWasRefused {
+      because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+    },
   }
 }
 
@@ -725,6 +767,8 @@ fn ready_act() -> HumanIntervention?
     boundary: srv1_deployment_gate_boundary,
     admission: admitted_pair(),
     standing: standing_for_trial(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
   ) {
     ReviewerRemovalReady { admitted: a } => Present { value: a.intervention }
     ReviewerRemovalBlocked { missing: _ } => none
@@ -846,15 +890,19 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
   // value of type CurrentRemovalBoundaryStanding that means "the rule is off", so the act function can
   // never be handed one.
   (match reviewer_removal_act_for(
-         boundary: srv1_deployment_gate_boundary,
-         admission: admitted_pair(),
-         standing: standing_disabled_rule(),
-       ) {
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_disabled_rule(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
+  ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked {
            missing: StandingWasNotRead {
-             because: OwnershipWasNotEstablished {
-               because: NoEnabledRule,
+             because: JoinWasRefused {
+               because: OwnershipWasNotEstablished {
+                 because: NoEnabledRule,
+               },
              },
            },
          } => true
@@ -863,17 +911,19 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     // (b) A DIFFERENT RULE IS THE ONE ENABLED NOW: the trial answered rule 900000001, the environment
     // now answers 900000002. Refusing here is what "the rule was replaced" means in this model.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_fixture(
-             environment: gate_env,
-             installation_id: canonical_installation_id,
-             identity_repo: gate_repo,
-             rule_id: 900000002,
-             reviewer_present: true,
-             main_only: true,
-           ),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+    environment: gate_env,
+    installation_id: canonical_installation_id,
+    identity_repo: gate_repo,
+    rule_id: 900000002,
+    reviewer_present: true,
+    main_only: true,
+),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActStandingDisagreesOnRule {
@@ -887,17 +937,19 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     // (c) THE STANDING IS ABOUT ANOTHER INSTALLATION: a different App installation now owns an enabled
     // rule on the same environment. The trial's gate is not the gate that is standing.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_fixture(
-             environment: gate_env,
-             installation_id: 888800002,
-             identity_repo: gate_repo,
-             rule_id: canonical_rule_id,
-             reviewer_present: true,
-             main_only: true,
-           ),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+    environment: gate_env,
+    installation_id: 888800002,
+    identity_repo: gate_repo,
+    rule_id: canonical_rule_id,
+    reviewer_present: true,
+    main_only: true,
+),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActStandingDisagreesOnInstallation {
@@ -913,10 +965,12 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     // (d) THE HUMAN REVIEWER IS ALREADY GONE. There is no act to perform, and issuing one is how a
     // second removal gets waved through. Refused where the standing is MADE.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_no_reviewer(),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_no_reviewer(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: StandingWasNotRead {
@@ -928,10 +982,12 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     // (e) THE MAIN-ONLY BRANCH RULE HAS GONE: the environment is reachable from any ref, so the
     // boundary has already been weakened and nothing may be removed against it until it is repaired.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_no_branch_rule(),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_no_branch_rule(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: StandingWasNotRead {
@@ -943,10 +999,12 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     // (f) THE CONTROL: everything current yields the act. Without this the five above could be green
     // because the act is never issued at all.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_for_trial(),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_for_trial(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: a } =>
              a.boundary.environment_name == gate_env
                && a.evidence.approved.run_id == 35447067113
@@ -954,7 +1012,407 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
          })
 }
 
+// THE PROTECTION READ AS A VALUE THIS FILE CANNOT WRITE. EnvironmentProtectionObservation is
+// sole_constructor over a GitHubEnvironmentProtectionSettings that carries its OWN name, which is what
+// makes "healthy, but for a DIFFERENT environment" expressible -- and refusable. protection_read below
+// stays as the settings-only helper; this is the only way to hold an observation.
+fn protection_for(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment: NonEmptyStr,
+  reviewer_present: Bool,
+  main_only: Bool
+) -> EnvironmentProtectionObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "completion_is_a_read_after_the_removal_not_the_admission"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "joined_pair"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_at"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_disabled_rule"
+    ),
+  ]
+{
+  observe_environment_protection(
+    owner: owner,
+    repo: repo,
+    environment_name: environment,
+    settings: protection_read(
+      environment: environment,
+      reviewer_present: reviewer_present,
+      main_only: main_only,
+    ),
+  )
+}
+
+// THE JOIN, obtained through the one door. Every standing in this file is built from a joined pair,
+// so the join function is exercised by the honest cases too, not only by the reds.
+fn joined_pair(
+  environment: NonEmptyStr,
+  reviewer_present: Bool,
+  main_only: Bool
+) -> ProtectionOwnershipJoin
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_disabled_rule"
+    ),
+  ]
+{
+  join_protection_to_ownership(
+    protection: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: environment,
+      reviewer_present: reviewer_present,
+      main_only: main_only,
+    ),
+    ownership: ownership_for(
+      environment: environment,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+    ),
+  )
+}
+
+// THE STANDING'S OWN COORDINATES. A standing is now bound to the boundary, the attempt and the instant
+// it was read at, so the tests have to say which attempt they mean -- and the replay red has to be able
+// to name TWO attempts.
+fn standing_attempt() -> AttemptIdentity {
+  attempt_or_default(a: attempt_identity_of(run_id: "35447067113", run_attempt: "1"))
+}
+
+fn later_attempt() -> AttemptIdentity {
+  attempt_or_default(a: attempt_identity_of(run_id: "35447067113", run_attempt: "2"))
+}
+
+fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
+  match a {
+    Present { value: v } => v
+    Absent => "run-35447067113-attempt-1" as AttemptIdentity
+  }
+}
+
+data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
+
+// AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
+// needs both, and needs them as REAL instants rather than as a Bool somebody set.
+data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z"
+
+data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
+
 // THE STANDING VARIANTS THE RED NEEDS, each built through the one admitted door with its facts changed.
+// THE STANDING CANNOT BE BUILT FROM TWO ENVIRONMENTS (side chat round 4, blocker 1). The standing used
+// to take an ownership and a protection read as two loose values and never ask whether they named the
+// SAME environment; both protection predicates ignored the settings' own name. So srv1's rule ownership
+// joined with a SIBLING environment's healthy protection minted a standing, and the act function read
+// only the ownership half -- the environment actually vouched for was never checked. The join now
+// happens BEFORE any standing exists and refuses typed, so a mismatched pair has no representation to
+// travel with.
+// A STANDING IS SPENDABLE ONCE, FOR THE DISPATCH IT WAS READ ON, AND ONLY WHILE THE WORLD HAS NOT MOVED
+// (side chat round 4, blocker 2: "the fresh standing is replayable"). The fields blocker 2 added -- the
+// boundary, the observation attempt, the instant -- are not decoration: each of the four clauses below is
+// the only thing that makes one of those fields load-bearing, and each drops a `true` to a `false` if the
+// corresponding comparison in reviewer_removal_act_for is deleted.
+//
+// THE REPLAY CONTROL IS THE INTERESTING ONE. Read the standing while everything is healthy, then model the
+// world as having moved -- the removal is asked for under a NEW attempt, which is also how a rule being
+// switched off between the read and the act shows up, since a re-dispatch is what a new pending deployment
+// means -- and the old standing must refuse. What cannot be modeled is named as a residual in the plan
+// carrier: GitHub offers no compare-and-set on environment protection, and a human clicks after the read.
+// THE RESIDUAL IS A ROW, NOT A SENTENCE. reviewer_removal_act_for closes every arm it can and one
+// window it cannot: GitHub offers no compare-and-set on environment protection and the removal is
+// performed by a HUMAN after the read, so the read-now → click-later gap stays open however many fields
+// the standing carries. That gap is declared as data with five fields, and this test is the row's
+// consumer (§3c) AND its guard: an empty field, or a field that stopped naming the mechanism it is
+// supposed to describe, reddens here instead of leaving a residual written to satisfy a reviewer. Each
+// clause below is load-bearing against one edit to the row -- blank a field, drop the ETag evidence,
+// drop the If-Match trigger, or strip a mechanism out of enforced_instead, and one `true` becomes a
+// `false`. It is deliberately not a rung_drop: nothing has regressed to prose, and a RungDrop would
+// promise a restoration that depends on GitHub admitting a conditional mutation it does not have.
+test fn the_observation_window_residual_declares_what_it_cannot_close() -> Bool {
+  let limit = reviewer_removal_observation_window
+  // NOTHING IN THE ROW IS EMPTY. Five fields, five non-empty checks -- a residual with a blank field is
+  // the prose case wearing a record's clothes.
+  limit.attempted != ""
+    && limit.upstream_absence != ""
+    && limit.enforced_instead != ""
+    && limit.consequence != ""
+    && limit.retirement_trigger != ""
+    // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
+    && limit.attempted.contains("compare-and-set")
+    // THE UPSTREAM ABSENCE IS EVIDENCED, not asserted: it names the mechanism it looked for and failed
+    // to find on the pinned description.
+    && limit.upstream_absence.contains("ETag")
+    && limit.upstream_absence.contains("environments")
+    // WHAT IS ENFORCED INSTEAD names all three mechanisms the checks really implement, so the row cannot
+    // quietly drift away from the model it belongs to. Drop any one of these words from the row's
+    // enforced_instead and this reddens -- which is also the red that fires if someone DELETES the check
+    // it cites and leaves the row describing a guarantee that no longer exists.
+    && limit.enforced_instead.contains("observation_attempt")
+    && limit.enforced_instead.contains("standing_max_age")
+    && limit.enforced_instead.contains("sealed")
+    // THE TRIGGER OBSERVES SOMETHING. A retirement trigger nobody could ever witness is a wish, so it has
+    // to name the concrete upstream admission it waits for.
+    && limit.retirement_trigger.contains("If-Match")
+    // THE WINDOW IS THE READ-TO-CLICK ONE, the same gap the act's age bound narrows without closing: the
+    // human's click is in the consequence, not a generic risk.
+    && limit.consequence.contains("click")
+}
+
+test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Bool {
+  // (a) A READ BELONGING TO ANOTHER DISPATCH, asked about by this one.
+  (match reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_at(
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+      reviewer_present: true,
+      main_only: true,
+      attempt: later_attempt(),
+      observed_at: standing_instant,
+    ),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
+  ) {
+    ReviewerRemovalBlocked {
+      missing: ActStandingIsForAnotherAttempt { standing_attempt: a, removal_attempt: r },
+    } => a != r && a != standing_attempt()
+    ReviewerRemovalBlocked { missing: _ } => false
+    ReviewerRemovalReady { admitted: _ } => false
+  })
+    // (b) THE CONTROL: the same read, asked about by the attempt it was read on, is spendable.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        reviewer_present: true,
+        main_only: true,
+      ),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
+      ReviewerRemovalReady { admitted: a } => a.standing.observation_attempt == standing_attempt()
+      ReviewerRemovalBlocked { missing: _ } => false
+    })
+    // (c) A GENUINE READ THAT HAS AGED PAST THE DECLARED BOUND. Nothing about it is forged and nothing is
+    // the wrong subject: it is a true statement about a world that may have moved, and age is the only
+    // reason it is refused. The refusal carries the bound it was measured against.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        reviewer_present: true,
+        main_only: true,
+      ),
+      removal_attempt: standing_attempt(),
+      now: standing_instant_stale,
+    ) {
+      ReviewerRemovalBlocked {
+        missing: ActStandingIsStale { observed_at: o, now: n, max_age_seconds: m },
+      } =>
+        o == standing_instant && n == standing_instant_stale
+          && m == second_count(s: standing_max_age) as Int
+      ReviewerRemovalBlocked { missing: _ } => false
+      ReviewerRemovalReady { admitted: _ } => false
+    })
+    // (d) THE SAME READ INSIDE THE BOUND is spendable, so (c) is refusing on age and not on the instants
+    // being unusable values.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        reviewer_present: true,
+        main_only: true,
+      ),
+      removal_attempt: standing_attempt(),
+      now: standing_instant_fresh,
+    ) {
+      ReviewerRemovalReady { admitted: a } => a.standing.observed_at == standing_instant
+      ReviewerRemovalBlocked { missing: _ } => false
+    })
+    // (e) THE ACT CARRIES THE READ THAT AUTHORIZED IT, so the consumer of a Ready act can see which read
+    // it stands on rather than taking the act's word for it.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_fixture(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        reviewer_present: true,
+        main_only: true,
+      ),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
+      ReviewerRemovalReady { admitted: a } =>
+        a.standing.ownership.rule_id == a.evidence.approved.rule_id
+          && a.standing.boundary.environment_name == a.boundary.environment_name
+      ReviewerRemovalBlocked { missing: _ } => false
+    })
+}
+
+test fn a_standing_cannot_join_ownership_with_another_environments_protection() -> Bool {
+  // THE CONTROL FIRST: ownership and protection both read for srv1 join, and the standing exists.
+  (match join_protection_to_ownership(
+         protection: protection_for(
+           owner: gate_owner,
+           repo: gate_repo,
+           environment: gate_env,
+           reviewer_present: true,
+           main_only: true,
+         ),
+         ownership: ownership_for(
+           environment: gate_env,
+           installation_id: canonical_installation_id,
+           identity_repo: gate_repo,
+           rule_id: canonical_rule_id,
+         ),
+       ) {
+         ProtectionJoinEstablished {
+           protection: joined_protection,
+           ownership: joined_ownership,
+         } =>
+           joined_protection.environment_name == gate_env
+             && joined_ownership.environment_name == gate_env
+         ProtectionJoinRefused { because: _ } => false
+       })
+    // THE MUTATION: the SAME healthy protection, read for the SIBLING environment, against srv1's
+    // ownership. Healthy is not the same as THIS one.
+    && (match join_protection_to_ownership(
+           protection: protection_for(
+             owner: gate_owner,
+             repo: gate_repo,
+             environment: sibling_env,
+             reviewer_present: true,
+             main_only: true,
+           ),
+           ownership: ownership_for(
+             environment: gate_env,
+             installation_id: canonical_installation_id,
+             identity_repo: gate_repo,
+             rule_id: canonical_rule_id,
+           ),
+         ) {
+           ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           ProtectionJoinRefused {
+             because: ProtectionWasReadForAnotherEnvironment {
+               observed_environment: seen,
+               ownership_environment: expected,
+             },
+           } => seen == sibling_env && expected == gate_env
+           ProtectionJoinRefused { because: _ } => false
+         })
+    // THE INVERSE: the protection is right and the OWNERSHIP is the sibling's. One question, asked once
+    // -- not two checks that can disagree about which half matters.
+    && (match join_protection_to_ownership(
+           protection: protection_for(
+             owner: gate_owner,
+             repo: gate_repo,
+             environment: gate_env,
+             reviewer_present: true,
+             main_only: true,
+           ),
+           ownership: ownership_for(
+             environment: sibling_env,
+             installation_id: canonical_installation_id,
+             identity_repo: gate_repo,
+             rule_id: canonical_rule_id,
+           ),
+         ) {
+           ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           ProtectionJoinRefused {
+             because: ProtectionWasReadForAnotherEnvironment {
+               observed_environment: seen,
+               ownership_environment: expected,
+             },
+           } => seen == gate_env && expected == sibling_env
+           ProtectionJoinRefused { because: _ } => false
+         })
+    // A PROTECTION READ FROM ANOTHER REPOSITORY does not join either. Environments are per-repository
+    // objects: gcp-iam-bootstrap in a fork and gcp-iam-bootstrap here share a NAME and nothing else.
+    && (match join_protection_to_ownership(
+           protection: protection_for(
+             owner: gate_owner,
+             repo: other_repo,
+             environment: gate_env,
+             reviewer_present: true,
+             main_only: true,
+           ),
+           ownership: ownership_for(
+             environment: gate_env,
+             installation_id: canonical_installation_id,
+             identity_repo: gate_repo,
+             rule_id: canonical_rule_id,
+           ),
+         ) {
+           ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           ProtectionJoinRefused {
+             because: ProtectionWasReadForAnotherRepository {
+               observed_repository: seen,
+               ownership_repository: expected,
+             },
+           } => seen == other_repo && expected == gate_repo
+           ProtectionJoinRefused { because: _ } => false
+         })
+    // THE JOIN IS THE ONLY DOOR: a standing whose halves came from different environments cannot be
+    // minted at all, because the mint takes the JOINED pair rather than two loose values.
+    && (match observe_removal_boundary_standing(
+           joined: join_protection_to_ownership(
+             protection: protection_for(
+               owner: gate_owner,
+               repo: gate_repo,
+               environment: sibling_env,
+               reviewer_present: true,
+               main_only: true,
+             ),
+             ownership: ownership_for(
+               environment: gate_env,
+               installation_id: canonical_installation_id,
+               identity_repo: gate_repo,
+               rule_id: canonical_rule_id,
+             ),
+           ),
+           boundary: srv1_deployment_gate_boundary,
+           attempt: standing_attempt(),
+           observed_at: standing_instant,
+         ) {
+           StandingRead { value: _ } => false
+           StandingRefused { because: _ } => true
+         })
+}
+
 fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
   admit_callers: [
     decl_ref(
@@ -964,18 +1422,25 @@ fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
   ]
 {
   observe_removal_boundary_standing(
-    ownership: ownership_with_enabled(
-      environment: gate_env,
-      installation_id: canonical_installation_id,
-      identity_repo: gate_repo,
-      rule_id: canonical_rule_id,
-      enabled: false,
+    joined: joined_pair(
+      ownership: ownership_with_enabled(
+        environment: gate_env,
+        installation_id: canonical_installation_id,
+        identity_repo: gate_repo,
+        rule_id: canonical_rule_id,
+        enabled: false,
+      ),
+      protection: protection_for(
+        owner: gate_owner,
+        repo: gate_repo,
+        environment: gate_env,
+        reviewer_present: true,
+        main_only: true,
+      ),
     ),
-    protection: protection_read(
-      environment: gate_env,
-      reviewer_present: true,
-      main_only: true,
-    ),
+    boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
+    attempt: standing_attempt(),
+    observed_at: standing_instant,
   )
 }
 
@@ -1004,10 +1469,12 @@ fn standing_no_branch_rule() -> RemovalBoundaryStandingObservation {
 test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> Bool {
   // (a) THE HONEST PAIR, THE HONEST BOUNDARY: the act exists and names that subject.
   (match reviewer_removal_act_for(
-         boundary: srv1_deployment_gate_boundary,
-         admission: admitted_pair(),
-         standing: standing_for_trial(),
-       ) {
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_for_trial(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
+  ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
            let e = a.evidence
@@ -1019,14 +1486,16 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     // (b) A GENUINE PAIR ON THE SIBLING LANE'S ENVIRONMENT, asked about srv1. It was witnessed on
     // gcp-iam-bootstrap, so it is evidence about gcp-iam-bootstrap; it must not yield srv1's act.
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair_on(
-             approved: receipt_on(run_id: 35447067113, state: Approved, environment: sibling_env),
-             rejected: receipt_on(run_id: 35447067114, state: Rejected, environment: sibling_env),
-             boundary: sibling_boundary,
-           ),
-           standing: standing_for_trial(),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair_on(
+    approved: receipt_on(run_id: 35447067113, state: Approved, environment: sibling_env),
+    rejected: receipt_on(run_id: 35447067114, state: Rejected, environment: sibling_env),
+    boundary: sibling_boundary,
+),
+      standing: standing_for_trial(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActAddressedAnotherEnvironment {
@@ -1040,10 +1509,12 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     // environment half matches; the repository half does not. This is the case the old signature had no
     // argument for, so it is the one that could not even be refused.
     && (match reviewer_removal_act_for(
-           boundary: fork_boundary,
-           admission: admitted_pair(),
-           standing: standing_for_trial(),
-         ) {
+      boundary: fork_boundary,
+      admission: admitted_pair(),
+      standing: standing_for_trial(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActAddressedAnotherRepository {
@@ -1099,10 +1570,12 @@ test fn the_removal_act_names_its_subject_in_its_identity_and_in_its_route() -> 
   // THE HONEST ACT EXISTS AND SAYS THE RIGHT THING, so nothing below can be green because no act was
   // ever issued.
   (match reviewer_removal_act_for(
-         boundary: srv1_deployment_gate_boundary,
-         admission: admitted_pair(),
-         standing: standing_for_trial(),
-       ) {
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_for_trial(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
+  ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
            let route_text = i.instruction as String
@@ -1135,22 +1608,26 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
   // reason the mint gave, not a Bool that threw it away (review 82571 dissolved the Bool helper that
   // used to answer this question).
   (match reviewer_removal_act_for(
-         boundary: srv1_deployment_gate_boundary,
-         admission: reviewer_removal_admission,
-         // The frontier refuses at the admission, so the standing is never consulted; passing a read
-         // that did not happen keeps the refusal honest about which axis is empty.
-         standing: standing_never_read(),
-       ) {
+    boundary: srv1_deployment_gate_boundary,
+    admission: reviewer_removal_admission,
+    // The frontier refuses at the admission, so the standing is never consulted; passing a read
+// that did not happen keeps the refusal honest about which axis is empty.
+standing: standing_never_read(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
+  ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked { missing: NoApprovingReview } => true
          ReviewerRemovalBlocked { missing: _ } => false
        })
     // ...and with a witnessed pair on the named subject, the SAME act becomes performable
     && (match reviewer_removal_act_for(
-           boundary: srv1_deployment_gate_boundary,
-           admission: admitted_pair(),
-           standing: standing_for_trial(),
-         ) {
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_for_trial(),
+      removal_attempt: standing_attempt(),
+      now: standing_instant,
+    ) {
            ReviewerRemovalReady { admitted: a } =>
              let i = a.intervention
              let e = a.evidence
@@ -1162,24 +1639,110 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
          })
 }
 
-// THE EVIDENCE COLUMN NAMES THE DOOR, not a paragraph. The finding was that the act said "do not remove
-// before" in its instruction while the admission it depends on sat unimported; a completion_evidence of
-// NoDischargeSiteModeled was the tell. Ready now carries a discharge ref to the mint that had to run.
-test fn the_ready_act_is_discharged_at_the_mint() -> Bool {
+// THE ACT CLAIMS NO COMPLETION BEFORE THE HUMAN ACTS. std.human_intervention defines completion evidence
+// as the human having done the act, and the authorization selector counts DischargedAt as a substrate
+// receipt -- so an act carrying DischargedAt {admit_reviewer_removal} was the model asserting that a
+// PREREQUISITE run discharged an act whose only remaining step was the human's click. The admission is the
+// prerequisite; the receipt is ReviewerRemovalObserved, minted from the post-removal readback. So Ready
+// must carry NoDischargeSiteModeled, and the act's own instructions are what tell the operator to click.
+test fn the_ready_act_claims_no_completion_before_the_human_acts() -> Bool {
   match reviewer_removal_act_for(
     boundary: srv1_deployment_gate_boundary,
     admission: admitted_pair(),
     standing: standing_for_trial(),
+    removal_attempt: standing_attempt(),
+    now: standing_instant,
   ) {
     ReviewerRemovalReady { admitted: a } =>
-    let i = a.intervention
-      match i.completion_evidence {
-        DischargedAt { evidence: ref } =>
-          (ref.module_path as String) == "gunbc.auth.deployment_gate_authorization"
-            && (ref.decl_name as String) == "admit_reviewer_removal"
-        _ => false
+      match a.intervention.completion_evidence {
+        NoDischargeSiteModeled => true
+        DischargedAt { evidence: _ } => false
       }
     ReviewerRemovalBlocked { missing: _ } => false
+  }
+}
+
+// THE PREREQUISITE IS NOT THE RECEIPT. The discharge site the model DOES name is the stage-5 post-removal
+// readback, reached only through observe_reviewer_removal -- which refuses a read of another subject, a
+// read that still shows the reviewer, and a read where the main-only branch policy went with the reviewer.
+// A reviewer still present is not a completion, whatever the caller intended, and a read of the SIBLING
+// environment is not a completion of this one.
+test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
+  match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: standing_instant_fresh,
+  ) {
+    ReviewerRemovalCompletionRecorded { receipt } =>
+      receipt.reviewer_removed && receipt.main_only_policy_present
+        && receipt.observed_at == standing_instant_fresh
+        && receipt.boundary.environment_name == gate_env
+    ReviewerRemovalCompletionRefused { because: _ } => false
+  }
+  && match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    observed_at: standing_instant_fresh,
+  ) {
+    ReviewerRemovalCompletionRefused { because: ReviewerIsStillPresent { environment: e } } => e == gate_env
+    _ => false
+  }
+  && match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: false,
+    ),
+    observed_at: standing_instant_fresh,
+  ) {
+    ReviewerRemovalCompletionRefused { because: BranchPolicyWentWithTheReviewer { environment: e } } =>
+      e == gate_env
+    _ => false
+  }
+  && match observe_reviewer_removal(
+    boundary: sibling_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: sibling_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: standing_instant_fresh,
+  ) {
+    ReviewerRemovalCompletionRecorded { receipt } => receipt.boundary.environment_name == sibling_env
+    _ => false
+  }
+  && match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: sibling_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: standing_instant_fresh,
+  ) {
+    ReviewerRemovalCompletionRefused {
+      because: CompletionReadIsOfAnotherSubject { subject: m },
+    } => m.requested_environment == gate_env && m.standing_environment == sibling_env
+    _ => false
   }
 }
 

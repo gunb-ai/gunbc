@@ -32,6 +32,7 @@ import std.types {
   List,
   Bool,
   NonEmptyStr,
+  Timestamp,
 }
 
 import std.human_intervention {
@@ -40,9 +41,9 @@ import std.human_intervention {
   HumanInterventionIdentity,
   FleetOnce,
   NoDischargeSiteModeled,
-  DischargedAt,
   human_intervention_frequency_eq,
 }
+import std.scoped_authorization { AttemptIdentity }
 import extdeps.github.app { GitHubAppPermission }
 import gunbc.auth.deployment_gate_authorization {
   gate_app_permissions,
@@ -54,6 +55,10 @@ import gunbc.auth.deployment_gate_authorization {
   DeploymentGateBoundary,
   srv1_deployment_gate_boundary,
   boundary_repository_label,
+  boundary_mismatch,
+  BoundaryMismatch,
+  standing_max_age,
+  standing_is_within_age_bound,
   reviewer_removal_admission,
   // THE CURRENT READ THE ACT CONSUMES (blocker 3). The refusal arms below are matched as constructor
   // patterns of the scrutinee's sum and need no import; these two are named in TYPE position, so they do.
@@ -65,7 +70,12 @@ import gunbc.auth.deployment_gate_authorization {
   ReadbackCarriedNoRules,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_environment_name,
+  GitHubEnvironmentProtectionSettings,
+  environment_protection_requires_reviewers,
+  environment_protection_restricts_to_main,
+}
 
 // The repository the App is installed on. Named once, in one row, so the installation subject and
 // the rule-enablement subject cannot drift apart into two different repos.
@@ -175,6 +185,12 @@ type AdmittedReviewerRemovalAct sole_constructor {
   // THE SUBJECT THE CHECKS WERE RUN AGAINST, carried out of the checks instead of re-spelled by a
   // consumer. The act IS the record of a completed check, so it attests what was checked.
   boundary: DeploymentGateBoundary,
+  // THE STANDING THAT AUTHORIZED IT (side chat round 4, blocker 2). Carrying the standing rather than
+  // merely consuming it is what makes a handed-over act auditable: the act says not only which pair was
+  // witnessed and which boundary was checked, but which CURRENT read was current at the time, for which
+  // attempt, and at what instant. Without it, an act on disk is indistinguishable from one that had never
+  // had a fresh read at all.
+  standing: CurrentRemovalBoundaryStanding,
 }
 
 type ReviewerRemovalStepDecision
@@ -250,13 +266,24 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
     frequency: FleetOnce,
     subject: subject,
     instruction: instruction,
-    completion_evidence: DischargedAt {
-      evidence: DeclarationRef {
-        module_path: "gunbc.auth.deployment_gate_authorization",
-        decl_name: "admit_reviewer_removal",
-        field: WholeDeclaration,
-      },
-    }
+    // THE ACT IS NOT EVIDENCE THAT THE HUMAN ACTED (side chat round 4, blocker 3).
+    //
+    // This used to cite DischargedAt { gunbc.auth.deployment_gate_authorization::admit_reviewer_removal },
+    // which read as completion while proving only the PREREQUISITE. std.human_intervention defines
+    // completion evidence as "the human did it", and
+    // gunbc.auth.authorization_pattern_selection::receipt_in_substrate counts DischargedAt as a receipt in
+    // the substrate -- so the model was awarding itself a substrate receipt for its own admission function.
+    // That is the §5 defect exactly: a field satisfiable by editing a declaration while the world is
+    // unchanged. The admission is the act's precondition, not its outcome; the human still has to click in
+    // GitHub's UI afterwards, and nothing here has seen that happen.
+    //
+    // THE OUTCOME IS A DIFFERENT SEALED RECEIPT, not a flag on this one: ReviewerRemovalObserved in
+    // gunbc.auth.deployment_gate_authorization, minted only from a post-removal environment read that
+    // finds the reviewer GONE and the branch policy INTACT. std.human_intervention's own text says this
+    // arm retires when a per-intervention discharge carrier lands with a real inhabitant -- its dissolve-on
+    // condition -- and ReviewerRemovalObserved is that carrier. Until stage 5 wires the readback and its
+    // witness, this row states the gap rather than dressing a placeholder in the shape of evidence.
+    completion_evidence: NoDischargeSiteModeled
   }
 }
 
@@ -286,7 +313,14 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
 fn reviewer_removal_act_for(
   boundary: DeploymentGateBoundary,
   admission: ReviewerRemovalAdmission,
-  standing: RemovalBoundaryStandingObservation
+  standing: RemovalBoundaryStandingObservation,
+  // THE ATTEMPT THE REMOVAL IS BEING ASKED FOR, and the instant it is being asked at (side chat round 4,
+  // blocker 2). Without the first, a standing read for one dispatch is spendable on the next; without the
+  // second, a standing read this morning is spendable this afternoon. Both are arguments rather than
+  // fields a caller could set on the standing itself: the STANDING is sealed and records what was read,
+  // and it is the ACT'S job to ask whether that record is still the one this removal may use.
+  removal_attempt: AttemptIdentity,
+  now: Timestamp
 ) -> ReviewerRemovalStepDecision {
   match admission {
     RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
@@ -313,41 +347,76 @@ fn reviewer_removal_act_for(
         match standing {
           StandingRefused { because: because } =>
             ReviewerRemovalBlocked { missing: StandingWasNotRead { because: because } }
-          StandingRead { standing: now } =>
-            if now.ownership.rule_id != evidence.approved.rule_id
-              || now.ownership.rule_id != evidence.rejected.rule_id {
+          StandingRead { standing: read_now } =>
+            if read_now.ownership.rule_id != evidence.approved.rule_id
+              || read_now.ownership.rule_id != evidence.rejected.rule_id {
               ReviewerRemovalBlocked {
                 missing: ActStandingDisagreesOnRule {
-                  standing_rule_id: now.ownership.rule_id,
+                  standing_rule_id: read_now.ownership.rule_id,
                   approved_rule_id: evidence.approved.rule_id,
                   rejected_rule_id: evidence.rejected.rule_id,
                 },
               }
-            } else if now.ownership.installation_id != evidence.approved.installation_id
-              || now.ownership.installation_id != evidence.rejected.installation_id {
+            } else if read_now.ownership.installation_id != evidence.approved.installation_id
+              || read_now.ownership.installation_id != evidence.rejected.installation_id {
               ReviewerRemovalBlocked {
                 missing: ActStandingDisagreesOnInstallation {
-                  standing_installation_id: now.ownership.installation_id,
+                  standing_installation_id: read_now.ownership.installation_id,
                   approved_installation_id: evidence.approved.installation_id,
                   rejected_installation_id: evidence.rejected.installation_id,
                 },
               }
-            } else if now.ownership.environment_name != evidence.approved.environment_name
-              || now.ownership.environment_name != evidence.rejected.environment_name {
+            } else if read_now.boundary.environment_name != evidence.approved.environment_name
+              || read_now.boundary.environment_name != evidence.rejected.environment_name {
               ReviewerRemovalBlocked {
                 missing: ActStandingDisagreesOnEnvironment {
-                  standing_environment: now.ownership.environment_name,
+                  standing_environment: read_now.boundary.environment_name,
                   approved_environment: evidence.approved.environment_name,
                   rejected_environment: evidence.rejected.environment_name,
                 },
               }
-            } else if (now.ownership.owner as String) != boundary.repository.owner
-              || (now.ownership.repo as String) != boundary.repository.name {
+            } else if read_now.boundary.repository.owner != boundary.repository.owner
+              || read_now.boundary.repository.name != boundary.repository.name
+              || read_now.boundary.environment_name != boundary.environment_name {
+              // REACHABLE, AND ONLY THIS FORM OF THE QUESTION IS. The mint already compared the READS to
+              // the boundary it was handed, so re-checking the ownership halves here could never fire --
+              // that is the unreachable re-validation §4b removes. What the mint cannot know is which
+              // boundary the ACT is being asked about: a caller may hand a standing sealed for
+              // gcp-iam-bootstrap to a request for srv1-production, and the two boundary values are
+              // independent arguments.
+              // ONE COMPARISON AGAINST THE SEALED SUBJECT, not two against its halves. The standing
+              // carries the boundary it vouches for, so the question "is this the standing for THAT
+              // environment" is answered once, and the answer carries both halves (environments are
+              // per-repository objects: the name alone is not a subject).
               ReviewerRemovalBlocked {
-                missing: ActStandingDisagreesOnRepository {
-                  standing_repository: concat(now.ownership.owner as String,
-                    concat("/", now.ownership.repo as String)),
-                  expected_repository: boundary_repository_label(boundary: boundary),
+                missing: ActStandingIsForAnotherBoundary {
+                  subject: boundary_mismatch(
+                    standing_owner: read_now.boundary.repository.owner,
+                    standing_repo: read_now.boundary.repository.name,
+                    standing_environment: read_now.boundary.environment_name,
+                    requested: boundary,
+                  ),
+                },
+              }
+            } else if read_now.observation_attempt != removal_attempt {
+              // THE READ IS FOR ANOTHER DISPATCH. The trial pair and the standing can both be genuine and
+              // still belong to a run that has since been retried: a re-run is a new attempt with a new
+              // pending deployment, and the read that vouched for the old one says nothing about this one.
+              ReviewerRemovalBlocked {
+                missing: ActStandingIsForAnotherAttempt {
+                  standing_attempt: read_now.observation_attempt,
+                  removal_attempt: removal_attempt,
+                },
+              }
+            } else if !standing_is_within_age_bound(observed_at: read_now.observed_at, now: now) {
+              // THE READ IS GENUINE BUT AGED. It is not a forged standing and not a wrong subject -- it is
+              // a true statement about a world that may have moved. Refusing on age is what makes
+              // "immediately beforehand" a checked property rather than a comment (§5).
+              ReviewerRemovalBlocked {
+                missing: ActStandingIsStale {
+                  observed_at: read_now.observed_at,
+                  now: now,
+                  max_age_seconds: second_count(s: standing_max_age) as Int,
                 },
               }
             } else {
@@ -359,6 +428,7 @@ fn reviewer_removal_act_for(
                   intervention: build_reviewer_removal_act(boundary: boundary),
                   evidence: evidence,
                   boundary: boundary,
+                  standing: read_now,
                 },
               }
             }
@@ -393,6 +463,57 @@ type DeploymentGateOperatorSequence {
   reviewer_removal: ReviewerRemovalStepDecision,
 }
 
+// THE FRONTIER ASKS FOR NO REMOVAL, and these two rows say so in values rather than in a comment.
+// reviewer_removal_act_for now takes an attempt and an instant, because a removal is asked for BY an
+// attempt AT an instant; the frontier row has no dispatch behind it, so it names the attempt and instant
+// the frontier record is filed under. The instant is canonical, so the freshness comparison it could be
+// fed to is one std/measure defines; and the refusal this row records comes from the sealed admission
+// (no trial was witnessed), which the act function consults BEFORE the standing -- a fact the witnesses
+// pin by handing the same function a DIFFERENT attempt and still getting the trial refusal back.
+// THE RESIDUAL THIS DESIGN CANNOT CLOSE, DECLARED RATHER THAN NARRATED.
+//
+// The standing is bounded and attempt-bound, which is what the checks can enforce. What they cannot
+// enforce is the gap between the read and the click: GitHub offers no compare-and-set on environment
+// protection -- there is no "remove the reviewer only if protection_rules still looks like what I just
+// read" -- and the act that follows a Ready decision is performed by a HUMAN in the GitHub UI some
+// minutes later. So the sequence read-now → click-later always has a window in which the world can
+// move, and no field in this model can shut it.
+//
+// Naming it is not decoration: it is the difference between a check whose guarantee is "the state was
+// current within standing_max_age of the ask" and a comment that says "the state is current", which is
+// false the moment a human is in the loop. The bound narrows the window; it does not close it, and the
+// plan carrier says "bounded and attempt-bound" for exactly that reason.
+//
+// WHY NOT A rung_drop row: a RungDrop declares a typed construct that regressed to prose and names
+// what restores the typing. This is not lost typing -- it is an upstream absence this repository cannot
+// fix by writing more model, so it is carried as a limit with an owner, a consequence and a trigger, in
+// the shape gunbc.auth.approval_broker_demand already uses for a measured kernel limit.
+type RemovalObservationWindowLimit {
+  // What was tried, so the next reader does not re-invent it.
+  attempted: NonEmptyStr
+  // The upstream absence that makes it fail, and where it was looked for.
+  upstream_absence: NonEmptyStr
+  // What the model DOES enforce instead, so the residual is not read as "nothing is checked".
+  enforced_instead: NonEmptyStr
+  // What could still go wrong inside the window, stated as a cost rather than hidden.
+  consequence: NonEmptyStr
+  // What would retire the row. A trigger that cannot be observed is a wish, so this names an
+  // observation, not a hope.
+  retirement_trigger: NonEmptyStr
+}
+
+data reviewer_removal_observation_window: RemovalObservationWindowLimit = RemovalObservationWindowLimit {
+  attempted: "compare-and-set on environment protection: mint a standing, then remove the reviewer only if the environment still reads as the standing recorded" as NonEmptyStr,
+  upstream_absence: "GitHub's environment surface has no conditional mutation. GET .../environments/\{environment_name\} reports protection_rules and POST .../environments/\{environment_name\} writes them, with no ETag, no expected-value parameter, and no conflict response, at the pinned OpenAPI description (read 2026-10-17)" as NonEmptyStr,
+  enforced_instead: "the standing is sealed and carries boundary + observation_attempt + observed_at; reviewer_removal_act_for refuses a standing for another boundary, another attempt, or one older than standing_max_age, and the act carries the standing that authorized it, so a handed-over act is auditable to the read behind it" as NonEmptyStr,
+  consequence: "between the read and the human's click, the rule can be disabled or replaced and the branch policy edited, and the click will still land on an environment that no longer matches the standing. The removal itself only ever WEAKENS a gate a human is already scheduled to weaken, and the main-only branch policy is re-read after the removal, which is what bounds the damage rather than the read" as NonEmptyStr,
+  retirement_trigger: "GitHub admitting a conditional mutation on an environment (an ETag/If-Match on PUT .../environments/\{environment_name\}, or an expected protection-rule id on the write), observed on the real endpoint rather than hoped for. Nothing smaller retires this row: a shorter standing_max_age narrows the window and closes none of it." as NonEmptyStr,
+}
+
+data frontier_removal_attempt: AttemptIdentity = "frontier-no-dispatch" as AttemptIdentity
+
+data frontier_filing_instant: Timestamp = "2026-10-19T00:00:00Z"
+
 data deployment_gate_operator_steps: DeploymentGateOperatorSequence = DeploymentGateOperatorSequence {
   app_registration: app_registration_step,
   app_installation: app_installation_step,
@@ -409,8 +530,14 @@ data deployment_gate_operator_steps: DeploymentGateOperatorSequence = Deployment
     boundary: srv1_deployment_gate_boundary,
     admission: reviewer_removal_admission,
     standing: StandingRefused {
-      because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+      // NOTHING WAS JOINED, because nothing was read: the ownership read that the join consumes returned
+      // no rules at all. Named as the join's own refusal rather than as a standing-shaped guess.
+      because: JoinWasRefused {
+        because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+      },
     },
+    removal_attempt: frontier_removal_attempt,
+    now: frontier_filing_instant,
   ),
 }
 

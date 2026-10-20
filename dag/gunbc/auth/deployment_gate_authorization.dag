@@ -28,10 +28,13 @@ import std.types {
   Bool,
   NonEmptyStr,
   HttpStatus,
+  Timestamp,
 }
 import std.measure {
   Second,
   measure_le,
+  second,
+  second_count,
 }
 import std.optional {
   Present,
@@ -52,6 +55,20 @@ import extdeps.github.deployment_protection_rule {
   review_decision,
   review_releases_environment,
   review_documented_example_body,
+  // THE OTHER REVIEW SURFACE, imported so the barrier can name it rather than spell it. A literal
+  // here would be a second authority over a route the substrate owns: rename the route upstream and
+  // the copy stays green while the broker's real address moves.
+  human_review_endpoint_path,
+  
+  
+  the_two_review_surfaces_are_distinguishable,
+  // WHAT THE UPSTREAM DOES NOT PROMISE ABOUT COMPOSITION, consumed below rather than paraphrased.
+  gate_composition_documented_guarantee,
+  protection_rules_are_binding_guarantee,
+  DocumentedGuarantee,
+  GuaranteeDocumented,
+  GuaranteeUndocumented,
+  rule_delivery_citation,
   PendingDeploymentWait,
   pending_wait_environment_name,
   EnabledDeploymentProtectionRule,
@@ -109,6 +126,8 @@ import gunbc.auth.approval_capability {
   ProposedDecision,
   ProposeApprove,
   ProposeDeny,
+  utc_instant_is_canonical,
+  utc_instant_seconds_after,
 }
 import gunbc.auth.authorization_pattern_selection {
   OperatorApprovedCapability,
@@ -324,6 +343,103 @@ fn operator_webhook_receiver() -> Optional<NonEmptyStr> {
 }
 
 // ---------------------------------------------------------------------------
+// 4b. THE BROKER'S OUTWARD EFFECT SURFACE — one route, and the barrier that says so
+// ---------------------------------------------------------------------------
+
+// THE LADDER: what the broker is permitted to post, as data. ONE entry, the App answering its OWN
+// rule. Upstream there are TWO review endpoints and they are not interchangeable --
+// POST .../actions/runs/{run_id}/deployment_protection_rule answers the App's own rule, while
+// POST .../actions/runs/{run_id}/pending_deployments answers a human RequiredReviewers gate. The
+// second is deliberately absent.
+//
+// WHY A LADDER RATHER THAN A SENTENCE FORBIDDING THE OTHER ONE (side chat round 4, blocker 4: "the
+// double authority to forbid is the App answering through the HUMAN surface", and it has to be
+// structural). If the broker could reach the human surface, one phone tap would release two gates --
+// the operator would have traded a click they can see for one they cannot. "The broker does not post
+// there" as a comment is true forever and checks nothing; as a list with one entry it goes red the
+// moment someone adds a second (§5: a rule nobody can break is not a check). This is the exhaustive
+// census of what THIS broker may post, which is the question the barrier below asks; it is not a claim
+// that no such call may exist anywhere in the repository.
+//
+// ITS CONSUMERS (§3c): broker_barrier_against_the_human_review_endpoint, which reads these paths and
+// fails closed if the human route ever appears among them, and the witness census that pairs this list
+// with the declared route beside it -- so widening the ladder, or pointing it at the human endpoint,
+// reddens a claim instead of silently widening what the broker may post.
+data broker_effect_route_paths: List<NonEmptyStr> = [review_endpoint_path]
+
+// What the ladder says about the human surface. A sum rather than a Bool because the broken side has
+// to be nameable in an operator-facing log rather than being one more `false`, and a consumer logging
+// the barrier should be able to say WHICH surface it checked.
+type BrokerAnswerBarrier
+  = BrokerIsBarredFromTheHumanReviewEndpoint
+  | BrokerMayPostToTheHumanReviewEndpoint { offending_path: NonEmptyStr }
+
+// THE BARRIER, AS A CHECK AND NOT AS A SENTENCE. It FAILS CLOSED: a ladder that ever grows the human
+// reviewer's route reports itself broken and carries the path that broke it, so the day someone wires
+// a pending_deployments call into the broker, the answer-side census stops returning MayAnswer and
+// every witness on the answer path reddens at once. The comparison is against the substrate's own path
+// row, never a literal repeated here, so renaming a route upstream moves the claim with it instead of
+// leaving a green copy of an old address.
+//
+// WHY IT IS NOT AN ARM OF BrokerAnswerRefusal: no call site can hand broker_answer_decision a
+// different ladder, so a per-call arm would test a state expressible nowhere it runs (§4b -- the same
+// reason the built-path anchor re-check was deleted). What IS expressible is the LADDER changing
+// between releases, and that is what this consumes.
+fn broker_barrier_against_the_human_review_endpoint(
+  broker_effect_paths: List<NonEmptyStr>,
+  human_review_path: NonEmptyStr
+) -> BrokerAnswerBarrier {
+  if broker_effect_paths |> any(x => x == human_review_path) {
+    BrokerMayPostToTheHumanReviewEndpoint { offending_path: human_review_path }
+  } else {
+    BrokerIsBarredFromTheHumanReviewEndpoint
+  }
+}
+
+// THE COMPOSITION, AS OUR POSITION ON AN UNDOCUMENTED BEHAVIOUR. The upstream model carries the fact
+// and its absence (gate_composition_documented_guarantee); what lives HERE is the policy that follows
+// from it, because "may the App answer its own rule while a human reviewer is configured" is a gunbc
+// decision and not a shape of GitHub's interface (§3).
+//
+// THE ANSWER IS YES, AND THE OLD REFUSAL WAS WRONG. An earlier revision of broker_answer_decision
+// refused a wait whose pending_deployments listed a user or team -- TheWaitIsHeldByAHumanReviewer --
+// which made the stage-4 trial IMPOSSIBLE to run: the plan keeps required reviewers in place until the
+// rule has been witnessed answering a real dispatch both ways, so every trial dispatch would have been
+// refused by our own check. It confused the two surfaces. A custom rule and a required-reviewer gate
+// are SEPARATE gates answered at SEPARATE endpoints (extdeps's the_two_review_surfaces_are_distinguish-
+// able, which the pinned blob's own field censuses make structural: the App posts environment_name,
+// the human surface posts environment_ids). Answering the App's own rule is never answering a human's.
+//
+// WHAT THE ANSWER IS CONDITIONED ON: the broker never reaches the human surface (the barrier above),
+// and the required reviewer is removed only at stage 5, by a human, after the rule has been witnessed
+// answering both ways. If the undocumented composition turns out to release both gates at once, the
+// consequence is a click the operator was not asked to make -- never a run that started untapped -- and
+// the trial's witness retires the bet, per the trigger on the upstream row.
+fn the_app_may_answer_its_own_rule_while_a_human_is_configured() -> Bool {
+  match broker_barrier_against_the_human_review_endpoint(
+    broker_effect_paths: broker_effect_route_paths,
+    human_review_path: human_review_endpoint_path
+  ) {
+    BrokerMayPostToTheHumanReviewEndpoint { offending_path: _ } => false
+    BrokerIsBarredFromTheHumanReviewEndpoint =>
+      // The cited half must be cited and the uncited half must stay uncited. If someone "fixes" the
+      // composition row by pointing it at a document that says nothing of the kind, or drops the
+      // obligation row, this reddens rather than silently re-labelling a bet as a fact.
+      match gate_composition_documented_guarantee {
+        GuaranteeUndocumented { surfaces_checked: surfaces } =>
+          length(xs: surfaces) > 0
+            && match protection_rules_are_binding_guarantee {
+              GuaranteeDocumented { cited_in: _ } =>
+                rule_delivery_citation(guarantee: protection_rules_are_binding_guarantee) != none
+              GuaranteeUndocumented { surfaces_checked: _ } => false
+            }
+            && the_two_review_surfaces_are_distinguishable()
+        GuaranteeDocumented { cited_in: _ } => false
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 5. WHAT THE BROKER MUST CONFIRM BEFORE IT ANSWERS
 // ---------------------------------------------------------------------------
 
@@ -413,10 +529,6 @@ fn refusal_from_the_wait(
         filed_environment: claim.environment,
       }
     )
-  } else if pending_wait_carries_a_human_reviewer(wait: wait) {
-    // A wait naming users or teams is a required-reviewer wait, and an App answering it is the
-    // double-authority this whole change exists to remove.
-    optional_present(value: TheWaitIsHeldByAHumanReviewer)
   } else {
     optional_absent()
   }
@@ -529,7 +641,6 @@ type BrokerAnswerRefusal
   = RecordRunIdIsNotTheFiledRun { record_run_id: Int, filed_run_id: Int }
   | TheRunHasConcluded { conclusion: RunConclusion }
   | WaitNamesAnotherEnvironment { waiting_environment: NonEmptyStr, filed_environment: NonEmptyStr }
-  | TheWaitIsHeldByAHumanReviewer
   | RuleOwnershipNotEstablished { because: OwnershipRefusalReason }
   | OwnershipWasReadForAnotherEnvironment {
       read_for_environment: NonEmptyStr,
@@ -550,7 +661,6 @@ fn broker_answer_refusal_name(refusal: BrokerAnswerRefusal) -> NonEmptyStr {
     TheRunHasConcluded { conclusion: _ } => "TheRunHasConcluded"
     WaitNamesAnotherEnvironment { waiting_environment: _, filed_environment: _ } =>
       "WaitNamesAnotherEnvironment"
-    TheWaitIsHeldByAHumanReviewer => "TheWaitIsHeldByAHumanReviewer"
     RuleOwnershipNotEstablished { because: _ } => "RuleOwnershipNotEstablished"
     OwnershipWasReadForAnotherEnvironment { read_for_environment: _, filed_environment: _ } =>
       "OwnershipWasReadForAnotherEnvironment"
@@ -854,10 +964,6 @@ fn review_matches_decision(review: DeploymentProtectionRuleReview, decision: Pro
     ProposeDeny => review_decision(review: review) == Rejected
   }
 }
-
-// ---------------------------------------------------------------------------
-// 7. WHAT MUST BE WITNESSED BEFORE A HUMAN REVIEWER IS REMOVED
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // 7. WHAT MUST BE WITNESSED BEFORE A HUMAN REVIEWER IS REMOVED
@@ -1177,6 +1283,36 @@ fn boundary_repository_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 
 // THE WHOLE SUBJECT, FOR REPORTS. Both halves, so a refusal that says "another boundary" can be acted
 // on without guessing which half moved.
+// THE SUBJECT MISMATCH, AS ONE RECORD. Two decisions need to say the same thing -- the standing mint
+// refusing a read that is about somewhere else, and the act function refusing a standing that is about
+// somewhere else -- and minting two shapes for one fact is how they start to drift (§3). Both halves are
+// carried, owner/repo/environment, because environments are PER-REPOSITORY objects: an environment name on
+// its own does not identify a subject, and a report that shows only the name cannot say which half moved.
+type BoundaryMismatch {
+  standing_owner: NonEmptyStr,
+  standing_repo: NonEmptyStr,
+  standing_environment: NonEmptyStr,
+  requested_owner: NonEmptyStr,
+  requested_repo: NonEmptyStr,
+  requested_environment: NonEmptyStr,
+}
+
+fn boundary_mismatch(
+  standing_owner: NonEmptyStr,
+  standing_repo: NonEmptyStr,
+  standing_environment: NonEmptyStr,
+  requested: DeploymentGateBoundary
+) -> BoundaryMismatch {
+  BoundaryMismatch {
+    standing_owner: standing_owner,
+    standing_repo: standing_repo,
+    standing_environment: standing_environment,
+    requested_owner: requested.repository.owner,
+    requested_repo: requested.repository.name,
+    requested_environment: requested.environment_name,
+  }
+}
+
 fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
   concat(boundary_repository_label(boundary: boundary),
     concat(" (environment ", concat(boundary.environment_name as String, ")"))) as NonEmptyStr
@@ -1200,8 +1336,137 @@ fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 // the read itself: a CurrentRemovalBoundaryStanding that failed them cannot be constructed, so a consumer
 // holding one has nothing left to re-check, and re-checking them downstream would be exactly the
 // unreachable re-validation of a construction the side chat made me delete one round ago (R1, §4b).
-type StandingRefusalReason
+// THE PROTECTION READ, HELD AS AN OBSERVATION RATHER THAN AS LOOSE SETTINGS (side chat round 4,
+// blocker 1).
+//
+// THE DEFECT: observe_removal_boundary_standing used to take an ownership and a
+// GitHubEnvironmentProtectionSettings as two loose values and never ask whether they named the SAME
+// environment. Both protection predicates in gunbc.auth.github_deployment_environment deliberately ignore
+// settings.name, because their own consumers already know which environment they are asking about. So
+// srv1's rule ownership joined with a SIBLING environment's healthy protection minted a standing, and
+// reviewer_removal_act_for read only the ownership half -- the environment the protection actually
+// vouched for was never compared to anything. A healthy sibling is not a healthy subject.
+//
+// WHY THE OBSERVATION CARRIES owner/repo/environment_name ITSELF: a read has a subject, settings do not.
+// Carrying the subject is what makes "read for the wrong environment" expressible AND refusable instead of
+// being a property a caller might remember to check (§5). The record is sealed, and its fields are the
+// arguments the read was made with, so a caller cannot supply settings for one environment and label them
+// another.
+type EnvironmentProtectionObservation sole_constructor {
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment_name: NonEmptyStr,
+  protection: GitHubEnvironmentProtectionSettings,
+}
+
+// THE ONLY WAY TO HOLD A PROTECTION READ. Admitted to the stage-5 read that performs the request and to
+// the witness that exercises it. Its route is cited in extdeps.github.deployment_environments as
+// the environment read: GET /repos/{owner}/{repo}/environments/{environment_name} (REST operation
+  // `repos/get-environment`), whose response
+// requires `name` and `protection_rules` at the pinned description (the same response the two protection
+// predicates were written against).
+fn observe_environment_protection(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment_name: NonEmptyStr,
+  settings: GitHubEnvironmentProtectionSettings
+) -> EnvironmentProtectionObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_removal",
+      decl_name: "read_removal_boundary_standing"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "protection_for"
+    ),
+  ]
+{
+  EnvironmentProtectionObservation {
+    owner: owner,
+    repo: repo,
+    environment_name: environment_name,
+    protection: settings,
+  }
+}
+
+// THE JOIN, AND THE THREE WAYS IT FAILS. The two reads must be about ONE environment in ONE repository;
+// the join asks that ONCE, in ONE place, BEFORE a standing exists, so a mismatched pair has no
+// representation to travel with rather than being legal until some downstream consumer happens to compare
+// them (§3: one question, one authority).
+//
+// WHY A SEPARATE PURE FUNCTION AND NOT MORE ARMS IN THE STANDING MINT: the mint would then answer two
+// questions -- "are these two reads about the same subject" and "is that subject currently gated" -- and
+// report both through one sum, so a witness could not tell a mismatched subject from an ungated one
+// without re-deriving the inputs. The join mints nothing, so it needs no admission.
+type ProtectionJoinRefusal
+  // NO SUBJECT TO COMPARE AGAINST. If the ownership was never established there is no environment and no
+  // repository to match the protection read against, so the subject question is UNDEFINED rather than
+  // passed -- and this arm, not a comparison, is what says so. It is the ownership read's own reason,
+  // carried unchanged: the join adds no second name for it (§3).
   = OwnershipWasNotEstablished { because: OwnershipRefusalReason }
+  | ProtectionWasReadForAnotherEnvironment {
+      observed_environment: NonEmptyStr,
+      ownership_environment: NonEmptyStr,
+    }
+  | ProtectionWasReadForAnotherRepository {
+      observed_repository: NonEmptyStr,
+      ownership_repository: NonEmptyStr,
+    }
+
+type ProtectionOwnershipJoin
+  = ProtectionJoinEstablished {
+      protection: EnvironmentProtectionObservation,
+      ownership: ObservedRuleOwnership,
+    }
+  | ProtectionJoinRefused { because: ProtectionJoinRefusal }
+
+fn join_protection_to_ownership(
+  protection: EnvironmentProtectionObservation,
+  ownership: EnvironmentRuleOwnership
+) -> ProtectionOwnershipJoin {
+  match ownership {
+    // THE SUBJECT IS COMPARED ONLY WHEN IT EXISTS. Both sides come off the reads themselves -- the
+    // observation's repo/environment_name, which came from the readbacks -- never from a caller's claim
+    // about what it is asking about.
+    NotOwnedByGateApp { because: because } =>
+      ProtectionJoinRefused {
+        because: OwnershipWasNotEstablished { because: because },
+      }
+    OwnedByGateApp { observation: observation } =>
+      if observation.repo != protection.repo {
+        ProtectionJoinRefused {
+          because: ProtectionWasReadForAnotherRepository {
+            observed_repository: protection.repo,
+            ownership_repository: observation.repo,
+          },
+        }
+      } else if observation.environment_name != protection.environment_name {
+        ProtectionJoinRefused {
+          because: ProtectionWasReadForAnotherEnvironment {
+            observed_environment: protection.environment_name,
+            ownership_environment: observation.environment_name,
+          },
+        }
+      } else {
+        ProtectionJoinEstablished {
+          protection: protection,
+          ownership: observation,
+        }
+      }
+  }
+}
+
+type StandingRefusalReason
+  = JoinWasRefused { because: ProtectionJoinRefusal }
+  // THE READ'S OWN INSTANT IS NOT A CALENDAR INSTANT. Named separately because the repair is different:
+  // nothing about the environment is wrong, the caller handed over a string that is not a timestamp, and
+  // an operator sent to check GitHub's protection settings would find them perfect.
+  | StandingInstantIsNotCanonical { observed_at: Timestamp }
+  // THE READS ARE CONSISTENT WITH EACH OTHER BUT ABOUT ANOTHER SUBJECT. Distinct from JoinWasRefused (the
+  // two READS disagreeing with each other): here the pair is coherent and simply not about the boundary
+  // whose reviewer is about to be removed.
+  | StandingIsAboutAnotherBoundary { subject: BoundaryMismatch }
   // The human required-reviewer is gone. If the reviewer has already been removed, there is no act to
   // perform, and answering as if there were one is how a second removal gets waved through -- and it is
   // also the state in which the App gate is the ONLY thing left, which is the configuration this whole
@@ -1211,13 +1476,57 @@ type StandingRefusalReason
   // boundary has ALREADY been weakened and no removal may be issued against it until it is repaired.
   | BranchPolicyIsNoLongerMainOnly { environment: NonEmptyStr }
 
+// WHAT A STANDING IS BOUND TO (side chat round 4, blocker 2).
+//
+// THE DEFECT: the standing proved the world was gated, but not WHICH WORLD, for whom, or WHEN. It carried
+// no boundary, no attempt and no time, and AdmittedReviewerRemovalAct did not carry the standing that
+// authorized it. So a healthy standing read this morning could be spent this afternoon after the rule was
+// switched off: the read was fresh when it happened, and nothing in the value said when it happened.
+//
+// THE FIX IS THREE COORDINATES, not a "fresh: Bool" flag: the boundary it vouches for, the run attempt
+// that is asking, and the instant it was read. Those make "another attempt", "another boundary" and
+// "older than the bound" decidable by the consumer that has to decide them, and unfabricable by anyone
+// who did not perform the read.
 type CurrentRemovalBoundaryStanding sole_constructor {
-  // THE RULE AND THE INSTALLATION, AS READ NOW, by the same sealed door the trial used.
+  // THE SUBJECT THIS STANDING VOUCHES FOR, sealed in. A standing for gcp-iam-bootstrap is a standing for
+  // gcp-iam-bootstrap; it cannot be spent on srv1-production because it does not name srv1-production.
+  boundary: DeploymentGateBoundary,
+  // THE TRIAL AND THE CURRENT READ, as the single joined pair the join above established. Reusing
+  // GitHubEnvironmentProtectionSettings and the two predicates gunbc.auth.github_deployment_environment
+  // already owns, rather than minting a parallel "is the reviewer there" boolean that could disagree with
+  // them (§2, §3).
   ownership: ObservedRuleOwnership,
-  // THE PROTECTION, AS READ NOW. Reusing GitHubEnvironmentProtectionSettings and the two predicates
-  // gunbc.auth.github_deployment_environment already owns, rather than minting a parallel "is the
-  // reviewer there" boolean that could disagree with them (§2, §3).
-  protection: GitHubEnvironmentProtectionSettings,
+  protection: EnvironmentProtectionObservation,
+  // THE ATTEMPT THE READ WAS MADE FOR. Attempt identity is std.scoped_authorization's existing branded
+  // carrier -- the same one ApprovalCapabilityClaims binds -- not a fresh one (§2).
+  observation_attempt: AttemptIdentity,
+  // WHEN IT WAS READ. std.types' Timestamp, compared by gunbc.auth.approval_capability's existing
+  // utc_instant_seconds_after, which is defined only on CANONICAL pairs -- so the mint validates its own
+  // instant through the same module's utc_instant_is_canonical before this value means anything (§5).
+  observed_at: Timestamp,
+}
+
+// HOW LONG A STANDING IS SPENDABLE (side chat round 4, blocker 2, "one older than a declared bound").
+//
+// THE REASON FOR THIS NUMBER, stated because a magic number with no reason is a tuning knob nobody can
+// defend. Removal is a human clicking in the GitHub UI after the broker's act is handed over, so the
+// standing has to outlive a human pausing to read the ntfy notification and find the console -- and it has
+// to die well before that pause could plausibly span a shift change, a weekend, or the several hours in
+// which a rule could be switched off and a different one enabled in its place. Fifteen minutes is longer
+// than one deliberate click and far shorter than a forgotten task. It is deliberately NOT the capability's
+// own TTL: the capability authorizes the ANSWER, this authorizes the REMOVAL, and conflating them would
+// make one knob govern two effects (§3).
+data standing_max_age: Second = second(count: 900)
+
+// THE FRESHNESS TEST, as a comparison of two integers rather than a clock call: it reuses
+// utc_instant_seconds_after, which is defined only on canonical pairs -- so the mint refuses a
+// non-canonical instant before this is ever reached, and this function is never the place a bad comparison
+// is made.
+fn standing_is_within_age_bound(
+  observed_at: Timestamp,
+  now: Timestamp
+) -> Bool {
+  utc_instant_seconds_after(later: now, earlier: observed_at) <= (second_count(s: standing_max_age) as Int)
 }
 
 type RemovalBoundaryStandingObservation
@@ -1228,21 +1537,28 @@ type RemovalBoundaryStandingObservation
 // exercise it; a foreign module cannot produce one, which is what stops a Ready act being reached
 // without a current read.
 fn observe_removal_boundary_standing(
-  ownership: EnvironmentRuleOwnership,
-  protection: GitHubEnvironmentProtectionSettings
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: Timestamp
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
+    // THE PRODUCTION CALLER IS THE STAGE-5 READ, NOT THE STAGE-2 ANSWER ROUTE (side chat round 4,
+    // blocker 2). The answer route answers a gate; it has no business vouching for a removal. Naming a
+    // stage-5 declaration here also makes the frontier explicit: the module and the declaration are
+    // declared, not invented at a call site, and §3c is satisfied by a named later change with its trigger
+    // rather than by a module that exists today.
     decl_ref(
-      module_path: "gunbc.fleet.deployment_gate_answer",
-      decl_name: "answer_pending_environment_gate"
+      module_path: "gunbc.fleet.deployment_gate_removal",
+      decl_name: "read_removal_boundary_standing"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_fixture"
     ),
     // THE DISABLED-RULE CASE BUILDS ITS OBSERVATION THROUGH THIS DOOR TOO. It is not a second door: it
-    // can only produce a STANDING THAT REFUSES, because the ownership read inside it says the rule is
-    // switched off. Naming it keeps the "the rule no longer stands" RED honest -- the case is reached by
+    // can only produce a STANDING THAT REFUSES, because the ownership read inside the join says the rule
+    // is switched off. Naming it keeps the "the rule no longer stands" RED honest -- the case is reached by
     // an upstream read, not by writing a variant literal.
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1250,35 +1566,79 @@ fn observe_removal_boundary_standing(
     ),
   ]
 {
-  match ownership {
-    NotOwnedByGateApp { because: because } => StandingRefused {
-      because: OwnershipWasNotEstablished { because: because },
-    }
-    OwnedByGateApp { observation: observation } =>
-      // NO FOURTH ARM FOR "THE RULE IS DISABLED", and the absence is deliberate.
-      // observe_rule_ownership already requires enabled AND attributed to the observed App, so a rule
-      // that has been switched off arrives here as NotOwnedByGateApp { because: NoEnabledRule } and is
-      // refused by the arm above. An arm below for the same state could never fire, and §4b is the rule
-      // that says an arm which cannot fire is worse than no arm at all: it is cited as coverage while
-      // asserting a state forbidden nowhere it runs.
-      if !environment_protection_requires_reviewers(settings: protection) {
+  // THE INSTANT IS VALIDATED BEFORE ANYTHING ELSE, because it is about to become the basis of a
+  // freshness comparison, and std/measure's own comment is explicit that these comparisons are defined
+  // only on canonical pairs. Referring a non-canonical string to the calendar is not a stale standing; it
+  // is a standing nobody can reason about.
+  if !utc_instant_is_canonical(t: observed_at) {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: observed_at } }
+  } else {
+    standing_from_join(
+      joined: joined,
+      boundary: boundary,
+      attempt: attempt,
+      observed_at: observed_at,
+    )
+  }
+}
+
+// THE JOIN IS CONSUMED HERE, ONCE. Kept separate from the mint only so the canonical-instant guard above
+// is not repeated per arm; this function mints nothing that the join did not already allow.
+fn standing_from_join(
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: Timestamp
+) -> RemovalBoundaryStandingObservation {
+  match joined {
+    ProtectionJoinRefused { because: because } =>
+      StandingRefused { because: JoinWasRefused { because: because } }
+    ProtectionJoinEstablished { protection: protection, ownership: observation } =>
+      // NO ARM FOR "THE RULE IS DISABLED", and the absence is deliberate.
+      // The join's ownership half already requires enabled AND attributed to the observed App, so a rule
+      // that has been switched off arrives as JoinWasRefused { OwnershipWasNotEstablished { NoEnabledRule } }.
+      // An arm below for the same state could never fire, and §4b says an arm that cannot fire is worse
+      // than no arm at all: cited as coverage while asserting a state nothing can produce.
+      if !environment_protection_requires_reviewers(settings: protection.protection) {
         StandingRefused {
-          because: RequiredReviewerIsNoLongerPresent { environment: observation.environment_name },
+          because: RequiredReviewerIsNoLongerPresent {
+            environment: observation.environment_name,
+          },
         }
-      } else if !environment_protection_restricts_to_main(settings: protection) {
+      } else if !environment_protection_restricts_to_main(settings: protection.protection) {
         StandingRefused {
           because: BranchPolicyIsNoLongerMainOnly { environment: observation.environment_name },
+        }
+      } else if protection.environment_name != boundary.environment_name
+        || protection.repo != boundary.repository.name {
+        // THE READ AND THE REQUESTED SUBJECT DISAGREE. Distinct from JoinWasRefused, which is the two READS
+        // disagreeing with EACH OTHER: here each read is internally fine and the pair is consistent, but
+        // neither is about the boundary the caller wants to weaken. The operator needs those two problems
+        // told apart -- one is a wrong argument, the other is a wrong environment.
+        StandingRefused {
+          because: StandingIsAboutAnotherBoundary {
+            subject: boundary_mismatch(
+              standing_owner: protection.owner,
+              standing_repo: protection.repo,
+              standing_environment: protection.environment_name,
+              requested: boundary,
+            ),
+          },
         }
       } else {
         StandingRead {
           standing: CurrentRemovalBoundaryStanding {
+            boundary: boundary,
             ownership: observation,
             protection: protection,
+            observation_attempt: attempt,
+            observed_at: observed_at,
           },
         }
       }
   }
 }
+
 
 // THE TRIALS THAT COUNT: two ACCEPTED CALLS — one approve, one reject — both on the environment whose
 // reviewer is about to be removed, on DIFFERENT runs. One dispatch cannot show that the broker refuses
@@ -1379,15 +1739,127 @@ type RemovalRefusalReason
       approved_environment: NonEmptyStr,
       rejected_environment: NonEmptyStr,
     }
-  | ActStandingDisagreesOnRepository {
-      standing_repository: NonEmptyStr,
-      expected_repository: NonEmptyStr,
+  // THE STANDING IS ABOUT ANOTHER SUBJECT THAN THE ONE BEING WEAKENED. Replaces the old
+  // ActStandingDisagreesOnRepository / …OnEnvironment pair for the boundary question: the standing now
+  // carries a whole boundary, and the honest question is about a boundary, not about one of its halves
+  // (environments are per-repository objects, so a name alone is not a subject). The two …OnEnvironment/
+  // …OnInstallation arms above stay, because those compare the standing against the TWO RECEIPTS, which
+  // is a different question with a different answer.
+  | ActStandingIsForAnotherBoundary { subject: BoundaryMismatch }
+  // THE STANDING BELONGS TO ANOTHER DISPATCH. Both arms below are "genuine but not usable now", and they
+  // are separate because the operator's repair differs: re-read for this attempt, versus re-read because
+  // time has passed.
+  | ActStandingIsForAnotherAttempt {
+      standing_attempt: AttemptIdentity,
+      removal_attempt: AttemptIdentity,
+    }
+  | ActStandingIsStale {
+      observed_at: Timestamp,
+      now: Timestamp,
+      max_age_seconds: Int,
     }
   // THERE IS NO "ARMS ADDRESS DIFFERENT REPOSITORIES" ARM ANY MORE, and that is deliberate rather than
   // an oversight: with each arm compared against the boundary's repository, two arms that both match it
   // cannot differ from each other. Keeping the pairwise arm would have been a second check of a state
   // already forbidden upstream — DESIGN §4b, a check whose forbidden state is expressible nowhere it
   // runs is green by construction and then gets cited as coverage.
+
+// THE COMPLETION RECEIPT FOR THE REVIEWER REMOVAL (side chat round 4, blocker 3): what the world looks
+// like AFTER the human has done the thing, read back from GitHub rather than asserted by the party that
+// asked for it.
+//
+// WHY IT LIVES HERE RATHER THAN BESIDE THE ACT IT CERTIFIES: it compares a read against a
+// DeploymentGateBoundary using the same two predicates the standing consumes
+// (gunbc.auth.github_deployment_environment), so completion and standing cannot drift apart (§2), and the
+// act module is the CONSUMER of this receipt, not its authority.
+//
+// WHY A DISTINCT SEALED RECORD RATHER THAN A BOOL OR A REUSED OBSERVATION. A Bool is a flag somebody
+// could set. EnvironmentProtectionObservation is what was READ, not what the read SHOWED -- it can equally
+// record a reviewer still present. This record can only exist if the post-removal read came back with the
+// reviewer GONE and the branch boundary INTACT, so "the removal happened" and "the removal happened
+// without taking the branch policy with it" are both unforgeable. That second field is not decoration: the
+// operator removes the required-reviewer rule from the same UI panel that holds the branch policy, and a
+// completion receipt that did not look would close the audit trail on a halved boundary.
+type ReviewerRemovalObserved sole_constructor {
+  // THE SUBJECT THE READ WAS ABOUT, so a receipt for one environment cannot certify another.
+  boundary: DeploymentGateBoundary,
+  // THE REVIEWER IS GONE, copied from the read rather than claimed: the mint refuses unless the read says
+  // NoRequiredReviewers.
+  reviewer_removed: Bool,
+  // THE MAIN-ONLY BRANCH POLICY IS STILL THERE, from the same read.
+  main_only_policy_present: Bool,
+  // WHEN THE READ WAS MADE. A completion claim without a time is a claim about no particular world.
+  observed_at: Timestamp,
+}
+
+// THE TWO-WAY DECISION OF THE POST-REMOVAL READ. A sum rather than an Optional because the reason a
+// removal is NOT certified is the operational content: "reviewer still there" means the human has not
+// clicked yet, and "branch policy went with it" means somebody clicked the wrong thing.
+type ReviewerRemovalCompletion
+  = ReviewerRemovalCompletionRecorded { receipt: ReviewerRemovalObserved }
+  | ReviewerRemovalCompletionRefused { because: ReviewerRemovalCompletionRefusal }
+
+type ReviewerRemovalCompletionRefusal
+  = CompletionInstantIsNotCanonical { observed_at: Timestamp }
+  | CompletionReadIsOfAnotherSubject { subject: BoundaryMismatch }
+  | ReviewerIsStillPresent { environment: NonEmptyStr }
+  | BranchPolicyWentWithTheReviewer { environment: NonEmptyStr }
+
+// THE ONLY WAY TO HOLD A COMPLETION RECEIPT: the post-removal environment read, through the environment
+// read route, with its settings compared rather than copied.
+//
+// WHY IT IS NOT CONFINED BY admit_callers, unlike the standing mint and the act builder: a completion
+// receipt AUTHORIZES nothing, it only records. Confining a record is how a witness gets locked out of its
+// own audit trail. What confines the RECORD is sole_constructor -- nobody can write the literal -- and what
+// confines its CONTENT are the four comparisons below, all of which have to pass for the record to exist.
+fn observe_reviewer_removal(
+  boundary: DeploymentGateBoundary,
+  after: EnvironmentProtectionObservation,
+  observed_at: Timestamp
+) -> ReviewerRemovalCompletion {
+  if !utc_instant_is_canonical(t: observed_at) {
+    ReviewerRemovalCompletionRefused {
+      because: CompletionInstantIsNotCanonical { observed_at: observed_at },
+    }
+  } else if after.repo != boundary.repository.name
+    || after.environment_name != boundary.environment_name {
+    // THE READ WAS NOT OF THE SUBJECT BEING WEAKENED. Distinct from a read that came back wrong: this one
+    // is about somewhere else, and certifying an absence that nobody looked for is worse than reporting
+    // that nothing was certified.
+    ReviewerRemovalCompletionRefused {
+      because: CompletionReadIsOfAnotherSubject {
+        subject: boundary_mismatch(
+          standing_owner: after.owner,
+          standing_repo: after.repo,
+          standing_environment: after.environment_name,
+          requested: boundary,
+        ),
+      },
+    }
+  } else if environment_protection_requires_reviewers(settings: after.protection) {
+    // THE REVIEWER IS STILL THERE, so nothing was completed. Refusing rather than minting a receipt with
+    // reviewer_removed: false is deliberate: a receipt type that can hold "not removed" is a receipt type
+    // that the next consumer will count as removed (§5).
+    ReviewerRemovalCompletionRefused {
+      because: ReviewerIsStillPresent { environment: boundary.environment_name },
+    }
+  } else if !environment_protection_restricts_to_main(settings: after.protection) {
+    // THE BRANCH BOUNDARY WENT WITH THE REVIEWER. The removal may well have happened; the boundary did not
+    // survive it, and this is the arm that says so instead of reporting success.
+    ReviewerRemovalCompletionRefused {
+      because: BranchPolicyWentWithTheReviewer { environment: boundary.environment_name },
+    }
+  } else {
+    ReviewerRemovalCompletionRecorded {
+      receipt: ReviewerRemovalObserved {
+        boundary: boundary,
+        reviewer_removed: true,
+        main_only_policy_present: true,
+        observed_at: observed_at,
+      },
+    }
+  }
+}
 
 type ReviewerRemovalAdmission
   = RemovalAdmitted { evidence: DeploymentGateTrialEvidence }

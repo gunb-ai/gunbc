@@ -55,6 +55,14 @@ import extdeps.github.deployment_protection_rule {
   // argument fills, so the refusal that names it is imported from where the route is modelled.
   OwnerSegment,
   RepoSegment,
+  // THE TWO SURFACES, so the overlap control below can state what a human gate looks like and check
+  // that nothing in our ladder answers it. Both paths come from the substrate; neither is spelled here.
+  review_endpoint_path,
+  human_review_endpoint_path,
+  the_two_review_surfaces_are_distinguishable,
+  gate_composition_documented_guarantee,
+  protection_rules_are_binding_guarantee,
+  GuaranteeUndocumented,
 }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -96,10 +104,18 @@ import gunbc.auth.deployment_gate_authorization {
   BrokerRefused,
   BrokerAnswerRefusal,
   broker_answer_refusal_name,
+  // THE BARRIER AND THE LADDER IT READS. Imported rather than restated so the witness exercises the
+  // same data the model consumes: a test that rebuilt the ladder from strings would pass while the
+  // real ladder widened.
+  BrokerAnswerBarrier,
+  BrokerIsBarredFromTheHumanReviewEndpoint,
+  BrokerMayPostToTheHumanReviewEndpoint,
+  broker_barrier_against_the_human_review_endpoint,
+  broker_effect_route_paths,
+  the_app_may_answer_its_own_rule_while_a_human_is_configured,
   RecordRunIdIsNotTheFiledRun,
   TheRunHasConcluded,
   WaitNamesAnotherEnvironment,
-  TheWaitIsHeldByAHumanReviewer,
   RuleOwnershipNotEstablished,
   OwnershipWasReadForAnotherEnvironment,
   TapBindsAnotherRequest,
@@ -507,7 +523,11 @@ fn minted_ownership() -> EnvironmentRuleOwnership
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "a_wait_that_names_a_human_is_not_answered_by_the_app"
+      decl_name: "the_app_answers_its_own_rule_while_a_human_reviewer_is_configured"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_ladder_holding_the_human_route_reports_itself_broken"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
@@ -813,7 +833,11 @@ fn answerable_refusal_name() -> NonEmptyStr
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "a_wait_that_names_a_human_is_not_answered_by_the_app"
+      decl_name: "the_app_answers_its_own_rule_while_a_human_reviewer_is_configured"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_ladder_holding_the_human_route_reports_itself_broken"
     ),
   ]
 {
@@ -897,21 +921,126 @@ test fn a_run_the_submission_did_not_file_is_never_answered() -> Bool {
        == "TheRunHasConcluded"
 }
 
-// A wait that names a HUMAN is a required-reviewer wait, and an App answering it is the
-// double-authority this whole change exists to remove. It is refused rather than answered-and-left-
-// waiting, because posting it would look like a broker failure and read like a policy question.
-test fn a_wait_that_names_a_human_is_not_answered_by_the_app() -> Bool {
-  refusal_name_for_a_broker_call(
-    wait: waiting_on(
-      environment_name: gated_env,
-      named: [UserReviewer { login: "mtcollins1" }] as List<PendingDeploymentReviewer>
-    ),
+// THE OVERLAP CONTROL (side chat round 4, blocker 4). The plan keeps the human RequiredReviewers in
+// place until the App's rule has been witnessed answering a real dispatch both ways, so for the whole
+// of stages 1-4 the two gates are live on the SAME environment at once. This is the end-to-end state
+// of that overlap, and it says three things at once:
+//
+//   1. THE APP ANSWERS ITS OWN RULE, even while a human is named. A previous revision refused exactly
+//      this (TheWaitIsHeldByAHumanReviewer), which made the trial impossible to run -- every trial
+//      dispatch has a required reviewer configured, because that is what a trial IS. Refusing it
+//      confused the two surfaces: a custom rule and a required-reviewer gate are separate gates at
+//      separate endpoints, so answering the App's rule is never answering a human's.
+//   2. BOTH OF THE APP'S RECEIPTS ARE MINTABLE IN THAT STATE -- approving and rejecting -- because a
+//      trial that could only be run halfway is not a trial.
+//   3. NOTHING IN THE BROKER'S LADDER RELEASES THE HUMAN GATE. The wait still names the reviewer, and
+//      the reviewer's own surface is not a route we hold.
+//
+// Clause 3 checks the LADDER, not a copy of it: it imports broker_effect_route_paths, so widening what
+// the broker may post reddens this test rather than leaving a paragraph that still reads true.
+test fn the_app_answers_its_own_rule_while_a_human_reviewer_is_configured() -> Bool {
+  let human_wait = waiting_on(
+    environment_name: gated_env,
+    named: [UserReviewer { login: "mtcollins1" }] as List<PendingDeploymentReviewer>
+  )
+  // (1) The overlap state is answerable: a named human is not a reason to decline our own rule.
+  (refusal_name_for_a_broker_call(
+    wait: human_wait,
     run: an_in_flight_run(),
     claim: gate_claim,
     ownership: minted_ownership()
   )
-    == "TheWaitIsHeldByAHumanReviewer"
-    && answerable_refusal_name() == "BrokerMayAnswer"
+    == "BrokerMayAnswer")
+    // (2) Both trials run in that state. Same dispatch, two arms, as every trial is.
+    && (match fx_mint_probe(
+      owner: gate_owner,
+      repo: gate_repo,
+      run_id: 35447067113,
+      environment_name: gated_env,
+      intended: Approved,
+      review: DeploymentProtectionRuleReview {
+        environment_name: gated_env,
+        state: Approved,
+        comment: Present { value: "ntfy tap srv1-gate-35447067113 rev-1" },
+      },
+      status: 204,
+      ownership: minted_ownership(),
+      requested_rule_id: 900000001,
+    ) {
+      Accepted { receipt } => receipt.state == Approved
+      AcceptedReviewRefused { because: _ } => false
+    })
+    && (match fx_mint_probe(
+      owner: gate_owner,
+      repo: gate_repo,
+      run_id: 35447067114,
+      environment_name: gated_env,
+      intended: Rejected,
+      review: DeploymentProtectionRuleReview {
+        environment_name: gated_env,
+        state: Rejected,
+        comment: Present { value: "ntfy reject srv1-gate-35447067114 rev-1" },
+      },
+      status: 204,
+      ownership: minted_ownership(),
+      requested_rule_id: 900000001,
+    ) {
+      Accepted { receipt } => receipt.state == Rejected
+      AcceptedReviewRefused { because: _ } => false
+    })
+    // (3) THE STRUCTURAL HALF. The human is still holding the wait, and the broker holds no route that
+    // answers it. Asserted against the real ladder and the substrate's own path row.
+    && (match broker_barrier_against_the_human_review_endpoint(
+      broker_effect_paths: broker_effect_route_paths,
+      human_review_path: human_review_endpoint_path
+    ) {
+      BrokerIsBarredFromTheHumanReviewEndpoint =>
+        length(xs: broker_effect_paths) == 1
+          && !(broker_effect_paths |> any(p => p == human_review_endpoint_path))
+      BrokerMayPostToTheHumanReviewEndpoint { offending_path: _ } => false
+    })
+    // (4) The human surface is a REAL surface we are not touching: it exists upstream with its own
+    // path and its own body census, distinct from ours. If the two ever collapsed into one, the
+    // distinguishability claim below reddens and this whole control is invalidated on purpose.
+    && the_two_review_surfaces_are_distinguishable()
+    && human_wait.reviewers |> any(r => match r {
+      UserReviewer { login: l } => l == "mtcollins1"
+      TeamReviewer { name: _ } => false
+    })
+    // (5) The policy that licenses (1) is itself conditioned: it is only true while the composition
+    // stays UNDOCUMENTED and the obligation stays cited. Someone who re-labours the bet as a cited
+    // fact -- without a document that says it -- reddens the policy and so reddens (1)'s justification.
+    && the_app_may_answer_its_own_rule_while_a_human_is_configured()
+    && (match gate_composition_documented_guarantee {
+      GuaranteeUndocumented { surfaces_checked: surfaces } =>
+        length(xs: surfaces) > 0
+      _ => false
+    })
+}
+
+// THE BARRIER FAILS CLOSED. A barrier that only ever returns "barred" checks nothing, so the broken
+// state has to be reachable and named: hand the check a ladder that contains the human route and it
+// must say so, carrying the path that broke it. Combined with the control above (which asserts the
+// real ladder has ONE entry), this is the whole claim -- the ladder is closed today, and it cannot
+// widen quietly tomorrow.
+test fn a_ladder_holding_the_human_route_reports_itself_broken() -> Bool {
+  (match broker_barrier_against_the_human_review_endpoint(
+    broker_effect_paths: [review_endpoint_path, human_review_endpoint_path],
+    human_review_path: human_review_endpoint_path
+  ) {
+    BrokerMayPostToTheHumanReviewEndpoint { offending_path: p } =>
+      p == human_review_endpoint_path
+    BrokerIsBarredFromTheHumanReviewEndpoint => false
+  })
+    // A ladder that drops our own route but adds nothing else is still barred from the human surface:
+    // the check is about the human route specifically, not about list size.
+    && (match broker_barrier_against_the_human_review_endpoint(
+      broker_effect_paths: ["/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/other"],
+      human_review_path: human_review_endpoint_path
+    ) {
+      BrokerIsBarredFromTheHumanReviewEndpoint => true
+      BrokerMayPostToTheHumanReviewEndpoint { offending_path: _ } => false
+    })
 }
 
 // THE TAP'S OWN BINDING: escalation, revision and attempt are the capability's authenticated claims,
