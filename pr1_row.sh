@@ -79,9 +79,15 @@ if [ "$KIND" = pin ]; then
   [ "$NK_DAG" -eq 0 ] && [ "$SPAN_DAG" -eq 0 ] || { echo "VOID: the .dag still carries a mint (mint_markers=$NK_DAG span=$SPAN_DAG)"; exit 5; }
   grep -q "MINT-BOUNDARY-INVENTORY" "src/v1/tests/src/$MODULE.rs" \
     || { echo "VOID: the pin row prints no inventory, so it cannot show it looked at anything"; exit 5; }
+  # Each guard name must be BOTH set and asserted (>=2 mentions: assignment + assert). A row that
+  # lost an assert could pass while measuring nothing; matching only `let NAME` was too strict
+  # (the row writes `let mut saw_fn`) and made a good tree read as VOID.
   for G in saw_fn call_nodes; do
-    grep -q "let $G" "src/v1/tests/src/$MODULE.rs" || { echo "VOID: the pin row lost its $G guard and could pass by finding nothing"; exit 5; }
+    [ "$(grep -c "$G" "src/v1/tests/src/$MODULE.rs")" -ge 2 ] \
+      || { echo "VOID: the pin row does not both set and assert $G -- it could pass by finding nothing"; exit 5; }
   done
+  grep -q "assert" "src/v1/tests/src/$MODULE.rs" \
+    || { echo "VOID: the pin row contains no assert at all"; exit 5; }
 elif [ "$KIND" = repair ]; then
   # The SPAN-KEYED mint tree (probe/pr1-producer-repair). The mint's presence is mint_markers; the
   # id FORM is what separates repair from mutant, so span markers must be present here.
