@@ -1,0 +1,193 @@
+module v2.workflow.wave_admission
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { fold_list, is_empty, length, list_map, list_snoc_item, list_at_optional }
+import std.optional { Absent, Optional, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.types { List, Bool }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.instruments.namespace_wave_binding_shard { BaseKey, base_receipt_refusal, base_receipt_rows, base_receipt_text }
+
+// THE PRE-WAVE ADMISSION (tidy-ant-251's ruling, 2026-10-20). A NAMESPACE-XL wave may only rewrite modules that resolve
+// natively at its BASE: a rewritten module whose base census refused is `refused_rewritten` and the wave is not
+// admitted (gunbc.instruments.ambient_name_census_reading), and a zero-import module that leans on names no import
+// brings refuses at base exactly as at head. So each wave CANDIDATE is judged against the base revision's binding census,
+// read from the gate's WaveBaseReceipt through the gate's own readers (base_receipt_refusal judges its key, base_receipt_rows
+// extracts its rows) -- a pure read, no census run of its own.
+//
+//   ADMIT <module>                                       base resolved it fully (a binding_module summary, nothing else
+//                                                        refused)
+//   REFUSE <module> wave-candidate-unresolved-at-base <unbound names>   it is binding_unbound / binding_unbound_module /
+//                                                        binding_unreached at base; REPAIR names it for the repair stage
+//   REFUSE <module> wave-candidate-partially-resolved     only binding_partial rows: base resolved part of it
+//   REFUSE <module> wave-candidate-unobserved-at-base     the receipt has no row for it (absent is never "fine")
+//   REPAIR <module> <unbound names>                       the repair stage's input, one row per refused module
+//
+// Never a silent drop and never a silent admit: every candidate gets exactly one ADMIT or REFUSE row. Exit 0 only when
+// every candidate is admitted. Its consumer is Wave 2's admission: the candidates it refuses go to the repair stage
+// (the declared-import sweep generator, generalized to an unbound name with a unique declared home), not into the wave.
+
+type WaveCandidateVerdict
+  = WaveCandidateAdmitted { module: String }
+  | WaveCandidateUnresolved { module: String, unbound: List<String> }
+  | WaveCandidatePartial { module: String }
+  | WaveCandidateUnobserved { module: String }
+
+type WaveAdmissionRead
+  = WaveAdmissionRows { rows: List<String> }
+  | WaveAdmissionRefused { cause: String }
+
+fn wave_admission_rows_of(text: String, base_rev: String, instr_rev: String) -> WaveAdmissionRead {
+  match base_receipt_refusal(key: BaseKey { base_rev: base_rev, instr_rev: instr_rev }, text: text) {
+    Present { value: why } => WaveAdmissionRefused { cause: why }
+    Absent => WaveAdmissionRows { rows: split(s: base_receipt_rows(text: text), delimiter: "\n") }
+  }
+}
+
+fn wave_field(line: String, at: Int) -> String {
+  match list_at_optional(xs: split(s: line, delimiter: "\t"), index: at) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+// One candidate against the base rows. A kind naming the module that is a refusal of resolve decides first; then a
+// clean summary admits; then partial rows; then nothing at all is unobserved.
+fn wave_candidate_verdict(rows: List<String>, module: String) -> WaveCandidateVerdict {
+  let mine = fold_list(xs: rows, empty: [], cons: fn(acc, l) { if wave_field(line: l, at: 1) == module { list_snoc_item(xs: acc, item: l) } else { acc } })
+  let unbound = fold_list(xs: mine, empty: [], cons: fn(acc, l) { if wave_field(line: l, at: 0) == "binding_unbound" { wave_snoc_distinct(xs: acc, x: wave_field(line: l, at: 2)) } else { acc } })
+  let refused = fold_list(xs: mine, empty: false, cons: fn(f, l) { f || wave_is_refusal_kind(kind: wave_field(line: l, at: 0)) })
+  if refused {
+    WaveCandidateUnresolved { module: module, unbound: unbound }
+  } else if fold_list(xs: mine, empty: false, cons: fn(f, l) { f || wave_field(line: l, at: 0) == "binding_module" }) {
+    WaveCandidateAdmitted { module: module }
+  } else if fold_list(xs: mine, empty: false, cons: fn(f, l) { f || wave_field(line: l, at: 0) == "binding_partial" || wave_field(line: l, at: 0) == "binding_partial_module" }) {
+    WaveCandidatePartial { module: module }
+  } else {
+    WaveCandidateUnobserved { module: module }
+  }
+}
+
+fn wave_is_refusal_kind(kind: String) -> Bool {
+  kind == "binding_unbound" || kind == "binding_unbound_module" || kind == "binding_unreached"
+}
+
+fn wave_snoc_distinct(xs: List<String>, x: String) -> List<String> {
+  if fold_list(xs: xs, empty: false, cons: fn(f, y) { f || y == x }) { xs } else { list_snoc_item(xs: xs, item: x) }
+}
+
+fn wave_verdict_lines(v: WaveCandidateVerdict) -> String {
+  match v {
+    WaveCandidateAdmitted { module: m } => "ADMIT " + m + "\n"
+    WaveCandidateUnresolved { module: m, unbound: u } =>
+      "REFUSE " + m + " wave-candidate-unresolved-at-base " + wave_join(xs: u) + "\n" + "REPAIR " + m + " " + wave_join(xs: u) + "\n"
+    WaveCandidatePartial { module: m } => "REFUSE " + m + " wave-candidate-partially-resolved\n"
+    WaveCandidateUnobserved { module: m } => "REFUSE " + m + " wave-candidate-unobserved-at-base\n"
+  }
+}
+
+fn wave_join(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + "," + x } })
+}
+
+fn wave_is_admitted(v: WaveCandidateVerdict) -> Bool {
+  match v {
+    WaveCandidateAdmitted { module: _ } => true
+    _ => false
+  }
+}
+
+fn wave_admission_report(rows: List<String>, candidates_csv: String) -> CliWireResponse {
+  let verdicts = list_map(xs: split(s: candidates_csv, delimiter: ","), f: fn(m) { wave_candidate_verdict(rows: rows, module: m) })
+  let text = fold_list(xs: verdicts, empty: "", cons: fn(acc, v) { acc + wave_verdict_lines(v: v) })
+  if fold_list(xs: verdicts, empty: true, cons: fn(f, v) { f && wave_is_admitted(v: v) }) {
+    CliWirePrintable { bytes: text, exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: text, exit: exit_failure(reason: text) }
+  }
+}
+
+// THE ENTRY: the base receipt by path and the key it must carry, and the wave's candidate modules.
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/wave_admission.dag --function wave_admission_wire \
+//     --arg receipt_path=<base receipt> --arg base_rev=<rev> --arg instr_rev=<rev> --arg candidates_csv=<m1,m2,...>
+fn wave_admission_wire(receipt_path: String, base_rev: String, instr_rev: String, candidates_csv: String) -> CliWireResponse {
+  let read = Filesystem.Read(path: receipt_path)
+  if !read.success {
+    CliWirePrintable { bytes: "REFUSE * receipt-unreadable " + receipt_path + "\n", exit: exit_failure(reason: "receipt-unreadable") }
+  } else {
+    match wave_admission_rows_of(text: read.content, base_rev: base_rev, instr_rev: instr_rev) {
+      WaveAdmissionRefused { cause: c } => CliWirePrintable { bytes: "REFUSE * receipt-refused " + c + "\n", exit: exit_failure(reason: c) }
+      WaveAdmissionRows { rows: rows } => wave_admission_report(rows: rows, candidates_csv: candidates_csv)
+    }
+  }
+}
+
+// ---- controls ------------------------------------------------------------------------------------------------------------------
+
+// The controls' receipt is built by the gate's own writer (base_receipt_text), so its header is the one the reader judges.
+fn wave_control_key() -> BaseKey {
+  BaseKey { base_rev: "b1", instr_rev: "i1" }
+}
+
+fn wave_control_receipt() -> String {
+  base_receipt_text(key: wave_control_key(), status: 0, stdout: wave_join_lines(lines: [
+    "binding\tc.clean\tToken\t0\timport\tc.old.Token\t5:9",
+    "binding_module\tc.clean\t1\t0\t0\t0",
+    "binding_unbound\tc.bare\tAbsent\t0\t-\t-\t6:3",
+    "binding_unbound\tc.bare\tsemver_compare\t0\t-\t-\t7:3",
+    "binding_unbound\tc.bare\tAbsent\t1\t-\t-\t8:3",
+    "binding_unbound_module\tc.bare\t3",
+    "binding_unreached\tc.bare\tresolve refused",
+    "binding_partial\tc.part\tx\t0\tparameter\tparameter\t4:3",
+    "binding_partial_module\tc.part\t1\t0\t0"
+  ]))
+}
+
+fn wave_join_lines(lines: List<String>) -> String {
+  fold_list(xs: lines, empty: "", cons: fn(acc, l) { acc + l + "\n" })
+}
+
+fn wave_admission_controls_report() -> String {
+  match wave_admission_rows_of(text: wave_control_receipt(), base_rev: "b1", instr_rev: "i1") {
+    WaveAdmissionRefused { cause: c } => "CONTROL-FAIL wave-admission: the control receipt was refused: " + c + "\n"
+    WaveAdmissionRows { rows: rows } =>
+      wave_case(name: "clean", rows: rows, module: "c.clean", want: "ADMIT c.clean\n")
+        + wave_case(name: "unbound-at-base", rows: rows, module: "c.bare", want: "REFUSE c.bare wave-candidate-unresolved-at-base Absent,semver_compare\nREPAIR c.bare Absent,semver_compare\n")
+        + wave_case(name: "partial", rows: rows, module: "c.part", want: "REFUSE c.part wave-candidate-partially-resolved\n")
+        + wave_case(name: "unobserved", rows: rows, module: "c.absent", want: "REFUSE c.absent wave-candidate-unobserved-at-base\n")
+        + wave_exit_case(rows: rows)
+        + wave_key_case()
+  }
+}
+
+fn wave_case(name: String, rows: List<String>, module: String, want: String) -> String {
+  let got = wave_verdict_lines(v: wave_candidate_verdict(rows: rows, module: module))
+  if got == want { "" } else { "CONTROL-FAIL wave-admission " + name + ": got " + got + "\n" }
+}
+
+// One refused candidate makes the whole admission fail, and the admitted one is still reported beside it.
+fn wave_exit_case(rows: List<String>) -> String {
+  match wave_admission_report(rows: rows, candidates_csv: "c.clean,c.bare") {
+    CliWirePrintable { bytes: b, exit: ExitSuccess } => "CONTROL-FAIL wave-admission exit: a wave with an unresolved candidate was admitted\n"
+    CliWirePrintable { bytes: b, exit: _ } =>
+      if b == "ADMIT c.clean\nREFUSE c.bare wave-candidate-unresolved-at-base Absent,semver_compare\nREPAIR c.bare Absent,semver_compare\n" { "" } else { "CONTROL-FAIL wave-admission exit: report " + b + "\n" }
+    _ => "CONTROL-FAIL wave-admission exit: not a printable response\n"
+  }
+}
+
+// A receipt keyed by another instrument revision is not read at all.
+fn wave_key_case() -> String {
+  match wave_admission_rows_of(text: wave_control_receipt(), base_rev: "b1", instr_rev: "i0") {
+    WaveAdmissionRefused { cause: _ } => ""
+    WaveAdmissionRows { rows: _ } => "CONTROL-FAIL wave-admission key: a receipt under another instrument revision was read\n"
+  }
+}
+
+fn wave_admission_controls_wire() -> CliWireResponse {
+  let report = wave_admission_controls_report()
+  if report == "" {
+    CliWirePrintable { bytes: "wave-admission controls held\n", exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
+  }
+}
