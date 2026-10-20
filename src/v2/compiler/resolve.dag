@@ -2952,6 +2952,25 @@ fn resolve_transform_operator_child(
   }
 }
 
+// THE ARM OF `x is V` IS A SPELLING, NOT A REFERENCE. V names a variant of x's TYPE, which only infer
+// knows (v2.compiler.infer infer_arm_resolutions resolves it against that type's declared roster and
+// refuses a misspelt or foreign arm there), so resolve neither binds it to a declaration nor refuses it
+// as unbound: it is carried through unread, the way a symbol literal's payload is.
+fn resolve_transform_is_arm_test(n: Node) -> Bool {
+  match positional_child_target_nodes(node: n) {
+    Empty => false
+    Cons { head: op, tail: _ } =>
+      match op.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_is
+        _ => false
+      }
+  }
+}
+
+fn resolve_is_arm_spelling_kept(arm: Node) -> ResolveNodeWalk {
+  ResolveWalkAccepted { value: arm, diagnostics: None, bindings: [] }
+}
+
 fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
@@ -2964,6 +2983,8 @@ fn resolve_transform_children(
         Positional =>
           if acc.ordinal == 0 {
             resolve_transform_operator_child(ctx: ctx, n: e.target)
+          } else if acc.ordinal == 2 && resolve_transform_is_arm_test(n: n) {
+            resolve_is_arm_spelling_kept(arm: e.target)
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
