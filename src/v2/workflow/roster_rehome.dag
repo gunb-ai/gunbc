@@ -410,6 +410,10 @@ fn rehome_census_row_snoc(acc: List<RehomeCensusRow>, line: String) -> List<Reho
       // head is a compiler-generated reference no one resolves, the same in every declaration. It is not a reference of the
       // declaration's own, so it neither joins a contract nor refuses one.
       acc
+    } else if kind == "ambient_summary" || kind == "module_subjects" || kind == "unanswered_declared_order_count" {
+      // Run-level records, not rows of one module: the same three kinds the gate's own reader sets aside
+      // (gunbc.instruments.namespace_wave_binding_shard carried_row_kind).
+      acc
     } else if kind == "binding_module" {
       // THE MODULE SUMMARY (occurrence_binding_contribution_lines): rows, duplicate records, unreadable spellings,
       // unrecorded references. Only a summary with no duplicate, unreadable or unrecorded reference admits the module.
