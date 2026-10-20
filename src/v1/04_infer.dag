@@ -5876,16 +5876,30 @@ fn select_formal_for_call_argument(argument: Node, argument_index: Int, argument
 // argument selects -- the two builds are the honest statement of that difference.
 // `selections` is index-aligned with `arguments`: which formal each argument selects, exactly what
 // select_formal_for_call_argument returned for that argument. `labels` is index-aligned too -- the
-// caller label the rule itself reads -- because the formal-identity duplicate wall compares labels
-// and used to re-extract the same text per pair. `arguments_by_formal` is the inverse the
-// application plan and the duplicate wall ask: for each formal, the argument indices that selected
-// it, ASCENDING by construction (the fold walks arguments in index order and appends), which is what
-// makes `call_argument_first_index_for_formal` return the first claimant the way the old
+// caller label the rule itself reads, as TEXT with "" meaning no label. That encoding is exact, not
+// lossy: the rule reads the label through arg_name_at, which returns none exactly when the authored
+// name text is "", so "" is a name no argument can carry and the none-vs-text distinction of
+// arg_name_at round-trips through it (two unlabeled arguments still compare equal, an unlabeled
+// argument never equals a labeled one). It is stored as plain text because the only consumer, the
+// formal-identity duplicate wall, compares labels for equality and never branches on
+// present-vs-absent. `arguments_by_formal` is the inverse the application plan and the duplicate
+// wall ask: for each formal, the argument indices that selected it, ASCENDING by construction (the
+// fold walks arguments in index order and appends), which is what makes
+// `call_argument_first_index_for_formal` return the first claimant the way the old
 // filter-then-first did.
 type CallArgumentFormalCorrespondence {
   selections: List<CallArgumentFormalSelection>
-  labels: List<String?>
+  labels: List<String>
   arguments_by_formal: Map<Int, List<Int>>
+}
+
+// The caller label as text, "" for no label -- the exact round-trip of arg_name_at (see the type
+// comment: arg_name_at returns none exactly when the authored name is "").
+fn call_argument_label_text(argument: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match arg_name_at(n: argument, source_indices: source_indices) {
+    Present { value: label } => label
+    Absent => ""
+  }
 }
 
 fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalCorrespondence {
@@ -5896,7 +5910,7 @@ fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params
       let selection = select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices)
       let extended = CallArgumentFormalCorrespondence {
         selections: concat(acc.selections, [selection]),
-        labels: concat(acc.labels, [arg_name_at(n: pair.second, source_indices: source_indices)]),
+        labels: concat(acc.labels, [call_argument_label_text(argument: pair.second, source_indices: source_indices)]),
         arguments_by_formal: acc.arguments_by_formal
       }
       match selection {
@@ -5924,10 +5938,10 @@ fn call_argument_selection_at(correspondence: CallArgumentFormalCorrespondence, 
   }
 }
 
-fn call_argument_label_at(correspondence: CallArgumentFormalCorrespondence, argument_index: Int) -> String? {
+fn call_argument_label_at(correspondence: CallArgumentFormalCorrespondence, argument_index: Int) -> String {
   match correspondence.labels |> skip(argument_index) |> first {
     Present { value: label } => label
-    Absent => none
+    Absent => ""
   }
 }
 
