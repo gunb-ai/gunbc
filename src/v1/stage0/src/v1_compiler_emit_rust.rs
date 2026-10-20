@@ -61,7 +61,7 @@ pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
-pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs};
+pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
@@ -144,6 +144,8 @@ use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::FmLoweringRefusal::*;
 use self::FmArmAnalysis::*;
+use self::FieldStorage::*;
+use self::DyingLitShape::*;
 
 pub fn render_rust_applied_via_emit_info(
     n: Rc<Node>,
@@ -6389,13 +6391,13 @@ pub fn build_shared_types(
                             sharing.needs_sharing.clone(),
                         ) {
                             maybe_mark_shared_type(
-                                acc.clone(),
+                                acc,
                                 summary.clone(),
                                 recursive_type_set.clone(),
                                 sharing.needs_sharing.clone(),
                             )
                         } else {
-                            acc.clone()
+                            acc
                         }
                     },
                 );
@@ -6768,6 +6770,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             expected_type: std::option::Option::None,
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let registry = typed.item_registry.clone();
         let anonymous_record_diags = Rc::new({
@@ -8064,6 +8067,7 @@ pub fn emit_module(
             expected_type: std::option::Option::None,
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
@@ -10272,9 +10276,9 @@ pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
             no_items_yet.clone(),
             |acc: Rc<HashMap<String, bool>>, item: String| {
                 if (item.clone() == "".to_string()) {
-                    acc.clone()
+                    acc
                 } else {
-                    v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
+                    v1_rt::rc_map_insert(acc, item.clone(), true)
                 }
             },
         );
@@ -11089,6 +11093,7 @@ pub fn emit_module_full(
             expected_type: emit_info.expected_type.clone(),
             tco_cursor_params: emit_info.tco_cursor_params.clone(),
             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+            dying_base_sites: emit_info.dying_base_sites.clone(),
         });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
             build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
@@ -16297,6 +16302,15 @@ pub fn emit_typed_item(
                             std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                         }
                     };
+                    let fn_dying_base_sites = if item_is_tco.clone() {
+                        v1_rt::rc_empty_map::<String, String>()
+                    } else {
+                        crate::v1_compiler_ownership::analyze_dying_base_sites(
+                            item.params.clone(),
+                            fn_body.clone(),
+                            env.source_indices.clone(),
+                        )
+                    };
                     let fn_emit_info = Rc::new(EmitGraphInfo {
                         item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                         type_summaries: emit_info.type_summaries.clone(),
@@ -16327,6 +16341,7 @@ pub fn emit_typed_item(
                         expected_type: emit_info.expected_type.clone(),
                         tco_cursor_params: emit_info.tco_cursor_params.clone(),
                         tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                        dying_base_sites: fn_dying_base_sites.clone(),
                     });
                     let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
                         registry.clone(),
@@ -26416,6 +26431,23 @@ pub fn emit_rust_expr_record_lit(
             } else {
                 tn.clone()
             };
+            match v1_rt::map_get(
+                &emit_info.dying_base_sites.clone(),
+                crate::v1_compiler_emit_core_support::to_string(expr.span.start.clone()),
+            ) {
+                Some(base_param) => match dying_literal_plan(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ) {
+                    Some(plan) => return emit_dying_base_literal(plan.clone(), base_param.clone()),
+                    std::option::Option::None => (),
+                },
+                std::option::Option::None => (),
+            }
             let raw = emit_typed_record_lit(
                 peeled_type_name.clone(),
                 fs.clone(),
@@ -29836,6 +29868,7 @@ pub fn emit_rust_fold_method_call(
                             expected_type: emit_info.expected_type.clone(),
                             tco_cursor_params: emit_info.tco_cursor_params.clone(),
                             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                            dying_base_sites: emit_info.dying_base_sites.clone(),
                         }),
                         std::option::Option::None => emit_info.clone(),
                     }
@@ -29894,6 +29927,7 @@ pub fn emit_rust_fold_method_call(
                                 expected_type: emit_info.expected_type.clone(),
                                 tco_cursor_params: emit_info.tco_cursor_params.clone(),
                                 tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                                dying_base_sites: emit_info.dying_base_sites.clone(),
                             }),
                             std::option::Option::None => emit_info.clone(),
                         }
@@ -35741,49 +35775,17 @@ pub fn emit_typed_record_lit(
                                                         f.clone(),
                                                         scope.type_env.source_indices.clone(),
                                                     );
-                                                let f_value =
-                                                    crate::v1_std_core::field_init_node_value(
-                                                        f.clone(),
-                                                    );
-                                                let val_str = emit_field_value_with_context(
-                                                    f_value.clone(),
+                                                let stored_val = emit_stored_record_field(
+                                                    f.clone(),
                                                     resolved_type.clone(),
                                                     bare_qualified_name.clone(),
-                                                    f_name.clone(),
+                                                    variant_summary_name.clone(),
+                                                    ctor_name.clone(),
                                                     registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
                                                     shared_types.clone(),
                                                     emit_info.clone(),
-                                                );
-                                                let needs_wrap = (is_optional_struct_field(
-                                                    emit_info.clone(),
-                                                    variant_summary_name.clone(),
-                                                    f_name.clone(),
-                                                ) && (is_already_optional(
-                                                    f_value.clone(),
-                                                    emit_info.clone(),
-                                                    scope.clone(),
-                                                ) == false));
-                                                let field_val = if needs_wrap.clone() {
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "Some(".to_string(),
-                                                            val_str.clone(),
-                                                        ),
-                                                        ")".to_string(),
-                                                    )
-                                                } else {
-                                                    val_str.clone()
-                                                };
-                                                let stored_val = wrap_rust_record_field_value(
-                                                    field_val.clone(),
-                                                    Some(f_value.clone()),
-                                                    scope.clone(),
-                                                    emit_info.clone(),
-                                                    shared_types.clone(),
-                                                    ctor_name.clone(),
-                                                    f_name.clone(),
                                                 );
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -35965,6 +35967,561 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                 }
             }
         }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum FieldStorage {
+    StoredPromotedToSome,
+    StoredOptionalSlot,
+    StoredWrapped,
+    StoredDirectRc,
+}
+
+pub fn record_field_storage(
+    f_name: String,
+    f_value: Rc<Node>,
+    summary_name: String,
+    ctor_name: String,
+    scope: Rc<InferScope>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> FieldStorage {
+    if is_optional_struct_field(emit_info.clone(), summary_name.clone(), f_name.clone()) {
+        if is_already_optional(f_value.clone(), emit_info.clone(), scope.clone()) {
+            FieldStorage::StoredOptionalSlot
+        } else {
+            FieldStorage::StoredPromotedToSome
+        }
+    } else {
+        if (wrap_rust_record_field_value(
+            "__slot".to_string(),
+            std::option::Option::None,
+            scope.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            ctor_name.clone(),
+            f_name.clone(),
+        ) == "__slot".to_string())
+        {
+            FieldStorage::StoredDirectRc
+        } else {
+            FieldStorage::StoredWrapped
+        }
+    }
+}
+
+pub fn emit_stored_record_field(
+    f: Rc<Node>,
+    resolved_type: Rc<Node>,
+    outer_type_name: Option<String>,
+    summary_name: String,
+    ctor_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let f_name = crate::v1_std_core::field_init_node_name_at(
+            f.clone(),
+            scope.type_env.source_indices.clone(),
+        );
+        let f_value = crate::v1_std_core::field_init_node_value(f.clone());
+        let val_str = emit_field_value_with_context(
+            f_value.clone(),
+            resolved_type.clone(),
+            outer_type_name.clone(),
+            f_name.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        );
+        let field_val = match record_field_storage(
+            f_name.clone(),
+            f_value.clone(),
+            summary_name.clone(),
+            ctor_name.clone(),
+            scope.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            FieldStorage::StoredPromotedToSome => v1_rt::concat(
+                v1_rt::concat("Some(".to_string(), val_str.clone()),
+                ")".to_string(),
+            ),
+            FieldStorage::StoredOptionalSlot => val_str.clone(),
+            FieldStorage::StoredWrapped => val_str.clone(),
+            FieldStorage::StoredDirectRc => val_str.clone(),
+        };
+        wrap_rust_record_field_value(
+            field_val.clone(),
+            Some(f_value.clone()),
+            scope.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            ctor_name.clone(),
+            f_name.clone(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DyingLitInit {
+    pub name: String,
+    pub stored: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DyingLitShape {
+    DyingPlain {
+        stored: String,
+    },
+    DyingNested {
+        struct_name: String,
+        inits: Rc<Vec<Rc<DyingLitInit>>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DyingLitField {
+    pub name: String,
+    pub shape: Rc<DyingLitShape>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DyingLitPlan {
+    pub struct_name: String,
+    pub fields: Rc<Vec<Rc<DyingLitField>>>,
+}
+
+pub fn plain_shared_struct_literal_name(
+    lit: Rc<Node>,
+    scope: Rc<InferScope>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    {
+        let si = scope.type_env.source_indices.clone();
+        match (*lit.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit {
+                parent_enum: parent,
+                ..
+            } => {
+                match parent.clone() {
+                    Some(_) => std::option::Option::None,
+                    std::option::Option::None => {
+                        match crate::v1_std_core::record_lit_type_name_at(lit.clone(), si.clone()) {
+                            Some(tn) => {
+                                let rt = crate::v1_compiler_infer::expand_type_for_field_access(
+                                    crate::v1_compiler_infer_types::resolved_type(lit.clone()),
+                                    scope.type_env.clone(),
+                                    scope.module_name.clone(),
+                                )
+                                .resolved
+                                .clone();
+                                let no_generics =
+                                    match crate::v1_compiler_infer_env::lookup_type_by_name(
+                                        scope.type_env.clone(),
+                                        tn.clone(),
+                                    ) {
+                                        Some(d) => {
+                                            ((d.connective.clone() == Connective::Conj)
+                                                && ((d.params.clone().len() as i64) == 0))
+                                        }
+                                        std::option::Option::None => false,
+                                    };
+                                let covers_all_fields = match crate::v1_compiler_infer_emit_info::lookup_emit_type_summary(emit_info.clone(), tn.clone()) {
+    Some(ts) => ((Rc::new(v1_rt::sorted_map_keys(&ts.field_summaries.clone())).len() as i64) == (lit.children.clone().len() as i64)),
+    std::option::Option::None => false,
+};
+                                if (((((v1_rt::set_contains(&shared_types, tn.clone())
+                                    && no_generics.clone())
+                                    && covers_all_fields.clone())
+                                    && (crate::v1_std_core::authored_name_at(
+                                        si.clone(),
+                                        rt.clone(),
+                                    ) == tn.clone()))
+                                    && !v1_rt::set_contains(
+                                        &emit_info.recursive_type_set.clone(),
+                                        tn.clone(),
+                                    ))
+                                    && !is_optional_variant_name(tn.clone()))
+                                {
+                                    Some(tn.clone())
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn dying_literal_plan(
+    lit: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<Rc<DyingLitPlan>> {
+    {
+        let si = scope.type_env.source_indices.clone();
+        match plain_shared_struct_literal_name(
+            lit.clone(),
+            scope.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            std::option::Option::None => std::option::Option::None,
+            Some(tn) => {
+                let rt = crate::v1_compiler_infer::expand_type_for_field_access(
+                    crate::v1_compiler_infer_types::resolved_type(lit.clone()),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                )
+                .resolved
+                .clone();
+                let planned = Rc::new({
+                    let mut __result = Vec::new();
+                    for f in lit.children.clone().iter().cloned() {
+                        __result.push({
+                let f_name = crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone());
+let f_value = crate::v1_std_core::field_init_node_value(f.clone());
+let stored = emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
+let direct_rc = match record_field_storage(f_name.clone(), f_value.clone(), tn.clone(), tn.clone(), scope.clone(), shared_types.clone(), emit_info.clone()) {
+    FieldStorage::StoredDirectRc => true,
+    FieldStorage::StoredPromotedToSome => false,
+    FieldStorage::StoredOptionalSlot => false,
+    FieldStorage::StoredWrapped => false,
+};
+let inner_name = if direct_rc.clone() {
+                    plain_shared_struct_literal_name(f_value.clone(), scope.clone(), shared_types.clone(), emit_info.clone())
+                } else {
+                    std::option::Option::None
+                };
+match inner_name.clone() {
+    Some(inner_tn) => {
+                    let inner_rt = crate::v1_compiler_infer::expand_type_for_field_access(crate::v1_compiler_infer_types::resolved_type(f_value.clone()), scope.type_env.clone(), scope.module_name.clone()).resolved.clone();
+let inner_fields = f_value.children.clone();
+Rc::new(DyingLitField {
+    name: f_name.clone(),
+    shape: Rc::new(DyingLitShape::DyingNested {
+    struct_name: inner_tn.clone(),
+    inits: Rc::new({ let mut __result = Vec::new(); for g in inner_fields.iter().cloned() { __result.push(Rc::new(DyingLitInit {
+    name: crate::v1_std_core::field_init_node_name_at(g.clone(), si.clone()),
+    stored: emit_stored_record_field(g.clone(), inner_rt.clone(), Some(inner_tn.clone()), inner_tn.clone(), inner_tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone()),
+})); } __result }),
+}),
+})
+},
+    std::option::Option::None => Rc::new(DyingLitField {
+    name: f_name.clone(),
+    shape: Rc::new(DyingLitShape::DyingPlain {
+    stored: stored.clone(),
+}),
+}),
+}
+});
+                    }
+                    __result
+                });
+                Some(Rc::new(DyingLitPlan {
+                    struct_name: tn.clone(),
+                    fields: planned.clone(),
+                }))
+            }
+        }
+    }
+}
+
+pub fn dying_rb_temp(field_index: i64, inner_index: i64) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                "__rb_".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(field_index.clone()),
+            ),
+            "_".to_string(),
+        ),
+        crate::v1_compiler_emit_core_support::to_string(inner_index.clone()),
+    )
+}
+
+pub fn dying_inner_literal(
+    struct_name: String,
+    inits: Rc<Vec<Rc<DyingLitInit>>>,
+    field_index: i64,
+) -> String {
+    {
+        let rendered = Rc::new({
+            let mut __result = Vec::new();
+            for np in Rc::new(
+                inits
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        crate::v1_compiler_emit::emit_ident(
+                            np.1.clone().name.clone(),
+                            RenderTarget::Rust,
+                        ),
+                        ": ".to_string(),
+                    ),
+                    dying_rb_temp(field_index.clone(), np.0.clone()),
+                ));
+            }
+            __result
+        });
+        rust_shared_wrap_ctor(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(struct_name.clone(), " { ".to_string()),
+                rendered.clone().join(&", ".to_string()),
+            ),
+            " }".to_string(),
+        ))
+    }
+}
+
+pub fn emit_dying_base_literal(plan: Rc<DyingLitPlan>, base_param: String) -> String {
+    {
+        let indexed = Rc::new(
+            plan.fields
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        );
+        let temp_lets = Rc::new({
+            let mut __result = Vec::new();
+            for pair in indexed.iter().cloned() {
+                __result.extend(
+                    (*match (*pair.1.clone().shape.clone()).clone() {
+                        DyingLitShape::DyingPlain { stored: stored, .. } => {
+                            Rc::new(vec![v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "let ".to_string(),
+                                            dying_rb_temp(pair.0.clone(), 0),
+                                        ),
+                                        " = ".to_string(),
+                                    ),
+                                    stored.clone(),
+                                ),
+                                ";".to_string(),
+                            )])
+                        }
+                        DyingLitShape::DyingNested { inits, .. } => Rc::new({
+                            let mut __result = Vec::new();
+                            for ip in Rc::new(
+                                inits
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .enumerate()
+                                    .map(|(i, v)| (i as i64, v))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "let ".to_string(),
+                                                dying_rb_temp(pair.0.clone(), ip.0.clone()),
+                                            ),
+                                            " = ".to_string(),
+                                        ),
+                                        ip.1.clone().stored.clone(),
+                                    ),
+                                    ";".to_string(),
+                                ));
+                            }
+                            __result
+                        }),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let fresh_fields = Rc::new({
+            let mut __result = Vec::new();
+            for pair in indexed.iter().cloned() {
+                __result.push({
+                    let fld = pair.1.clone();
+                    let value = match (*fld.shape.clone()).clone() {
+                        DyingLitShape::DyingPlain { stored: _, .. } => {
+                            dying_rb_temp(pair.0.clone(), 0)
+                        }
+                        DyingLitShape::DyingNested {
+                            struct_name: sn,
+                            inits,
+                            ..
+                        } => dying_inner_literal(sn.clone(), inits.clone(), pair.0.clone()),
+                    };
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            crate::v1_compiler_emit::emit_ident(
+                                fld.name.clone(),
+                                RenderTarget::Rust,
+                            ),
+                            ": ".to_string(),
+                        ),
+                        value.clone(),
+                    )
+                });
+            }
+            __result
+        });
+        let fresh = rust_shared_wrap_ctor(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(plan.struct_name.clone(), " { ".to_string()),
+                fresh_fields.clone().join(&", ".to_string()),
+            ),
+            " }".to_string(),
+        ));
+        let in_place = Rc::new({
+            let mut __result = Vec::new();
+            for pair in indexed.iter().cloned() {
+                __result.push({
+                    let fld = pair.1.clone();
+                    let slot = v1_rt::concat(
+                        "__rb_r.".to_string(),
+                        crate::v1_compiler_emit::emit_ident(fld.name.clone(), RenderTarget::Rust),
+                    );
+                    match (*fld.shape.clone()).clone() {
+                        DyingLitShape::DyingPlain { stored: _, .. } => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(slot.clone(), " = ".to_string()),
+                                dying_rb_temp(pair.0.clone(), 0),
+                            ),
+                            ";".to_string(),
+                        ),
+                        DyingLitShape::DyingNested {
+                            struct_name: sn,
+                            inits,
+                            ..
+                        } => {
+                            let inner_assign = Rc::new({
+                                let mut __result = Vec::new();
+                                for np in Rc::new(
+                                    inits
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "__rb_c.".to_string(),
+                                                    crate::v1_compiler_emit::emit_ident(
+                                                        np.1.clone().name.clone(),
+                                                        RenderTarget::Rust,
+                                                    ),
+                                                ),
+                                                " = ".to_string(),
+                                            ),
+                                            dying_rb_temp(pair.0.clone(), np.0.clone()),
+                                        ),
+                                        ";".to_string(),
+                                    ));
+                                }
+                                __result
+                            });
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "match Rc::get_mut(&mut ".to_string(),
+                                                            slot.clone(),
+                                                        ),
+                                                        ") { Some(__rb_c) => { ".to_string(),
+                                                    ),
+                                                    inner_assign.clone().join(&" ".to_string()),
+                                                ),
+                                                " } None => { ".to_string(),
+                                            ),
+                                            slot.clone(),
+                                        ),
+                                        " = ".to_string(),
+                                    ),
+                                    dying_inner_literal(sn.clone(), inits.clone(), pair.0.clone()),
+                                ),
+                                "; } }".to_string(),
+                            )
+                        }
+                    }
+                });
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "{ ".to_string(),
+                                        temp_lets.clone().join(&" ".to_string()),
+                                    ),
+                                    " let mut __rb_h = ".to_string(),
+                                ),
+                                crate::v1_compiler_emit::emit_ident(
+                                    base_param.clone(),
+                                    RenderTarget::Rust,
+                                ),
+                            ),
+                            "; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { ".to_string(),
+                        ),
+                        in_place.clone().join(&" ".to_string()),
+                    ),
+                    " } None => { __rb_h = ".to_string(),
+                ),
+                fresh.clone(),
+            ),
+            "; } } __rb_h }".to_string(),
+        )
     }
 }
 
@@ -38963,9 +39520,9 @@ pub fn emit_typed_tco_reassign(
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
                 let ref_count = arg_values.iter().cloned().fold(0, |n: i64, av: Rc<Node>| {
                     if expr_references_var(av.clone(), pname.clone(), si.clone()) {
-                        v1_rt::int_add(n.clone(), 1)
+                        v1_rt::int_add(n, 1)
                     } else {
-                        n.clone()
+                        n
                     }
                 });
                 if (ref_count.clone() <= 1) {
@@ -45370,3 +45927,11 @@ pub struct HostOptionArmIsNot;
 pub struct HostOptionArmSpelledWithoutIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostOptionArmBindingAmbiguous;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredPromotedToSome;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredOptionalSlot;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredWrapped;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredDirectRc;
