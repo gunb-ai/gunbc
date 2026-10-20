@@ -130,7 +130,7 @@ type ScriptedCommand {
 
 type RedRun
   = RedRunReturned { phase: RunnerHostCapPhase, legs: List<String> }
-  | RedRunEnded { cause: String }
+  | RedRunEnded { cause: String, legs: List<String> }
 
 fn red_identity() -> NonEmptyStr { "cap-route-base-red-witness" as NonEmptyStr }
 
@@ -317,9 +317,9 @@ fn legs_of_route(route: List<DispatchRecord>) -> List<String> {
 
 fn red_run(mode: RunnerHostFileConvergeMode, legs: List<ScriptedCommand>) -> RedRun {
   match red_subject() {
-    Absent => RedRunEnded { cause: "srv1 is not an admitted runner host subject" }
+    Absent => RedRunEnded { cause: "srv1 is not an admitted runner host subject", legs: [] }
     Present { value: subject } => match red_context() {
-      Absent => RedRunEnded { cause: "the fleet witness context could not be sealed" }
+      Absent => RedRunEnded { cause: "the fleet witness context could not be sealed", legs: [] }
       Present { value: context } => match evaluate_in_witness_frame(
         frame: red_frame(legs: legs),
         subject: fn(_scope) {
@@ -333,8 +333,18 @@ fn red_run(mode: RunnerHostFileConvergeMode, legs: List<ScriptedCommand>) -> Red
         },
       ) {
         WitnessReturned { value: v, route: route, state: _ } => RedRunReturned { phase: v, legs: legs_of_route(route: route) }
-        WitnessRefused { diagnostic: d, route: _, state: _ } => RedRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
-        WitnessInterrupted { at: _, route: _, state: _, now: _ } => RedRunEnded { cause: "the base-red worker was interrupted" }
+        // The ledger SURVIVES refusal: the dispatcher pushed what it attempted before an unbound
+        // operation (base's apply writes, through an operation this scenario never scripted) raised.
+        // Without this, base's apply run would report zero legs and the both-trees control 3 would
+        // read as an artifact instead of showing apply's read legs on the same route as observe's.
+        WitnessRefused { diagnostic: d, route: route, state: _ } => RedRunEnded {
+          cause: witness_diagnostic_rendered_reason(diagnostic: d),
+          legs: legs_of_route(route: route),
+        }
+        WitnessInterrupted { at: _, route: route, state: _, now: _ } => RedRunEnded {
+          cause: "the base-red worker was interrupted",
+          legs: legs_of_route(route: route),
+        }
       }
     }
   }
@@ -353,7 +363,7 @@ fn phase_of(r: RedRun) -> RunnerHostCapPhase {
 fn legs_of(r: RedRun) -> List<String> {
   match r {
     RedRunReturned { phase: _, legs: l } => l
-    RedRunEnded { cause: _ } => []
+    RedRunEnded { cause: _, legs: l } => l
   }
 }
 
