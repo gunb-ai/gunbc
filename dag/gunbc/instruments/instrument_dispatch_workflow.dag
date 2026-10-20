@@ -127,16 +127,7 @@ data instrument_dispatch_group_prefix: String = "instrument-dispatch"
 // form is already in production at workflow level in heal.yml, whose group reads inputs.pull_number.
 // The separator is a literal hyphen rather than an expression so the rendered shape is fixed text the
 // witness can assert exactly.
-data instrument_dispatch_concurrency_group: String =
-  join(
-    [
-      instrument_dispatch_group_prefix,
-      "-${{ github.ref }}-${{ inputs.",
-      instrument_dispatch_label_input,
-      " }}",
-    ],
-    "",
-  )
+data instrument_dispatch_concurrency_group: String = join([instrument_dispatch_group_prefix, "-${{ github.ref }}-${{ inputs.", instrument_dispatch_label_input, " }}"], "")
 
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
   group: instrument_dispatch_concurrency_group,
