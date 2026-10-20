@@ -23,9 +23,8 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.decimal { fixed_point_trimmed_wire }
 import std.list { distinct_by_key }
-import extdeps.languages.css.values { css_hsl_wire, css_number_fraction_digits, css_px, css_ch }
+import extdeps.languages.css.values { css_hsl_wire, css_number_wire, css_px, css_ch }
 import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css, moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
 import extdeps.color.srgb { Srgb8 }
 import gunbc.design.scale { LengthValue, measure_prose }
@@ -62,13 +61,14 @@ test fn witness_render_ends_at_a_section_boundary() -> Bool {
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
 // thousandths, so each digit-count branch is exercised by a served value.
 test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
-  fixed_point_trimmed_wire(value: 400, decimals: css_number_fraction_digits) == "0.4"
-    && fixed_point_trimmed_wire(value: 850, decimals: css_number_fraction_digits) == "0.85"
-    && fixed_point_trimmed_wire(value: 56000, decimals: css_number_fraction_digits) == "56"
-    && fixed_point_trimmed_wire(value: 140, decimals: css_number_fraction_digits) == "0.14"
-    && fixed_point_trimmed_wire(value: 80, decimals: css_number_fraction_digits) == "0.08"
-    && fixed_point_trimmed_wire(value: 5, decimals: css_number_fraction_digits) == "0.005"
-    && fixed_point_trimmed_wire(value: 2500, decimals: css_number_fraction_digits) == "2.5"
+  css_number_wire(milli: 400) == "0.4"
+    && css_number_wire(milli: 850) == "0.85"
+    && css_number_wire(milli: 56000) == "56"
+    && css_number_wire(milli: 140) == "0.14"
+    && css_number_wire(milli: 80) == "0.08"
+    && css_number_wire(milli: 5) == "0.005"
+    && css_number_wire(milli: 2500) == "2.5"
+    && css_number_wire(milli: -40) == "-0.04"
 }
 
 // Every colour in the served :root block comes out of gunb_ai_hues, and the alpha-bearing ones are
