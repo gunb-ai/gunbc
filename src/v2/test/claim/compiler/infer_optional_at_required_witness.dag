@@ -34,7 +34,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { SourceRootRef, V2Tree, DagTree }
+import v2.std.cross_tree.import_model { V2Tree, DagTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferAccepted,
@@ -43,20 +43,12 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   rcf_refuses_with,
   rcf_member_accepted_and_decided,
   rcf_member_arrow,
-  rcf_verdict
-}
-
-fn oar_read_in(tree: SourceRootRef, source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
-    compilation_unit: unit,
-    source_root: tree
-  }
+  rcf_verdict,
+  rcf_read_in
 }
 
 fn oar_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
-  oar_read_in(tree: V2Tree, source: source, id: id, unit: unit, path: path)
+  rcf_read_in(tree: V2Tree, source: source, id: id, unit: unit, path: path)
 }
 
 data oar_optional_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
@@ -122,7 +114,7 @@ data oar_arrow_arg_ok_source: String = "module v2.test.oar_arrow_arg_ok\n\nfn oa
 data oar_arrow_arg_bad_source: String = "module v2.test.oar_arrow_arg_bad\n\nfn oar_pred(b: Bool) -> Bool { true }\n\nfn oar_apply(f: fn(Int) -> Bool) -> Bool { f(0) }\n\nfn oar_call() -> Bool { oar_apply(f: oar_pred) }\n"
 
 data oar_ingest: SourceRootIngest = [
-  oar_read_in(tree: DagTree, source: oar_optional_source, id: ^oar_optional_read, unit: ^oar_optional_cu, path: "dag/std/optional.dag"),
+  rcf_read_in(tree: DagTree, source: oar_optional_source, id: ^oar_optional_read, unit: ^oar_optional_cu, path: "dag/std/optional.dag"),
   oar_read(source: oar_return_bad_source, id: ^oar_return_bad_read, unit: ^oar_return_bad_cu, path: "src/v2/test/oar_return_bad.dag"),
   oar_read(source: oar_lift_source, id: ^oar_lift_read, unit: ^oar_lift_cu, path: "src/v2/test/oar_lift.dag"),
   oar_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/oar_field_bad.dag"),
@@ -228,12 +220,6 @@ test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
   }
 }
 
-// STALE EXPECTATION, DECLARED, NOT ASSERTED AWAY. The first half of this claim reads an unresolvable
-// alias reference (`v2.test.oar_alias.Maybe` names no declaration) as counted-undecidable. That premise
-// is no longer an admitted semantic expectation: a reference naming an Optional is decided once its
-// alias settles. The assertion is left unchanged and red on purpose. After the Occupancy cut
-// (cool-gull-100) it is replaced by a ROUTE claim on an alias fixture, `type Maybe = Optional<Int>`:
-// the alias value is accepted and `Present { value: "s" }` is refused at the payload.
 // An optional at a declared type the relation cannot know to be required is NOT refused: a
 // declaration reference may name an alias of an optional type, and a type variable may be
 // instantiated at one. Both stay counted (the type variable as the generic formal it is).
