@@ -488,9 +488,8 @@ fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -
 // explicit_present_is_the_authoring_policy), so it is judged structurally against the optional and refuses. A produced optional layer
 // against a declared payload that is not an optional is the optional-at-required refusal; a declared
 // payload that is an optional against a produced payload that is not one is a depth mismatch
-// (only the lift from a non-optional spans several layers). This replaces the former
-// UndecidableOptionalCarrier route, which accepted any optional pair with an advisory and so never
-// judged the payload (gunbc.recurring_failure_mode optional_payload_never_judged_against_declared_carrier).
+// (only the lift from a non-optional spans several layers). The class is
+// gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared (its v2 route).
 fn inhabitance_optional_payload(t: Node) -> Optional<Node> {
   match declaration_denotation_of_type(t: t) {
     Absent => Absent
