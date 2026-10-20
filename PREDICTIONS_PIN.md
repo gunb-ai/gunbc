@@ -144,3 +144,42 @@ row-only change. The diff against origin/main is ONE file, a `dag/gunbc/recurrin
     matching the controls on main tips. A red here would be the MERGE's fault, not the row's -- the base
     moved ten commits since the last emit-build measurement -- so if it is red I must re-run it against
     plain origin/main 9de8941f73f before attributing anything to this PR.
+
+## Prereq (b) executed A/B — pre-registered BEFORE dispatch (job to follow)
+
+Question from stern-bat-401 (msg_11dcdef2): "does substituting in transparent_alias_rhs move the
+diagnostic produced at variant_reference_inferred_node? If they are different seams, prereq (b) is
+re-scoped to the owner-identity carry at variant_reference_inferred_node."
+
+Both trees are built from origin/main (9de8941f73f) + one probe test module; the ONLY difference between
+control and mutant is the removal of the single guard term
+`|| ((pre.params.clone().len() as i64) > 0)` from transparent_alias_rhs (mutated in the compiled mirror
+src/v1/stage0/src/v1_compiler_infer_env.rs AND in the authority src/v1/04_env.dag, so the verdict cannot
+depend on which of the two the build honours). The four programs are read out of the authority CI already
+runs, dag/test/claim/algebra_receiver_alias_witness.dag: nominal_return_source (-> FreeMonoid<Int>,
+accepts), alias_return_source (-> List<Int>), alias_field_source (type Box { values: List<Int> }),
+alias_initializer_source (let initial: FreeMonoid<Int> = Empty, accepts).
+
+PREDICTED CONTROL (guard intact), matching what the existing CI-run witness already asserts:
+  ALIAS-PROBE TREE guard_present_in_compiled_mirror=true
+  nominal_return_accept      hard=0
+  alias_return_refuse        hard>=1, every diagnostic a MethodNotFound whose receiver_type is Coproduct(FreeMonoid)
+  alias_field_refuse         hard>=1, same class and subject
+  alias_initializer_accept   hard=0
+If control shows the two refusing rows CLEAN, the whole experiment is VOID (it would mean the tree I built
+does not reproduce the CI-run witness) and no conclusion about the seam may be drawn.
+
+PREDICTED MUTANT -- three outcomes, named in advance so I cannot retrofit to whichever appears:
+  (i)  the two refusing programs go hard=0  => transparent_alias_rhs IS the boundary; prereq (b) stands as
+       TypeBinding-gains-declared-params + substitution at that guard.
+  (ii) the two refusing programs still report the SAME class+subject (MethodNotFound / Coproduct(FreeMonoid))
+       => the guard is NOT the boundary; prereq (b) re-scopes to the owner-identity carry at
+       variant_reference_inferred_node (src/v1/04_infer.dag:741), which the search found is already owned by
+       gunbc.guarantee_stall.algebra_application_owner_resolution_stall (blocker.grounding names exactly that
+       carry) and enrolled in gunbc.explicit_witness_admission.
+  (iii) a DIFFERENT class appears (e.g. an unresolved-declaration complaint about the alias's own parameter
+       `element`, because substituting a parameterised RHS hands the caller an uninstantiated parameter) =>
+       the guard participates but is insufficient; the carry is still required, so the re-scope in (ii) holds
+       WITH an added note that naive substitution manufactures a second defect.
+Prior expectation: (ii) or (iii), because the diagnostic is produced where a receiver type is turned into a
+variant owner, not where bindings settle -- but the run decides, not this sentence.
