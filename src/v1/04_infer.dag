@@ -14625,8 +14625,11 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 }
 
 // A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
-// positionally; one rule serves every arity. Each position is read through
-// child_type_node, the total read of a type position; first-wins binding is unchanged.
+// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
+// answers error_type for anything not Resolved, so reading it through that would drop the very
+// binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
+// unbound). First-wins binding is unchanged.
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   match formals |> first {
     Present { value: f } =>
@@ -14637,7 +14640,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
