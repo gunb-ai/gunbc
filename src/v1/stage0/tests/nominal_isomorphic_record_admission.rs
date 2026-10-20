@@ -271,6 +271,86 @@ fn direct_record_sibling_at_direct_slot_still_refuses() {
     );
 }
 
+/// LEGITIMATE MULTI-INSTANTIATION CONTROL (M1 condition 3, must never refuse):
+/// the same generic fn called at two different T in one module. Each call is
+/// judged against its OWN substituted formal; different instantiations of one
+/// generic are ordinary inhabitance.
+#[test]
+fn same_generic_fn_at_two_different_instantiations_is_accepted() {
+    let root = fixture_root("multi-instantiation");
+    let entry = root.join("nominal_multi_instantiation.dag");
+    std::fs::write(
+        &entry,
+        format!(
+            "{LOCAL_PREAMBLE}\n\
+             fn identity<T>(x: T) -> T {{\n\
+             \x20 x\n\
+             }}\n\
+             \n\
+             fn probe() -> ProcessExit {{\n\
+             \x20 let a = identity(x: RefusalRange {{ start: 1, end: 2 }})\n\
+             \x20 let b = identity(x: OtherRange {{ start: 3, end: 4 }})\n\
+             \x20 if a.start + b.start == 4 {{ ExitSuccess }} else {{ ExitFailure {{ code: 1, reason: \"control shape broken\" }} }}\n\
+             }}\n"
+        ),
+    )
+    .expect("write multi-instantiation fixture");
+    let output = run_fixture(&root, &entry, "probe");
+    let _ = std::fs::remove_dir_all(&root);
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "the same generic fn at two different T in one module must be accepted, got exit {}:\n{stderr}",
+        output.status,
+    );
+}
+
+/// COPRODUCT-ARM CONTROL (M1 condition 3, must never refuse): a T bound to a
+/// coproduct, judged with the coproduct's arm as the argument — both the arm
+/// literal at a T slot (T := arm head) and a value statically typed as the
+/// coproduct parent at a T slot (T := parent).
+#[test]
+fn generic_slot_at_coproduct_and_its_arm_is_accepted() {
+    let root = fixture_root("coproduct-arm");
+    let entry = root.join("nominal_coproduct_arm.dag");
+    std::fs::write(
+        &entry,
+        format!(
+            "{LOCAL_PREAMBLE}\n\
+             type Shape\n\
+             \x20 = Circle {{ r: Int }}\n\
+             \x20 | Square {{ side: Int }}\n\
+             \n\
+             fn identity<T>(x: T) -> T {{\n\
+             \x20 x\n\
+             }}\n\
+             \n\
+             fn probe() -> ProcessExit {{\n\
+             \x20 let a = identity(x: Circle {{ r: 3 }})\n\
+             \x20 let b: Shape = Square {{ side: 4 }}\n\
+             \x20 let c = identity(x: b)\n\
+             \x20 match a {{\n\
+             \x20\x20 Circle {{ r: r }} =>\n\
+             \x20\x20\x20 match c {{\n\
+             \x20\x20\x20\x20 Circle {{ r: r2 }} => ExitFailure {{ code: 1, reason: \"control shape broken\" }}\n\
+             \x20\x20\x20\x20 Square {{ side: s }} => if r + s == 7 {{ ExitSuccess }} else {{ ExitFailure {{ code: 1, reason: \"control shape broken\" }} }}\n\
+             \x20\x20\x20 }}\n\
+             \x20\x20 Square {{ side: _ }} => ExitFailure {{ code: 1, reason: \"control shape broken\" }}\n\
+             \x20 }}\n\
+             }}\n"
+        ),
+    )
+    .expect("write coproduct-arm fixture");
+    let output = run_fixture(&root, &entry, "probe");
+    let _ = std::fs::remove_dir_all(&root);
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "a T slot judged with a coproduct and with one of its arms must be accepted, got exit {}:\n{stderr}",
+        output.status,
+    );
+}
+
 fn run_fixture(root: &Path, entry: &Path, function: &str) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
