@@ -492,6 +492,24 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
   }
 }
 
+// THE STATIC "MAY BE MASKED" SET: ONE FUNCTION, CALLED BY BOTH THE GRANTS AND THE APPLY. A host's sudoers is
+// rendered before any observation, while the apply's mask set depends on observed membership and standings,
+// so the two cannot be equal at runtime. What is one fact is the superset every runtime set is drawn from:
+// the units the operator's authorization names for the host. The grants render exactly one line per unit
+// here (gunbc.runner.runner_host_grants runner_slot_retirement_mask_operations), and the apply emits a mask
+// only for a candidate inside this set (gunbc.runner.runner_slot_provision retirement_actuation_units),
+// withholding every other candidate in a typed line. An absent authorization is the empty set.
+fn host_maskable_units(host: HostIdentity) -> List<NonEmptyStr> {
+  match interruption_authorization_for_host(host: host) {
+    HostInterruptionAuthorizationPresent { authorization: a } => a.scope
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => []
+  }
+}
+
+fn unit_in_maskable_scope(scope: List<NonEmptyStr>, unit: String) -> Bool {
+  any(scope, u => (u as String) == unit)
+}
+
 // THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.
 //
 // Two earlier revisions derived the required set here: first by filtering the srv4 interruption

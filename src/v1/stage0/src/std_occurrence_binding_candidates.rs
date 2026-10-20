@@ -1588,25 +1588,10 @@ pub fn cross_file_binding_provenance_fold_step(
         let projection =
             cross_file_binding_provenance_from_provider(provider.clone(), acc.module_files.clone());
         match (*projection.clone()).clone() {
-    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
+    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
     CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _, .. } => match acc.first_failure.clone() {
-    std::option::Option::None => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: Some(projection.clone()),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
-    Some(_) => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()),
-}),
+    std::option::Option::None => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = Some(projection.clone()); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
+    Some(_) => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
 },
 }
     }
@@ -3062,40 +3047,6 @@ pub fn section13_population_law_roster() -> Rc<Vec<Rc<Section13PopulationLawRost
     CACHED.with(|c: &Rc<Vec<Rc<Section13PopulationLawRosterRow>>>| c.clone())
 }
 
-pub fn section13_population_law_id_eq(
-    left: Section13PopulationLawId,
-    right: Section13PopulationLawId,
-) -> bool {
-    match left.clone() {
-        Section13PopulationLawId::Section13StructuralVisibility => match right.clone() {
-            Section13PopulationLawId::Section13StructuralVisibility => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SiblingArmExclusion => match right.clone() {
-            Section13PopulationLawId::Section13SiblingArmExclusion => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13LexicalEnclosure => match right.clone() {
-            Section13PopulationLawId::Section13LexicalEnclosure => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SourceOrderGate => match right.clone() {
-            Section13PopulationLawId::Section13SourceOrderGate => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13DistinctIdentityAmbiguity => match right.clone() {
-            Section13PopulationLawId::Section13DistinctIdentityAmbiguity => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => {
-            match right.clone() {
-                Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => true,
-                _ => false,
-            }
-        }
-    }
-}
-
 pub fn section13_module_path_is_symbolic(module_path: String) -> bool {
     {
         let path = module_path.clone();
@@ -3111,7 +3062,7 @@ pub fn section13_roster_has_law(
     {
         let mut __found = false;
         for row in rows.iter().cloned() {
-            if section13_population_law_id_eq(row.law.clone(), law.clone()) {
+            if (row.law.clone() == law.clone()) {
                 __found = true;
                 break;
             }
@@ -3154,11 +3105,11 @@ pub fn section13_roster_has_duplicate_law(
             false => {
                 (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
             }
@@ -3176,11 +3127,11 @@ pub fn section13_first_duplicate_law(
             std::option::Option::None => {
                 if (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
                 {

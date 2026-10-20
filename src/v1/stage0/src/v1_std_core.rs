@@ -24,10 +24,12 @@ use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::ParsedModuleItemKind::*;
 use self::ServiceConfigField::*;
+use self::SpanLocation::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
 use self::UnaryOpKind::*;
+use self::UnlocatedCause::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
@@ -4998,9 +5000,9 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         .cloned()
         .fold(Rc::new(vec![]), |acc: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.1.clone() == 10) {
-                v1_rt::rc_list_push(acc.clone(), pair.0.clone())
+                v1_rt::rc_list_push(acc, pair.0.clone())
             } else {
-                acc.clone()
+                acc
             }
         });
         Rc::new(NewlineIndex {
@@ -5049,6 +5051,175 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             line: line.clone(),
             col: col.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LocatedSpan {
+    pub file: String,
+    pub start_line: i64,
+    pub start_col: i64,
+    pub end_line: i64,
+    pub end_col: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnlocatedCause {
+    FileHasNoLexemes { file: String },
+    NoSourceIndex { file: String },
+    SpanOutsideIndexedSource { file: String },
+    SynthesizedNode { authored_file: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SpanLocation {
+    Located { at: Rc<LocatedSpan> },
+    Unlocated { cause: Rc<UnlocatedCause> },
+}
+
+pub fn unlocated_position_phrase() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "(no position:".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn synthetic_span_file() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "<synthetic>".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_has_no_lexemes(file: String) -> Rc<SpanLocation> {
+    Rc::new(SpanLocation::Unlocated {
+        cause: Rc::new(UnlocatedCause::FileHasNoLexemes { file: file.clone() }),
+    })
+}
+
+pub fn locate_span(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SpanLocation> {
+    if (span.file.clone() == synthetic_span_file()) {
+        Rc::new(SpanLocation::Unlocated {
+            cause: Rc::new(UnlocatedCause::SynthesizedNode {
+                authored_file: synthetic_span_file(),
+            }),
+        })
+    } else {
+        match v1_rt::map_get(&source_indices, span.file.clone()) {
+            std::option::Option::None => Rc::new(SpanLocation::Unlocated {
+                cause: Rc::new(UnlocatedCause::NoSourceIndex {
+                    file: span.file.clone(),
+                }),
+            }),
+            Some(index) => {
+                let src_len = (index.char_codes.clone().len() as i64);
+                if (((span.start.clone() < 0) || (span.end.clone() < span.start.clone()))
+                    || (span.end.clone() > src_len.clone()))
+                {
+                    Rc::new(SpanLocation::Unlocated {
+                        cause: Rc::new(UnlocatedCause::SpanOutsideIndexedSource {
+                            file: span.file.clone(),
+                        }),
+                    })
+                } else {
+                    {
+                        let from = byte_to_line_col(index.clone(), span.start.clone());
+                        let to = byte_to_line_col(index.clone(), span.end.clone());
+                        Rc::new(SpanLocation::Located {
+                            at: Rc::new(LocatedSpan {
+                                file: span.file.clone(),
+                                start_line: from.line.clone(),
+                                start_col: from.col.clone(),
+                                end_line: to.line.clone(),
+                                end_col: to.col.clone(),
+                            }),
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn unlocated_cause_phrase(cause: Rc<UnlocatedCause>) -> String {
+    match (*cause.clone()).clone() {
+        UnlocatedCause::FileHasNoLexemes { file: _, .. } => "file has no lexemes)".to_string(),
+        UnlocatedCause::NoSourceIndex { file: _, .. } => {
+            "no source index for this file)".to_string()
+        }
+        UnlocatedCause::SpanOutsideIndexedSource { file: _, .. } => {
+            "the span lies outside the indexed source)".to_string()
+        }
+        UnlocatedCause::SynthesizedNode {
+            authored_file: _, ..
+        } => "the node is synthesized, not read from a file)".to_string(),
+    }
+}
+
+pub fn unlocated_cause_file(cause: Rc<UnlocatedCause>) -> String {
+    match (*cause.clone()).clone() {
+        UnlocatedCause::FileHasNoLexemes { file: file, .. } => file.clone(),
+        UnlocatedCause::NoSourceIndex { file: file, .. } => file.clone(),
+        UnlocatedCause::SpanOutsideIndexedSource { file: file, .. } => file.clone(),
+        UnlocatedCause::SynthesizedNode {
+            authored_file: _, ..
+        } => "".to_string(),
+    }
+}
+
+pub fn render_span_location(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    render_span_location_of(locate_span(span.clone(), source_indices.clone()))
+}
+
+pub fn render_span_location_of(location: Rc<SpanLocation>) -> String {
+    match (*location.clone()).clone() {
+        SpanLocation::Located { at: at, .. } => v1_rt::concat(
+            at.file.clone(),
+            v1_rt::concat(
+                ":".to_string(),
+                v1_rt::concat(
+                    (at.start_line.clone()).to_string(),
+                    v1_rt::concat(":".to_string(), (at.start_col.clone()).to_string()),
+                ),
+            ),
+        ),
+        SpanLocation::Unlocated { cause: cause, .. } => {
+            let about = unlocated_cause_file(cause.clone());
+            let phrase = v1_rt::concat(
+                v1_rt::concat(unlocated_position_phrase(), " ".to_string()),
+                unlocated_cause_phrase(cause.clone()),
+            );
+            if (about.clone() == "".to_string()) {
+                phrase.clone()
+            } else {
+                v1_rt::concat(
+                    about.clone(),
+                    v1_rt::concat(": ".to_string(), phrase.clone()),
+                )
+            }
+        }
+    }
+}
+
+pub fn located_span_of(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<LocatedSpan>> {
+    match (*locate_span(span.clone(), source_indices.clone())).clone() {
+        SpanLocation::Located { at: at, .. } => Some(at.clone()),
+        SpanLocation::Unlocated { cause: _, .. } => std::option::Option::None,
     }
 }
 
@@ -5121,12 +5292,30 @@ pub fn intern_table_with_authored_token_ordinals(
     table: Rc<InternTable>,
     authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 ) -> Rc<InternTable> {
-    Rc::new(InternTable {
-        strings: table.strings.clone(),
-        index: table.index.clone(),
-        next_id: table.next_id.clone(),
-        authored_token_ordinals: authored_token_ordinals.clone(),
-    })
+    {
+        let __rb_0_0 = table.strings.clone();
+        let __rb_1_0 = table.index.clone();
+        let __rb_2_0 = table.next_id.clone();
+        let __rb_3_0 = authored_token_ordinals.clone();
+        let mut __rb_h = table;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.strings = __rb_0_0;
+                __rb_r.index = __rb_1_0;
+                __rb_r.next_id = __rb_2_0;
+                __rb_r.authored_token_ordinals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(InternTable {
+                    strings: __rb_0_0,
+                    index: __rb_1_0,
+                    next_id: __rb_2_0,
+                    authored_token_ordinals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
@@ -5190,9 +5379,9 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
                 merged.clone(),
                 |m: Rc<InternTable>, s: String| {
                     if (s.clone() == "".to_string()) {
-                        m.clone()
+                        m
                     } else {
-                        intern(m.clone(), s.clone()).table.clone()
+                        intern(m, s.clone()).table.clone()
                     }
                 },
             )
@@ -5214,9 +5403,9 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         .cloned()
         .fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| {
             if is_internable_token(tok.shape.clone()) {
-                intern(t.clone(), tok.text.clone()).table.clone()
+                intern(t, tok.text.clone()).table.clone()
             } else {
-                t.clone()
+                t
             }
         })
 }

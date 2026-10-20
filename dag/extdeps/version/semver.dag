@@ -8,6 +8,7 @@ import std.coercion { unicode_scalar_fold }
 import std.types { NonEmptyStr, String, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -179,7 +180,7 @@ fn semver_core_of_dotted(text: String) -> SemVerVersion? {
           Absent => none
           Present { value: minor } =>
             if length(parts) == 2 {
-              match semver_numeric_field(cps: chars(s: "0" as String)) {
+              match semver_numeric_field(cps: chars(text: "0" as String)) {
                 Absent => none
                 Present { value: zero } =>
                   Present { value: SemVerVersion { major: major, minor: minor, patch: zero, pre_release: [], build: [] } }
@@ -198,7 +199,7 @@ fn semver_core_of_dotted(text: String) -> SemVerVersion? {
 fn semver_dotted_part(parts: List<String>, index: Int) -> SemVerNumericField? {
   match parts.skip(n: index).first() {
     Absent => none
-    Present { value: w } => semver_numeric_field(cps: chars(s: w as String))
+    Present { value: w } => semver_numeric_field(cps: chars(text: w as String))
   }
 }
 
@@ -271,7 +272,7 @@ fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> VersionCom
 // ---- label parse (SemVer 2.0.0 §2 grammar) --------------------------------
 
 fn semver_identity_code_points(label: VersionIdentity) -> List<Int> {
-  chars(s: label as String)
+  chars(text: label as String)
 }
 
 fn semver_is_ascii_digit(cp: Int) -> Bool {

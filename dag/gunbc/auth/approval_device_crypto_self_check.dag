@@ -29,7 +29,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 import gunbc.native_serve { NativeServeStartup, NativeServeStartupRefused }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoObligation, P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification,
-  P256BasePointOrder, device_crypto_obligation_evidence,
+  P256BasePointOrder, DeviceCryptoHandlerReceipt, device_crypto_obligation_evidence,
 }
 import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, OrderItself, OrderMinusOne }
@@ -37,7 +37,7 @@ import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, Or
 // THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function).
 // Before the verifier binds a port it executes every obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations on the real folds, mints a
-// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_admission whether that receipt
+// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_receipt_admission whether that receipt
 // covers the whole population. The receipt's exact_revision is the SHA-256 of the running executable's own
 // octets (the host only reads those bytes; extdeps.crypto.sha2 computes the digest here), so a receipt names the
 // binary that produced it and is re-minted at every start. A refusal is a refused start: the process never
@@ -256,7 +256,7 @@ fn device_crypto_obligation_holds(o: DeviceCryptoObligation) -> Bool {
 // Runs `obligations` (the whole population in production), refuses naming the evidence of any that did not hold, and
 // otherwise hands the receipt to gunbc.auth.approval_device_crypto_receipt device_crypto_receipt_startup, whose exact
 // revision is the executable's SHA-256. An empty executable has no revision and refuses.
-fn device_crypto_startup(obligations: List<DeviceCryptoObligation>, executable_octets: List<Int>) -> NativeServeStartup {
+fn device_crypto_startup(obligations: List<DeviceCryptoObligation>, executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   if count(executable_octets) == 0 {
     NativeServeStartupRefused { reason: "the running executable's octets are empty, so the receipt has no exact revision" }
   } else {
