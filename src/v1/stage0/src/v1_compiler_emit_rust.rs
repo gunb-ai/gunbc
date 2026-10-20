@@ -3646,7 +3646,9 @@ pub fn render_rust_declaration_position(
             };
         let bare_declared_leaf = (((names_declaration.clone()
             && (n.return_cardinality.clone() != Cardinality::CardOptional))
-            && !crate::std_types::is_container_type(leaf.clone()))
+            && !crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
+                leaf.clone(),
+            ))
             && !{
                 let mut __found = false;
                 for g in generic_param_names.iter().cloned() {
