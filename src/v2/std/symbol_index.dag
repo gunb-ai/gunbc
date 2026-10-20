@@ -6,7 +6,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_lis
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Occupancy, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
 import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
 import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
 import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
@@ -756,7 +756,6 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
           }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
-        TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Atom { identity: _ } } => TypeDeclShapeAliasAtom
         TypeNode { connective: Arrow } => TypeDeclShapeCallable
         ComputationNode { behavior: _ } => TypeDeclShapeValue
