@@ -43,6 +43,7 @@ import extdeps.electronic_component.types {
   voltage_withstand,
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
@@ -88,11 +89,12 @@ import product.electrical.bench_session {
   RangeFullScale,
   RangeUnrecorded,
   DisplayValue,
-  DisplayAtProbeBaseline,
+  DisplayZeroWithoutBaseline,
   DisplayAboveBaseline,
   DisplayOverRange,
   HeldSteady,
   is_at_baseline,
+  is_reported_zero,
   ReadAbout,
   ReadBelow,
   StatedPlainly,
@@ -175,6 +177,8 @@ import product.electrical.measured_netlist {
 //   IdentifiedByMarking      the marking matches one maker's table, so the part's specification is cited
 //   MarkingSharedByMakers    the marking matches one code in several makers' tables and the maker is not
 //                            identified: a property counts only where every candidate supports it
+//   MarkingCandidate         the marking matches one maker's code, but whether that maker made the part
+//                            is unread: a lead, contributing no property until the discriminator is read
 //   RatingPrintedOnBody      the part prints its own rating; no datasheet, and no decoding either
 //   ResistanceCodeRead       a resistance code, read and decoded
 //   MarkingUnresolved        the marking is read (or unread) and NOT decoded; it contributes nothing
@@ -193,6 +197,7 @@ type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Vol
 type ComponentIdentification
   = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
   | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
+  | MarkingCandidate { row: ElectronicComponentRow, marking: MarkingReading, discriminator: NonEmptyStr }
   | RatingPrintedOnBody { rating: PrintedRating, marking: MarkingReading }
   | ResistanceCodeRead { milliohms: Nat, marking: MarkingReading }
   | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
@@ -249,6 +254,7 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
   match i {
     IdentifiedByMarking { row, marking: _ } => voltage_withstand(spec: row.specification)
     MarkingSharedByMakers { rows, marking: _ } => shared_withstand(rows: rows)
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating, marking: _ } => match rating {
       PrintedFuseRating { current: _, interrupt_voltage } => match interrupt_voltage {
         Absent => Absent
@@ -882,6 +888,7 @@ fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
   match c.identification {
     IdentifiedByMarking { row, marking: _ } => Present { value: row }
     MarkingSharedByMakers { rows: _, marking: _ } => Absent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating: _, marking: _ } => Absent
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
@@ -1054,6 +1061,11 @@ fn other_end(o: ResistanceObservation, t: ElectricalTerminalRef) -> List<Electri
 // point joined only by a kilohm reading is another node, whatever its place.
 fn joined_at_baseline(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
   flat_map(filter(resistances_of(layout: layout), o => is_at_baseline(o: o)), o => other_end(o: o, t: t))
+}
+
+// Points a reading reports at zero to t with no shorted-probe baseline recorded: not joined to it.
+fn reported_zero_to(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  flat_map(filter(resistances_of(layout: layout), o => is_reported_zero(o: o)), o => other_end(o: o, t: t))
 }
 
 // Separated: some reading between the two stands above the baseline, and none joins them at it.
@@ -1437,17 +1449,23 @@ fn is_regulator_output(p: ControllerPin) -> Bool {
 fn regulator_pin_text(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification, pin: ControllerPin) -> String {
   let t = controller_pin_terminal(c: c, p: pin)
   let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
-  let readings = readings_at(vs: bench_of(layout: layout), ts: concat([t], joined_at_baseline(layout: layout, t: t)))
+  let joined = concat([t], joined_at_baseline(layout: layout, t: t))
+  let readings = readings_at(vs: bench_of(layout: layout), ts: joined)
   let unseparated = filter(readings, o => !terminal_ref_equal(a: o.at, b: t) && !is_access_point(layout: layout, x: o.at, neighbours: neighbours))
+  let reported = readings_at(vs: bench_of(layout: layout), ts: filter(reported_zero_to(layout: layout, t: t), x => !any(joined, j => terminal_ref_equal(a: j, b: x))))
   join([
     component_text(c: c.component), " ", pin.name as String, " (pin ", to_string(pin.number), ", internal-regulator output): ",
-    match readings.first() {
+    match (concat(readings, reported)).first() {
       Absent => "unread"
       Present { value: _ } => join([
-        join(map(readings, o => node_voltage_text(o: o)), "; "),
+        join(map(concat(readings, reported), o => node_voltage_text(o: o)), "; "),
         match unseparated.first() {
           Absent => ""
           Present { value: _ } => join(["; read at a point joined to the pin at the baseline that no reading separates from ", join(map(neighbours, n => terminal_text(t: n)), " and "), ", so not yet the pin's access point"], "")
+        },
+        match reported.first() {
+          Absent => ""
+          Present { value: _ } => "; read at a point reported at zero to the pin with no shorted-probe baseline recorded, so not joined to it"
         },
         "; no window is read from it",
       ], "")
@@ -1512,26 +1530,26 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
 // resistance names a part on it, and arithmetic over two such readings is a lead for a direct reading,
 // never a component's value (product.electrical.measured_netlist).
 data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "U1_P5's UVLO/EN (pin 7) reads 0 V with the source at 48 V, read with the probe on its own lead: below its 2.41 V minimum, so the input stage is held off by its enable. What holds it is unread. Two candidates fit every reading so far: a part that pulls pin 7 to ground while energized (a transistor's built-in diode would give the one-way unpowered path), or no pull-up on pin 7 at all, the controller's own UVLO hysteresis sink holding an undriven pin low (a junction inside the controller would give the same path). The bare pads pin 7's node reaches on the back are where a pull-up, a pull-down or a control signal could be fitted",
+  claim: "U1_P5's UVLO/EN (pin 7) reads 0 V with the source at 48 V, read with the probe on its own lead: below its 2.41 V minimum, so the tested configuration has not shown a permissive enable input and the input stage is held off by its enable. The leading candidate for what holds it is Q301: its lone lead is on P6's measured node (pin 7's by the operator's ruling and the third wire's signature, not by a reading), its lead a on the return, and its lead b -- fed through the '180'-marked resistor and joined to Q300's lone lead -- at a few volts energized; its K38 marking is a candidate for a BSS138, an N-channel MOSFET whose pinout would make that a switched-on pull-down. Other causes stay live: P6 not being pin 7's node after all, another pull-down or a missing or differently populated pull-up, another protection or logic condition, or damage from the probe incident",
   sources: [
     "energized at 48 V with nothing wired to the chip, the probe held on the leads: pin 8 about 1.8 V -- what its back-side pad read at 48 V, so the count from the pin 1 marker holds -- and pin 7 0 V (controller_enable_standing). A probe touching nothing also reads 0 V; pin 8 was read the same way just before. One source setting, so whether pin 7 moves with the input is unread (enable_projection)",
-    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and U1_P5's OVLO reads below its 2.39 V minimum at 48 V and 36 V (controller_overvoltage_standing): overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm), predicts the OVLO readings -- a reference circuit, not this board's parts",
+    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and U1_P5's OVLO reads below its 2.39 V minimum at 48 V on its own lead (controller_overvoltage_standing), as the pad reported on pin 8 (no baseline recorded) did at 48 V and 36 V: overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm), predicts the OVLO readings -- a reference circuit, not this board's parts",
     "unpowered, pin 7's own lead to J20's black lead: over range on the 200 ohm range both ways; about 535 ohm with the red probe on J20's lead; over range on the 2k range and about 11 kohm on the 20k range with the red probe on pin 7. The path is one-way; which way it conducts waits on this meter's resistance-mode polarity, which is unverified. The first wire read the same pattern to the ground pad, consistent with its having been on pin 7 then -- still no join of it, and its later readings stay disputed (e1_pin7_attachment)",
     "a close photograph of U1_P5's left-hand row, no wire on it, shows no solder bridge between leads 1 and 10; and a bridge to pin 8 or to ground would have read low from pin 7's lead",
     "unpowered, the ringed point RP1 right of U1_P5 read about 1.3 kohm from pin 7's own lead, the lowest the operator found near the lead on the front; no point near pin 7 on the front reads at the baseline to it",
-    "a third wire, W4, taped at the left-hand row, reads pin 7's signature (about 11 kohm to ground with the red probe on it) and 16 kohm to pin 8's pad; three bare pads on the back beside Q5_P5 and D5_P5 (P5, P6, P7 of the labelled photograph) read 0 ohm from it, and it still read about 12 kohm to ground afterwards. No reading joins W4 to the lead (the tape covers it), so P5 to P7 are pin 7's by the wire's signature and by the operator's ruling of 2026-10-19 ('yes i am hyper confident that p6 == pin 7'), which settles the question in the record without being a reading. The cluster's pads carry no parts on the E1, and the same cluster is bare on the K1 (photograph, bench-session upload c21ab386): its empty places are the design's, not a part missing from the E1",
-    "unpowered, the cluster's other pads read to J20's black lead, J20's red lead and VDD's point (the top end of pin 21's beige part): P10 is at the baseline to ground; P1 to P4, P8 and P9 read above the baseline to all three. No pad of the cluster joins pin 7's pads to the return, the input or VDD directly, so its empty places are not a missing direct pull-up or pull-down to those; P9 beside the grounded P10 reads to none and did not read 0 from the third wire. Within about a centimetre on both faces, pin 7's node reaches only U1_P5 and the three bare pads",
-    "unpowered, the lone lead of Q301's three-lead package on the back reads 0.00 ohm to P6: the first fitted part found on pin 7's node (pin 7's by the third wire's signature). In the common SOT-23 pinout a lone lead is a transistor's drain or collector -- the open-drain or open-collector device TI describes for holding UVLO/EN low -- but Q301's part and pinout are unread, so this is a lead, not its role. Q300 and Q301 both carry the marking 'K38' (operator, photograph bench-session upload 42ffb97b); the code is not yet matched to a part by its maker's marking table, so neither's type nor pinout is read",
-    "unpowered, Q301's lead a and Q300's lead a are at the baseline to J20's return, and Q301's lead b is at the baseline to Q300's lone lead: Q300's lone lead drives Q301's lead b, and Q301's lone lead is on pin 7's node. Under the common SOT-23 pinout -- the silkscreen triangle beside lead 1, a gate or base; the other lead on that side a source or emitter; the lone lead a drain or collector -- that is two switching stages that can hold pin 7 at the return. The K38 parts' type and pinout are unread, so this shape is a lead, not the circuit's established role",
-    "unpowered, the resistor beside Q301 has its nearer end at the baseline to Q301's lead b; its far end's trace, followed by eye, runs on the front toward D5's tab beside J20 and up past the bare U2_P5 and U3_P5 footprints toward U1_TSE beside J1, reading 0 ohm as far as about U2_P5 and about 2 kohm beyond (hedged, points named by place). The operator reads the layout as two input sides, J1's backplane and J20; what the far end's net carries with J20 energized is unread",
-    "energized, the via on Q301's lead b node (by the visible trace, not by a reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate or base, as the common SOT-23 pinout has it, a few volts there would switch Q301 on and hold pin 7 at the return -- consistent with pin 7's 0 V -- and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down. Q300's triangle-side lead, the input that would do it, is unread",
+    "a third wire, W4, taped at the left-hand row, reads pin 7's signature (about 11 kohm to ground with the red probe on it) and 16 kohm to pin 8's pad; three bare pads on the back beside Q5_P5 and D5_P5 (P5, P6, P7 of the labelled photograph) read 0 ohm from it, with no baseline recorded, and it still read about 12 kohm to ground afterwards. No reading joins W4 to the lead (the tape covers it), so P5 to P7 are pin 7's only by the wire's signature and by the operator's ruling of 2026-10-19 ('yes i am hyper confident that p6 == pin 7'), which settles the question in the record without being a reading. The cluster's pads carry no parts on the E1, and the same cluster is bare on the K1 (photograph, bench-session upload c21ab386): its empty places are the design's, not a part missing from the E1",
+    "unpowered, the cluster's other pads read to J20's black lead, J20's red lead and VDD's point (the top end of pin 21's beige part): P10 is reported as ground (no baseline recorded); P1 to P4, P8 and P9 read above the baseline to all three. No pad of the cluster joins pin 7's pads to the return, the input or VDD directly, so its empty places are not a missing direct pull-up or pull-down to those; P9 beside the grounded P10 reads to none and did not read 0 from the third wire. Within about a centimetre on both faces, the third wire's node reaches only the three bare pads",
+    "unpowered, the lone lead of Q301's three-lead package on the back reads 0.00 ohm to P6: the first fitted part found at P6, which no reading yet joins to pin 7's lead (it is pin 7's only by the third wire's signature and the operator's ruling). Q301's 'K38' marking is a candidate for Diodes Incorporated's BSS138, whose pinout puts the drain on the lone lead -- the open-drain device TI describes for holding UVLO/EN low -- a lead, not Q301's established role. Q300 and Q301 both carry the marking 'K38' (operator, photograph bench-session upload 42ffb97b); the code matches Diodes Incorporated's marking table, but no maker is read from the parts themselves, so neither's type nor pinout is established (e1_k38_candidate)",
+    "unpowered, Q301's lead a reads 0 ohm and Q300's lead a 0.00 ohm to J20's return, and Q301's lead b 0.00 ohm to Q300's lone lead. No session recorded a shorted-probe baseline or the range, so these zeros, the third wire's to P5 to P7 and Q301's lone lead's to P6 are reported zeros, not joins (product.electrical.bench_session), and the netlist keeps each pair's points apart. Read as joins, Q300's lone lead drives Q301's lead b, and Q301's lone lead is on P6. Under the candidate BSS138 pinout with the silkscreen triangle on pin 1 -- lead b the gate, lead a the source, the lone lead the drain -- that is two N-channel low-side stages, Q300 able to pull Q301's gate to the return and Q301 able to pull P6 to it. The K38 identification is a candidate, so this shape is a lead, not the circuit's established role",
+    "unpowered, the resistor beside Q301 has its nearer end reported equal to Q301's lead b ('==', no display or baseline recorded); its far end's trace, followed by eye, runs on the front toward D5's tab beside J20 and up past the bare U2_P5 and U3_P5 footprints toward U1_TSE beside J1, reading 0 ohm as far as about U2_P5 and about 2 kohm beyond (hedged, points named by place). The operator reads the layout as two input sides, J1's backplane and J20; what the far end's net carries with J20 energized is unread",
+    "energized, the via on Q301's lead b node (by the visible trace, not by a reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down. Q300's triangle-side lead, the input that would do it, is unread",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
-    "unpowered, the K1's pin 7, read with the probe held on the lead, is at the baseline to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
-    "energized at 48 V, the top end of the part across from pin 21 (at the baseline to pin 21, read directly, not through the wire) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point joined to pin 21 at the baseline, not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
+    "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
+    "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "Q300's triangle-side lead read unpowered to J20's black lead and to VDD's point, its trace followed to where it leads, and its node read energized at 48 V at a point away from Q300's own leads: near 0 V says Q300 is off, so Q301 stays on and the stage waits on whatever would drive that lead; and the K38 code matched to a part by its maker's marking table before any reading names a terminal. One unpowered reading from the via to Q301's lead b at the shorted-probe baseline puts the via's voltages on lead b in the record. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the '180' resistor's nearer end to lead b, and the via to lead b); and across the '180' resistor's two ends. Then Q300's triangle-side lead read to J20's black lead and to VDD's point and its trace followed, and, if P6 is pin 7's, P6, Q301's lead b node, the resistor's far end and Q300's triangle-side node read energized at 48 V at points away from the leads: near 0 V on Q300's gate says Q300 is off, so Q301 stays on and the stage waits on whatever would drive that lead. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -1547,7 +1565,7 @@ data p4261_vdd_bypass_hypothesis: InvestigationHypothesis = InvestigationHypothe
   claim: "on each carrier, the beige two-terminal part directly across from U1_P5 pin 21 is VDD's bypass capacitor",
   sources: [
     "TI SNVS950C pin 21 VDD: 'Internally sub-regulated 4.85-V bias supply. Connect a 1-uF capacitor on this pin to ground for bypassing'; section 8.3.7: a ceramic bypass of 1 uF or greater, placed as close to the VDD pin as the PCB layout allows",
-    "on both the E1 and the K1, pin 21 reads at the shorted-probe baseline to the part's top end, with a visible trace between them; the two boards' parts are each their own",
+    "on both the E1 and the K1, pin 21 is reported at 0 ohm to the part's top end (no baseline recorded), with a visible trace between them; the two boards' parts are each their own",
     "an unmarked beige body is how a ceramic chip capacitor commonly looks, which does not identify one",
   ],
   decided_by: "its bottom end at the shorted-probe baseline to J20's return and its top end not; then its capacitance read out of circuit or from the board's documentation",
@@ -1583,10 +1601,11 @@ data beige_part_discriminator: NonEmptyStr = "unmarked beige body: an unmarked c
 // of its readings: each names the K1 asset and the K1's own parts. Whether a module sat on the K1 was
 // not said. No range was named for any of these, and which probe touched which point was not said.
 //
-// The K1's pin 7 is at the baseline to one end of a '200' resistor and not to the ringed via, hedged on
+// The K1's pin 7 is reported at 0 ohm to one end of a '200' resistor and not to the ringed via, hedged on
 // the operator's "seem": the comparison was with E1 readings taken from the taped wire, whose attachment
-// to pin 7 is disputed (e1_pin7_attachment), and those are not recorded yet. Pin 22 is at the baseline to the point directly across from
-// it, and pin 21 to the top end of a beige two-terminal part across from it, with a visible trace.
+// to pin 7 is disputed (e1_pin7_attachment), and those are not recorded yet. Pin 22 is reported connected to the point directly across from
+// it, and pin 21 at 0 ohm to the top end of a beige two-terminal part across from it, with a visible
+// trace. No baseline was recorded for any of these, so none joins its points.
 data k1_bench: BenchConditions = BenchConditions { power: Unpowered, module: ModuleUnrecorded }
 
 fn k1_photo(locator: NonEmptyStr) -> EvidenceRef {
@@ -1628,17 +1647,17 @@ data k1_resistances: List<ResistanceObservation> = [
     record: second_point_inferred(basis: "'to ground': which ground point the probe touched is unrecorded"), display: DisplayValue { ohms: 3500, approximate: false }, certainty: StatedPlainly,
     evidence: [k1_said(verbatim: "For reference, on the other board i have, that pad also reads 3.5k to ground")]),
   k1_read(first: k1_u1_pin(pin: "pin 7"), second: terminal_ref(component: k1_200, terminal: "end read from pin 7 (which end unrecorded)" as TerminalIdentity), record: both_points_recorded,
-    display: DisplayAtProbeBaseline, certainty: StatedHedged { verbatim: "I think this point is 0 ohms to pin 7" },
+    display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, certainty: StatedHedged { verbatim: "I think this point is 0 ohms to pin 7" },
     evidence: [k1_said(verbatim: "I think this point is 0 ohms to pin 7"), k1_said(verbatim: boards_differ_said), k1_said(verbatim: "its the \"200\" resistor - the resistors on both boards are slightly different colors"), k1_arrow_photo]),
   k1_read(first: k1_u1_pin(pin: "pin 7"), second: terminal_ref(component: k1_ringed_via, terminal: "via" as TerminalIdentity),
-    record: second_point_inferred(basis: "'the two boards seem electrically different here': on the K1 the point at the baseline to pin 7 is the '200' resistor's, not the ringed via; that the via was read from pin 7 is taken from that statement"),
+    record: second_point_inferred(basis: "'the two boards seem electrically different here': on the K1 the point reported at 0 ohm to pin 7 is the '200' resistor's, not the ringed via; that the via was read from pin 7 is taken from that statement"),
     display: DisplayAboveBaseline, certainty: boards_differ_hedge, evidence: [k1_said(verbatim: boards_differ_said), k1_arrow_photo]),
   k1_read(first: terminal_ref(component: k1_pin22_point, terminal: "point" as TerminalIdentity), second: k1_u1_pin(pin: "pin 22"),
     record: second_point_inferred(basis: "'This pin 21 is connected to this pad directly across from it', corrected by 'i was on the wrong leg ... i thought you were asking for 8th from the bottom': the eighth lead up the right-hand column is U1_P5 pin 22, where the photograph's line is drawn"),
-    display: DisplayAtProbeBaseline, certainty: StatedPlainly,
+    display: DisplayZeroWithoutBaseline { reported: "connected" }, certainty: StatedPlainly,
     evidence: [k1_said(verbatim: "This pin 21 is connected to this pad directly across from it"), k1_said(verbatim: "oh sorry, i was on the wrong leg / This is K1, i thought you were asking for 8th from the bottom"), k1_pin22_photo]),
   k1_read(first: k1_u1_pin(pin: "pin 21"), second: terminal_ref(component: k1_beige, terminal: "top end" as TerminalIdentity), record: both_points_recorded,
-    display: DisplayAtProbeBaseline, certainty: StatedPlainly,
+    display: DisplayZeroWithoutBaseline { reported: "0" }, certainty: StatedPlainly,
     evidence: [k1_said(verbatim: "sorry, the 8th pin is wired to this component directly across - you can see the trace on the board"), k1_said(verbatim: "yes, it read 0 there"), k1_pin21_photo]),
 ]
 
@@ -1919,9 +1938,10 @@ fn e1_switch_readings(c: ComponentInstanceIdentity) -> List<NodeVoltageObservati
 }
 
 // U1_P5'S OVERVOLTAGE PAD (2026-10-19, all after the probe bridge). Pins 7 to 10 each end in a covered
-// via beside the lead. On the back, a via pad beside the '01B' resistor first read at the baseline to
-// "pin 7" with the probe touching pins 7 and 8 together; read with the probe held to one lead, it is at
-// the baseline to pin 8 and separated from pins 7 and 9, so it is OVLO's. That first join is not
+// via beside the lead. On the back, a via pad beside the '01B' resistor first read near zero to
+// "pin 7" with the probe touching pins 7 and 8 together; read with the probe held to one lead, it is
+// reported on pin 8 ("i can show its pin 8", no display or baseline recorded) and separated from pins 7
+// and 9, so the operator reads it as OVLO's; no baseline reading joins it to pin 8. That first join is not
 // recorded: it was a reading of two leads at once. Unpowered, with the supply's leads unplugged, from
 // that pad: the ground ring (itself on J20's return), Q5_P5's single lead (on the return), D5_P5's
 // nearer end, the '01B' resistor's ends and Q21_P5's tab. Energized through the same leads, the pad
@@ -1945,7 +1965,7 @@ fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: Met
 fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: from, second: e1_ground_ref, record: second_point_inferred(basis: e1_return_basis), conditions: e1_bench, polarity: PolarityUnrecorded,
-    range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
 }
@@ -1959,7 +1979,7 @@ fn e1_pad_to_pin(pin: NonEmptyStr, display: ResistanceDisplay, said: NonEmptyStr
 }
 
 data e1_ovlo_pad_resistances: List<ResistanceObservation> = [
-  e1_pad_to_pin(pin: "pin 8", display: DisplayAtProbeBaseline, said: "the pad is OVLO, not pin 7, the problem is when imeasure it from the other side i have to hold the probe at both pin 7 and 8, but when i'm careful and holding tape to the pad i can show its pin 8"),
+  e1_pad_to_pin(pin: "pin 8", display: DisplayZeroWithoutBaseline { reported: "its pin 8" }, said: "the pad is OVLO, not pin 7, the problem is when imeasure it from the other side i have to hold the probe at both pin 7 and 8, but when i'm careful and holding tape to the pad i can show its pin 8"),
   e1_pad_to_pin(pin: "pin 7", display: DisplayAboveBaseline, said: "yeah its separate from pin 7 and 9"),
   e1_pad_to_pin(pin: "pin 9", display: DisplayAboveBaseline, said: "yeah its separate from pin 7 and 9"),
   e1_pad_ohms(to: e1_terminal(c: e1_ground_ring, name: "ring"), display: DisplayValue { ohms: 3500, approximate: false }, range: RangeFullScale { ohms: 20000 }, certainty: e1_twenty_k_hedge, said: "to a ground copper ring is 3500ohm / i think 20kohm yeah"),
@@ -2077,8 +2097,8 @@ data e1_wire_later_resistances: List<ResistanceObservation> = concat(concat(
   ])
 
 // PIN 21'S PART AND VDD (2026-10-19, after the probe bridge), probed directly on pin 21, not through the
-// taped wire. Pin 21 (VDD) is at the baseline to the top end of a beige two-terminal part directly
-// across, with a visible trace, as on the K1; the boards' parts there are each their own. Readings taken
+// taped wire. Pin 21 (VDD) is reported at 0 ohm to the top end of a beige two-terminal part directly
+// across (no baseline recorded), with a visible trace, as on the K1; the boards' parts there are each their own. Readings taken
 // from the taped wire after the K1's (the ringed via, the resistor in the K1's '200' position) are not
 // recorded yet.
 //
@@ -2095,14 +2115,14 @@ data e1_pin21_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 21"), second: e1_beige_top,
     record: both_points_inferred(first_basis: "'it reads 0 on both boards': the point asked for on the E1, U1_P5 pin 21, the eighth lead down the right-hand column, as on the K1", second_basis: "the point asked for, the top end of the beige part directly across from pin 21"),
-    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
     order: AfterIncidents { keys: [e1_bridge_incident.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "yes, it reads 0 on both boards, and the trace is clearly visible on both" }],
   },
 ]
 
 data e1_vdd_volts: NodeVoltageObservation = NodeVoltageObservation {
   asset: p4261_e1_b, at: e1_beige_top, reference: e1_ground_ref,
-  record: both_points_inferred(first_basis: "'it reads 5v', then 'yes its like 4.86 or something': the point asked for, the top end of the beige part across from pin 21 (at the baseline to pin 21), on the DC 20 V range asked for", second_basis: "the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
+  record: both_points_inferred(first_basis: "'it reads 5v', then 'yes its like 4.86 or something': the point asked for, the top end of the beige part across from pin 21 (reported at 0 ohm to pin 21), on the DC 20 V range asked for", second_basis: "the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
   conditions: e1_live_bench, source: volt(count: 48), value: ReadAbout { value: millivolt(count: 4860) }, certainty: StatedHedged { verbatim: "like 4.86 or something" },
   order: AfterIncidents { keys: [e1_bridge_incident.key] },
   evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "it reads 5v" }, OperatorStatement { stated_on: "2026-10-19", verbatim: "yes its like 4.86 or something" }],
@@ -2119,8 +2139,8 @@ fn e1_wire_volts(source_volts: Nat) -> NodeVoltageObservation {
 
 // RP1 AND THE SECOND WIRE (2026-10-19, the operator's next session; after the probe bridge). RP1 is the
 // round pad with a white silkscreen ring right of U1_P5, named for where it is, not for a signal. The
-// first wire read at the baseline to it ("on the E1, its the circle you pointed to"), so the wire and
-// RP1 are one measured node. With no wire on the chip and the probe held on pin 7's own lead, RP1 read
+// first wire read near zero to it ("on the E1, its the circle you pointed to"), with no baseline
+// recorded, so the wire and RP1 stay two measured nodes. With no wire on the chip and the probe held on pin 7's own lead, RP1 read
 // about 1.3 kohm -- the lowest the operator found from that lead in the controller's neighbourhood -- so
 // RP1 is not pin 7's access point and no point near pin 7 is. The operator's "seems like pin 21" for RP1
 // is not a reading: none joins RP1 to pin 21. The 1.3 kohm display's range is unrecorded; a 200 ohm
@@ -2137,7 +2157,7 @@ data e1_rp1_pad: ElectricalTerminalRef = e1_terminal(c: e1_rp1, name: "pad")
 data e1_rp1_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload c8eee6bb, U1_P5 with the second wire; RP1 circled in the reply (not on Drive)")
 
 data e1_rp1_resistances: List<ResistanceObservation> = [
-  e1_wire_read(to: e1_rp1_pad, record: second_point_inferred(basis: "'its the circle you pointed to': the ringed point asked about, which the wire read near zero to"), polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayAtProbeBaseline, certainty: StatedPlainly, said: "the two boards seem electrically different here: on the E1, its the circle you pointed to"),
+  e1_wire_read(to: e1_rp1_pad, record: second_point_inferred(basis: "'its the circle you pointed to': the ringed point asked about, which the wire read near zero to"), polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "its the circle you pointed to" }, certainty: StatedPlainly, said: "the two boards seem electrically different here: on the E1, its the circle you pointed to"),
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: e1_rp1_pad,
     record: second_point_inferred(basis: "'that ringed wire': the ringed point RP1, the point just asked about"),
@@ -2232,8 +2252,9 @@ data e1_back_cluster: ComponentInstanceIdentity = e1_component(local: "bare pad 
 data e1_back_cluster_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 75c33d9a, the back behind U1_P5 with P5 to P7 circled; labelled crop e1_back_pads_labeled (not on Drive)")
 data e1_back_pads_said: NonEmptyStr = "I got a reading of 0 ohms to these three pads , everything else is consistent - to the known pin 8 pad is 16k, ground is still 12k"
 
-// The operator's ruling: P6, one node with W4 by its baseline reading, is pin 7's node. It settles
-// W4's attachment in the record; no reading joins W4 or P6 to pin 7's lead.
+// The operator's ruling: P6, which W4 read 0 ohm to, is pin 7's node. It settles W4's attachment in
+// the record; no reading joins W4 or P6 to pin 7's lead, and with no baseline recorded the 0 ohm does
+// not join W4 to P6 either.
 data e1_p6_ruling_said: NonEmptyStr = "yes i am hyper confident that p6 == pin 7, please record this so we don't relitigate it again"
 
 data e1_w4_attachment: ProbeAttachment = ProbeAttachment {
@@ -2257,15 +2278,15 @@ fn e1_w4_read(to: ElectricalTerminalRef, polarity: ProbePolarity, range: MeterRa
 data e1_w4_resistances: List<ResistanceObservation> = [
   e1_w4_read(to: e1_ground_ref, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayValue { ohms: 11000, approximate: true }, said: e1_w4_said, photo: []),
   e1_w4_read(to: e1_terminal(c: e1_ovlo_pad, name: "pad"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayValue { ohms: 16000, approximate: false }, said: e1_back_pads_said, photo: []),
-  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P5"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayAtProbeBaseline, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
-  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P6"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayAtProbeBaseline, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
-  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P7"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayAtProbeBaseline, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
+  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P5"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
+  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P6"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
+  e1_w4_read(to: e1_terminal(c: e1_back_cluster, name: "P7"), polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, said: e1_back_pads_said, photo: [e1_back_cluster_photo]),
   e1_w4_read(to: e1_ground_ref, polarity: RedOnFirst, range: RangeUnrecorded, display: DisplayValue { ohms: 12000, approximate: true }, said: e1_back_pads_said, photo: []),
 ]
 
 // THE CLUSTER'S OTHER PADS. Unpowered, each bare pad other than P5 to P7 read to J20's black lead
 // (ground), to J20's red lead (the input side) and to the top end of pin 21's beige part (VDD's point):
-// P10 is at the baseline to the black lead; P1 to P4, P8 and P9 read above the baseline to all three, as
+// P10 is reported as ground ("p10 is ground", no baseline recorded); P1 to P4, P8 and P9 read above the baseline to all three, as
 // P10 does to the red lead. So no pad of the cluster joins pin 7's pads to the return, to the input or
 // to VDD directly; P9, beside the grounded P10, reads to none of them.
 data e1_cluster_said: NonEmptyStr = "Basically what I'm seeing is p10 is ground, the rest are far"
@@ -2290,18 +2311,17 @@ data e1_cluster_resistances: List<ResistanceObservation> = concat(
     e1_cluster_read(pad: p, to: e1_beige_top, display: DisplayAboveBaseline, basis: e1_cluster_vdd_basis, said: e1_cluster_vdd_said),
   ]),
   [
-    e1_cluster_read(pad: "P10", to: e1_ground_ref, display: DisplayAtProbeBaseline, basis: e1_cluster_rows_basis, said: e1_cluster_said),
+    e1_cluster_read(pad: "P10", to: e1_ground_ref, display: DisplayZeroWithoutBaseline { reported: "ground" }, basis: e1_cluster_rows_basis, said: e1_cluster_said),
     e1_cluster_read(pad: "P10", to: e1_rail_ref, display: DisplayAboveBaseline, basis: e1_cluster_rows_basis, said: e1_cluster_said),
   ],
 )
 
 // Q301 AND Q300. Unpowered, the lone lead of Q301's three-lead package on the back reads 0.00 ohm
-// to P6, so it is on the cluster's node -- pin 7's by the third wire's signature and the operator's
-// ruling. Q301's lead a and Q300's lead a are at the baseline to J20's return, and Q301's lead b is at
-// the baseline to Q300's lone lead (leads named by place on the labelled photograph). In the common SOT-23
-// pinout the lone lead is a transistor's drain or collector, but Q301's part and pinout are unread --
-// Q300 and Q301 both carry the marking 'K38', not yet matched to a part -- so which of its terminals
-// that lead is stays a lead.
+// to P6 -- pin 7's by the third wire's signature and the operator's ruling, not by a reading. Q301's
+// lead a reads 0 ohm and Q300's lead a 0.00 ohm to J20's return, and Q301's lead b 0.00 ohm to Q300's
+// lone lead (leads named by place on the labelled photograph). No baseline or range was recorded, so
+// each is a reported zero and the netlist keeps its points apart. Both parts carry 'K38', a candidate
+// for Diodes Incorporated's BSS138 (e1_k38_candidate), so which terminal each lead is stays a lead.
 data e1_q301: ComponentInstanceIdentity = e1_component(local: "Q301")
 data e1_q301_lone_lead: ElectricalTerminalRef = e1_terminal(c: e1_q301, name: "lone lead of its three-lead package")
 data e1_q301_lead_a: ElectricalTerminalRef = e1_terminal(c: e1_q301, name: "lead a: two-lead side, away from the silkscreen triangle")
@@ -2309,11 +2329,22 @@ data e1_q301_lead_b: ElectricalTerminalRef = e1_terminal(c: e1_q301, name: "lead
 data e1_q300: ComponentInstanceIdentity = e1_component(local: "Q300")
 data e1_q300_lone_lead: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lone lead of its three-lead package")
 data e1_q300_lead_a: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lead a: two-lead side, away from the silkscreen triangle")
+data e1_k38_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 42ffb97b, Q300 and Q301 both marked K38, the resistor beside Q301 marked 180 (not on Drive)")
+// Q300 and Q301 carry 'K38', Diodes Incorporated's BSS138 product marking code (DS30144). Another maker
+// may use the same code, and the photograph shows no date-code line, so the identification is a
+// candidate. Under that row's pinout and the silkscreen triangle on pin 1, lead b would be the gate,
+// lead a the source and the lone lead the drain -- which the readings fit, and which they do not prove.
+data e1_k38_candidate: ComponentIdentification = MarkingCandidate {
+  row: bss138,
+  marking: MarkingReading { text: "K38", evidence: e1_k38_photo },
+  discriminator: "the maker's date-code line, or another maker's marking table, read against Diodes Incorporated's BSS138 table",
+}
 data e1_q300_q301_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 9d88e42f, Q300 and Q301 on the back; leads labelled in the crop q300_q301_labeled (not on Drive)")
 data e1_q300_q301_said: NonEmptyStr = "Q301-a J20black: 0ohm, Q301-b to Q300 lone: 0.00ohm, Q300-a to J20 black: 0.00ohm"
 
 // THE RESISTOR ON Q301'S LEAD B, AND ITS FAR END. Unpowered, the end of the resistor beside Q301 (R on
-// the labelled photograph, its marking unread) nearer Q301 is at the baseline to Q301's lead b. The
+// the labelled photograph, marked '180') nearer Q301 is reported equal to Q301's lead b ('==', no
+// display or baseline recorded). The
 // operator followed its far end's trace by eye to the front: along the board edge under Q21_P5 and
 // Q22_P5 toward D5's tab, past a pair of large bare pads, and up the left edge past the bare U2_P5 and
 // U3_P5 footprints toward U1_TSE beside J1 (two annotated photographs). From the far end they read 0 ohm
@@ -2359,11 +2390,11 @@ fn e1_via_volts(source_volts: Nat, millivolts: Nat, certainty: StatementCertaint
   }
 }
 
-fn e1_q_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ResistanceObservation {
+fn e1_q_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, reported: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: a, second: b,
     record: both_points_recorded,
-    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: reported }, stability: StabilityUnrecorded, certainty: StatedPlainly,
     order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: e1_q300_q301_said }, e1_q300_q301_photo],
   }
@@ -2373,21 +2404,21 @@ data e1_q301_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_q301_lone_lead, second: e1_terminal(c: e1_back_cluster, name: "P6"),
     record: both_points_recorded,
-    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0.00" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
     order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Q301 3 legged thing -> single leg is 0.00 with P6" }, e1_back_cluster_photo],
   },
-  e1_q_read(a: e1_q301_lead_a, b: e1_ground_ref),
-  e1_q_read(a: e1_q301_lead_b, b: e1_q300_lone_lead),
-  e1_q_read(a: e1_q300_lead_a, b: e1_ground_ref),
+  e1_q_read(a: e1_q301_lead_a, b: e1_ground_ref, reported: "0ohm"),
+  e1_q_read(a: e1_q301_lead_b, b: e1_q300_lone_lead, reported: "0.00ohm"),
+  e1_q_read(a: e1_q300_lead_a, b: e1_ground_ref, reported: "0.00ohm"),
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_q301_resistor_near, second: e1_q301_lead_b,
     record: both_points_recorded,
-    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "==" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
     order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Z1: bottom of r is == q301b" }, e1_q300_q301_photo],
   },
-  e1_route_read(to: e1_route_near_u2, display: DisplayAtProbeBaseline, certainty: StatedHedged { verbatim: "0 ohms until ~U2_P5" }),
+  e1_route_read(to: e1_route_near_u2, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, certainty: StatedHedged { verbatim: "0 ohms until ~U2_P5" }),
   e1_route_read(to: e1_route_toward_j1, display: DisplayValue { ohms: 2000, approximate: true }, certainty: StatedHedged { verbatim: "2k ohms" }),
 ]
 
@@ -2496,12 +2527,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_component(local: "R150 beside U522"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
     InstalledComponent { component: e1_component(local: "U2_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
     InstalledComponent { component: e1_component(local: "U3_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
+    InstalledComponent { component: e1_q301, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
+    InstalledComponent { component: e1_q300, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
+    InstalledComponent { component: e1_q301_resistor, terminals: names(ns: ["end nearer Q301", "far end"]), identification: ResistanceCodeRead { milliohms: 18000, marking: MarkingReading { text: "180 (read from the photograph; 18 ohm by the three-digit code, not yet read across its ends)", evidence: e1_k38_photo } } },
     InstalledComponent { component: e1_component(local: "U2_P1"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } },
     InstalledComponent { component: e1_component(local: "Q5_P5"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 in the _P5 group (an enable-network candidate, see p4261_enable_network_hypothesis)" } },
     InstalledComponent { component: e1_component(local: "D5_P5"), terminals: names(ns: ["end nearer the OVLO (pin 8) pad", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },
     InstalledComponent { component: e1_01b, terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "01B", evidence: e1_back_photo } }, discriminator: "'01B' is 1.00 kohm in the EIA-96 code (a nominal-value candidate); its maker and its place in the enable network are unread" } },
-    InstalledComponent { component: e1_component(local: "Q300"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 whose thin traces leave the area" } },
-    InstalledComponent { component: e1_component(local: "Q301"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 beside Q300" } },
     InstalledComponent { component: e1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
   ],
   measured: Present { value: e1_measured },
@@ -2663,6 +2695,7 @@ fn identification_text(i: ComponentIdentification) -> String? {
   match i {
     IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking.text as String, "'"], "") }
     MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking.text as String, "'"], "") }
+    MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking.text as String, "' (not identified: ", discriminator as String, ")"], "") }
     RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking.text as String, "'"], "") }
     ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
@@ -2839,6 +2872,7 @@ fn sensor_trace_text(c: InstalledComponent) -> List<String> {
   match c.identification {
     IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
     MarkingSharedByMakers { rows: _, marking: _ } => []
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => []
     RatingPrintedOnBody { rating: _, marking: _ } => []
     ResistanceCodeRead { milliohms: _, marking: _ } => []
     MarkingUnresolved { marking: _, discriminator: _ } => []

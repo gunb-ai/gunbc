@@ -3,7 +3,7 @@ module extdeps.electronic_component.types
 import std.logic { Bool }
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Volt, Millivolt, Ampere, Micrometer }
+import std.measure { Volt, Millivolt, Milliampere, Micrometer }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -82,7 +82,7 @@ type FetTerminal {
 type MosfetSpecification {
   channel: FetChannel
   drain_source_maximum: Volt
-  continuous_drain_current: Ampere
+  continuous_drain_current: Milliampere
   terminals: List<FetTerminal>
 }
 
