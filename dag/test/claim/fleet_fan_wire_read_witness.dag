@@ -2,6 +2,7 @@ module test.claim.fleet_fan_wire_read_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.nat { Nat }
+import std.content_hash { ContentHash }
 import std.optional { Absent, Present }
 import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status }
 import std.measure { percent, percent_count }
@@ -13,12 +14,13 @@ import gunbc.fleet.fleet_fan_converge {
   FleetFanControlObserved,
   FleetFanControlUnobservable,
   FleetFanReading,
-  FleetFanObserved,
+  fleet_fan_family_of,
 }
-import gunbc.fleet.fleet_fan_wire_read { fleet_fan_observed_from_wire, fleet_fan_reading_of_megarac_wire, fleet_fan_wire_capture_frontier, fleet_fan_wire_capture_ref }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.fleet.fleet_fan_wire_read { MegaRacFanDecoded, MegaRacFanWrongFamily, megarac_fan_decode, fleet_fan_reading_of_megarac_wire, fleet_fan_wire_capture_frontier, fleet_fan_wire_capture_ref }
 
 // SUPPLIED: the two GET bodies, shaped as the cited MegaRAC rows (id, fan_number, fan_speed, fan_pwm).
-// EXECUTED: the real adapter fold, and the real managed row for the mint control.
+// EXECUTED: the real decoder fold, and the real managed row for the family-gate control.
 
 data auto_body: String = "{\"manager_disabled\":0}"
 data manual_body: String = "{\"manager_disabled\":1}"
@@ -80,25 +82,53 @@ test fn witness_out_of_range_or_missing_manager_wire_is_unobservable() -> Bool {
     && is_unobservable(r: read(m: manual_body, f: "[{\"id\":1,\"fan_number\":1,\"fan_speed\":0,\"fan_pwm\":255}]"))
 }
 
-fn mint_reads(s: FanObserveHost) -> Bool {
-  let o = fleet_fan_observed_from_wire(subject: s, attempt: 1, manager_body: manual_body, fan_info_body: uniform_25)
-  match o.reading {
-    FleetFanControlObserved { control: c } =>
-      match c {
-        HeldAtDutyFloor { floor: f } => percent_count(p: f) == percent_count(p: percent(25))
-        FirmwareAutomatic => false
-      }
-    FleetFanControlUnobservable { cause: _ } => false
+fn decodes_unobservable(m: String?, f: String?) -> Bool {
+  match megarac_fan_decode(family: AmiMegaRac, manager_response: m, fan_info_response: f) {
+    MegaRacFanDecoded { manager_receipt: _, fan_info_receipt: _, reading: r } => is_unobservable(r: r)
+    MegaRacFanWrongFamily { family: _ } => false
   }
 }
 
-// INHABITANCE: the adapter's mint, run over mtcollins1's real binding, carries the reading derived
-// from the bodies it hashes. Absent subject fails the claim.
-test fn witness_wire_mint_over_the_real_subject_carries_the_derived_reading() -> Bool {
+// INHABITANCE of the family gate over the real managed row: mtcollins1's observed family is MegaRAC,
+// so the decode proceeds and carries the reading derived from the supplied bodies; the same bodies
+// under a foreign family are a typed refusal before any reading.
+fn real_subject_family_decodes(s: FanObserveHost) -> Bool {
+  match megarac_fan_decode(family: fleet_fan_family_of(subject: s), manager_response: Present { value: manual_body }, fan_info_response: Present { value: uniform_25 }) {
+    MegaRacFanDecoded { manager_receipt: mr, fan_info_receipt: fr, reading: r } =>
+      held_at(r: r, p: 25) && has_receipt(h: mr) && has_receipt(h: fr)
+    MegaRacFanWrongFamily { family: _ } => false
+  }
+}
+
+fn has_receipt(h: ContentHash?) -> Bool {
+  match h {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn witness_decode_over_the_real_subject_family_carries_the_derived_reading_and_two_receipts() -> Bool {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
-    FanObserveAdmitted { host: h } => mint_reads(s: h)
+    FanObserveAdmitted { host: h } => real_subject_family_decodes(s: h)
     _ => false
   }
+}
+
+test fn witness_foreign_family_is_a_typed_refusal_before_any_reading() -> Bool {
+  match megarac_fan_decode(family: OpenBmc, manager_response: Present { value: auto_body }, fan_info_response: Present { value: uniform_25 }) {
+    MegaRacFanWrongFamily { family: _ } => true
+    MegaRacFanDecoded { manager_receipt: _, fan_info_receipt: _, reading: _ } => false
+  }
+}
+
+// An absent response and an empty body are both unobservable with their own cause; the fan_info
+// response is consulted only in manual mode, and carries no receipt when absent or empty.
+test fn witness_no_response_and_empty_body_are_distinct_unobservable_causes() -> Bool {
+  decodes_unobservable(m: none, f: Present { value: uniform_25 })
+    && decodes_unobservable(m: Present { value: "" }, f: Present { value: uniform_25 })
+    && decodes_unobservable(m: Present { value: manual_body }, f: none)
+    && decodes_unobservable(m: Present { value: manual_body }, f: Present { value: "" })
+    && !decodes_unobservable(m: Present { value: auto_body }, f: none)
 }
 
 data recorded_2026_10_14_rows: String = "[{\"id\":1,\"fan_number\":1,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":2,\"fan_number\":2,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":3,\"fan_number\":3,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":4,\"fan_number\":4,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":5,\"fan_number\":5,\"fan_speed\":5700,\"fan_pwm\":20},{\"id\":6,\"fan_number\":6,\"fan_speed\":5700,\"fan_pwm\":20}]"
