@@ -152,6 +152,7 @@ import extdeps.github.deployment_protection_rule {
   limits_authority,
   spec_authority,
   installation_authority,
+  environments_how_to_authority,
   spec_pinned_commit,
   spec_pinned_path,
   spec_pin_is_a_commit_revision,
@@ -924,7 +925,7 @@ test fn the_api_version_header_is_the_pinned_one() -> Bool {
 // looking complete while covering nothing.
 test fn the_citation_table_names_only_live_declarations() -> Bool {
   every_citation_names_a_live_declaration()
-    && deployment_protection_rule_citation_count() == 12
+    && deployment_protection_rule_citation_count() == 13
     && (deployment_protection_rule_fact_citations |> count) == (
          deployment_protection_rule_live_fact_names |> count
        )
@@ -951,10 +952,10 @@ test fn the_openapi_is_pinned_to_a_commit_and_not_to_a_branch() -> Bool {
 // Every authority this module cites is one it publishes, and every one is an https URI. A fact cited to
 // an authority that is not in the anchor is a fact nobody is accountable for.
 test fn every_cited_authority_is_published_by_this_module() -> Bool {
-  // nine, counting the one the installation readback added: a fact cited to an authority the module
-  // does not publish is a fact nobody is accountable for, so the roster and the citations have to move
-  // together and this count is where they are pinned to each other.
-  (extdeps_published_authorities |> count) == 9
+  // ten, counting the ones the installation readback and the protection-rule obligation added: a fact
+  // cited to an authority the module does not publish is a fact nobody is accountable for, so the roster
+  // and the citations have to move together and this count is where they are pinned to each other.
+  (extdeps_published_authorities |> count) == 10
     && (extdeps_published_authorities
         |> any(a => a.uri.locator == installation_authority.uri.locator))
     && (installation_authority.uri.locator |> contains("rest/apps/installations"))
@@ -966,12 +967,20 @@ test fn every_cited_authority_is_published_by_this_module() -> Bool {
     && (limits_authority.uri.locator |> contains("limits"))
     && (enablement_authority.uri.locator
         |> contains("configure-custom-protection-rules"))
+    // THE OBLIGATION PAGE IS PUBLISHED AND IS NOT ANY OTHER PAGE. The composition story quotes this
+    // page for one sentence and nothing else, so it has to be an anchor in its own right; borrowing an
+    // existing authority would be a citation that does not cite.
+    && (extdeps_published_authorities
+        |> any(a => a.uri.locator == environments_how_to_authority.uri.locator))
+    && (environments_how_to_authority.uri.locator
+        |> contains("using-environments-for-deployment"))
+    && !(environments_how_to_authority.uri.locator |> contains("/rest/"))
 }
 
 // The scope rows, and the rule that extdeps models no product surface. This is the boundary the module
 // has to keep to be in extdeps at all.
 test fn the_model_scope_cites_the_published_authorities() -> Bool {
-  (external_model_scope_citations(scope: extdeps_model_scope) |> count) == 9
+  (external_model_scope_citations(scope: extdeps_model_scope) |> count) == 10
     && extdeps_model_scope.first_citation == extdeps_external_authority_anchor
     && (external_model_scope_citations(scope: extdeps_model_scope)
         |> any(a => a.uri.locator == limits_authority.uri.locator))

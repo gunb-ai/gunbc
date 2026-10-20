@@ -1154,24 +1154,24 @@ test fn the_observation_window_residual_declares_what_it_cannot_close() -> Bool 
     && limit.consequence != ""
     && limit.retirement_trigger != ""
     // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
-    && limit.attempted.contains("compare-and-set")
+    && (limit.attempted as String).contains("compare-and-set")
     // THE UPSTREAM ABSENCE IS EVIDENCED, not asserted: it names the mechanism it looked for and failed
     // to find on the pinned description.
-    && limit.upstream_absence.contains("ETag")
-    && limit.upstream_absence.contains("environments")
+    && (limit.upstream_absence as String).contains("ETag")
+    && (limit.upstream_absence as String).contains("environments")
     // WHAT IS ENFORCED INSTEAD names all three mechanisms the checks really implement, so the row cannot
     // quietly drift away from the model it belongs to. Drop any one of these words from the row's
     // enforced_instead and this reddens -- which is also the red that fires if someone DELETES the check
     // it cites and leaves the row describing a guarantee that no longer exists.
-    && limit.enforced_instead.contains("observation_attempt")
-    && limit.enforced_instead.contains("standing_max_age")
-    && limit.enforced_instead.contains("sealed")
+    && (limit.enforced_instead as String).contains("observation_attempt")
+    && (limit.enforced_instead as String).contains("standing_max_age")
+    && (limit.enforced_instead as String).contains("sealed")
     // THE TRIGGER OBSERVES SOMETHING. A retirement trigger nobody could ever witness is a wish, so it has
     // to name the concrete upstream admission it waits for.
-    && limit.retirement_trigger.contains("If-Match")
+    && (limit.retirement_trigger as String).contains("If-Match")
     // THE WINDOW IS THE READ-TO-CLICK ONE, the same gap the act's age bound narrows without closing: the
     // human's click is in the consequence, not a generic risk.
-    && limit.consequence.contains("click")
+    && (limit.consequence as String).contains("click")
 }
 
 test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Bool {

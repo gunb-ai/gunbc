@@ -1304,6 +1304,10 @@ data deployment_protection_rule_fact_citations: List<FactCitation> = [
   FactCitation { fact: reviewer_types_ref, authority: openapi_authority },
   FactCitation { fact: spec_pin_ref, authority: spec_authority },
   FactCitation { fact: installation_endpoint_ref, authority: installation_authority },
+  FactCitation {
+    fact: protection_rules_are_binding_ref,
+    authority: environments_how_to_authority,
+  },
 ]
 
 fn deployment_protection_rule_citation_count() -> Int {
@@ -1332,6 +1336,7 @@ data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
   "pending_deployment_reviewer_type_wire",
   "spec_pinned_commit",
   "installation_readback_endpoint_path",
+  "protection_rules_are_binding_guarantee",
 ]
 
 fn every_citation_names_a_live_declaration() -> Bool {
@@ -1367,6 +1372,14 @@ data reviewer_types_ref: DeclarationRef = gate_ref(decl_name: "pending_deploymen
 data spec_pin_ref: DeclarationRef = gate_ref(decl_name: "spec_pinned_commit")
 data installation_endpoint_ref: DeclarationRef = gate_ref(decl_name: "installation_readback_endpoint_path")
 
+// The cited half of the composition story: that a gated job owes EVERY protection rule on its
+// environment, not some of them. Its own ref because it is a distinct external claim, quoted from a
+// distinct page, and a citation that rode on rest_authority would be pointing at a page that does not
+// say it.
+data protection_rules_are_binding_ref: DeclarationRef = gate_ref(
+  decl_name: "protection_rules_are_binding_guarantee",
+)
+
 data extdeps_external_authority_anchor: ExternalAuthority = rule_authority
 
 // EVERY AUTHORITY THIS MODULE PUBLISHES, as a roster rather than as prose. Two jobs: the scope row's
@@ -1383,6 +1396,7 @@ data extdeps_published_authorities: List<ExternalAuthority> = [
   limits_authority,
   spec_authority,
   installation_authority,
+  environments_how_to_authority,
 ]
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -1398,6 +1412,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.deployment_protection_rule.enablement_authority,
     extdeps.github.deployment_protection_rule.limits_authority,
     extdeps.github.deployment_protection_rule.spec_authority,
-    extdeps.github.deployment_protection_rule.installation_authority
+    extdeps.github.deployment_protection_rule.installation_authority,
+    extdeps.github.deployment_protection_rule.environments_how_to_authority
   ]
 }
