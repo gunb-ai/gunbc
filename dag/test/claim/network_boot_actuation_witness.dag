@@ -1,6 +1,6 @@
 module test.claim.network_boot_actuation_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.types { BootTargetPxe, BootOverrideOnce, ResetForceRestart }
@@ -35,7 +35,6 @@ import gunbc.provisioning.network_boot_actuation {
   network_boot_arm_actuator_steps,
 }
 import gunbc.firmware_network_boot_standing { Unobserved }
-import std.types { EpochMs, List, NonEmptyStr }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.optional { Present, Absent }
 import extdeps.toolchain.types { Aarch64 }
