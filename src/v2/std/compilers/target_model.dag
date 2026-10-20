@@ -1809,11 +1809,10 @@ type TargetCallApplyShape {
 // (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (DESIGN 3: a
 // string key is a nickname).
 //
-// Argument labels are modeled because Swift needs them; Rust rows carry none. A target spells its own label
-// separator, so the label is a typed arm and not a slot every target must fill.
+// Argument labels: only the unlabeled arm has a producer (the Rust rows). A labeled arm returns with the first
+// Swift primitive row that needs it, in the same change as that row.
 type TargetPrimitiveArgumentLabel
   = PrimitiveArgumentUnlabeled
-  | PrimitiveArgumentLabeled { label: Symbol, separator_token: Symbol }
 
 // How the argument reaches the callee. Rust's string_length takes `&str`, so the String argument is passed by shared
 // reference; the prefix is the target's own token, not a Rust spelling in this module.
@@ -1826,14 +1825,11 @@ type TargetPrimitiveArgument {
   passing: TargetPrimitiveArgumentPassing
 }
 
-// FreeCall is `callee(args)`. MethodCall is `receiver.method(rest)`, the first argument being the receiver.
-// MemberPath is `receiver.m1.m2` with no application, which is what Swift's string_length is
-// (`s.unicodeScalars.count`, ruling text_crossings_go_through_the_unfold): the target's call form is data, so a
-// member chain is a row and not a branch in the emitter.
+// FreeCall is `callee(args)`. MethodCall is `receiver.method(rest)`, the first argument being the receiver. A member
+// path (`receiver.m1.m2`, no application) returns with the first Swift primitive row that needs it, in the same change.
 type TargetPrimitiveCallForm
   = PrimitiveFreeCall { callee: Symbol }
   | PrimitiveMethodCall { method: Symbol }
-  | PrimitiveMemberPath { members: List<Symbol> }
 
 // What the call yields. The seed's rt_function_registry `wraps_result` is this arm: the result is put in the
 // target's shared handle by calling `constructor` on it.
@@ -8899,11 +8895,6 @@ fn target_primitive_argument_prefix_tokens(argument: TargetPrimitiveArgument) ->
   list_append(
     left: match argument.label {
       PrimitiveArgumentUnlabeled => Empty
-      PrimitiveArgumentLabeled { label: l, separator_token: sep } =>
-        Cons {
-          head: BoundToken { token_class: sep, binding: l },
-          tail: Empty
-        }
     },
     right: match argument.passing {
       PrimitivePassByValue => Empty
@@ -9045,38 +9036,6 @@ fn target_primitive_call_to_concrete_tokens(
               )
             }
           )
-      }
-    PrimitiveMemberPath { members: ms } =>
-      match args {
-        Empty => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
-        Cons { head: receiver, tail: rest } =>
-          match rest {
-            Cons { head: _, tail: _ } => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
-            Empty =>
-              bind_outcome(
-                o: target_value_expression_to_concrete_tokens(expr: receiver, projection: projection, catalog: catalog),
-                f: fn(rt) {
-                  outcome_accepted(
-                    fold(
-                      ms,
-                      init: rt,
-                      f: fn(toks, m) {
-                        list_append(
-                          left: toks,
-                          right: Cons {
-                            head: FixedToken { token_class: projection.field_access_form.dot },
-                            tail: Cons {
-                              head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: m },
-                              tail: Empty
-                            }
-                          }
-                        )
-                      }
-                    )
-                  )
-                }
-              )
-          }
       }
   }
 }
