@@ -564,7 +564,7 @@ fn install_file_owned_command(source: String, destination: String, mode: NonEmpt
 // permitted without privilege when it names the invoking principal itself, and -g when it names a group
 // the invoker belongs to; both hold at the call site (the instance principal names itself and its
 // declared shared group), measured in the wet witness that execs this exact shape.
-fn install_directory_owned_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(
     program: install_program(),
     arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),

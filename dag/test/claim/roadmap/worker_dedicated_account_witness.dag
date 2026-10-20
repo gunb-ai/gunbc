@@ -23,6 +23,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_state_directory, dashboard_instance_provider_state_root, dashboard_instance_worker_git_directories,
   dashboard_git_worker_unwritable_children, dashboard_git_worker_local_config_keys,
   dashboard_git_worker_directory_children, dashboard_git_worktrees_child,
+  dashboard_git_worker_objects_child,
   dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
@@ -214,9 +215,9 @@ test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> 
     // sticky bit, and exactly one of the three children asks for it.
     && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgidSticky) == "3770"
     && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid) == "2770"
-    && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
+    && dashboard_git_worker_subtree_needs_sticky(child: dashboard_git_worker_objects_child)
     && !any(dashboard_git_worker_directory_children, c => dashboard_git_worker_subtree_needs_sticky(child: c)
-      && (c as String) != (objects_child as String))
+      && (c as String) != (dashboard_git_worker_objects_child as String))
 }
 
 fn owned_path_text(t: OwnedDirectoryTarget) -> String {

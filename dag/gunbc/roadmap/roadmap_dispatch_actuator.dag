@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_command }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
@@ -3219,7 +3219,7 @@ fn dispatch_attempt_worker_git_entry_migration(
       // The admitted builder is the SAME word builder the deploy route's owned_directory_install_argv
       // uses (coreutils_install_directory_owned_arguments), so a witness that execs this step execs the
       // deploy's install.
-      install_directory_owned_command(
+      install_directory_owned_argv_command(
         mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
         owner: instance.directory_owner.user,
         group: group,
