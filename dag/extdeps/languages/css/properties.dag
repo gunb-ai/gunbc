@@ -29,6 +29,7 @@ type CssPropertyName
   | AnimationDelay
   | AnimationDuration
   | TransformOrigin
+  | WebkitFontSmoothing
   | Background
   | Border
   | BorderBottom
@@ -37,6 +38,7 @@ type CssPropertyName
   | BorderLeft
   | BorderRadius
   | BorderStyle
+  | BorderTop
   | BoxShadow
   | BoxSizing
   | ClipPath
@@ -97,6 +99,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDelay => "animation-delay"
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
+    WebkitFontSmoothing => "-webkit-font-smoothing"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
@@ -105,6 +108,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     BorderLeft => "border-left"
     BorderRadius => "border-radius"
     BorderStyle => "border-style"
+    BorderTop => "border-top"
     BoxShadow => "box-shadow"
     BoxSizing => "box-sizing"
     ClipPath => "clip-path"

@@ -74,35 +74,91 @@ pub fn empty_trace() -> Rc<Trace> {
 }
 
 pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
-    Rc::new(Trace {
-        events: v1_rt::rc_list_push(trace.events.clone(), event.clone()),
-        stack: trace.stack.clone(),
-    })
+    {
+        let __rb_0_0 = v1_rt::rc_list_push(trace.events.clone(), event.clone());
+        let __rb_1_0 = trace.stack.clone();
+        let mut __rb_h = trace;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.events = __rb_0_0;
+                __rb_r.stack = __rb_1_0;
+            }
+            None => {
+                __rb_h = Rc::new(Trace {
+                    events: __rb_0_0,
+                    stack: __rb_1_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
-    Rc::new(Trace {
-        events: trace.events.clone(),
-        stack: v1_rt::rc_list_push(trace.stack.clone(), frame.clone()),
-    })
+    {
+        let __rb_0_0 = trace.events.clone();
+        let __rb_1_0 = v1_rt::rc_list_push(trace.stack.clone(), frame.clone());
+        let mut __rb_h = trace;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.events = __rb_0_0;
+                __rb_r.stack = __rb_1_0;
+            }
+            None => {
+                __rb_h = Rc::new(Trace {
+                    events: __rb_0_0,
+                    stack: __rb_1_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
         if (n.clone() <= 1) {
-            Rc::new(Trace {
-                events: trace.events.clone(),
-                stack: Rc::new(vec![]),
-            })
+            {
+                let __rb_0_0 = trace.events.clone();
+                let __rb_1_0 = Rc::new(vec![]);
+                let mut __rb_h = trace;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.events = __rb_0_0;
+                        __rb_r.stack = __rb_1_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(Trace {
+                            events: __rb_0_0,
+                            stack: __rb_1_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         } else {
-            Rc::new(Trace {
-                events: trace.events.clone(),
-                stack: Rc::new(v1_rt::list_take(
+            {
+                let __rb_0_0 = trace.events.clone();
+                let __rb_1_0 = Rc::new(v1_rt::list_take(
                     &trace.stack.clone(),
                     v1_rt::int_sub(n.clone(), 1),
-                )),
-            })
+                ));
+                let mut __rb_h = trace;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.events = __rb_0_0;
+                        __rb_r.stack = __rb_1_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(Trace {
+                            events: __rb_0_0,
+                            stack: __rb_1_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         }
     }
 }

@@ -31,11 +31,11 @@ import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
   RevisionNotInstalled,
   release_revision_execstart_text,
-  approval_broker_release_dir,
-  approval_broker_releases_dir,
-  approval_broker_release_binary_path,
-  approval_broker_tree_receipt_path_for,
-  approval_broker_tree_subdirs,
+  release_locus_dir,
+  release_locus_releases_dir,
+  release_locus_binary_path,
+  release_locus_tree_receipt_path,
+  release_locus_tree_subdirs,
   approval_broker_helper_root_principal,
   approval_broker_helper_snapshot_base,
   HelperLocus,
@@ -279,6 +279,7 @@ import gunbc.host.host_layout {
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
   slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  SliceControlUnit,
 }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -294,7 +295,7 @@ import gunbc.host.host_axis_caps {
   deploy_slice_control_converge_script,
 }
 import gunbc.ownership { Ownership }
-import std.algebra { list_tail }
+import std.algebra { FreeSemigroup, list_tail }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -914,7 +915,7 @@ fn live_deploy_approval_broker_unit_file_on(
   port: Port,
 ) -> SystemdUnitFile {
   let svc = spec.approval_broker
-  let release_dir = approval_broker_release_dir(root: svc.repo_root as String, revision: revision)
+  let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
@@ -930,7 +931,7 @@ fn live_deploy_approval_broker_unit_file_on(
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
-        approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
+        release_locus_binary_path(root: svc.repo_root as String, revision: revision),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
@@ -2603,23 +2604,29 @@ fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
   )
 }
 
-fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match slice_control_plan_for(host: spec.target.host.identity) {
-    SliceControlPlanDerived { units: _ } =>
-      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
-    SliceControlPlanNotOwed => []
-    SliceControlPlanRefused { cause: _ } => []
-  }
+// THE SLICE-CONTROL MUTATE STEP, OVER AN ALREADY-DISCRIMINATED ROSTER.
+//
+// THIS USED TO TAKE THE SPEC AND RE-DERIVE THE PLAN, and that re-derivation is a fail-open: the two
+// arms it did not act on -- SliceControlPlanNotOwed and SliceControlPlanRefused -- both returned [],
+// so a host whose slice control was REFUSED got a plan with no slice step and no complaint. Its
+// sibling apply_slice_control_converge_fragments poisoned on Refused, which is what kept the hole
+// latent rather than live, but a helper whose type accepts a refused plan is a helper that will
+// eventually be called from somewhere that does not poison. The parameter is now the Derived
+// roster's units, so a refused plan has no representation here at all: the discrimination the
+// caller already made cannot be silently undone one layer down. (For the same reason the content
+// producer below, slice_control_converge_stmts, takes units rather than a host identity.)
+fn apply_slice_control_converge_steps(units: FreeSemigroup<SliceControlUnit>) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_slice_control_converge_script(units: units))]
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
   match slice_control_plan_for(host: host) {
     SliceControlPlanNotOwed => []
-    SliceControlPlanDerived { units: _ } =>
+    SliceControlPlanDerived { units } =>
       host_script_member_proceed(
         member: "slice-control" as NonEmptyStr,
-        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+        mutate_steps: apply_slice_control_converge_steps(units: units),
       )
     SliceControlPlanRefused { cause } =>
       host_script_member_refused(
@@ -2714,7 +2721,7 @@ fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScri
 // guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
 //
 // THE UNIT AND ITS RELEASE ARE ONE FACT, SO THEY ARE ONE STEP LIST. The unit's ExecStart names the
-// per-candidate release locus (gunbc.live_deploy.release_locus approval_broker_release_binary_path),
+// per-candidate release locus (gunbc.live_deploy.release_locus release_locus_binary_path),
 // and only approval_broker_dark_install_release_steps populates it. When the ordinary apply wrote
 // the unit without them, a dashboard_deploy at a revision the dark install never ran (the 2026-09-29
 // rollback to 361db90) pointed the broker at a directory that did not exist: status=203/EXEC on
@@ -2868,7 +2875,7 @@ fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServi
 // see it: one "$( ... )" at the caller rather than parentheses buried in a join.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
+    "cd ", root, " && ", find_program().invocation as String, " ", join(release_locus_tree_subdirs, " "),
     " -type f -print0 | ", sort_program().invocation as String, " -z | ",
     xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
     sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
@@ -2923,7 +2930,7 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 // This change adds no grant and removes none; the stronger claim becomes true when that drop is
 // retired, not when this locus lands.
 fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<PipelineStep> {
-  flat_map(approval_broker_tree_subdirs, sub => [
+  flat_map(release_locus_tree_subdirs, sub => [
     deploy_raw(command: privileged_tree_directories_install_command(src_sub: sub, root: root, owner: owner)),
     deploy_raw(command: privileged_tree_files_install_command(src_sub: sub, root: root, owner: owner)),
   ])
@@ -2996,16 +3003,16 @@ fn release_locus_binary_install_step(owner: NonEmptyStr, root: String) -> Pipeli
 // approval_broker_release_retention_note applies to every root this installs under; the microVM
 // controller inherits that named obligation rather than re-declaring it.
 fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let root = approval_broker_release_dir(root: base_root, revision: revision)
+  let root = release_locus_dir(root: base_root, revision: revision)
   concat(
     concat(
       [
         deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
         deploy_raw(command: install_d_owned_for_user(user: owner, path: base_root)),
-        deploy_raw(command: install_d_owned_for_user(user: owner, path: approval_broker_releases_dir(root: base_root))),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: release_locus_releases_dir(root: base_root))),
         deploy_raw(command: install_d_owned_for_user(user: owner, path: root)),
       ],
-      map(approval_broker_tree_subdirs, sub =>
+      map(release_locus_tree_subdirs, sub =>
         deploy_raw(command: install_d_owned_for_user(user: owner, path: join([root, "/", sub], "")))
       ),
     ),
@@ -3056,7 +3063,7 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
 // THE RECEIPT IS WRITTEN BY THE PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
-  locus_tree_receipt_step_at(owner: owner, dir: approval_broker_release_dir(root: base_root, revision: revision), revision: revision)
+  locus_tree_receipt_step_at(owner: owner, dir: release_locus_dir(root: base_root, revision: revision), revision: revision)
 }
 
 // ONE RECEIPT SHAPE FOR EVERY LOCUS A gunbc BINARY IS SPAWNED FROM. The seed admits a spawn root
@@ -3090,7 +3097,7 @@ fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: Release
 // for the VMM as it is for the sources: a locus whose firecracker hashes differently from the
 // cited release is not the release, whatever `--version` prints.
 fn microvm_controller_release_dir(revision: ReleaseRevisionBinding) -> String {
-  approval_broker_release_dir(root: microvm_controller_root, revision: revision)
+  release_locus_dir(root: microvm_controller_root, revision: revision)
 }
 
 // THE TARBALL IS STAGED UNDER THE JOB'S OWN CHECKOUT, beside the verified release bins it copies
@@ -3167,7 +3174,7 @@ data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
 // user.
 fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
   HelperLocus {
-    base: approval_broker_releases_dir(root: spec.approval_broker.repo_root as String),
+    base: release_locus_releases_dir(root: spec.approval_broker.repo_root as String),
     owner: spec.approval_broker.service_user,
   }
 }
@@ -3393,7 +3400,7 @@ fn root_owned_helper_snapshot_steps(locus: HelperLocus, revision: ReleaseRevisio
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: join([dir, "/src"], ""), privileged: true)),
     ],
     concat(
-      map(approval_broker_tree_subdirs, sub =>
+      map(release_locus_tree_subdirs, sub =>
         deploy_raw(command: pwd_tree_copy_privileged_command(rel: sub, dest: join([dir, "/", sub], "")))),
       [
         deploy_raw(command: pwd_file_install_privileged_command(

@@ -761,6 +761,16 @@ data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "fleet_converge_apply_wet",
 }
 
+data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "resolve_plan_revision",
+}
+
+data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "verify_checkout_at_plan_revision",
+}
+
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_inspection.dag",
   function: "org_actions_inspect_wet",
@@ -839,6 +849,16 @@ data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepT
 data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
   function: "read",
+}
+
+data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/flex_pass_run.dag",
+  function: "pass",
+}
+
+data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/product/fabric/flex_vast_template_control.dag",
+  function: "ensure",
 }
 
 data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1037,6 +1057,11 @@ data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = GunbcRunStepTar
 data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
   function: "microvm_runner_group_ensure_wet",
+}
+
+data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_wet",
 }
 
 data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1331,8 +1356,11 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
     gunbc_ci_workspace_image_build_target,
+    gunbc_ci_revision_job_image_build_target,
     gunbc_ci_workspace_allocation_plan_target,
     gunbc_ci_fleet_converge_apply_target,
+    gunbc_ci_fleet_converge_plan_revision_target,
+    gunbc_ci_fleet_converge_checkout_verify_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -1342,6 +1370,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
+    gunbc_ci_flex_pass_target,
+    gunbc_ci_flex_template_ensure_target,
     gunbc_ci_branch_run_grant_request_target,
     gunbc_ci_branch_run_grant_apply_target,
     gunbc_ci_branch_run_grant_await_target,
@@ -1411,6 +1441,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_boot_target,
     gunbc_ci_mtcollins1_sol_notice_target,
     gunbc_ci_microvm_runner_group_ensure_target,
+    gunbc_ci_service_runner_lost_boot_sweep_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
@@ -2195,6 +2226,26 @@ fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
   ]
 }
 
+fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_plan_revision_target.entry,
+    function: gunbc_ci_fleet_converge_plan_revision_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_checkout_verify_target.entry,
+    function: gunbc_ci_fleet_converge_checkout_verify_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
@@ -2814,6 +2865,26 @@ fn gunbc_ci_hetzner_cloud_server_read_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_hetzner_cloud_server_read_target.entry,
     function: gunbc_ci_hetzner_cloud_server_read_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_flex_pass_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_flex_pass_target.entry,
+    function: gunbc_ci_flex_pass_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_flex_template_ensure_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_flex_template_ensure_target.entry,
+    function: gunbc_ci_flex_template_ensure_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -4034,6 +4105,19 @@ fn gunbc_ci_arrival_admit_invoke() -> String {
   )
 }
 
+// NO SHELL PRELUDE: the sweep stages the gunbai-ci App key itself from Secret Manager under the run's
+// WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
+// minted, exported or traced in shell.
+fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_arrival_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4057,8 +4141,12 @@ fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
   gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
 }
 
-data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
-
-fn gunbc_ci_workspace_image_build_invoke() -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_image_build_target.entry, function: gunbc_ci_workspace_image_build_target.function, claim_run: false), "\n"], "")
+fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
 }
+
+data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
+data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
+
+fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
+fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }

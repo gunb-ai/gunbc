@@ -46,9 +46,8 @@ pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -60,11 +59,8 @@ use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
-    occurrence_id_allocator_advance_to,
-};
-pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
-    OccurrenceTransportRefusal,
+    occurrence_id_allocator_advance_to, AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity,
+    OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
 pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::AlgebraFieldKind::{
@@ -79,9 +75,8 @@ pub use crate::std_target_representation::VariantParentIdentity;
 use crate::std_target_representation::VariantParentIdentity::*;
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
+    kernel_type_set, FilePath, NonEmptyStr, SourceSpan,
 };
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -911,6 +906,11 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    TypeNameCarriesNoRecordConstructor {
+        type_name: String,
+        declared_variants: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(
@@ -1077,6 +1077,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
     }
 }
 
@@ -1151,6 +1152,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)".to_string()),
 }
 }
 
@@ -1475,6 +1477,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -4992,9 +4998,9 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         .cloned()
         .fold(Rc::new(vec![]), |acc: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.1.clone() == 10) {
-                v1_rt::rc_list_push(acc.clone(), pair.0.clone())
+                v1_rt::rc_list_push(acc, pair.0.clone())
             } else {
-                acc.clone()
+                acc
             }
         });
         Rc::new(NewlineIndex {
@@ -5115,12 +5121,30 @@ pub fn intern_table_with_authored_token_ordinals(
     table: Rc<InternTable>,
     authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 ) -> Rc<InternTable> {
-    Rc::new(InternTable {
-        strings: table.strings.clone(),
-        index: table.index.clone(),
-        next_id: table.next_id.clone(),
-        authored_token_ordinals: authored_token_ordinals.clone(),
-    })
+    {
+        let __rb_0_0 = table.strings.clone();
+        let __rb_1_0 = table.index.clone();
+        let __rb_2_0 = table.next_id.clone();
+        let __rb_3_0 = authored_token_ordinals.clone();
+        let mut __rb_h = table;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.strings = __rb_0_0;
+                __rb_r.index = __rb_1_0;
+                __rb_r.next_id = __rb_2_0;
+                __rb_r.authored_token_ordinals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(InternTable {
+                    strings: __rb_0_0,
+                    index: __rb_1_0,
+                    next_id: __rb_2_0,
+                    authored_token_ordinals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
@@ -5171,7 +5195,7 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
             let merged_allocator =
                 crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
-                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    merged.authored_token_ordinals.allocator.clone(),
                     t.authored_token_ordinals.clone(),
                 );
             let merged = intern_table_with_authored_token_ordinals(
@@ -5184,9 +5208,9 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
                 merged.clone(),
                 |m: Rc<InternTable>, s: String| {
                     if (s.clone() == "".to_string()) {
-                        m.clone()
+                        m
                     } else {
-                        intern(m.clone(), s.clone()).table.clone()
+                        intern(m, s.clone()).table.clone()
                     }
                 },
             )
@@ -5208,9 +5232,9 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         .cloned()
         .fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| {
             if is_internable_token(tok.shape.clone()) {
-                intern(t.clone(), tok.text.clone()).table.clone()
+                intern(t, tok.text.clone()).table.clone()
             } else {
-                t.clone()
+                t
             }
         })
 }

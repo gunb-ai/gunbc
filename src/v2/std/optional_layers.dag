@@ -3,10 +3,8 @@ module v2.std.optional_layers
 import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Occupancy, node_with_occurrence_id, symbol_intern_lexeme, ComputationNode, Edge, Node, Positional, TypeNode }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Occupancy, node_with_occurrence_id, ComputationNode, Edge, Node, Positional, TypeNode }
 import std.algebra { list_at_optional }
-import v2.std.qualified_name { QualifiedName }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
 // Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
@@ -40,7 +38,7 @@ fn peel_optional_layer(depth: Nat) -> Optional<Nat> {
 fn type_node_occupancy_child(n: Node) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Occupancy } =>
-      match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
         Present { value: inner } => optional_present(value: inner)
         Absent => optional_absent()
       }
@@ -89,10 +87,3 @@ fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity
   )
 }
 
-// `T?` IS SUGAR DECLARED BY std.optional (ruling gunbc.design_ruling optional_sugar_is_declaration_bound): an
-// Occupancy node mentions the Optional declaration it lowers from, exactly as an authored qualified
-// `std.optional.Optional` would, so module acquisition OWES std.optional (acquisition_sugar_member_texts promotes the site to an imported member) and a
-// source root lacking it refuses as an unknown imported member.
-fn occupancy_declaration_spelling() -> QualifiedName {
-  [symbol_intern_lexeme(lexeme: "std"), symbol_intern_lexeme(lexeme: "optional"), symbol_intern_lexeme(lexeme: "Optional")]
-}

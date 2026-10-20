@@ -235,6 +235,7 @@ import gunbc.roadmap.roadmap_provider_events {
 import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
 import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch {
@@ -265,13 +266,12 @@ import gunbc.dispatch_credential_snapshot {
   DispatchSnapshotRefused,
   dispatch_snapshot_refusal_text,
   dispatch_credential_snapshot_take,
-  dispatch_credential_snapshot_discard,
   CredentialSnapshotTombstoned,
   CredentialSnapshotTombstoneFailed,
   credential_snapshot_tombstone_body,
   credential_snapshot_after_read_disposition,
 }
-import gunbc.dispatch_credential_acquisition { credential_register_then_take }
+import gunbc.dispatch_credential_acquisition { credential_register_then_take, credential_discard_taken_attempt }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -664,7 +664,7 @@ fn dispatch_credential_snapshot_path_for_attempt(attempt: DispatchAttempt, execu
 // A selection that refuses after its take discards the snapshot it took; a discard that does not
 // occupy it with a tombstone is appended to the refusal, never dropped.
 fn selection_refused_discarding(reason: NonEmptyStr, snapshot: TakenCredentialSnapshot) -> DispatchAttemptSelection {
-  match dispatch_credential_snapshot_discard(snapshot: snapshot) {
+  match credential_discard_taken_attempt(snapshot: snapshot) {
     CredentialSnapshotTombstoned => DispatchAttemptSelectionRefused { reason: reason }
     CredentialSnapshotTombstoneFailed { reason: failed } =>
       DispatchAttemptSelectionRefused { reason: join([reason as String, "; and ", failed as String], "") as NonEmptyStr }
@@ -1853,7 +1853,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat(worker_root_equivalent_socket_denial_properties(), concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1862,7 +1862,20 @@ fn dispatch_review_unit_properties(
     NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }]))
+  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])))
+}
+
+// THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
+// setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
+// reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles
+// launch through the user manager, which cannot switch uid, so they keep the owner's identity and this
+// is their whole privilege reduction; the dedicated identity needs the system-manager launcher.
+fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunProperty> {
+  [
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
+    EmptyCapabilityBoundingSet,
+  ]
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -2738,6 +2751,7 @@ fn dispatch_provider_inner_argv_for_launch(
             }
           } else {
             match cursor_worker_turn_argv(
+              program: cursor_agent_pinned_program(),
               snapshot: snapshot,
               worktree_path: worktree_path,
               prompt: brief as NonEmptyStr,
@@ -3037,16 +3051,16 @@ fn dispatch_worker_unit_stream_properties(
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(
-    compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+    concat(
+      compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+      dispatch_model_driven_privilege_confinement_properties(),
+    ),
     [
       NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
       NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
       NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
-      EmptyCapabilityBoundingSet,
       NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
       NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
       NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },

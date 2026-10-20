@@ -131,7 +131,7 @@ fn ubuntu_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {
   concat(install_path as String, ".part") as NonEmptyStr
 }
 
-data noble_numbat_2404_3_live_server_arm64_sha256sums_authority: ExternalAuthority = ExternalAuthority {
+data ubuntu_noble_2404_sha256sums_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
@@ -144,7 +144,29 @@ data noble_numbat_2404_3_live_server_arm64: UbuntuInstallMediaArtifactRow = Ubun
   architecture: Aarch64,
   flavor: UbuntuLiveServer,
   content_sha256: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
-  sha256sums_authority: noble_numbat_2404_3_live_server_arm64_sha256sums_authority,
+  sha256sums_authority: ubuntu_noble_2404_sha256sums_authority,
+}
+
+// The 24.04.5 point release, listed beside 24.04.3 in the same SHA256SUMS and served from the same
+// release directory. Both rows cite the one release-series authority above.
+data noble_numbat_2404_5_live_server_arm64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts,
+  point_release: "24.04.5",
+  architecture: Aarch64,
+  flavor: UbuntuLiveServer,
+  content_sha256: "f12484464c7d4d73e2167e0a7dbda1e669f8fae9bcf778dc0944937034b320cb",
+  sha256sums_authority: ubuntu_noble_2404_sha256sums_authority,
+}
+
+// The live-server ISO's casper directory is a layout Canonical authors: the kernel and initrd a
+// network boot serves are these members. Their digests are not Canonical's (no upstream file lists
+// them), so the pins live with the observer, gunbc.provisioning.ubuntu_arm64_network_origin_observation.
+fn ubuntu_casper_kernel_member_path() -> NonEmptyStr {
+  "casper/vmlinuz"
+}
+
+fn ubuntu_casper_initrd_member_path() -> NonEmptyStr {
+  "casper/initrd"
 }
 
 // THE STOCK MEDIUM'S BOOT CONFIGURATION, AS A MEMBER OF THE PINNED ARTIFACT. /boot/grub/grub.cfg of

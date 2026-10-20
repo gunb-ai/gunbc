@@ -443,7 +443,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P4b:inference-serving-provision",
     modeling: "partial",
-    authority_or_interim: "gunbc.serving.serving_provision_derivation.serving_provision_derive (ServingRecipe -> engine pins, placed artifact source, digest, launch, port; vllm and unplaced start sources refuse typed) -> gunbc.serving.serving_launch.serving_startup_program + serving_serve_decision + gunbc.serving.serving_artifact_placement.serving_engine_verdict; the launch leg refuses on the unbound serve key grant and the unmodeled detach (serving_serve_launch_frontier_rows)"
+    authority_or_interim: "gunbc.serving.serving_provision_derivation.serving_provision_derive (ServingRecipe -> engine pins, placed artifact source, digest, launch, port; vllm and unplaced start sources refuse typed) -> gunbc.serving.serving_launch.serving_startup_program + serving_serve_decision + gunbc.serving.serving_artifact_placement.serving_engine_verdict; the launch leg refuses on the unbound serve key grant (serving_serve_launch_frontier_rows)"
   },
   GapLedgerRow {
     phase_label: "P5:assimilation-complete-gate",

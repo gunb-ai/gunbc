@@ -3,8 +3,7 @@
 
 use self::PrimitiveProjectionAnswer::*;
 use self::ProjectionFidelity::*;
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -272,6 +271,34 @@ pub fn primitive_to_string() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn never_type_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "Never".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_eliminator_declaration() -> Rc<DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<DeclarationRef> = {
+            crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "absurd".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
+}
+
+pub fn never_type_qualified_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            never_type_declaration().module_path.clone(),
+            ".".to_string(),
+        ),
+        never_type_declaration().decl_name.clone(),
+    )
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -285,6 +312,15 @@ pub fn primitive_chars() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
             primitive_identity_slug("chars".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_machine_word_native_operate() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("machine_word_native_operate".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -432,6 +468,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_chars(),
             "std.host_text".to_string(),
             "chars".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_machine_word_native_operate(),
+            "std.machine_word".to_string(),
+            "machine_word_native_operate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

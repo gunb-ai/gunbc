@@ -66,6 +66,7 @@
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
 // src/std_graph.rs
+// src/std_host_text.rs
 // src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs

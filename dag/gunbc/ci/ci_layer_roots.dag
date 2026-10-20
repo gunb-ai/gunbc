@@ -560,6 +560,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
+    pattern: "site_pxe_edge_chainloader_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
     pattern: "workspace_transcript_rate_real_execution.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -606,6 +611,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
     dissolution: excl_roster_gate_dissolve},
+  WitnessExclusionRow {
+    pattern: "test/claim/revision_job_fixture/",
+    classification: FixtureExplicitRoster,
+    reason: "revision-job stand-in fixtures (test.claim.revision_job_fixture.revision_job_light_claims): one observation that holds and one that DELIBERATELY does not, run only by exact label from the stand-in's claim list so the results frame carries a non-zero exit in a declared order; excluded so the deliberate red is never read as a real one by discovery, claim runs or censuses",
+    dissolution: unbound_dissolution(description: "the revision job's stand-in is retired or re-pointed at a corpus claim set; the fixture module and this row delete together")
+  },
   WitnessExclusionRow {
     pattern: "test/claim/enforcement/",
     classification: OfflineLocalRecipe,
@@ -1140,6 +1151,21 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "session_activation_ensure_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "attempt_worktree_claim_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "belt_commit_outcome_persist_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "belt_capture_intent_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dispatch_worker_writable_sandbox_wet_witness.dag",

@@ -14,6 +14,11 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
+  KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
+  GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
+  GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
+  SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
+  declaration_is_grounded_natural,
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
@@ -28,7 +33,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { Unmarked, declaration_provenance_of,
+import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -99,7 +104,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
   kernel_profile_lookup,
@@ -107,7 +112,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -126,7 +131,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { overlay_skips_kernel_name,
+import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -173,7 +178,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -223,6 +228,9 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
+  node_is_never_declaration,
+  constructor_roster_for,
+  ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
   expand_scrut_type_for_variant_lookup,
   pattern_matches_constructor,
   constructor_fields
@@ -805,11 +813,43 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       name: name,
       expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name, parent_identity: variant_parent_identity_of(owner: Present { value: decided }, scope: scope) } } },
       children: [],
-      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      inferred: Present { value: Resolved { node: expected_decided_variant_type(name: name, decided: decided, decided_name: decided_name, expected: expected, scope: scope) } },
       span: texpr.span,
       name_span: texpr.span
     ),
     diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+// THE NULLARY ARM OF THE OPTIONAL, UNDER AN OPTIONAL EXPECTATION, HAS THE EXPECTED OPTIONAL AS ITS ONLY
+// TYPE. `Absent` carries no payload, so the kernel coproduct that elected it types the value with an
+// unbound payload (`Optional<T>` with T a variable), and an `if c { Absent } else { <T?> }` join then
+// compares that unbound payload against T?. variant_reference_inferred_node refuses an Optional
+// expectation on purpose -- `Mod` against `BinOp?` is a coercion the emitter owes a wrap for -- but
+// that hazard is an arm of ANOTHER coproduct (`Red` against `Color?`); the Optional's own nullary arm is
+// already the optional. The owner is identified by declaration (declaration_is_std_optional), never by
+// the arm's shape: a user coproduct's no-payload arm keeps the refusal.
+fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional && optional_nullary_arm_of(owner: decided, name: name, scope: scope) {
+        exp
+      } else {
+        variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+      }
+    Absent => variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+  }
+}
+
+fn optional_nullary_arm_of(owner: Node, name: String, scope: InferScope) -> Bool {
+  match variant_parent_identity_of(owner: Present { value: owner }, scope: scope) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+      declaration_is_std_optional(d: d)
+        && match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+          Present { value: arm } => (arm.children |> count) == 0
+          Absent => false
+        }
+    _ => false
   }
 }
 
@@ -861,15 +901,12 @@ fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferSc
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
-  if contains(name, ".") {
-    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
-      Present { value: resolved } =>
-        if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
-          Present { value: resolved }
-        } else { none }
-      Absent => none
-    }
-  } else {
+  match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
+    Present { value: resolved } =>
+      if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
+        Present { value: resolved }
+      } else { none }
+    Absent =>
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -1531,8 +1568,8 @@ fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, sco
       Absent => with_required_cardinality(n: declared)
     }
     kernel_value_declared_type_mismatch(
-      formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
-      actual: peel_nominal_alias_identity(n: produced, env: scope.type_env, module_name: scope.module_name),
+      formal: expand_nominal_alias_rhs(n: declared_required, env: scope.type_env, module_name: scope.module_name),
+      actual: expand_nominal_alias_rhs(n: produced, env: scope.type_env, module_name: scope.module_name),
       type_env: scope.type_env,
       source_indices: scope.type_env.source_indices)
   }
@@ -1580,7 +1617,7 @@ fn declared_type_kernel_inhabitance_mismatch_at_element(
 // arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
 // callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
 // or arity difference now refuses too, where before it was accepted under the erasure.
-fn callable_element_signature_mismatch(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_element_signature_mismatch(declared: Node, produced: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
     && node_is_element_collection(n: produced, source_indices: source_indices)
     && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
@@ -1599,7 +1636,7 @@ fn callable_element_signature_mismatch(declared: Node, produced: Node, source_in
             let declared_element = child_type_node(ch: dl)
             let produced_element = child_type_node(ch: pr)
             type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
-              && callable_signature_mismatch(formal: declared_element, actual: produced_element, source_indices: source_indices)
+              && callable_signature_mismatch(formal: declared_element, actual: produced_element, env: env, source_indices: source_indices)
         }
     }
   }
@@ -1671,6 +1708,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
@@ -1697,7 +1742,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     )]
   }
   else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
-      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
+      && callable_signature_mismatch(formal: declared, actual: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -1713,7 +1758,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
+  else if callable_element_signature_mismatch(declared: declared, produced: produced, env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -2157,19 +2202,6 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
     || n.params |> count > 0
 }
 
-// CALLABILITY IS THE ARROW CONNECTIVE; A NON-EMPTY PARAMETER LIST IS SUFFICIENT, NEVER NECESSARY.
-// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
-// and a nullary `fn() -> R` is an Arrow with an empty parameter list. This predicate used to be
-// `params |> count > 0` alone, which read "takes an argument" as "is a function type": every nullary
-// function type answered false, so the call seam discarded a found nullary local and retried its
-// name as a global ("function 'pick' not found in scope"), and the nominal brand checks below treated
-// a nullary arrow as a named type. The params disjunct is kept because a declaration-shaped node
-// carries its formals in params, and on such a node a non-empty list IS a callable fact.
-// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
-fn type_node_is_callable(n: Node) -> Bool {
-  n.connective == Arrow || n.params |> count > 0
-}
-
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
 // by construction rather than by argument. It read:
 //
@@ -2217,7 +2249,7 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !is_declared_container_alias_spelling(name: actual_name)
     && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
-    && !transparent_alias_identity_agrees(index: type_env.symbol_index, left: formal_name, right: actual_name)
+    && !alias_identity_in_judgment(left: formal, right: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env })
 }
 
 fn is_where_refinement_type(ty: Node) -> Bool {
@@ -2761,7 +2793,7 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
   }
 }
 
-// Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal
+// Cost shape (bare-minimum-cost, DESIGN 6): expand_nominal_alias_rhs runs only on the refusal
 // path (predicates present AND not covered), inside the final else of
 // where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of
 // calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded
@@ -2928,7 +2960,7 @@ fn where_refinement_mismatch_diags(
     ) {
       []
     } else {
-      let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
+      let formal_checked = expand_nominal_alias_rhs(n: formal_resolved, env: type_env, module_name: module_name)
       flat_map(
         preds,
         pred => where_refinement_diags_for_predicate(
@@ -3317,7 +3349,7 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // an alias binding carries the ALIAS declaration's span while its `name` field carries the TARGET.
 // So the authored reading answers `KAlias` and the field answers `KOuter`. An earlier attempt
 // compared authored names and was measured INERT, because it was comparing a name with itself.
-// (An attempt before that followed `decl.inferred` -- the shape `peel_nominal_alias_identity` reads
+// (An attempt before that followed `decl.inferred` -- the shape `expand_nominal_alias_rhs` reads
 // for PARAMETERIZED aliases -- which this binding does not carry at all, and was also inert.
 // Typecheck and regen were green over both.)
 //
@@ -3332,6 +3364,36 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
 // ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
 // because exhausting the walk establishes ignorance, not a mismatch.
+//
+// THE VALUE SHAPE IS NOT THE WALL (gunbc node://adhoc-ed047a8d-5b3, measured 2026-10-17). This
+// relation used to bail whenever the produced node had ANY children -- `(actual_base.children |>
+// count) > 0` -- on the reading that a structured produced side is another relation's judgment.
+// That reading was keyed on the VALUE'S RUNTIME SHAPE, not on its DECLARED type, and it admitted
+// the floor failure it now refuses: the corpus Bool is `type Bool = True | False`, so a Bool
+// VARIABLE's node carries two children while the `true` literal is a childless kernel spelling --
+// `takes(x: true)` refused and `takes(x: q)` with `q: Bool` accepted with zero diagnostics, and
+// `fn entry() -> Int { probe(q: true) }` then INTERPRETED the Bool through the Int formal
+// (measured; the emitted Rust carried `fn probe(q:bool) -> i64`). The shape gate was never the
+// exemption anyone meant to grant: every case it actually exempted (coproduct-pair at a
+// coproduct formal, record at a coproduct, refinement children) is refused or admitted elsewhere
+// by a cited name-level judgment -- the two-relation declared_type_obligation_diags wall, the
+// coproduct-head arm, the where-refinement peel above -- while what it wrongly exempted and this
+// rung now refuses is a KERNEL-NAMED declared type whose values are shaped: the corpus Bool
+// (`type Bool = True | False`) at a scalar formal at every consulted position, and `Bool` at a
+// differently-parameterised declared head (`FreeMonoid<Int>`), including through the generic type
+// argument this relation is consulted at as well (all eight flips measured on the pinned pair).
+// WHAT THIS RUNG DOES NOT CLAIM: a value whose declared head is NOT kernel-named -- a user
+// `type Nat = Zero | Succ { predecessor: Nat }`, a user `type Opt<T>`, a user coproduct -- still
+// leaves through the guard above (`is_kernel_type(actual_name) == false` admits, and `Unit` is
+// excluded) and is judged only by the two-relation wall, exactly as before this change; measured
+// unchanged on both sides of the pin. Closing that guard is the named next rung of
+// gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel, not this one.
+// The surviving accepts each carry a cited reason: name equality, the declared `dag_can_cast`
+// rows (Int<->Float) and the grounded identity rows (Int->Nat, String->FreeMonoid in
+// dag/std/coercion.dag -- the declared text unfold the operator ruled legitimate), the
+// structural-carrier template, the single-child refinement. A literal and a named value of the
+// same declared type now receive the SAME verdict, which is the DESIGN section 4b floor: values
+// inhabit their DECLARED types, not their literal spellings.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   kernel_value_declared_type_mismatch_bounded(
     formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
@@ -3356,7 +3418,7 @@ fn kernel_value_declared_type_mismatch_bounded(
   let formal_carries_optional = formal.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
   let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
-  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
+  if formal.connective == Arrow || actual.connective == Arrow {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
@@ -3427,7 +3489,7 @@ fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   }
 }
 
-data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
+data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and expand_nominal_alias_rhs is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
 
 type EqualityAdmissionRefusal {
   type_name: String
@@ -3524,7 +3586,7 @@ fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope:
   if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
     return none
   }
-  let resolved = peel_nominal_alias_identity(n: peeled, env: scope.type_env, module_name: scope.module_name)
+  let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
   let resolved_identity = type_reference_identity(n: resolved, source_indices: source_indices)
   if (resolved.connective != NoConnective) || resolved_identity != ident_key || (resolved.children |> count) != (peeled.children |> count) {
     if resolved_identity == ident_key {
@@ -3685,7 +3747,9 @@ fn literal_introduction_type_mismatch(formal: Node, actual_expr: Node, scope: In
   }
 }
 
-fn application_type_name_identity(
+// The spelling of the head an alias EXPANDS to (RHS structure, not identity: which declaration a name denotes is
+// settled_declaration_of_type_name / alias_names_settled_agree). Used to name the expansion for structural comparisons.
+fn application_type_expansion_head_name(
   type_name: String,
   type_env: TypeEnv,
   module_name: String,
@@ -3697,34 +3761,26 @@ fn application_type_name_identity(
         Present { value: Resolved { node: target } } =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name))
+            node: expand_nominal_alias_rhs(n: target, env: type_env, module_name: module_name))
         _ =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name))
+            node: expand_nominal_alias_rhs(n: decl, env: type_env, module_name: module_name))
       }
     Absent => type_name
   }
 }
 
-// THE SAME PEEL, ANSWERED AS A DECLARATION. application_type_name_identity answers a leaf
-// SPELLING, and two declarations that share a spelling then read as one type: a module declaring its
-// own `type FreeMonoid<T> { .. }` had its record admitted at a List<Int> formal, because List peels
-// to std.algebra's FreeMonoid and both leaves read "FreeMonoid". When both sides name a declaration,
-// the declarations decide; the spelling stays the answer only where no declaration is recoverable.
-fn application_type_name_declaration(
-  type_name: String,
-  type_env: TypeEnv,
-  module_name: String,
-  source_indices: Map<String, NewlineIndex>
-) -> DeclarationRef? {
-  match lookup_type_by_name(env: type_env, name: type_name) {
-    Present { value: decl } =>
-      let peeled = match decl.inferred {
-        Present { value: Resolved { node: target } } => peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name)
-        _ => peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
+// The declaration a type NAME denotes once its alias chain settles: the head of the same settled_type the one relation
+// (alias_settled_agree / alias_names_settled_agree) compares, so a module declaring its own `type FreeMonoid<T> { .. }`
+// and std.algebra's carrier stay two declarations, and the spelling never decides.
+fn settled_declaration_of_type_name(type_name: String, type_env: TypeEnv) -> DeclarationRef? {
+  match declaration_named_by_type_name(name: type_name, env: type_env) {
+    Present { value: d } =>
+      match settled_type_of_declaration(d: d, source_indices: type_env.source_indices, env: type_env, fuel: 16) {
+        Present { value: settled } => Present { value: settled.head }
+        Absent => none
       }
-      type_reference_declaration_ref(n: peeled, source_indices: source_indices, env: type_env)
     Absent => none
   }
 }
@@ -3733,7 +3789,7 @@ fn structured_application_structural_type_name(
   type_name: String,
   scope: InferScope
 ) -> String {
-  application_type_name_identity(
+  application_type_expansion_head_name(
     type_name: type_name,
     type_env: scope.type_env,
     module_name: scope.module_name,
@@ -3780,10 +3836,6 @@ fn application_type_names_compatible(
   } else if formal_name == lit_name {
     true
   } else {
-    let formal_identity = application_type_name_identity(
-      type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    let lit_identity = application_type_name_identity(
-      type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
     let same_declaration = match lookup_type_by_name(env: type_env, name: formal_name) {
       Present { value: formal_item } =>
         match lookup_type_by_name(env: type_env, name: lit_name) {
@@ -3800,26 +3852,12 @@ fn application_type_names_compatible(
         }
       Absent => false
     }
-    let same_identity = if same_declaration { true } else {
-      match application_type_name_declaration(
-        type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-        Present { value: formal_decl } =>
-          match application_type_name_declaration(
-            type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-            Present { value: lit_decl } => declaration_ref_eq(a: formal_decl, b: lit_decl)
-            Absent => formal_identity == lit_identity
-          }
-        Absent => formal_identity == lit_identity
-      }
-    }
-    if same_identity {
+    if same_declaration {
       true
     } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
       true
-    } else if type_name_transparently_aliases_to(
-      alias_name: lit_name, target_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      || type_name_transparently_aliases_to(
-        alias_name: formal_name, target_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+    } else if alias_names_identity_in_judgment(
+      left: formal_name, right: lit_name, source_indices: source_indices, text: TextJudgedIn { env: type_env }) {
       true
     } else {
       match lookup_type_by_name(env: type_env, name: formal_name) {
@@ -3831,91 +3869,12 @@ fn application_type_names_compatible(
   }
 }
 
-// THE TRANSPARENT-ALIAS HEAD RELATION IS KEYED ON DECLARATIONS, NOT SPELLINGS. It used to ask
-// peel_nominal_alias_identity for the alias's target name, but that peel exists to KEEP the brand:
-// it returns the structural body stamped with the alias's own authored identity, so the name it
-// yields is the alias again and the relation answered false for every alias whose body is not a
-// kernel primitive. A record literal handed to a formal declared through such an alias -- `type
-// TokenThroughput = FieldOfFractions<Nat>` receiving `FieldOfFractions { .. }`, and equally `type
-// A = SomeRecord` receiving `SomeRecord { .. }` -- was then refused at the head as a mismatch
-// between an alias and its own body. The alias's target is not re-derived from its leaf: a leaf
-// read in the judging scope admitted a same-leaf record declared by ANOTHER module (measured), and
-// DESIGN section 4 keys compatibility on the declaration a position resolves to. So the relation
-// reads the DeclarationRef that resolve wrote on the alias item's right-hand side head, in the
-// alias's own scope (v1.compiler.infer alias_rhs_reference, through the one writer
-// v1.compiler.infer_resolve reference_with_declaration), and compares it with the declaration the other side resolves to. An alias whose head
-// carries no identity (a kernel spelling, today) is not read: no agreement, fail-closed. This is a
-// HEAD relation, like every name comparison application_type_names_compatible makes: an applied
-// right-hand side contributes its constructor, and its arguments are judged where the nodes are.
-// The chase is over identities and bounded, so an alias cycle stops rather than recursing.
-fn type_name_transparently_aliases_to(
-  alias_name: String,
-  target_name: String,
-  type_env: TypeEnv,
-  module_name: String,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  match lookup_type_by_name(env: type_env, name: alias_name) {
-    Absent => false
-    Present { value: alias_decl } =>
-      match application_type_name_declaration(type_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
-        Absent => false
-        Present { value: target_ref } =>
-          match alias_rhs_head_declaration(decl: alias_decl, type_env: type_env) {
-            Absent => false
-            Present { value: head } => alias_head_chase_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
-          }
-      }
-  }
-}
-
-fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_env: TypeEnv, fuel: Int) -> Bool {
-  if declaration_ref_eq(a: head, b: target) {
-    true
-  } else if fuel <= 0 {
-    false
-  } else {
-    match alias_item_rhs_head(item_ref: head, type_env: type_env) {
-      Present { value: next } => alias_head_chase_reaches(head: next, target: target, type_env: type_env, fuel: fuel - 1)
-      Absent => false
-    }
-  }
-}
-
 // The alias's own declaration item, found by the identity minted from the declaration node's span --
 // not by its spelling -- and the identity its right-hand side head was resolved to.
 fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? {
   match declaration_ref_of_declaration_node(decl: decl, source_indices: type_env.source_indices, env: type_env) {
-    Present { value: alias_ref } => alias_item_rhs_head(item_ref: alias_ref, type_env: type_env)
+    Present { value: alias_ref } => alias_rhs_head_of_declaration(item_ref: alias_ref, env: type_env)
     Absent => none
-  }
-}
-
-// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT (quiet-gull-780 ruling B). The alias's
-// declaring module env is found by EXACT module path (the alias's own DeclarationRef): this module's env
-// when the alias is local, else a direct-import parent env. Its binding retains the RHS reference
-// (TypeBinding.alias_rhs), whose Node.declaration the one writer set in the alias's own scope. Nothing
-// here re-resolves a spelling, consults the census-built symbol index (pre-resolve, and qualified by the
-// non-hermetic global_bare_owner_module), or asks which module happens to declare a leaf name. An alias
-// declared outside the module and its direct imports, or a head with no recorded identity, answers none,
-// and every caller refuses on none.
-fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> DeclarationRef? {
-  let declaring = if type_env.module_path == (item_ref.module_path as String) {
-    Present { value: type_env }
-  } else {
-    type_env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
-  }
-  match declaring {
-    Absent => none
-    Present { value: env } =>
-      match map_get(env.str_bindings, item_ref.decl_name as String) {
-        Absent => none
-        Present { value: binding } =>
-          match binding.alias_rhs {
-            Present { value: rhs } => rhs.declaration
-            Absent => none
-          }
-      }
   }
 }
 
@@ -3967,7 +3926,7 @@ fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> Declarati
 // which is exactly such an alias of `Fnv1a64Structural`. The fact needed -- what a declaration
 // aliases -- does not survive `resolve_item_types`, so no amount of peeling at this seam can
 // recover it, which is gunbc#8873's finding and the reason its relation is computed ONCE during
-// census construction. This wall therefore consumes `transparent_alias_identity_agrees` over the
+// census construction. This wall therefore consumes `alias_identity_in_judgment` (the one alias relation) over the
 // `SymbolIndex` the judgment already carries rather than minting a second identity relation, per
 // the coordination ruling recorded on that lane.
 //
@@ -3977,6 +3936,7 @@ fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> Declarati
 // formal node the seam already holds, and the alias relation is a map lookup on a census built once.
 fn coproduct_variant_payload_admits_type_name(
   decl: Node,
+  actual: Node,
   actual_name: String,
   type_env: TypeEnv,
   module_name: String,
@@ -3994,8 +3954,7 @@ fn coproduct_variant_payload_admits_type_name(
         lit_name: actual_name,
         type_env: type_env,
         module_name: module_name,
-        source_indices: source_indices) || transparent_alias_identity_agrees(
-          index: type_env.symbol_index, left: payload_name, right: actual_name)
+        source_indices: source_indices) || alias_identity_in_judgment(left: payload_type, right: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env })
       payload_name != "" && names_agree
     )
   )
@@ -4020,7 +3979,7 @@ fn coproduct_variant_payload_admits_type_name(
 // excluded by construction rather than carved out: (1) optionality is excluded on both sides by the
 // caller's cardinality guard and by the `Optional` carrier exclusion; (2) a brand alias does not
 // resolve to a `Disj` declaration, so it never reaches this arm, and a TRANSPARENT alias of the same
-// coproduct is settled by `transparent_alias_identity_agrees` before it; (3) an anonymous record
+// coproduct is settled by `alias_identity_in_judgment` before it; (3) an anonymous record
 // literal has no authored name, and this arm requires both sides to resolve BY NAME to a
 // declaration; (4) cardinality is read from the nodes the seam already holds, not rebuilt.
 //
@@ -4223,6 +4182,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
+  | RefusedValueAtNever
 
 
 type InhabitanceVerdict
@@ -4440,9 +4400,8 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 }
 
 // THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
-// them: coproduct_payload_where_parent_required already peels transparent aliases through
-// transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
-// tree and this relation inherits it instead of re-deriving a second answer.
+// them: alias identity is decided by the one relation (alias_identity_in_judgment over settled_type / alias_settled_agree),
+// at the node level and, for a seam holding only spellings, through its name entry.
 // A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
 // declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
 // structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
@@ -4494,12 +4453,18 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedOptionalAtRequired }
   } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedValueAtNever }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
   } else if declared_name == "" {
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if alias_identity_in_judgment(
+      left: declared, right: produced, source_indices: source_indices,
+      text: TextJudgedIn { env: scope.type_env }) {
+    Inhabits
   } else if carrier_verdict == Present { value: true } {
     Inhabits
   } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
@@ -4558,7 +4523,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // bare-name identity debt routed to 2K's identity-keying lane.
 fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
-  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  let declared_peeled = expand_nominal_alias_rhs(n: declared, env: scope.type_env, module_name: scope.module_name)
   declared.return_cardinality == CardOptional
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared)) == "Optional"
@@ -4675,7 +4640,7 @@ fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, sco
 // gap. `type Words = List<String>` is a declared alias whose outer node is not List, and
 // `FreeMonoid<T>` arrives as `List<T>` -- both are collections, and refusing either against the
 // other would be a fabricated refusal. Peeling both sides through the existing nominal-alias
-// authority decides alias identity in exactly one place, so an alias pair answers
+// authority decides NAME-level alias identity (the node-level relation is settled_type), so an alias pair answers
 // collection==collection and is excluded before the established-identity question is reached.
 //
 // WHY "ESTABLISHED" IS THE GUARD AND NOT AN EXTRA. A generic formal, a type variable, a callable,
@@ -4691,7 +4656,7 @@ fn side_is_collection_after_peel(n: Node, scope: InferScope) -> Bool {
       || node_is_keyed_collection(n: n, source_indices: si) {
     true
   } else {
-    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    let peeled = expand_nominal_alias_rhs(n: n, env: scope.type_env, module_name: scope.module_name)
     node_is_element_collection(n: peeled, source_indices: si)
       || node_is_keyed_collection(n: peeled, source_indices: si)
   }
@@ -4706,7 +4671,7 @@ fn side_is_established_non_collection_identity(n: Node, scope: InferScope) -> Bo
   if is_generic || type_node_is_callable(n: n) {
     false
   } else {
-    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    let peeled = expand_nominal_alias_rhs(n: n, env: scope.type_env, module_name: scope.module_name)
     let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: si, node: peeled))
     let refinement_base_is_kernel = if is_where_refinement_type(ty: n) {
       match n.children |> first {
@@ -4756,6 +4721,33 @@ fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferS
     && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
 }
 
+// A VALUE NEVER INHABITS NEVER. Never has no producer, so any produced value that is not itself
+// Never (by DeclarationRef identity, node_is_never_declaration) is refused at a Never position.
+// Without this arm the declared head exposes as OpaqueTypeHead, which the relations above leave
+// unjudged, so absurd(i: Int) was admitted (gunbc.recurring_failure_mode
+// a_value_of_any_type_is_admitted_at_an_opaque_declared_type: this is one leaf of that class, to
+// be folded in when the relation distinguishes host-realized opaques from constructor-less
+// declarations). A generic or unresolved produced type is not judged here.
+fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let env = scope.type_env
+  let declared_resolved = match lookup_type_for(env: env, node: declared) {
+    Present { value: r } => r
+    Absent => declared
+  }
+  let produced_resolved = match lookup_type_for(env: env, node: produced) {
+    Present { value: r } => r
+    Absent => produced
+  }
+  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  node_is_never_declaration(resolved: declared_resolved, env: env)
+    && !produced_is_generic
+    && authored_name_at(source_indices: env.source_indices, node: produced) != ""
+    && !node_is_never_declaration(resolved: produced_resolved, env: env)
+}
+
 fn declared_head_is_kernel_scalar_through_refinement(declared: Node, scope: InferScope) -> Bool {
   if type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope)) {
     true
@@ -4791,8 +4783,7 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
       source_indices: scope.type_env.source_indices)
-      || transparent_alias_identity_agrees(
-        index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
+      || alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
     false
   } else {
     let declared_product = nominal_product_head_name(n: declared, scope: scope)
@@ -4809,7 +4800,7 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
 // WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
 // CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
 // `type Nat = Zero | Succ { prev: Nat }` and std.integer declares
-// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is a declared
+// `type Int = NonNegative { n: Nat } | Negative { pred: Nat }`: the canonical form of both is a declared
 // STRUCTURE while their values are authored as kernel integer literals. Read structurally that
 // is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
 // direct-call seam, every one correct code.
@@ -4924,8 +4915,8 @@ fn nominal_product_inhabitance_refusal(
   let produced_head = nominal_product_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     none
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     Present { value: RefusedDistinctProductConstructor }
   } else if applied_type_arguments_conflict(
       declared: declared, produced: produced, scope: scope) {
@@ -4993,7 +4984,7 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
     index: scope.type_env.symbol_index, name: name)
   match lookup_type_by_name(env: scope.type_env, name: representative) {
     Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(
+      let peeled = expand_nominal_alias_rhs(
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if is_product_type(n: peeled) && is_where_refinement_type(ty: peeled) == false { name } else { "" }
     Absent => ""
@@ -5031,7 +5022,7 @@ fn nominal_coproduct_head_name_if_declared_coproduct(name: String, scope: InferS
     index: scope.type_env.symbol_index, name: name)
   match lookup_type_by_name(env: scope.type_env, name: representative) {
     Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(
+      let peeled = expand_nominal_alias_rhs(
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Disj { name } else { "" }
     Absent => ""
@@ -5057,8 +5048,8 @@ fn nominal_coproduct_applied_argument_conflict(
   let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
   if declared_head == "" || produced_head == "" {
     false
-  } else if nominal_product_head_names_agree(
-      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+  } else if nominal_product_heads_agree(
+      declared: declared, produced: produced, declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     false
   } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
     false
@@ -5124,7 +5115,7 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
           index: scope.type_env.symbol_index, name: name)
         match lookup_type_by_name(env: scope.type_env, name: representative) {
           Present { value: decl } =>
-            let peeled = peel_nominal_alias_identity(
+            let peeled = expand_nominal_alias_rhs(
               n: decl, env: scope.type_env, module_name: scope.module_name)
             if peeled.connective == Disj { name } else { "" }
           Absent => ""
@@ -5132,6 +5123,13 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
       _ => ""
     }
   }
+}
+
+// HEAD AGREEMENT IS DECIDED BY THE DECLARATION EACH SIDE SETTLES TO FIRST (alias_identity_in_judgment: an alias and its expansion are
+// one head), and only a pair that names no common declaration falls to the spelled-name relation below.
+fn nominal_product_heads_agree(declared: Node, produced: Node, declared_name: String, produced_name: String, scope: InferScope) -> Bool {
+  alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+    || nominal_product_head_names_agree(declared_name: declared_name, produced_name: produced_name, scope: scope)
 }
 
 fn nominal_product_head_names_agree(
@@ -5145,8 +5143,6 @@ fn nominal_product_head_names_agree(
     type_env: scope.type_env,
     module_name: scope.module_name,
     source_indices: scope.type_env.source_indices)
-    || transparent_alias_identity_agrees(
-      index: scope.type_env.symbol_index, left: declared_name, right: produced_name)
 }
 
 // ARITY DIFFERENCE IS NOT THIS CLASS, and neither is an unapplied side. Two applications of one
@@ -5238,8 +5234,8 @@ fn applied_type_argument_conflicts(
       || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
       false
     } else {
-      nominal_product_head_names_agree(
-        declared_name: d_name, produced_name: p_name, scope: scope) == false
+      nominal_product_heads_agree(
+        declared: d, produced: p, declared_name: d_name, produced_name: p_name, scope: scope) == false
     }
   }
 }
@@ -5327,6 +5323,8 @@ fn inhabitance_refusal_position_label(
   match reason {
     RefusedProductCoproductHeadMismatch =>
       concat(base, " [RefusedProductCoproductHeadMismatch]")
+    RefusedValueAtNever =>
+      concat(base, " [RefusedValueAtNever]")
     _ => base
   }
 }
@@ -5425,8 +5423,7 @@ fn coproduct_payload_where_parent_required(
         module_name: scope.module_name,
         source_indices: source_indices) {
       false
-    } else if transparent_alias_identity_agrees(
-        index: scope.type_env.symbol_index, left: formal_name, right: actual_name) {
+    } else if alias_identity_in_judgment(left: formal, right: actual, source_indices: source_indices, text: TextJudgedIn { env: scope.type_env }) {
       false
     } else {
       let actual_rep = transparent_alias_representative(index: scope.type_env.symbol_index, name: actual_name)
@@ -5443,6 +5440,7 @@ fn coproduct_payload_where_parent_required(
           } else {
             coproduct_variant_payload_admits_type_name(
               decl: decl,
+              actual: actual,
               actual_name: actual_name,
               type_env: scope.type_env,
               module_name: scope.module_name,
@@ -5472,7 +5470,7 @@ fn structured_application_site_type_mismatch(
     ExprRecordLit { parent_enum: _ } =>
       structured_application_site_type_mismatch_with_peeled(
         formal: formal,
-        formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        formal_peeled: expand_nominal_alias_rhs(n: formal, env: scope.type_env, module_name: scope.module_name),
         formal_structural_name: structured_application_structural_type_name(
           type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: formal), scope: scope),
         actual_expr: actual_expr,
@@ -5500,8 +5498,7 @@ fn structured_application_site_type_mismatch(
 data kernel_container_carrier_module: String = "std.algebra"
 
 // The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
-// declaration its alias resolves to (application_type_name_declaration, the same peel the
-// application-site identity uses).
+// declaration its alias resolves to (settled_declaration_of_type_name, the head of the settled type the one relation compares).
 fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
   let source_indices = scope.type_env.source_indices
   let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
@@ -5511,8 +5508,7 @@ fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope)
       Absent => none
     }
   } else {
-    application_type_name_declaration(
-      type_name: name, type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+    settled_declaration_of_type_name(type_name: name, type_env: scope.type_env)
   }
 }
 
@@ -5720,27 +5716,6 @@ fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
-// A qualified identity may never be reduced to its last segment here: a.Item and b.Item are
-// distinct declarations even though their nicknames coincide. Full carried names are the
-// strongest identity available for this legacy field-initializer seam; if either side cannot
-// retain that identity, decline the alias admission and let the mismatch stay loud.
-fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: TypeEnv) -> Bool {
-  let expected_name = authored_name_at(source_indices: env.source_indices, node: expected)
-  let produced_name = authored_name_at(source_indices: env.source_indices, node: produced)
-  match lookup_type_by_name(env: env, name: expected_name) {
-    Present { value: decl } =>
-      let target_name = if decl.name != "" {
-        decl.name
-      } else {
-        carried_structural_type_name(n: decl, source_indices: env.source_indices, depth: 0)
-      }
-      target_name != ""
-        && target_name != expected_name
-        && target_name == produced_name
-    Absent => false
-  }
-}
-
 fn direct_call_structured_record_literal_resolved_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -5751,8 +5726,7 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      let formal_peeled = peel_nominal_alias_identity(n: formal, env: type_env, module_name: module_name)
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal)
       match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
         Present { value: lit_name } =>
           if application_type_names_compatible(
@@ -5761,13 +5735,13 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
             false
           } else {
             let actual_raw = resolved_type(n: actual_expr)
-            let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+            let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
             direct_call_arg_type_mismatch(
               formal: formal, substitution_basis: substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)
           }
         Absent =>
           let actual_raw = resolved_type(n: actual_expr)
-          let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+          let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
           direct_call_arg_type_mismatch(
             formal: formal, substitution_basis: substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
@@ -5879,9 +5853,9 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 // Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3).
 // direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were
 // line-for-line duplicates of the same per-formal prologue: param_node_type_expr,
-// substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional
+// substitute_generics, expand_nominal_alias_rhs, authored_name_at, and the named-then-positional
 // actual search. Both run over the SAME value_params, typed_args and call_subst at the one
-// direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity
+// direct-call seam, so every formal was canonicalized twice per call. expand_nominal_alias_rhs
 // is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and
 // it measured as the ENTIRE cost of the conformance seam: on gunbc.host.host_effect_realize the two
 // timed peels inside direct_call_arg_mismatch_diags accounted for that function to within
@@ -5944,7 +5918,7 @@ fn direct_call_structured_application_mismatch_diags(
           let host_into_sequence = !type_node_is_callable(n: formal)
             && host_text_into_structural_sequence(
               formal: formal,
-              actual: peel_nominal_alias_identity(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
+              actual: expand_nominal_alias_rhs(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
               unpeeled_actual: resolved_type(n: actual_expr),
               env: type_env)
           if host_into_sequence {
@@ -5960,7 +5934,7 @@ fn direct_call_structured_application_mismatch_diags(
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, substitution_basis: app.formal.substitution_basis, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)) {
             let actual_raw = resolved_type(n: actual_expr)
-            let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+            let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
             [text_crossing_or_type_mismatch_error(expected: formal, got: actual, env: type_env, span: actual_expr.span, module_name: module_name)]
           } else {
             []
@@ -6156,10 +6130,8 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,
                               subject: app.formal.parameter_identity,
-                              declared: peel_nominal_alias_identity(
-                                n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
-                              produced: peel_nominal_alias_identity(
-                                n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
+                              declared: child_type_node(ch: declared_pair.second),
+                              produced: child_type_node(ch: produced_child),
                               span: actual_expr.span
                             },
                             scope: scope
@@ -6192,10 +6164,8 @@ fn container_element_nominal_brand_mismatch(
       Present { value: formal_ch } =>
         match actual.children |> first {
           Present { value: actual_ch } =>
-            let formal_el = peel_nominal_alias_identity(
-              n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
-            let actual_el = peel_nominal_alias_identity(
-              n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
+            let formal_el = child_type_node(ch: formal_ch)
+            let actual_el = child_type_node(ch: actual_ch)
             nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, type_env: type_env, source_indices: source_indices)
           Absent => false
         }
@@ -6325,10 +6295,11 @@ fn callable_component_ground_mismatch(
   formal_part: Node,
   actual_part: Node,
   subst: Map<String, Node>,
+  env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
-    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, env: env, source_indices: source_indices)
   } else {
     let instantiated = substitute_generics(n: actual_part, subst: subst, source_indices: source_indices)
     if (formal_part.connective == Arrow) || (instantiated.connective == Arrow) {
@@ -6336,12 +6307,12 @@ fn callable_component_ground_mismatch(
         || conformance_ground_type(n: instantiated, source_indices: source_indices)
     } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
         && conformance_ground_type(n: instantiated, source_indices: source_indices) {
-      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
+      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextJudgedIn { env: env })
     } else { false }
   }
 }
 
-fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
   let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
   if (f_params |> count) != (a_params |> count) { true }
@@ -6350,16 +6321,16 @@ fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>,
       match a_params |> skip(pair.first) |> first {
         Present { value: ap } => callable_component_ground_mismatch(
           formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
-          subst: subst, source_indices: source_indices)
+          subst: subst, env: env, source_indices: source_indices)
         Absent => true
       })
     params_mismatch || callable_component_ground_mismatch(
       formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
-      subst: subst, source_indices: source_indices)
+      subst: subst, env: env, source_indices: source_indices)
   }
 }
 
-fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn callable_signature_mismatch(formal: Node, actual: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let f = callable_signature_view(n: formal)
   let a = callable_signature_view(n: actual)
   if (f.connective != Arrow) || (a.connective != Arrow) { false }
@@ -6367,7 +6338,7 @@ fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<S
     let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
     let subst = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
       source_indices: source_indices, acc: empty_map())
-    callable_arrow_mismatch(formal: f, actual: a, subst: subst, source_indices: source_indices)
+    callable_arrow_mismatch(formal: f, actual: a, subst: subst, env: env, source_indices: source_indices)
   }
 }
 
@@ -6480,7 +6451,7 @@ fn direct_call_arg_type_mismatch(
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
   if substitution_is_optional { false }
   else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
-    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    callable_signature_mismatch(formal: formal, actual: actual, env: type_env, source_indices: source_indices)
   }
   else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
     !one_sided_non_arrow_side_is_open(
@@ -6797,7 +6768,7 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
 // A VALUE'S TEXT REPRESENTATION IS ITS RESOLVED TYPE'S DECLARATION IDENTITY
 // (v1.compiler.infer_env text_representation_by_identity). It is NOT re-read through
-// peel_nominal_alias_identity: that peel looks the spelling up by name in THIS scope, which is the
+// expand_nominal_alias_rhs: that peel looks the spelling up by name in THIS scope, which is the
 // caller-re-resolution escape.
 fn argument_text_representation(value: Node, type_env: TypeEnv) -> TextRepresentation {
   text_representation_by_identity(n: expression_value_type(e: value), env: type_env)
@@ -6848,7 +6819,7 @@ fn direct_call_arg_mismatch_diags(
             []
           } else {
           let actual_raw = expression_value_type(e: actual_expr)
-          let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+          let actual = expand_nominal_alias_rhs(n: actual_raw, env: type_env, module_name: module_name)
           let formal_text = if formal_code_point_view(formal: app.formal, env: type_env) != none { CodePointSequence } else { text_representation_by_identity(n: formal, env: type_env) }
           let actual_text = argument_text_representation(value: actual_expr, type_env: type_env)
           let unjudged = text_unjudged_advisories(a: formal_text, b: actual_text, position: "a call argument", span: actual_expr.span, module_name: module_name)
@@ -7976,7 +7947,7 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 // direction has no declared route and is not unfolded: a code-point sequence at a host-text formal
 // stays a refusal (v1.compiler.infer_types node_type_equals_core, builtin_text_argument_crossing_diags).
 // The value's representation is read from the SAME peeled type direct_call_arg_mismatch_diags
-// judges (expression_value_type through peel_nominal_alias_identity), so a qualified
+// judges (expression_value_type through expand_nominal_alias_rhs), so a qualified
 // v2.std.text.String value whose raw resolved node still reads as the spelling String is not
 // mistaken for host text and unfolded twice.
 fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
@@ -9562,7 +9533,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             true => none
             false =>
               let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+              // A service operation is classified BEFORE a module path or a receiver (#14147: the
+              // module-path rewrite turned effect operations into missing functions).
+              match service_spine_projection(texpr: recv, scope: scope) {
+                Present { value: _ } => none
+                Absent =>
+              match declared_module_owner(index: scope.type_env.symbol_index, name: dotted) {
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
@@ -9577,6 +9553,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     scope: scope,
                     expected: expected
                   ) }
+              }
               }
           }
       }
@@ -9788,11 +9765,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
-        [inference_error(
-          message: "match expression has no arms",
-          span: span,
-          module_name: scope.module_name
-        )]
+        match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
+          PatternResolved { node: resolved_scrutinee } =>
+            match constructor_roster_for(type_node: resolved_scrutinee, env: scope.type_env) {
+              ConstructorsClosed { names: _ } => []
+              ConstructorsOpen =>
+                [inference_error(
+                  message: "match expression has no arms",
+                  span: span,
+                  module_name: scope.module_name
+                )]
+            }
+          PatternDynamic { span: _ } =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+          PatternLookupBlocked =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+        }
       } else {
         []
       }
@@ -9857,7 +9853,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
+          ) {
             []
           } else {
             [inference_error(
@@ -9996,9 +9992,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
                   match exp.children |> first {
                     Present { value: elem } => child_type_node(ch: elem)
-                    Absent => unit_type
+                    Absent => type_variable_node(id: "empty_list_element")
                   }
-                } else { unit_type }
+                } else { type_variable_node(id: "empty_list_element") }
               Absent => type_variable_node(id: "empty_list_element")
             }
           }
@@ -10086,6 +10082,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: cp } =>
                 let cpt = param_node_type_expr(n: cp)
                 if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
+                  extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
+                } else if is_unsolved_empty_list_element(n: cpt) {
+                  // The unsolved element of an empty list literal keeps its identity: collapsing it
+                  // to callable_param would defer a field read of it that no argument can establish.
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
                 } else {
                   extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
@@ -10513,12 +10513,22 @@ fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
   }
 }
 
+fn is_unsolved_empty_list_element(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } => id == "empty_list_element"
+    _ => false
+  }
+}
+
 fn is_never_constrained_enclosing_generic_base(n: Node, base_expr: Node, scope: InferScope) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: id } } =>
       let names = enclosing_fn_generic_names(scope: scope)
       let in_enclosing = names |> any(g => g == id)
-      in_enclosing && !field_base_is_in_flight_lambda_param(base: base_expr, scope: scope)
+      // empty_list_element is the unsolved element of an empty list literal; no callee generic
+      // carries that spelling, so no later argument round can bind it. Deferring a read of it
+      // would accept a field of a type nobody established.
+      (id == "empty_list_element") || (in_enclosing && !field_base_is_in_flight_lambda_param(base: base_expr, scope: scope))
     _ => false
   }
 }
@@ -10841,6 +10851,49 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
   }
 }
 
+// DOES THIS NAME CARRY A RECORD CONSTRUCTOR? A type name standing in record-literal position is
+// asked this ONE question before any field is read. A name declaring a coproduct does not: its
+// constructors are its arms. The answer is read off the EXPANSION, so `type ZzT = ZzU` is judged by
+// what ZzU is and not by the spelling ZzT: an alias carries no connective of its own (NoConnective),
+// and a name test alone would call every alias of a union a constructor. Only the structural shapes
+// answer: a name that resolves to nothing, to a primitive, or to a conjunction is left to the
+// refusals that already judge it, so this widens on none of them.
+// WHICH DECLARATION the literal's head names is asked of THIS module's binding chain (locals, then
+// the names it imports BY NAME) -- lookup_binding_on_chain, the same route record-literal widening
+// already consumes from infer_record_lit_structural, and the route local_coproduct_owner_from_locals
+// takes for the same question -- never the corpus-wide pool lookup. lookup_type_by_name walks past
+// the chain into the global-bare overlay, so a name that collides with an unrelated pool union
+// refuses a legal construction: test.claim.workspace_commissioning_apply_readback_witness builds the
+// arm UnitPropertyRead of runner_microvm_slot_start's union UnitPropertyReading, imported by name
+// from its owner, and was refused because the pool independently declares a DIFFERENT
+// UnitPropertyRead -- a union of UnitPropertyValue and UnitPropertyUnreadable -- in
+// live_deploy.unit_standing, a module that witness never imports. A name with no binding in this
+// module's chain is not refused here at all: this gate answers "does the declaration the author
+// named carry a record constructor", and with no bound declaration there is no such answer to give.
+fn record_lit_union_name_is_not_an_arm(decl: Node, type_name: String, scope: InferScope) -> Node? {
+  if has_child_named(n: decl, name: type_name, source_indices: scope.type_env.source_indices) { none } else { Present { value: decl } }
+}
+
+fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
+  match lookup_binding_on_chain(env: scope.type_env, name: type_name) {
+    Absent => none
+    Present { value: binding } => match binding.resolved.connective {
+      Disj => record_lit_union_name_is_not_an_arm(decl: binding.resolved, type_name: type_name, scope: scope)
+      _ => record_lit_expansion_declares_union(decl: binding.resolved, scope: scope)
+    }
+  }
+}
+
+// The answer for a name that is not spelled as a coproduct: the EXPANSION decides, so an alias of a
+// union is judged by what it expands to. Its own function because the seed grammar admits `let` only
+// in a statement block (a function body), never inside the branches of an if-expression -- the two
+// shapes this file already uses everywhere else.
+fn record_lit_expansion_declares_union(decl: Node, scope: InferScope) -> Node? {
+  let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
+  let expanded = expanded_result.resolved
+  if expanded.connective == Disj { Present { value: expanded } } else { none }
+}
+
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
@@ -11131,16 +11184,6 @@ fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
   }
 }
 
-fn std_optional_declaration_ref() -> DeclarationRef {
-  decl_ref(module_path: "std.optional", decl_name: "Optional")
-}
-
-// CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
-// module-path or name part is compared on its own.
-fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
-  d == std_optional_declaration_ref()
-}
-
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
 // std.optional::Optional that carries a member, and that member's name. Neither is a spelling
 // compared against "Present" / "value".
@@ -11199,36 +11242,19 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
   let carried = declaration_carried_through_resolution(n: n, hops: 3)
   match carried {
-    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
-  }
-}
-
-// THE IDENTITY A REFERENCE CARRIES: a type application's resolved node is stamped with the
-// declaration it applies (generic_declaration_application), and the reference reads it through
-// `inferred`. A use-site reference's own span declares nothing, so the span join cannot recover it.
-fn whole_declaration_carried(n: Node) -> DeclarationRef? {
-  match n.declaration {
     Present { value: d } =>
-      match d.field {
-        WholeDeclaration => Present { value: d }
-        NamedField { field_name: _ } => none
-        TypeParameter { name: _ } => none
+      // The declaration a reference carries is settled through any transparent alias (alias_settled_agree's own reading),
+      // so an alias of std Optional reads as Optional by the one relation instead of by a leaf of its own.
+      match settled_type(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+        Present { value: settled } => if declaration_is_std_optional(d: settled.head) { IsStdOptional } else { IsOtherType }
+        // A chain ending at a kernel type names no declaration and is not Optional; a chain that settles to neither is unrecovered, typed.
+        Absent =>
+          match kernel_settled_name(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+            Present { value: _ } => IsOtherType
+            Absent => OptionalUnrecovered { spelling: spelling }
+          }
       }
-    Absent => none
-  }
-}
-
-fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
-  match whole_declaration_carried(n: n) {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      if hops <= 0 { none } else {
-        match n.inferred {
-          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
-          _ => none
-        }
-      }
+    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
   }
 }
 
@@ -11456,6 +11482,51 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       none
     }
+  // DESIGN §4b (the floor first): a value inhabits its DECLARED type, and the values a type name
+  // admits are fixed by the shape it declares. A name that declares a coproduct carries NO record
+  // constructor at all, so `Union { ... }` -- in any position, with any fields -- builds a value no
+  // type inhabits: unrepresentable downstream, and it reached an EVAL non-exhaustive match instead
+  // of a located refusal at authoring (extdeps.systemd SystemdRunProperty: #13942 turned it from a
+  // record into a union, #14149 wrote the old record shape, and main refused only at run
+  // 38905139153). The defect is the NAME, so it is read off the resolved declaration BEFORE the
+  // field walk and fires whatever the fields happen to be: a union's child variants make
+  // record_lit_expected_fields accept any field set the union of their fields admits, which made
+  // the field walk the wrong place to ask. Located at name_span (the name is the defect), it lists
+  // the variants the author could have meant, and it is PREPENDED into the diagnostic concat
+  // instead of returned early -- an early return absorbed the later TypeMismatch that the
+  // stop-observation witness claims, which is the fail-open this repo refuses.
+  //
+  // It fires only where no other fact has already answered the construction question, so it
+  // widens on nothing: an owned presence variant (presence_variant_owner), an expected-coproduct
+  // arm (expected_variant_node), an instantiated generic (instantiated_struct_fields) or a field
+  // set read from the expected position (expected_struct_fields) each already resolve the
+  // constructor by a route that does not read a union as a record; an ambiguous bare name belongs
+  // to the AmbiguousReference refusal; and a name whose expansion resolves to a conjunction (a
+  // record, or a variant of a union -- the `Present { value: ... }` spelling) is a constructor this
+  // literal is entitled to use.
+  let union_name_decl = if tn_str != "" && presence_variant_owner == none && expected_variant_node == none && instantiated_struct_fields == none && expected_struct_fields == none && presence_name_is_ambiguous == false {
+    match alias_struct_expansion {
+      Present { value: expansion } =>
+        if expansion.resolved.connective == Disj {
+          Present { value: expansion.resolved }
+        } else {
+          record_lit_name_declares_union(type_name: tn_str, scope: scope)
+        }
+      Absent => record_lit_name_declares_union(type_name: tn_str, scope: scope)
+    }
+  } else { none }
+  let union_name_no_record_constructor_diags = match union_name_decl {
+    Present { value: decl } =>
+      [make_error_node(
+        diagnostic: TypeNameCarriesNoRecordConstructor {
+          type_name: tn_str,
+          declared_variants: decl.children |> map(v => authored_name_at(source_indices: si_presence, node: v)),
+          span: name_span
+        },
+        module_name: scope.module_name
+      )]
+    Absent => []
+  }
   let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
       []
     } else {
@@ -11556,9 +11627,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []
-        } else if declared_alias_target_matches_produced(
-          expected: expected_node, produced: got_node, env: scope.type_env) {
-          []
         } else if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
@@ -11580,8 +11648,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             Present { value: resolved } => resolved
             Absent => with_required_cardinality(n: expected_node)
           }
-          let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
-          let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
+          let formal_peeled = expand_nominal_alias_rhs(n: expected_required, env: scope.type_env, module_name: scope.module_name)
+          let actual_peeled = expand_nominal_alias_rhs(n: got_node, env: scope.type_env, module_name: scope.module_name)
           if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
@@ -11854,7 +11922,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags))
     }
   }
 }
@@ -14414,7 +14482,7 @@ fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
-  if contains(func_name, ".") {
+  if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
     match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
       FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
       FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
@@ -15177,6 +15245,15 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
     Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
+  } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
+    let type_node = Node {
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      connective: NoConnective, params: [], inferred: none,
+      return_cardinality: item.return_cardinality,
+      uses: [], body: none, transport: none, properties: item.properties,
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else {
     none
   }
@@ -15372,7 +15449,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // past it. COST SHAPE IS PART OF THE CONTRACT. The representative is derived ONCE, during symbol-
 // index census construction, over the same module population the census already walks, and every
 // consumer reads it by name through two map lookups. No consumer chases an alias chain, and in
-// particular no consumer calls peel_nominal_alias_identity per comparison -- a previous attempt at
+// particular no consumer calls expand_nominal_alias_rhs per comparison -- a previous attempt at
 // this seam did, and moved whole-corpus regeneration from ~100 seconds to beyond 31 minutes.
 // KEYING. Both the fully-qualified declared path (`module.Name`) and the bare name are recorded;
 // the bare key is recorded only when the corpus declares that name exactly once, so a homonym
@@ -15410,7 +15487,7 @@ fn transparent_alias_target_name(item: Node, source_indices: Map<String, Newline
 // QUALIFYING THE TARGET AT BUILD TIME, so the representative comparison can be exact.
 // An alias target is the AUTHORED right-hand-side name and may be bare (`type Hash =
 // Fnv1a64Structural`), while the other side of a comparison may be qualified. That mismatch is the
-// only reason transparent_alias_identity_agrees reduces to a last segment at all -- and the
+// only reason the retired name relation reduced to a last segment at all -- and the
 // reduction is a fail-open: `a.Foo = x.Bar` and `b.Baz = y.Bar` are two aliases onto two DIFFERENT
 // types whose names both end in `Bar`, and a last-segment comparison of their representatives
 // equates them, suppressing a genuine brand mismatch (found by review, smart-ram-730).
@@ -15490,19 +15567,6 @@ fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: M
   fold(sorted_map_keys(edges), init: empty_map(), f: (acc, k) =>
     map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: 16))
   )
-}
-
-fn node_declaration_file(n: Node) -> String {
-  match n.ident_span {
-    Present { value: sp } => sp.file
-    Absent => ""
-  }
-}
-
-fn node_declaration_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  type_declaration_identity_key(
-    decl_file: node_declaration_file(n: n),
-    declared_name: authored_name_at(source_indices: source_indices, node: n))
 }
 
 fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
@@ -15615,183 +15679,6 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
         Present { value: rep } => rep
         Absent => name
       }
-  }
-}
-
-// The agreement is licensed by an ALIAS EDGE, never by spelling alone. At least one side must
-// actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
-// a last-segment comparison would make any two homonymous nominal types from different modules
-// agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
-// distinction whose erasure caused the OccurrenceId/NodeOccurrenceIdentity incident. The caller has
-// already established the names are not equal, so an unchased pair is a refusal, not a question.
-// The last-segment reduction survives only for the chased case, because an alias target is the
-// authored RHS name and may be bare where the other side is qualified. Residual, stated rather
-// than hidden: for a census-AMBIGUOUS bare name that reduction can still equate two distinct
-// declarations -- the same open hole DESIGN 4b names on the source->.dag acceptance path, not one
-// this relation introduces.
-// BOTH sides chased means both representatives are stored targets, and stored targets are
-// qualified at build time wherever the corpus makes qualification exact -- so that comparison is
-// exact string equality and the a.Foo/b.Baz collision has no spelling. Only the ONE-chased case
-// still reduces to a last segment, because there the unchased side is an authored name this
-// relation never rewrote; that residue is narrower than the reduction it replaces and is the
-// remaining known widening, not a closed one.
-fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: String) -> Bool {
-  let left_rep = transparent_alias_representative(index: index, name: left)
-  let right_rep = transparent_alias_representative(index: index, name: right)
-  let left_chased = left_rep != left
-  let right_chased = right_rep != right
-  let both_chased = left_chased && right_chased
-  left != "" && right != "" && (left_chased || right_chased)
-    && if both_chased {
-      left_rep == right_rep
-    } else {
-      qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
-    }
-}
-
-// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
-// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
-// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
-// target refused here although they are one type. Resolution already carries the answer:
-// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
-// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
-// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
-// matches, and every applied argument is identical (if_branch_argument_types_identical).
-// transparent_alias_identity_agrees cannot answer this: it admits only bare-name aliases and
-// deliberately records no edge for `type A = B<C>`.
-// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
-// parameter's declared type reference carries none today, so `if c { a } else { b }` over
-// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
-// itself still judges by spelling (gunbc.recurring_failure_mode
-// carrier_alias_refuses_its_own_carriers_constructor).
-fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
-  let left_opt = left.return_cardinality == CardOptional
-  let right_opt = right.return_cardinality == CardOptional
-  if left_opt != right_opt { false }
-  else {
-    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
-    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
-    let left_args = left_inner.children
-    let right_args = right_inner.children
-    let same_declaration = match whole_declaration_carried(n: left_inner) {
-      Present { value: l } =>
-        match whole_declaration_carried(n: right_inner) {
-          Present { value: r } => declaration_ref_eq(a: l, b: r)
-          Absent => false
-        }
-      Absent => false
-    }
-    same_declaration
-      && (left_args |> count) == (right_args |> count)
-      && if_branch_type_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
-  }
-}
-
-fn if_branch_type_arguments_identical(left_args: List<Node>, right_args: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match left_args |> first {
-    Present { value: l } =>
-      match right_args |> first {
-        Present { value: r } =>
-          if_branch_argument_types_identical(left: child_type_node(ch: l), right: child_type_node(ch: r), source_indices: source_indices)
-            && if_branch_type_arguments_identical(left_args: left_args |> skip(1), right_args: right_args |> skip(1), source_indices: source_indices)
-        Absent => false
-      }
-    Absent => true
-  }
-}
-
-// AN APPLIED ARGUMENT AGREES BY IDENTITY, NEVER BY COMPATIBILITY. node_type_compatible is wider
-// than identity on purpose: it admits a compiler-error side, an unresolved type variable, an
-// optional against a unit, and a non-container application by its head name alone. None of those
-// may stand as "the same instantiation" here, so this relation does not consult it. Two arguments
-// are identical when their cardinality is equal, their heads are identical, and every applied
-// argument is identical in turn.
-fn if_branch_argument_types_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  left.return_cardinality == right.return_cardinality
-    && if_branch_argument_heads_identical(left: left, right: right, source_indices: source_indices)
-    && (left.children |> count) == (right.children |> count)
-    && if_branch_type_arguments_identical(left_args: left.children, right_args: right.children, source_indices: source_indices)
-}
-
-// A HEAD IS IDENTICAL BY THE STRONGEST IDENTITY BOTH SIDES CARRY. A callable compares its whole
-// signature under this same relation. A compiler-error side is never identical to anything. A type
-// variable is identical only to the same owner's parameter (if_branch_type_variables_identical). Otherwise two carried whole-declaration refs must
-// be equal; with no carried ref on either side, the reference identities (type_reference_identity's
-// declaring file and declared name) must be equal and name something. One side carrying a ref and
-// the other not declines, so the join stays refused.
-fn if_branch_argument_heads_identical(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if type_node_is_callable(n: left) || type_node_is_callable(n: right) {
-    type_node_is_callable(n: left) && type_node_is_callable(n: right)
-      && callable_signatures_agree(left: left, right: right, agree: (a, b) => if_branch_argument_types_identical(left: a, right: b, source_indices: source_indices))
-  } else {
-    match left.inferred {
-      Present { value: CompilerError { message: _, span: _ } } => false
-      Present { value: TypeVariable { id: left_id } } =>
-        match right.inferred {
-          Present { value: TypeVariable { id: right_id } } =>
-            if_branch_type_variables_identical(left: left, right: right, left_id: left_id, right_id: right_id)
-          _ => false
-        }
-      _ =>
-        match right.inferred {
-          Present { value: CompilerError { message: _, span: _ } } => false
-          Present { value: TypeVariable { id: _ } } => false
-          _ =>
-            match whole_declaration_carried(n: left) {
-              Present { value: l } =>
-                match whole_declaration_carried(n: right) {
-                  Present { value: r } => declaration_ref_eq(a: l, b: r)
-                  Absent => false
-                }
-              Absent =>
-                match whole_declaration_carried(n: right) {
-                  Present { value: _ } => false
-                  Absent =>
-                    match if_branch_reference_identity(n: left, source_indices: source_indices) {
-                      Present { value: li } =>
-                        match if_branch_reference_identity(n: right, source_indices: source_indices) {
-                          Present { value: ri } => li == ri
-                          Absent => false
-                        }
-                      Absent => false
-                    }
-                }
-            }
-        }
-    }
-  }
-}
-
-// A TYPE VARIABLE IS ITS OWNER'S PARAMETER, NOT ITS SPELLING. The resolver stamps a reference to a
-// declaration's own parameter with a TypeParameter declaration ref naming that owner, so two `T`s
-// from different declarations carry different refs. Both carrying a ref compares the refs; only two
-// unowned synthetic variables fall back to the bare id; one owned and one unowned declines.
-fn if_branch_type_variables_identical(left: Node, right: Node, left_id: String, right_id: String) -> Bool {
-  match left.declaration {
-    Present { value: l } =>
-      match right.declaration {
-        Present { value: r } => declaration_ref_eq(a: l, b: r)
-        Absent => false
-      }
-    Absent =>
-      match right.declaration {
-        Present { value: _ } => false
-        Absent => left_id == right_id
-      }
-  }
-}
-
-// type_reference_identity's key, refused when the reference names nothing: an empty declared name
-// would make every unnamed reference in one file identical to every other.
-fn if_branch_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  let target = match n.inferred {
-    Present { value: Resolved { node: rt } } => rt
-    _ => n
-  }
-  if authored_name_at(source_indices: source_indices, node: target) == "" {
-    none
-  } else {
-    Present { value: node_declaration_identity(n: target, source_indices: source_indices) }
   }
 }
 
@@ -16450,6 +16337,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
+    } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
     } else {
       acc
     }
@@ -17020,7 +16910,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
             declared_type: declared_type,
             declaration_bound_conformance: preserve_outer_optional_cardinality(
               outer: declared_type,
-              inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
+              inner: expand_nominal_alias_rhs(n: declared_type, env: env, module_name: module_name)),
             substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
           }
         }) },
@@ -17153,6 +17043,17 @@ type TypecheckModuleResult {
 //   match n { .. }              with n grounded: an if-chain over n == k and n >= k, the
 //                               predecessor bound as n - k, the last arm unconditional because
 //                               the match was already judged exhaustive on the declaration
+//
+// A SIGNED carrier (std.integer Int = NonNegative { n: Nat } | Negative { pred: Nat }) folds by the
+// arms its row NAMES -- never by position, spelling or the order the fold meets them:
+//
+//   NonNegative { n: e }        e                (a numeral folds to the literal)
+//   Negative { pred: e }        -1 - e           (a numeral p folds to the literal -1 - p)
+//   match i { .. }              an if-chain over i >= 0 (non-negative) and i <= -1 - k (negative,
+//                               payload at least k), the payload bound as i - k and as (-1 - k) - i
+//
+// -1 - e is the encoding with no intermediate overflow on the machine integer: for every natural e
+// it lands in [MIN, -1], and the decoding -1 - i maps [MIN, -1] back onto the naturals exactly.
 //   a closed numeral pattern    nested in another constructor's field: the literal pattern k
 //
 // IDENTITY DECIDES, SPELLING ONLY PRE-FILTERS. A construct is folded only when the type it is
@@ -17172,16 +17073,36 @@ type TypecheckModuleResult {
 type GroundedView {
   carrier: DeclarationRef
   carrier_name: String
+  shape: GroundedViewShape
+  operand: OperandDeclaration
+}
+
+// The constructor roles a grounded carrier's declaration was read to have: a Peano carrier's are read
+// from its shape; a signed carrier's are the arms its row names, checked against the declaration, and
+// `natural` is the grounded natural carrier both payloads are declared at.
+type GroundedViewShape
+  = GroundedPeano { constructors: PeanoConstructors }
+  | GroundedSigned { nonnegative: String, nonnegative_payload: String, negative: String, negative_payload: String, natural: DeclarationRef }
+
+type PeanoConstructors {
   zero: String
   succ: String
   prev_field: String
-  operand: OperandDeclaration
 }
 
 type GroundedCarrierState
   = GroundedViewReadable { view: GroundedView }
   | GroundedCarrierDeclaresNoConstructors
-  | GroundedCarrierShapeRefused { carrier: DeclarationRef, span: SourceSpan }
+  | GroundedCarrierShapeRefused { carrier: DeclarationRef, span: SourceSpan, reason: GroundedShapeRefusal }
+
+type GroundedShapeRefusal
+  = PeanoShapeMismatch
+  | SignedViewRefused { reason: SignedViewDisagreement }
+
+type GroundedViewMatch
+  = NoGroundedView
+  | GroundedViewFound { view: GroundedView }
+  | GroundedViewUnidentified { view: GroundedView }
 
 type GroundCtx {
   env: TypeEnv
@@ -17210,6 +17131,25 @@ type PeanoPatternReading
   | PeanoAtLeast { k: Int, binder: Node? }
   | PeanoPatternUnreadable
 
+// ONE ARM, AS THE INTEGER TEST IT IS AND THE VALUE ITS BINDER TAKES -- the form both views read into,
+// so one chain builder serves both. A binder is bound to subject - k (a Peano predecessor; k = 0 is the
+// subject itself) or to c - subject (a signed negative arm's payload).
+type GroundedTest
+  = GroundedAlways
+  | GroundedCompare { op: BinOp, k: Int }
+
+type GroundedBound
+  = SubjectMinus { k: Int }
+  | ConstantMinusSubject { c: Int }
+
+type GroundedBinding
+  = GroundedNoBinder
+  | GroundedBinder { declaration: Node, value: GroundedBound, binder_type: Node }
+
+type GroundedArmReading
+  = GroundedArmPlan { test: GroundedTest, binding: GroundedBinding }
+  | GroundedArmUnreadable
+
 type GroundedPattern {
   pattern: MatchPattern
   changed: Bool
@@ -17218,13 +17158,22 @@ type GroundedPattern {
 
 // A row whose carrier declares no constructors (an alias or an opaque declaration) has nothing to
 // fold and is not a refusal: its realization is already the kernel value at every occurrence.
+// A row whose carrier declares no constructors (an alias or an opaque declaration) has nothing to
+// fold and is not a refusal: its realization is already the kernel value at every occurrence.
 fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
+  match row.view {
+    PeanoGroundingView => peano_grounded_carrier_state(row: row, decl: decl, env: env)
+    SignedGroundingView { nonnegative: nn, negative: ng } => signed_grounded_carrier_state(row: row, decl: decl, nonnegative: nn, negative: ng, env: env)
+  }
+}
+
+fn peano_grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
   let si = env.source_indices
   if decl.connective != Disj {
     GroundedCarrierDeclaresNoConstructors
   } else {
     let variants = decl.children
-    let refused = GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span }
+    let refused = GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: PeanoShapeMismatch }
     let nullary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 0)
     let unary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 1)
     if (variants |> count) != 2 {
@@ -17245,9 +17194,13 @@ fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> Gro
                       view: GroundedView {
                         carrier: row.carrier,
                         carrier_name: row.carrier.decl_name as String,
-                        zero: qualified_last_segment(name: authored_name_at(source_indices: si, node: z)),
-                        succ: qualified_last_segment(name: authored_name_at(source_indices: si, node: s)),
-                        prev_field: authored_name_at(source_indices: si, node: f),
+                        shape: GroundedPeano {
+                          constructors: PeanoConstructors {
+                            zero: qualified_last_segment(name: authored_name_at(source_indices: si, node: z)),
+                            succ: qualified_last_segment(name: authored_name_at(source_indices: si, node: s)),
+                            prev_field: authored_name_at(source_indices: si, node: f)
+                          }
+                        },
                         operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
                       }
                     }
@@ -17259,6 +17212,59 @@ fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> Gro
         Absent => refused
       }
     }
+  }
+}
+
+// A signed carrier's constructors as std.literal_elaboration signed_view_reading reads them: each
+// constructor's own name, and each field's name and the grounded natural it is declared at, if any.
+fn grounded_constructor_shapes(variants: List<Node>, env: TypeEnv) -> List<GroundedConstructorShape> {
+  let si = env.source_indices
+  variants |> map(v => GroundedConstructorShape {
+    constructor: qualified_last_segment(name: authored_name_at(source_indices: si, node: v)),
+    fields: variant_node_fields(n: v) |> map(f => GroundedFieldShape {
+      field: authored_name_at(source_indices: si, node: f),
+      declared_at: match type_reference_declaration_ref(n: child_type_node(ch: f), source_indices: si, env: env) {
+        Present { value: fd } =>
+          if declaration_is_grounded_natural(rows: kernel_grounding_rows, d: fd) { FieldAtGroundedNatural { natural: fd } } else { FieldNotAtGroundedNatural }
+        Absent => FieldNotAtGroundedNatural
+      }
+    })
+  })
+}
+
+// THE SIGNED VIEW TAKES ITS ROLES FROM THE ROW. Both arms carry one natural, so no shape can tell them
+// apart; the row names which constructor is non-negative and which is negative, and the shared check
+// (std.literal_elaboration signed_view_reading) decides whether the declaration agrees with it.
+// NO "NOTHING TO FOLD" ARM. A signed row asks whether the declaration implements two named
+// constructors, and an opaque, alias or product declaration answers no -- the shared check refuses it
+// (SignedCarrierNotACoproduct). This adapter only reads the declaration into its form; it decides nothing.
+fn grounded_declared_form(decl: Node, env: TypeEnv) -> GroundedDeclaredForm {
+  if decl.connective == Disj {
+    DeclaredCoproduct { constructors: grounded_constructor_shapes(variants: decl.children, env: env) }
+  } else {
+    DeclaredNotACoproduct
+  }
+}
+
+fn signed_grounded_carrier_state(row: KernelGrounding, decl: Node, nonnegative: KernelGroundingArm, negative: KernelGroundingArm, env: TypeEnv) -> GroundedCarrierState {
+  match signed_view_reading(nonnegative: nonnegative, negative: negative, declared: grounded_declared_form(decl: decl, env: env)) {
+    SignedViewDisagrees { reason: r } => GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: SignedViewRefused { reason: r } }
+    SignedViewAgrees { natural: natural } =>
+      GroundedViewReadable {
+        view: GroundedView {
+          carrier: row.carrier,
+          carrier_name: row.carrier.decl_name as String,
+          shape: GroundedSigned { nonnegative: nonnegative.constructor as String, nonnegative_payload: nonnegative.payload as String, negative: negative.constructor as String, negative_payload: negative.payload as String, natural: natural },
+          operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
+        }
+      }
+  }
+}
+
+fn grounded_shape_refusal_message(reason: GroundedShapeRefusal) -> String {
+  match reason {
+    PeanoShapeMismatch => "its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)"
+    SignedViewRefused { reason: r } => signed_view_disagreement_message(reason: r)
   }
 }
 
@@ -17297,8 +17303,40 @@ fn ground_refused(n: Node, message: String, ctx: GroundCtx) -> GroundOut {
   }
 }
 
-fn grounded_view_for_constructor(name: String, ctx: GroundCtx) -> GroundedView? {
-  ctx.views |> filter(v => v.zero == name || v.succ == name) |> first
+fn grounded_view_spells(view: GroundedView, name: String) -> Bool {
+  match view.shape {
+    GroundedPeano { constructors: c } => c.zero == name || c.succ == name
+    GroundedSigned { nonnegative: nn, nonnegative_payload: _, negative: ng, negative_payload: _, natural: _ } => nn == name || ng == name
+  }
+}
+
+fn carrier_match_grounded(m: CarrierMatch) -> Bool {
+  match m {
+    GroundedCarrier => true
+    _ => false
+  }
+}
+
+fn carrier_match_unidentified(m: CarrierMatch) -> Bool {
+  match m {
+    GroundedCarrierUnidentified => true
+    _ => false
+  }
+}
+
+// EVERY VIEW THAT SPELLS THE CONSTRUCTOR IS ASKED, and identity picks among them: two grounded carriers
+// may share a constructor spelling, and taking the first view that spells it would leave an occurrence
+// of the second unfolded because the first's identity does not match.
+fn grounded_view_match(name: String, rt: Node, parent_enum: String?, ctx: GroundCtx) -> GroundedViewMatch {
+  let spelled = ctx.views |> filter(v => grounded_view_spells(view: v, name: name))
+  match spelled |> filter(v => carrier_match_grounded(m: grounded_carrier_match(rt: rt, parent_enum: parent_enum, view: v, ctx: ctx))) |> first {
+    Present { value: v } => GroundedViewFound { view: v }
+    Absent =>
+      match spelled |> filter(v => carrier_match_unidentified(m: grounded_carrier_match(rt: rt, parent_enum: parent_enum, view: v, ctx: ctx))) |> first {
+        Present { value: v } => GroundedViewUnidentified { view: v }
+        Absent => NoGroundedView
+      }
+  }
 }
 
 // Identity first. The spelling arm exists only to turn "the names say the grounded carrier and no
@@ -17349,11 +17387,45 @@ fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_
   )
 }
 
+// c - subject, the reflection a signed carrier's negative arm is: the operation is the CARRIER's
+// subtraction (its algebra field and its operand declaration), whatever the subject's own type, and
+// result_type is the value's -- the carrier when encoding a payload, the natural when decoding one.
+fn grounded_reflect(c: Int, subject: Node, carrier_type: Node, result_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  let info = infer_binop_type_node(op: Sub, left_type: carrier_type, source_indices: ctx.env.source_indices, env: ctx.env)
+  make_expr_node(
+    occurrence_identity: occurrence_identity,
+    expr_data: ExprBinOp { op: Sub, algebra_field: info.algebra_field, operand: Present { value: view.operand } },
+    children: [grounded_int_literal(k: c, occurrence_identity: OccurrenceSynthetic, span: span), subject],
+    inferred: Present { value: Resolved { node: result_type } },
+    span: span
+  )
+}
+
+// A signed construct: the non-negative arm IS its payload, the negative arm is -1 - payload. A numeral
+// payload folds to the literal; any other payload keeps its own node, wrapped once so the construct's
+// occurrence and its carrier type survive.
+fn grounded_signed_construct(payload: Node, negative: Bool, carrier_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  match payload.expr_data {
+    ExprLiteral { value: LitInt { value: j } } =>
+      grounded_int_literal(k: if negative { 0 - 1 - j } else { j }, occurrence_identity: occurrence_identity, span: span)
+    _ =>
+      if negative {
+        grounded_reflect(c: -1, subject: payload, carrier_type: carrier_type, result_type: carrier_type, occurrence_identity: occurrence_identity, span: span, view: view, ctx: ctx)
+      } else {
+        make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprBlock, children: [payload], inferred: Present { value: Resolved { node: carrier_type } }, span: span)
+      }
+  }
+}
+
 fn grounded_successor(prev: Node, carrier_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
   match prev.expr_data {
     ExprLiteral { value: LitInt { value: j } } => grounded_int_literal(k: j + 1, occurrence_identity: occurrence_identity, span: span)
     _ => grounded_binop(op: Add, left: prev, k: 1, result_type: Present { value: carrier_type }, occurrence_identity: occurrence_identity, span: span, view: view, ctx: ctx)
   }
+}
+
+fn grounded_unidentified_message(name: String, view: GroundedView) -> String {
+  concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided")
 }
 
 fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut {
@@ -17362,19 +17434,17 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
     Present { value: t } => qualified_last_segment(name: t)
     Absent => ""
   }
-  match grounded_view_for_constructor(name: name, ctx: ctx) {
-    Absent => ground_unchanged(n: n)
-    Present { value: view } =>
-      let carrier_type = resolved_type(n: n)
-      match grounded_carrier_match(rt: carrier_type, parent_enum: parent_enum, view: view, ctx: ctx) {
-        NotGroundedCarrier => ground_unchanged(n: n)
-        GroundedCarrierUnidentified =>
-          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
-        GroundedCarrier =>
-          if name == view.zero {
+  let carrier_type = resolved_type(n: n)
+  match grounded_view_match(name: name, rt: carrier_type, parent_enum: parent_enum, ctx: ctx) {
+    NoGroundedView => ground_unchanged(n: n)
+    GroundedViewUnidentified { view: view } => ground_refused(n: n, message: grounded_unidentified_message(name: name, view: view), ctx: ctx)
+    GroundedViewFound { view: view } =>
+      match view.shape {
+        GroundedPeano { constructors: c } =>
+          if name == c.zero {
             GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
           } else {
-            match n.children |> filter(c => field_init_node_name_at(n: c, source_indices: si) == view.prev_field) |> first {
+            match n.children |> filter(ch => field_init_node_name_at(n: ch, source_indices: si) == c.prev_field) |> first {
               Present { value: fi } =>
                 GroundOut {
                   node: grounded_successor(prev: field_init_node_value(n: fi), carrier_type: carrier_type, occurrence_identity: n.occurrence_identity, span: n.span, view: view, ctx: ctx),
@@ -17382,8 +17452,21 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
                   diagnostics: []
                 }
               Absent =>
-                ground_refused(n: n, message: concat("the successor constructor `", name, "` carries no `", view.prev_field, "` field to fold"), ctx: ctx)
+                ground_refused(n: n, message: concat("the successor constructor `", name, "` carries no `", c.prev_field, "` field to fold"), ctx: ctx)
             }
+          }
+        GroundedSigned { nonnegative: _, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: _ } =>
+          let negative = name == ng
+          let payload_name = if negative { ngp } else { nnp }
+          match n.children |> filter(ch => field_init_node_name_at(n: ch, source_indices: si) == payload_name) |> first {
+            Present { value: fi } =>
+              GroundOut {
+                node: grounded_signed_construct(payload: field_init_node_value(n: fi), negative: negative, carrier_type: carrier_type, occurrence_identity: n.occurrence_identity, span: n.span, view: view, ctx: ctx),
+                changed: true,
+                diagnostics: []
+              }
+            Absent =>
+              ground_refused(n: n, message: concat("the signed constructor `", name, "` carries no `", payload_name, "` field to fold"), ctx: ctx)
           }
       }
   }
@@ -17392,24 +17475,24 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
 fn ground_variant_value(n: Node, parent_enum: String, ctx: GroundCtx) -> GroundOut {
   let si = ctx.env.source_indices
   let name = qualified_last_segment(name: expr_var_name_at(texpr: n, source_indices: si))
-  match grounded_view_for_constructor(name: name, ctx: ctx) {
-    Absent => ground_unchanged(n: n)
-    Present { value: view } =>
-      match grounded_carrier_match(rt: resolved_type(n: n), parent_enum: Present { value: parent_enum }, view: view, ctx: ctx) {
-        NotGroundedCarrier => ground_unchanged(n: n)
-        GroundedCarrierUnidentified =>
-          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
-        GroundedCarrier =>
-          if name == view.zero {
+  match grounded_view_match(name: name, rt: resolved_type(n: n), parent_enum: Present { value: parent_enum }, ctx: ctx) {
+    NoGroundedView => ground_unchanged(n: n)
+    GroundedViewUnidentified { view: view } => ground_refused(n: n, message: grounded_unidentified_message(name: name, view: view), ctx: ctx)
+    GroundedViewFound { view: view } =>
+      match view.shape {
+        GroundedPeano { constructors: c } =>
+          if name == c.zero {
             GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
           } else {
-            ground_refused(n: n, message: concat("the successor constructor `", name, "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `", view.prev_field, "` field"), ctx: ctx)
+            ground_refused(n: n, message: concat("the successor constructor `", name, "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `", c.prev_field, "` field"), ctx: ctx)
           }
+        GroundedSigned { nonnegative: _, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: _ } =>
+          ground_refused(n: n, message: concat("the signed constructor `", name, "` is used as a value; a kernel-grounded signed constructor is folded only where it is applied to its `", if name == ng { ngp } else { nnp }, "` field"), ctx: ctx)
       }
   }
 }
 
-fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, NewlineIndex>) -> PeanoPatternReading {
+fn peano_pattern_reading(p: MatchPattern, c: PeanoConstructors, si: Map<String, NewlineIndex>) -> PeanoPatternReading {
   match p {
     Wildcard => PeanoAtLeast { k: 0, binder: none }
     Bind { declaration: d } => PeanoAtLeast { k: 0, binder: Present { value: d } }
@@ -17420,11 +17503,11 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
       }
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       let leaf = qualified_last_segment(name: n)
-      if leaf == view.zero {
+      if leaf == c.zero {
         PeanoExact { k: 0 }
-      } else if leaf == view.succ {
-        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == view.prev_field) |> first {
-          Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), view: view, si: si)
+      } else if leaf == c.succ {
+        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == c.prev_field) |> first {
+          Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), c: c, si: si)
           Absent => PeanoAtLeast { k: 0, binder: none }
         }
         match inner {
@@ -17438,10 +17521,103 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
   }
 }
 
+fn peano_arm_reading(r: PeanoPatternReading, carrier_type: Node) -> GroundedArmReading {
+  match r {
+    PeanoExact { k: k } => GroundedArmPlan { test: GroundedCompare { op: Eq, k: k }, binding: GroundedNoBinder }
+    PeanoAtLeast { k: k, binder: b } =>
+      GroundedArmPlan {
+        test: if k == 0 { GroundedAlways } else { GroundedCompare { op: Ge, k: k } },
+        binding: match b {
+          Present { value: d } => GroundedBinder { declaration: d, value: SubjectMinus { k: k }, binder_type: carrier_type }
+          Absent => GroundedNoBinder
+        }
+      }
+    PeanoPatternUnreadable => GroundedArmUnreadable
+  }
+}
+
+// A signed payload pattern is read as a pattern over the grounded NATURAL its arm is declared at, through
+// that carrier's own Peano view; with no readable view for it the payload is unreadable, never guessed.
+fn natural_pattern_reading(p: MatchPattern, natural: DeclarationRef, ctx: GroundCtx) -> PeanoPatternReading {
+  let constructors = ctx.views |> flat_map(v =>
+    if declaration_ref_eq(a: v.carrier, b: natural) {
+      match v.shape {
+        GroundedPeano { constructors: c } => [c]
+        GroundedSigned { nonnegative: _, nonnegative_payload: _, negative: _, negative_payload: _, natural: _ } => []
+      }
+    } else { [] })
+  match constructors |> first {
+    Present { value: c } => peano_pattern_reading(p: p, c: c, si: ctx.env.source_indices)
+    Absent => PeanoPatternUnreadable
+  }
+}
+
+// A signed arm over a payload read as a natural. Non-negative with payload at least k: subject >= k, the
+// binder subject - k. Negative with payload at least k: the payload -1 - subject is at least k exactly when
+// subject <= -1 - k, and the binder is (-1 - k) - subject. An exact payload p is the one integer p, or -1 - p.
+fn signed_payload_plan(negative: Bool, r: PeanoPatternReading, payload_type: Node) -> GroundedArmReading {
+  match r {
+    PeanoExact { k: k } =>
+      GroundedArmPlan { test: GroundedCompare { op: Eq, k: if negative { 0 - 1 - k } else { k } }, binding: GroundedNoBinder }
+    PeanoAtLeast { k: k, binder: b } =>
+      let c = 0 - 1 - k
+      GroundedArmPlan {
+        test: if negative { GroundedCompare { op: Le, k: c } } else { GroundedCompare { op: Ge, k: k } },
+        binding: match b {
+          Present { value: d } =>
+            GroundedBinder { declaration: d, value: if negative { ConstantMinusSubject { c: c } } else { SubjectMinus { k: k } }, binder_type: payload_type }
+          Absent => GroundedNoBinder
+        }
+      }
+    PeanoPatternUnreadable => GroundedArmUnreadable
+  }
+}
+
+fn signed_arm_reading(p: MatchPattern, view: GroundedView, carrier_type: Node, ctx: GroundCtx) -> GroundedArmReading {
+  let si = ctx.env.source_indices
+  match view.shape {
+    GroundedPeano { constructors: _ } => GroundedArmUnreadable
+    GroundedSigned { nonnegative: nn, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: natural } =>
+      match p {
+        Wildcard => GroundedArmPlan { test: GroundedAlways, binding: GroundedNoBinder }
+        Bind { declaration: d } => GroundedArmPlan { test: GroundedAlways, binding: GroundedBinder { declaration: d, value: SubjectMinus { k: 0 }, binder_type: carrier_type } }
+        LitPattern { value: v } =>
+          match v {
+            LitInt { value: k } => GroundedArmPlan { test: GroundedCompare { op: Eq, k: k }, binding: GroundedNoBinder }
+            _ => GroundedArmUnreadable
+          }
+        VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
+          let leaf = qualified_last_segment(name: n)
+          if leaf != nn && leaf != ng {
+            GroundedArmUnreadable
+          } else {
+            let negative = leaf == ng
+            let payload_name = if negative { ngp } else { nnp }
+            match constructor_fields(type_node: carrier_type, ctor: leaf, env: ctx.env, module_name: ctx.module_name) |> filter(f => f.name == payload_name) |> first {
+              Absent => GroundedArmUnreadable
+              Present { value: field } =>
+                let reading = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == payload_name) |> first {
+                  Present { value: fb } => natural_pattern_reading(p: field_binding_pattern(n: fb), natural: natural, ctx: ctx)
+                  Absent => PeanoAtLeast { k: 0, binder: none }
+                }
+                signed_payload_plan(negative: negative, r: reading, payload_type: field.type_node)
+            }
+          }
+      }
+  }
+}
+
+fn grounded_arm_reading(p: MatchPattern, view: GroundedView, carrier_type: Node, ctx: GroundCtx) -> GroundedArmReading {
+  match view.shape {
+    GroundedPeano { constructors: c } => peano_arm_reading(r: peano_pattern_reading(p: p, c: c, si: ctx.env.source_indices), carrier_type: carrier_type)
+    GroundedSigned { nonnegative: _, nonnegative_payload: _, negative: _, negative_payload: _, natural: _ } => signed_arm_reading(p: p, view: view, carrier_type: carrier_type, ctx: ctx)
+  }
+}
+
 fn pattern_spells_grounded_constructor(p: MatchPattern, ctx: GroundCtx) -> Bool {
   match p {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
-      grounded_view_for_constructor(name: qualified_last_segment(name: n), ctx: ctx) != none
+      ctx.views |> any(v => grounded_view_spells(view: v, name: qualified_last_segment(name: n)))
         || (fbs |> any(fb => pattern_spells_grounded_constructor(p: field_binding_pattern(n: fb), ctx: ctx)))
     _ => false
   }
@@ -17469,23 +17645,26 @@ fn ground_nested_pattern(p: MatchPattern, subject_type: Node, span: SourceSpan, 
         grounded_pattern_unchanged(p: p)
       } else {
         let leaf = qualified_last_segment(name: n)
-        let head = match grounded_view_for_constructor(name: leaf, ctx: ctx) {
-          Present { value: view } =>
-            match grounded_carrier_match(rt: subject_type, parent_enum: pe, view: view, ctx: ctx) {
-              GroundedCarrier =>
-                match peano_pattern_reading(p: p, view: view, si: si) {
-                  PeanoExact { k: k } =>
-                    Present { value: GroundedPattern { pattern: LitPattern { value: LitInt { value: k } }, changed: true, diagnostics: [] } }
-                  PeanoAtLeast { k: k, binder: _ } =>
-                    Present { value: grounded_pattern_refused(p: p, message: concat("an open successor pattern (at least ", to_string(k), ") of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
-                  PeanoPatternUnreadable =>
-                    Present { value: grounded_pattern_refused(p: p, message: concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral nor a successor of a binder"), span: span, ctx: ctx) }
+        let head = match grounded_view_match(name: leaf, rt: subject_type, parent_enum: pe, ctx: ctx) {
+          GroundedViewFound { view: view } =>
+            match grounded_arm_reading(p: p, view: view, carrier_type: subject_type, ctx: ctx) {
+              GroundedArmPlan { test: t, binding: b } =>
+                match t {
+                  GroundedCompare { op: Eq, k: k } =>
+                    match b {
+                      GroundedNoBinder => Present { value: GroundedPattern { pattern: LitPattern { value: LitInt { value: k } }, changed: true, diagnostics: [] } }
+                      GroundedBinder { declaration: _, value: _, binder_type: _ } =>
+                        Present { value: grounded_pattern_refused(p: p, message: concat("an exact pattern of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " that binds a name is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
+                    }
+                  _ =>
+                    Present { value: grounded_pattern_refused(p: p, message: concat("an open pattern of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
                 }
-              GroundedCarrierUnidentified =>
-                Present { value: grounded_pattern_refused(p: p, message: concat("the pattern `", leaf, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration its subject is typed at could not be read"), span: span, ctx: ctx) }
-              NotGroundedCarrier => none
+              GroundedArmUnreadable =>
+                Present { value: grounded_pattern_refused(p: p, message: grounded_unreadable_arm_message(view: view), span: span, ctx: ctx) }
             }
-          Absent => none
+          GroundedViewUnidentified { view: view } =>
+            Present { value: grounded_pattern_refused(p: p, message: concat("the pattern `", leaf, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration its subject is typed at could not be read"), span: span, ctx: ctx) }
+          NoGroundedView => none
         }
         match head {
           Present { value: g } => g
@@ -17522,22 +17701,34 @@ fn grounded_comparison(op: BinOp, subject: Node, k: Int, span: SourceSpan, view:
   grounded_binop(op: op, left: subject, k: k, result_type: none, occurrence_identity: OccurrenceSynthetic, span: span, view: view, ctx: ctx)
 }
 
-fn grounded_arm_body(arm: Node, reading: PeanoPatternReading, subject: Node, carrier_type: Node, view: GroundedView, ctx: GroundCtx) -> Node {
+fn grounded_unreadable_arm_message(view: GroundedView) -> String {
+  match view.shape {
+    GroundedPeano { constructors: _ } => concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral nor a successor of a binder")
+    GroundedSigned { nonnegative: nn, nonnegative_payload: _, negative: ng, negative_payload: _, natural: _ } => concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral, a binder, nor `", nn, "` or `", ng, "` over a natural pattern")
+  }
+}
+
+fn grounded_arm_body(arm: Node, reading: GroundedArmReading, subject: Node, carrier_type: Node, view: GroundedView, ctx: GroundCtx) -> Node {
   let body = arm_body(n: arm)
   match reading {
-    PeanoAtLeast { k: k, binder: Present { value: decl } } =>
+    GroundedArmPlan { test: _, binding: GroundedBinder { declaration: decl, value: bound, binder_type: bt } } =>
       let name = authored_name_at(source_indices: ctx.env.source_indices, node: decl)
-      let value = if k == 0 {
-        subject
-      } else {
-        grounded_binop(op: Sub, left: subject, k: k, result_type: Present { value: carrier_type }, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
+      let value = match bound {
+        SubjectMinus { k: k } =>
+          if k == 0 {
+            subject
+          } else {
+            grounded_binop(op: Sub, left: subject, k: k, result_type: Present { value: bt }, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
+          }
+        ConstantMinusSubject { c: c } =>
+          grounded_reflect(c: c, subject: subject, carrier_type: carrier_type, result_type: bt, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
       }
       let let_node = make_named_expr_node(
         occurrence_identity: OccurrenceSynthetic,
         name: name,
         expr_data: ExprLet,
         children: [value],
-        inferred: Present { value: Resolved { node: carrier_type } },
+        inferred: Present { value: Resolved { node: bt } },
         span: arm.span,
         name_span: elaborated_span(name: name)
       )
@@ -17548,7 +17739,7 @@ fn grounded_arm_body(arm: Node, reading: PeanoPatternReading, subject: Node, car
 
 type GroundedArm {
   arm: Node
-  reading: PeanoPatternReading
+  reading: GroundedArmReading
 }
 
 // Built from the LAST arm backwards, so the chain is linear in the arm count. The last arm is
@@ -17561,15 +17752,13 @@ fn grounded_arm_chain(arms: List<GroundedArm>, subject: Node, carrier_type: Node
       Absent => Present { value: body }
       Present { value: tail } =>
         match a.reading {
-          PeanoExact { k: k } =>
-            Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Eq, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
-          PeanoAtLeast { k: k, binder: _ } =>
-            if k == 0 {
-              Present { value: body }
-            } else {
-              Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Ge, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
+          GroundedArmPlan { test: t, binding: _ } =>
+            match t {
+              GroundedAlways => Present { value: body }
+              GroundedCompare { op: op, k: k } =>
+                Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: op, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
             }
-          PeanoPatternUnreadable => Present { value: tail }
+          GroundedArmUnreadable => Present { value: tail }
         }
     })
 }
@@ -17579,11 +17768,11 @@ data grounded_scrutinee_binder: String = "__kernel_grounded_subject"
 fn ground_grounded_match(m: Node, scrut: Node, arms: List<Node>, view: GroundedView, ctx: GroundCtx) -> GroundOut {
   let si = ctx.env.source_indices
   let carrier_type = resolved_type(n: scrut)
-  let read = arms |> map(arm => GroundedArm { arm: arm, reading: peano_pattern_reading(p: arm_pattern(n: arm), view: view, si: si) })
+  let read = arms |> map(arm => GroundedArm { arm: arm, reading: grounded_arm_reading(p: arm_pattern(n: arm), view: view, carrier_type: carrier_type, ctx: ctx) })
   if arms |> any(arm => arm_guard(n: arm) != none) {
     ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " carries an authored guard, which this fold does not carry into the integer form"), ctx: ctx)
-  } else if read |> any(a => match a.reading { PeanoPatternUnreadable => true  _ => false }) {
-    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " has an arm that is neither a numeral nor a successor of a binder"), ctx: ctx)
+  } else if read |> any(a => match a.reading { GroundedArmUnreadable => true  _ => false }) {
+    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " has an arm it cannot fold: ", grounded_unreadable_arm_message(view: view)), ctx: ctx)
   } else {
     let subject_is_variable = match scrut.expr_data {
       ExprVar { binding_kind: _ } => true
@@ -17813,9 +18002,9 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
     })
   let shape_diagnostics = states |> flat_map(s =>
     match s {
-      GroundedCarrierShapeRefused { carrier: c, span: sp } =>
+      GroundedCarrierShapeRefused { carrier: c, span: sp, reason: r } =>
         if (c.module_path as String) == module_name {
-          [inference_error(message: concat("kernel grounding: ", c.module_path as String, ".", c.decl_name as String, " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)"), span: sp, module_name: module_name)]
+          [inference_error(message: concat("kernel grounding: ", c.module_path as String, ".", c.decl_name as String, " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but ", grounded_shape_refusal_message(reason: r)), span: sp, module_name: module_name)]
         } else { [] }
       _ => []
     })
@@ -18009,16 +18198,9 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
 // The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
 // name", so nothing downstream re-resolves the spelling.
 fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
-  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
-    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
-    none
-  } else {
-    match pre.inferred {
-      Present { value: Resolved { node: rhs } } =>
-        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
-        else { Present { value: reference_with_declaration(n: rhs, env: env) } }
-      _ => none
-    }
+  match transparent_alias_rhs(pre: pre) {
+    Present { value: rhs } => Present { value: reference_with_declaration(n: rhs, env: env) }
+    Absent => none
   }
 }
 
@@ -18237,6 +18419,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
   }
@@ -18250,7 +18433,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -18269,6 +18452,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: built.fn_decl_items,
+    fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
@@ -18288,8 +18472,9 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
-    tco_cursor_tails: empty_map()
+    tco_cursor_params: [],
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
 }
 

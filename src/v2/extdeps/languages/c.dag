@@ -26,14 +26,7 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra {
-  Empty,
-  list_append,
-  length,
-  fold_list,
-  empty_map,
-  map_insert
-}
+import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -151,6 +144,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
+import std.host_text { chars }
 
 // C R3: CompilationUnit.interface renders to the unit .h (declarations only);
 // CompilationUnit.members renders to the unit .c (implementation). partition_fold_outcome is the
@@ -1189,7 +1183,7 @@ fn c_binding_spellings_with_dag_fixture() -> Map<Symbol, String> {
 }
 
 fn c_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(text: text) } }
 }
 
 fn c_lex_rules() -> List<LexRule> {

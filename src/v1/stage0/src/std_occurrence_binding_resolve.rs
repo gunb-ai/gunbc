@@ -3,13 +3,12 @@
 
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
-pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
+pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;
 pub use crate::std_occurrence_binding::{
-    BindingCandidate, BindingOccurrence, ContainmentPath, OccurrenceBindingResult,
+    occurrence_binding_from_candidates, BindingCandidate, BindingOccurrence, ContainmentPath,
+    OccurrenceBindingResult,
 };
-pub use crate::std_occurrence_identity::occurrence_transport_validate;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
     MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
@@ -23,9 +22,10 @@ use crate::std_occurrence_identity::OccurrenceTransportValidation::{
     OccurrenceTransportRefused, OccurrenceTransportValidated,
 };
 pub use crate::std_occurrence_identity::{
-    DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
-    OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
-    ReferenceOccurrence, ValidatedOccurrenceTransport,
+    occurrence_transport_validate, DeclarationOccurrence, OccurrenceCategory,
+    OccurrenceContainmentPath, OccurrenceId, OccurrenceRole, OccurrenceTransport,
+    OccurrenceTransportRefusal, OccurrenceTransportValidation, ReferenceOccurrence,
+    ValidatedOccurrenceTransport,
 };
 pub use crate::std_optional::Optional;
 pub use crate::std_types::List;
@@ -221,7 +221,7 @@ pub fn binding_candidates_from_supplied_declarations(
     seen_candidate_ids: build.seen_candidate_ids.clone(),
     refusal: Some(Rc::new(OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity {
     occurrence: candidate_occurrence.clone(),
-    diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
+    diagnostic_span: entry.projection.diagnostic_span.clone(),
 })),
 }),
     std::option::Option::None => match v1_rt::map_get(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
@@ -240,7 +240,7 @@ pub fn binding_candidates_from_supplied_declarations(
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
     refusal: Some(Rc::new(OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-    diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
+    diagnostic_span: entry.projection.diagnostic_span.clone(),
 })),
 }),
 },
@@ -331,7 +331,7 @@ pub fn resolve_reference_occurrence_binding_validated(
                     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
                         refusal: Rc::new(
                             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                                diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
+                                diagnostic_span: entry.projection.diagnostic_span.clone(),
                             },
                         ),
                     },
