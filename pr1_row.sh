@@ -58,7 +58,10 @@ DAG=src/v1/04_infer.dag
 MIRROR=src/v1/stage0/src/v1_compiler_infer.rs
 ACC=$(grep -c UnifyGenericsAcc "$DAG" || true)
 FRESH=$(grep -c fresh_call_variables "$MIRROR" || true)
-NK_DAG=$(grep -c 'map_insert(acc, g, type_variable_node(id: g))' "$DAG" || true)
+# NOTE: `map_insert(acc, g, type_variable_node(id: g))` exists on MAIN (04_infer.dag:11557,
+# unbound_owner_param_variables), so it cannot distinguish a minting tree from main. Mint presence is
+# the mint's own markers, none of which main carries (verified: each is 0 at origin/main).
+NK_DAG=$(grep -c 'uninstantiated_call_generics\|fresh_call_variables' "$DAG" || true)
 SPAN_DAG=$(grep -c 'type_variable_node(id: concat(g, "@", span.file' "$DAG" || true)
 NK_MIRROR=$(grep -c 'type_variable_node("g"' "$MIRROR" 2>/dev/null || true)
 echo "GUARD acc=$ACC mirror_fresh_marks=$FRESH dag_namekeyed=$NK_DAG dag_span_keyed=$SPAN_DAG"
@@ -73,7 +76,7 @@ if [ "$KIND" = pin ]; then
   # THE SHIPPED PR-1 TREE: no mint at all, only the boundary pin. Guards must fail if a mint is
   # secretly present (then this is not the tree the PR carries) or if the pin row is a no-op.
   [ "$FRESH" -eq 0 ] || { echo "VOID: the mirror still mints (fresh_call_variables=$FRESH); this is not the shipped pin tree"; exit 5; }
-  [ "$NK_DAG" -eq 0 ] && [ "$SPAN_DAG" -eq 0 ] || { echo "VOID: the .dag still carries a mint (namekeyed=$NK_DAG span=$SPAN_DAG)"; exit 5; }
+  [ "$NK_DAG" -eq 0 ] && [ "$SPAN_DAG" -eq 0 ] || { echo "VOID: the .dag still carries a mint (mint_markers=$NK_DAG span=$SPAN_DAG)"; exit 5; }
   grep -q "MINT-BOUNDARY-INVENTORY" "src/v1/tests/src/$MODULE.rs" \
     || { echo "VOID: the pin row prints no inventory, so it cannot show it looked at anything"; exit 5; }
   for G in saw_fn call_nodes; do
