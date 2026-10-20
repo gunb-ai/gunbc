@@ -93,7 +93,7 @@ import v2.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v2.std.node_query { find_named_child }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
   IntLiteralUnwired,
   ProducedDeclParamSegment,
@@ -1355,6 +1355,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
@@ -1466,6 +1467,7 @@ fn ts_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ts_produced_decl_support(),
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -1704,6 +1706,7 @@ fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
@@ -1955,6 +1958,7 @@ fn ts_task_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
