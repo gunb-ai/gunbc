@@ -297,22 +297,11 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
   covered == separators && separators > 20
 }
 
-// the census read. `v2.std.decl_index::decl_facts_at` is the KEYED host-side read, not a
-// fold over the whole corpus: the precedent warns that repeated full `decl_facts` calls took
-// a witness "past any bound" (3.6s each), and this asks one question per citation.
-// Pools dag AND src/v1 -- measured, not assumed: with only ["dag","src/v2"] pooled, the
-// four `v1.*` citations in this plan resolve to zero rows. The census keys on the AUTHORED
-// module name, which is why `v1.compiler.infer` resolves although its file is
-// `src/v1/04_infer.dag`, a path no caller could have guessed from the name.
-fn p4_declares(c: P4Citation) -> Bool {
-  decl_facts_at(pool_roots: ["dag", "src/v1", "src/v2"], qualified_name: concat(c.module_path, concat(".", c.decl_name))).length() >= 1
-}
-
 // A FIELD is not a declaration, so the census cannot answer for it. Checked instead against
 // the declaring file's own text, read with `filesystem_read` at the `rel_path` the census row
 // carries -- so the file is the census's, not one this claim guessed. Honest about its reach:
 // this proves the field is written as a field line (`  name: Type`) somewhere in that file,
-// which is weaker than a name-resolved field lookup. The two citations that need it are
+// which is weaker than a name-resolved field lookup, and the two citations that need it are
 // `extdeps.gpu.types::GpuModelCatalogRow.tdp_watts` and
 // `gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit`.
 fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
@@ -320,6 +309,13 @@ fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
   string_contains(s: source.content, pattern: concat("  ", concat(field, ": ")))
 }
 
+// THE CENSUS READ. `v2.std.decl_index::decl_facts_at` is the keyed host-side read, not a fold
+// over the whole corpus: the precedent warns that repeated full `decl_facts` calls took a
+// witness "past any bound" (3.6s each measured) and this asks one question per citation.
+// Pools dag AND src/v1 -- measured, not assumed: with only ["dag","src/v2"] pooled, the four
+// `v1.*` citations in this plan resolve to ZERO rows. The census keys on the AUTHORED module
+// name, which is why `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`,
+// a path no caller could have guessed from the name.
 fn p4_citation_resolves(cite: String) -> Bool {
   let c = p4_parse(w: cite)
   let rows = decl_facts_at(pool_roots: ["dag", "src/v1", "src/v2"], qualified_name: concat(c.module_path, concat(".", c.decl_name)))
@@ -328,11 +324,6 @@ fn p4_citation_resolves(cite: String) -> Bool {
   } else {
     rows.length() >= 1
   }
-}
-
-claim every_citation_in_the_plan_resolves_in_the_declaration_census {
-  plan: p4_home_serving_power_semantics_plan,
-  fn: the_citations_in_the_plan_resolve_against_the_declaration_census
 }
 
 test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
