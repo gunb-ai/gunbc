@@ -73,6 +73,7 @@ type CssPropertyName
   | MarginLeft
   | MarginRight
   | MarginTop
+  | MaxHeight
   | MaxWidth
   | MinHeight
   | MinWidth
@@ -82,6 +83,7 @@ type CssPropertyName
   | OverflowX
   | Padding
   | PaddingBlock
+  | PaddingBottom
   | PaddingLeft
   | PaddingTop
   | Position
@@ -151,6 +153,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     MarginLeft => "margin-left"
     MarginRight => "margin-right"
     MarginTop => "margin-top"
+    MaxHeight => "max-height"
     MaxWidth => "max-width"
     MinHeight => "min-height"
     MinWidth => "min-width"
@@ -160,6 +163,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     OverflowX => "overflow-x"
     Padding => "padding"
     PaddingBlock => "padding-block"
+    PaddingBottom => "padding-bottom"
     PaddingLeft => "padding-left"
     PaddingTop => "padding-top"
     Position => "position"

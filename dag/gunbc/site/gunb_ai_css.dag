@@ -16,7 +16,7 @@ import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_p
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
   MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width,
   Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace,
-  Outline, Overflow }
+  Outline, Overflow, BorderBottom, JustifyContent, MaxHeight, PaddingBottom, PaddingLeft }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
   selector_list_wire, element_compound, class_compound,
@@ -83,16 +83,21 @@ type SheetItem
 // A rule is written either one declaration per line between braces or whole on one line.
 type RuleLayout = RuleBlock | RuleInline
 
-// Rules written one per line with the `{` of each in one column (the longest selector + 1 space), the
-// column derived like declaration alignment.
+// Rules written one per line with the `{` of each in one column (the longest selector plus the group's
+// own gap), the column derived like declaration alignment. The served sheet separates one rule's
+// declarations with a double space after the first exactly once (.ck-line.ck-diff-rm), so the separator is
+// data.
+type DeclSeparator = SingleSpace | DoubleSpaceAfterFirst
+
 type AlignedRule {
   selector: SelectorList
   decls: List<SheetDecl>
+  separator: DeclSeparator
 }
 
 type SheetEntry
   = EntryComment { lines: List<String> }
-  | EntryAlignedRules { rules: List<AlignedRule> }
+  | EntryAlignedRules { rules: List<AlignedRule>, spaces_after_longest: Int }
   | EntryRule { selector: SelectorList, layout: RuleLayout, items: List<SheetItem> }
   | EntryGap { blank_lines: Int }
 
@@ -481,7 +486,7 @@ fn class_element(ancestor: String, tag: String) -> SelectorList {
 }
 
 fn colour_rule(name: String, colour: String) -> AlignedRule {
-  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))] }
+  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))], separator: SingleSpace }
 }
 
 data prose_entries: List<SheetEntry> = [
@@ -510,7 +515,7 @@ data prose_entries: List<SheetEntry> = [
 data measure_entries: List<SheetEntry> = [
   EntryComment { lines: measure_banner },
   EntryGap { blank_lines: 1 },
-  EntryAlignedRules { rules: [
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
     AlignedRule { selector: class_list(name: "measure-prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose"))] },
     AlignedRule { selector: class_list(name: "measure-page"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-page"))] },
     AlignedRule { selector: class_list(name: "measure-wide"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-wide"))] },
@@ -604,7 +609,7 @@ data invariant_entries: List<SheetEntry> = [
 data role_entries: List<SheetEntry> = [
   EntryComment { lines: roles_banner },
   EntryGap { blank_lines: 1 },
-  EntryAlignedRules { rules: [
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
     colour_rule(name: "map-stable", colour: "warm-white"),
     colour_rule(name: "map-focus", colour: "brass"),
     colour_rule(name: "map-derived", colour: "moss"),
@@ -624,6 +629,8 @@ data roles_banner: List<String> = ["╔══ ROLE TOKENS — shared between cod
 
 data deck_comment_0: List<String> = ["╔══ STORY DECK — one progressive example, four accreting stages ═══", "Rendered by assets/cards.js. Each stage shares the same base graph;", "the visual story builds up layer by layer (lasso, dots, artifacts).", "Navigate via prev/next buttons or ← / → keys."]
 data deck_comment_1: List<String> = ["Vertical stack: code and graph each get the full card width. The", "richer system (with the Sessions parallel domain) makes the graph", "wider than the code pane can accommodate when split 50/50; the", "stacked layout keeps the SVG text readable."]
+data deck_comment_2: List<String> = ["Code pane — no horizontal scroll. If a line would overflow it", "gets clipped at the panel edge; specs must keep lines short."]
+data deck_comment_3: List<String> = ["Graph pane — SVG fills available width, capped at a reasonable", "max-height so a tall viewBox does not push card height to absurd."]
 data deck_entries: List<SheetEntry> = [
   EntryComment { lines: deck_comment_0 },
   EntryGap { blank_lines: 1 },
@@ -780,6 +787,101 @@ data deck_entries: List<SheetEntry> = [
       sheet_expr(property: Gap, value: sheet_rem(milli: 850)),
     ]),
   ]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_2 },
+  block_rule(selector: class_list(name: "card-code"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 4000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 750), sheet_rem(milli: 900), sheet_rem(milli: 850)])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 680)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1600 }),
+      sheet_ident(property: Overflow, ident: "hidden"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "card-code-head"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 580)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 160, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: PaddingBottom, value: sheet_rem(milli: 550)),
+      sheet_expr(property: BorderBottom, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "dashed" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 600)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 450)),
+    ] },
+  ]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-dot")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: FontSize, value: sheet_rem(milli: 550))], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-file")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)), sheet_ident(property: TextTransform, ident: "none"), sheet_expr(property: FontSize, value: sheet_rem(milli: 660))], separator: SingleSpace },
+  ] },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "ck-line"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: WhiteSpace, ident: "pre"),
+      sheet_ident(property: Display, ident: "block"),
+    ]),
+  ]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-rm"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "clay-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: DoubleSpaceAfterFirst },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-add"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "moss-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: SingleSpace },
+  ] },
+  EntryAlignedRules { spaces_after_longest: 3, rules: [
+    AlignedRule { selector: class_list(name: "ck-ln"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint")), sheet_ident(property: UserSelect, ident: "none")], separator: SingleSpace },
+    AlignedRule { selector: class_list(name: "ck-kw"), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace },
+    AlignedRule { selector: class_list(name: "ck-ty"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace },
+    AlignedRule { selector: class_list(name: "ck-com"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint"))], separator: SingleSpace },
+  ] },
+  inline_rule(selector: class_list(name: "ck-diff-sign"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: SelectorList { selectors: [ComplexSelector { compounds: [class_compound(name: "ck-diff-rm"), classes_compound(names: []), class_compound(name: "ck-diff-sign")] }] }, decls: [sheet_expr(property: Color, value: sheet_var(name: "clay"))], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-add"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace },
+  ] },
+  inline_rule(selector: class_list(name: "ck-ref"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_3 },
+  block_rule(selector: class_list(name: "card-graph"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 4000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 700), sheet_rem(milli: 850)])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_ident(property: JustifyContent, ident: "center"),
+    ] },
+    compact_decls(decls: [
+      sheet_ident(property: Overflow, ident: "hidden"),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "card-graph"), descendant: element_compound(tag: "svg")), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "block"),
+      sheet_expr(property: MaxWidth, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_expr(property: MaxHeight, value: sheet_rem(milli: 22000)),
+      sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_ident(property: Height, ident: "auto"),
+      sheet_expr(property: Color, value: sheet_var(name: "stone")),
+      sheet_ident(property: Overflow, ident: "visible"),
+    ]),
+  ]),
 ]
 
 data reset_base_entries: List<SheetEntry> = [
@@ -903,15 +1005,35 @@ fn longest_selector(rules: List<AlignedRule>) -> Int {
   fold(rules, init: 0, f: (acc, r) => if selector_width(r: r) > acc { selector_width(r: r) } else { acc })
 }
 
-fn aligned_rule_wire(r: AlignedRule, column: Int) -> String {
-  join([selector_list_wire(l: r.selector), repeat_string(s: " ", n: column + 1 - selector_width(r: r)), "{ ", join(map(r.decls, d => decl_text(d: d, name_column: 0, alignment: Compact)), " "), " }\n"], "")
+type AlignedDeclsAcc {
+  text: String
+  index: Int
+}
+
+fn decl_gap_before(sep: DeclSeparator, index: Int) -> String {
+  match sep {
+    SingleSpace => if index == 0 { "" } else { " " }
+    DoubleSpaceAfterFirst => if index == 0 { "" } else if index == 1 { "  " } else { " " }
+  }
+}
+
+fn aligned_decls_wire(r: AlignedRule) -> String {
+  let folded = fold(r.decls, init: AlignedDeclsAcc { text: "", index: 0 }, f: (acc, d) => AlignedDeclsAcc {
+    text: join([acc.text, decl_gap_before(sep: r.separator, index: acc.index), decl_text(d: d, name_column: 0, alignment: Compact)], ""),
+    index: acc.index + 1,
+  })
+  folded.text
+}
+
+fn aligned_rule_wire(r: AlignedRule, rules: List<AlignedRule>, spaces_after_longest: Int) -> String {
+  join([selector_list_wire(l: r.selector), repeat_string(s: " ", n: longest_selector(rules: rules) + spaces_after_longest - selector_width(r: r)), "{ ", aligned_decls_wire(r: r), " }\n"], "")
 }
 
 fn entry_wire(e: SheetEntry) -> String {
   match e {
     EntryComment { lines: ls } => concat(comment_wire(lines: ls, indent: 0), "\n")
     EntryRule { selector: s, layout: l, items: is } => rule_wire(selector: s, layout: l, items: is)
-    EntryAlignedRules { rules: rs } => join(map(rs, r => aligned_rule_wire(r: r, column: longest_selector(rules: rs))), "")
+    EntryAlignedRules { rules: rs, spaces_after_longest: g } => join(map(rs, r => aligned_rule_wire(r: r, rules: rs, spaces_after_longest: g)), "")
     EntryGap { blank_lines: n } => repeat_string(s: "\n", n: n)
   }
 }
