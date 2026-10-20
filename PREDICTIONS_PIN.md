@@ -624,3 +624,16 @@ Dispatch G (fixed witness 9e3411beb8f, same head) predictions:
 - G3: if wrong_carrier is ACCEPTED (== 0), the census route cannot refuse the drift shape it is
   supposed to catch -> the review's proposed semantic route fails its own control; the text check
   stays, and finding 1 is answered by execution.
+
+## 2026-10-20T22:4x dispatch H: is the census's uniform ==0 acceptance call-body typechecking or its ABSENCE?
+Pre-registered BEFORE dispatch. Witness dag/test/claim/census_call_typecheck_control_witness.dag
+(scratch branch instruments-scratch), census over a synthetic source whose ONLY defect is a call
+argument of the wrong ground type: fn takes_int(x: Int) -> Int { 0 }; fn bad() -> Int { takes_int(x: "s") }.
+- H1: blocking_total(that) >= 1 -> the census DOES typecheck call arguments; then dispatch G's
+  wrong-carrier ACCEPTED (==0) is a real compiler decision (alias/roster driven), and the census is
+  structurally unable to serve as the alias-drift instrument for that shape. Reply to review 83586
+  finding 1 says exactly this.
+- H2: blocking_total(that) == 0 -> the census performs no call-body inhabitance check at all -> it
+  could never catch ANY drift shape of this kind; the route is rejected on the stronger structural
+  ground. Same reply, different evidence.
+- H3: != -1 passes (the census ran) either way; if it fails, the harness is broken and NOTHING is concluded.
