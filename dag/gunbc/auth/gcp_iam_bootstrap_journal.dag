@@ -127,27 +127,31 @@ fn journal_mark(bucket: NonEmptyStr, subject: JournalSubject, resource_key: Stri
 fn journal_mark_named(bucket: NonEmptyStr, name: NonEmptyStr, subject: JournalSubject, resource_key: String, consent: String, token: Secret) -> CasOutcome<String> {
   let expected: CasExpectation = ExpectSlotAbsent
   match gcp.Storage.InsertObjectIfAbsent(access_token: token, bucket: bucket, object: name, kind: journal_subject_wire(s: subject), subject: resource_key, consent: consent) {
-    RestAnswered { answer: m } => match journal_version(m_name: m.name, generation: m.generation) {
+    RestAnswered { answer: m } => if !journal_answer_names_request(requested_bucket: bucket, requested_object: name, answered_bucket: m.bucket, answered_object: m.name) {
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the journal insert answered for another object or bucket" } }
+    } else { match journal_version(m_name: m.name, generation: m.generation) {
       CasObservedReadable { readable: CasReadablePresent { version: v } } => CasCommitted { committed: v }
       CasObservedReadable { readable: CasReadableAbsent } => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the journal write answered without its object" } }
       CasObservedUnreadable { cause } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cause } }
-    }
+    } }
     RestRefused { refusal } => if status_is(o: refusal, code: 412) {
       match gcp.Storage.GetObjectMetadata(access_token: token, bucket: bucket, object: name) {
-        RestAnswered { answer: seen } => match journal_version(m_name: seen.name, generation: seen.generation) {
+        RestAnswered { answer: seen } => if !journal_answer_names_request(requested_bucket: bucket, requested_object: name, answered_bucket: seen.bucket, answered_object: seen.name) {
+          CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the 412 readback answered for another object or bucket" } }
+        } else { match journal_version(m_name: seen.name, generation: seen.generation) {
           CasObservedReadable { readable: r } => CasPreconditionFailed { expected: expected, observed: r }
           CasObservedUnreadable { cause } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cause } }
-        }
+        } }
         RestRefused { refusal: again } => CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: rest_refusal_text(o: again) as NonEmptyStr } } }
       }
     } else { CasStoreRefused { cause: CasGenerationPublicationRefused { detail: rest_refusal_text(o: refusal) as NonEmptyStr } } }
   }
 }
 
-// A STORE ANSWER COUNTS ONLY FOR THE SLOT IT WAS ASKED ABOUT. RED STUB: today every answer is taken as
-// the requested object's.
+// A STORE ANSWER COUNTS ONLY FOR THE SLOT IT WAS ASKED ABOUT: an insert answer or a 412 readback naming
+// another object or bucket is never Recorded or AlreadyPresent.
 fn journal_answer_names_request(requested_bucket: NonEmptyStr, requested_object: NonEmptyStr, answered_bucket: String, answered_object: String) -> Bool {
-  true
+  answered_bucket == (requested_bucket as String) && answered_object == (requested_object as String)
 }
 
 // WHAT A MARK WRITE MEANS to a caller: only a committed create-once write is "recorded"; finding the mark

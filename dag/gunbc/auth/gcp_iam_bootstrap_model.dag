@@ -283,8 +283,10 @@ fn iam_bootstrap_journal_cells() -> List<IamBootstrapBinding> {
 }
 
 // Every secret the ROOT CEREMONY binds a role on (the trust-root secrets it reads for iam-observe). The
-// identities stage creates each one bare when absent; a delta secret is created bare by the delta apply
-// (gunbc.auth.gcp_iam_bootstrap_delta_route settle_existence), never by the ceremony.
+// ceremony creates NONE of them: a trust-root secret's container is its value ceremony's
+// (gunbc.auth.gcp_iam_bootstrap custody_container_ceremony), so an absent one refuses and names that
+// ceremony, and a present one gets only this ceremony's own cells. A delta secret is created bare by the
+// delta apply (gunbc.auth.gcp_iam_bootstrap_delta_route settle_existence), never by the ceremony.
 fn iam_bootstrap_bound_secrets() -> List<NonEmptyStr> {
   distinct_by_key(xs: flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => [secret]

@@ -34,6 +34,7 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_delta { BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, bootstrap_delta_over, observe_bootstrap_subject, roster_subjects, subject_not_bootstrapped_text }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_cells, trust_root_ceremony_entry }
 import extdeps.cloud.gcp.storage
+import extdeps.cloud.gcp.storage { GcsBucketWire }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
@@ -74,7 +75,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapJournalBucket, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
@@ -85,7 +86,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapRoles => [BootstrapIdentities]
     BootstrapDeny => [BootstrapIdentities]
     BootstrapAuthorityCleanup => [BootstrapDeny]
-    BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup]
+    BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
     BootstrapJournalBucket => [BootstrapIdentities]
     BootstrapProbeAuthority => [BootstrapCapabilities]
     BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapProbeAuthority]
@@ -110,7 +111,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "The ceremony creates only the three own-trust identities; every target pool, provider, account and cell is the approval-gated delta's.",
-    concat("Root cells only (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_root_ceremony_bindings); every target, grant-set and custody cell is the approval-gated delta's. Root secrets created bare (no version) when absent: ", join(map(iam_bootstrap_bound_secrets(), x => x as String), ",")),
+    concat("Root cells only (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_root_ceremony_bindings); every target, grant-set and custody cell is the approval-gated delta's. Root secrets are never created here: an absent one refuses and names its value ceremony (custody_container_ceremony); present ones get only this ceremony's own cells: ", join(map(iam_bootstrap_bound_secrets(), x => x as String), ",")),
     bootstrap_authority_dependency_plan(),
     concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
     "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
@@ -507,22 +508,37 @@ fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy,
 type JournalBucketIdentity = JournalBucketAdmitted | JournalBucketMismatch { reason: NonEmptyStr }
 
 fn journal_bucket_identity(bucket: NonEmptyStr, name: String, project_number: String?, location: String?, uniform_access: Bool?, public_access_prevention: String?) -> JournalBucketIdentity {
-  if name == (bucket as String) { JournalBucketAdmitted } else { JournalBucketMismatch { reason: "the journal bucket readback names another bucket" } }
+  if name != (bucket as String) { JournalBucketMismatch { reason: "the journal bucket readback names another bucket" } }
+  else if !(match project_number { Present { value: p } => p == fleet_secrets_project_number  Absent => false }) { JournalBucketMismatch { reason: "the journal bucket is not in the declared project (or its project number is unreadable)" } }
+  else if !(match location { Present { value: l } => l == (iam_bootstrap_journal_bucket_location as String)  Absent => false }) { JournalBucketMismatch { reason: "the journal bucket is not in the declared location" } }
+  else if !(match uniform_access { Present { value: u } => u == iam_bootstrap_journal_bucket_uniform_access  Absent => false }) { JournalBucketMismatch { reason: "the journal bucket's uniform bucket-level access is not the declared setting" } }
+  else if !(match public_access_prevention { Present { value: p } => p == (iam_bootstrap_journal_bucket_public_access_prevention as String)  Absent => false }) { JournalBucketMismatch { reason: "the journal bucket's public access prevention is not the declared setting" } }
+  else { JournalBucketAdmitted }
 }
 
 // A create (or a 409 meaning a retried or concurrent create got there first) is not its evidence: the
 // bucket is read back before its cells are bound, which is what makes InsertBucket's idempotent
 // annotation true for this caller.
+fn journal_bucket_answer_identity(bucket: NonEmptyStr, b: GcsBucketWire) -> JournalBucketIdentity {
+  let ubla = match b.iam_configuration { Absent => none  Present { value: c } => match c.uniform_bucket_level_access { Absent => none  Present { value: u } => u.enabled } }
+  let pap = match b.iam_configuration { Absent => none  Present { value: c } => c.public_access_prevention }
+  journal_bucket_identity(bucket: bucket, name: b.name, project_number: b.project_number, location: b.location, uniform_access: ubla, public_access_prevention: pap)
+}
+
+fn journal_bucket_identity_text(i: JournalBucketIdentity) -> String {
+  match i { JournalBucketAdmitted => ""  JournalBucketMismatch { reason } => concat("journal bucket refused before any journal cell is bound: ", reason as String) }
+}
+
 fn iam_bootstrap_journal_bucket_readback(bucket: NonEmptyStr, token: Secret) -> String {
   match gcp.Storage.GetBucket(access_token: token, bucket: bucket) {
-    RestAnswered { answer: b } => if b.name == (bucket as String) { "" } else { "journal bucket readback names another bucket" }
+    RestAnswered { answer: b } => journal_bucket_identity_text(i: journal_bucket_answer_identity(bucket: bucket, b: b))
     RestRefused { refusal } => concat("journal bucket created or present but its readback refused: ", rest_refusal_text(o: refusal))
   }
 }
 
 fn iam_bootstrap_ensure_journal_bucket(bucket: NonEmptyStr, token: Secret) -> String {
   match gcp.Storage.GetBucket(access_token: token, bucket: bucket) {
-    RestAnswered { answer: _ } => ""
+    RestAnswered { answer: b } => journal_bucket_identity_text(i: journal_bucket_answer_identity(bucket: bucket, b: b))
     RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { concat("journal bucket unreadable: ", rest_refusal_text(o: refusal)) }
       else { match gcp.Storage.InsertBucket(access_token: token, project_id: fleet_secrets_project_id, bucket: bucket, location: iam_bootstrap_journal_bucket_location,
           uniform_bucket_level_access: iam_bootstrap_journal_bucket_uniform_access, public_access_prevention: iam_bootstrap_journal_bucket_public_access_prevention) {
@@ -538,7 +554,7 @@ fn iam_bootstrap_ensure_binding(binding: IamBootstrapBinding, token: Secret) -> 
     BootstrapProject => ""
     BootstrapAccount { account: _ } => ""
     BootstrapSecret { secret: _ } => ""
-    BootstrapBucket { bucket } => iam_bootstrap_ensure_journal_bucket(bucket: bucket, token: token)
+    BootstrapBucket { bucket: _ } => ""
   }
   if prerequisite != "" { prerequisite } else { iam_bootstrap_ensure_fenced_binding(binding: binding, token: token) }
 }
