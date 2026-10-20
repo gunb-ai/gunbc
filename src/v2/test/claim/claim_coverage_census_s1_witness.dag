@@ -37,6 +37,16 @@ import v2.workflow.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 // `v2.test.claim.claim_coverage_census_s1_live_pairing`, which states why they cannot live here.
 import v2.workflow.claim_coverage_census_s1_live { producer_named_identities }
 import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
+import gunbc.claim_coverage_census {
+  ClaimCoverageStanding, ClaimCoverageHeld, ClaimCoverageDidNotHold, UncoveredClaim
+}
+import gunbc.claim_coverage_census_live {
+  ComposedCensusStanding, ComposedHeld, ComposedFinding, ComposedUnread,
+  claim_coverage_composed_standing, claim_coverage_composed_exit, claim_coverage_composed_exit_code
+}
+import gunbc.cli_wire { CliWirePrintable }
+import std.process { ExitSuccess, ExitFailure }
+import v2.workflow.claim_coverage_census_s1 { s1_exit_code_did_not_hold, s1_exit_code_unread }
 
 // The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
 // The module is a fixture token and the identity is its exact `module.function` spelling -- the same shape
@@ -648,4 +658,121 @@ test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
 // is a pure match over the producer variants, and a producer that names no claim must contribute none.
 test fn a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing() -> Bool {
   producer_named_identities(producer: RequiredFloorProducer, index: empty_map()) |> is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// THE COMPOSED EXIT. Every case is asserted over fixtures, because the live entry's own exit depends on
+// whatever the checkout happens to look like and cannot be driven to a chosen state from a claim. The case
+// that was WRONG is claimed first: a definite finding beside an unread input exits 1, not 2. The parent's
+// ruling (2026-10-20) is the Kleene reading -- a finding is `false`, and `false AND unknown = false`, so an
+// unread input elsewhere cannot downgrade a definite failure to "no observation". Exit 2 survives only where
+// nothing was found and something could not be read.
+// ---------------------------------------------------------------------------
+
+// One real finding, from the wet census's own sum: an enrolled identity no required job executes, with the
+// drop that accounts for it named. Not a stand-in string -- the arm carries a population, and the receipt is
+// built from it, so the reason text this claim asserts over is the census's own wording.
+data finding_wet_standing: ClaimCoverageStanding = ClaimCoverageDidNotHold {
+  uncovered: [UncoveredClaim {
+    source_id: "claim-set-fixture",
+    identity: "gunbc.fixture_claim_does_not_hold",
+    declaring_drop: Absent
+  }]
+}
+
+// THE RED (parent ruling, 2026-10-20): finding + unread input => 1. This fails at the previous head, where
+// the unread arm was matched first and returned 2 -- the answer was "we could not tell" for a census that
+// had in fact found an uncovered claim, which a reader would have read as a broken fixture rather than a
+// real failure.
+test fn a_definite_finding_beside_an_unread_input_exits_one_not_two() -> Bool {
+  // The DECISION, before the number: the composition over these two standings is a finding, not an unread.
+  // Asserted at this grain as well because the exit code is derived from it -- if a mutation made the number
+  // right for the wrong reason, this arm is where it shows.
+  (match claim_coverage_composed_standing(
+    wet: finding_wet_standing,
+    s1: S1Unread { reason: "the acquisition index could not be read" }
+  ) {
+    ComposedFinding { reasons: reasons } => !is_empty(reasons)
+    ComposedUnread { cause: _ } => false
+    ComposedHeld => false
+  })
+  && match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: finding_wet_standing,
+    s1: S1Unread { reason: "the acquisition index could not be read" }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "claim-coverage-census: did not hold")
+        && string_contains(s: reason, pattern: "gunbc.fixture_claim_does_not_hold")
+        // The unread cause still travels: it does not decide the exit, but the reader has to fix it.
+        && string_contains(s: reason, pattern: "could not be read")
+    _ => false
+  }
+}
+
+// THE OTHER HALF OF THE SAME BOUNDARY: unread with NOTHING found stays exit 2. Both claims together are what
+// make the precedence claim mean "1 beats 2", rather than "always 1" -- a mutation that returned 1 for every
+// input would pass the claim above and fail this one.
+test fn an_unread_input_with_no_finding_exits_two_and_names_the_cause() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: ClaimCoverageHeld,
+    s1: S1Unread { reason: "the acquisition index could not be read" }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 2)
+        && string_contains(s: reason, pattern: "the acquisition index could not be read")
+        // The exit-2 arm prints the bare cause, not the finding-and-unread note.
+        && !(string_contains(s: reason, pattern: "does not change the exit"))
+    _ => false
+  }
+}
+
+// A finding on the S1 side alone, with the wet census holding, is still exit 1.
+test fn an_s1_finding_alone_exits_one() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: ClaimCoverageHeld,
+    s1: S1DidNotHold { reason: "a discovered claim is executed by no required job" }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1) && string_contains(s: reason, pattern: "executed by no required job")
+    _ => false
+  }
+}
+
+// BOTH censuses finding something keeps BOTH reasons, so neither reader is sent to the wrong file -- and the
+// exit stays 1.
+test fn two_findings_keep_both_reasons_and_stay_at_one() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: finding_wet_standing,
+    s1: S1DidNotHold { reason: "the discovered universe did not hold" }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "gunbc.fixture_claim_does_not_hold")
+        && string_contains(s: reason, pattern: "the discovered universe did not hold")
+    _ => false
+  }
+}
+
+// THE CLEAN CASE: both standings hold, exit 0, and nothing is reported as a failure.
+test fn two_held_standings_exit_zero() -> Bool {
+  match claim_coverage_composed_exit(bytes: "receipt", wet: ClaimCoverageHeld, s1: S1Held) {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } => bytes == "receipt"
+    _ => false
+  }
+}
+
+// THE EXIT NUMBER CANNOT DISAGREE WITH THE DECISION: the code is derived from the composed standing by the
+// one function that turns a standing into a protocol number, and it reuses the instrument's constants rather
+// than restating them. This is what a mutation that hardcoded an integer would break.
+test fn the_exit_code_is_derived_from_the_composed_standing() -> Bool {
+  (claim_coverage_composed_exit_code(standing: ComposedHeld) == 0)
+    && (claim_coverage_composed_exit_code(standing: ComposedFinding { reasons: ["a"] }) == s1_exit_code_did_not_hold)
+    && (claim_coverage_composed_exit_code(standing: ComposedUnread { cause: "b" }) == s1_exit_code_unread)
+    && (s1_exit_code_did_not_hold == 1)
+    && (s1_exit_code_unread == 2)
 }

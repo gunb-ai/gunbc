@@ -381,19 +381,14 @@ type S1Block {
   standing: S1Standing
 }
 
-// THE PROCESS PROTOCOL, NOT THE CENSUS'S STATE. These are the numbers a process exits with; they are
-// derived FROM the standing by one match, so no caller can pair an exit code with an outcome the census
-// did not report, and no integer stands for an outcome anywhere else in this file.
+// THE PROCESS PROTOCOL, NOT THE CENSUS'S STATE. These are the numbers a process exits with, and this module
+// holds the CONSTANTS ONLY. An earlier revision also held `s1_process_exit_code`, which turned an S1Standing
+// into a number here; once the composed exit derived its number from the DECISION over BOTH standings
+// (`gunbc.claim_coverage_census_live` claim_coverage_composed_exit_code), that function was a second,
+// competing site for the same protocol mapping with no caller -- so it is deleted, not kept as a convenience.
+// The reader of this file should not be able to produce an exit code from one census alone.
 data s1_exit_code_did_not_hold: Int = 1
 data s1_exit_code_unread: Int = 2
-
-fn s1_process_exit_code(standing: S1Standing) -> Int {
-  match standing {
-    S1Held => 0
-    S1DidNotHold { reason: _ } => s1_exit_code_did_not_hold
-    S1Unread { reason: _ } => s1_exit_code_unread
-  }
-}
 
 fn s1_block(s1: S1Composition) -> S1Block {
   match s1 {

@@ -1,6 +1,7 @@
 module gunbc.claim_coverage_census_live
 
-import std.types { String, List }
+import std.types { String, List, Int }
+import std.algebra { is_empty }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -16,7 +17,10 @@ import gunbc.claim_coverage_census {
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
 import v2.workflow.claim_coverage_census_s1_live { s1_live_block, s1_head_receipt_line }
-import v2.workflow.claim_coverage_census_s1 { S1Standing, S1Held, S1DidNotHold, S1Unread, s1_process_exit_code }
+import v2.workflow.claim_coverage_census_s1 {
+  S1Standing, S1Held, S1DidNotHold, S1Unread,
+  s1_exit_code_did_not_hold, s1_exit_code_unread
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -51,17 +55,16 @@ fn claim_executors() -> List<ClaimExecutorRow> {
   ]
 }
 
-// `gunbc test //gunbc/instruments:claim-coverage-census`: 0 every enrolled claim is executed by a
-// required job AND the discovered universe holds; 1 either census printed a finding (each listed above,
-// located); 2 the discovered census could not read an input, so no population was decided.
+// `gunbc test //gunbc/instruments:claim-coverage-census`: 0 every enrolled claim is executed by a required
+// job AND the discovered universe holds; 1 EITHER census printed a finding (each listed above, located), even
+// if some input was unread; 2 nothing was found AND the discovered census could not read an input, so no
+// population was decided.
 //
 // THE ONE INSTRUMENT PRINTS TWO CENSUSES (warm-wolf-570's one-instrument ruling: no second label, no
 // registry arm). The wet schedule's receipt is stern-raven-457's claim-grain census; the block composed
 // below is the DISCOVERED universe (S1) and the standings every other enrolled-claim carrier contributes
-// over it. The exits compose by taking the worse, and the unread channel outranks a did-not-hold: a census
-// that could not read is not a census that failed, it is a census that cannot answer, and reporting the
-// failure would hide which. The policy is one pure function over an injected composition
-// (`v2.workflow.claim_coverage_census_s1_live s1_block`), so a witness can assert all three arms over a fixture
+// over it. The policy is one pure function over an injected composition
+// (`v2.workflow.claim_coverage_census_s1_live s1_block`), so a witness can assert every case over a fixture
 // instead of only over whatever the checkout happens to look like.
 // THE WET REASON, from the wet census's own sum. A did-not-hold that lists nothing is not a thing this
 // census can print, so the wording is a property of the arm rather than a string chosen at the call site.
@@ -72,49 +75,97 @@ fn claim_coverage_wet_reason(uncovered: List<UncoveredClaim>) -> String {
   )
 }
 
-// THE COMPOSED EXIT, AS ONE PURE EXHAUSTIVE MATCH OVER TWO SUMS (review 82914). Both inputs are declared
-// coproducts -- `ClaimCoverageStanding` is stern-raven-457's, `S1Standing` is the discovered universe's --
-// and nothing here turns either into a Bool or compares an integer: the arms decide, and the exit CODE is
-// derived from the standing by `s1_process_exit_code`, so an exit number cannot be paired with an outcome
-// the censuses did not report. An unread input outranks a finding, because a census that could not read is
-// not a census that failed and reporting the failure would hide which one the reader is looking at; when
-// both censuses complain, both reasons print, since either alone would send the reader to the wrong file.
+// THE DECISION THE TWO STANDINGS REACH, BEFORE ANY EXIT NUMBER EXISTS (parent ruling, 2026-10-20, overriding
+// warm-wolf-570's earlier "unread outranks a finding": that was wrong by Kleene -- `false AND unknown =
+// false`). A DEFINITE finding dominates: if either census found something, the observation definitely did not
+// hold, and an unread input elsewhere cannot downgrade that to "unknown". Exit 2 is reserved for the case
+// where NOTHING was found and something could not be read -- there, and only there, the census genuinely
+// cannot answer. Precedence is therefore 1 > 2 > 0, and it is a decision over a declared sum rather than an
+// if-ladder, so the three cases are the only states this function can be in.
 //
-// PURE AND INJECTED, which is the other half of why it is a function: the witness asserts all three exits
-// over fixtures (`src/v2/test/claim/claim_coverage_census_s1_witness.dag`) and, by importing this module,
-// resolves every body in it -- the reason an unresolvable module can no longer hide behind a green
-// per-file parse sweep.
+// WHY A THIRD SUM RATHER THAN A MATCH THAT RETURNS AN INT DIRECTLY: the exit code must be derived from what
+// was decided, not chosen beside it. `ComposedCensusStanding` is that decision;
+// `claim_coverage_composed_exit_code` is the ONE site that turns it into a protocol number, reusing the
+// instrument's constants. So an exit number still cannot be paired with an outcome the censuses did not
+// report -- and now it cannot disagree with the OTHER census either, which is what the S1-only derivation
+// allowed.
+type ComposedCensusStanding
+  = ComposedHeld
+  | ComposedFinding { reasons: List<String> }
+  | ComposedUnread { cause: String }
+
+// THE PRECEDENCE, AS ONE EXHAUSTIVE MATCH OVER TWO SUMS (review 82914 kept: both inputs are declared
+// coproducts, nothing is turned into a Bool, no integer is compared). Both censuses naming findings keeps
+// BOTH reasons -- either alone would send the reader to the wrong file, and the unread cause is printed here
+// too when it accompanies a finding, because an unreadable input is still a located fact the reader has to
+// fix even though it does not decide the exit.
+fn claim_coverage_composed_standing(wet: ClaimCoverageStanding, s1: S1Standing) -> ComposedCensusStanding {
+  let wet_reason = match wet {
+    ClaimCoverageHeld => []
+    ClaimCoverageDidNotHold { uncovered: uncovered } => [claim_coverage_wet_reason(uncovered: uncovered)]
+  }
+  let s1_channel = match s1 {
+    S1Held => []
+    S1DidNotHold { reason: s1_reason } => [s1_reason]
+    S1Unread { reason: cause } => []
+  }
+  let findings = concat(wet_reason, s1_channel)
+  if !is_empty(findings) {
+    // A finding dominates. With an unread input beside it, the cause travels as a further reason: the exit is
+    // already decided by the finding, and the reader still needs to know which input could not be read.
+    let unread_note = match s1 {
+      S1Unread { reason: cause } => [unread_beside_finding_note(cause: cause)]
+      _ => []
+    }
+    ComposedFinding { reasons: concat(findings, unread_note) }
+  } else {
+    match s1 {
+      // Nothing was found and the discovered census could not read: no observation, exit 2.
+      S1Unread { reason: cause } => ComposedUnread { cause: cause }
+      _ => ComposedHeld
+    }
+  }
+}
+
+// THE UNREAD CAUSE, SAID AS WHAT IT IS WHEN IT DOES NOT DECIDE. Kept separate from the finding reasons so a
+// reader cannot mistake it for a claim finding, and so the exit-2 arm can print the bare cause instead.
+fn unread_beside_finding_note(cause: String) -> String {
+  concat("an input could not be read (does not change the exit: a finding was found): ", cause)
+}
+
+// THE PROCESS PROTOCOL, DERIVED ONCE (dag/gunbc/design_document: "Exit 0 means the observation held, 1 that
+// it did not, 2 that there was no observation"). The numbers are the instrument's constants, not chosen here;
+// the match is the only place a standing becomes a number.
+fn claim_coverage_composed_exit_code(standing: ComposedCensusStanding) -> Int {
+  match standing {
+    ComposedHeld => 0
+    ComposedFinding { reasons: _ } => s1_exit_code_did_not_hold
+    ComposedUnread { cause: _ } => s1_exit_code_unread
+  }
+}
+
+// PURE AND INJECTED, which is the other half of why it is a function: the witness asserts every case over
+// fixtures (`src/v2/test/claim/claim_coverage_census_s1_witness.dag`) -- including a finding beside an unread
+// input, which is the case whose precedence was wrong -- and, by importing this module, resolves every body
+// in it. That import is the reason an unresolvable module can no longer hide behind a green per-file parse
+// sweep.
 fn claim_coverage_composed_exit(
   bytes: String,
   wet: ClaimCoverageStanding,
   s1: S1Standing
 ) -> CliWireResponse {
-  match s1 {
-    S1Unread { reason: reason } => CliWirePrintable {
+  let standing = claim_coverage_composed_standing(wet: wet, s1: s1)
+  match standing {
+    ComposedHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+    ComposedUnread { cause: cause } => CliWirePrintable {
       bytes: bytes,
-      exit: ExitFailure { code: s1_process_exit_code(standing: s1), reason: reason }
+      exit: ExitFailure { code: claim_coverage_composed_exit_code(standing: standing), reason: cause }
     }
-    S1DidNotHold { reason: s1_reason } => match wet {
-      ClaimCoverageHeld => CliWirePrintable {
-        bytes: bytes,
-        exit: ExitFailure { code: s1_process_exit_code(standing: s1), reason: s1_reason }
-      }
-      ClaimCoverageDidNotHold { uncovered: uncovered } => CliWirePrintable {
-        bytes: bytes,
-        exit: ExitFailure {
-          code: s1_process_exit_code(standing: s1),
-          reason: concat(claim_coverage_wet_reason(uncovered: uncovered), concat(" | ", s1_reason))
-        }
-      }
-    }
-    S1Held => match wet {
-      ClaimCoverageHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-      ClaimCoverageDidNotHold { uncovered: uncovered } => CliWirePrintable {
-        bytes: bytes,
-        exit: ExitFailure {
-          code: s1_process_exit_code(standing: s1),
-          reason: claim_coverage_wet_reason(uncovered: uncovered)
-        }
+    ComposedFinding { reasons: reasons } => CliWirePrintable {
+      bytes: bytes,
+      exit: ExitFailure {
+        code: claim_coverage_composed_exit_code(standing: standing),
+        reason: join(reasons, separator: " | ")
       }
     }
   }
