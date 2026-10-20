@@ -1000,6 +1000,10 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
 // is the digest of exactly what the sidecar unit executes. The sidecar's own receipt names sha256 of /proc/self/exe;
 // the broker joins the two (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) and refuses a
 // disagreement.
+// FAIL-CLOSED: the digest is taken by assignment (a sha256sum failure fails the && chain, no pipe to mask it) and must be
+// exactly 64 characters before anything is written, so an empty NAME= can never reach the env file. The shell transport
+// is a scaffold dissolved when the typed observe_executable digest (as device_crypto_sidecar_readback_exit uses) has a
+// staged-write route that takes a runtime value; until then this step is the only runtime-valued write.
 fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let svc = spec.approval_broker
   let owner = svc.service_user
@@ -1013,9 +1017,9 @@ fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRe
       dest: installed,
     )),
     deploy_raw(command: join([
-      printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' ",
-      "\"$(", sha256sum_program().invocation as String, " ", installed, " | ", cut_program as String, " -d' ' -f1)\"",
-      " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+      "d=$(", sha256sum_program().invocation as String, " ", installed, ") && d=$\{d%% *} && test $\{#d} -eq 64 && ",
+      printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' \"$d\" | ",
+      join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
         device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision)]), " "),
     ], "")),
   ]

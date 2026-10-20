@@ -387,6 +387,7 @@ test fn the_digest_env_is_computed_from_the_installed_sidecar_binary_and_no_othe
   let gunbc_bin = release_locus_binary_path(root: live_spec().approval_broker.repo_root as String, revision: live_revision())
   let text = pipeline_steps_text(steps: steps)
   string_contains(s: text, pattern: join(["sha256sum ", installed], "")) && !string_contains(s: text, pattern: join(["sha256sum ", gunbc_bin], ""))
+    && string_contains(s: text, pattern: "test $\{#d} -eq 64 && ") && !string_contains(s: text, pattern: "| cut")
 }
 
 // THE BROKER INHERITS THE ROADMAP'S EVALUATION CAPS, and that is a stated divergence rather than a
