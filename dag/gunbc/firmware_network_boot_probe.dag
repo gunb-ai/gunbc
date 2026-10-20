@@ -1,6 +1,7 @@
 module gunbc.firmware_network_boot_probe
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.algebra { Cons, Empty }
 import std.optional { Present, Absent }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -20,9 +21,9 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
 }
 
-// ONE INSTRUMENT, MANY ROWS. A BMC family is a FirmwareBootFamilyRow in firmware_boot_family_rows;
-// probe() takes a row as data and never asks which unit or which host it is looking at. Adding a
-// sixth family is ONE new row (plus the existing-transport reader that produces its replies) and
+// ONE INSTRUMENT, MANY ROWS. A family-configuration is a FirmwareBootFamilyRow in firmware_boot_family_rows;
+// probe() takes a row as data and never asks which unit or which host it is looking at. Adding another
+// row is ONE new row (plus the existing-transport reader that produces its replies) and
 // changes neither probe(), nor the observation vocabulary in S0, nor any gate: the witness proves
 // that by probing a row constructed locally in the test.
 
@@ -124,9 +125,10 @@ fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict 
   }
 }
 
-// TRANSPORT EVIDENCE: what the existing extdeps.bmc readers returned, already decoded. probe()
-// writes no wire protocol. A reply names its own axis, so there is no axis tag to disagree with
-// the payload.
+// ONE ACCOUNT, STATED ONCE: AxisReply values are SUPPLIED TRANSPORT-SHAPED HYPOTHESES. No existing
+// extdeps.bmc reader produces them yet (the frontier below is Pending), so nothing this module
+// returns is receipt-backed until the declared reader inhabits ProbeEvidence. probe() writes no wire
+// protocol. A reply names its own axis, so there is no axis tag to disagree with the payload.
 type AxisReply
   = ReplyBootOrder { devices: List<BootOrderEntry> }
   | ReplyBootOptions { options: List<BootOption> }
@@ -154,9 +156,42 @@ type ProbeSubject {
   unit_label: NonEmptyStr
 }
 
+// WHAT A READ IS ABOUT, JOINED ONCE. The row (hence family, route, authority and coverage), the
+// subject, the read receipt and the replies travel in ONE sealed carrier, so no caller can pair a
+// MegaRAC row with replies read from another unit: probe() takes this and nothing else. The
+// future reader (the frontier's mint) is the only honest producer; sole_constructor confines the
+// literal to probe_evidence, whose arguments are exactly what a reader holds after a read. The
+// constructor is not call-walled: the reader module does not exist to name in admit_callers, and
+// that wall is added with it. Until then the pairing is by supplied hypothesis, per the account above.
+type ReadReceipt {
+  observed_at: EpochMs
+  response_identity: NonEmptyStr
+}
+
+type ProbeEvidence sole_constructor {
+  subject: ProbeSubject
+  row: FirmwareBootFamilyRow
+  receipt: ReadReceipt
+  contact: BmcContact
+}
+
+fn probe_evidence(subject: ProbeSubject, row: FirmwareBootFamilyRow, receipt: ReadReceipt, contact: BmcContact) -> ProbeEvidence {
+  ProbeEvidence { subject: subject, row: row, receipt: receipt, contact: contact }
+}
+
+// The provenance an outcome preserves, so S0's caller never re-associates authority and time by hand.
+type ReadProvenance {
+  family: FamilyKey
+  route: ReadRoute
+  authority: CitedFigureStanding
+  receipt: ReadReceipt
+}
+
+// NAMED FOR WHAT IT IS: a decode of supplied replies under the evidence's own row. It becomes
+// observed standing only when the carrier was minted by the declared reader.
 type FirmwareBootProbeOutcome
   = BmcUnreachable { subject: ProbeSubject, attempt: ContactAttempt }
-  | BmcObserved { subject: ProbeSubject, observation: FirmwareBootObservation }
+  | BmcObserved { subject: ProbeSubject, provenance: ReadProvenance, observation: FirmwareBootObservation }
 
 fn reply_axis(reply: AxisReply) -> ObservationAxis {
   match reply {
@@ -238,12 +273,14 @@ fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> ReplyMatch
 fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: ObservationAxis) -> AxisResolution {
   match route_for(row: row, request: ReadAxisRequest { axis: axis }) {
     RequestRefused { why: w } => AxisNotObserved { reason: w }
-    Routed { route: _ } =>
+    Routed { route: r } =>
+      if r != row.route { AxisNotObserved { reason: "the routed read window is not the row's own route" } } else {
       match reply_for_axis(replies: replies, axis: axis) {
         NoReply => AxisNotObserved { reason: no_reply_reason() }
         ConflictingReplies => AxisNotObserved { reason: conflicting_replies_reason() }
         OneReply { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
         OneReply { reply: r } => AxisPayload { reply: r }
+      }
       }
   }
 }
@@ -282,7 +319,12 @@ fn read_nics(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> NicsObserv
   match resolve_axis(row: row, replies: replies, axis: NicsAxis) {
     AxisNotObserved { reason: r } => NicsUnobserved { reason: r }
     AxisRefused { refusal: f } => NicsRefused { refusal: f }
-    AxisPayload { reply: ReplyNics { nics: n } } => NicsObserved { nics: n }
+    // An empty list can be a badly asked read, so it is never an observed population (S0 contract).
+    AxisPayload { reply: ReplyNics { nics: n } } =>
+      match n {
+        Empty => NicsUnobserved { reason: "the BMC returned an empty NIC list, which may be a badly asked read" }
+        Cons { head: _, tail: _ } => NicsObserved { nics: n }
+      }
     AxisPayload { reply: _ } => NicsUnobserved { reason: mismatched_reply_reason() }
   }
 }
@@ -306,24 +348,30 @@ fn read_bios_version(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> Bi
   }
 }
 
-// THE ONE ENTRY. A row, the subject as data, and what the existing transports returned.
-fn probe(row: FirmwareBootFamilyRow, subject: ProbeSubject, contact: BmcContact) -> FirmwareBootProbeOutcome {
-  match contact {
-    BmcSilent { attempt: a } => BmcUnreachable { subject: subject, attempt: a }
+// THE ONE ENTRY. One sealed carrier; row, subject, receipt and replies are already joined.
+fn probe(evidence: ProbeEvidence) -> FirmwareBootProbeOutcome {
+  match evidence.contact {
+    BmcSilent { attempt: a } => BmcUnreachable { subject: evidence.subject, attempt: a }
     BmcResponded { replies: rs } => BmcObserved {
-      subject: subject,
+      subject: evidence.subject,
+      provenance: ReadProvenance {
+        family: evidence.row.family,
+        route: evidence.row.route,
+        authority: evidence.row.authority,
+        receipt: evidence.receipt,
+      },
       observation: FirmwareBootObservation {
-        boot_order: read_boot_order(row: row, replies: rs),
-        boot_options: read_boot_options(row: row, replies: rs),
-        nics: read_nics(row: row, replies: rs),
-        secure_boot: read_secure_boot(row: row, replies: rs),
-        bios_version: read_bios_version(row: row, replies: rs),
+        boot_order: read_boot_order(row: evidence.row, replies: rs),
+        boot_options: read_boot_options(row: evidence.row, replies: rs),
+        nics: read_nics(row: evidence.row, replies: rs),
+        secure_boot: read_secure_boot(row: evidence.row, replies: rs),
+        bios_version: read_bios_version(row: evidence.row, replies: rs),
       },
     }
   }
 }
 
-// ---- THE TABLE: five rows, keyed by family. Authority is TranscribedUncited because no row has had
+// ---- THE TABLE: five family-configuration rows. Authority is TranscribedUncited because no row has had
 // its Redfish/IPMI surface read against the firmware's own reference yet (DESIGN 4d); each names
 // the read that closes it.
 
@@ -400,11 +448,11 @@ data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution
 
 // THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares a decoder yet, so this ref names the
 // declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
-// redfish_axis_replies, returning List<AxisReply>). The witness pins the literal; renaming the
+// mint_probe_evidence, returning ProbeEvidence: the row selector, route and receipt as well as the decoded replies). The witness pins the literal; renaming the
 // future decoder means editing this one fn and that pin, and until then the status stays Pending
 // on purpose rather than reporting a discharge nobody earned.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
+  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "mint_probe_evidence")
 }
 
 fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
