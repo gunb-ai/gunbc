@@ -58,7 +58,16 @@ use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
 };
-pub use crate::std_generated_provider::{group_provider_demands, GeneratedProviderDemand};
+use crate::std_generated_provider::ProviderAcquisitionStep::{
+    AcquireModules, AcquisitionComplete, ProviderAcquisitionRefused,
+};
+use crate::std_generated_provider::ProviderModuleFact::{
+    ModuleInClosure, ModuleInPool, ModuleNotInPool,
+};
+pub use crate::std_generated_provider::{
+    group_provider_demands, observe_provider_demand, provider_acquisition_step,
+    GeneratedProviderDemand, ProviderAcquisitionStep, ProviderModuleFact,
+};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -34333,6 +34342,175 @@ pub struct RealizeState {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diags_by_name: Rc<HashMap<String, Rc<Vec<Rc<ErrorNode>>>>>,
     pub demands_by_name: Rc<HashMap<String, Rc<Vec<Rc<GeneratedProviderDemand>>>>>,
+}
+
+pub fn closure_provider_module_fact(
+    module_path: String,
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pool_modules: Rc<Vec<String>>,
+) -> Rc<ProviderModuleFact> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for m in modules.iter().cloned() {
+            if (crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone())
+                == module_path.clone())
+            {
+                __result.push(m);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(m) => Rc::new(ProviderModuleFact::ModuleInClosure {
+            declarations: Rc::new({
+                let mut __result = Vec::new();
+                for n in Rc::new({
+                    let mut __result = Vec::new();
+                    for n in Rc::new({
+                        let mut __result = Vec::new();
+                        for i in m.items.clone().iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                i.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if (n.clone() != "".to_string()) {
+                            __result.push(n);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(n.clone());
+                }
+                __result
+            }),
+            refused: Rc::new(vec![]),
+        }),
+        std::option::Option::None => {
+            if {
+                let mut __found = false;
+                for p in pool_modules.iter().cloned() {
+                    if (p.clone() == module_path.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new(ProviderModuleFact::ModuleInPool)
+            } else {
+                Rc::new(ProviderModuleFact::ModuleNotInPool)
+            }
+        }
+    }
+}
+
+pub fn closure_provider_acquisition_step(
+    demands: Rc<Vec<Rc<GeneratedProviderDemand>>>,
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pool_modules: Rc<Vec<String>>,
+) -> Rc<ProviderAcquisitionStep> {
+    crate::std_generated_provider::provider_acquisition_step(
+        Rc::new({
+            let mut __result = Vec::new();
+            for d in demands.iter().cloned() {
+                __result.push(crate::std_generated_provider::observe_provider_demand(
+                    d.clone(),
+                    closure_provider_module_fact(
+                        d.declaration.module_path.clone(),
+                        modules.clone(),
+                        source_indices.clone(),
+                        pool_modules.clone(),
+                    ),
+                ));
+            }
+            __result
+        }),
+        Rc::new({
+            let mut __result = Vec::new();
+            for n in Rc::new({
+                let mut __result = Vec::new();
+                for n in Rc::new({
+                    let mut __result = Vec::new();
+                    for m in modules.iter().cloned() {
+                        __result.push(crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            m.module.clone(),
+                        ));
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (n.clone() != "".to_string()) {
+                        __result.push(n);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(n.clone());
+            }
+            __result
+        }),
+    )
+}
+
+pub fn generated_provider_unavailable_diagnostics(
+    step: Rc<ProviderAcquisitionStep>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*step.clone()).clone() {
+        ProviderAcquisitionStep::ProviderAcquisitionRefused { refusals: rs, .. } => Rc::new({
+            let mut __result = Vec::new();
+            for r in v1_rt::concat(Rc::new(vec![rs.head.clone()]), rs.tail.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for site in v1_rt::concat(
+                            Rc::new(vec![r.demand.sites.head.clone()]),
+                            r.demand.sites.tail.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::GeneratedProviderUnavailable {
+                                    declaration: r.demand.declaration.clone(),
+                                    cause: r.cause.clone(),
+                                    span: site.at.clone(),
+                                }),
+                                "".to_string(),
+                            ));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+        ProviderAcquisitionStep::AcquisitionComplete => Rc::new(vec![]),
+        ProviderAcquisitionStep::AcquireModules { modules: _, .. } => Rc::new(vec![]),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

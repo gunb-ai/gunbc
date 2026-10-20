@@ -227,7 +227,7 @@ pub fn provider_observation_verdict(
 pub fn observed_unavailable(
     o: Rc<ObservedProviderDemand>,
     closure_modules: Rc<Vec<String>>,
-) -> Rc<Vec<Rc<GeneratedProviderUnavailable>>> {
+) -> Rc<Vec<Rc<()>>> {
     match (*provider_observation_verdict(o.clone(), closure_modules.clone())).clone() {
         ProviderObservationVerdict::VerdictUnavailable { cause: c, .. } => {
             Rc::new(vec![Rc::new(GeneratedProviderUnavailable {
@@ -456,61 +456,11 @@ pub fn generated_provider_unavailable_cause_label(c: GeneratedProviderUnavailabl
     }
 }
 
-pub fn render_generated_provider_unavailable(u: Rc<GeneratedProviderUnavailable>) -> String {
-    {
-        let d = u.demand.declaration.clone();
-        let sites = v1_rt::concat(
-            Rc::new(vec![u.demand.sites.head.clone()]),
-            u.demand.sites.tail.clone(),
-        );
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "generated provider unavailable: ".to_string(),
-                                    d.module_path.clone(),
-                                ),
-                                ".".to_string(),
-                            ),
-                            d.decl_name.clone(),
-                        ),
-                        " -- ".to_string(),
-                    ),
-                    generated_provider_unavailable_cause_label(u.cause.clone()),
-                ),
-                "; demanded by ".to_string(),
-            ),
-            Rc::new({
-                let mut __result = Vec::new();
-                for s in sites.iter().cloned() {
-                    __result.push(v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            generated_provider_cause_label(s.cause.clone()),
-                                            " at ".to_string(),
-                                        ),
-                                        s.at.file.clone(),
-                                    ),
-                                    ":".to_string(),
-                                ),
-                                (s.at.start.clone()).to_string(),
-                            ),
-                            "..".to_string(),
-                        ),
-                        (s.at.end.clone()).to_string(),
-                    ));
-                }
-                __result
-            })
-            .join(&", ".to_string()),
-        )
-    }
+pub fn generated_provider_unavailable_message(
+    declaration: Rc<DeclarationRef>,
+    cause: GeneratedProviderUnavailableCause,
+) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("generated provider unavailable: ".to_string(), declaration.module_path.clone()), ".".to_string()), declaration.decl_name.clone()), " -- ".to_string()), generated_provider_unavailable_cause_label(cause.clone())), "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
