@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { Cons, Empty, string_contains }
 import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.extdeps.file_system { Filesystem }
 import std.markdown { MarkdownDocument }
 import gunbc.plan { Plan, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
@@ -65,7 +66,7 @@ fn p4_positional_step(acc: P4PositionScan, segment: String) -> P4PositionScan {
 
 fn p4_has_positional_citation(t: String) -> Bool {
   fold(
-    split(s: t, delimiter: ":"),
+    t.split(delimiter: ":"),
     init: P4PositionScan { index: 0, prev_ends_in_digit: false, found_positional: false },
     f: p4_positional_step
   ).found_positional
@@ -154,7 +155,12 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // site list, the WarmValid construction classification, the missing-roster absence check, the
 // dag file-count invariant, the "600 is a label not a measurement" split, and the
 // no-watt-field-in-the-fixture reading.
-test fn every_load_bearing_quantity_arrives_as_the_command_that_re_derives_it() -> Bool {
+// What THIS claim checks is a property of the DOCUMENT, not of the tree: a
+// decision record may leave a quantity unread, but not unnamed. Where it does,
+// it must hand over the command that reads it, so no number in this plan is ever
+// the last word. DESIGN §6: "Name the instrument, never transcribe its output."
+// The readings themselves are executed by the tree-reading claims below, not here.
+test fn the_carrier_names_an_instrument_for_every_quantity_it_leaves_unread() -> Bool {
   let t = carrier_text()
   string_contains(s: t, pattern: "git grep -n applied_power_limit dag")
     && string_contains(s: t, pattern: "git grep -n WarmValid dag")
@@ -169,7 +175,10 @@ test fn every_load_bearing_quantity_arrives_as_the_command_that_re_derives_it() 
 // DEFAULT, not an endorsement. If the carrier ever read as though the operator had chosen
 // option C, that would state a decision nobody made; and because the fleet question is still
 // unanswered, the carrier must keep saying so rather than implying the choice is settled.
-test fn the_carrier_records_the_ruling_as_a_default_not_an_endorsement() -> Bool {
+// Also a DOCUMENT property: the wording must keep saying the ruling is a default
+// and that no card is chosen. That the fleet question is genuinely still open is
+// carried by the absence check in the census claim, not by this wording check.
+test fn the_carrier_records_the_ruling_as_a_default_that_is_no_card_chosen() -> Bool {
   let t = carrier_text()
   string_contains(s: t, pattern: "decided — by default, not by the operator")
     && string_contains(s: t, pattern: "licenses the shape, not a number")
@@ -210,8 +219,8 @@ type P4Citation {
 // the pieces of the text that could be citations, split on the delimiters that surround one
 fn p4_pieces(t: String) -> List<String> {
   filter(
-    flat_map(split(s: t, delimiter: "\n"), line =>
-      flat_map(split(s: line, delimiter: " "), word => split(s: word, delimiter: "`"))),
+    flat_map(t.split(delimiter: "\n"), line =>
+      flat_map(line.split(delimiter: " "), word => word.split(delimiter: "`"))),
     w => w != ""
   )
 }
@@ -263,7 +272,7 @@ fn p4_body_is_clean(body: String) -> Bool {
 // which is otherwise a reject character -- that bug was live in the first draft and rejected
 // every citation, which is what a measured roster catches and an assumed one does not.
 fn p4_is_citation_shape(w: String) -> Bool {
-  match split(s: w, delimiter: "::") {
+  match w.split(delimiter: "::") {
     Cons { head: m, tail: Cons { head: d, tail: Empty } } => m != "" && d != "" && p4_body_is_clean(body: concat(m, d))
     _ => false
   }
@@ -273,9 +282,9 @@ fn p4_is_citation_shape(w: String) -> Bool {
 // reading is total in practice; the `_` arm exists because a match must be total, and it
 // yields the one thing that cannot resolve -- an empty module -- rather than a guess.
 fn p4_parse(w: String) -> P4Citation {
-  match split(s: w, delimiter: "::") {
+  match w.split(delimiter: "::") {
     Cons { head: m, tail: Cons { head: rest, tail: Empty } } =>
-      match split(s: rest, delimiter: ".") {
+      match rest.split(delimiter: ".") {
         Cons { head: d, tail: Cons { head: fld, tail: Empty } } =>
           P4Citation { module_path: m, decl_name: d, field_name: fld, has_field: true }
         _ => P4Citation { module_path: m, decl_name: rest, field_name: "", has_field: false }
@@ -296,7 +305,7 @@ fn p4_occurrences(t: String, cite: String) -> Int {
   // n occurrences of a separator produce n+1 pieces, so occurrences = pieces - 1. The
   // obvious `filter(non-empty).length()` undercounts (two occurrences with an empty piece
   // between them give 1, not 2) -- caught by running the roster arithmetic, not by reading it.
-  split(s: t, delimiter: cite).length() - 1
+  t.split(delimiter: cite).length() - 1
 }
 
 // THE POSITIVE CONTROL ON THE DERIVATION ITSELF. Every `::` in the text must be covered by
@@ -305,7 +314,7 @@ fn p4_occurrences(t: String, cite: String) -> Int {
 fn p4_citation_count_is_conserved(t: String) -> Bool {
   let roster = p4_citation_roster(t)
   let covered = fold(roster, init: 0, f: (n, cite) => n + p4_occurrences(t: t, cite: cite))
-  let separators = split(s: t, delimiter: "::").length() - 1
+  let separators = t.split(delimiter: "::").length() - 1
   covered == separators && separators > 20
 }
 
@@ -350,4 +359,189 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
     && roster.length() > 20
     && !p4_citation_resolves(cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
     && all(roster, cite => p4_citation_resolves(cite: cite))
+}
+
+// ── real reads, not greps of the plan's own prose ────────────────────────────
+// These claims EXECUTE. Each reads what it asserts out of the tree that
+// declares it, so a change in the data reddens the claim instead of quietly
+// rotting a sentence. DESIGN §5: "a typecheck and a `.contains()` grep are not
+// consumers. Done means a real consumer green by execution plus a discriminating
+// input that goes red when the behavior is wrong." Every reading this plan used
+// to print now lives here, read from what declares it.
+
+// The body of one `data <row>: GpuModelCatalogRow`, cut from the catalog source
+// between its own header and the next row's. Empty when the row is absent, so an
+// absent row fails every check that reads it rather than passing vacuously.
+fn p4_catalog_row_block(text: String, row: String) -> String {
+  let after = match text.split(delimiter: concat(concat("\ndata ", row), ": GpuModelCatalogRow")) {
+    Cons { head: _, tail: Cons { head: a, tail: _ } } => a
+    _ => ""
+  }
+  match after.split(delimiter: "\ndata ") {
+    Cons { head: block, tail: _ } => block
+    _ => ""
+  }
+}
+
+data p4_frontier_acc: Rec {
+  candidates: List<String>,
+  references: List<String>,
+  stage: Int
+}
+
+// Reads the frontier's own two lists out of the module that declares them, so the
+// candidate set is not a copy of a list someone typed into a plan.
+fn p4_frontier_step(acc: p4_frontier_acc, line: String) -> p4_frontier_acc {
+  let trimmed = line.trim()
+  let name = trimmed.replace("\"", "").replace(",", "")
+  let enter_candidates = line.starts_with(prefix: "data home_serving_add_in_card_catalog_rows")
+  let enter_references = line.starts_with(prefix: "data home_serving_reference_sxm_catalog_rows")
+  let closes = trimmed.starts_with(prefix: "]")
+  let is_entry = trimmed.starts_with(prefix: "\"")
+  if acc.stage == 0 {
+    if enter_candidates {
+      p4_frontier_acc { candidates: acc.candidates, references: acc.references, stage: 1 }
+    } else {
+      acc
+    }
+  } else if acc.stage == 1 {
+    if closes {
+      p4_frontier_acc { candidates: acc.candidates, references: acc.references, stage: 2 }
+    } else if is_entry {
+      p4_frontier_acc { candidates: concat(acc.candidates, [name]), references: acc.references, stage: 1 }
+    } else {
+      acc
+    }
+  } else if acc.stage == 2 {
+    if enter_references {
+      p4_frontier_acc { candidates: acc.candidates, references: acc.references, stage: 3 }
+    } else {
+      acc
+    }
+  } else if acc.stage == 3 {
+    if closes {
+      p4_frontier_acc { candidates: acc.candidates, references: acc.references, stage: 4 }
+    } else if is_entry {
+      p4_frontier_acc { candidates: acc.candidates, references: concat(acc.references, [name]), stage: 3 }
+    } else {
+      acc
+    }
+  } else {
+    acc
+  }
+}
+
+fn p4_candidate_has_ceiling(catalog: String, row: String) -> Bool {
+  let block = p4_catalog_row_block(text: catalog, row: row)
+  block != "" && string_contains(block, "  tdp_watts: watt(count: ")
+}
+
+fn p4_reference_is_unstated(catalog: String, row: String) -> Bool {
+  let block = p4_catalog_row_block(text: catalog, row: row)
+  block != "" && string_contains(block, "  tdp_watts: none")
+}
+
+// The plan once printed the candidates' ceilings and named the rows that carry
+// none. Both were frozen readings. Here they are read instead: the frontier's
+// candidate list is parsed from the module that declares it, each name is looked
+// up in the catalog source it names, and the partition must hold — a candidate
+// with no stated ceiling, or an unstated ceiling on a row nobody designated a
+// reference, is red. The unstated total is counted from the catalog itself and
+// must equal the reference list's length, so neither list can drift alone.
+test fn the_candidate_ceilings_are_read_from_the_catalog_that_declares_them() -> Bool {
+  let frontier = filesystem_read(path: "dag/gunbc/serving/home_serving_accelerator_field.dag").content
+  let catalog = filesystem_read(path: "dag/extdeps/gpu/nvidia.dag").content
+  let rows = fold(
+    frontier.split(delimiter: "\n"),
+    init: p4_frontier_acc { candidates: [], references: [], stage: 0 },
+    f: p4_frontier_step
+  )
+  let every_candidate_states_a_ceiling = all(rows.candidates, row => p4_candidate_has_ceiling(catalog, row))
+  let every_reference_is_unstated = all(rows.references, row => p4_reference_is_unstated(catalog, row))
+  let unstated = catalog.split(delimiter: "  tdp_watts: none").length() - 1
+  rows.candidates.length() > 0
+    && rows.references.length() > 0
+    && every_candidate_states_a_ceiling
+    && every_reference_is_unstated
+    && unstated == rows.references.length()
+}
+
+// The first row the census returns for a module, or "" when it knows none — so a
+// module nobody has indexed reddens the claim that reads its file.
+fn p4_first_rel_path(rows: List<DeclFact>) -> String {
+  match rows {
+    Cons { head: d, tail: _ } => d.rel_path
+    _ => ""
+  }
+}
+
+fn p4_read_declared_module(pools: List<String>, qualified_name: String) -> String {
+  let path = p4_first_rel_path(decl_facts_at(pool_roots: pools, qualified_name: qualified_name))
+  if path == "" { "" } else { filesystem_read(path: path).content }
+}
+
+// The two `Watt?` fields are read from the file the declaration census names for
+// each module — not from a path this file guesses — and the ABSENCE of any
+// relation between them is read from the two modules such a rule would live in.
+// This is the check that made the plan's "nothing in the tree relates them"
+// statement worth anything: if either field changes type, or a rule appears, red.
+test fn the_two_watt_fields_are_read_from_where_they_are_declared() -> Bool {
+  let pools = ["dag", "src/v1", "src/v2"]
+  let catalog_src = p4_read_declared_module(pools, "extdeps.gpu.types")
+  let subject_src = p4_read_declared_module(pools, "gunbc.spark.serving_performance_subject")
+  let standing_src = filesystem_read(path: "dag/gunbc/serving/gpu_bench_warm_standing.dag").content
+  string_contains(catalog_src, "  tdp_watts: Watt?")
+    && string_contains(subject_src, "  applied_power_limit: Watt?")
+    && !string_contains(catalog_src.to_lower(), "applied_power_limit")
+    && !string_contains(subject_src.to_lower(), "tdp")
+    && !string_contains(standing_src.to_lower(), "tdp")
+}
+
+data p4_digit_scan: Rec {
+  seen: Int,
+  unexplained: Int
+}
+
+// Every line carrying the run-name digits is a label; anything else that carries
+// them has to be explained, so the claim cannot be satisfied by an empty scan.
+fn p4_digit_step(acc: p4_digit_scan, line: String) -> p4_digit_scan {
+  if !string_contains(line, "600") {
+    acc
+  } else if string_contains(line, "pro6000ws") || string_contains(line, "600w") {
+    p4_digit_scan { seen: acc.seen + 1, unexplained: acc.unexplained }
+  } else {
+    p4_digit_scan { seen: acc.seen + 1, unexplained: acc.unexplained + 1 }
+  }
+}
+
+// "The fixtures carry no watt figure" was a sentence; it is now a read of every
+// entry the directory actually holds, so a fixture added later with a power
+// column reddens it. The device row's four columns are read from both files that
+// carry it, and the run-name-label explanation of every `600` in the receipts is
+// scanned line by line — the plan's `grep -o "600"` line claims nothing on its own.
+test fn the_gpu_bench_fixtures_carry_no_watt_figure_and_no_measurement() -> Bool {
+  let dir = "fixtures/gpu_bench/pro6000ws_600w_v2"
+  let listing = Filesystem.List(path: dir, expect: ExpectSuccess)
+  let nothing_reads_as_power = all(listing.entries, name => {
+    let body = filesystem_read(path: concat(concat(dir, "/"), name)).content.to_lower()
+    !string_contains(body, "watt")
+      && !string_contains(body, "tdp")
+      && !string_contains(body, "power")
+      && !string_contains(body, "w /")
+  })
+  let auto = filesystem_read(path: concat(concat(dir, "/"), "auto.log")).content
+  let receipts = filesystem_read(
+    path: concat(concat(dir, "/"), "warm_ninfer_nvfp4_pro6000ws_600w.jsonl")
+  ).content
+  let scan = fold(
+    receipts.split(delimiter: "\n"),
+    init: p4_digit_scan { seen: 0, unexplained: 0 },
+    f: p4_digit_step
+  )
+  listing.entries.length() > 0
+    && nothing_reads_as_power
+    && string_contains(auto, "name, memory.total")
+    && !string_contains(auto.to_lower(), "w /")
+    && scan.seen > 0
+    && scan.unexplained == 0
 }
