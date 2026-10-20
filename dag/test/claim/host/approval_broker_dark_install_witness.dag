@@ -36,7 +36,7 @@ import gunbc.host.host_effect_realize {
   approval_broker_dark_install,
 }
 import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
-import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import std.algebra { list_map, non_empty_to_list }
@@ -138,6 +138,24 @@ test fn an_agreeing_pair_and_an_empty_clean_run_are_ok() -> Bool {
   step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b", agreement: Sha256Agrees)) == none
     && step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
       outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
+}
+
+// INHABITANCE ON THE REAL ROUTE (pairs the supplied-outcome controls above): from DarkOk, dark_run_leg
+// takes each leg through its real arm and the real transport dispatch. EmitArtifactThenThinRun refuses
+// typed argv without invoking a shell, so the route runs hermetically and the refusal must surface at
+// the leg's own step. Rewiring an arm (DarkOk unconditionally, wrong helper, dropped outcome) fails here.
+data refusing_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
+  let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
+  let at = (l: DarkLeg) => step_of(s: dark_run_leg(state: DarkOk, leg: l, transport: refusing_transport))
+  at(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
+    && at(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && at(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
+    && at(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
