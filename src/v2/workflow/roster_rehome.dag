@@ -5,6 +5,7 @@ import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
+import v2.std.compilers.lexing { Token }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
@@ -80,6 +81,19 @@ type RehomeRow {
   name: String
   from_home: String
   to_home: String
+  representation: Optional<RehomeRepresentation>
+}
+
+// A DECLARED REPRESENTATION CHANGE (tidy-ant-251's ruling A on the N7 Int pair). A pair whose shapes differ is not a
+// rename, so without this the row refuses outright. With it, the row moves a module's import only once that module has
+// NO site that depends on the old representation, and otherwise refuses rehome-representation-sites-remain naming every
+// such site. That refusal list is the representation migration's work list; the migration itself is not this module's.
+// The sites are references to `constructor` (by the file's own import binding, or spelled fully), and reads of any of
+// `fields` after a `.`. A field read's receiver type is not known before inference, so every such read counts
+// (fail-closed); classifying receivers by type is the next rung.
+type RehomeRepresentation {
+  constructor: String
+  fields: List<String>
 }
 
 type RehomeRewriteKind
@@ -124,6 +138,7 @@ type RehomeRefusal
   | RehomeStaleRead
   | RehomeLockNotHeld
   | RehomeSweep { reason: String }
+  | RehomeRepresentationSitesRemain { sites: String }
 
 fn rehome_refusal_text(r: RehomeRefusal) -> String {
   match r {
@@ -144,6 +159,7 @@ fn rehome_refusal_text(r: RehomeRefusal) -> String {
     RehomeStaleRead => "stale-read"
     RehomeLockNotHeld => "lock-not-held"
     RehomeSweep { reason: t } => t
+    RehomeRepresentationSitesRemain { sites: ss } => "rehome-representation-sites-remain " + ss
   }
 }
 
@@ -168,7 +184,11 @@ fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
     RehomeFactFound { fact: from } =>
       match rehome_sole_fact(home: row.to_home, name: row.name) {
         RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
-        RehomeFactFound { fact: to } => rehome_facts_verdict(from: from, to: to)
+        RehomeFactFound { fact: to } =>
+          match row.representation {
+            Present { value: _ } => RehomePairSame
+            Absent => rehome_facts_verdict(from: from, to: to)
+          }
       }
   }
 }
@@ -237,13 +257,13 @@ fn rehome_text(path: String, text: String, prepared: PreparedGrammar, lex: Prepa
           match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
             Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeNormalizeRefused }
             Accepted { value: scoped, diagnostics: _ } =>
-              rehome_parsed(text: text, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
+              rehome_parsed(text: text, tokens: stream.all, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
           }
       }
   }
 }
 
-fn rehome_parsed(text: String, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
+fn rehome_parsed(text: String, tokens: List<Token>, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
   let old_qn = row.from_home + "." + row.name
   let bound_old = fold_list(xs: imported, empty: [], cons: fn(acc, b) { if roster_qn_text(qn: b.target) == old_qn { list_snoc_item(xs: acc, item: b) } else { acc } })
   let uses = rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: old_qn)
@@ -255,6 +275,8 @@ fn rehome_parsed(text: String, parse_root: Node, spans: SpanIndex, imported: Lis
       RehomePairSame =>
         if fold_list(xs: bound_old, empty: false, cons: fn(f, b) { f || symbol_lexeme(sym: b.binding) != row.name }) {
           RehomeRefused { reason: RehomeAliasUnsupported }
+        } else if !is_empty(xs: rehome_representation_sites(tokens: tokens, parse_root: parse_root, spans: spans, imported: imported, row: row)) {
+          RehomeRefused { reason: RehomeRepresentationSitesRemain { sites: rehome_sites_text(sites: rehome_representation_sites(tokens: tokens, parse_root: parse_root, spans: spans, imported: imported, row: row)) } }
         } else {
           match rehome_cycle(parse_root: parse_root, closures: closures, row: row, needs_import: !is_empty(xs: bound_old)) {
             Present { value: reason } => RehomeRefused { reason: reason }
@@ -402,6 +424,72 @@ type RehomeInsertion {
   done: Bool
 }
 
+// ---- the representation census --------------------------------------------------------------------------------------------
+
+type RehomeSite {
+  start: Int
+  end: Int
+  what: String
+}
+
+fn rehome_representation_sites(tokens: List<Token>, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RehomeRow) -> List<RehomeSite> {
+  match row.representation {
+    Absent => []
+    Present { value: rep } => {
+      let bare = rehome_last_segment(qualified_name: rep.constructor)
+      let bound = fold_list(xs: imported, empty: false, cons: fn(f, b) { f || (symbol_lexeme(sym: b.binding) == bare && roster_qn_text(qn: b.target) == rep.constructor) })
+      let bare_sites = if bound { rehome_token_sites(tokens: tokens, lexeme: bare, what: "constructor") } else { [] }
+      let spelled = list_map(xs: rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: rep.constructor), f: fn(u) { RehomeSite { start: u.start, end: u.end, what: "constructor" } })
+      fold_list(xs: rep.fields, empty: list_append_sites(a: bare_sites, b: spelled), cons: fn(acc, field) { list_append_sites(a: acc, b: rehome_field_read_sites(tokens: tokens, field: field)) })
+    }
+  }
+}
+
+fn list_append_sites(a: List<RehomeSite>, b: List<RehomeSite>) -> List<RehomeSite> {
+  fold_list(xs: b, empty: a, cons: fn(acc, x) { list_snoc_item(xs: acc, item: x) })
+}
+
+fn rehome_last_segment(qualified_name: String) -> String {
+  fold_list(xs: split(s: qualified_name, delimiter: "."), empty: "", cons: fn(_last, seg) { seg })
+}
+
+// Identifier tokens spelled `lexeme` that are not the tail of a qualified spelling (no `.` before them).
+fn rehome_token_sites(tokens: List<Token>, lexeme: String, what: String) -> List<RehomeSite> {
+  fold_list(xs: tokens, empty: RehomeTokenScan { prev: "", sites: [] }, cons: fn(acc, t) {
+    RehomeTokenScan {
+      prev: rehome_lexeme_text(t: t),
+      sites: if rehome_lexeme_text(t: t) == lexeme && acc.prev != "." { list_snoc_item(xs: acc.sites, item: RehomeSite { start: t.start, end: t.end, what: what }) } else { acc.sites }
+    }
+  }).sites
+}
+
+// `.field` reads: an identifier spelled `field` directly after a `.` token.
+fn rehome_field_read_sites(tokens: List<Token>, field: String) -> List<RehomeSite> {
+  fold_list(xs: tokens, empty: RehomeTokenScan { prev: "", sites: [] }, cons: fn(acc, t) {
+    RehomeTokenScan {
+      prev: rehome_lexeme_text(t: t),
+      sites: if rehome_lexeme_text(t: t) == field && acc.prev == "." { list_snoc_item(xs: acc.sites, item: RehomeSite { start: t.start, end: t.end, what: "field-read-untyped:" + field }) } else { acc.sites }
+    }
+  }).sites
+}
+
+type RehomeTokenScan {
+  prev: String
+  sites: List<RehomeSite>
+}
+
+fn rehome_lexeme_text(t: Token) -> String {
+  t.lexeme as String
+}
+
+fn rehome_sites_text(sites: List<RehomeSite>) -> String {
+  roster_join(xs: list_map(xs: sites, f: fn(x) { rehome_site_text(site: x) }), sep: ",")
+}
+
+fn rehome_site_text(site: RehomeSite) -> String {
+  site.what + "@" + int_to_decimal_string(value: site.start) + "-" + int_to_decimal_string(value: site.end)
+}
+
 // ---- qualified uses: every qualified-name production spelled exactly <from_home>.<name> ----------------------------------
 
 type RehomeUse {
@@ -536,8 +624,37 @@ fn rehome_offset_text(o: Int?) -> String {
   }
 }
 
+// THE ROW TABLE: rehomes whose shape or representation needs declaring live here as data, and run by name
+// (rehome_table_sweep_exit / rehome_table_apply_exit). N7 Int delivery 2 (tidy-ant-251's ruling A): v2.std.integer.Int is
+// GroupCompletion<Nat>, std.integer.Int is NonNegative | Negative, so a module moves only once it has no GroupCompletion
+// site and no .pos / .neg read.
+fn rehome_rows() -> List<RehomeRow> {
+  [
+    RehomeRow {
+      name: "Int",
+      from_home: "v2.std.integer",
+      to_home: "std.integer",
+      representation: Present { value: RehomeRepresentation { constructor: "std.algebra.GroupCompletion", fields: ["pos", "neg"] } }
+    }
+  ]
+}
+
+fn rehome_table_row(name: String) -> Optional<RehomeRow> {
+  fold_list(xs: rehome_rows(), empty: Absent, cons: fn(acc, r) { if r.name == name { Present { value: r } } else { acc } })
+}
+
+fn rehome_table_sweep_exit(paths_csv: String, name: String) -> ProcessExit {
+  match rehome_table_row(name: name) {
+    Absent => exit_failure(reason: "REFUSE * rehome-row-unknown " + name + "\n")
+    Present { value: row } => {
+      let rows = rehome_sweep(root: "", paths_csv: paths_csv, row: row)
+      if rows == "" { ExitSuccess } else { exit_failure(reason: rows) }
+    }
+  }
+}
+
 fn rehome_row_of(name: String, from_home: String, to_home: String) -> RehomeRow {
-  RehomeRow { name: name, from_home: from_home, to_home: to_home }
+  RehomeRow { name: name, from_home: from_home, to_home: to_home, representation: Absent }
 }
 
 // THE REPORT: rows for every path, writing nothing. Exit 0 means no file has anything to move.
@@ -641,7 +758,7 @@ fn rehome_controls_exit() -> ProcessExit {
 }
 
 fn rehome_control_row() -> RehomeRow {
-  RehomeRow { name: "Token", from_home: "c.old", to_home: "c.new" }
+  RehomeRow { name: "Token", from_home: "c.old", to_home: "c.new", representation: Absent }
 }
 
 // The controls' closure for the new home is a supplied value holding no c.* fixture module.
@@ -668,6 +785,7 @@ fn rehome_controls_report() -> String {
         + rehome_control_refuses(name: "kind-differs", prepared: prepared, lex: lex, pair: RehomePairRefused { reason: RehomeKindDiffers }, closures: rehome_control_closures(), want: "rehome-kind-differs")
         + rehome_control_refuses(name: "signature-differs", prepared: prepared, lex: lex, pair: RehomePairRefused { reason: RehomeSignatureDiffers }, closures: rehome_control_closures(), want: "rehome-signature-differs")
         + rehome_control_refuses(name: "closes-cycle", prepared: prepared, lex: lex, pair: RehomePairSame, closures: [RosterClosureRead { home: "c.new", modules: ["c.new", "c.user"] }], want: "import-closes-cycle home=c.new module=c.user")
+        + rehome_control_representation(prepared: prepared, lex: lex)
         + rehome_control_record()
         + rehome_control_pair_inhabited()
     }
@@ -728,6 +846,29 @@ fn rehome_control_refuses(name: String, prepared: PreparedGrammar, lex: Prepared
   }
 }
 
+// A DECLARED REPRESENTATION CHANGE moves a module with no representation site, and refuses one that has any, naming each
+// constructor reference and field read.
+fn rehome_control_representation(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let row = RehomeRow { name: "Token", from_home: "c.old", to_home: "c.new", representation: Present { value: RehomeRepresentation { constructor: "c.rep.Pair", fields: ["left"] } } }
+  let dirty = "module c.user\n\nimport c.old { Token }\nimport c.rep { Pair }\n\nfn f(t: Token) -> Int {\n  t.left + count(xs: [Pair { left: 1, right: 2 }])\n}\n"
+  let clean = "module c.user\n\nimport c.old { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n"
+  let refused = match rehome_text(path: "control/user.dag", text: dirty, prepared: prepared, lex: lex, row: row, pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeRefused { reason: r } =>
+      if substring(s: rehome_refusal_text(r: r), start: 0, end: 34) == "rehome-representation-sites-remain" && rehome_count_of(text: rehome_refusal_text(r: r), what: "constructor@") == 1 && rehome_count_of(text: rehome_refusal_text(r: r), what: "field-read-untyped:left@") == 1 { "" }
+      else { "CONTROL-FAIL rehome representation: refused " + rehome_refusal_text(r: r) + "\n" }
+    _ => "CONTROL-FAIL rehome representation: a module with representation sites was not refused\n"
+  }
+  let moved = match rehome_text(path: "control/user.dag", text: clean, prepared: prepared, lex: lex, row: row, pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeSplices { splices: _ } => ""
+    _ => "CONTROL-FAIL rehome representation: a module with no representation site did not move\n"
+  }
+  refused + moved
+}
+
+fn rehome_count_of(text: String, what: String) -> Int {
+  length(xs: split(s: text, delimiter: what)) - 1
+}
+
 // A splice whose base bytes are not what it expects refuses; the record's head extents follow earlier splices' deltas.
 fn rehome_control_record() -> String {
   let before = "ab c.old.T cd c.old.T"
@@ -755,7 +896,7 @@ fn rehome_control_record() -> String {
 // adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the RehomeKindDiffers arm below, so the
 // control pins the signature arm alone.
 fn rehome_control_pair_inhabited() -> String {
-  match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer" }) {
+  match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer", representation: Absent }) {
     RehomePairRefused { reason: RehomeSignatureDiffers } => ""
     RehomePairRefused { reason: RehomeKindDiffers } => ""
     RehomePairRefused { reason: r } => "CONTROL-FAIL rehome pair-inhabited: the real Int pair refused " + rehome_refusal_text(r: r) + "\n"
