@@ -712,3 +712,28 @@ N2: localize the regression per file: run the SAME entry on main's copy (git sho
     the defect is on main (report to parent); if only the branch copy fails, my append broke it -> fix now.
 N3: lens probe with BOTH roots registered: all 10 members print PASS/FAIL (v2.std.decl_index resolves
     under src). L1-L4 then read as pre-registered.
+
+## Dispatch O — alias lens (review 83623 finding 1) + #14597 bound-trigger re-verify
+Pre-registered BEFORE the run. Roots = `dag` + `src/v2` (matches every CI `gunbc run` call; my
+earlier lens run used `src` which pulled src/v1 and voided on a std.algebra root collision — that
+was a harness fault, not a substrate answer, so it is re-run and NOT counted).
+
+LENS (alias_lens_probe_witness, claim-run): predicted from concept_decl_node
+(coproduct_reflection.rs:596-606) which marshals Disj→disj, Conj→variant-arm target, EVERYTHING
+ELSE (NoConnective/Arrow = the `=`-form alias shape) → unit_type_node (ZERO children).
+ - the_record_control_carries_children            PASS (Conj > 0)
+ - the_coproduct_control_carries_children          PASS (Disj > 0)
+ - the_real_std_types_record_control...            PASS
+ - the_local_carrier_alias_carries_no_children     PASS (==0)
+ - the_free_monoid_alias_carries_no_children       PASS (==0)
+ - the_guarded_list_fact_carries_no_children       PASS (std.types.List ==0)
+If ANY control reads 0 → harness broken, no conclusion. If an alias reads >0 → the §6 lens route
+IS available and the review wins (adopt it). If all controls >0 and all aliases ==0 → a pure
+Node-tree reader cannot see an alias body; text check is the only instrument → answers finding 1
+by execution.
+
+#14597 claim file (bound trigger): predicted ALL members PASS, EXCEPT the pre-existing
+kc_local_alias_of_the_carrier_admits_its_constructor FAIL (documented in body, off required path).
+Specifically the_dissolution_fires_only_when_the_named_predicate_retires PASSES (DissolutionFired on
+[], Pending on the named ref, Pending on the lookalike). If it FAILS → retires_dissolution over a
+same-file predicate name does not partition as the firmware idiom claims; re-read dissolution_status.
