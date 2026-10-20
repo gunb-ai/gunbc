@@ -14619,22 +14619,13 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          Absent => acc
-        }
-      Absent => acc
-    }
-  } else if formal.children |> count > 1 && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
 
-// A multi-parameter generic (Map<K, V>) carries one child per type argument, so its arguments
-// unify positionally exactly as the single-argument descent does. Each position is read through
+// A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
+// positionally; one rule serves every arity. Each position is read through
 // child_type_node, the total read of a type position; first-wins binding is unchanged.
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   match formals |> first {
