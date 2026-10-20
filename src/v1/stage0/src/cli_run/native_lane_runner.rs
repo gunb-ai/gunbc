@@ -7181,7 +7181,7 @@ pub fn run_v2_select_spelled_modules(
     build_roots: &[String],
     population_roots: &[String],
 ) -> Result<(i32, String), String> {
-    let preparation = prepare_emitted_compiler(build_roots)?;
+    let preparation = prepare_emitted_compiler_for_entry(build_roots, V2_NATIVE_CLI_ENTRY)?;
     let mut args = vec!["select-spelled-modules".to_string()];
     for root in population_roots {
         args.push("--source-root".to_string());
@@ -7203,5 +7203,11 @@ pub fn run_v2_select_spelled_modules(
         "V2-NATIVE REFUSAL cause=NativeRunKilled — the select-spelled-modules child exited without a status"
             .to_string()
     })?;
+    if code != 0 {
+        return Ok((
+            code,
+            format!("{stdout}{}", String::from_utf8_lossy(&output.stderr)),
+        ));
+    }
     Ok((code, stdout))
 }
