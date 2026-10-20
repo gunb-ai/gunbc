@@ -57,12 +57,18 @@ fn fixture_carries_escape_specimens_helper() -> Bool {
 
 // POSITIVE, the authority side: the fixture derives a row's expectations by running the serializer over
 // the specimen, so the bytes are the serializer's and not a second spelling of them. Both fields must be
-// built this way, and the specimen itself must be the value serialized.
+// built this way, and the specimen itself must be the value serialized. Each field is matched as its WHOLE
+// `json_kv` member, not as a fragment: the first version of this claim asked only whether the fixture
+// contained `serialize_json(v: json_object(members: [` somewhere, and a control that replaced the escape
+// row's object_json expectation with a hand-typed string still passed it — the fragment was satisfied by
+// an unrelated row's serializer call elsewhere in the file. Anchoring on the full member means the claim
+// is about THIS row's expectation, and the control reddens it.
 fn fixture_builds_expectations_from_the_serializer_helper() -> Bool {
   let fx = module_source(path: fixture_module_path)
   fx != ""
     && fx.contains("json_kv(key: \"string_json\", value: json_string(s: serialize_json(v: json_string(s: input))))")
-    && fx.contains("serialize_json(v: json_object(members: [")
+    && fx.contains("value: json_string(s: serialize_json(v: json_object(members: [")
+    && fx.contains("json_kv(key: \"k\", value: json_array(elements: [json_string(s: input)]))")
 }
 
 // POSITIVE, the carrier side: the emitted escape test iterates the fixture's rows and compares the
