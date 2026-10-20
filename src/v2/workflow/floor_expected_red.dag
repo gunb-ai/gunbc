@@ -613,6 +613,16 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
+// RETIRED chunk_19 EXPECTED-RED ADMISSION (`test.claim.direct_call_argument_type_witness
+// .direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch`, enrolled 19f0be86dd4
+// 2026-08-22). The claim passes on both routes at this head, so the refusal it stood for now
+// exists; WHICH commit built that refusal is NOT established here and no fixer is named, because
+// `git log -S` over the roster for this identity shows only the enrolment commit and no repair
+// commit touches the claim's own file. That is the "stopped discriminating" risk stated plainly
+// rather than papered over: the row's removal rests on the measured verdict, recorded in this PR's
+// body as the instrument's own output (`//gunbc/instruments:known-red-derivation`), not on an
+// attributed fix.
+
 
 // ONE IDENTITY LEFT OF THE FIVE ENROLLED 2026-08-22 by 4b690897153, on a route this roster had not
 // carried before: not rows someone broke, but rows the floor COULD NOT SEE. Both source files
@@ -1212,26 +1222,41 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String
 // BEHAVIOR — the module's three positive controls pass on the same run. The worker rebinds both
 // steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
 // self-emptying arm names it for removal (DESIGN 4b(4)).
+// RETIRED EXPECTED-RED ADMISSION (`v2.test.claim.manual.ingest_bridge
+// .ingest_identity_coercion_accepts_source_present_in_authored_roster`, enrolled 1edcc3f7730
+// 2026-09-27 as `floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded`). The claim passes on
+// both routes at this head, and this one has a real closure receipt rather than a verdict alone:
+// 170aa8adf64 (2026-09-29, "A kind atom is grounded by its declared authority (std.kind): fixes the
+// #12290 accepting-control red (#12919)") names this identity verbatim in its body and lands the
+// grounding in `src/v2/compiler/04_infer.dag`; `algebra_ref_is_grounded` in
+// `src/v2/compiler/infer.dag` now admits a kind atom whose `kind_denoted_by_node` is Present, which
+// is the exact arm (`infer_algebra_ref_ungrounded`) the row stood for. The row was enrolled on a
+// named forecast and the forecast came true, so this is the dissolution its own header specified.
+// The other two identities in that file stay enrolled.
 fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
   Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
 }
 
+// RETIRED ROW from the chunk below (`test.claim.doc_reachability_witness
+// .doc_graph_registered_plan_roots_all_admitted`, enrolled 28ef79121b1 2026-08-28, the chunk's only
+// doc-graph count row). This is the removal where "the claim stopped discriminating" most nearly applies,
+// so it is said out loud. The claim compares declared doc-graph root count against admitted count.
+// Its red came from 19 declared binds pointing at `docs/probes/` files the 2026-08-24 measurement
+// bankruptcy had deleted; 4fadbed1145 (2026-08-25) deleted those orphan binds, after 0df5b4170c5
+// (#9181) had rehomed the three g1-cited-symbol discriminating controls out of the bankrupted
+// carrier — the sequence DESIGN 4b(4) demands, evidence rehomed before the authority goes. So the
+// equality holds now because the stale authority was removed AFTER its controls survived elsewhere,
+// not because a failing behaviour started passing. Two consequences this PR does not hide:
+// `gunbc.declined_live_tree_defect_classification` still lists this identity as
+// `RealDefect { subject: StaleAuthorityAfterDeletion }` with `NeedsOperatorRuling` and its
+// 2026-08-25 figures (228 declared / 209 admitted) — that carrier is another lane's and is left
+// untouched, so its numbers are now stale prose relative to a passing claim; and the claim now
+// cannot fail for the reason it was written for, since the declarations it failed on are gone.
+// The chunk keeps its two doc-graph siblings (`doc_graph_has_no_dangling_links`,
+// `doc_graph_has_no_orphan_docs`), which still discriminate the carrier on live content.
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
   Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.an_unapplied_function_at_a_concrete_position_is_refused", tail: Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.a_string_at_a_generic_position_is_refused", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_is_clean", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
-
-// ONE IDENTITY ENROLLED 2026-09-26, red on main and FIRST SELECTED by an unrelated edit. The
-// refinement-obligation carrier cut (deep-bee-18) had to edit this claim's file because infer's
-// return type changed, and that edit pulled the claim into the floor's changed-population selection
-// for the first time. It returns false at the carrier cut's merge base 21f4d0c and at origin/main
-// b1b7aea alike, measured by execution with the same seed: v2.compiler.infer canonical_grounding_for_node
-// refuses the fixture dag_fixture_emitted_add_fn with infer_algebra_ref_ungrounded, so the claim's
-// premise -- the emitted add fn's grounding derives from the authored roster -- no longer holds, and
-// the coercion half it exists to assert is never reached. An OBSERVED semantic red (the claim returns
-// a Bool and does not throw), not no-verdict debt. It also stays red with #12379's arrow-elimination
-// rule applied. NEXT-RUNG TRIGGER, the capability: infer grounds an emitted `add` arrow's algebra
-// reference from the authored inhabitants roster, so canonical_grounding_for_node admits
-// dag_fixture_emitted_add_fn. When that lands, this row passes and reds the build naming itself.
 
 // TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
 // v2.compiler.infer (a generic record construct whose type its field values cannot fix, at a position
@@ -1343,6 +1368,17 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
   }
 }
 
+// WHO EXECUTS THE ROWS THAT WERE DELETED, said because it is a real consequence of dropping a row
+// from this roster rather than from a schedule. The four identities removed by this PR are absent
+// from the wet-claim schedule (`gunbc.workflow.local_repo_wet_terminal` `local_repo_wet_schedule`)
+// and from the CI layer roots, and DESIGN's "What a green `v2-bootstrap` does not say" states that
+// nothing on the required path evaluates a witness. The lane that was running them was THIS roster
+// — `//gunbc/instruments:known-red-derivation` dispatches every enrolled identity and reads back a
+// verdict line. After this PR they are still ordinary discovered claims: all four files sit under
+// `gunbc.ci.ci_layer_roots` `witness_discovery_scan_dirs`, so discovery still finds and reports
+// them. What is lost is not coverage but the STANDING: a future failure of one of these four can no
+// longer be classified as a held known-red or a stale enrolment, it lands in the instrument's
+// unaccounted population, and the instrument naming it there is the tripwire for re-enrolment.
 fn floor_expected_red_chunks() -> List<List<String>> {
 Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_belt_recapture_wet_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } 
 }
