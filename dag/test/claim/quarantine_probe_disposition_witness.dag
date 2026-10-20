@@ -158,21 +158,26 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
 // the first offending identity with its entry file. It is also no longer ANDed with anything: the
 // population check that used to sit in a second claim repeated this exact fold as one conjunct among
 // five, so a population going empty and a probe going unheld printed the same one-word verdict.
+//
+// ONE CLAIM, NOT TWO. This is also the "every admitted row has a holder" claim: it reads
+// `live_dispositions()`, which IS the admission ledger filtered by `quarantine_probe_admissions`, and it
+// refuses exactly when some disposition fails to hold. An earlier revision of this PR added a SECOND
+// claim over the same fold; review 83065 caught it as a re-invention whose message was also wrong (it
+// said "NO holder" while its filter caught `QuarantineProbeHeldByMoreThanOne` too, so a double-held
+// probe would have been reported as unheld). Deleting it is the fix -- one predicate, one verdict, one
+// meaning (DESIGN section 3) -- and the arm tag below is the discrimination that extra claim was meant
+// to add, at no cost.
 test fn every_quarantine_probe_derives_exactly_one_disposition() -> ProcessExit {
   let ds = live_dispositions()
-  let offenders = fold_list(
-    xs: ds,
-    empty: 0,
-    cons: fn(acc, d) { if quarantine_probe_disposition_holds(disposition: d) { acc } else { acc + 1 } }
-  )
-  if offenders == 0 {
+  let unheld = unheld_admitted_rows(ds: ds)
+  if length(xs: unheld) == 0 {
     ExitSuccess
   } else {
     ExitFailure {
       code: 1,
       reason: concat(
-        concat("live quarantine probes not deriving exactly one holder: ", int_to_decimal_string(value: offenders)),
-        concat(" of ", concat(int_to_decimal_string(value: length(xs: ds)), "; first: ", first_unheld_identity(ds: ds)))
+        concat("live quarantine probes not deriving exactly one holder: ", int_to_decimal_string(value: length(xs: unheld))),
+        concat(" of ", concat(int_to_decimal_string(value: length(xs: ds)), "; first: ", first_text(xs: unheld)))
       )
     }
   }
@@ -234,24 +239,6 @@ fn population_member_count(
   )
 }
 
-fn first_unheld_identity(ds: List<QuarantineProbeDisposition>) -> String {
-  fold_list(
-    xs: ds,
-    empty: "",
-    cons: fn(acc, d) {
-      if acc != "" {
-        acc
-      } else {
-        match d {
-          QuarantineProbeNowPassing { identity: i, entry: e, function: _ } => concat(i, concat(" @ ", e))
-          QuarantineProbeHeldByMoreThanOne { identity: i, holders: _ } => i
-          HeldByExactlyOne { identity: _, holder: _ } => ""
-        }
-      }
-    }
-  )
-}
-
 // ONE CLAIM PER REQUIRED POPULATION. Each states its own size and its own verdict, so a FAIL names
 // which population stopped being load-bearing rather than pointing at a conjunction.
 fn population_is_load_bearing(
@@ -297,40 +284,72 @@ test fn the_outside_gate_population_is_load_bearing() -> ProcessExit {
   )
 }
 
-// THE STRUCTURAL CLAIM: every admitted probe row has at least one holder. WHY IT IS THE FIX AND NOT
-// THE SYMPTOM. The four rows this PR repairs were invisible to every census. The fold reports an
-// admitted probe with no holder as an alarm (QuarantineProbeNowPassing), but nothing asserted over the
-// ledger that no row may reach that arm, and this file's live claims are not in
-// `local_repo_wet_schedule`, so no fleet run executed them either: an admission could sit unheld
-// forever and the only thing that would notice is someone running these two claims by hand. That is
-// DESIGN 6's silent degradation — the state was reachable, unowned, and printed nothing. This claim
-// turns it into a local, loud failure at the place the rows are authored, and it is the reason the four
-// repairs below are not enough on their own: without it, the fifth row does the same thing next month.
+// THE STRUCTURAL CLAIM: every admitted probe row has at least one holder. WHY IT IS A CLAIM AND NOT A
+// RESTATEMENT OF THE ONE ABOVE. The ledger claim refuses on EITHER refusal arm; this one refuses on
+// exactly one -- `QuarantineProbeNowPassing`, the arm an admitted probe reaches when NO carrier holds it.
+// Different predicate, different verdict, one meaning each (review 83065: an earlier revision filtered
+// with the all-hold predicate while claiming "no holder", which would have reported a double-held probe
+// as unheld). Restricting it to its own arm is also what makes the name true.
 //
-// It reads the ADMISSION LEDGER as the single authority (through `quarantine_probe_admissions`, the
-// same filter `live_quarantine_probe_subjects()` uses), so it cannot be pacified by deleting a row —
-// deleting a row removes its obligation, which is why the repair for a dissolved row is deletion and
-// the repair for a live red is giving it a standing. It also cannot be pacified by adding a holder that
-// is merely textually similar: `a_roster_row_that_merely_contains_the_identity_does_not_hold_it` proves
-// the substring case does not count.
+// WHY IT STILL MATTERS, AND WHAT IT DOES NOT DO. These rows were invisible to every census: the fold
+// reports an unheld admission as an alarm arm, but nothing asserted that no row may REACH that arm. And
+// nothing outside this file runs these claims either -- measured, not assumed: both live claims here
+// FAIL at plain main (see the file header and the PR evidence) while main's required checks are green,
+// so no required job executes them; `local_repo_wet_schedule` has no row for this file, and no file in
+// `.github/workflows/` names it. This claim is therefore a LOCAL check an owner runs
+// at the place the rows are authored, not a gate -- and it is honest about that, because the alternative
+// was worse than useless: enrolling it in the wet schedule would only list it in
+// `gunbc.claim_coverage_census` as enrolled-and-executed-by-nothing (the census's own header: "a roster
+// that names a claim is not an executor of it"), and pointing a new instrument label at it would mint a
+// second consumer of the ledger. Restoring execution for this population is the `local_repo_wet_schedule`
+// / claim-coverage owner's call, and routing that is recorded on this PR. What this claim does buy is
+// that the state cannot be re-introduced by the next author who reads this file: the check now exists,
+// is named, and its own fixture claim proves it can fail.
+//
+// It reads the ADMISSION LEDGER as the single authority (through `quarantine_probe_admissions`, the same
+// filter `live_quarantine_probe_subjects()` uses), so it cannot be pacified by deleting a row -- deleting
+// a row removes its obligation, which is why the repair for a dissolved row is deletion and the repair
+// for a live red is giving it a standing. Nor by a lookalike holder:
+// `a_roster_row_that_merely_contains_the_identity_does_not_hold_it` proves the substring case does not
+// count.
 test fn every_admitted_probe_row_has_at_least_one_holder() -> ProcessExit {
-  let unheld = unheld_admitted_rows(ds: live_dispositions())
+  let unheld = zero_holder_rows(ds: live_dispositions())
   if length(xs: unheld) == 0 {
     ExitSuccess
   } else {
     ExitFailure {
       code: 1,
       reason: concat(
-        concat("admitted quarantine probe rows with NO holder in any carrier (n=", int_to_decimal_string(value: length(xs: unheld))),
+        concat("admitted quarantine probe rows held by NO carrier (n=", int_to_decimal_string(value: length(xs: unheld))),
         concat("): ", first_text(xs: unheld))
       )
     }
   }
 }
 
-// THE PURE HALF, so the state can be exercised by a fixture and not only by live data. Kept as a
-// function over dispositions rather than inlined, because the claim below needs the SAME predicate the
-// live claim runs — a fixture that tested a different predicate would prove nothing.
+// THE ZERO-HOLDER PROJECTION, one predicate, used by the claim above and exercised by the fixture below.
+// The arm test goes through `unheld_disposition_arm`, so the file matches on the sum type in exactly one
+// place.
+fn zero_holder_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
+  fold_list(
+    xs: ds,
+    empty: Empty {},
+    cons: fn(acc, d) {
+      if unheld_disposition_arm(disposition: d) == "QuarantineProbeNowPassing" {
+        Cons { head: disposition_identity(d: d), tail: acc }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE PURE HALF, so the state can be exercised by a fixture and not only by live data. ONE fold, shared
+// by the claim above and the fixture claim below -- a fixture that tested a different predicate would
+// prove nothing. Each element is `arm: identity @ entry`: the arm comes from `unheld_disposition_arm`
+// and the identity from `disposition_identity`, so there is no second per-arm match in this file (the
+// removed `first_unheld_identity` was exactly that duplicate). `HeldByExactlyOne` never appears in the
+// result: a held disposition is not an offender.
 fn unheld_admitted_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
   fold_list(
     xs: ds,
@@ -339,36 +358,97 @@ fn unheld_admitted_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
       if quarantine_probe_disposition_holds(disposition: d) {
         acc
       } else {
-        Cons { head: disposition_identity(d: d), tail: acc }
+        Cons {
+          head: concat(unheld_disposition_arm(disposition: d), concat(": ", disposition_identity(d: d))),
+          tail: acc
+        }
       }
     }
   )
 }
 
-// THE RED FOR THE STRUCTURAL CLAIM, supplied as a fixture: an admission held by NO carrier, which is
-// exactly the arm the four repaired rows reached. The live claim above cannot show its own failure
-// shape (when the ledger is clean there is nothing to point at), so this arm runs the same predicate
-// over the file's synthetic identity with every carrier emptied and requires it to name exactly that
-// identity. Delete the alarm arm, or let a substring count as a holder, and this goes red.
+// THE ARM AS THE MESSAGE NAMES IT. Total over the three arms, because the disposition is a sum type and
+// a wildcard here would let a fourth arm print nothing (DESIGN section 5: no plausible output
+// fabricated). The two refusal arms mean opposite things -- NowPassing is an admission NO carrier holds,
+// HeldByMoreThanOne is an admission TWO carriers hold -- so the reader must not have to re-derive which
+// one fired from a count alone.
+fn unheld_disposition_arm(disposition: QuarantineProbeDisposition) -> String {
+  match disposition {
+    QuarantineProbeNowPassing { identity: _, entry: _, function: _ } => "QuarantineProbeNowPassing"
+    QuarantineProbeHeldByMoreThanOne { identity: _, holders: _ } => "QuarantineProbeHeldByMoreThanOne"
+    HeldByExactlyOne { identity: _, holder: _ } => "HeldByExactlyOne"
+  }
+}
+
+// THE RED FOR BOTH FOLDS, supplied as a fixture rather than as live data. Neither live claim can show
+// its own failure shape (when the ledger is clean there is nothing to point at), so this runs BOTH
+// projections over the file's synthetic identity with every carrier emptied -- `zero_holder_rows`, the
+// predicate the structural claim runs, and `unheld_admitted_rows`, the predicate the ledger claim runs --
+// and requires each to name that identity, the ledger one with its `QuarantineProbeNowPassing: ` arm tag.
+// One claim covering both folds rather than two claims over one fixture: the folds differ, the fixture
+// does not. Delete the alarm arm, drop the arm tag, or let a substring count as a holder, and this goes
+// red.
 test fn a_fixture_admission_with_no_holder_is_named_by_the_ledger_claim() -> ProcessExit {
-  let unheld = unheld_admitted_rows(ds: Cons { head: fixture_disposition(facts: probe_fixture_no_facts()), tail: Empty {} })
-  match unheld {
-    Cons { head: h, tail: t } =>
-      match t {
-        Empty {} =>
-          if h == concat(probe_fixture_identity(), concat(" @ ", probe_fixture_entry)) {
-            ExitSuccess
-          } else {
-            ExitFailure { code: 1, reason: concat("the zero-holder row was named wrongly: ", h) }
+  let one = Cons { head: fixture_disposition(facts: probe_fixture_no_facts()), tail: Empty {} }
+  let expected = concat(probe_fixture_identity(), concat(" @ ", probe_fixture_entry))
+  // THE DISCRIMINATION review 83065 asked for, checked in the fixture direction too: a probe held by
+  // TWO carriers is an offender for the ledger claim and NOT for the zero-holder claim. The two folds
+  // are otherwise only distinguishable from their green states, and a future edit that routed the
+  // structural claim back through the all-hold predicate -- the exact bug the review caught, a
+  // double-held probe reported as held by none -- would keep every claim in this file green.
+  let two = Cons { head: fixture_disposition(facts: facts_with_two_holders()), tail: Empty {} }
+  match zero_holder_rows(ds: two) {
+    Empty {} =>
+      match unheld_admitted_rows(ds: two) {
+        Cons { head: t, tail: _ } =>
+          match zero_holder_rows(ds: one) {
+            Cons { head: h, tail: z } =>
+              match z {
+                Empty {} =>
+                  if h != expected {
+                    ExitFailure { code: 1, reason: concat("the zero-holder row was named wrongly: ", h) }
+                  } else {
+                    match unheld_admitted_rows(ds: one) {
+                      Cons { head: g, tail: u } =>
+                        match u {
+                          Empty {} =>
+                            if g == concat("QuarantineProbeNowPassing: ", expected) {
+                              ExitSuccess
+                            } else {
+                              ExitFailure {
+                                code: 1,
+                                reason: concat("the ledger projection lost or misplaced the arm tag: ", g)
+                              }
+                            }
+                          _ => ExitFailure {
+                            code: 1,
+                            reason: "the ledger projection reported more than one offender for one probe",
+                          }
+                        }
+                      Empty {} => ExitFailure {
+                        code: 1,
+                        reason: "the ledger projection did not report the zero-holder probe at all",
+                      }
+                    }
+                  }
+                _ => ExitFailure { code: 1, reason: "the zero-holder fixture produced more than one offender" }
+              }
+            Empty {} => ExitFailure {
+              code: 1,
+              reason: concat(
+                "an admission with every carrier emptied was NOT reported unheld: ",
+                probe_fixture_identity()
+              )
+            }
           }
-        _ => ExitFailure { code: 1, reason: "the zero-holder fixture produced more than one offender" }
+        _ => ExitFailure {
+          code: 1,
+          reason: "the ledger projection did not report the double-held probe as an offender"
+        }
       }
-    Empty {} => ExitFailure {
+    Cons { head: wrong, tail: _ } => ExitFailure {
       code: 1,
-      reason: concat(
-        "an admission with every carrier emptied was NOT reported unheld: ",
-        probe_fixture_identity()
-      )
+      reason: concat("the zero-holder projection claimed a DOUBLE-held probe has no holder: ", wrong)
     }
   }
 }
