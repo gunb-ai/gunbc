@@ -370,3 +370,44 @@ test fn probe_stage_receipt_names_the_unit() -> Bool {
     }
   }
 }
+
+// ---------- refusal forensics: WHERE the frame refused (all read the same world) ----------
+
+fn probe_end_cause() -> String {
+  match probe_world() {
+    ProbeRunReturned { phase: _, legs: _ } => ""
+    ProbeRunEnded { cause: c } => c
+  }
+}
+
+// The refusal is the dispatcher's modeled-realization refusal (not an upstream Absent, not a
+// registry miss): the frame WAS active and an operation was refused against it.
+test fn probe_refusal_is_the_realization_refusal() -> Bool {
+  string_contains(s: probe_end_cause(), pattern: "modeled operation realization refused")
+}
+
+// WHICH operation refused: the ssh exec identity, or something else on the path entirely.
+test fn probe_refusal_names_the_ssh_exec_operation() -> Bool {
+  string_contains(s: probe_end_cause(), pattern: "ssh.Session.ExecPortableWords")
+}
+
+// NOT the registry: the operation is declared and known (a miss renders 'unknown service
+// operation', a missing transport renders 'no transport for service').
+test fn probe_refusal_is_not_a_registry_miss() -> Bool {
+  !string_contains(s: probe_end_cause(), pattern: "unknown service operation")
+    && !string_contains(s: probe_end_cause(), pattern: "no transport for service")
+}
+
+// Selection-stage discrimination (v2.std.operation_realization.operation_handler_selection renders
+// its refusal variant): grant coverage, realization identity, or binding lookup.
+test fn probe_refusal_is_not_grant_coverage() -> Bool {
+  !string_contains(s: probe_end_cause(), pattern: "OperationUncovered")
+}
+
+test fn probe_refusal_is_not_identity_mismatch() -> Bool {
+  !string_contains(s: probe_end_cause(), pattern: "OperationRealizationMismatch")
+}
+
+test fn probe_refusal_is_not_operation_not_bound() -> Bool {
+  !string_contains(s: probe_end_cause(), pattern: "OperationNotBound")
+}

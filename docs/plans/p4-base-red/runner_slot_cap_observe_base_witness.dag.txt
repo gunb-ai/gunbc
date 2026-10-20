@@ -318,13 +318,14 @@ fn every_leg_is_a_read(legs: List<String>) -> Bool {
   all(legs, c => starts_with(s: c, prefix: "systemctl show ") || starts_with(s: c, prefix: "grep -r -H -E . "))
 }
 
-fn count_show_legs(legs: List<String>) -> Int {
-  len(filter(legs, c => starts_with(s: c, prefix: "systemctl show ")))
-}
+fn is_show_leg(c: String) -> Bool { starts_with(s: c, prefix: "systemctl show ") }
+fn is_grep_leg(c: String) -> Bool { starts_with(s: c, prefix: "grep -r -H -E . ") }
 
-fn count_grep_legs(legs: List<String>) -> Int {
-  len(filter(legs, c => starts_with(s: c, prefix: "grep -r -H -E . ")))
-}
+// Non-emptiness in any/all form: a bare `len` inside a claim closure can bind another module's
+// declaration once the closure drags it in (the ambient cross-module binding class, RFM row
+// parse_errors_are_swallowed...; it bit this lane twice), so the scaffolding avoids it.
+fn any_show_leg(legs: List<String>) -> Bool { any(legs, c => is_show_leg(c: c)) }
+fn any_grep_leg(legs: List<String>) -> Bool { any(legs, c => is_grep_leg(c: c)) }
 
 // ---------- the two halves ----------
 
@@ -334,7 +335,7 @@ fn count_grep_legs(legs: List<String>) -> Int {
 // (section 5's hiding of "could not look"). At HEAD this falsifies: observe reads, the ledger is
 // non-empty, and the phase is no longer the bare arm.
 //
-// THE DISCRIMINATOR IS DUAL, on purpose: the LEDGED one (count_grep_legs == 0) is what a red at
+// THE DISCRIMINATOR IS DUAL, on purpose: the LEDGED one (!any_grep_leg) is what a red at
 // HEAD should trip -- observe must grep the cgroup files, and a silent regression to "not owed
 // without looking" cannot hide from it. The phase identity (== CapPhaseNotOwed) leans on settled +
 // text rather than a pattern-match on the arm, because CapPhaseObserved cannot be named at base;
@@ -349,7 +350,7 @@ test fn base_observe_answers_not_owed_without_reading_a_single_cgroup_file() -> 
       let p = phase_of(r: run)
       // (a) nothing was dispatched for the featured slot: neither its show nor its cgroup grep.
       !has_leg_containing(legs: legs_of(r: run), needle: grep_command(control_group: cg))
-        && count_grep_legs(legs: legs_of(r: run)) == 0
+        && !any_grep_leg(legs: legs_of(r: run))
         // (b) yet the verdict is a SETTLED pass that reads as the two-valued not-owed.
         && runner_host_cap_phase_settled(phase: p)
         && !string_contains(s: runner_host_cap_phase_text(phase: p), pattern: unit as String)
