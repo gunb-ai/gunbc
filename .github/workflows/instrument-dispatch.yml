@@ -5,10 +5,16 @@ run-name: instrument-dispatch ${{ inputs.label }}
 on:
   workflow_dispatch:
     inputs:
+      wave_shard:
+        description: "For //gunbc/instruments:namespace-wave-binding-diff only: the run's shape -- base (once per main revision), i/K (one head shard), merge/K (the join that mints the verdict). none = not a wave run; a wave label dispatched with none refuses as malformed (2)."
+        required: false
+        default: none
+        options: [none, base, 0/4, 1/4, 2/4, 3/4, merge/4]
+        type: choice
       label:
         description: The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref.
         required: true
-        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture]
+        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:namespace-wave-binding-diff]
         type: choice
 permissions:
   contents: read
@@ -22,6 +28,7 @@ jobs:
     timeout-minutes: 240
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Seed the run's receipt before anything that can fail
         id: seed_receipt
@@ -115,6 +122,22 @@ jobs:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           REQUIRED_MEMORY_BYTES: "18253611008"
         if: inputs.label == '//gunbc/instruments:compute-dependency-wrong-capture'
+      - name: Require the declared memory for //gunbc/instruments:namespace-wave-binding-diff
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "17179869184"
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff'
       - name: Require the declared memory for //gunbc/instruments:dependency-demand-census
         run: |
           set -e
@@ -140,7 +163,9 @@ jobs:
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
           'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
-          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYT
+[14191 more bytes: job_output {"id": "j718f2848", "from": 24000}]
+ES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
         shell: bash
         env:
@@ -199,6 +224,94 @@ jobs:
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
         if: "!cancelled()"
+      - name: Stage the receipts this shape consumes (transport; the reader judges them)
+        id: wave_receipt_transport
+        run: |
+          python3 - <<'PYEOF'
+          import glob, json, os, shutil, subprocess, urllib.request, zipfile
+          HEAD = os.environ['GITHUB_SHA']
+          REPO = os.environ['GITHUB_REPOSITORY']
+          RUN = int(os.environ['GITHUB_RUN_ID'])
+          TOKEN = os.environ['GITHUB_TOKEN']
+          MODE = os.environ['GUNBC_WAVE_SHARD']
+          STAGING = os.environ['WAVE_RECEIPT_STAGING']
+          WORKFLOW_FILE = 'instrument-dispatch.yml'
+          WAVE_LABEL = '//gunbc/instruments:namespace-wave-binding-diff'
+          def api(path):
+              req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.load(r)
+          def merge_base():
+              url = os.environ['GITHUB_SERVER_URL'] + '/' + REPO + '.git'
+              auth = 'http.extraHeader=Authorization: Bearer ' + TOKEN
+              subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--depth=500', url, 'main:refs/remotes/origin/main'], check=True)
+              subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--deepen=500', url], check=True)
+              return subprocess.run(['git', 'merge-base', 'HEAD', 'refs/remotes/origin/main'], capture_output=True, text=True, check=True).stdout.strip()
+          def candidate_runs():
+              out = []
+              for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:
+                  if w.get('head_sha') != HEAD or w.get('status') != 'completed' or w.get('id') == RUN:
+                      continue
+                  inputs = w.get('inputs') or {}
+                  out.append((str(w.get('created_at') or ''), w['id'], str(inputs.get('label') or ''), str(inputs.get('wave_shard') or '')))
+              out.sort(reverse=True)
+              return out
+          def fetch(wid, dest):
+              for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:
+                  if a.get('expired') or a.get('state') != 'completed':
+                      continue
+                  zp = os.path.join(dest, 'receipt-' + str(wid) + '.zip')
+                  req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})
+                  with urllib.request.urlopen(req, timeout=600) as r, open(zp, 'wb') as f:
+                      while True:
+                          chunk = r.read(1048576)
+                          if not chunk:
+                              break
+                          f.write(chunk)
+                  with zipfile.ZipFile(zp) as z:
+                      z.extractall(dest)
+                  os.remove(zp)
+                  return True
+              return False
+          def clear(dest):
+              for old in os.listdir(dest):
+                  p = os.path.join(dest, old)
+                  shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+          os.makedirs(STAGING, exist_ok=True)
+          clear(STAGING)
+          if MODE != 'base':
+              if MODE.startswith('merge/'):
+                  k = MODE.split('/')[1]
+                  seen = {}
+                  for created, wid, label, shard in candidate_runs():
+                      if shard.endswith('/' + k) and not shard.startswith('merge/') and shard != 'base' and shard != 'none':
+                          seen.setdefault(shard, wid)
+                  for shard, wid in seen.items():
+                      fetch(wid, STAGING)
+              want = 'base-' + merge_base() + '-*' + '.txt'
+              for created, wid, label, shard in candidate_runs():
+                  if shard != 'base' or label != WAVE_LABEL:
+                      continue
+                  fetch(wid, STAGING)
+                  if glob.glob(os.path.join(STAGING, '**', want), recursive=True):
+                      break
+                  clear(STAGING)
+          PYEOF
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
+          WAVE_RECEIPT_STAGING: ${{ runner.temp }}/instrument-dispatch/wave-staging
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard != 'none'
+      - name: Move the staged receipts into the reader's directory
+        id: wave_receipt_import
+        run: |
+          'mkdir' '-p' '././target/namespace-wave-binding-diff/shards'
+          'find' "$WAVE_RECEIPT_STAGING" '-type' 'f' '(' '-name' 'base-*.txt' '-o' '-name' 'shard-*.txt' '-o' '-name' 'verdict-*.txt' ')' '-exec' 'cp' '-a' '-t' '././target/namespace-wave-binding-diff/shards' '{}' '+'
+        shell: bash
+        env:
+          WAVE_RECEIPT_STAGING: ${{ runner.temp }}/instrument-dispatch/wave-staging
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard != 'none'
       - name: Run the dispatched instrument
         id: instrument
         run: |
@@ -212,6 +325,13 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
+          GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
+      - name: Copy the reader's receipts into the artifact tree
+        id: wave_receipt_export
+        run: |
+          if '[' '-d' '././target/namespace-wave-binding-diff/shards' ']'; then 'mkdir' '-p' "$RUNNER_TEMP"'/instrument-dispatch''/shards'; 'cp' '-a' '././target/namespace-wave-binding-diff/shards''/.' "$RUNNER_TEMP"'/instrument-dispatch''/shards'; fi
+        shell: bash
+        if: always()
       - name: Upload the run's receipt and output
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
