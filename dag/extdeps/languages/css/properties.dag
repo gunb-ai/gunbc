@@ -29,6 +29,7 @@ type CssPropertyName
   | AnimationDelay
   | AnimationDuration
   | TransformOrigin
+  | WebkitFontSmoothing
   | Background
   | Border
   | BorderBottom
@@ -98,6 +99,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDelay => "animation-delay"
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
+    WebkitFontSmoothing => "-webkit-font-smoothing"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
