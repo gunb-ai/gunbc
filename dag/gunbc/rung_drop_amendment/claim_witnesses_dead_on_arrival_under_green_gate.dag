@@ -1,0 +1,19 @@
+module gunbc.rung_drop_amendment.claim_witnesses_dead_on_arrival_under_green_gate
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// THE MEASURED COST OF MEMBER (6), NOT A NEW GAP. The loss was declared on 2026-10-09; what no row
+// carried was what it costs. This is one incident, measured by execution, so the trigger's case
+// cites a receipt rather than a hypothetical. It deliberately proposes no lane: a step that hands
+// the claim corpus to claim_batch is the v1 interpreter, which the trigger already rules out.
+
+data claim_witnesses_dead_on_arrival_under_green_gate: RungDropAmendment = RungDropAmendment {
+  drop_identity: "v1_required_lanes_withdrawn" as NonEmptyStr,
+
+  amended: "2026-10-20",
+
+  later_event: "gunbc#13774 (serving-bench-p3-receipts): `dag/test/claim/gpu_bench_warm_standing_witness.dag` and `dag/test/claim/gpu_bench_v2_receipt_inhabitance_witness.dag` imported `v2.std.live_tree`, a module in neither governed root, from their first commit f23082bc868; behind that, `gunbc.serving.gpu_bench_warm_standing` gained a non-exhaustive match once main added `CitedFigureStanding::ObservedByReceipt` (#13546). Neither witness had a single resolvable claim across three heads and three approving reviews (81318, 81346, 81354), with every required context green, because no required step resolves a claim entry. Their first execution, a manual claim_batch run off the required path, was 22/23 and 3/3: the red `type_comment_line_does_not_malform_a_following_counter` (its fixture lacked a CAPACITY_OK line, so the fold returned WarmCapacityUnread before the counter arm) had never been surfaced by any lane; a mutation of the reader's prefix join drove 8 claims red, so the run discriminated. All 3 files under dag/test/claim that spelled that import were dead" as NonEmptyStr,
+
+  bearing: "member (6), module resolution outside the two emitted closures, has an executed cost: one mistyped import makes one witness silently dead, and a review sees only the diff, which reads the same whether the module resolves or not. This is evidence for restoring the trigger, not a route to it: the manual run is off the required path and retires nothing, and a claim_batch step on any lane is the v1 interpreter the trigger excludes. The restoration trigger is unchanged" as NonEmptyStr,
+}
