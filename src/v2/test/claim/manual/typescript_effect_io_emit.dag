@@ -13,6 +13,7 @@ fn effect_io_binding_spellings() -> Map<Symbol, String> {
 
 fn effect_io_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -47,7 +48,7 @@ fn emit_effect_call_source(expr: TargetValueExpression) -> Outcome<Medium<String
     o: target_value_expression_to_concrete_tokens(
       expr: expr,
       projection: ts_value_expression_projection(),
-      catalog: ts_operator_realizations_catalog_node()
+      catalog: TargetRealizationCatalog { operators: ts_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
     ),
     f: fn(tokens) {
       serialize_concrete_syntax_tokens_to_source(
