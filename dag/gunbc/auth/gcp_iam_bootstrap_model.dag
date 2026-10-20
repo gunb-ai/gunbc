@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_model
 import std.types { String, NonEmptyStr, List, Bool }
 import std.list { distinct_by_key }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name, gcp_service_account_tag_detach_requirement }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
 import gunbc.auth.gcp_iam_converge {
@@ -426,7 +426,7 @@ data iam_bootstrap_denied_permissions: List<String> = [
 // iam_bootstrap_delta_role_withholds_its_boundary is what executes it.
 data iam_bootstrap_withheld_undeniable_permissions: List<String> = [
   "iam.denypolicies.create", "iam.denypolicies.update", "iam.denypolicies.delete",
-  "resourcemanager.tagValueBindings.create", "resourcemanager.tagValueBindings.delete",
+  "resourcemanager.tagValueBindings.create", gcp_service_account_tag_detach_requirement.tag_value_permission,
 ]
 
 // The deny API spells a permission service/resource.verb; the IAM permission spelling drops the
@@ -526,8 +526,10 @@ fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindi
 // the account axis on each trust root, and the tag-value axis on the trust-root value. Each axis's
 // answer must hold none of its permission, with the operator's answer holding it as the control that
 // the probe discriminates.
-data iam_bootstrap_tag_detach_permissions: List<String> = ["iam.serviceAccounts.deleteTagBinding"]
-data iam_bootstrap_tag_value_detach_permissions: List<String> = ["resourcemanager.tagValueBindings.delete"]
+// THE TWO HALVES OF THE UPSTREAM FACT, never a second literal: the account axis probes the service-account
+// half, the tag-value axis the tag-value half (extdeps.cloud.gcp.iam gcp_service_account_tag_detach_requirement).
+data iam_bootstrap_tag_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.service_account_permission]
+data iam_bootstrap_tag_value_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.tag_value_permission]
 
 // ONE VERDICT FOR BOTH AXES: a control lacking any requested permission is a probe that cannot see
 // it, so it establishes nothing; a subject holding any of it refuses.
