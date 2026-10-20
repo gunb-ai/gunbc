@@ -85,12 +85,14 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // question), AuthenticationRequired means someone must establish credentials (a human or a
 // secret store), and ReplyShapeUnrecognized means the reply did not match the schema (a
 // toolchain/version problem, and a fact worth recording because it usually means the BMC
-// firmware drifted). Four different next actions, so four arms. A family row can be checked
+// firmware drifted), and AuthorizationDenied means credentials were accepted and the account lacks the
+// privilege (HTTP 403; a role grant, not a login). Five different next actions, so five arms. A family row can be checked
 // against this union; it cannot be checked against prose.
 type FirmwareReadRefusal
   = VendorCommandRejected { detail: NonEmptyStr }
   | ResourceNotFound { detail: NonEmptyStr }
   | AuthenticationRequired { detail: NonEmptyStr }
+  | AuthorizationDenied { detail: NonEmptyStr }
   | ReplyShapeUnrecognized { detail: NonEmptyStr }
 
 // BootOrder is the firmware's own list of what it will try. A network stack in this list is the

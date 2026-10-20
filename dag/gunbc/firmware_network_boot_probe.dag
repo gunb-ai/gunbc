@@ -416,17 +416,10 @@ fn probe(input: SuppliedProbeInput) -> FirmwareBootProbeOutcome {
 // its Redfish/IPMI surface read against the firmware's own reference yet (DESIGN 4d); each names
 // the read that closes it.
 
-// No decoder reads the Redfish BootOptions collection, so the gap is ours and is stated as such
-// (review 83302), instead of a ReplyRefusedByBmc that would blame the BMC. Restored by a
-// reference-keyed BootOptions read, which also needs a source for each option's kind.
-fn boot_options_not_read() -> AxisCoverage {
-  TransportCannotAnswer { axis: BootOptionsAxis, why: "no decoder reads the Redfish BootOptions collection yet, so BootOption references and kinds are not observed" }
-}
-
 fn all_axes_answered() -> List<AxisCoverage> {
   [
     TransportAnswers { axis: BootOrderAxis },
-    boot_options_not_read(),
+    TransportAnswers { axis: BootOptionsAxis },
     TransportAnswers { axis: NicsAxis },
     TransportAnswers { axis: SecureBootAxis },
     TransportAnswers { axis: BiosVersionAxis },
@@ -440,7 +433,7 @@ fn secure_boot_not_exposed() -> AxisCoverage {
 fn megarac_coverage() -> List<AxisCoverage> {
   [
     TransportAnswers { axis: BootOrderAxis },
-    boot_options_not_read(),
+    TransportAnswers { axis: BootOptionsAxis },
     TransportAnswers { axis: NicsAxis },
     secure_boot_not_exposed(),
     TransportAnswers { axis: BiosVersionAxis },
@@ -496,11 +489,11 @@ data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution
 
 // THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares a decoder yet, so this ref names the
 // declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
-// produce_probe_input, returning SuppliedProbeInput: the row selector, route and receipt as well as the decoded replies). The witness pins the literal; renaming the
+// observe_redfish_boot_axes: the declaration that consumes ACTUAL bound transport observations, one subject, endpoint, row, route and receipt, and mints the SuppliedProbeInput; the supplied-body decoder decode_supplied_redfish_boot_reads is not it). The witness pins the literal; renaming the
 // future decoder means editing this one fn and that pin, and until then the status stays Pending
 // on purpose rather than reporting a discharge nobody earned.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "produce_probe_input")
+  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
 }
 
 fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {

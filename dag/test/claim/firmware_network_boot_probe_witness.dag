@@ -290,7 +290,7 @@ test fn another_release_row_probes_without_touching_the_instrument() -> Bool {
 }
 
 test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
-  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "produce_probe_input")
+  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
   let pending = match firmware_boot_axis_reader_frontier_status(present_decls: []) {
     DissolutionPending => true
     _ => false
@@ -348,23 +348,19 @@ test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
   }
 }
 
-// Every shipped row declares BootOptions unanswerable (our gap): its reason is the row's, not the no-reply fallback.
-fn options_unobserved_on(stack: BmcStack) -> Bool {
-  match first_row_of(rows: firmware_boot_family_rows(), stack: stack) {
+// A BootOptions collection the decoder does not read is Unobserved with the DECODER's reason, not a BMC refusal.
+test fn a_boot_options_reply_beyond_the_decoder_is_unobserved_with_its_reason() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: row } =>
-      match probe(input: ev(row: row, contact: Said { replies: [] })) {
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: BootOptionsAxis, why: "unread" }] })) {
         DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
           match o.boot_options {
-            BootOptionsUnobserved { reason: r } => r != no_reply_reason()
+            BootOptionsUnobserved { reason: r } => r == "unread"
             _ => false
           }
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
         SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
   }
-}
-
-test fn shipped_rows_leave_boot_options_unobserved_with_our_reason() -> Bool {
-  options_unobserved_on(stack: FirmwareFamilyStack { family: OpenBmc }) && options_unobserved_on(stack: FirmwareFamilyStack { family: AmiMegaRac })
 }

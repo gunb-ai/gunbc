@@ -1,37 +1,36 @@
 module test.claim.firmware_network_boot_readers_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, list_length }
-import std.optional { Present, Absent }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.endpoint { OpenBmc }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import gunbc.firmware_network_boot_standing {
-  BootOrderObserved, BootOptionsUnobserved, NicsObserved, SecureBootEnabled, BiosVersionObserved,
-  ResourceNotFound, AuthenticationRequired, VendorCommandRejected, ReplyShapeUnrecognized,
+  BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, SecureBootEnabled, BiosVersionObserved,
+  ResourceNotFound, AuthenticationRequired, AuthorizationDenied, VendorCommandRejected, ReplyShapeUnrecognized,
   BootOrderEntry, FirmwareBootObservation,
 }
 import gunbc.firmware_network_boot_probe {
-  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis,
+  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis, BootOptionsAxis,
   DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, firmware_boot_family_rows,
-  FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute,
+  FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute, no_reply_reason,
 }
+import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
 import gunbc.firmware_network_boot_readers {
-  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, produce_probe_input,
+  RedfishBootReads, redfish_axis_replies, decode_supplied_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // DMTF-schema-shaped bodies, NOT captures: no MegaRAC or OpenBMC body for these axes is in the corpus.
-fn system_ok() -> RedfishGet {
-  RedfishGetBody { body: "{\"BiosVersion\":\"2.4.1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"Boot0002\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"None\",\"Pxe\",\"UefiHttp\"]}}" }
+fn ok(body: String) -> RestExchangeObservation { RestResponseObserved { status: 200, body: RestBodyRead { body: body } } }
+fn status(code: Int) -> RestExchangeObservation { RestResponseObserved { status: code, body: RestBodyRead { body: "{}" } } }
+fn system_ok() -> RestExchangeObservation {
+  ok(body: "{\"BiosVersion\":\"2.4.1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"Boot0002\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"None\",\"Pxe\",\"UefiHttp\"]}}")
 }
-fn secure_on() -> RedfishGet { RedfishGetBody { body: "{\"SecureBootEnable\":true}" } }
-fn nics_ok() -> RedfishGet {
-  RedfishGetBody { body: "{\"Members@odata.count\":2,\"Members\":[{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/1\"},{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/2\"}]}" }
-}
-fn reads(system: RedfishGet, secure: RedfishGet, nics: RedfishGet) -> RedfishBootReads {
-  RedfishBootReads { system: system, secure_boot: secure, nics: nics }
+fn secure_on() -> RestExchangeObservation { ok(body: "{\"SecureBootEnable\":true}") }
+fn reads(system: RestExchangeObservation, secure: RestExchangeObservation) -> RedfishBootReads {
+  RedfishBootReads { system: system, secure_boot: secure }
 }
 
 fn references_of(es: List<BootOrderEntry>) -> List<NonEmptyStr> {
@@ -44,18 +43,11 @@ fn is_order_two(r: AxisReply) -> Bool {
     _ => false
   }
 }
-fn is_options(r: AxisReply) -> Bool {
-  match r { ReplyBootOptions { options: _ } => true _ => false }
-}
-fn is_beyond_decoder(r: AxisReply) -> Bool {
-  match r { ReplyBeyondDecoder { axis: NicsAxis, why: _ } => true _ => false }
-}
-fn is_two_nics(r: AxisReply) -> Bool {
-  match r { ReplyNics { nics: ns } => ns == ["/redfish/v1/Systems/1/EthernetInterfaces/1", "/redfish/v1/Systems/1/EthernetInterfaces/2"] _ => false }
-}
-fn is_bios(r: AxisReply) -> Bool {
-  match r { ReplyBiosVersion { version: v } => v == "2.4.1" _ => false }
-}
+fn is_options(r: AxisReply) -> Bool { match r { ReplyBootOptions { options: _ } => true _ => false } }
+fn is_nics(r: AxisReply) -> Bool { match r { ReplyNics { nics: _ } => true _ => false } }
+fn is_nics_gap(r: AxisReply) -> Bool { match r { ReplyBeyondDecoder { axis: NicsAxis, why: _ } => true _ => false } }
+fn is_options_gap(r: AxisReply) -> Bool { match r { ReplyBeyondDecoder { axis: BootOptionsAxis, why: _ } => true _ => false } }
+fn is_bios(r: AxisReply) -> Bool { match r { ReplyBiosVersion { version: v } => v == "2.4.1" _ => false } }
 fn is_shape_refusal(r: AxisReply) -> Bool {
   match r { ReplyRefusedByBmc { axis: _, refusal: ReplyShapeUnrecognized { detail: _ } } => true _ => false }
 }
@@ -65,135 +57,134 @@ fn is_not_found(r: AxisReply) -> Bool {
 fn is_auth(r: AxisReply) -> Bool {
   match r { ReplyRefusedByBmc { axis: _, refusal: AuthenticationRequired { detail: _ } } => true _ => false }
 }
+fn is_denied(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: AuthorizationDenied { detail: _ } } => true _ => false }
+}
 fn is_rejected(r: AxisReply) -> Bool {
   match r { ReplyRefusedByBmc { axis: _, refusal: VendorCommandRejected { detail: _ } } => true _ => false }
 }
-fn is_refusal(r: AxisReply) -> Bool {
-  match r { ReplyRefusedByBmc { axis: _, refusal: _ } => true _ => false }
-}
+fn is_refusal(r: AxisReply) -> Bool { match r { ReplyRefusedByBmc { axis: _, refusal: _ } => true _ => false } }
 fn is_secure_on(r: AxisReply) -> Bool { match r { ReplySecureBootEnabled => true _ => false } }
 fn is_secure_off(r: AxisReply) -> Bool { match r { ReplySecureBootDisabled => true _ => false } }
-fn any_is_auth(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_auth(r: r))
-}
-fn any_is_bios(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_bios(r: r))
-}
-fn any_is_not_found(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_not_found(r: r))
-}
-fn any_is_options(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_options(r: r))
-}
-fn any_is_order_two(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_order_two(r: r))
-}
-fn any_is_rejected(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_rejected(r: r))
-}
-fn any_is_secure_off(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_secure_off(r: r))
-}
-fn any_is_secure_on(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_secure_on(r: r))
-}
-fn any_is_shape_refusal(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_shape_refusal(r: r))
-}
-fn any_is_two_nics(rs: List<AxisReply>) -> Bool {
-  fold(rs, init: false, f: (a, r) => a || is_two_nics(r: r))
-}
+fn any_of(rs: List<AxisReply>, p: fn(AxisReply) -> Bool) -> Bool { fold(rs, init: false, f: (a, r) => a || p(r)) }
 fn count_refusals(rs: List<AxisReply>) -> Int {
   fold(rs, init: 0, f: (n, r) => if is_refusal(r: r) { n + 1 } else { n })
 }
 
-test fn a_well_formed_system_yields_four_typed_replies() -> Bool {
-  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))
-  list_length(items: rs) == 4 && any_is_order_two(rs: rs) && !any_is_options(rs: rs) && any_is_two_nics(rs: rs) &&
-  any_is_secure_on(rs: rs) && any_is_bios(rs: rs) && count_refusals(rs: rs) == 0
+test fn a_well_formed_system_yields_five_replies_two_of_them_our_stated_gaps() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on()))
+  list_length(items: rs) == 5 && any_of(rs: rs, p: is_order_two) && any_of(rs: rs, p: is_nics_gap) && any_of(rs: rs, p: is_options_gap) &&
+  any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_bios) && count_refusals(rs: rs) == 0
 }
 
-// A BootOrder entry is a reference and carries no kind, so a label-looking string is an identity, not a classification.
-test fn boot_order_entries_are_references_and_no_options_reply_is_invented() -> Bool {
-  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))
-  any_is_order_two(rs: rs) && !any_is_options(rs: rs) && count_refusals(rs: rs) == 0
+// EthernetInterfaces is not the firmware-bootable set, and no kind is invented for BootOptions.
+test fn nics_and_boot_options_are_never_minted_from_the_system_documents() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on()))
+  !any_of(rs: rs, p: is_nics) && !any_of(rs: rs, p: is_options)
 }
 
 test fn an_empty_boot_order_reference_is_refused() -> Bool {
-  let blank = RedfishGetBody { body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"\"]}}" }
-  let rs = redfish_axis_replies(reads: reads(system: blank, secure: secure_on(), nics: nics_ok()))
-  !any_is_order_two(rs: rs) && count_refusals(rs: rs) == 1 && any_is_shape_refusal(rs: rs)
+  let blank = ok(body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"\"]}}")
+  let rs = redfish_axis_replies(reads: reads(system: blank, secure: secure_on()))
+  !any_of(rs: rs, p: is_order_two) && count_refusals(rs: rs) == 1 && any_of(rs: rs, p: is_shape_refusal)
 }
 
-test fn empty_lists_are_refused_never_observed_empty() -> Bool {
-  let empty_boot = RedfishGetBody { body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[]}}" }
-  let empty_nics = RedfishGetBody { body: "{\"Members@odata.count\":0,\"Members\":[]}" }
-  let rs = redfish_axis_replies(reads: reads(system: empty_boot, secure: secure_on(), nics: empty_nics))
-  count_refusals(rs: rs) == 2
-}
-
-test fn a_paged_nic_collection_is_beyond_the_decoder_not_a_bmc_refusal() -> Bool {
-  let paged = RedfishGetBody { body: "{\"Members\":[{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/1\"}],\"Members@odata.nextLink\":\"/redfish/v1/Systems/1/EthernetInterfaces?$skip=1\"}" }
-  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: paged))
-  count_refusals(rs: rs) == 0 && !any_is_two_nics(rs: rs) && fold(rs, init: false, f: (a, r) => a || is_beyond_decoder(r: r))
+test fn an_empty_boot_order_is_refused_never_observed_empty() -> Bool {
+  let empty_boot = ok(body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[]}}")
+  let rs = redfish_axis_replies(reads: reads(system: empty_boot, secure: secure_on()))
+  count_refusals(rs: rs) == 1 && any_of(rs: rs, p: is_shape_refusal)
 }
 
 test fn secure_boot_reads_the_flag_and_refuses_a_missing_one() -> Bool {
-  let off = RedfishGetBody { body: "{\"SecureBootEnable\":false}" }
-  let missing = RedfishGetBody { body: "{\"SecureBootMode\":\"UserMode\"}" }
-  let r_off = redfish_axis_replies(reads: reads(system: system_ok(), secure: off, nics: nics_ok()))
-  let r_missing = redfish_axis_replies(reads: reads(system: system_ok(), secure: missing, nics: nics_ok()))
-  any_is_secure_off(rs: r_off) && !any_is_secure_on(rs: r_off) && count_refusals(rs: r_missing) == 1 && !any_is_secure_on(rs: r_missing) && !any_is_secure_off(rs: r_missing)
+  let off = ok(body: "{\"SecureBootEnable\":false}")
+  let missing = ok(body: "{\"SecureBootMode\":\"UserMode\"}")
+  let r_off = redfish_axis_replies(reads: reads(system: system_ok(), secure: off))
+  let r_missing = redfish_axis_replies(reads: reads(system: system_ok(), secure: missing))
+  any_of(rs: r_off, p: is_secure_off) && !any_of(rs: r_off, p: is_secure_on) && count_refusals(rs: r_missing) == 1 && !any_of(rs: r_missing, p: is_secure_on) && !any_of(rs: r_missing, p: is_secure_off)
 }
 
 test fn http_statuses_map_to_their_refusal_arms() -> Bool {
-  let nf = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 404, detail: "no SecureBoot" }, nics: nics_ok()))
-  let au = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 401, detail: "unauthorized" }, nics: nics_ok()))
-  let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 403, detail: "forbidden" }, nics: nics_ok()))
-  let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 500, detail: "oops" }, nics: nics_ok()))
-  any_is_not_found(rs: nf) && any_is_auth(rs: au) && any_is_rejected(rs: fb) && any_is_rejected(rs: rj)
+  let nf = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 404)))
+  let au = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 401)))
+  let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 403)))
+  let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 500)))
+  any_of(rs: nf, p: is_not_found) && any_of(rs: au, p: is_auth) && !any_of(rs: au, p: is_denied) &&
+  any_of(rs: fb, p: is_denied) && !any_of(rs: fb, p: is_auth) && !any_of(rs: fb, p: is_rejected) && any_of(rs: rj, p: is_rejected)
+}
+
+// A non-2xx status with a readable JSON body is still a refusal by status, never decoded as the resource.
+test fn a_non_success_status_is_not_decoded_even_with_a_plausible_body() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: RestResponseObserved { status: 503, body: RestBodyRead { body: "{\"SecureBootEnable\":true}" } }))
+  !any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_rejected)
+}
+
+test fn an_unreadable_body_or_missing_response_is_typed_not_decoded() -> Bool {
+  let unreadable = redfish_axis_replies(reads: reads(system: system_ok(), secure: RestResponseObserved { status: 200, body: RestBodyReadRefused { cause: "truncated" } }))
+  let silent = redfish_axis_replies(reads: reads(system: RestExchangeRefused { cause: "connection refused" }, secure: secure_on()))
+  count_refusals(rs: unreadable) == 1 && any_of(rs: unreadable, p: is_shape_refusal) &&
+  count_refusals(rs: silent) == 0 && !any_of(rs: silent, p: is_order_two) && !any_of(rs: silent, p: is_bios) && any_of(rs: silent, p: is_secure_on)
 }
 
 test fn an_unreadable_system_refuses_its_two_axes_and_nothing_else() -> Bool {
-  let bad = RedfishGetBody { body: "<html>login</html>" }
-  let gone = RedfishGetStatus { status: 404, detail: "no system" }
-  let rs_bad = redfish_axis_replies(reads: reads(system: bad, secure: secure_on(), nics: nics_ok()))
-  let rs_gone = redfish_axis_replies(reads: reads(system: gone, secure: secure_on(), nics: nics_ok()))
-  list_length(items: rs_bad) == 4 && count_refusals(rs: rs_bad) == 2 && any_is_shape_refusal(rs: rs_bad) &&
-  count_refusals(rs: rs_gone) == 2 && any_is_not_found(rs: rs_gone) && any_is_two_nics(rs: rs_gone)
+  let bad = ok(body: "<html>login</html>")
+  let rs_bad = redfish_axis_replies(reads: reads(system: bad, secure: secure_on()))
+  let rs_gone = redfish_axis_replies(reads: reads(system: status(code: 404), secure: secure_on()))
+  count_refusals(rs: rs_bad) == 2 && any_of(rs: rs_bad, p: is_shape_refusal) && count_refusals(rs: rs_gone) == 2 && any_of(rs: rs_gone, p: is_not_found) && any_of(rs: rs_gone, p: is_secure_on)
 }
 
 test fn a_missing_bios_version_is_refused() -> Bool {
-  let nobios = RedfishGetBody { body: "{\"Boot\":{\"BootOrder\":[\"Pxe\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe\"]}}" }
-  let blank = RedfishGetBody { body: "{\"BiosVersion\":\"\",\"Boot\":{\"BootOrder\":[\"Pxe\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe\"]}}" }
-  let a = redfish_axis_replies(reads: reads(system: nobios, secure: secure_on(), nics: nics_ok()))
-  let b = redfish_axis_replies(reads: reads(system: blank, secure: secure_on(), nics: nics_ok()))
-  count_refusals(rs: a) == 1 && count_refusals(rs: b) == 1 && !any_is_bios(rs: a)
+  let nobios = ok(body: "{\"Boot\":{\"BootOrder\":[\"Pxe\"]}}")
+  let blank = ok(body: "{\"BiosVersion\":\"\",\"Boot\":{\"BootOrder\":[\"Pxe\"]}}")
+  let a = redfish_axis_replies(reads: reads(system: nobios, secure: secure_on()))
+  let b = redfish_axis_replies(reads: reads(system: blank, secure: secure_on()))
+  count_refusals(rs: a) == 1 && count_refusals(rs: b) == 1 && !any_of(rs: a, p: is_bios)
 }
 
 fn order_ok(o: FirmwareBootObservation) -> Bool {
   match o.boot_order { BootOrderObserved { devices: es } => references_of(es: es) == ["Boot0001", "Boot0002"] _ => false }
 }
-// Our gap is Unobserved with our reason, never a BMC refusal (review 83302).
-fn options_unobserved(o: FirmwareBootObservation) -> Bool { match o.boot_options { BootOptionsUnobserved { reason: _ } => true _ => false } }
+// Our gap is Unobserved with OUR reason (not the no-reply fallback), never a BMC refusal.
+fn options_gap(o: FirmwareBootObservation) -> Bool { match o.boot_options { BootOptionsUnobserved { reason: r } => r != no_reply_reason() _ => false } }
+fn nics_gap(o: FirmwareBootObservation) -> Bool { match o.nics { NicsUnobserved { reason: r } => r != no_reply_reason() _ => false } }
 fn secure_ok(o: FirmwareBootObservation) -> Bool { match o.secure_boot { SecureBootEnabled => true _ => false } }
-fn nics_ok_obs(o: FirmwareBootObservation) -> Bool { match o.nics { NicsObserved { nics: ns } => list_length(items: ns) == 2 _ => false } }
 fn bios_ok(o: FirmwareBootObservation) -> Bool { match o.bios_version { BiosVersionObserved { version: v } => v == "2.4.1" _ => false } }
 
 fn route_of(row: FirmwareBootFamilyRow) -> ReadRoute { row.route }
 
-// INHABITANCE: the reader's output is what probe() consumes, on the OpenBMC row, end to end.
-test fn reader_output_feeds_the_probe() -> Bool {
-  let rows = firmware_boot_family_rows()
-  let row = fold(rows, init: Absent, f: (acc, r) => match acc { Present { value: _ } => acc Absent => if r.family.stack == FirmwareFamilyStack { family: OpenBmc } { Present { value: r } } else { Absent } })
-  match row {
+fn row_for(stack: FirmwareFamilyStack) -> Optional<FirmwareBootFamilyRow> {
+  fold(firmware_boot_family_rows(), init: Absent, f: (acc, r) => match acc { Present { value: _ } => acc Absent => if r.family.stack == stack { Present { value: r } } else { Absent } })
+}
+
+fn decode_on(row: FirmwareBootFamilyRow) -> RedfishDecodeOutcome {
+  decode_supplied_redfish_boot_reads(subject: ProbeSubject { unit_label: "u" }, row: row, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: row) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on()))
+}
+
+// INHABITANCE at the supplied boundary only: the decoder's output is what probe() consumes, on the OpenBMC row.
+test fn decoder_output_feeds_the_probe() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: r } =>
-      match probe(input: produce_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
-        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
-          order_ok(o: o) && options_unobserved(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
-        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
-        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      match decode_on(row: r) {
+        RedfishRouteNotRedfish { route: _ } => false
+        RedfishDecoded { input: i } =>
+          match probe(input: i) {
+            DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+              order_ok(o: o) && options_gap(o: o) && nics_gap(o: o) && secure_ok(o: o) && bios_ok(o: o)
+            SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+            SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+          }
+      }
+  }
+}
+
+// A MegaRAC proprietary-route row is refused even though the receipt's route is spelled to match it.
+test fn a_megarac_proprietary_route_row_is_not_decoded_as_redfish() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: AmiMegaRac }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_on(row: r) {
+        RedfishRouteNotRedfish { route: _ } => true
+        RedfishDecoded { input: _ } => false
       }
   }
 }
