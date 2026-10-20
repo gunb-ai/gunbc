@@ -46,6 +46,10 @@ fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
   }
 }
 
+// The one handler a bound receipt may name: the natively emitted verifier (gunbc.auth.approval_device_crypto_serve). It
+// lives with the receipt type so both the sidecar that mints a receipt and the broker that joins an echo to it read one fact.
+data device_crypto_handler_identity: NonEmptyStr = "gunbc.auth.approval_device_crypto_serve native_serve_handle"
+
 type DeviceCryptoHandlerReceipt {
   handler_identity: NonEmptyStr
   exact_revision: NonEmptyStr
@@ -84,6 +88,31 @@ fn device_crypto_admission(r: DeviceCryptoRealization) -> DeviceCryptoAdmission 
   }
 }
 
+// THE RUNTIME JOIN OF AN ANSWER'S ECHOED RECEIPT TO WHAT THE DEPLOY PROVISIONED. A static row cannot name the digest of the
+// binary that contains the row, so the receipt a sidecar echoes on each answer (gunbc.auth.approval_device_crypto_wire
+// device_crypto_echoed_answer_json) is compared, per answer, to the expectation the deploy handed the client: the
+// handler it was built to be and the sha256 live_deploy installed (gunbc.live_deploy.emit). An echo from another binary,
+// another handler, or one that does not cover every obligation is refused, and the client turns a refusal into a
+// typed 503 before any mint.
+type DeviceCryptoExpectation {
+  handler_identity: NonEmptyStr
+  deployed_digest: NonEmptyStr
+}
+
+type DeviceCryptoEchoJoin
+  = DeviceCryptoEchoJoined
+  | DeviceCryptoEchoRefused { cause: NonEmptyStr }
+
+fn device_crypto_echo_join(expectation: DeviceCryptoExpectation, echo: DeviceCryptoHandlerReceipt) -> DeviceCryptoEchoJoin {
+  if (echo.handler_identity as String) != (expectation.handler_identity as String) {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt names handler ", echo.handler_identity as String, ", not the expected ", expectation.handler_identity as String], "") as NonEmptyStr }
+  } else if (echo.exact_revision as String) != (expectation.deployed_digest as String) {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt revision sha256:", echo.exact_revision as String, " is not the deployed artifact's sha256:", expectation.deployed_digest as String], "") as NonEmptyStr }
+  } else if count(device_crypto_missing(receipt: echo)) > 0 {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt does not cover: ", join(map(device_crypto_missing(receipt: echo), o => device_crypto_obligation_evidence(o: o) as String), "; ")], "") as NonEmptyStr }
+  } else { DeviceCryptoEchoJoined }
+}
+
 // THE STD PROOF, DERIVED ONLY FROM AN ADMISSION. The upstream interface modules mint their sole-constructed evidence
 // from a decoded native answer only when handed std.native_realization_proof NativeRealizationProof for their own fold;
 // this is the one function that yields it, and only from DeviceCryptoAdmitted, so a refused admission yields none.
@@ -98,3 +127,8 @@ fn device_crypto_proof_of(admission: DeviceCryptoAdmission, fold: DeclarationRef
     DeviceCryptoRefused { status: _, reason: _ } => none
   }
 }
+
+// WHAT THE DEPLOY PROVISIONS (PR 4b adds the route), read as given: gunbc.live_deploy.emit will write the sha256 of the executable it installed
+// to the EnvironmentFile of the broker's unit under this name, so the broker holds the digest of the artifact that was
+// installed and not one it computed or was told by the sidecar. An unbound or empty value expects nothing: the call refuses.
+data approval_device_crypto_deployed_digest_env_name: NonEmptyStr = "GUNBC_DEVICE_CRYPTO_DEPLOYED_DIGEST"

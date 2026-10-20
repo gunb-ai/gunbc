@@ -6,6 +6,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart, OemSelPayload }
 import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent, OemTimestamped }
+import std.host_text { chars }
 
 // Keep the rendered prefix to detect clear, rollover and replacement when they
 // change it. Prefix equality alone DOES NOT prove source-generation continuity:
@@ -22,7 +23,7 @@ fn sel_lines(text: String) -> List<String> {
 
 fn sel_record_id(text: String) -> Int? {
   if text.length() == 0 || text.length() > 4 { none } else {
-    fold(chars(s: text), init: Present { value: 0 }, f: (acc, cp) => match acc {
+    fold(chars(text: text), init: Present { value: 0 }, f: (acc, cp) => match acc {
       Absent => none
       Present { value: n } => match filter(base16_digit_rows, row => code_point(row.lower) == cp || code_point(row.upper) == cp).first() {
         Absent => none
