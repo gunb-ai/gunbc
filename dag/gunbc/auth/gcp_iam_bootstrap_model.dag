@@ -522,12 +522,22 @@ fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindi
 // ── TAG-DETACH AUTHORITY IS OBSERVED ABSENT (side chat at db00846da5, blocker 3) ────────────────────
 // Detaching a tag from a service account needs resourcemanager.tagValueBindings.delete on the value AND
 // iam.serviceAccounts.deleteTagBinding on the account (docs.cloud.google.com/iam/docs/service-accounts-tags,
-// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and requires its effective
-// answer on each trust root to hold neither permission named here, with the operator's answer holding it
-// as the positive control that the probe discriminates. Absence on the account axis alone already rules
-// detaching out; the tag-value axis is an unmet obligation on gunbc.rung_drop
-// gcp_iam_bootstrap_trust_root_wall_in_code (no tag-value permission probe is modeled).
+// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and probes BOTH axes as it:
+// the account axis on each trust root, and the tag-value axis on the trust-root value. Each axis's
+// answer must hold none of its permission, with the operator's answer holding it as the control that
+// the probe discriminates.
 data iam_bootstrap_tag_detach_permissions: List<String> = ["iam.serviceAccounts.deleteTagBinding"]
+data iam_bootstrap_tag_value_detach_permissions: List<String> = ["resourcemanager.tagValueBindings.delete"]
+
+// ONE VERDICT FOR BOTH AXES: a control lacking any requested permission is a probe that cannot see
+// it, so it establishes nothing; a subject holding any of it refuses.
+type TagDetachProbeVerdict = TagDetachAbsent | TagDetachUndiscriminating | TagDetachHeld
+
+fn tag_detach_probe_verdict(requested: List<String>, control: List<String>, subject: List<String>) -> TagDetachProbeVerdict {
+  if !all(requested, p => any(control, c => c == p)) { TagDetachUndiscriminating }
+  else if any(requested, p => any(subject, s => s == p)) { TagDetachHeld }
+  else { TagDetachAbsent }
+}
 
 // The accounts the temporary probe authority may mint a token for: the two the readback already reads
 // as, and iam-bootstrap, whose own effective authority is what the detach probe observes.

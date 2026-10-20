@@ -605,6 +605,25 @@ service gcp.ResourceManager {
     }
   }
 
+  // tagValues.testIamPermissions (Resource Manager v3 Discovery document, revision 20261011):
+  // POST v3/{+resource}:testIamPermissions, resource matching ^tagValues/[^/]+$, body
+  // TestIamPermissionsRequest { permissions }, answer TestIamPermissionsResponse { permissions }: the
+  // subset of the requested permissions the CALLER holds on that value.
+  operation TestTagValueIamPermissions {
+    requires Network
+    input { access_token: Secret, tag_value: NonEmptyStr, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v3/\{tag_value\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation GetNamespacedTagValue {
     requires Network
     input { access_token: Secret, namespaced_name: NonEmptyStr }
