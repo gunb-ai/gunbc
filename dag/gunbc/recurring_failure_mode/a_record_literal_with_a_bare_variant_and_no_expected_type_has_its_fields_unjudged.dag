@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_record_literal_with_a_bare_variant_and_no_expected_type_has_its_fields_unjudged
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_record_literal_with_a_bare_variant_and_no_expected_type_has_its_fields_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_record_literal_with_a_bare_variant_and_no_expected_type_has_its_fields_unjudged" as NonEmptyStr,
+
+  receipts: [
+    "A record literal of a variant or product whose owner is generic, written where no expected type reaches it (a let without annotation, a call argument whose formal is a bare parameter), had its field values accepted unjudged: the owner parameters were unsolved, so the field formals were unresolved and the check was skipped, silently. Specimen in v1: Vq { binder: \"s\" } against a declared Int field. Found 2026-10-20 while retiring CardOptional (gunbc#14087), where it hid inside the Optional-instance migration.",
+
+    "REPAIR AT THE EARLIEST UNJUSTIFIED BOUNDARY: the owner parameters are solved by unifying the fields (seeded from the expected type when there is one), each field formal is read through declaration_substitution_basis, the single authority for the declared type at a position, and a field mentioning a parameter that stayed unsolved is a type mismatch, never a skip. The call path and the record path now share that one reader.",
+
+    "CEILING: structurally guaranteed in the v1 seed (the literal is refused at the field span; executed on the real acceptance path with an accepted positive control). NATIVE HOLE NOT YET CHECKED: whether the v2 route has the same skip is owed, via the native counterpart worker; this row does not claim it.",
+
+    "RECOGNITION RULE: a refusal-free corpus after a field-typing change proves nothing; plant one wrong-typed field in a generic-owner literal and require exactly one refusal.",
+  ],
+
+  evidence: [],
+}
