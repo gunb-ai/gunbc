@@ -13,13 +13,12 @@ import v2.std.grammar {
   FormalProduction
 }
 import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
+  MembersInsideTypeBody,
   TargetSemanticDeclCoproductEnumSurface,
   DeclEmitStringQuote,
-  HeaderLeadingLines,
-  DocLeadingLines,
-  ConformanceClause,
-  ImportsLeading,
-  MembersInsideTypeBody,
   TargetSemanticDeclEmitEscape,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclSurfaceProjection,
@@ -552,11 +551,11 @@ fn swift_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjecti
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    member_projection: MembersInsideTypeBody,
-    import_projection: ImportsLeading,
-    header_projection: HeaderLeadingLines,
-    doc_projection: DocLeadingLines,
-    conformance_projection: ConformanceClause,
+    member_projection: ColumnWired { placement: MembersInsideTypeBody },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    conformance_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
     coproduct_decoration_rules: []
   }
 }
