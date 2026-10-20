@@ -167,6 +167,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegBrokerTree { revision: _ } => true
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
   }
 }
 
