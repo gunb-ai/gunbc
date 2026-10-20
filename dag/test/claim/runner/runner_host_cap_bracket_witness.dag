@@ -1,10 +1,13 @@
 module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { any, all }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
+import gunbc.runner.runner_slot_actuation { SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -158,4 +161,31 @@ test fn the_budget_is_drain_plus_operations_plus_release() -> Bool {
 test fn a_budget_short_of_the_bracket_refuses_before_masking() -> Bool {
   (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3599)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3600 && second_count(s: g) == 3599 BudgetCovers => false })
     && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3600)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
+}
+
+// INTERRUPTION AFTER THE MASK. The driver is killed after masking; the release entry then meets a unit
+// that is masked and stopped. Its plan (the real planner, from show text) must be unmask + enable +
+// start, which activate_runner_slot_over runs and reads back; a refusal or an already-active verdict
+// there would leave the mask in place or claim a re-admission nothing performed.
+test fn a_unit_left_masked_by_an_interrupted_bracket_is_planned_back_in_service() -> Bool {
+  match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")) {
+    SlotReadRefused { reason: _ } => false
+    SlotRead { reading: r } =>
+      match slot_activation_plan(r: r) {
+        ActivationSteps { steps: st } => length(st) == 3
+        ActivationRefused { reason: _ } => false
+        ActivationAlreadyActive => false
+      }
+  }
+}
+
+// THE OWNED SET EXCLUDES FABRIC SLOTS BY CONSTRUCTION: the release acts on subject.desired_units, and a
+// slot the model gave to fabric (declared masked) is never among them, so release leaves it masked.
+test fn a_fabric_slot_is_never_in_the_released_set() -> Bool {
+  match runner_host_file_subject(host: "srv3" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: sj } =>
+      length(runner_host_fabric_member_units(host: "srv3" as HostIdentity)) > 0
+        && all(runner_host_fabric_member_units(host: "srv3" as HostIdentity), f => !any(sj.desired_units, d => (d as String) == (f as String)))
+  }
 }
