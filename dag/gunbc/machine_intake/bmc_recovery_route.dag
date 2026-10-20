@@ -5,7 +5,7 @@ import std.interval { closed_interval, interval_high, interval_low, IntervalRefu
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
-import std.optional { Present, Absent, optional_present, optional_absent }
+import std.optional { Present, Absent, optional_present, optional_absent, optional_prefer_first_present }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash {
   Sha256Digest, content_hash_of_value,
@@ -430,50 +430,136 @@ type InBandCommandRefusal
 // the words can carry an option and its argument together, which is what two separate scans could not do.
 // `transport` is the transport sum's OWN arm (Absent until -I answers), so the in-band decision is never
 // re-derived from a string at the end.
+// WHAT IS WAITING FOR ITS ARGUMENT, AS A DECLARED SUM. This used to be three fields -- `pending` holding
+// the word, plus `pending_is_credential` and `pending_is_host` -- and the three of them together said one
+// thing. Written that way the state could hold combinations that mean nothing: credential and host both
+// true, or a word set with neither. Nothing in the compiler objected, and the walk read the Bools with ==
+// against the effect strings, so a tag that stopped matching silently made an argument be read as the
+// wrong kind of thing. Each arm now carries the word it is waiting for (the refusals name it), and the
+// kind is the arm itself -- an argument cannot be a credential and a host at once because there is no
+// value that says so.
+type IpmiPendingOption
+  = PendingCredentialArgument { word: String }   // -U -P -f
+  | PendingHostArgument { word: String }         // -H
+  | PendingTransportArgument { word: String }    // -I
+  | PendingTuningArgument { word: String }       // -N -S -D
+
+// WHAT THE LAST -I LEFT BEHIND, AS A DECLARED SUM. This used to be three fields -- transport (the arm),
+// transport_wire (the name) and transport_unrecognized (a Bool) -- and the three of them said one thing.
+// Written that way the state could hold transport: Absent beside transport_unrecognized: true, which is
+// not a thing that can happen (a name that no plugin claims IS a name that was given), and the decision
+// read the Bool BEFORE the sum, so a mutation that stopped setting the Bool made an unrecognised name be
+// reported as "no -I at all" -- a different refusal, naming a different cause, from the same words. The
+// arm now IS the fact: Absent means no -I appeared, Unrecognised carries the name that no plugin claims,
+// Named carries the arm together with the name that produced it because a refusal has to show the name.
+type IpmiTransportSeen
+  = TransportNamed { transport: IpmiCommandTransport, wire: String }
+  | TransportNameUnrecognised { wire: String }
+
+// WHAT THE CREDENTIAL LETTERS LEFT STANDING. credential_word ("", "-U", "-P" or "-f") beside
+// file_credential: Bool and env_credential: Bool said one thing three ways, so the state could say
+// "-f was the last letter" and "this was not a file credential" at once, and nothing objected. The
+// precedence those three fields produced is NOT last-write-wins, which is why this is one sum with
+// transitions rather than a field that is simply overwritten: a -f seen early beats a -P seen later
+// (it is a different mechanism -- the secret comes from a file), while -U and -P do overwrite each
+// other, and -E is beaten by an explicit letter whether it came before or after. Encoding the
+// precedence in the transitions rather than in a stack of Bools is what makes the combinations that
+// cannot happen unnameable -- and it is the same four-arm sum the answer already returns, so there is
+// no second vocabulary for the same fact.
 type IpmiCommandWalkState {
-  pending: String                    // "", or the exact option word awaiting its argument
-  pending_is_credential: Bool        // that word is -U/-P/-f: its argument is a credential, not a verb
-  pending_is_host: Bool              // that word is -H: its argument names another machine
+  pending: IpmiPendingOption?        // Absent, or the option awaiting its argument and what it awaits
   host_seen: Bool
-  transport: IpmiCommandTransport?   // the arm -I named, or Absent
-  transport_wire: String             // the name that produced it, for the refusals
-  transport_unrecognized: Bool       // -I answered with a name no plugin claims -- its own refusal
-  credential_word: String            // "", "-U", "-P" or "-f"; the LAST one wins, as getopt leaves it
-  file_credential: Bool
-  env_credential: Bool
+  transport: IpmiTransportSeen?      // what the LAST -I named, or Absent if none appeared
+  credential: IpmiArgvCredentialOption?  // what the LAST credential letter left standing, or Absent
   unmodelled: String                 // the first option word upstream's getopt would have aborted on
   verb: String                       // the first non-option word, kept for the refusal's detail
 }
 
-fn ipmi_command_walk_init() -> IpmiCommandWalkState {
-  IpmiCommandWalkState {
-    pending: "", pending_is_credential: false, pending_is_host: false, host_seen: false,
-    transport: Absent, transport_wire: "", transport_unrecognized: false,
-    credential_word: "", file_credential: false,
-    env_credential: false, unmodelled: "", verb: "",
+// THE -CREDENTIAL LETTERS, APPLIED IN ORDER. Each returns the next state of the one credential fact, so
+// the precedence lives in these two functions and nowhere else. -f is absorbing: once a file of secrets
+// has been named, a later -P does not demote it. -E only lands when no explicit letter has ever landed,
+// which is why "an -E that a later -P overrode" and "an -E that was never overridden" are not two states
+// here -- no reader could tell them apart, so the state must not either.
+fn ipmi_credential_after_letter(
+  seen: IpmiArgvCredentialOption?,
+  letter_word: String,
+) -> IpmiArgvCredentialOption? {
+  if match seen {
+    // a file of secrets already named is not demoted by a later letter
+    Present { value: IpmiArgvPasswordFile } => true
+    Absent => false
+    Present { value: _ } => false
+  } {
+    seen
+  } else if letter_word == "-P" {
+    optional_present(value: IpmiArgvPassword)
+  } else if letter_word == "-U" {
+    optional_present(value: IpmiArgvUserName)
+  } else {
+    // -f, the third credential letter. A letter added to the credential group later, without a line here,
+    // lands on this arm as a file credential -- the safe direction, because a credential that EXISTS makes
+    // the route refuse the reset rather than let it proceed, while Absent is what reads as passwordless
+    // and opens the gate. A future letter is therefore more likely to be over-refused than under-refused.
+    optional_present(value: IpmiArgvPasswordFile)
   }
 }
+
+fn ipmi_credential_after_env(seen: IpmiArgvCredentialOption?) -> IpmiArgvCredentialOption? {
+  // std.optional's own fold rather than a re-written if: a letter that already landed wins over the
+  // environment, and -E fills the slot only when nothing has landed. Reusing the fold also keeps this
+  // from being == against an Optional, which nothing else in the tree does.
+  optional_prefer_first_present(
+    left: seen,
+    right: optional_present(value: IpmiArgvPasswordFromEnv),
+  )
+}
+
+fn ipmi_command_walk_init() -> IpmiCommandWalkState {
+  IpmiCommandWalkState {
+    pending: optional_absent(), host_seen: false,
+    transport: optional_absent(), credential: optional_absent(),
+    unmodelled: "", verb: "",
+  }
+}
+
+// WHAT AN OPTION WORD DOES, AS A DECLARED SUM. This used to be one of seven strings -- "pending",
+// "pending-credential", "env", "pending-host", "pending-skip", "skip", "unmodelled" -- compared with ==
+// on both sides. That is a closed set written as free text: a tag misspelled on either side compiled,
+// landed in the wrong branch, and quietly changed whether a write counts as passwordless in-band, which
+// is the fact that gates the destructive reset. The module's own rule for transport names applies here
+// word for word -- "an in-band tag carried as free text with a validator in front of it is an undeclared
+// sum" (DESIGN section 5: stronger than catching a wrong state is making it unwritable). The members are
+// written down once, the walk matches on them, and the claims below read THE SAME function, so a letter
+// cannot start being accepted without a claim going red.
+type IpmiOptionEffect
+  = EffectPendingTransport              // -I: its argument is the transport name
+  | EffectPendingCredential             // -U -P -f: its argument is a secret, never a verb
+  | EffectPendingHost                   // -H: its argument names another machine
+  | EffectPendingTuning                 // -N -S -D: its argument tunes the exchange, not its kind
+  | EffectReadsEnv                      // -E: the secret is off the captured line entirely
+  | EffectSkip                          // -Z: a privilege flag with no bearing on the channel
+  | EffectUnmodelled                    // refused by name: upstream's getopt aborts on it
 
 // WHAT EACH MODELLED OPTION WORD DOES, one row each, as the data the walk AND the claims read. Anything
 // else that reaches the walk looking like an option ("-k", "--password", "-P0penBmc") is refused; see the
 // table above for who is left out and why. Because the walk's decision and the claims over it come from
 // this one row, they cannot drift apart.
-fn ipmi_option_word_effect(word: String) -> String {
-  if word == "-I" { "pending" }
-  else if word == "-U" || word == "-P" || word == "-f" { "pending-credential" }
-  else if word == "-E" { "env" }
-  else if word == "-H" { "pending-host" }
-  else if word == "-N" || word == "-S" || word == "-D" { "pending-skip" }
-  else if word == "-Z" { "skip" }
-  // Every letter below is declared in OPTION_STRING but not modelled here: each changes how a write is
-  // authenticated or where it is delivered, and upstream's own getopt aborts on a word this module's table
-  // does not name, so refusing is upstream's behaviour rather than an addition.
-  else if word == "-k" || word == "-y" || word == "-K" || word == "-a" { "unmodelled" }
-  else if word == "-C" || word == "-L" || word == "-A" { "unmodelled" }
-  else if word == "-t" || word == "-T" || word == "-b" || word == "-B" || word == "-l" || word == "-m" { "unmodelled" }
-  else if word == "-p" || word == "-R" || word == "-c" || word == "-v" || word == "-V" || word == "-h" { "unmodelled" }
-  else if word == "-O" || word == "-o" || word == "-z" || word == "-e" || word == "-4" || word == "-6" { "unmodelled" }
-  else { "unmodelled" }
+//
+// The unmodelled letters ("-k" "-y" "-K" "-a" "-C" "-L" "-A" "-t" "-T" "-b" "-B" "-l" "-m" "-p" "-R" "-c"
+// "-v" "-V" "-h" "-O" "-o" "-z" "-e" "-4" "-6") are NOT re-listed as branches returning EffectUnmodelled.
+// They were, and every one of those branches said exactly what the final else says, so they could not be
+// wrong and could not be tested -- a branch that cannot be wrong is not a decision, it is decoration that
+// reads like one. What they documented (each is declared in OPTION_STRING, each changes how a write is
+// authenticated or where it is delivered, upstream's getopt aborts on a word this table does not name) is
+// kept here as the reason the catch-all is the honest behaviour rather than a permissive default.
+fn ipmi_option_word_effect(word: String) -> IpmiOptionEffect {
+  if word == "-I" { EffectPendingTransport }
+  else if word == "-U" || word == "-P" || word == "-f" { EffectPendingCredential }
+  else if word == "-E" { EffectReadsEnv }
+  else if word == "-H" { EffectPendingHost }
+  else if word == "-N" || word == "-S" || word == "-D" { EffectPendingTuning }
+  else if word == "-Z" { EffectSkip }
+  else { EffectUnmodelled }
 }
 
 // ONE WORD OF THE WALK. Total: every branch returns a state. A word held as a pending option's argument is
@@ -483,86 +569,115 @@ fn ipmi_option_word_effect(word: String) -> String {
 fn ipmi_command_walk_step(state: IpmiCommandWalkState, word: String) -> IpmiCommandWalkState {
   if word == "" {
     state
-  } else if state.pending != "" {
-    // THE ARGUMENT IS CONSUMED AS AN ARGUMENT. It is never re-read as an option or as the verb: the word
-    // after -I is a transport name even when it spells "open", and the word after -P is a secret even when
-    // it spells "-U" -- which is the whole reason an argument-position scan is the only honest reading.
-    if state.pending_is_credential {
-      IpmiCommandWalkState {
-        pending: "", pending_is_credential: false, pending_is_host: false,
-        host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
-        transport_unrecognized: state.transport_unrecognized,
-        credential_word: state.pending,
-        file_credential: if state.pending == "-f" { true } else { state.file_credential },
-        env_credential: state.env_credential, unmodelled: state.unmodelled,
-        verb: state.verb,
-      }
-    } else if state.pending_is_host {
-      IpmiCommandWalkState {
-        pending: "", pending_is_credential: false, pending_is_host: false,
-        host_seen: true, transport: state.transport, transport_wire: state.transport_wire,
-        transport_unrecognized: state.transport_unrecognized,
-        credential_word: state.credential_word, file_credential: state.file_credential,
-        env_credential: state.env_credential, unmodelled: state.unmodelled,
-        verb: state.verb,
-      }
-    } else if state.pending == "-I" {
-      // LAST -I WINS, as upstream leaves it: the arm is overwritten wholesale, so a trailing -I lanplus
-      // cannot be laundered by an earlier -I open.
-      let iface = ipmi_command_interface_from_wire(wire: word)
-      match iface {
-        IpmiCommandInterfaceParsed { wire: w, transport: arm } =>
-          IpmiCommandWalkState {
-            pending: "", pending_is_credential: false, pending_is_host: false,
-            host_seen: state.host_seen, transport: Present { value: arm }, transport_wire: w,
-            transport_unrecognized: false,
-            credential_word: state.credential_word, file_credential: state.file_credential,
-            env_credential: state.env_credential, unmodelled: state.unmodelled,
-            verb: state.verb,
-          }
-        IpmiCommandInterfaceUnrecognized { wire: w } =>
-          IpmiCommandWalkState {
-            pending: "", pending_is_credential: false, pending_is_host: false,
-            host_seen: state.host_seen, transport: Absent, transport_wire: w,
-            transport_unrecognized: true,
-            credential_word: state.credential_word, file_credential: state.file_credential,
-            env_credential: state.env_credential, unmodelled: state.unmodelled,
-            verb: state.verb,
-          }
-      }
-    } else {
-      // -N/-S/-D: the value tunes the exchange and changes nothing about its kind
-      IpmiCommandWalkState {
-        pending: "", pending_is_credential: false, pending_is_host: false,
-        host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
-        transport_unrecognized: state.transport_unrecognized,
-        credential_word: state.credential_word, file_credential: state.file_credential,
-        env_credential: state.env_credential, unmodelled: state.unmodelled,
-        verb: state.verb,
-      }
+  } else if match state.pending {
+    // SOMETHING IS AWAITING ITS ARGUMENT. Whether the next word is an argument or an option is decided by
+    // the arm, not by looking at the word -- which is the whole reason an argument-position scan is the
+    // only honest reading: the word after -I is a transport name even when it spells "open", and the word
+    // after -P is a secret even when it spells "-U".
+    Present { value: PendingCredentialArgument { word: _ } } => true
+    Present { value: PendingHostArgument { word: _ } } => true
+    Present { value: PendingTransportArgument { word: _ } } => true
+    Present { value: PendingTuningArgument { word: _ } } => true
+    Absent => false
+  } {
+    // THE ARGUMENT IS CONSUMED AS AN ARGUMENT, and the arm says what KIND of thing it is. There is no
+    // value in this type that says "waiting for a credential and a host at once", so the pair of Bools
+    // that used to encode that -- and that could disagree with the word beside them -- is gone.
+    match state.pending {
+      Present { value: PendingCredentialArgument { word: pending_word } } =>
+        IpmiCommandWalkState {
+          pending: optional_absent(),
+          host_seen: state.host_seen, transport: state.transport,
+          credential: ipmi_credential_after_letter(seen: state.credential, letter_word: pending_word),
+          unmodelled: state.unmodelled,
+          verb: state.verb,
+        }
+      Present { value: PendingHostArgument { word: _ } } =>
+        IpmiCommandWalkState {
+          pending: optional_absent(),
+          host_seen: true, transport: state.transport,
+          credential: state.credential, unmodelled: state.unmodelled,
+          verb: state.verb,
+        }
+      Present { value: PendingTransportArgument { word: _ } } =>
+        // LAST -I WINS, as upstream leaves it: the arm is overwritten wholesale, so a trailing -I lanplus
+        // cannot be laundered by an earlier -I open.
+        match ipmi_command_interface_from_wire(wire: word) {
+          IpmiCommandInterfaceParsed { wire: w, transport: arm } =>
+            IpmiCommandWalkState {
+              pending: optional_absent(),
+              host_seen: state.host_seen,
+              transport: optional_present(value: TransportNamed { transport: arm, wire: w }),
+              credential: state.credential, unmodelled: state.unmodelled,
+              verb: state.verb,
+            }
+          IpmiCommandInterfaceUnrecognized { wire: w } =>
+            IpmiCommandWalkState {
+              pending: optional_absent(),
+              host_seen: state.host_seen,
+              transport: optional_present(value: TransportNameUnrecognised { wire: w }),
+              credential: state.credential, unmodelled: state.unmodelled,
+              verb: state.verb,
+            }
+        }
+      Present { value: PendingTuningArgument { word: _ } } =>
+        // -N/-S/-D: the value tunes the exchange and changes nothing about its kind
+        IpmiCommandWalkState {
+          pending: optional_absent(),
+          host_seen: state.host_seen, transport: state.transport,
+          credential: state.credential, unmodelled: state.unmodelled,
+          verb: state.verb,
+        }
+      // The guard above admits a Present and nothing else, so this arm is taken only by the guard's own
+      // evaluation, never by the branch it guards. It is written because a match that omits an arm is a
+      // hole the compiler cannot see, and a stated-but-never-selected arm is the opposite of that. It
+      // returns the state unchanged because there is nothing to consume when nothing was awaited.
+      Absent => state
     }
   } else if starts_with(s: word, prefix: "-") && word != "-" {
     let effect = ipmi_option_word_effect(word: word)
     IpmiCommandWalkState {
-      // the FIRST bad word is the refusal: a later option never overwrites an earlier unmodelled name or
-      // an earlier missing value, because the earlier one is what upstream would have stopped on
-      pending: if effect == "pending" || effect == "pending-credential" || effect == "pending-host" || effect == "pending-skip" { word } else { "" },
-      pending_is_credential: if state.unmodelled == "" { effect == "pending-credential" } else { false },
-      pending_is_host: if state.unmodelled == "" { effect == "pending-host" } else { false },
-      host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
-      transport_unrecognized: state.transport_unrecognized,
-      credential_word: state.credential_word, file_credential: state.file_credential,
-      env_credential: if effect == "env" && state.unmodelled == "" { true } else { state.env_credential },
-      unmodelled: if effect == "unmodelled" && state.unmodelled == "" { word } else { state.unmodelled },
+      // WHAT THIS WORD IS WAITING FOR, read straight off the effect. The arm IS the kind, so there is no
+      // string compare here and no second pair of Bools whose agreement with the word had to be assumed.
+      //
+      // The FIRST bad word is the refusal: a later option never overwrites an earlier unmodelled name or
+      // an earlier missing value, because the earlier one is what upstream would have stopped on. That is
+      // why the pending slot needs no "has anything been refused yet" guard while the credential below
+      // keeps one: once a word has been refused the outcome is already IpmiCommandUnmodelledOption, which
+      // the decision checks before it reads the pending slot, the credential or the verb -- so what a
+      // later word puts in these fields cannot reach an answer. The credential's guard is not load-
+      // bearing for the same reason; it stays because it states the rule at the place the rule is applied.
+      pending: match effect {
+        EffectPendingTransport => Present { value: PendingTransportArgument { word: word } }
+        EffectPendingCredential => Present { value: PendingCredentialArgument { word: word } }
+        EffectPendingHost => Present { value: PendingHostArgument { word: word } }
+        EffectPendingTuning => Present { value: PendingTuningArgument { word: word } }
+        EffectReadsEnv => optional_absent()
+        EffectSkip => optional_absent()
+        // refused by name below; nothing is awaited, and the name is already carried in `unmodelled`
+        EffectUnmodelled => optional_absent()
+      },
+      host_seen: state.host_seen, transport: state.transport,
+      // -E lands on the same credential fact as the letters do, and cannot overrule one that already
+      // landed. There is deliberately no `state.unmodelled == ""` guard here: the decision checks
+      // `st.unmodelled != ""` FIRST (before anything reads the credential), so a word refused after a
+      // refusal cannot reach an answer, and a condition that cannot change any outcome is not a decision
+      // -- it is decoration that reads like one, which is the reason the per-letter unmodelled branches
+      // were deleted from the effect table. What the ordering guarantees is stated where the ordering
+      // lives, not restated at every place it happens to protect.
+      credential: if effect == EffectReadsEnv {
+        ipmi_credential_after_env(seen: state.credential)
+      } else {
+        state.credential
+      },
+      unmodelled: if effect == EffectUnmodelled && state.unmodelled == "" { word } else { state.unmodelled },
       verb: state.verb,
     }
   } else if state.verb == "" {
     IpmiCommandWalkState {
-      pending: "", pending_is_credential: false, pending_is_host: false,
-      host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
-      transport_unrecognized: state.transport_unrecognized,
-      credential_word: state.credential_word, file_credential: state.file_credential,
-      env_credential: state.env_credential, unmodelled: state.unmodelled,
+      pending: optional_absent(),
+      host_seen: state.host_seen, transport: state.transport,
+      credential: state.credential, unmodelled: state.unmodelled,
       verb: word,
     }
   } else {
@@ -579,63 +694,61 @@ fn in_band_command_from_argv(argv_words: List<String>) -> IpmiCommandInvocation 
       option: st.unmodelled,
       detail: "this word is not modelled here. ipmitool's own getopt aborts on an option it does not recognise (lib/ipmi_main.c default: prints the usage and exits), so these words would not have run either; the letters left out of this module's table -- -k/-y/-K (the IPMIv2 Kg key), -a (prompt for the password), -C/-L/-A (cipher, privilege, auth type), -t/-T/-b/-B/-l/-m (bridging), -p/-R (port, retries) -- all of them change how a write to the BMC is authenticated or where it is delivered" as NonEmptyStr,
     }
-  } else if st.pending != "" {
+  } else if match st.pending {
+    Present { value: _ } => true
+    Absent => false
+  } {
     // A LETTER THAT NEEDS A VALUE AND GETS THE END OF THE WORDS IS AN ERROR, NOT A PASS. Every word that
     // can be left pending (-I -U -P -f -H -N -S -D) carries a colon in OPTION_STRING
     // (lib/ipmi_main.c:82), so the words ending while one holds is getopt's missing-argument error.
     IpmiCommandOptionNeedsValue {
-      option: st.pending,
+      option: match st.pending {
+        Present { value: PendingCredentialArgument { word: w } } => w
+        Present { value: PendingHostArgument { word: w } } => w
+        Present { value: PendingTransportArgument { word: w } } => w
+        Present { value: PendingTuningArgument { word: w } } => w
+        Absent => ""
+      },
       detail: "the words end with this option still holding for its argument, so neither the transport it was naming nor any credential it was naming was ever given; plain getopt would have errored on the missing required argument (OPTION_STRING, lib/ipmi_main.c:82)" as NonEmptyStr,
     }
-  } else if st.transport_unrecognized {
-    // The name after -I is not in ipmi_intf_table, so ipmi_intf_load returns NULL and ipmitool exits
-    // before the command runs. It is NOT the same refusal as "no -I": here a name WAS given, and a reader
-    // needs to see it rather than being told the transport was absent.
-    IpmiCommandUnrecognised { wire: st.transport_wire }
-  } else {
-    match st.transport {
-      // WHY NO -I IS A REFUSAL AND NOT A DEFAULT: see the block above. DEFAULT_INTF is a ./configure
-      // property of the installed binary, not a fact of this invocation.
-      Absent => IpmiCommandTransportAbsent {
-        detail: "no -I appears in the words. ipmitool would fall back to the interface DEFAULT_INTF baked into the binary by ./configure -- a property of whichever ipmitool is installed on the rescue OS, not of this invocation. 00_README.txt records only that -I lanplus was ABSENT, which is not the same as knowing which driver answered; 02's header reads no -I lanplus, no credential" as NonEmptyStr,
-      }
-      Present { value: NotInBandHostTransport { transport: _, why_not_in_band: why } } =>
+  } else match st.transport {
+    // THE THREE QUESTIONS THIS ANSWERS -- was there an -I at all, is its name one any plugin claims, and
+    // is that arm a host transport -- used to be asked of a Bool plus a sum plus a loose name, in that
+    // order, because the state could not otherwise distinguish "no -I" from "-I with a name no plugin
+    // claims": both left transport: Absent, and only the Bool separated them. Reading the Bool first was
+    // therefore load-bearing -- reverse those two checks and a real name gets reported as though it had
+    // never been given. The distinction now lives in the arms, so there is no ordering left to get wrong.
+    //
+    // The two refusals stay different on purpose: a name that no plugin claims is not the same fact as no
+    // name at all, and a reader needs to see the name rather than be told the transport was absent.
+    Present { value: TransportNameUnrecognised { wire: w } } => IpmiCommandUnrecognised { wire: w }
+    // WHY NO -I IS A REFUSAL AND NOT A DEFAULT: see the block above. DEFAULT_INTF is a ./configure
+    // property of the installed binary, not a fact of this invocation.
+    Absent => IpmiCommandTransportAbsent { detail: "no -I appears in the words. ipmitool would fall back to the interface DEFAULT_INTF baked into the binary by ./configure -- a property of whichever ipmitool is installed on the rescue OS, not of this invocation. 00_README.txt records only that -I lanplus was ABSENT, which is not the same as knowing which driver answered; 02's header reads no -I lanplus, no credential" }
+    Present { value: TransportNamed { transport: named, wire: w } } =>
+      match named {
         // the parse already knows WHY this transport is not a host transport; the refusal carries it
         // rather than re-deriving a reason, so the reader sees the upstream fact and not a restatement
-        IpmiCommandNotInBand { wire: st.transport_wire, why_not_in_band: why }
-      Present { value: InBandHostTransportChannel { transport: in_band } } =>
-        if st.host_seen {
-          // -H names a machine to reach OVER LAN; -I open names the host's own device node. Both cannot be
-          // true of one invocation (upstream warns about the pair), and the pair is where a credential
-          // could reach a remote host under a "passwordless in-band" label. Refused, never defaulted to
-          // the convenient arm.
-          IpmiCommandRemoteHostWithInBandName {
-            host: "a -H argument was supplied to this invocation" as NonEmptyStr,
-            wire: st.transport_wire,
+        NotInBandHostTransport { transport: _, why_not_in_band: why } =>
+          IpmiCommandNotInBand { wire: w, why_not_in_band: why }
+        InBandHostTransportChannel { transport: in_band } =>
+          if st.host_seen {
+            // -H names a machine to reach OVER LAN; -I open names the host's own device node. Both cannot
+            // be true of one invocation (upstream warns about the pair), and the pair is where a credential
+            // could reach a remote host under a "passwordless in-band" label. Refused, never defaulted to
+            // the convenient arm.
+            IpmiCommandRemoteHostWithInBandName {
+              host: "a -H argument was supplied to this invocation" as NonEmptyStr,
+              wire: w,
+            }
+          } else {
+            IpmiCommandInBand { transport: in_band, credential: st.credential }
           }
-        } else {
-          IpmiCommandInBand { transport: in_band, credential: recovery_argv_credential_of(st: st) }
-        }
-    }
+      }
   }
 }
 
-// THE CREDENTIAL, READ OFF THE WALK. -E is its own fact rather than a second name for -P: with -E the
-// secret is off the captured line entirely, and a reader of the capture cannot see it -- the README's own
-// honesty rule is that what was written down and what was not are different things.
-fn recovery_argv_credential_of(st: IpmiCommandWalkState) -> IpmiArgvCredentialOption? {
-  if st.file_credential {
-    optional_present(value: IpmiArgvPasswordFile)
-  } else if st.credential_word == "-P" {
-    optional_present(value: IpmiArgvPassword)
-  } else if st.credential_word == "-U" {
-    optional_present(value: IpmiArgvUserName)
-  } else if st.env_credential {
-    optional_present(value: IpmiArgvPasswordFromEnv)
-  } else {
-    optional_absent()
-  }
-}
+
 
 // THE ONE PLACE A ROUTE CHANNEL VALUE IS MADE. The parse answers, and this says which arm of the route's
 // channel sum it lands on -- so the transport, the credential and the refusal all still come from a single
@@ -3488,7 +3601,7 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
     })
     // AN -I NAME NO PLUGIN CLAIMS, REFUSED BY THE WALK ITSELF (not only by the direct parser): ipmi_intf_load
     // returns NULL for a name with no matching entry, so the invocation aborts before any channel is read.
-    // The walk reaches this through its transport_unrecognized flag; a walk that stopped setting it would fall
+    // The walk reaches this through its TransportNameUnrecognised arm; a walk that stopped setting it would fall
     // through to the no--I arm and this conjunct would go red rather than agree.
     && (match in_band_command_from_argv(argv_words: ["-I", "nosuchintf", "user", "list", "1"]) {
       IpmiCommandUnrecognised { wire: w } => w == "nosuchintf"
@@ -3502,25 +3615,31 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
 // is modelled stays modelled, and what is refused by name is refused.
 test fn the_option_table_models_exactly_the_letters_the_route_actually_acts_on() -> Bool {
   // modelled, with the arity ipmitool's OPTION_STRING gives them (lib/ipmi_main.c:82)
-  ipmi_option_word_effect(word: "-I") == "pending"
-    && ipmi_option_word_effect(word: "-U") == "pending-credential"
-    && ipmi_option_word_effect(word: "-P") == "pending-credential"
-    && ipmi_option_word_effect(word: "-f") == "pending-credential"
-    && ipmi_option_word_effect(word: "-E") == "env"
-    && ipmi_option_word_effect(word: "-H") == "pending-host"
+  ipmi_option_word_effect(word: "-I") == EffectPendingTransport
+    && ipmi_option_word_effect(word: "-U") == EffectPendingCredential
+    && ipmi_option_word_effect(word: "-P") == EffectPendingCredential
+    && ipmi_option_word_effect(word: "-f") == EffectPendingCredential
+    && ipmi_option_word_effect(word: "-E") == EffectReadsEnv
+    && ipmi_option_word_effect(word: "-H") == EffectPendingHost
+    // these three take an argument that tunes the exchange and changes nothing about its kind, so they
+    // must stay distinct from the credential letters: read as a credential, a retry count would be
+    // recorded as a secret and the write would stop counting as passwordless in-band
+    && ipmi_option_word_effect(word: "-N") == EffectPendingTuning
+    && ipmi_option_word_effect(word: "-S") == EffectPendingTuning
+    && ipmi_option_word_effect(word: "-D") == EffectPendingTuning
     // refused: each of these changes how a write is authenticated or where it is delivered, and upstream's
     // getopt aborts on any word this table does not name
-    && ipmi_option_word_effect(word: "-k") == "unmodelled"
-    && ipmi_option_word_effect(word: "-y") == "unmodelled"
-    && ipmi_option_word_effect(word: "-a") == "unmodelled"
-    && ipmi_option_word_effect(word: "-L") == "unmodelled"
-    && ipmi_option_word_effect(word: "-C") == "unmodelled"
-    && ipmi_option_word_effect(word: "-t") == "unmodelled"
-    && ipmi_option_word_effect(word: "--password") == "unmodelled"
-    && ipmi_option_word_effect(word: "-P0penBmc") == "unmodelled"
-    // and the effect strings are only ever compared against this file's own set: an unknown word gets the
-    // refusal arm, never an accidental pass through a default branch
-    && ipmi_option_word_effect(word: "-Z") == "skip"
+    && ipmi_option_word_effect(word: "-k") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-y") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-a") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-L") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-C") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-t") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "--password") == EffectUnmodelled
+    && ipmi_option_word_effect(word: "-P0penBmc") == EffectUnmodelled
+    // and every arm is named by a line above, so an arm the walk stops producing turns this claim red.
+    // The catch-all is asserted too: an unknown word gets the refusal arm, never a pass through a default
+    && ipmi_option_word_effect(word: "-Z") == EffectSkip
 }
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
   (match reset_to_defaults_user_table_disposition(kind: ResetAll) {
