@@ -67,6 +67,58 @@ fn line_of(source: &str, start: i64) -> usize {
         + 1
 }
 
+// The operand node's own source text, exactly as far as its span reaches.
+fn operand_slice(source: &str, node: &Rc<Node>) -> String {
+    let a = (node.span.start.max(0) as usize).min(source.len());
+    let b = (node.span.end.max(0) as usize).min(source.len());
+    source[a..b.max(a)].to_string()
+}
+
+// A |> at bracket/string depth zero: absorbed by the prefix, not nested inside it.
+fn has_top_level_pipe(s: &str) -> bool {
+    let bs = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0;
+    let mut in_str = false;
+    let mut esc = false;
+    while i < bs.len() {
+        let c = bs[i];
+        if in_str {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                in_str = false;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b'"' => in_str = true,
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b'|' if depth == 0 && i + 1 < bs.len() && bs[i + 1] == b'>' => return true,
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
+fn one_line(s: &str) -> String {
+    let t: String = s
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .collect();
+    let t: String = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.len() > 96 {
+        format!("{}..", &t[..96])
+    } else {
+        t
+    }
+}
+
 fn visit(node: &Rc<Node>, file: &str, source: &str, hits: &mut Vec<String>) {
     if let Some(p) = prefix_label(&node.expr_data) {
         if let Some(child) = node.children.iter().next() {
@@ -74,10 +126,16 @@ fn visit(node: &Rc<Node>, file: &str, source: &str, hits: &mut Vec<String>) {
                 Some(op) => Some(format!("ABSORBS[{}]", op)),
                 None => match &*child.expr_data {
                     // Pipe (|>) builds ExprMethodCall at the infix level, but try_postfix also
-                    // builds one for ordinary method access; the report line carries source text
-                    // around the prefix node for hand classification.
+                    // builds one for ordinary method access; the OPERAND'S OWN SLICE decides:
+                    // a top-level |> in it (bracket/string depth 0) means the pipe was absorbed
+                    // by the prefix -- the meaning changes when the declared power lands.
                     ExprData::ExprMethodCall { .. } => {
-                        Some("MAYBE-PIPE(method-call root)".to_string())
+                        let slice = operand_slice(source, child);
+                        if has_top_level_pipe(&slice) {
+                            Some(format!("PIPE-ABSORBED[{}]", one_line(&slice)))
+                        } else {
+                            Some(format!("postfix-method[{}]", one_line(&slice)))
+                        }
                     }
                     _ => None,
                 },
