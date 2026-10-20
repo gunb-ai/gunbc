@@ -137,22 +137,31 @@ fn build_cache_read_back_refuses_the_failing_host(capture: ShellExecObserved) ->
   }
 }
 
-// WHAT THE REFUSAL MUST SAY ABOUT A HOST THAT ANSWERED NON-ZERO -- three things, and the third is the one
-// that makes this claim more than a substring check:
+// WHAT THE REFUSAL MUST SAY ABOUT A HOST THAT ANSWERED NON-ZERO -- two things, both of which can fail:
 //
 //  1. that an ensure ran and what it exited with, INCLUDING the code itself. A refusal that said only
 //     "not confirmed" would leave an operator unable to tell a refused connection from a missing binary,
 //     which is the difference between restarting a unit and installing one.
 //  2. the recorded exit code, carried through from the host rather than paraphrased.
-//  3. that this is NOT the short-circuit refusal. That other text belongs to the arm where the script
-//     exited zero on a zeroed --show-stats table without ever running an ensure; if the two ever collapse
-//     into one message, the operator loses the only signal that distinguishes "the daemon was never
-//     started" from "the daemon was started and did not answer", and those two need different repairs.
-//     Asserting the absence here is what keeps them apart at the level the fleet reads.
+//
+// A THIRD CONJUNCT USED TO LIVE HERE -- asserting the absence of the short-circuit sentence "without
+// printing its read_back=ok receipt", to keep that refusal text distinguishable from this one. It is
+// DELETED, not because the distinction stopped mattering but because the check stopped being able to fail:
+// its only producer was `data build_cache_observe_short_circuit_detail`, which this PR deletes together
+// with the classifier arm that handed it to DaemonUnresponsive, so the forbidden state is expressible
+// nowhere it runs (DESIGN: a check whose forbidden state is expressible nowhere is a decoration, green by
+// construction and later cited as coverage). The distinction it was standing in for is now structural, and
+// proven by claims that CAN fail: the sentence has no producer left (verified by grep at this head -- the
+// only producer of the operator-visible "the build-cache ensure exited " prefix is build_cache_exit_detail,
+// whose two callers both require a recorded BuildCacheHostRunObserved, reachable only under
+// Present ensure AND Present read-back), and
+// test.claim.host.host_build_cache_daemon_ensure_contract_witness's
+// binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges carries the same ObserveStatsOk
+// value through the skip decision AND the post-ensure classification, so restoring the deleted arm reddens
+// that claim instead of quietly re-adding a second refusal text.
 fn build_cache_detail_names_the_failed_read_back(detail: String, exit_code: Int) -> Bool {
   string_contains(s: detail, pattern: "the build-cache ensure exited ")
     && string_contains(s: detail, pattern: to_string(exit_code))
-    && !string_contains(s: detail, pattern: "without printing its read_back=ok receipt")
 }
 
 data path_authority_observation_staged_note: String = "The two live PATH-shadow shell witnesses that lived here (refuses-healthy-shadowing / passes-when-no-sccache) were removed 2026-07-24 (review 42343): the shell observation they exercised grew the A5 census scaffold's emitted surface, so it was withdrawn and the PATH-shadow judgement is now proven at the MODEL grain only (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed, a synthetic DaemonPathShadowed -> RefusalPathShadowed fold). The live observation was staged on that dissolve-on and its real-execution witness HAS returned with the typed read-back op (provision_read_back_failure_not_converged_by_real_execution, above): the observation is now extdeps.cache.sccache.sccache_stats_query_command, executed as argv, so no hand-shell remains on this path. What still has no witness is the PATH-shadow observation itself (shell.PosixCommandV.Check -- shell.Which.Check was deleted, crisp-wren-896, PR #8590); that stays staged on its own dissolve-on and is not claimed here."
