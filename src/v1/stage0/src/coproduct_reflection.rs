@@ -2317,7 +2317,10 @@ mod parse_only_uppercase_variant_regression_tests {
             empty_node_list(),
             None,
             dummy_span(),
-            dummy_span(),
+            Some(crate::v1_std_core::synthetic_ident(
+                dummy_span(),
+                "SharedArm".to_string(),
+            )),
         )
     }
 
@@ -2336,7 +2339,7 @@ mod parse_only_uppercase_variant_regression_tests {
             empty_node_list(),
             None,
             dummy_span(),
-            dummy_span(),
+            Some(crate::v1_std_core::synthetic_ident(dummy_span(), "SharedArm".to_string())),
         )
     }
 
@@ -2395,7 +2398,10 @@ mod parse_only_uppercase_variant_regression_tests {
             Rc::new(args.into()),
             None,
             dummy_span(),
-            dummy_span(),
+            Some(crate::v1_std_core::synthetic_ident(
+                dummy_span(),
+                callee.to_string(),
+            )),
         )
     }
 
@@ -2407,7 +2413,10 @@ mod parse_only_uppercase_variant_regression_tests {
             empty_node_list(),
             None,
             dummy_span(),
-            dummy_span(),
+            Some(crate::v1_std_core::synthetic_ident(
+                dummy_span(),
+                name.to_string(),
+            )),
         )
     }
 

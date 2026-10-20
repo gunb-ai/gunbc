@@ -874,7 +874,7 @@ fn subtree_extent(node: &Rc<Node>, file: &str, extent: &mut Option<(i64, i64)>) 
     };
     widen(&node.span);
     if let Some(ident) = node.ident_span.as_ref() {
-        widen(ident);
+        widen(&ident.span);
     }
     for child in node
         .children

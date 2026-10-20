@@ -28,8 +28,8 @@ use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
-    authored_container_spelling_verdict, build_newline_index, default_ident_span,
-    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
+    authored_container_spelling_verdict, build_newline_index, leaf_node_with_span, make_arm_node,
+    named_ident, no_span, synthetic_ident, with_optional_cardinality, AuthoredIdent, Cardinality,
     CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
     Node, SourceSpan,
 };
@@ -93,6 +93,11 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
+// An ident_span for a synthetic probe node: its spelling is the name it was built from.
+fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<AuthoredIdent>> {
+    named_ident(name.clone(), Some(synthetic_ident(span, name)))
+}
+
 fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(im::HashMap::new())
 }
@@ -100,8 +105,9 @@ fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
 fn leaf_node(name: String) -> Rc<Node> {
     leaf_node_with_span(
         Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name,
+        name.clone(),
         no_span(),
+        Some(synthetic_ident(no_span(), name)),
     )
 }
 
@@ -175,14 +181,14 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         name: "Map".to_string(),
         ident: None,
         span: sp.clone(),
-        ident_span: Some(sp.clone()),
+        ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(sp.clone(), "Map".to_string())),
         children: Rc::new(vec![
             Rc::new(Node {
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-                name: key_name,
+                name: key_name.clone(),
                 ident: None,
                 span: sp.clone(),
-                ident_span: Some(sp.clone()),
+                ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(sp.clone(), key_name)),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -200,10 +206,10 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
             }),
             Rc::new(Node {
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-                name: val_name,
+                name: val_name.clone(),
                 ident: None,
                 span: sp.clone(),
-                ident_span: Some(sp.clone()),
+                ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(sp.clone(), val_name)),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -1224,11 +1230,14 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         ident: None,
         span: zero_span(),
-        ident_span: Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
-            file: "".to_string(),
-            start: 0,
-            end: 0,
-        })),
+        ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(
+            Rc::new(v1_compiler::v1_std_core::SourceSpan {
+                file: "".to_string(),
+                start: 0,
+                end: 0,
+            }),
+            "User".to_string(),
+        )),
         children: Rc::new(vec![]),
         connective: v1_compiler::v1_std_core::Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1652,7 +1661,8 @@ fn authored_leaf_node(name: &str, text: &str) -> Rc<Node> {
     leaf_node_with_span(
         Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.to_string(),
-        span,
+        span.clone(),
+        Some(synthetic_ident(span, name.to_string())),
     )
 }
 
@@ -1865,7 +1875,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
         name: "x".to_string(),
-        ident_span: syn_span.clone(),
+        ident_span: syn_span
+            .clone()
+            .map(|s| v1_compiler::v1_std_core::synthetic_ident(s, "x".to_string())),
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: leaf_node("Int".to_string()),
         })),
@@ -1877,7 +1889,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
         name: "y".to_string(),
-        ident_span: syn_span.clone(),
+        ident_span: syn_span
+            .clone()
+            .map(|s| v1_compiler::v1_std_core::synthetic_ident(s, "y".to_string())),
         inferred: Some(Rc::new(InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
@@ -1890,7 +1904,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
         name: "Result".to_string(),
-        ident_span: syn_span.clone(),
+        ident_span: syn_span
+            .clone()
+            .map(|s| v1_compiler::v1_std_core::synthetic_ident(s, "Result".to_string())),
         connective: Connective::Conj,
         children: Rc::new(vec![typed_child, error_child]),
         ..(*leaf_node("".to_string())).clone()

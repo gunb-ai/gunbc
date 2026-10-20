@@ -2,6 +2,7 @@
 // Source module: v1.std.core
 
 use self::AdmitCallersEntry::*;
+use self::AuthoredIdentRefusal::*;
 use self::CallSemantics::*;
 use self::CallTargetIdentity::*;
 use self::Cardinality::*;
@@ -24,6 +25,7 @@ use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::ParsedModuleItemKind::*;
 use self::ServiceConfigField::*;
+use self::SourceIndexOutcome::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
@@ -209,7 +211,7 @@ pub fn divergent_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
-        ident_span: Some(no_span()),
+        ident_span: Some(synthetic_ident(no_span(), "".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1570,7 +1572,7 @@ pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
-    pub ident_span: Option<Rc<SourceSpan>>,
+    pub ident_span: Option<Rc<AuthoredIdent>>,
     pub children: Rc<Vec<Rc<Node>>>,
     pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -1590,17 +1592,100 @@ pub struct Node {
     pub expr_data: Rc<ExprData>,
 }
 
-pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredIdent {
+    pub span: Rc<SourceSpan>,
+    pub text: String,
+}
+
+pub fn synthetic_ident(span: Rc<SourceSpan>, text: String) -> Rc<AuthoredIdent> {
+    Rc::new(AuthoredIdent {
+        span: span.clone(),
+        text: text.clone(),
+    })
+}
+
+pub fn kernel_ident(name: String) -> Rc<AuthoredIdent> {
+    Rc::new(AuthoredIdent {
+        span: kernel_span(name.clone()),
+        text: name.clone(),
+    })
+}
+
+pub fn authored_ident_in(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> Rc<AuthoredIdent> {
+    Rc::new(AuthoredIdent {
+        span: span.clone(),
+        text: source_text_at(index.clone(), span.clone()),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum AuthoredIdentRefusal {
+    AuthoredSourceNotIndexed { span: Rc<SourceSpan> },
+}
+impl AuthoredIdentRefusal {
+    pub fn span(&self) -> Rc<SourceSpan> {
+        match self {
+            AuthoredIdentRefusal::AuthoredSourceNotIndexed { span: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SourceIndexOutcome {
+    SourceIndexFound { index: Rc<NewlineIndex> },
+    SourceIndexRefused { refusal: Rc<AuthoredIdentRefusal> },
+}
+
+pub fn source_index_at(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    span: Rc<SourceSpan>,
+) -> Rc<SourceIndexOutcome> {
+    match v1_rt::map_get(&source_indices, span.file.clone()) {
+        Some(index) => Rc::new(SourceIndexOutcome::SourceIndexFound {
+            index: index.clone(),
+        }),
+        std::option::Option::None => Rc::new(SourceIndexOutcome::SourceIndexRefused {
+            refusal: Rc::new(AuthoredIdentRefusal::AuthoredSourceNotIndexed { span: span.clone() }),
+        }),
+    }
+}
+
+pub fn authored_ident_refusal_message(refusal: Rc<AuthoredIdentRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+        AuthoredIdentRefusal::AuthoredSourceNotIndexed { span: sp, .. } => v1_rt::concat(
+            v1_rt::concat(
+                "authored identifier text needs the tokenized source of `".to_string(),
+                sp.file.clone(),
+            ),
+            "`, which is not indexed".to_string(),
+        ),
+    }
+}
+
+pub fn authored_ident_refusal_span(refusal: Rc<AuthoredIdentRefusal>) -> Rc<SourceSpan> {
+    match (*refusal.clone()).clone() {
+        AuthoredIdentRefusal::AuthoredSourceNotIndexed { span: sp, .. } => sp.clone(),
+    }
+}
+
+pub fn node_ident(n: Rc<Node>) -> Option<Rc<AuthoredIdent>> {
+    n.ident_span.clone()
+}
+
+pub fn named_ident(name: String, ident: Option<Rc<AuthoredIdent>>) -> Option<Rc<AuthoredIdent>> {
     if (name.clone() == "".to_string()) {
         std::option::Option::None
     } else {
-        Some(span.clone())
+        ident
     }
 }
 
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
-        Some(s) => s.clone(),
+        Some(s) => s.span.clone(),
         std::option::Option::None => n.span.clone(),
     }
 }
@@ -1649,13 +1734,13 @@ pub fn make_named_expr_node(
     children: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: named_ident(name.clone(), ident.clone()),
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1689,7 +1774,7 @@ pub fn make_pattern_binder_declaration_node(
         Rc::new(vec![]),
         std::option::Option::None,
         span.clone(),
-        span.clone(),
+        Some(synthetic_ident(span.clone(), name.clone())),
     )
 }
 
@@ -1736,7 +1821,7 @@ pub fn make_arg_node(
     name: Option<String>,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let arg_name = match name.clone() {
@@ -1747,7 +1832,7 @@ pub fn make_arg_node(
             occurrence_identity: occurrence_identity.clone(),
             name: arg_name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
+            ident_span: named_ident(arg_name.clone(), ident.clone()),
             children: Rc::new(vec![value.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -1814,13 +1899,13 @@ pub fn make_resource_use_node(
     name: String,
     resource: Rc<Node>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: named_ident(name.clone(), ident.clone()),
         children: Rc::new(vec![resource.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1866,13 +1951,13 @@ pub fn make_field_init_node(
     name: String,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: named_ident(name.clone(), ident.clone()),
         children: Rc::new(vec![value.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1899,13 +1984,13 @@ pub fn make_field_binding_node(
     field_name: String,
     binding: Rc<MatchPattern>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: field_name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(field_name.clone(), name_span.clone()),
+        ident_span: named_ident(field_name.clone(), ident.clone()),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -2013,7 +2098,7 @@ pub fn make_param_node(
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
@@ -2024,7 +2109,7 @@ pub fn make_param_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: named_ident(name.clone(), ident.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2054,7 +2139,7 @@ pub fn make_resolved_param_node(
     default_value: Option<Rc<Node>>,
     properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
@@ -2065,7 +2150,7 @@ pub fn make_resolved_param_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: named_ident(name.clone(), ident.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2109,9 +2194,9 @@ pub fn authored_name_at(
     node: Rc<Node>,
 ) -> String {
     match node.ident_span.clone() {
-        Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
+        Some(ident) => match v1_rt::map_get(&source_indices, ident.span.file.clone()) {
             Some(index) => {
-                let text = source_text_at(index.clone(), span.clone());
+                let text = source_text_at(index.clone(), ident.span.clone());
                 if (text.clone() == "".to_string()) {
                     "".to_string()
                 } else {
@@ -2119,13 +2204,13 @@ pub fn authored_name_at(
                 }
             }
             std::option::Option::None => {
-                if ((v1_rt::string_length(&span.file.clone()) > 8)
-                    && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
+                if ((v1_rt::string_length(&ident.span.file.clone()) > 8)
+                    && (v1_rt::substring(&ident.span.file.clone(), 0, 8) == "<kernel:".to_string()))
                 {
                     v1_rt::substring(
-                        &span.file.clone(),
+                        &ident.span.file.clone(),
                         8,
-                        v1_rt::int_sub(v1_rt::string_length(&span.file.clone()), 1),
+                        v1_rt::int_sub(v1_rt::string_length(&ident.span.file.clone()), 1),
                     )
                 } else {
                     node.name.clone()
@@ -2207,7 +2292,7 @@ pub fn make_field_node(
     default_value: Option<Rc<Node>>,
     from_key_properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let children = match default_value.clone() {
@@ -2218,7 +2303,7 @@ pub fn make_field_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: named_ident(name.clone(), ident.clone()),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2304,13 +2389,13 @@ pub fn make_variant_node(
     name: String,
     fields: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: named_ident(name.clone(), ident.clone()),
         children: fields.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -3225,7 +3310,7 @@ pub fn rest_transport_node(
             transport_url_key(),
             base_url.clone(),
             zero_span.clone(),
-            zero_span.clone(),
+            Some(synthetic_ident(zero_span.clone(), transport_url_key())),
         );
         let method_props = match method.clone() {
             Some(m) => Rc::new(vec![make_field_init_node(
@@ -3233,7 +3318,7 @@ pub fn rest_transport_node(
                 transport_method_key(),
                 m.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(zero_span.clone(), transport_method_key())),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3243,7 +3328,10 @@ pub fn rest_transport_node(
                 transport_path_template_key(),
                 p.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    transport_path_template_key(),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3253,7 +3341,7 @@ pub fn rest_transport_node(
                 transport_query_key(),
                 q.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(zero_span.clone(), transport_query_key())),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3263,7 +3351,7 @@ pub fn rest_transport_node(
                 transport_body_key(),
                 b.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(zero_span.clone(), transport_body_key())),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3273,7 +3361,10 @@ pub fn rest_transport_node(
                 transport_response_format_key(),
                 rf.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    transport_response_format_key(),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3348,7 +3439,7 @@ pub fn shell_transport_node(
                 transport_stdin_key(),
                 s.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(zero_span.clone(), transport_stdin_key())),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -3392,7 +3483,7 @@ pub fn file_transport_node(
             transport_path_key(),
             base_path.clone(),
             no_span(),
-            no_span(),
+            Some(synthetic_ident(no_span(), transport_path_key())),
         );
         let props = match verb.clone() {
             Some(verb_expr) => Rc::new(vec![
@@ -3402,7 +3493,7 @@ pub fn file_transport_node(
                     transport_verb_key(),
                     verb_expr.clone(),
                     no_span(),
-                    no_span(),
+                    Some(synthetic_ident(no_span(), transport_verb_key())),
                 ),
             ]),
             std::option::Option::None => Rc::new(vec![path_field.clone()]),
@@ -4248,7 +4339,10 @@ pub fn service_config_properties(
             service_config_field_property_name(ServiceConfigField::SvcEndpoint),
             endpoint.clone(),
             zero_span.clone(),
-            zero_span.clone(),
+            Some(synthetic_ident(
+                zero_span.clone(),
+                service_config_field_property_name(ServiceConfigField::SvcEndpoint),
+            )),
         )]);
         let auth_prop = match auth.clone() {
             Some(a) => Rc::new(vec![make_field_init_node(
@@ -4256,7 +4350,10 @@ pub fn service_config_properties(
                 service_config_field_property_name(ServiceConfigField::SvcAuth),
                 a.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    service_config_field_property_name(ServiceConfigField::SvcAuth),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -4266,7 +4363,10 @@ pub fn service_config_properties(
                 service_config_field_property_name(ServiceConfigField::SvcAuthInput),
                 ai.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    service_config_field_property_name(ServiceConfigField::SvcAuthInput),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -4276,7 +4376,10 @@ pub fn service_config_properties(
                 service_config_field_property_name(ServiceConfigField::SvcAuthSource),
                 src.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    service_config_field_property_name(ServiceConfigField::SvcAuthSource),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -4286,7 +4389,10 @@ pub fn service_config_properties(
                 service_config_field_property_name(ServiceConfigField::SvcRateLimit),
                 r.clone(),
                 zero_span.clone(),
-                zero_span.clone(),
+                Some(synthetic_ident(
+                    zero_span.clone(),
+                    service_config_field_property_name(ServiceConfigField::SvcRateLimit),
+                )),
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -4387,7 +4493,10 @@ pub fn module_node(
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), span.clone()),
+        ident_span: named_ident(
+            name.clone(),
+            Some(synthetic_ident(span.clone(), name.clone())),
+        ),
         children: items.clone(),
         connective: Connective::NoConnective,
         params: imports.clone(),
@@ -4415,7 +4524,7 @@ pub fn import_node(
     is_all: bool,
     specific_names: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    name_span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let wildcard_marker = if is_all.clone() {
@@ -4450,7 +4559,7 @@ pub fn import_node(
             occurrence_identity: occurrence_identity.clone(),
             name: module_path.clone(),
             span: span.clone(),
-            ident_span: Some(name_span.clone()),
+            ident_span: ident.clone(),
             children: specific_names.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -4502,12 +4611,13 @@ pub fn leaf_node_with_span(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     span: Rc<SourceSpan>,
+    ident: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), span.clone()),
+        ident_span: named_ident(name.clone(), ident.clone()),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4542,7 +4652,7 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
 
 pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
     match node.ident_span.clone() {
-        Some(sp) => (sp.file.clone() == kernel_span(name.clone()).file.clone()),
+        Some(sp) => (sp.span.file.clone() == kernel_span(name.clone()).file.clone()),
         std::option::Option::None => false,
     }
 }
@@ -4551,7 +4661,7 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
     match item.ident_span.clone() {
         std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
         Some(sp) => {
-            if (sp.file.clone() == "".to_string()) {
+            if (sp.span.file.clone() == "".to_string()) {
                 Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
             } else {
                 if resolved_node_is_kernel_identity_for_name(item.clone(), item.name.clone()) {
@@ -4560,7 +4670,7 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
                     })
                 } else {
                     Rc::new(TypeDeclarationProvenance::CorpusDeclared {
-                        decl_file: sp.file.clone(),
+                        decl_file: sp.span.file.clone(),
                     })
                 }
             }
@@ -4689,7 +4799,7 @@ pub fn unit_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
-        ident_span: Some(kernel_span("Unit".to_string())),
+        ident_span: Some(kernel_ident("Unit".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
@@ -4721,7 +4831,7 @@ pub fn bool_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
-        ident_span: Some(kernel_span("Bool".to_string())),
+        ident_span: Some(kernel_ident("Bool".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4753,7 +4863,7 @@ pub fn string_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
-        ident_span: Some(kernel_span("String".to_string())),
+        ident_span: Some(kernel_ident("String".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4785,7 +4895,7 @@ pub fn hash_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Hash".to_string(),
         span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_span("Hash".to_string())),
+        ident_span: Some(kernel_ident("Hash".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4817,7 +4927,7 @@ pub fn int_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
-        ident_span: Some(kernel_span("Int".to_string())),
+        ident_span: Some(kernel_ident("Int".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4849,7 +4959,7 @@ pub fn float_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
-        ident_span: Some(kernel_span("Float".to_string())),
+        ident_span: Some(kernel_ident("Float".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4881,7 +4991,7 @@ pub fn none_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
-        ident_span: Some(kernel_span("None".to_string())),
+        ident_span: Some(kernel_ident("None".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -5378,7 +5488,7 @@ pub fn type_node_name_is_authored(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match node.ident_span.clone() {
-        Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
+        Some(ident) => match v1_rt::map_get(&source_indices, ident.span.file.clone()) {
             Some(_) => true,
             std::option::Option::None => false,
         },

@@ -16786,7 +16786,9 @@ fn cli_arg_resolved_type_node(type_expr: Rc<Node>) -> Rc<Node> {
 fn type_nodes_name_the_same_declaration(a: &Rc<Node>, b: &Rc<Node>) -> bool {
     Rc::ptr_eq(a, b)
         || match (&a.ident_span, &b.ident_span) {
-            (Some(left), Some(right)) => left.file == right.file && left.start == right.start,
+            (Some(left), Some(right)) => {
+                left.span.file == right.span.file && left.span.start == right.span.start
+            }
             _ => false,
         }
 }
@@ -19176,7 +19178,10 @@ mod closure_bare_disposition_tests {
             name: decl_name.to_string(),
             ident: None,
             span: span.clone(),
-            ident_span: Some(span),
+            ident_span: Some(crate::v1_std_core::synthetic_ident(
+                span,
+                decl_name.to_string(),
+            )),
             children: crate::v1_std_core::empty_node_list(),
             connective: crate::v1_std_core::Connective::NoConnective,
             params: crate::v1_std_core::empty_node_list(),
@@ -31311,13 +31316,21 @@ mod peel_alias_fixpoint_termination {
                 ),
                 "PeelFixpointElem".to_string(),
                 crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
+                    "PeelFixpointElem".to_string(),
+                )),
             );
             let base = crate::v1_std_core::leaf_node_with_span(
                 std::rc::Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
                 "PeelFixpointProbe".to_string(),
-                span,
+                span.clone(),
+                Some(crate::v1_std_core::synthetic_ident(
+                    span,
+                    "PeelFixpointProbe".to_string(),
+                )),
             );
             let n = std::rc::Rc::new(crate::v1_std_core::Node {
                 children: std::rc::Rc::new(im::vector![elem]),
@@ -31433,6 +31446,10 @@ mod peel_alias_fixpoint_termination {
                 ),
                 "Int".to_string(),
                 crate::v1_std_core::kernel_span("Int".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    crate::v1_std_core::kernel_span("Int".to_string()),
+                    "Int".to_string(),
+                )),
             );
             let quiet = crate::v1_compiler_infer::peel_alias_once_for_field_access(
                 plain_int,
@@ -31574,6 +31591,10 @@ mod sigs_env_flat_parents {
                 ),
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    crate::v1_std_core::kernel_span(marker.to_string()),
+                    marker.to_string(),
+                )),
             ),
             output_provenance: Rc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),

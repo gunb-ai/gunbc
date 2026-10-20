@@ -50,20 +50,20 @@ use crate::v1_std_core::MatchPattern::Wildcard;
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemFunction, ModuleItemTypeDeclaration};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
-    field_from_key_property_name, field_init_node_name_at, field_init_node_value,
-    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
-    is_compiler_error, is_local_transport, join_optional_cardinality, kernel_span,
-    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
-    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, expr_call_func_at,
+    expr_literal_int_optional, expr_method_name_at, field_from_key_property_name,
+    field_init_node_name_at, field_init_node_value, field_node_cardinality,
+    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
+    find_property, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
+    is_local_transport, join_optional_cardinality, kernel_ident, kernel_span, let_binding_name_at,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
+    make_text_part_node, make_transport_node, map_children, named_ident, no_span, node_ident,
     node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_param_kind_property_name, unit_type,
+    string_type, synthetic_ident, transport_request_body, type_param_kind_property_name, unit_type,
     with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
     Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern,
     NewlineIndex, Node, ParsedModuleItemKind, StringPart,
@@ -1201,7 +1201,7 @@ pub fn resolve_node_bounded(
                                         pr.resolved.properties.clone(),
                                     ),
                                     p.span.clone(),
-                                    crate::v1_std_core::node_name_span(p.clone()),
+                                    crate::v1_std_core::node_ident(p.clone()),
                                 ),
                                 diagnostics: pr.diagnostics.clone(),
                             })
@@ -2398,7 +2398,7 @@ pub fn resolve_optional_node(
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tv.clone(),
                     span: crate::v1_std_core::kernel_span(tv.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(tv.clone())),
+                    ident_span: Some(crate::v1_std_core::kernel_ident(tv.clone())),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -2477,7 +2477,7 @@ pub fn resolve_field(
                     __result
                 }),
                 field.span.clone(),
-                crate::v1_std_core::node_name_span(field.clone()),
+                crate::v1_std_core::node_ident(field.clone()),
             ),
             diagnostics: v1_rt::concat(type_diags.clone(), default_diags.clone()),
         })
@@ -2609,7 +2609,7 @@ pub fn resolve_param(
                 default_expr.clone(),
                 v1_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
                 param.span.clone(),
-                crate::v1_std_core::node_name_span(param.clone()),
+                crate::v1_std_core::node_ident(param.clone()),
             ),
             diagnostics: v1_rt::concat(type_diags.clone(), default_diags.clone()),
         })
@@ -2635,7 +2635,7 @@ pub fn resolve_resource_use(
                 crate::v1_std_core::resource_use_name_at(ru.clone(), env.source_indices.clone()),
                 type_resolved.clone(),
                 ru.span.clone(),
-                crate::v1_std_core::node_name_span(ru.clone()),
+                crate::v1_std_core::node_ident(ru.clone()),
             ),
             diagnostics: type_diags.clone(),
         })
@@ -2661,7 +2661,7 @@ pub fn resolve_named_arg(
                 crate::v1_std_core::arg_name_at(arg.clone(), env.source_indices.clone()),
                 value_expr.clone(),
                 arg.span.clone(),
-                crate::v1_std_core::node_name_span(arg.clone()),
+                crate::v1_std_core::node_ident(arg.clone()),
             ),
             diagnostics: value_diags.clone(),
         })
@@ -2690,7 +2690,7 @@ pub fn resolve_field_init(
                 ),
                 value_expr.clone(),
                 field_init.span.clone(),
-                crate::v1_std_core::node_name_span(field_init.clone()),
+                crate::v1_std_core::node_ident(field_init.clone()),
             ),
             diagnostics: value_diags.clone(),
         })
@@ -2795,7 +2795,7 @@ pub fn resolve_transport_binding(
                                 ),
                                 val_result.expr.clone(),
                                 p.span.clone(),
-                                crate::v1_std_core::node_name_span(p.clone()),
+                                crate::v1_std_core::node_ident(p.clone()),
                             ),
                             diagnostics: val_result.diagnostics.clone(),
                         })
@@ -2956,7 +2956,7 @@ pub fn resolve_expr_types(
                                     },
                                     vr.expr.clone(),
                                     arg_node.span.clone(),
-                                    crate::v1_std_core::node_name_span(arg_node.clone()),
+                                    crate::v1_std_core::node_ident(arg_node.clone()),
                                 ),
                                 diagnostics: vr.diagnostics.clone(),
                             })
@@ -2992,7 +2992,7 @@ pub fn resolve_expr_types(
                         resolved_children.clone(),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::node_ident(texpr.clone()),
                     ),
                     diagnostics: all_diags.clone(),
                 })
@@ -3057,7 +3057,7 @@ pub fn resolve_expr_types(
                                             },
                                             vr.expr.clone(),
                                             child.span.clone(),
-                                            crate::v1_std_core::node_name_span(child.clone()),
+                                            crate::v1_std_core::node_ident(child.clone()),
                                         ),
                                         diagnostics: vr.diagnostics.clone(),
                                     })
@@ -3094,7 +3094,7 @@ pub fn resolve_expr_types(
                         resolved_children.clone(),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::node_ident(texpr.clone()),
                     ),
                     diagnostics: all_diags.clone(),
                 })
@@ -3352,12 +3352,12 @@ pub fn resolve_expr_types(
                         env.source_indices.clone(),
                     ),
                     span: texpr.span.clone(),
-                    ident_span: crate::v1_std_core::default_ident_span(
+                    ident_span: crate::v1_std_core::named_ident(
                         crate::v1_std_core::let_binding_name_at(
                             texpr.clone(),
                             env.source_indices.clone(),
                         ),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::node_ident(texpr.clone()),
                     ),
                     children: resolved_children.clone(),
                     connective: Connective::NoConnective,
@@ -3414,7 +3414,7 @@ pub fn resolve_expr_types(
                                     ),
                                     vr.expr.clone(),
                                     fi_node.span.clone(),
-                                    crate::v1_std_core::node_name_span(fi_node.clone()),
+                                    crate::v1_std_core::node_ident(fi_node.clone()),
                                 ),
                                 diagnostics: vr.diagnostics.clone(),
                             })
@@ -3449,7 +3449,7 @@ pub fn resolve_expr_types(
                         resolved_children.clone(),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::node_ident(texpr.clone()),
                     ),
                     diagnostics: all_diags.clone(),
                 })
@@ -3718,7 +3718,7 @@ pub fn resolve_expr_types(
                         Rc::new(vec![cr.expr.clone(), br.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::node_ident(texpr.clone()),
                     ),
                     diagnostics: v1_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
                 })

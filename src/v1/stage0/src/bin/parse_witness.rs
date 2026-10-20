@@ -318,6 +318,369 @@ fn add(x: Int, y: Int) -> Int { x + y }
     assert_parses(source, "brace-bodied fn (legacy)");
 }
 
+// DIFFERENTIAL (H2): the text a parsed node CARRIES in ident_span is the SOURCE SLICE at that span,
+// for every reachable node. Two independent referents: authored_name_at (the legacy reader the
+// carried text replaces) and a slice cut from the source string here, by scalar offsets, with no
+// compiler code. The structural `name` is NOT a referent: it differs from the slice wherever the
+// parser normalizes (a dotted path is joined without the whitespace around its dots) or decodes (a
+// quoted key's content has lost its quotes and escapes), and the carried text must keep the
+// spelling. The source puts a non-BMP scalar before the identifiers, because spans index Unicode
+// scalars and a UTF-16 or byte offset would shift the slice.
+type CoreNode = Rc<v1_compiler::v1_std_core::Node>;
+
+#[derive(Default)]
+struct Reach {
+    children: usize,
+    params: usize,
+    uses: usize,
+    body: usize,
+    transport: usize,
+    properties: usize,
+    type_annotation: usize,
+    inferred: usize,
+    match_pattern: usize,
+}
+
+// Every node-bearing field of Node, so no node the parser built is outside the comparison.
+fn reachable_nodes(n: &CoreNode, reach: &mut Reach, out: &mut Vec<CoreNode>) {
+    use v1_compiler::v1_std_core::MatchPattern;
+    out.push(n.clone());
+    for c in n.children.iter() {
+        reach.children += 1;
+        reachable_nodes(c, reach, out);
+    }
+    for c in n.params.iter() {
+        reach.params += 1;
+        reachable_nodes(c, reach, out);
+    }
+    for c in n.uses.iter() {
+        reach.uses += 1;
+        reachable_nodes(c, reach, out);
+    }
+    for c in n.properties.iter() {
+        reach.properties += 1;
+        reachable_nodes(c, reach, out);
+    }
+    if let Some(c) = n.body.as_ref() {
+        reach.body += 1;
+        reachable_nodes(c, reach, out);
+    }
+    if let Some(c) = n.transport.as_ref() {
+        reach.transport += 1;
+        reachable_nodes(c, reach, out);
+    }
+    if let Some(c) = n.type_annotation.as_ref() {
+        reach.type_annotation += 1;
+        reachable_nodes(c, reach, out);
+    }
+    if let Some(i) = n.inferred.as_ref() {
+        if let InferredNode::Resolved { node } = &**i {
+            reach.inferred += 1;
+            reachable_nodes(node, reach, out);
+        }
+    }
+    if let Some(p) = n.match_pattern.as_ref() {
+        match &**p {
+            MatchPattern::Bind { declaration } => {
+                reach.match_pattern += 1;
+                reachable_nodes(declaration, reach, out);
+            }
+            MatchPattern::VariantPattern { field_bindings, .. } => {
+                for c in field_bindings.iter() {
+                    reach.match_pattern += 1;
+                    reachable_nodes(c, reach, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn indices_of(source: &str) -> Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>> {
+    let index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
+    let mut m = HashMap::new();
+    m.insert("test.dag".to_string(), index);
+    Rc::new(m)
+}
+
+// The slice of `source` at a span, by Unicode scalar offsets.
+fn source_slice(source: &str, span: &SourceSpan) -> String {
+    source
+        .chars()
+        .skip(span.start as usize)
+        .take((span.end - span.start) as usize)
+        .collect()
+}
+
+// The comparison the differential runs at every node: the carried text equals the source slice
+// at the node's span, and equals what authored_name_at re-derives there.
+fn carried_text_matches_source(
+    indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    source: &str,
+    n: &CoreNode,
+) -> bool {
+    let ident = n.ident_span.as_ref().expect("node carries an ident");
+    ident.text == source_slice(source, &ident.span)
+        && ident.text == v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone())
+}
+
+fn parse_all_nodes(
+    source: &str,
+) -> (
+    Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    Vec<CoreNode>,
+    Reach,
+) {
+    let result = parse_source(source);
+    assert!(result.error.is_none(), "parse error");
+    let module = result.module.clone().expect("module");
+    let mut reach = Reach::default();
+    let mut nodes = Vec::new();
+    reachable_nodes(&module, &mut reach, &mut nodes);
+    (indices_of(source), nodes, reach)
+}
+
+fn with_carried_text(n: &CoreNode, text: &str) -> CoreNode {
+    Rc::new(v1_compiler::v1_std_core::Node {
+        ident_span: n
+            .ident_span
+            .as_ref()
+            .map(|i| v1_compiler::v1_std_core::synthetic_ident(i.span.clone(), text.to_string())),
+        ..(**n).clone()
+    })
+}
+
+fn carried_ident_text_equals_authored_name_at() {
+    let source = "module test\n// \u{1F600}\ntype Widget = String\nfn \u{1F600}_pad() -> Int { 1 }\nfn make_widget(w: Widget) -> Widget {\n  w\n}\nservice weather.api {\n}";
+    let (indices, nodes, _) = parse_all_nodes(source);
+    let mut checked = 0;
+    for n in &nodes {
+        if n.ident_span.is_some() {
+            assert!(
+                carried_text_matches_source(&indices, source, n),
+                "carried text differs at node {}",
+                n.name
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 6, "differential reached only {} nodes", checked);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    assert!(
+        !carried_text_matches_source(&indices, source, &with_carried_text(&victim, "Wrong")),
+        "RED control did not discriminate"
+    );
+}
+
+// The traversal reaches every node-bearing field: a fixture that populates children, params,
+// properties, body, transport, inferred and match patterns, and a count per field proving each
+// was walked. A walk over children and params alone left every node under the others uncompared.
+fn carried_text_differential_reaches_every_node_bearing_field() {
+    let source = "module test\n\
+type Color = Red | Green\n\
+type Row { stdout: String from \"std\\tout\\n\" }\n\
+fn is_red(c: Color) -> Bool {\n  match c {\n    Red => true\n    Green => false\n  }\n}\n\
+service cron.Tab {\n  operation List {\n    requires none\n    input {}\n    output { entries: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"crontab\", \"-l\"] }\n  }\n}\n";
+    let (indices, nodes, reach) = parse_all_nodes(source);
+    for (field, count) in [
+        ("children", reach.children),
+        ("params", reach.params),
+        ("body", reach.body),
+        ("transport", reach.transport),
+        ("properties", reach.properties),
+        ("inferred", reach.inferred),
+        ("match_pattern", reach.match_pattern),
+    ] {
+        assert!(
+            count > 0,
+            "the traversal never reached a node through {field}"
+        );
+    }
+    let mut checked = 0;
+    for n in &nodes {
+        if n.ident_span.is_some() {
+            assert!(
+                carried_text_matches_source(&indices, source, n),
+                "carried text differs at node {}",
+                n.name
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 12, "differential reached only {} nodes", checked);
+}
+
+// A dotted name is carried as written: the whitespace around its dots is part of the spelling the
+// identifier span covers, while the structural name is the segments joined by '.'. Module header,
+// import path, service name and a non-applied qualified type name all take that path.
+fn carried_text_keeps_the_spelling_of_dotted_names() {
+    let source = "module a . b\nimport v1 . std . core { Foo }\nservice cron . Tab {\n}\nfn f(x: std . Foo) -> Int { 1 }\n";
+    let (indices, nodes, _) = parse_all_nodes(source);
+    for (structural, written) in [
+        ("a.b", "a . b"),
+        ("v1.std.core", "v1 . std . core"),
+        ("cron.Tab", "cron . Tab"),
+        ("std.Foo", "std . Foo"),
+    ] {
+        let n = nodes
+            .iter()
+            .find(|n| {
+                n.name == structural
+                    && n.ident_span.as_ref().map(|i| i.text.as_str()) == Some(written)
+            })
+            .unwrap_or_else(|| panic!("no node {structural} carrying `{written}`"))
+            .clone();
+        assert!(carried_text_matches_source(&indices, source, &n));
+        // RED: the old carried value, the structural name, is not the source slice here.
+        assert!(
+            !carried_text_matches_source(&indices, source, &with_carried_text(&n, structural)),
+            "RED control did not discriminate for {structural}"
+        );
+    }
+}
+
+// A quoted property key is carried as its full quoted token, quotes and escapes included; the
+// structural name is the decoded content. The RED tampers the carried text to the decoded content.
+fn carried_text_keeps_the_spelling_of_quoted_keys_with_escapes() {
+    let source = "module test\ntype Row { stdout: String from \"std\\tout\\n\" }\n";
+    let (indices, nodes, _) = parse_all_nodes(source);
+    let written = "\"std\\tout\\n\"";
+    let n = nodes
+        .iter()
+        .find(|n| n.ident_span.as_ref().map(|i| i.text.as_str()) == Some(written))
+        .unwrap_or_else(|| panic!("no node carrying {written}"))
+        .clone();
+    assert_ne!(
+        n.name, written,
+        "the structural name must be the decoded key"
+    );
+    assert!(carried_text_matches_source(&indices, source, &n));
+    assert!(
+        !carried_text_matches_source(&indices, source, &with_carried_text(&n, &n.name)),
+        "RED control did not discriminate for the decoded key"
+    );
+}
+
+// A rebuild COPIES the identity of the node it rebuilds (C4): node_ident returns the carried ident
+// itself. A rebuild that recomputed through the legacy reader would re-read the source (or fall back
+// to the structural name) and so would not reproduce a carried text that differs from that reading;
+// the tampered node is that discriminating input, and the copy must survive it.
+fn rebuild_copies_the_carried_ident_instead_of_recomputing() {
+    let source = "module test\ntype Widget = String\n";
+    let (indices, nodes, _) = parse_all_nodes(source);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    let tampered = with_carried_text(&victim, "Carried");
+    let copied = v1_compiler::v1_std_core::node_ident(tampered.clone())
+        .expect("a node carrying an identity copies it");
+    assert_eq!(
+        copied.text, "Carried",
+        "node_ident did not copy the carried text"
+    );
+    assert_eq!(copied.span, tampered.ident_span.as_ref().unwrap().span);
+    // RED: the recompute path reads something else here, so a recomputing rebuild would be caught
+    assert_ne!(
+        v1_compiler::v1_std_core::authored_name_at(indices, tampered),
+        "Carried",
+        "the recompute path cannot be told apart from a copy"
+    );
+}
+
+// Absence stays absent through a rebuild: a node with no identity must not acquire one, from its
+// structural name or from anything else. RED: a copy that filled the gap would be Some here.
+fn rebuild_keeps_an_absent_identity_absent() {
+    let source = "module test\ntype Widget = String\n";
+    let (_, nodes, _) = parse_all_nodes(source);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    let stripped = Rc::new(v1_compiler::v1_std_core::Node {
+        ident_span: None,
+        ..(*victim).clone()
+    });
+    assert!(
+        !stripped.name.is_empty(),
+        "control: the node still has a structural name to fall back on"
+    );
+    assert!(
+        v1_compiler::v1_std_core::node_ident(stripped.clone()).is_none(),
+        "node_ident gave an identity-less node an identity"
+    );
+    let rebuilt = v1_compiler::v1_std_core::leaf_node_with_span(
+        stripped.occurrence_identity.clone(),
+        stripped.name.clone(),
+        stripped.span.clone(),
+        v1_compiler::v1_std_core::node_ident(stripped.clone()),
+    );
+    assert!(
+        rebuilt.ident_span.is_none(),
+        "a rebuilt node with no identity acquired one"
+    );
+    // positive control: the same rebuild of a carrying node keeps its identity
+    let kept = v1_compiler::v1_std_core::leaf_node_with_span(
+        victim.occurrence_identity.clone(),
+        victim.name.clone(),
+        victim.span.clone(),
+        v1_compiler::v1_std_core::node_ident(victim.clone()),
+    );
+    assert_eq!(kept.ident_span, victim.ident_span);
+}
+
+// A span whose file has no tokenized source has no obtainable text: construction refuses with a
+// typed failure, naming the span, never the structural name and never the empty string. The same
+// holds at the parse boundary, where every parsed identifier takes its text from that source.
+fn source_backed_construction_refuses_without_the_source_authority() {
+    use v1_compiler::v1_std_core::{source_index_at, SourceIndexOutcome};
+    let span = Rc::new(SourceSpan {
+        file: "test.dag".to_string(),
+        start: 0,
+        end: 6,
+    });
+    let empty: Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>> =
+        Rc::new(im::HashMap::new());
+    assert!(
+        matches!(
+            &*source_index_at(empty.clone(), span.clone()),
+            SourceIndexOutcome::SourceIndexRefused { .. }
+        ),
+        "source_index_at substituted an index for a missing source"
+    );
+    // positive control: with the source indexed, the same span finds its authority
+    let source = "module test\n";
+    assert!(
+        matches!(
+            &*source_index_at(indices_of(source), span.clone()),
+            SourceIndexOutcome::SourceIndexFound { .. }
+        ),
+        "source_index_at refused with the source indexed"
+    );
+    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        "test.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    let refused = v1_compiler::v1_compiler_parse::parse(tokens, empty);
+    assert!(
+        refused.module.is_none(),
+        "a parse without source authority produced a module"
+    );
+    let err = refused.error.as_ref().expect("typed construction failure");
+    assert!(
+        diagnostic_to_message(err.diagnostic.clone()).contains("not indexed"),
+        "the refusal does not name the missing source"
+    );
+}
+
 fn item_ident_spans_point_at_identifiers_not_keywords() {
     let source = r#"module test
 type Widget = String
@@ -337,7 +700,12 @@ service weather.api {
     assert_eq!(module.children.len(), 3, "expected three top-level items");
 
     let type_item = module.children[0].clone();
-    let type_ident = type_item.ident_span.clone().expect("type ident span");
+    let type_ident = type_item
+        .ident_span
+        .clone()
+        .expect("type ident span")
+        .span
+        .clone();
     assert_eq!(
         type_item.span.start,
         source.find("type Widget").unwrap() as i64
@@ -346,7 +714,12 @@ service weather.api {
     assert!(type_ident.start > type_item.span.start);
 
     let fn_item = module.children[1].clone();
-    let fn_ident = fn_item.ident_span.clone().expect("fn ident span");
+    let fn_ident = fn_item
+        .ident_span
+        .clone()
+        .expect("fn ident span")
+        .span
+        .clone();
     assert_eq!(
         fn_item.span.start,
         source.find("fn make_widget").unwrap() as i64
@@ -355,7 +728,12 @@ service weather.api {
     assert!(fn_ident.start > fn_item.span.start);
 
     let service_item = module.children[2].clone();
-    let service_ident = service_item.ident_span.clone().expect("service ident span");
+    let service_ident = service_item
+        .ident_span
+        .clone()
+        .expect("service ident span")
+        .span
+        .clone();
     assert_eq!(
         service_item.span.start,
         source.find("service weather.api").unwrap() as i64
@@ -415,7 +793,7 @@ type Alias = ResultType
         InferredNode::Resolved { node, .. } => node.clone(),
         other => panic!("expected resolved alias rhs, got {:?}", other),
     };
-    let rhs_ident = rhs.ident_span.clone().expect("rhs ident span");
+    let rhs_ident = rhs.ident_span.clone().expect("rhs ident span").span.clone();
     assert_eq!(
         &source[rhs_ident.start as usize..rhs_ident.end as usize],
         "ResultType"
@@ -441,7 +819,12 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
 
     let key_param = type_item.params[0].clone();
     let key_type = key_param.children[0].clone();
-    let key_ident = key_type.ident_span.clone().expect("key type ident span");
+    let key_ident = key_type
+        .ident_span
+        .clone()
+        .expect("key type ident span")
+        .span
+        .clone();
     assert_eq!(
         &source[key_ident.start as usize..key_ident.end as usize],
         "KeyT"
@@ -453,7 +836,9 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
     let value_ident = value_type
         .ident_span
         .clone()
-        .expect("value type ident span");
+        .expect("value type ident span")
+        .span
+        .clone();
     assert_eq!(
         &source[value_ident.start as usize..value_ident.end as usize],
         "ValueU"
@@ -718,12 +1103,12 @@ fn parser_scales_linearly_with_token_count() {
 
     let start = Instant::now();
     let _small_result =
-        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), Rc::new(im::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), indices_of(&small_source));
     let small_time = start.elapsed();
 
     let start = Instant::now();
     let _large_result =
-        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), Rc::new(im::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), indices_of(&large_source));
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;
@@ -967,6 +1352,34 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "parse_fn_brace_body_still_accepted",
             parse_fn_brace_body_still_accepted,
+        ),
+        (
+            "carried_ident_text_equals_authored_name_at",
+            carried_ident_text_equals_authored_name_at,
+        ),
+        (
+            "carried_text_differential_reaches_every_node_bearing_field",
+            carried_text_differential_reaches_every_node_bearing_field,
+        ),
+        (
+            "carried_text_keeps_the_spelling_of_dotted_names",
+            carried_text_keeps_the_spelling_of_dotted_names,
+        ),
+        (
+            "carried_text_keeps_the_spelling_of_quoted_keys_with_escapes",
+            carried_text_keeps_the_spelling_of_quoted_keys_with_escapes,
+        ),
+        (
+            "rebuild_copies_the_carried_ident_instead_of_recomputing",
+            rebuild_copies_the_carried_ident_instead_of_recomputing,
+        ),
+        (
+            "rebuild_keeps_an_absent_identity_absent",
+            rebuild_keeps_an_absent_identity_absent,
+        ),
+        (
+            "source_backed_construction_refuses_without_the_source_authority",
+            source_backed_construction_refuses_without_the_source_authority,
         ),
         (
             "item_ident_spans_point_at_identifiers_not_keywords",

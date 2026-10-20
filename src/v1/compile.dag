@@ -1136,7 +1136,7 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
     ", \"span\": ", serialize_span(span: node.span),
-    ", \"ident_span\": ", json_optional_span(value: node.ident_span),
+    ", \"ident_span\": ", json_optional_span(value: match node.ident_span { Present { value: ident } => Present { value: ident.span }  Absent => none }),
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node_ref(node: child, key_to_id: key_to_id))),
     ", \"connective\": ",
     match node.connective {

@@ -27,11 +27,14 @@ fn named(name: &str, connective: Connective, children: Vec<Rc<Node>>) -> Node {
     );
     Node {
         name: name.to_string(),
-        ident_span: Some(Rc::new(SourceSpan {
-            file: format!("<kernel:{}>", name),
-            start: 0,
-            end: name.len() as i64,
-        })),
+        ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(
+            Rc::new(SourceSpan {
+                file: format!("<kernel:{}>", name),
+                start: 0,
+                end: name.len() as i64,
+            }),
+            name.to_string(),
+        )),
         connective,
         children: Rc::new(children.into_iter().collect()),
         ..(*base).clone()

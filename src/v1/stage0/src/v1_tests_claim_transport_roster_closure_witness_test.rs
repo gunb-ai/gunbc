@@ -15,7 +15,7 @@ use crate::v1_std_core::TransportKind::{
 pub use crate::v1_std_core::{
     classify_transport, file_transport_node, is_local_transport, local_transport_node,
     make_expr_node, make_field_init_node, make_transport_node, no_span, rest_transport_node,
-    shell_transport_node, ExprData, NewlineIndex, Node, TransportKind,
+    shell_transport_node, synthetic_ident, ExprData, NewlineIndex, Node, TransportKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -105,7 +105,10 @@ pub fn keyless_transport() -> Rc<Node> {
             "unrecognized_key".to_string(),
             str_expr("v".to_string()),
             crate::v1_std_core::no_span(),
-            crate::v1_std_core::no_span(),
+            Some(crate::v1_std_core::synthetic_ident(
+                crate::v1_std_core::no_span(),
+                "unrecognized_key".to_string(),
+            )),
         )]),
         Rc::new(vec![]),
         std::option::Option::None,
@@ -143,14 +146,20 @@ pub fn rest_wins_over_a_file_key_on_the_same_transport() -> bool {
                 "base_url".to_string(),
                 str_expr("https://example.invalid".to_string()),
                 crate::v1_std_core::no_span(),
-                crate::v1_std_core::no_span(),
+                Some(crate::v1_std_core::synthetic_ident(
+                    crate::v1_std_core::no_span(),
+                    "base_url".to_string(),
+                )),
             ),
             crate::v1_std_core::make_field_init_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 "base_path".to_string(),
                 str_expr("/tmp/x".to_string()),
                 crate::v1_std_core::no_span(),
-                crate::v1_std_core::no_span(),
+                Some(crate::v1_std_core::synthetic_ident(
+                    crate::v1_std_core::no_span(),
+                    "base_path".to_string(),
+                )),
             ),
         ]),
         Rc::new(vec![]),
