@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHY THIS IS WET. The property is the EXIT STATUS and OUTPUT SHAPE of the `claim_batch` process
 // when a module its entry imports does not parse: exit 1 (the observation did not hold), a located
-// `module index refused` refusal, and NO PASS/FAIL verdict line. That is an external effect which
+// `module index refused` refusal (file:line:col, printed relative to the child's workdir), and NO PASS/FAIL verdict line. That is an external effect which
 // is the subject, so no in-process assertion can observe it, and a Rust integration test would sit
 // off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path), green by vacancy.
 //
@@ -100,7 +100,8 @@ test fn an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line() 
       cleaned.success
         && result.exit_code == 1
         && string_contains(s: result.stderr, pattern: "module index refused")
-        && string_contains(s: result.stderr, pattern: concat(dir, "/parse_gate_lib.dag"))
+        && string_contains(s: result.stderr, pattern: "target/parse-gate-planted-")
+        && string_contains(s: result.stderr, pattern: "/parse_gate_lib.dag:4:7")
         && !string_contains(s: result.stdout, pattern: "PASS")
         && !string_contains(s: result.stdout, pattern: "FAIL")
     }
