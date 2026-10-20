@@ -594,6 +594,18 @@ test fn census_visibility_decides_which_population_a_path_is_in() -> Bool {
 
 // The population is a JOIN over the marker answer: a path the read never answered cannot appear, no matter how
 // un-scanned it is. A hand-listed population would pass every other claim here and still be fiction.
+// POSITIVE MEMBERSHIP, on a real path. Every other claim here can be satisfied by a population that is
+// always EMPTY -- which is exactly what "the census reports nothing and looks clean" means. This path is a
+// tracked `.dag` that declares five test fns, sits under the layout's `src` root (so census-visible), and
+// falls under none of the authority's three lanes. If the lane predicate stops excluding, this is the claim
+// that says so; if the population silently empties, this is the claim that says so too.
+data gap_member_fixture_path: String = "src/v2/test/claim/affected_set_universe.dag"
+
+test fn a_real_census_visible_path_outside_every_lane_is_in_the_gap() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: [gap_member_fixture_path])
+  any(xs: gap, predicate: fn(g) { g == gap_member_fixture_path })
+}
+
 test fn a_path_the_marker_read_never_answered_cannot_enter_the_gap() -> Bool {
   let gap = scan_dir_gap_population(claim_bearers: [note_declared_first_path])
   !(any(xs: gap, predicate: fn(g) { string_contains(s: g, pattern: "add_body_emit_python") }))
