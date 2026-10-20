@@ -11,7 +11,7 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.source_root_eval { native_test_context_from_ingest }
 import v2.test.claim.resolve.namespace_candidate_rule { ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
 import std.optional { Absent, Optional, Present }
-import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefContested, DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefOutsideIndex, DeclarationRefResolved, resolve_declaration_ref }
+import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefContested, DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, resolve_declaration_ref }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted, bind_outcome }
 import v2.std.resolution_policy { ImportScoped }
 import v2.test.claim.name_resolve.admission_fail_closed { fc_admitted, fc_module_root_export }
@@ -20,7 +20,7 @@ import v2.test.claim.name_resolve.admission_fail_closed { fc_admitted, fc_module
 // fixture whose module `fc_import_a_seg` declares `fc_export_a_sym`. Positive control: the declared
 // reference resolves. Discriminating REDs: an invented declaration and an invented module are each
 // refused with their own typed arm, and a test-witness module the ingest did not read is counted
-// OutsideIndex rather than resolved or dropped.
+// ModuleAbsent: the arm is decided by the ingest's module roots, never by the spelling `test`.
 //
 // CONTESTED BINDINGS (the raw-slot defect): a position bound by two declaring claimants keeps ONE raw
 // node, so a resolver reading the storage slot would call it Resolved. The second context is a real
@@ -78,12 +78,12 @@ test fn invented_module_is_refused() -> Bool {
   }
 }
 
-test fn unread_test_witness_module_is_outside_the_index() -> Bool {
+test fn nonexistent_test_module_is_refused_module_absent() -> Bool {
   match dr_context() {
     Rejected { diagnostics: _ } => false
     Accepted { value: c, diagnostics: _ } =>
       match resolve_declaration_ref(ref: dr_ref(module_path: "v2.test.claim.unread", decl_name: "x"), context: c) {
-        DeclarationRefOutsideIndex { reference: _, coverage: _ } => true
+        DeclarationRefModuleAbsent { reference: _ } => true
         _ => false
       }
   }
