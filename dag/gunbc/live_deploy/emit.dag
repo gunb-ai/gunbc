@@ -4603,7 +4603,7 @@ fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: Par
   bash_build_if_else(
     cond: git_in_apply_pwd_command(tail: tail),
     then_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(standing: set_standing)),
-    else_body: bash_build_if_else(
+    else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
       cond: bash_build_test_bracket(words: [
         bash_build_word_var(name: "?"),
         bash_build_word_lit(text: "-eq"),
@@ -4613,7 +4613,7 @@ fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: Par
       else_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(
         standing: PartialCloneUnreadable { detail: unreadable_detail },
       )),
-    ),
+    )]),
   )
 }
 

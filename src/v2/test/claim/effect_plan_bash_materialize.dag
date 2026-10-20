@@ -12,7 +12,7 @@ import v2.std.effect_plan {
   While
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvExpressionUnsupported,
   BoundOperationInvocation,
   DeclaredInputUnbound,
