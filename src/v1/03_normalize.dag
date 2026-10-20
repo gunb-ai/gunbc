@@ -4,7 +4,7 @@ import v1.std.core {
   Node, ErrorNode, NewlineIndex,
   InferredNode, Resolved, CompilerError,
   ExprData, NoExprData,
-  make_error_node, module_items, authored_name_at,
+  make_error_node, module_items, node_authored_text,
   NoConnective, ArityMismatch, ContainerSpellingUnrecognized,
   ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
   ContainerSpellingUnknown, authored_container_spelling_verdict
@@ -22,7 +22,7 @@ type NormalizeResult {
 fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
-  let nname = authored_name_at(source_indices: source_indices, node: n)
+  let nname = node_authored_text(node: n)
   let self_diags = if is_expr { [] } else { match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
     ContainerSpellingDeclared { arity: expected } =>
       if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
@@ -66,7 +66,7 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
 
 fn normalize_module_diagnostics(m: ResolvedModule, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let items = module_items(n: m.module)
-  flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
+  flat_map(items, item => check_bare_containers(n: item, module_name: node_authored_text(node: m.module), source_indices: source_indices))
 }
 
 fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {

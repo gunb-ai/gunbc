@@ -9,7 +9,7 @@ import v1.std.core {
   ResolvedFormal,
   DeclaredCallableIdentity,
   NewlineIndex,
-  authored_name_at
+  node_authored_text
 }
 
 import v1.compiler.infer_types { emit_map_has }
@@ -481,26 +481,26 @@ fn none_resolved_sig_with_owner() -> ResolvedSigWithOwner? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
+      collect_calls_in_expr(caller: node_authored_text(node: item), texpr: item.body.value, local_func_set: local_func_set)
     } else {
       []
     }
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
+      let f = expr_call_func_at(texpr: texpr)
       if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
       else { [] }
     _ => []
   }
   let child_edges = texpr.children |> flat_map(child =>
-    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set, source_indices: source_indices)
+    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
   )
   let result = concat(this_edges, child_edges)
   result
@@ -620,14 +620,13 @@ fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
     parent_envs: List<ResolvedFuncEnv>,
     items: List<Node>,
-    module_name: String,
-    source_indices: Map<String, NewlineIndex>
+    module_name: String
 ) -> ResolveFuncSigsResult {
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => authored_name_at(source_indices: source_indices, node: item))
+    |> map(item => node_authored_text(node: item))
   let local_func_set = build_name_set(names: local_func_names)
-  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
+  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
   topo_resolve_loop(
     remaining: local_func_names,
     resolved: empty_map(),

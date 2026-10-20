@@ -2151,8 +2151,21 @@ fn bare_empty_map_is_classified_before_census() {
     assert_builtin_call_target("empty_map");
 }
 
+fn with_authored_identity_keeps_structural_name_and_identity_text() {
+    let identity = leaf_node("Alias".to_string());
+    let structural = leaf_node("Target".to_string());
+    let out = v1_compiler::v1_compiler_infer_resolve::with_authored_identity(identity, structural);
+    assert_eq!(out.name, "Target");
+    let carried = out.ident_span.as_ref().expect("carried ident").text.clone();
+    assert_eq!(carried, "Alias");
+}
+
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
+        (
+            "with_authored_identity_keeps_structural_name_and_identity_text",
+            with_authored_identity_keeps_structural_name_and_identity_text,
+        ),
         (
             "call_target_scope_map_disagreement_is_classified_as_missing_binding",
             call_target_scope_map_disagreement_is_classified_as_missing_binding,

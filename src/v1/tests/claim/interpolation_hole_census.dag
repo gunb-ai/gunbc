@@ -6,7 +6,7 @@ import v1.compiler.infer { type_node_label }
 import v1.compiler.tokenize { tokenize }
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import v1.std.core {
-  Node, NewlineIndex, Token, Resolved, authored_name_at, param_node_name_at, source_text_at, byte_to_line_col,
+  Node, NewlineIndex, Token, Resolved, node_authored_text, param_node_name_at, source_text_at, byte_to_line_col,
   ShStrBegin, ShStrMid, ShStrEnd,
   ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral, ExprBinOp,
   NoExprData, ExprElaboratedLiteral, ExprError, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -199,7 +199,7 @@ fn ihc_expr_data_label(e: Node) -> String {
 fn ihc_reading(e: Node, si: Map<String, NewlineIndex>) -> HoleTypeReading {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
-      let label = type_node_label(n: rt, source_indices: si)
+      let label = type_node_label(n: rt)
       if label == "String" { HoleTypedString }
       else if label == "Int" { HoleTypedInt }
       else if label == "Bool" { HoleTypedBool }
@@ -217,8 +217,8 @@ fn ihc_hole_text(e: Node, si: Map<String, NewlineIndex>) -> String {
     ExprVar { binding_kind: _ } => ihc_named_or_span(e: e, si: si)
     ExprFieldAccess { summary: _ } =>
       match e.children |> first {
-        Present { value: receiver } => concat(concat(ihc_hole_text(e: receiver, si: si), "."), authored_name_at(source_indices: si, node: e))
-        Absent => concat(".", authored_name_at(source_indices: si, node: e))
+        Present { value: receiver } => concat(concat(ihc_hole_text(e: receiver, si: si), "."), node_authored_text(node: e))
+        Absent => concat(".", node_authored_text(node: e))
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       concat(concat(concat(ihc_named_or_span(e: e, si: si), "/"), to_string(e.children |> count)), "-arg call")
@@ -230,7 +230,7 @@ fn ihc_hole_text(e: Node, si: Map<String, NewlineIndex>) -> String {
 }
 
 fn ihc_named_or_span(e: Node, si: Map<String, NewlineIndex>) -> String {
-  let named = authored_name_at(source_indices: si, node: e)
+  let named = node_authored_text(node: e)
   if named != "" { named } else { ihc_span_text(e: e, si: si) }
 }
 
@@ -343,7 +343,7 @@ fn ihc_walk(ctx: HoleWalkContext, n: Node) -> List<ObservedTemplate> {
           si: ctx.si,
           site: HoleInTransport {
             operation: n.name,
-            inputs: n.params |> map(p => param_node_name_at(n: p, source_indices: ctx.si))
+            inputs: n.params |> map(p => param_node_name_at(n: p))
           }
         },
         n: t)
@@ -354,7 +354,7 @@ fn ihc_walk(ctx: HoleWalkContext, n: Node) -> List<ObservedTemplate> {
 
 fn ihc_module_templates(m: TypedModule, si: Map<String, NewlineIndex>) -> List<ObservedTemplate> {
   m.items |> flat_map(item =>
-    ihc_walk(ctx: HoleWalkContext { file_decl: authored_name_at(source_indices: si, node: item), si: si, site: HoleInBody }, n: item))
+    ihc_walk(ctx: HoleWalkContext { file_decl: node_authored_text(node: item), si: si, site: HoleInBody }, n: item))
 }
 
 // Ordinals are assigned per declaration in source order, so (file, decl, ordinal) names one hole.
