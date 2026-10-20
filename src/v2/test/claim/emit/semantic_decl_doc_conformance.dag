@@ -136,3 +136,18 @@ test fn a_duplicate_field_doc_refuses() -> Bool {
     reason: ^target_semantic_decl_field_doc_duplicate
   )
 }
+
+// RED: a doc line (declaration or field) carrying a line break would end the doc comment and print the rest as code.
+test fn a_doc_line_with_a_newline_refuses() -> Bool {
+  sdc_refuses_with(
+    o: sdc_text(docs: ["A point.\nstruct Evil {}"], conformances: ConformancesTargetDefault, type_name: ^dag_binding_type_int, target: swift_target_model()),
+    reason: ^target_semantic_decl_line_break
+  )
+}
+
+test fn a_field_doc_line_with_a_newline_refuses() -> Bool {
+  sdc_refuses_with(
+    o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "x", lines: ["The x.\nlet evil = 1"]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
+    reason: ^target_semantic_decl_line_break
+  )
+}

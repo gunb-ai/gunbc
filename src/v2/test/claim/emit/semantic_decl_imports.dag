@@ -109,3 +109,19 @@ test fn c_with_a_header_refuses_unwired() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+
+// RED: a header line carrying a line break would end the comment and print the rest as code.
+fn sdi_header_refused(header: List<String>, target: TargetModel) -> Bool {
+  match sdi_headed(header: header, imports: [], target: target) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_line_break
+  }
+}
+
+test fn a_header_line_with_a_newline_refuses_for_rust() -> Bool {
+  sdi_header_refused(header: ["Generated.\nfn evil() {}"], target: rust_semantic_decl_target_model_staging())
+}
+
+test fn a_header_line_with_a_carriage_return_refuses_for_swift() -> Bool {
+  sdi_header_refused(header: ["Generated.\rlet evil = 1"], target: swift_target_model())
+}
