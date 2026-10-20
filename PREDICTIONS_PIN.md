@@ -21,3 +21,25 @@ rewritten failure-mode row.
 
 B3 is the gate for pushing the PR head; CI on the head then remains the final self-host word
 (ruling (2)=(A) — the gate costs one CI-time build and stops red pushes that cost a review round).
+
+## Outcome of B2 — FALSIFIED, and what that taught
+
+B2 as written is wrong and was deleted from the row rather than adjusted after the fact. Measured at
+`af4fcc078a1` (kind=pin, ROW_RC=101): `MINT-BOUNDARY-INVENTORY positions=0 distinct=0 minted=0
+calls=1`. Main records **no** type variable at the pinned position at all — the callee's declared
+parameter is handed over without instantiation and nothing notes it, which is the silent class the
+failure-mode row documents. So `minted.is_empty()` is satisfied on main by there being nothing to
+satisfy, and the predicted `sample=["S"]` was a guess about main: the `positions=3 distinct=1
+calls=1` half was copied from the mint-era narrowing inventory, which was measured **on a minting
+tree** (`probe/pr1-narrowing-red`: `positions=3 distinct=1 minted=1 sample=["S@test.dag:355-367"]`),
+and the `["S"]` half was inference about how main would represent the uninstantiated parameter.
+Neither was a measurement of main.
+
+The row now asserts the mint boundary plus the two fatal non-vacuity guards and prints the
+inventory; a comment in the file states that main records nothing at this position, so green means
+"no mint crossed the boundary", not "main types the call". Its discriminating power is the measured
+minting-tree inventory above, which is what makes it red if a later mint widens past the boundary.
+
+Lesson recorded where it will be read again: a prediction copied from a measurement of a DIFFERENT
+tree (here, a minting tree) is not a prediction about the tree under test. Predictions that have not
+been measured against the base are guesses and must be labelled as guesses.
