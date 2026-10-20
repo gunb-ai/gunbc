@@ -107,3 +107,23 @@ PREDICTION at head 5cc80be8e59 (pin tree) vs main 7d4cadbe844, per closure, befo
   a property of this head, and the run is void rather than a red.
 - Each side's `build rc=0` with a non-empty `binary=`, and `emitted>0` per closure per side; `emitted=0`
   means the log never reached an emit and is NOT a green.
+
+## Outcome of the B4 re-run (job ja93372e7, exit 0, 47m) — every pre-registered prediction held
+
+Head 5cc80be8e59 (refs/heads/probe/pr1-pin-tree) vs main 7d4cadbe844, both sides built from pinned refs
+with a private CARGO_TARGET_DIR, in one dispatch. The verdict band was captured this time by
+`awk '/^PINNED head=/{f=1} f{print} /^GATE DONE/{f=0}'` between the BEGIN/END markers, not by a byte tail,
+so it is readable.
+
+- self-host, head:  `rc=0 lines=25 type-mismatch=0 emitted=2`;  main: `rc=0 lines=25 type-mismatch=0 emitted=2`
+- v2-native-cli, head: `rc=0 lines=32 type-mismatch=0 emitted=2`; main: `rc=0 lines=32 type-mismatch=0 emitted=2`
+- both closures: `0 hard diagnostics, 0 distinct identities, 0 unparsed` on EACH side; the two identity
+  sections are both `0 ... ` (empty) and `comparator rc=0`.
+- PREDICTIONS CONFIRMED as pre-registered: type-mismatch 0 per closure, both identity sections empty,
+  unparsed 0 on both sides, both sides `rc=0` with a real `binary=`, `emitted>0` per closure per side (so no
+  side is a false green from a log that never reached an emit), and the Acc-era counts 43/45 do NOT appear.
+
+This is the push gate stern-bat-401 required (msg_79410475, msg_1c6d0180): the pin tree is byte-identical to
+main on every compiler input, so both closures refuse nothing that main does not already refuse, and lose
+nothing main refuses. Combined with B3 (emit-and-build of the self-host product, SELF_HOST_RC=0 lines=25,
+matching main's control) this head is green on every gate I can run; CI on the head is the final word.
