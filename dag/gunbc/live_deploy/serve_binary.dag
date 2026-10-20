@@ -8,14 +8,18 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInst
 // release locus for the revision being deployed (gunbc.live_deploy.release_locus release_locus_binary_path). The
 // approval broker used to carry a refusal marker in this field because the type could only hold the first arm; a
 // field read as authoritative while the real answer lived elsewhere is the fork that marker papered over.
-type ServeBinary
+// Named ServeBinarySource because UpsertArtifactKind already has a ServeBinary variant (DESIGN §3, one name one meaning).
+// fixed_serve_binary_path is the mitigation rung (DESIGN §4b): a fixed-only reader handed PerReleaseBinary gets the
+// unbound marker, not a constructor refusal. Climbing needs the service rows split by arm; that is the sidecar unit's
+// trigger (4b-ii) and is not done here.
+type ServeBinarySource
   = FixedServeBinary { path: NonEmptyStr }
   | PerReleaseBinary
 
 // The path a unit executes, resolved over the revision it is rendered for. Total over both arms: a per-release
 // binary under RevisionNotInstalled resolves to release_locus_binary_path's own unbound marker, which is not a valid
 // executable path, so the unit fails loudly rather than naming a binary that is not there (DESIGN section 5).
-fn serve_binary_path(binary: ServeBinary, release_root: String, revision: ReleaseRevisionBinding) -> String {
+fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: ReleaseRevisionBinding) -> String {
   match binary {
     FixedServeBinary { path: p } => p as String
     PerReleaseBinary => release_locus_binary_path(root: release_root, revision: revision)
@@ -24,6 +28,27 @@ fn serve_binary_path(binary: ServeBinary, release_root: String, revision: Releas
 
 // For a service rendered with no revision in hand (the dashboard's belt and convergence units run the fixed
 // binary). A per-release binary read without a revision takes the unbound arm, never a guessed path.
-fn fixed_serve_binary_path(binary: ServeBinary) -> String {
+fn fixed_serve_binary_path(binary: ServeBinarySource) -> String {
   serve_binary_path(binary: binary, release_root: "", revision: RevisionNotInstalled)
+}
+
+// A fixed-only reader (every unit and install step rendered with no revision in hand) may be handed only a service
+// whose binary is a fixed path. The proof is a sole-constructed value minted here and nowhere else, and the refusal is
+// a typed cause the apply boundary turns into DesiredApplyRefused BEFORE any unit, ExecStart, install or verify
+// command exists. Rung (DESIGN section 4b): the apply boundary is structurally guaranteed; the renderers themselves
+// still take the sum and answer fixed_serve_binary_path, so a direct call handed PerReleaseBinary stays mitigated.
+// Climbing the renderers needs every DeploymentSpec reader to take the admitted value, a separate change.
+type AdmittedFixedServeBinary sole_constructor {
+  path: NonEmptyStr
+}
+
+type FixedServeAdmission
+  = FixedServeAdmitted { binary: AdmittedFixedServeBinary }
+  | FixedServeRefused { cause: NonEmptyStr }
+
+fn admit_fixed_serve_binary(binary: ServeBinarySource) -> FixedServeAdmission {
+  match binary {
+    FixedServeBinary { path: p } => FixedServeAdmitted { binary: AdmittedFixedServeBinary { path: p } }
+    PerReleaseBinary => FixedServeRefused { cause: "a per-release serve binary has no fixed path; a fixed-only renderer cannot name it" as NonEmptyStr }
+  }
 }

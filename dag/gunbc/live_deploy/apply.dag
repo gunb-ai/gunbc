@@ -53,6 +53,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
   RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused, RoleSingletonConvergence,
 }
+import gunbc.live_deploy.serve_binary { admit_fixed_serve_binary, FixedServeAdmitted, FixedServeRefused }
 import gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply }
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
@@ -1211,7 +1212,11 @@ fn desired_apply_host_checked(row: DesiredDeployment, instance_id: String, acces
   if (row.target.host.identity as String) != (access.host.identity as String) {
     DesiredApplyRefused { reason: join(["live_deploy apply: DesiredApplyHostMismatch — row '", instance_id, "' targets ", row.target.host.identity as String, " but the access reaches ", access.host.identity as String], "") }
   } else {
-    DesiredApplySelected { deployment: row }
+    match admit_fixed_serve_binary(binary: selected_deployment_spec(row: row).service.serve_binary) {
+      FixedServeAdmitted { binary: _ } => DesiredApplySelected { deployment: row }
+      FixedServeRefused { cause } =>
+        DesiredApplyRefused { reason: join(["live_deploy apply: FixedServeBinaryRefused — ", cause as String], "") }
+    }
   }
 }
 
