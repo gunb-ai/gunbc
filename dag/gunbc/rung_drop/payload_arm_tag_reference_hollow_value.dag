@@ -10,8 +10,8 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // was measured dead for the zero-field arms (the field wall never fires on them) and live only for the
 // payload arms below, where the value it admits is HOLLOW: it reaches `discriminant` and nothing else
 // reads it, but nothing in the model says so. The seam is replaced by an enumerated waiver
-// (v1.compiler.infer payload_arm_tag_reference_waiver_sites), so the same literal anywhere else refuses
-// with one MissingField per owed field. The sites store the arm name as data, or compare it against a
+// (v1.compiler.infer payload_arm_tag_reference_waiver_pairs), so the same literal anywhere else refuses
+// with one MissingField per owed field. The pairs store the arm name as data, or compare it against a
 // wire Atom identity String; neither has a value of the owner type in hand, so same_arm cannot replace
 // them and Atom.identity is not retyped here. The general seam is deleted and its replacement does not
 // exist yet: v1.compiler.infer elaborate_arm_reference (a ConstructorTag minted from a resolved arm) is
@@ -25,7 +25,7 @@ data payload_arm_tag_reference_hollow_value: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: DeletedWithoutReplacement,
-    population: ["v1.compiler.infer payload_arm_tag_reference_waiver_sites"],
-    restoration_trigger: "an arm-name capability from a resolved arm exists on a source surface, the nine v2.std.compilers.target_model payload arms and the two witness fixtures spell their tag through it, and v1.compiler.infer payload_arm_tag_reference_waiver_results and its list are deleted; observed as a hollow payload-arm literal at discriminant refusing in every module without any list"
+    population: ["v1.compiler.infer payload_arm_tag_reference_waiver_pairs: 13 constructing-module/arm-name pairs, each covering every occurrence within the pair"],
+    restoration_trigger: "the CAPABILITY restored is a resolved-arm source of an arm name (v1.compiler.infer elaborate_arm_reference minting a ConstructorTag from a resolved arm, reachable from source), with every consumer in v1.compiler.infer payload_arm_tag_reference_waiver_pairs migrated to it (the nine v2.std.compilers.target_model payload arms, the two witness fixtures, and the W11 control of each constructor_tag_route_probe module), payload_arm_tag_reference_waiver_results and the list deleted, and a hollow payload-arm literal at discriminant refusing universally in every module without any list. Naming a PR does not discharge it; observed as that literal refusing in an unlisted module and in every formerly listed one"
   }
 }

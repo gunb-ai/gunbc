@@ -115,7 +115,7 @@ test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
 }
 
 // THE WAIVER IS THE ENUMERATED LIST, AND NOTHING ELSE. `discriminant(v: Fielded {})` compiles clean
-// only in a module and arm listed in v1.compiler.infer payload_arm_tag_reference_waiver_sites
+// only in a module and arm listed in v1.compiler.infer payload_arm_tag_reference_waiver_pairs
 // (gunbc.rung_drop payload_arm_tag_reference_hollow_value); the identical source in an unlisted
 // module, and the same literal one expression away from the argument position, are hollow
 // constructions and refuse. All three are measured so the waiver can neither widen back into the
