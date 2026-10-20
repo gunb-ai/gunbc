@@ -4494,23 +4494,23 @@ fn realize_nbd_proxy_session_on_host(
 // DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this
 // arm carries the transferred candidate instead of refusing.
 
-fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> String {
+fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
   match transport {
-    LocalShell => ""
+    LocalShell => none
     SshShell { ssh_host: h } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over ssh host=", h,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     FleetSsh { target: t, context: _ } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate."
+      Present { value: "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate." }
   }
 }
 
@@ -5263,62 +5263,69 @@ fn realize_live_deploy_apply_on_host(
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
-  if locus_refusal != "" {
-    NotConverged { reason: locus_refusal, applied: intent }
-  } else {
-    let host = spec.target.host.identity
-    let census = surplus_observation(
-      census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
-    )
-    let required_standing = transition_required_retiring(host: host)
-    let admission = runner_host_deploy_for(host: host)
-    let cap_authorization = match admission {
-      RunnerHostDeployRefused { host: rh, cause: rc } =>
-        CapConvergeWithheld {
-          cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-        }
-      RunnerHostDeployUnmodeled { host: uh } =>
-        CapConvergeWithheld {
-          cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-        }
-      RunnerHostDeployFound { deploy: _ } =>
-        match required_standing {
-          RetireesUnresolved { host: uh, cause: rc } =>
-            CapConvergeWithheld {
-              cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-            }
-          RetireesKnown { units: required } =>
-            cap_converge_decision(
-              host: host,
-              required_retiring: required,
-              observation: surplus_observation_from_census_and_retirement(
-                census: census,
-                standings: observe_retirement_standings(transport: transport, units: required),
-              ),
-            )
-        }
-    }
-    // THE APPLY, AS TYPED LEGS, through the same pure orchestration a control drives with supplied
-    // outcomes: the plan decides every refusal before the preamble runs, then each leg in the deployment's
-    // order, the first failure naming its step. The checkout this process runs in is the source root the
-    // object-source leg observes and every install reads from.
-    let source_root = git.Inspect.Toplevel().path as String
-    live_deploy_apply_orchestrate(
-      locus_refusal: none,
-      plan: deploy_apply_plan_legs(
-        spec: spec,
-        plan: plan,
-        authorization: cap_authorization,
-        source_root: source_root,
-        oidc_now: tracker_web_oidc_deploy_now_epoch(),
-      ),
-      principal: spec.names.publication_principal,
-      preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
-      ports: deploy_apply_ports_on_host(spec: spec, principal: access.principal, source_root: source_root, transport: transport, intent: intent),
-      host: spec.target.host.identity,
-      intent: intent,
-    )
+  live_deploy_apply_orchestrate(
+    locus_refusal: live_deploy_apply_candidate_locus_refusal(transport: transport),
+    prepare: fn() { live_deploy_apply_prepared_on_host(spec: spec, plan: plan, transport: transport, intent: intent, access: access) },
+    principal: spec.names.publication_principal,
+    preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
+    host: spec.target.host.identity,
+    intent: intent,
+  )
+}
+
+// WHAT THE APPLY OBSERVES BEFORE IT CAN PLAN, DEFERRED BEHIND THE LOCUS GATE: the orchestration forces
+// it only after a local locus is admitted, so a refused locus observes no slot census, retirement
+// standing or checkout. The checkout this process runs in is read once, and is both the source root
+// the object-source leg observes and the one every install reads from.
+fn live_deploy_apply_prepared_on_host(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+  access: DeployAccess,
+) -> DeployApplyPrepared {
+  let host = spec.target.host.identity
+  let census = surplus_observation(
+    census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
+  )
+  let required_standing = transition_required_retiring(host: host)
+  let admission = runner_host_deploy_for(host: host)
+  let cap_authorization = match admission {
+    RunnerHostDeployRefused { host: rh, cause: rc } =>
+      CapConvergeWithheld {
+        cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+      }
+    RunnerHostDeployUnmodeled { host: uh } =>
+      CapConvergeWithheld {
+        cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match required_standing {
+        RetireesUnresolved { host: uh, cause: rc } =>
+          CapConvergeWithheld {
+            cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+          }
+        RetireesKnown { units: required } =>
+          cap_converge_decision(
+            host: host,
+            required_retiring: required,
+            observation: surplus_observation_from_census_and_retirement(
+              census: census,
+              standings: observe_retirement_standings(transport: transport, units: required),
+            ),
+          )
+      }
+  }
+  let source_root = git.Inspect.Toplevel().path as String
+  DeployApplyPrepared {
+    plan: deploy_apply_plan_legs(
+      spec: spec,
+      plan: plan,
+      authorization: cap_authorization,
+      source_root: source_root,
+      oidc_now: tracker_web_oidc_deploy_now_epoch(),
+    ),
+    ports: deploy_apply_ports_on_host(spec: spec, principal: access.principal, source_root: source_root, transport: transport, intent: intent),
   }
 }
 
@@ -5653,6 +5660,13 @@ type DeployApplyPorts {
   object_source: fn() -> ObjectSourceServeAdmission
 }
 
+// THE PLAN AND THE PORTS THAT REALIZE IT, produced together because both read one checkout. The
+// orchestration takes them deferred, so a locus refusal is decided before either exists.
+type DeployApplyPrepared {
+  plan: DeployApplyPlan
+  ports: DeployApplyPorts
+}
+
 fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport, intent: HostEffectIntent) -> DeployApplyPorts {
   DeployApplyPorts {
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
@@ -5927,17 +5941,17 @@ fn live_deploy_apply_verdict(
 // THE APPLY ORCHESTRATION, ONE PURE FUNCTION OVER PORTS (mirrors live_deploy_retract_orchestrate).
 fn live_deploy_apply_orchestrate(
   locus_refusal: Optional<String>,
-  plan: DeployApplyPlan,
+  prepare: fn() -> DeployApplyPrepared,
   principal: NonEmptyStr,
   preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict,
-  ports: DeployApplyPorts,
   host: NonEmptyStr,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match locus_refusal {
     Present { value: why } => NotConverged { reason: why, applied: intent }
-    Absent =>
-      match plan {
+    Absent => {
+      let prepared = prepare()
+      match prepared.plan {
         ApplyPlanRefused { step: s, reason: r } =>
           NotConverged { reason: join(["live_deploy apply refused at step ", s, ": ", r], ""), applied: intent }
         ApplyPlanReady { legs: legs } =>
@@ -5948,9 +5962,10 @@ fn live_deploy_apply_orchestrate(
                 applied: intent,
               }
             PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
-              live_deploy_apply_verdict(run: deploy_apply_run_legs(legs: legs, ports: ports), host: host, intent: intent)
+              live_deploy_apply_verdict(run: deploy_apply_run_legs(legs: legs, ports: prepared.ports), host: host, intent: intent)
           }
       }
+    }
   }
 }
 

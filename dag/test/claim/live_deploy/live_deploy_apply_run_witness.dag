@@ -271,8 +271,8 @@ fn preamble_refused(p: NonEmptyStr) -> LiveDeployPreambleVerdict {
 
 fn orchestrate(preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict, plan: DeployApplyPlan, p: DeployApplyPorts, locus: Optional<String>) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_orchestrate(
-    locus_refusal: locus, plan: plan, principal: "gunbc-publication" as NonEmptyStr,
-    preamble: preamble, ports: p, host: "srv1" as NonEmptyStr, intent: the_intent(),
+    locus_refusal: locus, prepare: fn() { DeployApplyPrepared { plan: plan, ports: p } }, principal: "gunbc-publication" as NonEmptyStr,
+    preamble: preamble, host: "srv1" as NonEmptyStr, intent: the_intent(),
   )
 }
 
