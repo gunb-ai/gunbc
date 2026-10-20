@@ -1,0 +1,29 @@
+module gunbc.live_deploy.serve_binary
+
+import std.types { String, NonEmptyStr }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInstalled, release_locus_binary_path }
+
+// WHICH BINARY A SERVICE RUNS IS A TWO-ARMED FACT, AND THE TYPE HOLDS BOTH ARMS. A service either runs one
+// binary at a fixed path (the roadmap's frozen /opt/gunbc/bin/gunbc) or the binary copied into the per-candidate
+// release locus for the revision being deployed (gunbc.live_deploy.release_locus release_locus_binary_path). The
+// approval broker used to carry a refusal marker in this field because the type could only hold the first arm; a
+// field read as authoritative while the real answer lived elsewhere is the fork that marker papered over.
+type ServeBinary
+  = FixedServeBinary { path: NonEmptyStr }
+  | PerReleaseBinary
+
+// The path a unit executes, resolved over the revision it is rendered for. Total over both arms: a per-release
+// binary under RevisionNotInstalled resolves to release_locus_binary_path's own unbound marker, which is not a valid
+// executable path, so the unit fails loudly rather than naming a binary that is not there (DESIGN section 5).
+fn serve_binary_path(binary: ServeBinary, release_root: String, revision: ReleaseRevisionBinding) -> String {
+  match binary {
+    FixedServeBinary { path: p } => p as String
+    PerReleaseBinary => release_locus_binary_path(root: release_root, revision: revision)
+  }
+}
+
+// For a service rendered with no revision in hand (the dashboard's belt and convergence units run the fixed
+// binary). A per-release binary read without a revision takes the unbound arm, never a guessed path.
+fn fixed_serve_binary_path(binary: ServeBinary) -> String {
+  serve_binary_path(binary: binary, release_root: "", revision: RevisionNotInstalled)
+}

@@ -1,5 +1,6 @@
 module gunbc.live_deploy.repository_convergence_placement
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -567,7 +568,7 @@ fn convergence_exec_start(
 ) -> String {
   let src = "$\{GUNBC_TREE_SRC\}"
   join([
-    spec.service.serve_binary as String, " run",
+    fixed_serve_binary_path(binary: spec.service.serve_binary), " run",
     " --source-root ", src, "/dag",
     " --source-root ", src, "/src/v2",
     " --entry ", src, "/", convergence_placement_entry_path,

@@ -130,7 +130,8 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
-import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
+import gunbc.live_deploy.spec { deployment_directory_demands }
+import gunbc.live_deploy.serve_binary { ServeBinary, FixedServeBinary, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.live_deploy.emit { live_deploy_belt_credential_recovery_timer_unit_file }
 import gunbc.live_deploy.emit {
@@ -1565,7 +1566,7 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let full = deploy_witness_full_install_plan(spec: spec)
   let executable = member_fragment_text(member: Executable, plan: full)
   let verify_source = "echo '5555555555555555555555555555555555555555555555555555555555555555  target/release/gunbc' | sha256sum -c -"
-  let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
+  let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", fixed_serve_binary_path(binary: spec.service.serve_binary), "' | sha256sum -c -"], "")
   let steps = spec.steps
   three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
     && owned_step_index(steps: steps, kind: UpsertOwned { kind: ServeBinary }) < owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree })
@@ -2218,12 +2219,9 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
 // of pointing ExecStart back at the shared instance path, which is the tempting repair because it
 // is the one that makes the unit look complete.
 //
-// THE FOURTH CONJUNCT IS THE RED FOR THE SPEC-SIDE HALF OF THE REPAIR. DeploymentServiceConfig has
-// no constant that is true for this service, so gunbc.live_deploy.spec parks a refusal marker in
-// serve_binary rather than a plausible path. That marker is only honest while nothing renders it --
-// so this asserts it does not appear in the unit, and a future edit that reconnects ExecStart to the
-// config field fails here with the marker's own text naming the cause, instead of shipping a unit
-// systemd rejects on a host.
+// THE SPEC-SIDE HALF IS A TYPE, NOT A MARKER. The broker's serve_binary is PerReleaseBinary
+// (gunbc.live_deploy.serve_binary), so the unit's ExecStart is read through serve_binary_path over the revision
+// it is rendered for; the controls below pin each arm.
 //
 // ITS CEILING: this says the emitted bytes name a copy of the verified artifact at the path the unit
 // starts. It does NOT say that binary can parse the sources beside it -- that is a fact about two
@@ -2246,7 +2244,29 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     && string_contains(s: script, pattern: binary)
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
-    && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
+}
+
+// ONE CONTROL PER ARM. The broker's config holds PerReleaseBinary and resolves to its release locus's binary under a
+// bound revision; a fixed arm resolves to its own path; and the per-release arm under RevisionNotInstalled resolves
+// to the unbound marker (never a path), which is what a fixed-only reader of a per-release service renders.
+test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision() -> Bool {
+  let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  serve_binary_path(binary: spec.approval_broker.serve_binary, release_root: spec.approval_broker.repo_root as String, revision: rev)
+    == release_locus_binary_path(root: srv1_gunbc_approval_broker_root as String, revision: rev)
+    && spec.approval_broker.serve_binary == PerReleaseBinary
+}
+
+test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() -> Bool {
+  let fixed = FixedServeBinary { path: "/opt/gunbc/bin/gunbc" as NonEmptyStr }
+  fixed_serve_binary_path(binary: fixed) == "/opt/gunbc/bin/gunbc"
+    && serve_binary_path(binary: fixed, release_root: "/x", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }) == "/opt/gunbc/bin/gunbc"
+    && fixed_serve_binary_path(binary: deployment_spec_srv1().service.serve_binary) != fixed_serve_binary_path(binary: PerReleaseBinary)
+}
+
+test fn a_per_release_serve_binary_without_a_revision_resolves_to_the_unbound_marker() -> Bool {
+  let path = fixed_serve_binary_path(binary: PerReleaseBinary)
+  string_contains(s: path, pattern: "__GUNBC_DEPLOY_UNREACHABLE__") && !string_contains(s: path, pattern: "/opt/gunbc/bin/gunbc")
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
