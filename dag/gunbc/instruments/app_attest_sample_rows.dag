@@ -1,6 +1,7 @@
 module gunbc.instruments.app_attest_sample_rows
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.primitives { tag_of, same_arm }
 import extdeps.apple.app_attest {
   AttestKeyId, AppIdPrefix, AppAttestDevelopment, app_attest_app_id,
   AttestationExpectation, AttestationDecoded, AssertionExpectation, base64_of,
@@ -13,8 +14,6 @@ import extdeps.apple.app_attest {
   AssertionValidationCategoryRefused, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
   AssertionVerification, AssertionAuthentic, AssertionRefused,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
@@ -130,31 +129,10 @@ fn no_attestation_refusal() -> AttestationRefusal? {
   Absent
 }
 
-// SAME CONSTRUCTOR, compared by arm and never by payload text: the owed refusal names which arm of
-// AttestationRefusal the fold must answer. Exhaustive over the owed arm, so a new refusal
-// constructor must be placed here before any row can owe it.
-fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
-  match owed {
-    AttestationFormatUnexpected { declared: _ } => match got { AttestationFormatUnexpected { declared: _ } => true  _ => false }
-    AttestationChainUntrusted { detail: _ } => match got { AttestationChainUntrusted { detail: _ } => true  _ => false }
-    AttestationNonceMismatch => match got { AttestationNonceMismatch => true  _ => false }
-    AttestationKeyIdMismatch { declared: _ } => match got { AttestationKeyIdMismatch { declared: _ } => true  _ => false }
-    AttestationAppIdMismatch { expected_app_id: _ } => match got { AttestationAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AttestationCounterNonZero { counter: _ } => match got { AttestationCounterNonZero { counter: _ } => true  _ => false }
-    AttestationEnvironmentUnexpected { expected: _ } => match got { AttestationEnvironmentUnexpected { expected: _ } => true  _ => false }
-    AttestationCredentialIdMismatch { declared: _ } => match got { AttestationCredentialIdMismatch { declared: _ } => true  _ => false }
-    AttestationValidationCategoryRefused { category: _ } => match got { AttestationValidationCategoryRefused { category: _ } => true  _ => false }
-    AttestationValidationCategoryAbsent => match got { AttestationValidationCategoryAbsent => true  _ => false }
-    AttestationBundleVersionAbsent => match got { AttestationBundleVersionAbsent => true  _ => false }
-    AttestationBundleVersionUnexpected { declared: _ } => match got { AttestationBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AttestationUndecodable { cause: _ } => match got { AttestationUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
 fn refused_with(owed: AttestationRefusal, got: AttestationRefusal?) -> Bool {
   match got {
     Absent => false
-    Present { value: g } => same_attestation_arm(owed: owed, got: g)
+    Present { value: g } => same_arm(tag: tag_of(v: owed), v: g)
   }
 }
 
@@ -165,22 +143,10 @@ fn owed_attestation_holds(owed: OwedAttestationVerdict, v: AttestationVerificati
   }
 }
 
-fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
-  match owed {
-    AssertionSignatureInvalid => match got { AssertionSignatureInvalid => true  _ => false }
-    AssertionAppIdMismatch { expected_app_id: _ } => match got { AssertionAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AssertionValidationCategoryRefused { category: _ } => match got { AssertionValidationCategoryRefused { category: _ } => true  _ => false }
-    AssertionValidationCategoryAbsent => match got { AssertionValidationCategoryAbsent => true  _ => false }
-    AssertionBundleVersionAbsent => match got { AssertionBundleVersionAbsent => true  _ => false }
-    AssertionBundleVersionUnexpected { declared: _ } => match got { AssertionBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AssertionUndecodable { cause: _ } => match got { AssertionUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
 fn assertion_refused_with(owed: AssertionRefusal, v: AssertionVerification) -> Bool {
   match v {
     AssertionAuthentic { authentic: _ } => false
-    AssertionRefused { cause: c } => same_assertion_arm(owed: owed, got: c)
+    AssertionRefused { cause: c } => same_arm(tag: tag_of(v: owed), v: c)
   }
 }
 
@@ -190,12 +156,3 @@ fn owed_assertion_holds(owed: OwedAssertionVerdict, v: AssertionVerification) ->
     OwesAssertionRefusedWith { refusal: r } => assertion_refused_with(owed: r, v: v)
   }
 }
-
-data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality over AttestationRefusal / AssertionRefusal: the outer match on the owed refusal is exhaustive (a new refusal constructor must be placed there), and each inner off-constructor wildcard answers false; enumerating it is the n-squared cross product (169 arms for AttestationRefusal) cloning one false arm, and comparing the name projections instead is wrong because those names carry payload text"
-
-data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-]
