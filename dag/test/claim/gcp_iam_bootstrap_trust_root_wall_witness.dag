@@ -13,7 +13,8 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id, iam_bootstrap_trust_root_tag_parents,
   iam_bootstrap_deny_rules_match, iam_bootstrap_trust_root_wall_rule,
   TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
-  iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions,
+  iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions, iam_bootstrap_tag_value_detach_permissions,
+  TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
 }
 import gunbc.auth.gcp_iam_bootstrap { BootstrapTrustRootTags, BootstrapDeny, BootstrapIdentities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapCapabilities, BootstrapAuthorityCleanup, BootstrapProbeCleanup, iam_bootstrap_stage_admitted }
 
@@ -183,4 +184,18 @@ test fn the_detach_probe_runs_as_iam_bootstrap_on_every_trust_root_before_workfl
     && iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority])
     && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapProbeAuthority])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapProbeCleanup, BootstrapTrustRootTags])
+}
+
+// ── THE TAG-VALUE AXIS (closes the UNMET half of the drop's detach obligation) ──────────────────────
+// One verdict serves both detach axes. A probe whose discriminating control (the operator's answer)
+// lacks the permission establishes nothing; iam-bootstrap holding any of it refuses.
+test fn the_detach_verdict_needs_the_control_and_refuses_a_holder() -> Bool {
+  let p = iam_bootstrap_tag_value_detach_permissions
+  (match tag_detach_probe_verdict(requested: p, control: p, subject: []) { TagDetachAbsent => true  TagDetachUndiscriminating => false  TagDetachHeld => false })
+    && (match tag_detach_probe_verdict(requested: p, control: [], subject: []) { TagDetachAbsent => false  TagDetachUndiscriminating => true  TagDetachHeld => false })
+    && (match tag_detach_probe_verdict(requested: p, control: p, subject: p) { TagDetachAbsent => false  TagDetachUndiscriminating => false  TagDetachHeld => true })
+}
+
+test fn the_tag_value_axis_probes_the_binding_delete_permission() -> Bool {
+  iam_bootstrap_tag_value_detach_permissions == ["resourcemanager.tagValueBindings.delete"]
 }
