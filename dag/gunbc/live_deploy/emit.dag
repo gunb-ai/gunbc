@@ -1003,7 +1003,8 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
 // FAIL-CLOSED: the digest is taken by assignment (a sha256sum failure fails the && chain, no pipe to mask it) and must be
 // exactly 64 characters before anything is written, so an empty NAME= can never reach the env file. The shell transport
 // is a scaffold dissolved when the typed observe_executable digest (as device_crypto_sidecar_readback_exit uses) has a
-// staged-write route that takes a runtime value; until then this step is the only runtime-valued write.
+// staged-write route that takes a runtime value, i.e. the orchestration-to-shell bash-emit capability; until then this
+// step is the only runtime-valued write. SCAFFOLD operator-approved on gunbc#14570 (relayed by wise-bat-528).
 fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let svc = spec.approval_broker
   let owner = svc.service_user
