@@ -16143,7 +16143,6 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
       let planned = lit.children |> map(f =>
         let f_name = field_init_node_name_at(n: f, source_indices: si)
         let f_value = field_init_node_value(n: f)
-        let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         let direct_rc = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: tn, ctor_name: tn, scope: scope, shared_types: shared_types, emit_info: emit_info) {
           StoredDirectRc => true
           StoredPromotedToSome => false
@@ -16165,7 +16164,10 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
                 })
               }
             }
-          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: stored } }
+          // The field render runs only on the arm that reads it (DESIGN §2, deleted demand): a
+          // nested field's renders are its DyingLitInit ones above, computed from the INNER
+          // type/name - the outer render was built and discarded for every nested field.
+          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) } }
         }
       )
       Present { value: DyingLitPlan { struct_name: tn, fields: planned } }
