@@ -9,8 +9,8 @@
 # `gunbc test //gunbc/instruments:self-host`. Prints V2-NATIVE / EmittedCompilerBuildFailed lines and,
 # if the emitted crate is retained, the source line CI blamed.
 set -uo pipefail
-SHA="${1:?sha}"; LABEL="${2:?label}"; KIND="${3:?kind repair|name-keyed|main}"
-[ "$KIND" = "main" ] || { [ "$KIND" = "repair" ] || [ "$KIND" = "name-keyed" ]; } || { echo "VOID bad kind"; exit 7; }
+SHA="${1:?sha}"; LABEL="${2:?label}"; KIND="${3:?kind pin|repair|name-keyed|main}"
+case "$KIND" in pin|repair|name-keyed|main) ;; *) echo "VOID bad kind"; exit 7 ;; esac
 WORK=/tmp/gateemit_${LABEL}; rm -rf "$WORK"; mkdir -p "$WORK"
 d=$WORK/repo
 echo "T=$(date +%T) clone begin"
