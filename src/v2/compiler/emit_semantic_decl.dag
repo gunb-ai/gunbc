@@ -4,7 +4,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import std.types { List, Map }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_surface_with_header, target_semantic_decl_surface_with_imports, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclConformances, TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_surface_with_docs, target_semantic_decl_surface_with_header, target_semantic_decl_surface_with_imports, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
@@ -98,6 +98,8 @@ fn emit_semantic_type_decl(
   members: List<TargetSemanticDeclMember>,
   imports: List<Symbol>,
   header: List<String>,
+  docs: List<String>,
+  conformances: TargetSemanticDeclConformances,
   target: TargetModel,
   realization_host: TargetModel
 ) -> Outcome<Medium<String>> {
@@ -119,9 +121,13 @@ fn emit_semantic_type_decl(
                   name: name,
                   params: params,
                   coproduct: node,
+                  conformances: conformances,
                   type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
                 ),
-                f: fn(bare) {
+                f: fn(undocumented) {
+                  bind_outcome(
+                    o: target_semantic_decl_surface_with_docs(projection: emission.surface, docs: docs, surface: undocumented),
+                    f: fn(bare) {
                   bind_outcome(
                     o: target_semantic_decl_surface_with_imports(projection: emission.surface, imports: imports, surface: bare),
                     f: fn(with_imports) {
@@ -134,6 +140,8 @@ fn emit_semantic_type_decl(
                         profile: emission.enum_serialize_profile,
                         host_binding_spellings: host_binding_spellings
                       )
+                    }
+                  )
                     }
                   )
                     }
@@ -154,9 +162,13 @@ fn emit_semantic_type_decl(
                   params: params,
                   record: node,
                   members: members,
+                  conformances: conformances,
                   type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
                 ),
-                f: fn(bare) {
+                f: fn(undocumented) {
+                  bind_outcome(
+                    o: target_semantic_decl_surface_with_docs(projection: emission.surface, docs: docs, surface: undocumented),
+                    f: fn(bare) {
                   bind_outcome(
                     o: target_semantic_decl_surface_with_imports(projection: emission.surface, imports: imports, surface: bare),
                     f: fn(with_imports) {
@@ -169,6 +181,8 @@ fn emit_semantic_type_decl(
                         profile: emission.struct_serialize_profile,
                         host_binding_spellings: host_binding_spellings
                       )
+                    }
+                  )
                     }
                   )
                     }

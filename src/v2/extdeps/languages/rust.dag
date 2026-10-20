@@ -288,6 +288,8 @@ import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductEnumSurface,
   DeclEmitStringQuote,
   HeaderLeadingLines,
+  DocUnwired,
+  ConformanceUnwired,
   ImportsLeading,
   MembersInAssociatedBlock,
   TargetSemanticDeclEmitEscape,
@@ -2923,6 +2925,8 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     member_projection: MembersInAssociatedBlock,
     import_projection: ImportsLeading,
     header_projection: HeaderLeadingLines,
+    doc_projection: DocUnwired,
+    conformance_projection: ConformanceUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,

@@ -7,7 +7,7 @@ import v2.extdeps.languages.rust {
   rust_enum_general_decl_productions_only_translation_rules
 }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
-import v2.std.compilers.semantic_decl_emission {
+import v2.std.compilers.semantic_decl_emission { ConformancesTargetDefault,
   semantic_decl_emission_from_target,
   target_semantic_enum_surface_from_coproduct
 }
@@ -50,6 +50,7 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
         name: ^Bool,
         params: Empty,
         coproduct: bool_coproduct(),
+        conformances: ConformancesTargetDefault,
         type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
       ) {
         Accepted { value: surface, diagnostics: _ } =>
