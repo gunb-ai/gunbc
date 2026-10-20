@@ -2,7 +2,7 @@ module test.claim.p4_home_serving_power_semantics_witness
 
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.algebra { string_contains }
+import std.algebra { Cons, Empty, string_contains }
 import v2.std.decl_index { DeclFact, decl_facts_at }
 import std.markdown { MarkdownDocument }
 import gunbc.plan { Plan, plan_projects_committed_markdown }
@@ -292,7 +292,7 @@ fn p4_occurrences(t: String, cite: String) -> Int {
 // make the claim pass, this conjunct goes red rather than the claim going quietly green.
 fn p4_citation_count_is_conserved(t: String) -> Bool {
   let roster = p4_citation_roster(t)
-  let covered = fold(roster, init: 0, f: (n: Int, cite: String) => n + p4_occurrences(t: t, cite: cite))
+  let covered = fold(roster, init: 0, f: (n, cite) => n + p4_occurrences(t: t, cite: cite))
   let separators = split(s: t, delimiter: "::").length() - 1
   covered == separators && separators > 20
 }
