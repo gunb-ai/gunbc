@@ -3771,7 +3771,7 @@ pub fn settled_rhs(
 
 pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
     if (((((pre.connective.clone() != Connective::NoConnective)
-        || ((pre.params.clone().len() as i64) > 0))
+        || ((0 as i64) > 0))
         || (pre.type_annotation.clone() != std::option::Option::None))
         || ((pre.children.clone().len() as i64) > 0))
         || (pre.return_cardinality.clone() != Cardinality::Required))
