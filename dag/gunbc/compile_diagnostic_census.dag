@@ -163,7 +163,8 @@ fn census_count_at_key(
 
 // THE HISTOGRAM IS BUILT ONCE, AS AN INDEXED POPULATION. A census is compared as a Map from
 // (class, subject, blocking) to the SUMMED count at that key, one fold per row list, so a comparison
-// costs O(n) lookups rather than a re-filter of the whole list per row. Every comparator below reads
+// costs O(n) indexed map operations (O(n log n) total under the persistent-map realization std.algebra
+// Map currently has) rather than a re-filter of the whole list per row. Every comparator below reads
 // this one form: equality of two censuses and the one-key differential are the same walk over the
 // union of keys, and a key present on one side only is as visible as one present on both.
 type CensusKey {
