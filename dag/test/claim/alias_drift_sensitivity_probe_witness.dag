@@ -1,0 +1,40 @@
+module test.claim.alias_drift_sensitivity_probe_witness
+
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+  census_blocking_rows, census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn probe_census(name: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/" + name + ".dag").content)
+}
+
+// -1 when the census could not run, so neither ">= 1" nor "== 0" reads could-not-measure as its
+// answer (alias_head_identity_probe_witness idiom).
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+  }
+}
+
+test fn the_wrong_carrier_shape_is_refused_by_the_harness() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_wrong_carrier_probe")) >= 1
+}
+
+test fn list_is_accepted_at_its_roster_carrier() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_list_ok_probe")) == 0
+}
+
+test fn set_is_accepted_at_its_roster_carrier() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_set_ok_probe")) == 0
+}
+
+test fn map_is_accepted_at_its_roster_carrier() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_map_ok_probe")) == 0
+}
