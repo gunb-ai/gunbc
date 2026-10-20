@@ -135,25 +135,25 @@ fn response_gap(response: String?, operation: String) -> NonEmptyStr? {
   }
 }
 
-fn megarac_manual_wire(manager_response: String?) -> Bool {
-  match megarac_manager_wire(manager_body: response_text(response: manager_response)) {
-    Absent => false
-    Present { value: w } => w == 1
-  }
-}
-
 fn megarac_reading_of_responses(manager_response: String?, fan_info_response: String?) -> FleetFanReading {
   match response_gap(response: manager_response, operation: "get_manager_status") {
     Present { value: cause } => FleetFanControlUnobservable { cause: cause }
-    Absent =>
-      if megarac_manual_wire(manager_response: manager_response) {
-        match response_gap(response: fan_info_response, operation: "get_fan_info") {
-          Present { value: cause } => FleetFanControlUnobservable { cause: cause }
-          Absent => fleet_fan_reading_of_megarac_wire(manager_body: response_text(response: manager_response), fan_info_body: response_text(response: fan_info_response))
-        }
-      } else {
-        fleet_fan_reading_of_megarac_wire(manager_body: response_text(response: manager_response), fan_info_body: response_text(response: fan_info_response))
+    Absent => {
+      let decoded = fleet_fan_reading_of_megarac_wire(manager_body: response_text(response: manager_response), fan_info_body: response_text(response: fan_info_response))
+      match megarac_manager_wire(manager_body: response_text(response: manager_response)) {
+        Absent => decoded
+        Present { value: wire } =>
+          match megarac_manager_disabled_of_wire(manager_disabled: wire) {
+            MegaRacManagerDisabledAdmitted { standing: CoolingManagerDisabledManual } =>
+              match response_gap(response: fan_info_response, operation: "get_fan_info") {
+                Present { value: cause } => FleetFanControlUnobservable { cause: cause }
+                Absent => decoded
+              }
+            MegaRacManagerDisabledAdmitted { standing: CoolingManagerAutomatic } => decoded
+            MegaRacManagerDisabledRefused { wire: _ } => decoded
+          }
       }
+    }
   }
 }
 
