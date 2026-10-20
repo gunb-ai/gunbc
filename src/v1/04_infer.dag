@@ -179,6 +179,7 @@ import std.termination {
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
+  binder_marked_module_item, node_with_children_params_inferred,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -18056,6 +18057,29 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+  // BINDER IDENTITY, WRITTEN BEFORE THE ENVIRONMENT BUILD (manager ruling msg_38fd5b61: "binder marking
+  // BEFORE resolution"). Every fold of build_type_env reads this module's own items -- declared-type
+  // rows, the nominal-alias registry, signature resolution -- and a generic application in a signature
+  // fires the kind wall there, where the wall asks what the argument's declaration IS. The pass that
+  // answers used to run only inside resolve_item_types, reachable solely from analyze_item, which is
+  // AFTER this build: identity was missing exactly when it was asked for, the resulting error-severity
+  // refusal abandoned the module before its items, and the module whose items would have supplied the
+  // answer never had them analyzed. One call per module, over every item; the module node is rebuilt
+  // with marked children so BOTH consumers below -- build_type_env and the analyze_item map that reads
+  // module_items(n: resolved.module) -- see the same nodes. resolve_item_types marks again and the pass
+  // is a no-op wherever a carrier is already present (see binder_marked_module_item).
+  let marked_module_node = node_with_children_params_inferred(
+    n: resolved.module,
+    children: map(module_items(n: resolved.module), item => binder_marked_module_item(item: item, module_name: authored_name_at(source_indices: source_indices, node: resolved.module), source_indices: source_indices)),
+    params: resolved.module.params,
+    inferred: resolved.module.inferred
+  )
+  let resolved = ResolvedModule {
+    module: marked_module_node,
+    resolved_imports: resolved.resolved_imports,
+    dep_order: resolved.dep_order,
+    occurrence_transport: resolved.occurrence_transport,
+  }
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache

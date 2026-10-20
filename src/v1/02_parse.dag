@@ -8,7 +8,7 @@ import v1.std.core { Unmarked, TestMarked,
   Cardinality, Required, CardOptional,
   make_param_node, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  field_from_key_property_name, type_param_kind_property_name,
+  field_from_key_property_name, type_param_kind_property_name, type_param_declaration_form_property_name,
   make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -3503,7 +3503,7 @@ fn collect_type_param_names(tokens: TokenStream, ctx: ParseContext, params: List
     let kind_result = parse_optional_type_param_kind(tokens: r.tokens, ctx: type_mint.ctx)
     let param_mint = mint_parsed_node_identity(ctx: kind_result.ctx, at: ConsumedWindow { from: tokens, to: kind_result.tokens })
     let bare_param = make_param_node(occurrence_identity: param_mint.identity, name: r.name, type_expr: type_expr, default_value: none, span: span, name_span: span)
-    let param = with_type_param_kind_property(param: bare_param, kind: kind_result.kind)
+    let param = with_type_param_declaration_form_property(param: with_type_param_kind_property(param: bare_param, kind: kind_result.kind), span: span)
     let next_params = list_push(params, param)
     match eat(tokens: kind_result.tokens, expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>
@@ -3559,6 +3559,39 @@ fn with_type_param_kind_property(param: Node, kind: Node?) -> Node {
         match_pattern: param.match_pattern, module_item_kind: param.module_item_kind,
         declaration_marker: param.declaration_marker, declaration: param.declaration, expr_data: param.expr_data
       }
+  }
+}
+
+
+// THE DECLARATION-FORM MARKER, written UNCONDITIONALLY at the one place a header parameter is minted
+// (collect_type_param_names, reached from the fn header at parse_fn and the type header at
+// parse_type_declaration). It says this parameter was MINTED IN A `< ... >` HEADER, by grammar
+// position -- not by what it is spelled. The kind property above cannot serve that purpose: it writes
+// only when a kind is present, so an unkinded header parameter (the majority in the corpus -- fn
+// cost_account_measured_from_time<S>) would carry nothing and the roster would lose it again. It rides
+// the same channel and passes no_span() for the same reason documented above.
+//
+// WHY A MARKER AT ALL, rather than reading the header list back off the item. Both declaration forms
+// merge their header parameters into the item's `params` with concat(type_params, params) -- fn at
+// parse_fn, type declarations at parse_type_declaration -- and nothing records where the header ended.
+// The resolver therefore had to guess which parameters were binders, and its guess was a SPELLING test:
+// a parameter counted as a binder when its name equalled the TEXT OF ITS TYPE EXPRESSION
+// (fn_type_param_names, deleted by manager ruling msg_9ac89964). That test is wrong in both directions:
+// a VALUE parameter whose type happens to be spelled like its own name was admitted as a binder, and a
+// kinded header parameter `T: Kind` survives it only by accident, because the kinded form's type
+// expression is minted as a self-naming leaf carrying the kind as a property -- so name==text held for
+// it too. Form is a fact of the GRAMMAR, so the parse records it once, at the position that makes it
+// true, and the resolver reads what was recorded instead of re-deriving it from spelling.
+fn with_type_param_declaration_form_property(param: Node, span: SourceSpan) -> Node {
+  let prop = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: type_param_declaration_form_property_name(), value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), span: span, name_span: no_span())
+  Node {
+    occurrence_identity: param.occurrence_identity, name: param.name, span: param.span, ident_span: param.ident_span,
+    children: param.children, connective: param.connective, params: param.params, inferred: param.inferred,
+    return_cardinality: param.return_cardinality, uses: param.uses, body: param.body, transport: param.transport,
+    properties: list_push(param.properties, prop), type_annotation: param.type_annotation,
+    is_self_recursive: param.is_self_recursive, has_non_tail_self_call: param.has_non_tail_self_call,
+    match_pattern: param.match_pattern, module_item_kind: param.module_item_kind,
+    declaration_marker: param.declaration_marker, declaration: param.declaration, expr_data: param.expr_data
   }
 }
 

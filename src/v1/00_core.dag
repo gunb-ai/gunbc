@@ -2077,6 +2077,16 @@ fn type_param_kind_property_name() -> String {
   "__param_kind"
 }
 
+// The property channel that records a parameter was MINTED IN A DECLARATION'S `< ... >` HEADER.
+// Named once here for the same reason as the kind property above: the parser writes it
+// (v1.compiler.parse collect_type_param_names) and the resolver reads it (v1.compiler.resolve
+// fn_type_param_names), and a property key spelled at both ends is one literal standing in two
+// authorities. This is the DECLARATION-FORM roster: what the grammar says a parameter IS, replacing
+// the old test of whether a parameter's name EQUALLED THE TEXT OF ITS TYPE EXPRESSION.
+fn type_param_declaration_form_property_name() -> String {
+  "__param_declaration_form"
+}
+
 fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
     Present { value: fi } => Present { value: field_init_node_value(n: fi) }
