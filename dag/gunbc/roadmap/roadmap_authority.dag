@@ -1837,6 +1837,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "Target: dag/gunbc/tools/cron_tag.dag, symbol build_cron_entry_line. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. (2) Move the concat onto a typed cron-entry intent realized through the bash-grammar rows of v2.workflow.orchestration_bash_emit_support — the precedent the node row names; do NOT author a second grammar. (3) Row edit: rebind build_cron_entry_line onto the intent and delete the concat; no empty-string stub, no posix_sh_program_command around the old text. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: cron is a foreign executor — the emitted line stays shell-shaped; only its construction moves."),
     ),
     roadmap_node(
+      identity: "rn_Q8F2R5L9BN4X7WPK3HJD6MCZTG",
+      id: "shell-dag-floor-peak-calibration-rows",
+      owner: "",
+      carriers: [],
+      line: SupersededLine { by: "#14467 (Charter 2 carve)", content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
+    ),
+    roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
       id: "shell-dag-ci-fmt-gate-line",
       owner: "shell",
