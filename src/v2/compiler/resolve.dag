@@ -2957,14 +2957,12 @@ fn resolve_transform_operator_child(
 // refuses a misspelt or foreign arm there), so resolve neither binds it to a declaration nor refuses it
 // as unbound: it is carried through unread, the way a symbol literal's payload is.
 fn resolve_transform_is_arm_test(n: Node) -> Bool {
-  match n.children {
-    Empty => false
-    Cons { head: first, tail: _ } =>
-      match node_atom_identity_optional(node: first.target) {
-        Present { value: id } => id == ^dag_token_kw_is
-        Absent => false
-      }
-  }
+  fold(positional_child_target_nodes(node: n), init: false, f: fn(acc, t) {
+    acc || match node_atom_identity_optional(node: t) {
+      Present { value: id } => id == ^dag_token_kw_is
+      Absent => false
+    }
+  })
 }
 
 fn resolve_is_arm_spelling_kept(arm: Node) -> ResolveNodeWalk {
