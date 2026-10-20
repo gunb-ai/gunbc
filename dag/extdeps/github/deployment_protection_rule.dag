@@ -1,8 +1,9 @@
 module extdeps.github.deployment_protection_rule
 
 // GitHub's CUSTOM DEPLOYMENT PROTECTION RULES, modeled from the upstream before any gunbc wiring
-// (DESIGN.md §3b "model-before-implement": an upstream claim is authored by reading the upstream,
-// and it names the field or endpoint it is about). This file states what GitHub accepts and
+// (DESIGN.md §3: "in `extdeps/` the real upstream spec -- cite the source, keep its real names, declare
+// its version, model what the API actually returns" -- so an upstream claim is authored by reading the
+// upstream, and it names the field or endpoint it is about). This file states what GitHub accepts and
 // returns when a deployment environment is gated by a GitHub App instead of by RequiredReviewers.
 // It states no gunbc policy and grants nothing. That is a boundary it has to keep: DESIGN.md §3
 // gives extdeps a dependency's INTERFACE SHAPE and nothing else, and §3b's External facts boundary
