@@ -5899,26 +5899,31 @@ type CallArgumentFormalCorrespondence {
 }
 
 fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalCorrespondence {
-  fold(
+  let selections = arguments |> enumerate |> map(pair =>
+    select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices))
+  // The claimant groups build in ONE pass over the selections. This fold is not a copied
+  // accumulator (DESIGN.md §6): the runtime's lists and maps are im's persistent Vector and
+  // HashMap (src/v1/stage0/src/v1_rt.rs:6) and map insert is Rc::make_mut on a uniquely-owned
+  // accumulator (v1_rt.rs rc_map_insert), so each step is O(log n) structural sharing, not a
+  // whole-map or whole-list copy -- and the fold walks each argument once, replacing the
+  // per-(argument, earlier argument) rule re-runs it stands in for.
+  let claimant_seed: Map<Int, List<CallArgumentClaimant>> = empty_map()
+  let claimants = fold(
     arguments |> enumerate,
-    init: CallArgumentFormalCorrespondence { selections: [], claimants_by_formal: empty_map() },
+    init: claimant_seed,
     f: (acc, pair) =>
-      let selection = select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices)
-      let extended = CallArgumentFormalCorrespondence {
-        selections: concat(acc.selections, [selection]),
-        claimants_by_formal: acc.claimants_by_formal
-      }
-      match selection {
-        CallArgumentFormalSelected { formal_index: selected, formal: _ } => CallArgumentFormalCorrespondence {
-          selections: extended.selections,
-          claimants_by_formal: map_insert(acc.claimants_by_formal, selected, concat(match map_get(acc.claimants_by_formal, selected) {
-            Present { value: claimants } => claimants
+      match selections |> skip(pair.first) |> first {
+        Present { value: selection } => match selection {
+          CallArgumentFormalSelected { formal_index: selected, formal: _ } => map_insert(acc, selected, concat(match map_get(acc, selected) {
+            Present { value: existing } => existing
             Absent => []
           }, [CallArgumentClaimant { argument_index: pair.first, caller_label: arg_name_at(n: pair.second, source_indices: source_indices) }]))
+          CallArgumentFormalUnavailable => acc
         }
-        CallArgumentFormalUnavailable => extended
+        Absent => acc
       }
   )
+  CallArgumentFormalCorrespondence { selections: selections, claimants_by_formal: claimants }
 }
 
 // READ THE CORRESPONDENCE, NEVER THE RULE, FROM A CONSUMER. Out-of-range is unavailable because
