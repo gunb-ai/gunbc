@@ -660,12 +660,37 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "    req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})\n",
     "    with urllib.request.urlopen(req, timeout=60) as r:\n",
     "        return json.load(r)\n",
+    // EXTERNAL FACTS (GitHub product policy, DESIGN 3; observed on the fleet at head 388b9d0803, run
+    // 39374224295): (1) `git fetch` over smart HTTP REJECTS the workflow token's Bearer scheme --
+    // GitHub wants Basic there -- so a fetch with http.extraHeader=Authorization: Bearer dies at 128
+    // ('could not read Username'); (2) the slot checkout is shallow (fetch-depth 1) and
+    // persist-credentials:false, so the merge base of HEAD and main is neither present nor fetchable
+    // by plain git. Both handled here: the merge base is read from GitHub's OWN graph (the compare
+    // API's merge_base_commit.sha -- the same fact `git merge-base` computes; the reader checks
+    // receipts against its OWN computation regardless, so a disagreement can only refuse, never
+    // admit), and the objects the reader's base step needs are PRE-FETCHED with Basic auth, with the
+    // same auth persisted for the reader's own plain fetches: HOME is RUNNER_TEMP for the whole job
+    // (the isolation step), so a --global git config writes into the job's temp dir, cleaned when the
+    // job ends, carrying only the run-scoped token, which expires with the run. A failure at any
+    // point here refuses BEFORE the instrument runs (bash -e on the heredoc): fail-closed -- the
+    // transport never lets the instrument guess at a missing base.
+    "import base64 as _b64\n",
+    "SERVER = os.environ['GITHUB_SERVER_URL']\n",
+    "def auth_header():\n",
+    "    return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()\n",
+    "def ensure_objects(rev):\n",
+    "    subprocess.run(['git', 'config', '--global', '--replace-all', 'http.' + SERVER + '/.extraHeader', auth_header()], check=True)\n",
+    "    shallow = os.path.exists(os.path.join('.git', 'shallow'))\n",
+    "    for _round in range(8):\n",
+    "        probe = subprocess.run(['git', 'cat-file', '-t', rev], capture_output=True, text=True)\n",
+    "        if probe.returncode == 0 and probe.stdout.strip() == 'commit':\n",
+    "            return\n",
+    "        subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', 'main:refs/remotes/origin/main'], check=True)\n",
+    "        if shallow:\n",
+    "            subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)\n",
+    "    raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')\n",
     "def merge_base():\n",
-    "    url = os.environ['GITHUB_SERVER_URL'] + '/' + REPO + '.git'\n",
-    "    auth = 'http.extraHeader=Authorization: Bearer ' + TOKEN\n",
-    "    subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--depth=500', url, 'main:refs/remotes/origin/main'], check=True)\n",
-    "    subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--deepen=500', url], check=True)\n",
-    "    return subprocess.run(['git', 'merge-base', 'HEAD', 'refs/remotes/origin/main'], capture_output=True, text=True, check=True).stdout.strip()\n",
+    "    return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']\n",
     "def candidate_runs():\n",
     "    out = []\n",
     "    for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:\n",
@@ -698,6 +723,8 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)\n",
     "os.makedirs(STAGING, exist_ok=True)\n",
     "clear(STAGING)\n",
+    "MB = merge_base()\n",
+    "ensure_objects(MB)\n",
     "if MODE != 'base':\n",
     "    if MODE.startswith('merge/'):\n",
     "        k = MODE.split('/')[1]\n",
@@ -707,7 +734,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "                seen.setdefault(shard, wid)\n",
     "        for shard, wid in seen.items():\n",
     "            fetch(wid, STAGING)\n",
-    "    want = 'base-' + merge_base() + '-*' + '.txt'\n",
+    "    want = 'base-' + MB + '-*' + '.txt'\n",
     "    for created, wid, label, shard in candidate_runs():\n",
     "        if shard != 'base' or label != WAVE_LABEL:\n",
     "            continue\n",

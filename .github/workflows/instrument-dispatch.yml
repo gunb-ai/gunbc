@@ -239,12 +239,23 @@ jobs:
               req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})
               with urllib.request.urlopen(req, timeout=60) as r:
                   return json.load(r)
+          import base64 as _b64
+          SERVER = os.environ['GITHUB_SERVER_URL']
+          def auth_header():
+              return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()
+          def ensure_objects(rev):
+              subprocess.run(['git', 'config', '--global', '--replace-all', 'http.' + SERVER + '/.extraHeader', auth_header()], check=True)
+              shallow = os.path.exists(os.path.join('.git', 'shallow'))
+              for _round in range(8):
+                  probe = subprocess.run(['git', 'cat-file', '-t', rev], capture_output=True, text=True)
+                  if probe.returncode == 0 and probe.stdout.strip() == 'commit':
+                      return
+                  subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', 'main:refs/remotes/origin/main'], check=True)
+                  if shallow:
+                      subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)
+              raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
           def merge_base():
-              url = os.environ['GITHUB_SERVER_URL'] + '/' + REPO + '.git'
-              auth = 'http.extraHeader=Authorization: Bearer ' + TOKEN
-              subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--depth=500', url, 'main:refs/remotes/origin/main'], check=True)
-              subprocess.run(['git', '-c', auth, 'fetch', '--quiet', '--deepen=500', url], check=True)
-              return subprocess.run(['git', 'merge-base', 'HEAD', 'refs/remotes/origin/main'], capture_output=True, text=True, check=True).stdout.strip()
+              return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']
           def candidate_runs():
               out = []
               for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:
@@ -277,6 +288,8 @@ jobs:
                   shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
           os.makedirs(STAGING, exist_ok=True)
           clear(STAGING)
+          MB = merge_base()
+          ensure_objects(MB)
           if MODE != 'base':
               if MODE.startswith('merge/'):
                   k = MODE.split('/')[1]
@@ -286,7 +299,7 @@ jobs:
                           seen.setdefault(shard, wid)
                   for shard, wid in seen.items():
                       fetch(wid, STAGING)
-              want = 'base-' + merge_base() + '-*' + '.txt'
+              want = 'base-' + MB + '-*' + '.txt'
               for created, wid, label, shard in candidate_runs():
                   if shard != 'base' or label != WAVE_LABEL:
                       continue
