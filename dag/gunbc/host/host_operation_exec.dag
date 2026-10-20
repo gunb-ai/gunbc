@@ -28,7 +28,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
   ArgvMaterializationRefused,
@@ -154,7 +154,7 @@ type HostOperationOutcome =
 // THE ARGV IDENTITY, DERIVED. This is the ONE place an operation's declaration is named, and it is
 // a function of the operation rather than a field beside it -- which is what makes the ssh and local
 // legs incapable of disagreeing. `BoundOperationInvocation` is not re-minted here:
-// v2.std.operation_argv already declares it as an OperationRef paired with declaration-owned
+// std.operation_argv already declares it as an OperationRef paired with declaration-owned
 // bindings, and shell_materialize_operation_argv already consumes it.
 fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocation {
   match operation {
