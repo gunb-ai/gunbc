@@ -287,10 +287,11 @@ data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReser
 // in it has to satisfy the shared predicate. The predicate has exactly the two clauses the source has — the
 // character is in the printable range, and the character is not one of the five reserved — and it is applied per
 // CHARACTER, by iterating the candidate, which is upstream's shape (crypt.c walks the setting with strcspn and an
-// explicit range test). The clause pair, not the census list, is what decides: a fold over a stored alphabet is
-// only as honest as the transcription of that alphabet, and the row below was caught carrying "*" ":" ";" in its
-// allowed half while listing them as reserved. The census remains as the checkable derivation of the same rule,
-// swept against this predicate by the witness, rather than as the thing that does the deciding.
+// explicit range test). The clause pair is what decides: a fold over a stored alphabet is only as honest as the
+// transcription of that alphabet, and an earlier shape of this record was caught carrying "*" ":" ";" in its
+// allowed half while listing those same characters as reserved. No alphabet is stored here, so there is nothing
+// to transcribe and nothing to drift; what is checked is the predicate itself, which the witness sweeps over the
+// reserved five and over the printable endpoints (test.claim.altra_autoinstall_seed_witness).
 //
 // WHY A CANDIDATE-DRIVEN SCAN MATTERS MORE THAN AN ALPHABET-DRIVEN ONE: a fold over a forbidden set asks "did the
 // candidate contain any of these five?" — which is silent about the byte nobody transcribed, including every byte
