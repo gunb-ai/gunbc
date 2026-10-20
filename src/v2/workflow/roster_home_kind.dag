@@ -16,7 +16,8 @@ import v2.compiler.reference_site_collector {
   HeadBoundInFrame,
   HeadBindingUndecided,
   HeadLexicallyUnbound,
-  ScopedReferenceSite
+  ScopedReferenceSite,
+  SiteHeadBinding
 }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 
@@ -44,40 +45,103 @@ import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 // module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
 // position<->kind compatibility neither the collector nor the sweep could express alone.
 
-// THE RULE THE SWEEP CALLS, for the import count and the label plan alike: one classifier, both questions.
+// WHAT THE RULE ANSWERS, as a coproduct rather than a Bool, so non-decidability is expressible (DESIGN 5: runtime
+// uncertainty -> a typed refusal, never a plausible "no import needed"). Four readings:
+//   KindNotAsked     the rule decided, and the answer is no: the head is bound, or the position is a label/pattern tag,
+//                    which matches no declaration kind unless the declaration says so. Silence is correct here.
+//   KindMatched      unbound head, a position that needs a kind, and the home declaration's kind fits -> import needed.
+//   KindNotMatched   unbound head, a position that needs a kind, and the home declaration's kind does NOT fit -> the
+//                    rule decided, and the answer is no. Silence is correct here too (value use of a type home, etc).
+//   KindUnclassified the rule COULD NOT decide: the head is unbound at a value/type position, but the census gives no
+//                    row that classifies the home (zero keyed rows, or only OtherItem rows). This is NOT a "no": the
+//                    sweep must refuse the module, located by home and name (review 83187: a home the census cannot
+//                    classify must not silently plan no import). The measured population is Wave 2's aliased type homes
+//                    (std.types List/Map/Set -> OtherItem; host item_kind, v1_compiler_infer_items.rs:274).
+type HomeKindVerdict
+  = KindNotAsked
+  | KindMatched
+  | KindNotMatched
+  | KindUnclassified
+
+// THE RULE THE SWEEP CALLS, for the import count and the label plan alike: one classifier, both questions. It is the
+// verbatim KindMatched reading of roster_site_home_kind_verdict -- one authority, never two answers.
 fn roster_site_needs_home_import(
   site: ScopedReferenceSite,
   home: String,
   import_name: String,
   imported_from_home: Bool
 ) -> Bool {
+  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: imported_from_home) == KindMatched
+}
+
+// THE VERDICT. The binding fact comes from the site as v2.compiler.reference_site_collector classified it; the position
+// from v2.compiler.occurrence_role; the KIND from v2.std.decl_index keyed by the home declaration identity. Only the
+// last can fail to decide, and only in KindUnclassified.
+fn roster_site_home_kind_verdict(
+  site: ScopedReferenceSite,
+  home: String,
+  import_name: String,
+  imported_from_home: Bool
+) -> HomeKindVerdict {
   match site.head {
-    HeadLexicallyUnbound => position_matches_home_kind(position: site.position, home: home, import_name: import_name)
+    HeadLexicallyUnbound => position_verdict(position: site.position, home: home, import_name: import_name)
     // THE BINDING FACT, UNCHANGED FROM BEFORE THIS PR for a head the collector cannot decide. An undecided head is the
     // free name only when the import that made it undecided comes from the home the row claims (the sweep's own
     // roster_symbol_imported decides that, never this module); undecided for any other reason is free for NO position,
     // which is what keeps an imported qualified tag (`count.Yes` under v2.std.node ConstructTagEdge, with count
     // imported -- the D4 control) out of the rows while v2.compiler.module_acquisition keeps the same head a
-    // non-candidate from the binding alone. No position is consulted here: an undecided head is not a name the position
-    // rule was ever asked about.
-    HeadBindingUndecided => imported_from_home
-    HeadBoundAtRootValue => false
-    HeadBoundInFrame => false
+    // non-candidate from the binding alone. No position or kind is consulted here: an undecided head is not a name the
+    // position rule was ever asked about, so it cannot be Unclassified either.
+    HeadBindingUndecided => if imported_from_home { KindMatched } else { KindNotAsked }
+    HeadBoundAtRootValue => KindNotAsked
+    HeadBoundInFrame => KindNotAsked
   }
 }
 
-// THE ONE COMPATIBILITY PREDICATE. A type position (annotation, return) matches a TYPE declaration; a value position
-// matches a VALUE declaration (fn, service, or a typed `data` constant); a label or pattern tag matches nothing unless
-// the home declaration says so, and no declaration in the row table's homes says so, so neither position imports
-// anything.
-fn position_matches_home_kind(position: ReferencePosition, home: String, import_name: String) -> Bool {
+// THE PREDICATE THE SWEEP CONSULTS, from the same verdict authority (never a second classifier): this site's head, at
+// THIS position, over this home, is one the census cannot decide.
+fn roster_site_verdict_is_unclassified(site: ScopedReferenceSite, home: String, import_name: String) -> Bool {
+  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: false) == KindUnclassified
+}
+
+fn position_verdict(position: ReferencePosition, home: String, import_name: String) -> HomeKindVerdict {
   match position {
-    ValuePosition => roster_home_declaration_is_value(home: home, import_name: import_name)
-    TypeAnnotationPosition => roster_home_declaration_is_type(home: home, import_name: import_name)
-    ReturnPosition => roster_home_declaration_is_type(home: home, import_name: import_name)
-    LabelPosition => false
-    PatternTagPosition => false
+    // A label or pattern tag asks the kind question of NOBODY: the rule itself answers no (KindNotAsked), so these
+    // positions never refuse and never import. Only the positions the rule must ask about can report Unclassified.
+    LabelPosition => KindNotAsked
+    PatternTagPosition => KindNotAsked
+    ValuePosition =>
+      if roster_home_declaration_is_value(home: home, import_name: import_name) {
+        KindMatched
+      } else if roster_home_declaration_is_type(home: home, import_name: import_name) {
+        KindNotMatched
+      } else {
+        KindUnclassified
+      }
+    TypeAnnotationPosition =>
+      if roster_home_declaration_is_type(home: home, import_name: import_name) {
+        KindMatched
+      } else if roster_home_declaration_is_value(home: home, import_name: import_name) {
+        KindNotMatched
+      } else {
+        KindUnclassified
+      }
+    ReturnPosition =>
+      if roster_home_declaration_is_type(home: home, import_name: import_name) {
+        KindMatched
+      } else if roster_home_declaration_is_value(home: home, import_name: import_name) {
+        KindNotMatched
+      } else {
+        KindUnclassified
+      }
   }
+}
+
+// Is there ANY keyed row that classifies this declaration? Zero rows is also Unclassified: the row table claims the
+// home declares this name, and a census that has no row for it cannot confirm the claim -- importing on that silence
+// would guess, and importing NOTHING on it would hide the census's own coverage gap.
+fn roster_home_declaration_is_classified(home: String, import_name: String) -> Bool {
+  roster_home_declaration_is_type(home: home, import_name: import_name) || roster_home_declaration_is_value(home: home, import_name: import_name)
 }
 
 // The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.

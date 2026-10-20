@@ -12,7 +12,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // route); the head's binding fact is v2.compiler.reference_site_collector's own. This module matches on neither, so it
 // imports no variant name of theirs (review 82610: import what you match, and only that).
 import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites }
-import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_home_kind_sites_text }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.extdeps.languages.dag {
@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -138,6 +138,11 @@ type RosterRefusalReason
   | RefusalGrammarUnprepared
   | RefusalLabelSitesAmbiguous
   | RefusalHomeNameLocallyBound
+  // THE CENSUS CANNOT CLASSIFY A HOME THE RULE MUST DECIDE ABOUT (review 83187, DESIGN 5): an unbound head sits at a
+  // value or type position and the home's keyed census rows classify NONE of its declarations -- zero rows, or only
+  // OtherItem (the census's own cannot-classify answer, v1_compiler_infer_items.rs:274 gives aliased types no kind).
+  // Neither importing nor silently planning no import is honest, so the module refuses, located by home and name.
+  | RefusalHomeKindUnclassified { home: String, name: String }
   | RefusalImportClosesCycle { home: String, module: String }
   | RefusalHomeClosureUnread { home: String }
   | RefusalModuleNameUnread
@@ -172,6 +177,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalGrammarUnprepared => "grammar-unprepared"
     RefusalLabelSitesAmbiguous => "label-sites-ambiguous"
     RefusalHomeNameLocallyBound => "home-name-locally-bound"
+    RefusalHomeKindUnclassified { home: h, name: n } => "home-kind-unclassified home=" + h + " name=" + n
     RefusalImportClosesCycle { home: h, module: m } => "import-closes-cycle home=" + h + " module=" + m
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
@@ -829,6 +835,13 @@ fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex:
 }
 
 fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> RosterOutcome {
+  roster_sweep_text_rows(path: path, text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures)
+}
+
+// THE SAME SWEEP OVER AN AUTHORED CANDIDATE LIST. The controls name the exact row they are about (an aliased type home
+// the production table does not carry -- Wave 2's shape) so a refusal or a plan is measured against THAT row, never
+// against whatever the generator's table happens to hold. The production path reaches it through the scope filter above.
+fn roster_sweep_text_rows(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
         Rejected { diagnostics: _ } => RosterRefused { reason: RefusalTokenizeRefused }
         Accepted { value: stream, diagnostics: _ } =>
@@ -843,10 +856,10 @@ fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGramma
                     spans: artifact.span_index,
                     normalized_root: scoped.tree.root,
                     imported: scoped.tree.import_bindings,
-                    scope: scope,
+                    candidates: candidates,
                     closures: closures
                   ) {
-                    RosterClean => roster_label_outcome(parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, scope: scope)
+                    RosterClean => roster_label_outcome(parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
                     other => other
                   }
               }
@@ -1026,9 +1039,9 @@ fn roster_label_outcome(
   spans: SpanIndex,
   normalized_root: Node,
   imported: List<AliasBindingRow>,
-  scope: RosterHomeScope
+  candidates: List<RosterHeadRow>
 ) -> RosterOutcome {
-  let rows = fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
+  let rows = fold_list(xs: candidates, empty: [], cons: fn(acc, row) {
     if roster_symbol_imported(imported: imported, row: row) { list_snoc_item(xs: acc, item: row) } else { acc }
   })
   match roster_rows_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
@@ -1063,23 +1076,41 @@ fn roster_with_pending_labels(
 // The roster rows whose call head is lexically unbound in this file: the heads ruling B refuses
 // natively without an import. HeadLexicallyUnbound is the collector's own classification, so a local
 // binding, a module-level declaration or an existing import of the same spelling is never swept.
-fn roster_needed_rows(
-  normalized_root: Node,
-  imported: List<AliasBindingRow>,
-  scope: RosterHomeScope
-) -> List<RosterHeadRow> {
-  let sites = collect_scoped_module_reference_sites(
-    root: normalized_root,
-    imported: list_map(xs: imported, f: fn(row) { row.binding })
-  ).sites
+fn roster_needed_rows(sites: FreeMonoid<ScopedReferenceSite>, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> List<RosterHeadRow> {
   fold_list(
-    xs: roster_rows_for_scope(scope: scope),
+    xs: candidates,
     empty: [],
     cons: fn(acc, row) {
       if roster_sites_count(sites: sites, row: row) > 0 && !roster_symbol_imported(imported: imported, row: row) {
         list_snoc_item(xs: acc, item: row)
       } else {
         acc
+      }
+    }
+  )
+}
+
+// ANY CANDIDATE SITE THE CENSUS CANNOT DECIDE, located (review 83187). The fold runs over the SAME candidate rows as
+// roster_needed_rows -- the scope's rows whose import name is not yet visible -- and over the collector's own sites, so
+// it can only fire for a name the sweep is actually asked about; a spelling no row claims (List in the production
+// table today) is never a refusal. The decision itself is v2.workflow.roster_home_kind's verdict: KindUnclassified is
+// reached only from an unbound head at a value or type position whose home's keyed rows classify nothing. Bound,
+// label/tag, and undecided heads cannot reach it, so this refuses NOTHING that the binding fact alone passed before.
+fn roster_any_unclassified_head(sites: FreeMonoid<ScopedReferenceSite>, candidates: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
+  fold_list(
+    xs: candidates,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          if fold_list(xs: sites, empty: false, cons: fn(f, st) {
+            f || (roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_verdict_is_unclassified(site: st, home: roster_qn_text(qn: row.home), import_name: row.import_name))
+          }) {
+            Present { value: RefusalHomeKindUnclassified { home: roster_qn_text(qn: row.home), name: row.import_name } }
+          } else {
+            Absent
+          }
       }
     }
   )
@@ -1169,18 +1200,27 @@ fn roster_sweep_rows(
   spans: SpanIndex,
   normalized_root: Node,
   imported: List<AliasBindingRow>,
-  scope: RosterHomeScope,
+  candidates: List<RosterHeadRow>,
   closures: List<RosterHomeClosure>
 ) -> RosterOutcome {
-  let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported, scope: scope)
-  if is_empty(xs: needed) {
-    RosterClean
-  } else if fold_list(xs: needed, empty: false, cons: fn(f, r) { f || roster_name_locally_bound(normalized_root: normalized_root, call: r.call) }) {
+  let sites = collect_scoped_module_reference_sites(
+    root: normalized_root,
+    imported: list_map(xs: imported, f: fn(row) { row.binding })
+  ).sites
+  let needed = roster_needed_rows(sites: sites, imported: imported, candidates: candidates)
+  match roster_any_unclassified_head(sites: sites, candidates: candidates) {
+    // THE REFUSAL OUTRANKS CLEAN: a module whose census-unc classifiable free head sits among rows that need nothing is
+    // exactly the "finished as if it succeeded" reading the review named; silence there is a fabricated Clean.
+    Present { value: reason } => RosterRefused { reason: reason }
+    Absent => if is_empty(xs: needed) {
+      RosterClean
+    } else if fold_list(xs: needed, empty: false, cons: fn(f, r) { f || roster_name_locally_bound(normalized_root: normalized_root, call: r.call) }) {
     RosterRefused { reason: RefusalHomeNameLocallyBound }
   } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
     RosterRefused { reason: RefusalShapeNameBoundElsewhere }
   } else {
     roster_import_row(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, needed: needed, closures: closures)
+  }
   }
 }
 
@@ -1932,24 +1972,83 @@ fn roster_kind_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Str
     + roster_kind_control(name: "called-parameter-head-is-not-free", text: roster_kind_specimen_called_parameter(), row: roster_kind_value_row(), expected: 0, prepared: prepared, lex: lex)
     + roster_kind_control(name: "data-home-in-value-position", text: roster_kind_specimen_data_call(), row: roster_kind_data_row(), expected: 1, prepared: prepared, lex: lex)
     + roster_kind_control(name: "data-home-in-type-position", text: roster_kind_specimen_data_in_type(), row: roster_kind_data_row(), expected: 0, prepared: prepared, lex: lex)
+    + roster_kind_control(name: "unclassifiable-home-is-not-free", text: roster_kind_specimen_aliased_type(), row: roster_kind_unclassified_row(), expected: 0, prepared: prepared, lex: lex)
+    + roster_kind_unclassified_control(name: "unclassified-home-refuses", text: roster_kind_specimen_aliased_type(), row: roster_kind_unclassified_row(), prepared: prepared, lex: lex)
+    + roster_kind_control(name: "classified-home-flips-to-row", text: roster_kind_specimen_aliased_type(), row: roster_kind_classified_flipped_row(), expected: 3, prepared: prepared, lex: lex)
+    + roster_kind_clean_control(name: "classified-home-imports", text: roster_kind_specimen_aliased_type(), row: roster_kind_classified_flipped_row(), prepared: prepared, lex: lex)
+}
+
+// THE ALIASED-TYPE TRIO (review 83187). The specimen is wise-moth-707's Wave 2 fixture: `fn f(xs: List<Int>) ->
+// List<Int>` with no import. std.types List is OtherItem to the census (v1_compiler_infer_items.rs:274 gives an
+// aliased type no kind), so the position rule CANNOT decide it, and three things must hold at once:
+//  1. unclassifiable-home-is-not-free -- the site is NOT counted free for the row (the pre-fix sweep imported on
+//     that silence, and a Bool verdict could not express the difference between "no" and "cannot tell");
+//  2. unclassified-home-refuses -- a sweep asked to cover std.types { List } REFUSES, located
+//     (home-kind-unclassified home=std.types name=List), instead of finishing Clean or proposing the import;
+//  3. classified-home-flips-to-row / classified-home-imports -- with the SAME position and the SAME unbound head, a
+//     home whose census classifies the name as a type (std.algebra FreeMonoid, TypeItem) decides Matched: the site
+//     counts free and the sweep plans the import. So the refusal fires exactly when the CENSUS cannot decide, never
+//     from the position alone, and Wave 2's gate lifts by itself once the census learns aliased kinds.
+fn roster_kind_specimen_aliased_type() -> String {
+  "module c.kind.aliasgap\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"
+}
+
+fn roster_kind_unclassified_row() -> RosterHeadRow {
+  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
+}
+
+// The identical row over a census-classified type home: only `home` differs, which is the whole point.
+fn roster_kind_classified_flipped_row() -> RosterHeadRow {
+  RosterHeadRow { call: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+}
+
+fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text_rows(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == "home-kind-unclassified home=" + roster_qn_text(qn: row.home) + " name=" + row.import_name {
+        ""
+      } else {
+        "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " instead of the located census verdict\n"
+      }
+    RosterClean => "CONTROL-FAIL " + name + ": the sweep finished Clean over a home the census cannot classify -- a fabricated success (DESIGN 5)\n"
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL " + name + ": the sweep planned an import from a home it cannot classify: " + t + "\n"
+    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": label edits planned over an unclassifiable home\n"
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => "CONTROL-FAIL " + name + ": import and label edits planned over an unclassifiable home: " + t + "\n"
+  }
+}
+
+fn roster_kind_clean_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text_rows(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
+    RosterEdit { start: _, end: _, text: t, own_line: _ } =>
+      if string_contains(s: t, pattern: row.import_name) { "" } else { "CONTROL-FAIL " + name + ": import plans " + t + " for " + row.import_name + "\n" }
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " over a census-classified type home\n"
+    RosterClean => "CONTROL-FAIL " + name + ": Clean -- a free unbound type-position head of a classified type home planned no import\n"
+    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": only label edits for an unimported shape\n"
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => "CONTROL-FAIL " + name + ": " + t + "\n"
+  }
 }
 
 // THE DATA-CONSTANT PAIR (review 83116): a `data` row is a TYPED CONSTANT, so it is referenced at value positions and
 // must get its import there -- and it is not a type, so a type-position mention of it must import nothing. The subject
-// is a real `data` declaration in the corpus the sweep's own roots cover: v2.lens.enforcement.standing_intent
-// whole_corpus_scope (`data whole_corpus_scope: v2.lens.enforcement.vocab.ScopeRoster = { roots: [...] }`), the very row
-// whose roots this PR's census read consumes. Before the correction (DataItem classed as a type) the call head got NO
-// import and the annotation got one -- a plausible sweep with a missing required import.
+// is a real `data` declaration the census KEYS (see roster_kind_data_row for the measured choice: std.algebra
+// kernel_algebra_profile, dag/std/algebra.dag:956, keyed kinds=[Data,]). Before the correction (DataItem classed as a
+// type) the value-position head got NO import and the annotation got one -- a plausible sweep with a missing required
+// import.
 fn roster_kind_specimen_data_call() -> String {
-  "module c.kind.datacall\n\nfn f(n: Int) -> Int {\n  whole_corpus_scope(n)\n}\n"
+  "module c.kind.datacall\n\nfn f(n: Int) -> Int {\n  kernel_algebra_profile\n}\n"
 }
 
 fn roster_kind_specimen_data_in_type() -> String {
-  "module c.kind.datatype\n\nfn f(y: whole_corpus_scope) -> Int {\n  0\n}\n"
+  "module c.kind.datatype\n\nfn f(y: kernel_algebra_profile) -> Int {\n  0\n}\n"
 }
 
+// THE DATA ROW IS A CENSUS-KEYED data DECLARATION: measured (roster_census_diag_probe), v2.std.decl_index keys
+// std.algebra.kernel_algebra_profile (dag/std/algebra.dag:956) with kinds=[Data,], is_value=Y. It was chosen OVER
+// v2.lens.enforcement.standing_intent whole_corpus_scope -- a real data row this sweep's own table reads -- because the
+// census keys NO row at all for that qualified name (measured kinds=[]): a census coverage gap, reported to the manager
+// as a defect, not absorbed. A control may not assert through an unkeyed census; it would measure the census's silence.
 fn roster_kind_data_row() -> RosterHeadRow {
-  RosterHeadRow { call: "whole_corpus_scope", import_name: "whole_corpus_scope", home: qualified_name_from_dotted_string(dotted: "v2.lens.enforcement.standing_intent"), labels: [] }
+  RosterHeadRow { call: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
 }
 
 // THE #14338 SPECIMEN ITSELF, as a position control: `fn u(chars: fn(String) -> Int, x: String) -> Int { chars(s: x) }`.
