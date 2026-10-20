@@ -1,0 +1,165 @@
+module v2.test.claim.manual.unary_prefix_v1_shape_probe
+
+// SCRATCH PROBE (not a floor file, not rostered): v1's parse of the unary-prefix arms, by
+// execution. Lane adhoc-9102e2d6-92f. One line per arm reaches the operator as a ProcessExit
+// refusal reason, which claim_batch prints verbatim; the receipts quote it. Pre-fix on main the
+// RED rows read BAD; post-fix every row must read OK.
+//
+//   gunbc run --source-root dag --source-root src --claim-run \
+//     --entry src/v2/test/claim/manual/unary_prefix_v1_shape_probe.dag \
+//     --function unary_prefix_v1_shape_probe_reports
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  ExprData, ExprBinOp, ExprUnaryOp, ExprLiteral, ExprVar, ExprElaboratedLiteral, ExprError,
+  ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
+  ExprListLit, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex,
+  ExprSlice, ExprReturn, NoExprData,
+  Not, Neg, UnaryOpKind, Node,
+}
+
+// THE ARMS, in the brief's order. Rows 0, 2, 3, 8 are the shape REDS: the literal prefix binding
+// power on v1 today lets the operand's loop swallow the following infix row. The rest are the
+// brief's controls, correct today and required to stay correct after the fix. The ! arms are the
+// manager's ruling additions beside the minus ones: && and || sit below the old literal so they
+// never absorbed (stable controls), while * exposes the ShBang arm's identical defect (row 8).
+data probe_bodies: List<String> = [
+  "-1 - 2",
+  "-(1 - 2)",
+  "-a + b",
+  "-a * b",
+  "-1 < 0",
+  "-3",
+  "!a && b",
+  "!a || b",
+  "!a * b",
+  "a - b",
+  "a * b",
+  "-a < b",
+  "-a.b",
+  "-a |> f"
+]
+
+fn probe_source(body: String) -> String {
+  concat("module probe.unary_prefix.v1\n\nfn probe_case(a: Int, b: Int) -> Int {\n  ", body, "\n}\n")
+}
+
+// v1's parse, via the production seed parser unmodified. parse_fn_decl records the expression body
+// on the fn member node (src/v1/02_parse.dag, `body: Present { value: r.expr }`).
+fn probe_v1_shape(body: String) -> String {
+  let file = "probe_unary_prefix_v1.dag"
+  let src = probe_source(body: body)
+  let parsed = parse_with_table(
+    tokens: tokenize(source: src, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: src)),
+    intern_table: empty_intern_table(),
+  )
+  match parsed.result.module {
+    Absent => "V1-REFUSED"
+    Present { value: m } =>
+      match m.children |> first {
+        Absent => "V1-NOMEMBER"
+        Present { value: item } =>
+          match item.body {
+            Absent => "V1-NOBODY"
+            Present { value: b } => probe_shape_of(node: b)
+          }
+      }
+  }
+}
+
+fn probe_shape_of(node: Node) -> String {
+  match node.expr_data {
+    ExprBinOp { op: op, algebra_field: _, operand: _ } =>
+      concat("b(", probe_binop(op: op), ",", node.children |> map(p => probe_shape_of(node: p)) |> join(separator: ","), ")")
+    ExprUnaryOp { op: op } =>
+      concat("u(", probe_unary(op: op), ",", node.children |> map(p => probe_shape_of(node: p)) |> join(separator: ","), ")")
+    ExprLiteral { value: _ } => "n"
+    ExprVar { binding_kind: _ } => "v"
+    ExprElaboratedLiteral { value: _, elaboration: _ } => "el"
+    ExprError { kind: _, message: _ } => "err"
+    ExprFieldAccess { summary: _ } => concat("field(", node.children |> map(p => probe_shape_of(node: p)) |> join(separator: ","), ")")
+    ExprCall { call_semantics: _, descent_evidence: _ } => concat("call(", node.children |> map(p => probe_shape_of(node: p)) |> join(separator: ","), ")")
+    ExprMethodCall { method_semantics: _ } => concat("method(", node.children |> map(p => probe_shape_of(node: p)) |> join(separator: ","), ")")
+    ExprMatch => "match"
+    ExprIf => "if"
+    ExprLet => "let"
+    ExprRecordLit { parent_enum: _ } => "record"
+    ExprListLit => "list"
+    ExprLambda => "lambda"
+    ExprStringInterp => "interp"
+    ExprBlock => "block"
+    ExprCast => "cast"
+    ExprForEach => "foreach"
+    ExprIndex => "index"
+    ExprSlice => "slice"
+    ExprReturn => "return"
+    NoExprData => "none"
+  }
+}
+
+fn probe_binop(op: BinOp) -> String {
+  match op {
+    Add => "+"
+    Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    Eq => "=="
+    Ne => "!="
+    Lt => "<"
+    Gt => ">"
+    Le => "<="
+    Ge => ">="
+    And => "&&"
+    Or => "||"
+    NullCoalesce => "??"
+  }
+}
+
+fn probe_unary(op: UnaryOpKind) -> String {
+  match op {
+    Not => "!"
+    Neg => "-"
+  }
+}
+
+// THE EXPECTATION, stated by hand from the language's own table (the OperatorSpec rows: +/- 13,
+// * 15, and the emitter's own unary rendering) -- the shape the fix must produce.
+fn probe_expected(body: String) -> String {
+  match body {
+    "-1 - 2" => "b(-,u(-,n),n)"
+    "-(1 - 2)" => "u(-,b(-,n,n))"
+    "-a + b" => "b(+,u(-,v),v)"
+    "-a * b" => "b(*,u(-,v),v)"
+    "-1 < 0" => "b(<,u(-,n),n)"
+    "-3" => "u(-,n)"
+    "!a && b" => "b(&&,u(!,v),v)"
+    "!a || b" => "b(||,u(!,v),v)"
+    "!a * b" => "b(*,u(!,v),v)"
+    "a - b" => "b(-,v,v)"
+    "a * b" => "b(*,v,v)"
+    "-a < b" => "b(<,u(-,v),v)"
+    "-a.b" => "u(-,field(v))"
+    "-a |> f" => "method(u(-,v))"
+    _ => "?"
+  }
+}
+
+test fn unary_prefix_v1_shape_probe_reports() -> ProcessExit {
+  let lines = probe_bodies |> map(b =>
+    let actual = probe_v1_shape(body: b)
+    let want = probe_expected(body: b)
+    let flag = if want == "?" { "INFO" } else { if actual == want { "OK" } else { "BAD" } }
+    concat("V1ARM[", b, "] actual=", actual, " want=", want, " ", flag)
+  ) |> join(separator: "\n")
+  exit_failure(reason: concat("unary-prefix v1 shape probe (report-only):\n", lines))
+}

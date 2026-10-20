@@ -1,0 +1,140 @@
+module v2.test.claim.manual.unary_prefix_v2_shape_probe
+
+// SCRATCH PROBE (not a floor file, not rostered): v2's parse of the unary-prefix arms, checked by
+// execution BEFORE anything is touched -- the brief's step 1. Lane adhoc-9102e2d6-92f. One line per
+// arm reaches the operator as a ProcessExit refusal reason, which claim_batch prints verbatim.
+// Every row must read OK on today's main (v2's prefix operand is a closed production, so it cannot
+// absorb an infix row); the same rows run again after the v1 fix and must not move.
+//
+//   gunbc run --source-root dag --source-root src --claim-run \
+//     --entry src/v2/test/claim/manual/unary_prefix_v2_shape_probe.dag \
+//     --function unary_prefix_v2_shape_probe_reports
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { ComputationNode, Transform, Node, NodeKind, Symbol }
+import v2.std.node_query { find_arrow_body_child }
+
+data probe_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data probe_bodies: List<String> = [
+  "-1 - 2",
+  "-(1 - 2)",
+  "-a + b",
+  "-a * b",
+  "-1 < 0",
+  "-3",
+  "!a && b",
+  "!a || b",
+  "!a * b",
+  "a - b",
+  "a * b",
+  "-a < b",
+  "-a.b",
+  "-a |> f"
+]
+
+fn probe_sig(body: String) -> String {
+  match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+}
+
+fn probe_source(body: String) -> String {
+  concat("module probe.unary_prefix.v2\n\nfn probe_case(", probe_sig(body: body), ") -> Int {\n  ", body, "\n}\n")
+}
+
+// v2's parse: the grammar-row parser + normalize, unmodified, read the way the sibling claim reads
+// arrow bodies. Body lowering reads an operator expression as a Transform application whose first
+// child is the operator token and whose remaining children are the operands
+// (src/v2/std/compilers/body_lowering.dag lower_binary_infix / lower_unary_prefix), so a
+// Transform's ARITY separates a prefix application (2 children) from an infix one (3) -- exactly
+// what absorption swaps. Operator identity rides the folded head row's symbol, which the shape
+// text carries as the head child's own text.
+fn probe_v2_shape(body: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "V2-GRAMMAR-REFUSED"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: probe_source(body: body), file: ^probe_unary_prefix_v2, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "V2-LEX-REFUSED"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "V2-PARSE-REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "V2-NORM-REFUSED"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match probe_arrow_body(root: normalized.root) {
+                    Absent => "V2-NOBODY"
+                    Present { value: lowered } => probe_shape_of(node: lowered)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// t3 idiom (block_expr_as_binary_operand_parse.dag arrow_body_kind): find_arrow_body_child answers
+// only at an Arrow root, so a module-rooted tree is walked through its children until one is found.
+fn probe_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => probe_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+fn probe_shape_of(node: Node) -> String {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      concat("T", to_string(value: node.children |> length), "(", node.children |> map(e => probe_shape_of(node: e.target)) |> join(separator: ","), ")")
+    _ =>
+      if node.children |> length == 0 { "a" } else { node.children |> map(e => probe_shape_of(node: e.target)) |> join(separator: ",") }
+  }
+}
+
+// THE EXPECTATION from v2's own grammar rows (+/- 6, * 7) and its closed unary production
+// (unary_expr -> '-' unary_expr | postfix_expr). T2 = a prefix application, T3 = an infix one.
+fn probe_expected(body: String) -> String {
+  match body {
+    "-1 - 2" => "T3(a,T2(a,a,a),a,a)"
+    "-(1 - 2)" => "T2(a,T3(a,a,a,a,a))"
+    "-a + b" => "T3(a,T2(a,a),a)"
+    "-a * b" => "T3(a,T2(a,a),a)"
+    "-1 < 0" => "T3(a,T2(a,a,a),a,a)"
+    "-3" => "T2(a,a,a)"
+    "!a && b" => "T3(a,T2(a,a),a)"
+    "!a || b" => "T3(a,T2(a,a),a)"
+    "!a * b" => "T3(a,T2(a,a),a)"
+    "a - b" => "T3(a,a,a)"
+    "a * b" => "T3(a,a,a)"
+    "-a < b" => "T3(a,T2(a,a),a)"
+    "-a.b" => "T2(a,a,a,a)"
+    "-a |> f" => "T3(a,T2(a,a),a)"
+    _ => "?"
+  }
+}
+
+test fn unary_prefix_v2_shape_probe_reports() -> ProcessExit {
+  let lines = probe_bodies |> map(b =>
+    let actual = probe_v2_shape(body: b)
+    let want = probe_expected(body: b)
+    concat("V2ARM[", b, "] actual=", actual, " want=", want, " ", if actual == want { "OK" } else { "BAD" })
+  ) |> join(separator: "\n")
+  exit_failure(reason: concat("unary-prefix v2 shape probe (report-only):\n", lines))
+}

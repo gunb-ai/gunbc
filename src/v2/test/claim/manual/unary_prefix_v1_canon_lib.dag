@@ -1,0 +1,102 @@
+module v2.test.claim.manual.unary_prefix_v1_canon_lib
+
+// v1 SIDE of the unary-prefix agreement (v2.test.claim.manual.unary_prefix_v1_v2_agreement).
+// Split into its own module because one file importing BOTH v1.std.core and v2.std.node collides
+// on the bare type names Node and Symbol (the checker resolves them to v2.std.node), so each
+// parser's walker lives in its own lib and the agreement claim imports only these libs.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  ExprData, ExprBinOp, ExprUnaryOp, ExprLiteral, ExprVar, ExprElaboratedLiteral, ExprError,
+  ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
+  ExprListLit, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex,
+  ExprSlice, ExprReturn, NoExprData,
+  Not, Neg, UnaryOpKind, Node,
+}
+
+fn canon_source(body: String) -> String {
+  let sig = match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+  concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+fn canon_parse(body: String) -> Optional<Node> {
+  let source = canon_source(body: body)
+  let file = "probe_canon.dag"
+  let parsed: ParseWithTableResult = parse_with_table(
+    tokens: tokenize(source: source, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+  parsed.result.module
+}
+
+// THE CANONICAL SHAPE, shared with the v2 side: I(op,l,r) infix, P(op,x) prefix, lit, ref.
+// Operator text is the authored symbol, so the two sides' tables are the contract.
+fn canon_shape(node: Node) -> String {
+  match node.expr_data {
+    ExprBinOp { op: op, algebra_field: _, operand: _ } =>
+      concat("I", canon_bin_text(op: op), "(", node.children |> map(c => canon_shape(node: c)) |> join(separator: ","), ")")
+    ExprUnaryOp { op: op } =>
+      concat("P", canon_unary_text(op: op), "(", node.children |> map(c => canon_shape(node: c)) |> join(separator: ","), ")")
+    ExprLiteral { value: _ } => "lit"
+    ExprVar { binding_kind: _ } => "ref"
+    _ => if node.children |> count == 0 { "?" } else { node.children |> map(c => canon_shape(node: c)) |> join(separator: ",") }
+  }
+}
+
+fn canon_bin_text(op: BinOp) -> String {
+  match op {
+    Add => "+"
+    Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    Eq => "=="
+    Ne => "!="
+    Lt => "<"
+    Gt => ">"
+    Le => "<="
+    Ge => ">="
+    And => "&&"
+    Or => "||"
+    NullCoalesce => "??"
+  }
+}
+
+fn canon_unary_text(op: UnaryOpKind) -> String {
+  match op {
+    Not => "!"
+    Neg => "-"
+  }
+}
+
+// The body node carries the expression (02_parse.dag: body: Present { value: r.expr }).
+fn canon_body_shape(body: Node) -> String {
+  match body.body {
+    Present { value: inner } => canon_shape(node: inner)
+    Absent => "<no-body>"
+  }
+}
+
+fn v1_canon(body: String) -> String {
+  match canon_parse(body: body) {
+    Absent => "<no-parse>"
+    Present { value: module_node } =>
+      match module_node.children |> first {
+        Absent => "<no-item>"
+        Present { value: item } => canon_body_shape(body: item)
+      }
+  }
+}

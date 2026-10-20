@@ -1,0 +1,122 @@
+module v2.test.claim.manual.unary_prefix_v2_canon_lib
+
+// v2 SIDE of the unary-prefix agreement (v2.test.claim.manual.unary_prefix_v1_v2_agreement).
+// Split into its own module for the same reason as the v1 side: one file importing BOTH
+// v1.std.core and v2.std.node collides on the bare names Node and Symbol.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { ComputationNode, Edge, Transform, Node, NodeKind, Symbol, symbol_lexeme }
+import v2.std.node_query { find_arrow_body_child }
+
+data canon_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn canon_v2_source(body: String) -> String {
+  let sig = match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+  concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+// t3 idiom (block_expr_as_binary_operand_parse.dag): find_arrow_body_child answers only at an
+// Arrow root, so a module-rooted tree is walked through its children until one is found.
+fn canon_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => canon_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+// THE SAME CANONICAL SHAPE the v1 side computes: I(op,l,r) infix, P(op,x) prefix, lit, ref.
+// Body lowering reads an operator expression as a Transform application whose first child is the
+// operator token and whose remaining children are the operands (body_lowering lower_binary_infix /
+// lower_unary_prefix), so arity 3 = infix, arity 2 = prefix; the head child's atom lexeme carries
+// the authored operator text. Number and identifier leaves are atom-identity leaves; a numeral is
+// classified by its lexeme so both sides fold literals to 'lit' and references to 'ref'.
+fn canon_shape(node: Node) -> String {
+  match node.kind {
+    ComputationNode { behavior: Transform, effect: _ } =>
+      match node.children |> first {
+        Absent => "?"
+        Present { value: head } =>
+          match node_atom_identity_optional(node: head.target) {
+            Absent => "?"
+            Present { value: sym } =>
+              let op = symbol_lexeme(sym: sym)
+              let operands = canon_operand_shapes(children: node.children)
+              if (node.children |> count) == 3 {
+                concat("I", op, "(", operands |> join(separator: ","), ")")
+              } else if (node.children |> count) == 2 {
+                concat("P", op, "(", operands |> join(separator: ","), ")")
+              } else {
+                "?"
+              }
+          }
+      }
+    _ =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          let lex = symbol_lexeme(sym: sym)
+          if canon_is_numeral(lexeme: lex) { "lit" } else { "ref" }
+        Absent => if node.children |> count == 0 { "?" } else { node.children |> map(e => canon_shape(node: e.target)) |> join(separator: ",") }
+      }
+  }
+}
+
+fn canon_is_numeral(lexeme: String) -> Bool {
+  match lexeme |> first {
+    Absent => false
+    Present { value: c } => c == "0" || c == "1" || c == "2" || c == "3" || c == "4" || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+  }
+}
+
+// Shape strings of every child except the head (the operator token), without a rest/drop builtin.
+type CanonAcc { skipped: Bool, parts: List<String> }
+
+fn canon_operand_shapes(children: List<Edge>) -> List<String> {
+  fold(children, init: CanonAcc { skipped: false, parts: [] }, f: fn(acc, e) {
+    if acc.skipped {
+      CanonAcc { skipped: true, parts: list_snoc(acc.parts, canon_shape(node: e.target)) }
+    } else {
+      CanonAcc { skipped: true, parts: acc.parts }
+    }
+  }).parts
+}
+
+fn v2_canon(body: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "<grammar-refused>"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: canon_v2_source(body: body), file: ^probe_unary_prefix_canon, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "<lex-refused>"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "<parse-refused>"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "<norm-refused>"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match canon_arrow_body(root: normalized.root) {
+                    Absent => "<no-body>"
+                    Present { value: lowered } => canon_shape(node: lowered)
+                  }
+              }
+          }
+  }
+}
