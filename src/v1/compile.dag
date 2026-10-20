@@ -28,13 +28,6 @@ import v1.std.core {
   MatchBoundBinding, ServiceValueBinding
 }
 
-import v1.compiler.annotation_bind { bind_annotations }
-import std.source_annotation {
-  SourceAnnotationGraph,
-  UnboundAnnotationCapture,
-  source_annotation_graph_concat,
-  source_annotation_graph_empty
-}
 import v1.compiler.tokenize { tokenize_artifact }
 
 import v1.compiler.parse {
@@ -124,10 +117,15 @@ type PipelineResult {
   rust_crates: List<EmittedRustCrate>
 }
 
-// The authored source annotation graph rides beside the semantic result rather than inside it.
-// Every existing consumer reads the fields it already read and is unaffected; annotation-aware
-// machinery reads the graph. Refusals are carried too, because a graph without them cannot
-// distinguish prose that was never written from prose that was dropped.
+// The front end carries the SEMANTIC result and nothing else. It used to ride a bound
+// SourceAnnotationGraph beside it (gunbc P0.2, v1-interface-cull-audit lane B, 2026-10-19):
+// every consumer read only the semantic fields, so the bind -- the whole ~35 s of the 55 s
+// frontend per §3a -- executed on the compile path to feed no reader. An annotation reader
+// now demands its own binding: v1.compiler.annotation_bind.bind_annotations over the
+// tokenizer's captures and the parse's extents/transport, exactly as the round-trip and
+// v1/v2-agreement claims have always done. Removing the field rather than emptying it is the
+// honest shape: a completeness-promising graph of zero rows would have lied (§5a amendment B);
+// a field that does not exist cannot.
 
 type FrontendResult {
   graph: ModuleGraph?
@@ -135,7 +133,6 @@ type FrontendResult {
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
   occurrence_transport: OccurrenceTransport
-  annotations: SourceAnnotationGraph
 }
 
 type FrontendOccurrenceResolution {
@@ -149,16 +146,19 @@ type FrontendAccum {
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
-  annotations: SourceAnnotationGraph
 }
 
-data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.
-
-Threading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone."
-
+// FrontendPrepared once also carried the tokenizer's `annotations` captures, threaded so an
+// annotation reader would never re-tokenize and drift from the parse (the note this row
+// replaced). gunbc P0.2 (v1-interface-cull-audit lane B, 2026-10-19) deleted the compile-path
+// bind that consumed them; no reader remained on this type, so the carrier went with it. The
+// anti-drift invariant it protected still holds where annotations are read: every annotation
+// consumer (v1.tests.claim.annotation_gap_round_trip_test, v2.test.claim.manual
+// .annotation_gap_v1_v2_agreement) takes BOTH halves -- tokens and captures -- from ONE
+// tokenize_artifact result and binds against that same parse, so the two halves cannot observe
+// different sources.
 type FrontendPrepared {
   tokens: List<Token>
-  annotations: List<UnboundAnnotationCapture>
   newline_index: NewlineIndex
 }
 
@@ -1328,7 +1328,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
-      annotations: artifact.annotations,
       newline_index: si,
     }
   )
@@ -1339,7 +1338,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     newline_indices: [],
     intern_table: intern_table,
     occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
   }, f: (acc, p) =>
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
@@ -1351,11 +1349,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator,
       env: dag_parse_environment
-    )
-    let bound = bind_annotations(
-      transport: parsed.occurrence_transport,
-      extents: parsed.source_extents,
-      captures: p.annotations
     )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
@@ -1370,7 +1363,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound),
     }
   )
   let parse_results = parsed.parse_results
@@ -1393,8 +1385,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     diagnostics: concat(parse_diagnostics, resolution.diagnostics),
     newline_indices: newline_indices,
     intern_table: parsed.intern_table,
-    occurrence_transport: occurrence_transport,
-    annotations: parsed.annotations
+    occurrence_transport: occurrence_transport
   }
 }
 
@@ -1495,12 +1486,10 @@ fn parse_revision_declarations_with_environment(
     newline_indices: [],
     intern_table: empty_intern_table(),
     occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
   }, f: (acc, s) =>
     let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
-      annotations: artifact.annotations,
       newline_index: build_newline_index(file: s.path, source: s.content),
     }
     let parsed = parse_with_table_in_occurrence_scope(
@@ -1528,7 +1517,6 @@ fn parse_revision_declarations_with_environment(
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: acc.annotations,
     }
   )
   let parse_results = parsed.parse_results
