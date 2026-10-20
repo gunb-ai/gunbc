@@ -454,13 +454,6 @@ fn emit_fold_eval_subject(root: Node) -> TestClaimEvalSubject<Node> {
   )
 }
 
-fn emit_fold_eval_run(root: Node) -> TestClaimRun<Node, RuntimeValue> {
-  run_test_claim_emit_vs_eval(
-    subject: emit_fold_eval_subject(root: root),
-    target: rust_fold_call_target_model_staging()
-  )
-}
-
 fn emit_fold_eval_run_with(target: TargetModel) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_fold_eval_subject(root: emit_fold_eval_list_arrow()),
