@@ -321,7 +321,7 @@ import product.p4261_carrier_layout {
   e1_j3,
   e1_j4,
   e1_u3_footprint,
-  e1_u3_resistor,
+  e1_u3,
   e1_site_resistances,
   e1_u55_lower_pins,
   e1_u55_left_capacitor,
@@ -2252,8 +2252,8 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
 // (VCCA, DIR1, DIR2 under the candidate pinout), pin 13 at 1200 joins them at that ceiling, the eight
 // data ports are hedged values of 1500 and pin 13 to its capacitor a hedged 500; the right bare pad reads
 // over range to pins 5 to 8 and joins none; J3, J4 and the bare U3 footprint are installed, U3 unpopulated and
-// without any resistance reading of its own (the cluster statement is evidence, not a row), and one named
-// reference in that cluster, a resistor pad under U3 at 500 ohm, is a row that joins nothing; pin 14's '0.00' to the left capacitor's near end, pin 8's 'ground' and the left bare pad's '0ohm' to pin 6 are
+// without any resistance reading of its own (the cluster statement is evidence, not a row); U3 itself is a
+// six-lead part, and the one named reference, its lower-right lead at 500 ohm, is a row that joins nothing; pin 14's '0.00' to the left capacitor's near end, pin 8's 'ground' and the left bare pad's '0ohm' to pin 6 are
 // zeros without a baseline and join nothing in the live netlist; the report carries the count and the
 // pins. Supplied: pin 13 at 500 ohm makes four.
 test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
@@ -2277,7 +2277,8 @@ test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
     && count(component_of(layout: p4261_e1_layout, c: e1_j3)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_j4)) == 1
     && all(component_of(layout: p4261_e1_layout, c: e1_u3_footprint), c => match c.identification { FootprintUnpopulated { evidence: _ } => true, _ => false })
     && count(component_of(layout: p4261_e1_layout, c: e1_u3_footprint)) == 1
-    && count(e1_site_resistances) == 1 && all(e1_site_resistances, o => reads_pair(o: o, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3_resistor, terminal: "top-left pad as photographed (upload 1749253a)" as TerminalIdentity)) && match valued_ohms(o: o) { Present { value: v } => v == 500, Absent => false })
-    && !one_node(net: live, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3_resistor, terminal: "top-left pad as photographed (upload 1749253a)" as TerminalIdentity))
+    && count(e1_site_resistances) == 1 && all(e1_site_resistances, o => reads_pair(o: o, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity)) && match valued_ohms(o: o) { Present { value: v } => v == 500, Absent => false })
+    && !one_node(net: live, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity))
+    && all(component_of(layout: p4261_e1_layout, c: e1_u3), c => count(c.terminals) == 6) && count(component_of(layout: p4261_e1_layout, c: e1_u3)) == 1
     && !any(e1_measured.bench.resistances, o => component_identity_eq(a: o.second.component, b: e1_u3_footprint) || component_identity_eq(a: o.first.component, b: e1_u3_footprint))
 }
