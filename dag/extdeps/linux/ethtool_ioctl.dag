@@ -8,6 +8,7 @@ import extdeps.python { PythonProgramText, python_run_program_argv, python_progr
 import extdeps.exec.command { ArgvCommand, argv_command, LocalExec }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.9/include/uapi/linux/ethtool.h" }
