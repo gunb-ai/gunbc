@@ -206,6 +206,56 @@ type ShiftRegisterSpecification {
   pins: List<LogicPin>
 }
 
+// A DUAL-SUPPLY LEVEL TRANSLATOR'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH. A data port is one
+// end of a channel and carries signal either way; which way is set by that channel's direction input,
+// and the output enable places every output in three-state. The two supplies are named apart because
+// each port is referenced to its own.
+type TranslatorPinRole
+  = PortA { channel: Nat }
+  | PortB { channel: Nat }
+  | DirectionControl { channel: Nat }
+  | OutputEnable { three_state_when_high: Bool }
+  | TranslatorGround
+  | SupplyA
+  | SupplyB
+
+type TranslatorPin {
+  number: Nat
+  name: NonEmptyStr
+  role: TranslatorPinRole
+}
+
+type LevelTranslatorSpecification {
+  channels: Nat
+  supply_a: MillivoltRange
+  supply_b: MillivoltRange
+  pins: List<TranslatorPin>
+}
+
+// What a net meeting a translator pin is, from the pin's role: one end of a data channel (its direction
+// a live fact of that channel's direction input, not of the pin), a direction or enable input the part
+// receives, its supply or return, or no such pin.
+type TranslatorPinStanding
+  = DataPortOfChannel { pin: TranslatorPin, channel: Nat, b_side: Bool }
+  | ControlIntoTheTranslator { pin: TranslatorPin }
+  | TranslatorSupplyOrReturn { pin: TranslatorPin }
+  | NoTranslatorPinNumbered { number: Nat }
+
+fn translator_pin_standing(spec: LevelTranslatorSpecification, number: Nat) -> TranslatorPinStanding {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoTranslatorPinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      PortA { channel } => DataPortOfChannel { pin: pin, channel: channel, b_side: false }
+      PortB { channel } => DataPortOfChannel { pin: pin, channel: channel, b_side: true }
+      DirectionControl { channel: _ } => ControlIntoTheTranslator { pin: pin }
+      OutputEnable { three_state_when_high: _ } => ControlIntoTheTranslator { pin: pin }
+      TranslatorGround => TranslatorSupplyOrReturn { pin: pin }
+      SupplyA => TranslatorSupplyOrReturn { pin: pin }
+      SupplyB => TranslatorSupplyOrReturn { pin: pin }
+    }
+  }
+}
+
 // Which way a net meeting a shift-register pin runs, from the pin's role: read into the part, driven
 // out of it, a control or clock the part receives, its supply or return, or no such pin.
 type LogicPinDirection
@@ -239,6 +289,7 @@ type ComponentSpecification
   | ConnectorSpec { connector: ConnectorSpecification }
   | HotSwapControllerSpec { controller: HotSwapControllerSpecification }
   | ShiftRegisterSpec { register: ShiftRegisterSpecification }
+  | LevelTranslatorSpec { translator: LevelTranslatorSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -272,5 +323,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     ConnectorSpec { connector: _ } => Absent
     HotSwapControllerSpec { controller: _ } => Absent
     ShiftRegisterSpec { register: _ } => Absent
+    LevelTranslatorSpec { translator: _ } => Absent
   }
 }

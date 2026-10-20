@@ -50,6 +50,14 @@ import extdeps.electronic_component.types {
   SupplyOrReturn,
   NoLogicPinNumbered,
   logic_pin_direction,
+  LevelTranslatorSpec,
+  LevelTranslatorSpecification,
+  TranslatorPinStanding,
+  DataPortOfChannel,
+  ControlIntoTheTranslator,
+  TranslatorSupplyOrReturn,
+  NoTranslatorPinNumbered,
+  translator_pin_standing,
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
@@ -59,6 +67,7 @@ import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
 import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
 import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
 import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
+import extdeps.electronic_component.ti_sn74avc4t774 { sn74avc4t774_rsv }
 import product.electrical.carrier_phase {
   CarrierPhaseObservation, CarrierTransitionObservation, CarrierPhaseStanding, ProtectedBusStanding,
   carrier_phase_standing, protected_bus_standing, phase_by_key, is_phase_classified, is_bus_read, phase_standing_text, protected_bus_text, phases_text,
@@ -938,6 +947,7 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       ConnectorSpec { connector: _ } => Absent
       HotSwapControllerSpec { controller: _ } => Absent
       ShiftRegisterSpec { register: _ } => Absent
+      LevelTranslatorSpec { translator: _ } => Absent
     }
   }
 }
@@ -953,6 +963,7 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       TemperatureSensorSpec { sensor: _ } => Absent
       ConnectorSpec { connector: _ } => Absent
       ShiftRegisterSpec { register: _ } => Absent
+      LevelTranslatorSpec { translator: _ } => Absent
     }
   }
 }
@@ -963,6 +974,50 @@ fn register_of(c: InstalledComponent) -> ShiftRegisterSpecification? {
     Present { value: row } => match row.specification {
       ShiftRegisterSpec { register } => Present { value: register }
       _ => Absent
+    }
+  }
+}
+
+// A LEVEL TRANSLATOR'S PINOUT IS READ FROM ITS CANDIDATE ROW, AND SAID SO. A MarkingCandidate credits no
+// property (identified_row is Absent), but naming a pin under the candidate's pinout is a conditional
+// reading the hypothesis may use; the rendering says 'under the candidate pinout'. An identified row
+// reads unconditionally.
+fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
+  match c.identification {
+    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    MarkingCandidate { row, marking: _, discriminator: _ } => Present { value: row }
+    MarkingSharedByMakers { rows: _, marking: _ } => Absent
+    RatingPrintedOnBody { rating: _, marking: _ } => Absent
+    ResistanceCodeRead { milliohms: _, marking: _ } => Absent
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn translator_of(c: InstalledComponent) -> LevelTranslatorSpecification? {
+  match translator_row_of(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      LevelTranslatorSpec { translator } => Present { value: translator }
+      _ => Absent
+    }
+  }
+}
+
+fn translator_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  match installed(layout: layout, c: c) {
+    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match translator_of(c: x) {
+      Absent => join([component_text(c: c), " carries no level-translator row, so its pin ", to_string(number), " has no role to read"], "")
+      Present { value: t } => {
+        let basis = match identified_row(c: x) { Present { value: _ } => "", Absent => "under the candidate pinout, " }
+        match translator_pin_standing(spec: t, number: number) {
+          DataPortOfChannel { pin, channel, b_side } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is the ", if b_side { "B" } else { "A" }, " end of channel ", to_string(channel), ": a data port whose direction is that channel's direction input, a live fact"], "")
+          ControlIntoTheTranslator { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is a direction or enable input into the part"], "")
+          TranslatorSupplyOrReturn { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+          NoTranslatorPinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+        }
+      }
     }
   }
 }
@@ -1658,7 +1713,7 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "energized, the via on Q301's lead b node (by the visible trace and a reported 0.0 ohm, not a baselined reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down",
     "energized at 54 V (2026-10-20), against J20's black lead: Q300's lead b 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V -- the input. With the via's 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor, and Q300's lead b at 0 V says nothing drives Q300 on. These are readings at P6 and at the parts' pads, not at pin 7, which read 0 V at 48 V on its own lead",
     "unpowered (2026-10-20): across the resistor beside Q301, 26 kohm -- in circuit a resistor reads at or below its value, so it is at least about 26 kohm and '180' as 18 ohm is excluded; enlarged, its marking reads '18D', 150 kohm by the EIA-96 code, unresolved until the third character is confirmed (e1_q301_resistor). Q300's lead b reads 8 kohm to J20's black lead and 24 kohm to VDD's point; the via reads 0.0 to Q301's lead b. The zeros re-read (ZB2 to ZB6) name no dial position, and the shorted probes read '.005' and '.03 or something at 2k', so none of them joins",
-    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Unpowered on the 20k range (2026-10-20), Q300's lead b reads 2.5 to 6 kohm to each of U51's pins 1 to 8, pin 8 (GND under SCLS402R) the same 2.5 kohm as J20's black lead, and the pin 8 pair moves with the range (about 600 ohm on 2k, 20 kohm on 200k; the first report of '20 ohm' was that 200k reading): a path holding a junction, not a join, so no U51 pin is read as the gate node's (q300_gate_path_reading). On the front, beside U92, the operator reports a point near U55 (eight leads, marked 'ZVK' over '22J': TI's 'ZVK' is a 16-pin leadless part, so unresolved) reading lower to Q300's lead b than the return does; its readings join the record once their points are named. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
+    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Unpowered on the 20k range (2026-10-20), Q300's lead b reads 2.5 to 6 kohm to each of U51's pins 1 to 8, pin 8 (GND under SCLS402R) the same 2.5 kohm as J20's black lead, and the pin 8 pair moves with the range (about 600 ohm on 2k, 20 kohm on 200k; the first report of '20 ohm' was that 200k reading): a path holding a junction, not a join, so no U51 pin is read as the gate node's (q300_gate_path_reading). On the front, beside U92, the operator reports a point near U55 (sixteen terminals, marked 'ZVK' over '22J': a candidate SN74AVC4T774 level translator, extdeps.electronic_component.ti_sn74avc4t774, whose top edge under that pinout is DIR2, DIR1, VCCA, VCCB and no data port) reading lower to Q300's lead b than the return does; its readings join the record once their points are named. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
     "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
@@ -2642,16 +2697,19 @@ data e1_u51_resistances: List<ResistanceObservation> = [
   e1_ranged_read(b: e1_ground_ref, ohms: 2500, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_swapped_said),
 ]
 
-// U55 (2026-10-20): on the front beside U92, an eight-lead package, four a side, with a printed triangle
-// at its pin 1; below it a bare two-pad footprint. Its marking is two lines, 'ZVK' over '22J', read by
-// eye and then legible in a photograph. TI's 'ZVK' is the SN74AVC4T774 in a 16-pin leadless UQFN
-// (SCES693I, package option addendum), excluded by this part's eight leads, so the marking stays
-// unresolved: another maker's table, or a TI reuse of the code in a leaded package, would resolve it. The operator reports a
-// point here reading lower to Q300's lead b than the return does; those readings join the record once
-// their points are named.
+// U55 (2026-10-20): on the front beside U92, a small square package with four terminals on each of its
+// four edges and a printed triangle at its pin 1; below it a bare two-pad footprint. Its marking is two
+// lines, 'ZVK' over '22J', read by eye and then legible in a photograph. TI's part marking ZVK is the
+// SN74AVC4T774 in its 16-terminal UQFN (RSV; SCES693I package option addendum), and TI's lot trace
+// marking is a separate line, so U55 is a MarkingCandidate for that row with '22J' recorded as the trace
+// line: no TI logo is read and a code can be reused by another maker, so the candidate credits no
+// property until the orientation reads (pin 8 to the return, pins 13 and 14 to the capacitors above it).
+// Under the candidate pinout the top edge, counted left to right with the triangle at the upper left,
+// is DIR2, DIR1, VCCA, VCCB: no data port. The operator's readings from Q300's lead b toward the bare
+// footprint and U55 join the record once their points are named.
 data e1_u55: ComponentInstanceIdentity = e1_component(local: "U55")
 data e1_u55_footprint: ComponentInstanceIdentity = e1_component(local: "bare two-pad footprint below U55 (designator unread)")
-data e1_u55_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8"]
+data e1_u55_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8", "pin 9", "pin 10", "pin 11", "pin 12", "pin 13", "pin 14", "pin 15", "pin 16"]
 data e1_u55_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads de4b3131, a5fed232, 19a48d02 and 6320a44a: U55 beside U92 and U93 with the FCC mark and MODEL:P4261 below, the triangle at its left, two bare pads under it; the marking 'ZVK' over '22J' legible in the last (not on Drive)")
 
 // THE ENABLE CHAIN, ENERGIZED (2026-10-20, the source at 54 V, against J20's black lead). Q300's lead b
@@ -3050,8 +3108,8 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
     InstalledComponent { component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
     InstalledComponent { component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
-    InstalledComponent { component: e1_u55, terminals: names(ns: e1_u55_pins), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "ZVK / 22J", evidence: e1_u55_photo } }, discriminator: "TI's part marking 'ZVK' is the SN74AVC4T774 in a 16-pin leadless UQFN (SCES693I package option addendum), excluded by this part's eight leads; match 'ZVK' in another maker's table, or in TI's lookup for a leaded eight-pin package" } },
-    InstalledComponent { component: e1_u55_footprint, terminals: names(ns: ["left pad", "right pad"]), identification: MarkingUnresolved { marking: Absent, discriminator: "an unpopulated two-pad footprint; its designator is not printed beside it in the photographs" } },
+    InstalledComponent { component: e1_u55, terminals: names(ns: e1_u55_pins), identification: MarkingCandidate { row: sn74avc4t774_rsv, marking: MarkingReading { text: "ZVK / 22J (ZVK the device marking; 22J a lot trace line)", evidence: e1_u55_photo }, discriminator: "no TI logo is read on the package and a marking code can be reused by another maker; unpowered against a baseline, pin 8 at the return and pins 13 and 14 each to one end of the two capacitors above the part read the orientation and the two supplies, and powered, VCCA and VCCB within 1.1 V to 3.6 V" } },
+    InstalledComponent { component: e1_u55_footprint, terminals: names(ns: ["left pad", "right pad"]), identification: FootprintUnpopulated { evidence: e1_u55_photo } },
   ],
   measured: Present { value: e1_measured },
   input: Present { value: e1_input },
@@ -3360,7 +3418,7 @@ fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
       Present { value: b } => join([
         "Q300 lead b to U51 pin 8 ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))),
         "; Q300 lead b to J20's black lead ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref)),
-        "; no U51 pin is read as Q300 lead b's node",
+        "; no U51 pin is read as Q300 lead b's node. ", translator_pin_text(layout: layout, c: e1_u55, number: 13), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 16), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 12),
       ], "")
     }
   }
@@ -3413,6 +3471,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     ConnectorSpec { connector: _ } => []
     HotSwapControllerSpec { controller: _ } => []
     ShiftRegisterSpec { register: _ } => []
+    LevelTranslatorSpec { translator: _ } => []
   }
 }
 
@@ -3541,6 +3600,7 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     TemperatureSensorSpec { sensor: _ } => ""
     HotSwapControllerSpec { controller: _ } => ""
     ShiftRegisterSpec { register: _ } => ""
+    LevelTranslatorSpec { translator: _ } => ""
   }
 }
 

@@ -295,6 +295,7 @@ import product.p4261_carrier_layout {
   e1_u49,
   e1_u51,
   e1_u55,
+  translator_pin_text,
   e1_u51_pin,
   e1_u51_resistances,
   e1_ranged_read,
@@ -2128,7 +2129,10 @@ fn supplied_pin8_standing(rs: List<ResistanceObservation>) -> PairRangeStanding 
 // terminals and its marking unresolved, the bare footprint below it with two. Supplied on the pin 8
 // pair: 1000 and 1100 ohm on two ranges hold; 1000 and 2001 move, 1000 and 2000 do not (the factor is
 // two, exclusive); a value with its range unrecorded is not counted, so one valued range reads as one;
-// no readings read nothing.
+// no readings read nothing. U55 is a sixteen-terminal MarkingCandidate for TI's SN74AVC4T774 (RSV): it
+// credits no identified row, and its pins read under the candidate pinout, said so: 13 VCCB and 16 DIR2
+// are supply and control, 7 OE control, 12 B1 and 1 A1 the two ends of channel 1, 17 no pin; U51
+// carries no translator row.
 test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
   let live = board_netlist(b: e1_measured)
   let rs = e1_measured.bench.resistances
@@ -2145,8 +2149,16 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
     && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to J20's black lead is valued on one recorded range only (1 readings)")
     && carrier_input_reading(layout: p4261_k1_layout).contains("U55 is not a component of this carrier's observation") == false
     && carrier_input_reading(layout: p4261_k1_layout).contains("U51 is not a component of this carrier's observation")
-    && all(component_of(layout: p4261_e1_layout, c: e1_u55), c => count(c.terminals) == 8)
+    && all(component_of(layout: p4261_e1_layout, c: e1_u55), c => count(c.terminals) == 16 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
     && count(component_of(layout: p4261_e1_layout, c: e1_u55)) == 1
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 13).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 16).contains("under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 7).contains("U55 pin 7 (OE) is a direction or enable input")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 12).contains("U55 pin 12 (B1) is the B end of channel 1: a data port whose direction is that channel's direction input, a live fact")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 1).contains("U55 pin 1 (A1) is the A end of channel 1")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 17).contains("U55 has no pin 17")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u51, number: 1).contains("U51 carries no level-translator row")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return; under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 1100, range: twenty_k)])) == 1
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2001, range: twenty_k)])) == 0
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
