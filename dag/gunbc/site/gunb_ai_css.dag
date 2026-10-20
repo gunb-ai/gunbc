@@ -20,7 +20,7 @@ import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_p
   BorderColor, Cursor, Fill, FillOpacity, OutlineOffset, Stroke, StrokeDasharray, StrokeLinecap, StrokeLinejoin, StrokeOpacity, StrokeWidth }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
-  selector_list_wire, complex_selector_wire, element_compound, class_compound,
+  selector_list_wire, complex_selector_wire, compound_selector_wire, element_compound, class_compound,
 }
 import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, media_condition_wire }
 import extdeps.languages.css.expression {
@@ -92,10 +92,15 @@ type RuleLayout = RuleBlock | RuleInline | RuleInlineStacked
 // data.
 type DeclSeparator = SingleSpace | DoubleSpaceAfterFirst
 
+// The served sheet also writes `.ck-diff-rm  .ck-diff-sign` with two spaces at the combinator, so the
+// descendant column lines up with `.ck-diff-add .ck-diff-sign` beside it; that is a layout fact of the rule.
+type CombinatorSpacing = SingleSpaceCombinator | DoubleSpaceCombinator
+
 type AlignedRule {
   selector: SelectorList
   decls: List<SheetDecl>
   separator: DeclSeparator
+  combinator: CombinatorSpacing
 }
 
 type SheetRule {
@@ -512,7 +517,7 @@ fn class_element(ancestor: String, tag: String) -> SelectorList {
 }
 
 fn colour_rule(name: String, colour: String) -> AlignedRule {
-  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))], separator: SingleSpace }
+  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))], separator: SingleSpace, combinator: SingleSpaceCombinator }
 }
 
 data prose_entries: List<SheetEntry> = [
@@ -542,9 +547,9 @@ data measure_entries: List<SheetEntry> = [
   EntryComment { lines: measure_banner },
   EntryGap { blank_lines: 1 },
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: class_list(name: "measure-prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose"))], separator: SingleSpace },
-    AlignedRule { selector: class_list(name: "measure-page"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-page"))], separator: SingleSpace },
-    AlignedRule { selector: class_list(name: "measure-wide"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-wide"))], separator: SingleSpace },
+    AlignedRule { selector: class_list(name: "measure-prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "measure-page"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-page"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "measure-wide"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-wide"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
 ]
 
@@ -860,8 +865,8 @@ data deck_entries: List<SheetEntry> = [
     ] },
   ]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-dot")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: FontSize, value: sheet_rem(milli: 550))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-file")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)), sheet_ident(property: TextTransform, ident: "none"), sheet_expr(property: FontSize, value: sheet_rem(milli: 660))], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-dot")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: FontSize, value: sheet_rem(milli: 550))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-file")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)), sheet_ident(property: TextTransform, ident: "none"), sheet_expr(property: FontSize, value: sheet_rem(milli: 660))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryGap { blank_lines: 1 },
   block_rule(selector: class_list(name: "ck-line"), items: [
@@ -871,19 +876,19 @@ data deck_entries: List<SheetEntry> = [
     ]),
   ]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-rm"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "clay-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: DoubleSpaceAfterFirst },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-add"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "moss-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: SingleSpace },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-rm"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "clay-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: DoubleSpaceAfterFirst, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-add"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "moss-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryAlignedRules { spaces_after_longest: 3, rules: [
-    AlignedRule { selector: class_list(name: "ck-ln"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint")), sheet_ident(property: UserSelect, ident: "none")], separator: SingleSpace },
-    AlignedRule { selector: class_list(name: "ck-kw"), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace },
-    AlignedRule { selector: class_list(name: "ck-ty"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace },
-    AlignedRule { selector: class_list(name: "ck-com"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint"))], separator: SingleSpace },
+    AlignedRule { selector: class_list(name: "ck-ln"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint")), sheet_ident(property: UserSelect, ident: "none")], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-kw"), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-ty"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-com"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   inline_rule(selector: class_list(name: "ck-diff-sign"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: SelectorList { selectors: [ComplexSelector { compounds: [class_compound(name: "ck-diff-rm"), classes_compound(names: []), class_compound(name: "ck-diff-sign")] }] }, decls: [sheet_expr(property: Color, value: sheet_var(name: "clay"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-add"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-rm"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: DoubleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-add"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   inline_rule(selector: class_list(name: "ck-ref"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })]),
   EntryGap { blank_lines: 1 },
@@ -927,22 +932,22 @@ data deck_entries: List<SheetEntry> = [
   stacked_rule(selector: SelectorList { selectors: [ComplexSelector { compounds: [class_compound(name: "graph-node"), element_compound(tag: "rect")] }, ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-artifact"]), element_compound(tag: "path")] }] }, decls: [sheet_expr(property: Fill, value: sheet_var(name: "void"))]),
   EntryGap { blank_lines: 1 },
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1200 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 750 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 }), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 550 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim")), sheet_expr(property: FillOpacity, value: ValNumber { milli: 400 })], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1200 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 750 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 }), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 550 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim")), sheet_expr(property: FillOpacity, value: ValNumber { milli: 400 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryGap { blank_lines: 1 },
   EntryComment { lines: deck_comment_5 },
@@ -954,15 +959,15 @@ data deck_entries: List<SheetEntry> = [
   EntryComment { lines: deck_comment_6 },
   inline_rule(selector: class_list(name: "graph-edge"), decls: [sheet_ident(property: Fill, ident: "none"), sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 }), sheet_ident(property: StrokeLinecap, ident: "round")]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-stable"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-focus"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-derived"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-transitive"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 700 })], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-artifact"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-removed"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-boundary"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-context"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 500 })], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-skipped"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-stable"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-focus"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-derived"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-transitive"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 700 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-artifact"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-removed"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-boundary"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-context"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 500 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-skipped"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryGap { blank_lines: 1 },
   block_rule(selector: class_list(name: "graph-edge-label"), items: [
@@ -973,21 +978,21 @@ data deck_entries: List<SheetEntry> = [
     ]),
   ]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-stable"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-focus"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-derived"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss-dim"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-transitive"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-artifact"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-removed"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-boundary"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-context"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-faint"))], separator: SingleSpace },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-stable"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-focus"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-derived"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-transitive"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-artifact"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-removed"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-boundary"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-context"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-faint"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryGap { blank_lines: 1 },
   EntryComment { lines: deck_comment_7 },
   inline_rule(selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: element_compound(tag: "rect")), decls: [sheet_ident(property: Fill, ident: "none"), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 })]),
   EntryAlignedRules { spaces_after_longest: 1, rules: [
-    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-budget" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: Fill, value: sheet_var(name: "moss-subtle"))], separator: SingleSpace },
-    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-overage" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: Fill, value: sheet_var(name: "clay-subtle"))], separator: SingleSpace },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-budget" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: Fill, value: sheet_var(name: "moss-subtle"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-overage" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: Fill, value: sheet_var(name: "clay-subtle"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   block_rule(selector: class_list(name: "cost-area-label"), items: [
     compact_decls(decls: [
@@ -1092,10 +1097,10 @@ data deck_entries: List<SheetEntry> = [
     ]),
   ]),
   EntryAlignedRules { spaces_after_longest: 2, rules: [
-    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: BorderColor, value: sheet_var(name: "moss-dim"))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "focus-visible" }] }), decls: [sheet_expr(property: Outline, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "moss")])), sheet_expr(property: OutlineOffset, value: sheet_px(milli: 2000))], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }] }), decls: [sheet_expr(property: Opacity, value: ValNumber { milli: 300 }), sheet_ident(property: Cursor, ident: "not-allowed")], separator: SingleSpace },
-    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: BorderColor, value: sheet_var(name: "border-dark"))], separator: SingleSpace },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: BorderColor, value: sheet_var(name: "moss-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "focus-visible" }] }), decls: [sheet_expr(property: Outline, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "moss")])), sheet_expr(property: OutlineOffset, value: sheet_px(milli: 2000))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }] }), decls: [sheet_expr(property: Opacity, value: ValNumber { milli: 300 }), sheet_ident(property: Cursor, ident: "not-allowed")], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: BorderColor, value: sheet_var(name: "border-dark"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
   EntryGap { blank_lines: 1 },
   EntryComment { lines: deck_comment_10 },
@@ -1234,8 +1239,15 @@ fn media_wire(condition: MediaCondition, rules: List<SheetRule>) -> String {
   join(["@media ", media_condition_wire(c: condition), " {\n", join(map(rules, r => rule_wire(rule: r, indent: 2)), ""), "}\n"], "")
 }
 
+fn aligned_selector_wire(r: AlignedRule) -> String {
+  match r.combinator {
+    SingleSpaceCombinator => selector_list_wire(l: r.selector)
+    DoubleSpaceCombinator => join(map(r.selector.selectors, c => join(map(c.compounds, k => compound_selector_wire(c: k)), "  ")), ", ")
+  }
+}
+
 fn selector_width(r: AlignedRule) -> Int {
-  0 + selector_list_wire(l: r.selector).length()
+  0 + aligned_selector_wire(r: r).length()
 }
 
 fn longest_selector(rules: List<AlignedRule>) -> Int {
@@ -1263,7 +1275,7 @@ fn aligned_decls_wire(r: AlignedRule) -> String {
 }
 
 fn aligned_rule_wire(r: AlignedRule, rules: List<AlignedRule>, spaces_after_longest: Int) -> String {
-  join([selector_list_wire(l: r.selector), repeat_string(s: " ", n: longest_selector(rules: rules) + spaces_after_longest - selector_width(r: r)), "{ ", aligned_decls_wire(r: r), " }\n"], "")
+  join([aligned_selector_wire(r: r), repeat_string(s: " ", n: longest_selector(rules: rules) + spaces_after_longest - selector_width(r: r)), "{ ", aligned_decls_wire(r: r), " }\n"], "")
 }
 
 fn entry_wire(e: SheetEntry) -> String {
