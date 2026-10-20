@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_drops_rederivation_instrument_sits_in_the_population_it_measures: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_drops_rederivation_instrument_sits_in_the_population_it_measures" as NonEmptyStr,
+
+  receipts: [
+    "**a declared drop is bounded by a census, and the census is itself a module of the population the drop covers, so the population can break the instrument that would count it and nothing goes red.** INVALID STATE: gunbc.rung_drop v1_required_lanes_withdrawn names its population as what gunbc test //gunbc/instruments:required-lane-resolution-census enumerates, and that instrument's entry (gunbc.required_lane_resolution_census_live) imports modules that are outside the two emitted closures, so a refusal in any of them stops the instrument at resolve before it prints a single module. The drop's re-derivation then answers nothing, while the drop still reads as bounded.",
+
+    "HARM. The drop becomes unbounded with nothing red. The required job v2-bootstrap judges only the two emitted closures, so it stays green when the census's own closure stops resolving; the census is not a required context, so its failure is a dispatch-time exit and nobody is looking. A reader who cites the drop as a bounded population is citing a number no instrument can currently produce.",
+
+    "DISTINGUISHING FACTS, both measured by executed runs of the dispatched instrument (instrument-dispatch, label //gunbc/instruments:required-lane-resolution-census, exit 1 both times, no module list printed). At main 0ac3102d1b07 (run 39387690147): resolve failed for dag/gunbc/required_lane_resolution_census_live.dag at dag/gunbc/roadmap/roadmap_authority.dag:2989 with call shape mismatch calling updated, argument on and argument note each supplied more than once. At main 585d918af6c3 (run 39389715573), after that line was repaired: dag/extdeps/github/expressions.dag:702:9 non-exhaustive match, missing variant LogicalNot, and dag/gunbc/roadmap/roadmap_event_carrier.dag:444:117 type mismatch, expected Int, got RoadmapEventId. Over the same interval the required job v2-bootstrap succeeded at 585d918af6c3 (run 39385184965): it records each emitted closure only as a closure_identity hash and an emitted file count, not as a module list, so the closures the drop is defined against exist only inside the job. This differs from a_census_is_cited_wider_than_the_closure_its_instrument_compiles, whose reading is present and correct but cited too wide, and from an_instrument_resolves_wider_than_the_subject_it_measures, whose instrument dies on cost; here the instrument is refused on correctness, by modules it was supposed to be counting.",
+
+    "RUNG FOUND AT: mitigatable. The break is found only when someone dispatches the census by hand. CEILING: mechanically preventable now (the census judged on a path that runs when its closure changes), structurally guaranteed once the census is a row judged on the required path by the native binary, whose refusal is a located typed mismatch rather than a seed resolve exit. It cannot be structurally impossible while the population is deliberately larger than what the required job compiles, because that gap is the drop itself.",
+
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: the census is judged on the required path by the native binary, so a refusal anywhere in its closure fails a required context, and the two emitted closures are recorded by module identity in the job's own output so the drop's population can be joined against them. Waits on Charter 6 (native compiler judging the withdrawn population). NOT satisfied by an author re-running the census by hand after each break, which is the mode that let two SHAs pass unobserved.",
+  ],
+
+  evidence: [],
+}
