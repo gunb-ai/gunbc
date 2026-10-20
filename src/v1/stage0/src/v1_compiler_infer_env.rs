@@ -3065,9 +3065,6 @@ pub enum TypeReferenceDeclarationReading {
     TypeReferenceIsTypeVariable {
         id: String,
     },
-    TypeReferenceUninstantiatedTypeParameter {
-        name: String,
-    },
     TypeReferenceUnidentified {
         authored: Rc<TypeNodeUnidentifiedCause>,
         resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
@@ -3130,13 +3127,6 @@ pub fn type_reference_declaration_reading(
     }
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
-        || (name.clone() == "V".to_string()))
-        || (name.clone() == "MappedElement".to_string()))
-        || (name.clone() == "FoldAccumulator".to_string()))
-}
-
 pub fn kernel_or_unidentified(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3155,23 +3145,10 @@ pub fn kernel_or_unidentified(
                         name: nm.clone(),
                     })
                 } else {
-                    if (is_type_variable_name(nm.clone()) || is_type_variable_name(n.name.clone()))
-                    {
-                        Rc::new(TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
-    name: nm.clone(),
-})
-                    } else {
-                        if node_is_kernel_mint(n.clone()) {
-                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                                name: nm.clone(),
-                            })
-                        } else {
-                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                                authored: authored.clone(),
-                                resolved: resolved.clone(),
-                            })
-                        }
-                    }
+                    Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                        authored: authored.clone(),
+                        resolved: resolved.clone(),
+                    })
                 }
             }
         }
@@ -3329,10 +3306,6 @@ pub fn text_element_is_char(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => {
                     TextRepresentation::NotText
                 }
-                TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
-                    name: _,
-                    ..
-                } => TextRepresentation::NotText,
                 TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
                     TextRepresentation::TextRepresentationUnidentified
                 }
@@ -3406,74 +3379,140 @@ pub fn text_representation_by_identity_bounded(
                             }
                         }
                     } else {
-                        match (*type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
-    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { if kernel_other.clone() {
-                            break TextRepresentation::NotText;
-} else {
-                            break TextRepresentation::TextRepresentationUnidentified;
-} },
-    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { if (k.clone() == "String".to_string()) {
-                            break TextRepresentation::HostText;
-} else {
-                            break TextRepresentation::NotText;
-} },
-    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break TextRepresentation::NotText; },
-    TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter { name: _, .. } => { break TextRepresentation::NotText; },
-    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { if crate::std_decl_ref::declaration_ref_eq(d.clone(), text_identity_std_algebra_free_monoid()) {
-                            break text_element_is_char(n.clone(), env.clone());
-} else {
-                            let key = crate::std_decl_ref::declaration_ref_display_key(d.clone());
-if { let mut __found = false; for v in visited.iter().cloned() { if (v.clone() == key.clone()) { __found = true; break; } } __found } {
-                                break TextRepresentation::TextRepresentationUnidentified;
-} else {
-                                match declaration_binding_of_ref(d.clone(), env.clone()) {
-    std::option::Option::None => { break TextRepresentation::TextRepresentationUnidentified; },
-    Some(b) => { let decl = b.resolved.clone();
-let is_alias = ((decl.connective.clone() == Connective::NoConnective) && ((decl.children.clone().len() as i64) == 0));
-if is_where_refinement_node(decl.clone()) {
-                                    {
-                                        let __tco_0 = decl.clone();
-let __tco_1 = env;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
-__tco_loop_n = __tco_0;
-__tco_loop_env = __tco_1;
-__tco_loop_fuel = __tco_2;
-__tco_loop_visited = __tco_3;
-continue;
-}
-} else {
-                                    if !is_alias.clone() {
-                                        break TextRepresentation::NotText;
-} else {
-                                        match decl.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: target, .. }) => { let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                        match (*type_reference_declaration_reading(
+                            n.clone(),
+                            env.source_indices.clone(),
+                            env.clone(),
+                        ))
+                        .clone()
+                        {
+                            TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                                ..
+                            } => {
+                                if kernel_other.clone() {
+                                    break TextRepresentation::NotText;
+                                } else {
+                                    break TextRepresentation::TextRepresentationUnidentified;
+                                }
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                                name: k,
+                                ..
+                            } => {
+                                if (k.clone() == "String".to_string()) {
+                                    break TextRepresentation::HostText;
+                                } else {
+                                    break TextRepresentation::NotText;
+                                }
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable {
+                                id: _,
+                                ..
+                            } => {
+                                break TextRepresentation::NotText;
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                                declaration: d,
+                                ..
+                            } => {
+                                if crate::std_decl_ref::declaration_ref_eq(
+                                    d.clone(),
+                                    text_identity_std_algebra_free_monoid(),
+                                ) {
+                                    break text_element_is_char(n.clone(), env.clone());
+                                } else {
+                                    let key =
+                                        crate::std_decl_ref::declaration_ref_display_key(d.clone());
+                                    if {
+                                        let mut __found = false;
+                                        for v in visited.iter().cloned() {
+                                            if (v.clone() == key.clone()) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } {
+                                        break TextRepresentation::TextRepresentationUnidentified;
+                                    } else {
+                                        match declaration_binding_of_ref(d.clone(), env.clone()) {
+                                            std::option::Option::None => {
+                                                break TextRepresentation::TextRepresentationUnidentified;
+                                            }
+                                            Some(b) => {
+                                                let decl = b.resolved.clone();
+                                                let is_alias = ((decl.connective.clone()
+                                                    == Connective::NoConnective)
+                                                    && ((decl.children.clone().len() as i64) == 0));
+                                                if is_where_refinement_node(decl.clone()) {
+                                                    {
+                                                        let __tco_0 = decl.clone();
+                                                        let __tco_1 = env;
+                                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                                        let __tco_3 = v1_rt::concat(
+                                                            visited,
+                                                            Rc::new(vec![key.clone()]),
+                                                        );
+                                                        __tco_loop_n = __tco_0;
+                                                        __tco_loop_env = __tco_1;
+                                                        __tco_loop_fuel = __tco_2;
+                                                        __tco_loop_visited = __tco_3;
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    if !is_alias.clone() {
+                                                        break TextRepresentation::NotText;
+                                                    } else {
+                                                        match decl
+                                                            .inferred
+                                                            .clone()
+                                                            .as_deref()
+                                                            .cloned()
+                                                        {
+                                                            Some(InferredNode::Resolved {
+                                                                node: target,
+                                                                ..
+                                                            }) => {
+                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
-if target_is_itself.clone() {
-                                            break TextRepresentation::NotText;
-} else {
-                                            {
-                                                let __tco_0 = target.clone();
-let __tco_1 = env;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
-__tco_loop_n = __tco_0;
-__tco_loop_env = __tco_1;
-__tco_loop_fuel = __tco_2;
-__tco_loop_visited = __tco_3;
-continue;
-}
-} },
-    _ => { break TextRepresentation::NotText; },
-}
-}
-} },
-}
-}
-} },
-}
+                                                                if target_is_itself.clone() {
+                                                                    break TextRepresentation::NotText;
+                                                                } else {
+                                                                    {
+                                                                        let __tco_0 =
+                                                                            target.clone();
+                                                                        let __tco_1 = env;
+                                                                        let __tco_2 =
+                                                                            v1_rt::int_sub(fuel, 1);
+                                                                        let __tco_3 = v1_rt::concat(
+                                                                            visited,
+                                                                            Rc::new(vec![
+                                                                                key.clone()
+                                                                            ]),
+                                                                        );
+                                                                        __tco_loop_n = __tco_0;
+                                                                        __tco_loop_env = __tco_1;
+                                                                        __tco_loop_fuel = __tco_2;
+                                                                        __tco_loop_visited =
+                                                                            __tco_3;
+                                                                        continue;
+                                                                    }
+                                                                }
+                                                            }
+                                                            _ => {
+                                                                break TextRepresentation::NotText;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
