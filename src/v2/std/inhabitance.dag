@@ -50,11 +50,12 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.node_query { declared_field_from_edge }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_is_optional, declaration_denotation_of_type, optional_declaration_identity }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_is_optional, declaration_denotation_of_type }
 import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
   TypeNodeOccupancy,
+  type_node_occupancy_child,
   type_node_occupancy_read
 }
 import std.roster_frontier { FrontierRow, PathSubject }
@@ -478,33 +479,6 @@ fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -
     })
 }
 
-// AN OPTIONAL IS JUDGED AS THE std.optional INSTANCE IT DENOTES, SO ITS PAYLOAD IS JUDGED. `T?` (Occupancy)
-// and an applied `Optional<T>` (Instantiation) are two spellings of one declaration, and
-// v2.std.qualified_name declaration_denotation_of_type reads both as optional_declaration_identity()
-// applied to one payload. The relation therefore peels the optional layer on the declared side by
-// declaration identity and judges the payload at the payload: an optional produced at an optional
-// compares payloads (`Optional<String>` at `Int?` refuses on String against Int), and a value that is
-// not an optional is NOT lifted: the authoring policy is explicit Present (gunbc.design_ruling
-// explicit_present_is_the_authoring_policy), so it is judged structurally against the optional and refuses. A produced optional layer
-// against a declared payload that is not an optional is the optional-at-required refusal; a declared
-// payload that is an optional against a produced payload that is not one is a depth mismatch
-// (only the lift from a non-optional spans several layers). The class is
-// gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared (its v2 route).
-fn inhabitance_optional_payload(t: Node) -> Optional<Node> {
-  match declaration_denotation_of_type(t: t) {
-    Absent => Absent
-    Present { value: denotation } =>
-      if denotation.declaration == optional_declaration_identity() {
-        match denotation.type_arguments {
-          Cons { head: payload, tail: Empty } => Present { value: payload }
-          _ => Absent
-        }
-      } else {
-        Absent
-      }
-  }
-}
-
 fn inhabitance_with_payloads(obligation: DeclaredTypeObligation, declared: Node, produced: Node, carrier: Optional<Node>) -> DeclaredTypeObligation {
   DeclaredTypeObligation {
     position: obligation.position,
@@ -517,15 +491,27 @@ fn inhabitance_with_payloads(obligation: DeclaredTypeObligation, declared: Node,
   }
 }
 
+// AN OPTIONAL IS JUDGED AS THE std.optional INSTANCE IT DENOTES, SO ITS PAYLOAD IS JUDGED. `T?` (Occupancy)
+// and an applied `Optional<T>` (Instantiation) are two spellings of one declaration, and
+// v2.std.qualified_name declaration_denotation_of_type reads both as optional_declaration_identity()
+// applied to one payload. The relation therefore peels the optional layer on the declared side by
+// declaration identity (v2.std.optional_layers type_node_occupancy_child) and judges the payload at the payload: an optional produced at an optional
+// compares payloads (`Optional<String>` at `Int?` refuses on String against Int), and a value that is
+// not an optional is NOT lifted: the authoring policy is explicit Present (gunbc.design_ruling
+// explicit_present_is_the_authoring_policy), so it is judged structurally against the optional and refuses. A produced optional layer
+// against a declared payload that is not an optional is the optional-at-required refusal; a declared
+// payload that is an optional against a produced payload that is not one is a depth mismatch
+// (only the lift from a non-optional spans several layers). The class is
+// gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared (its v2 route).
 fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
-  match inhabitance_optional_payload(t: obligation.declared) {
+  match type_node_occupancy_child(n: obligation.declared) {
     Absent => declared_type_inhabitance_structural(obligation: obligation)
     Present { value: declared_payload } =>
-      match inhabitance_optional_payload(t: obligation.produced) {
+      match type_node_occupancy_child(n: obligation.produced) {
         Present { value: produced_payload } =>
-          match inhabitance_optional_payload(t: declared_payload) {
+          match type_node_occupancy_child(n: declared_payload) {
             Present { value: _ } =>
-              match inhabitance_optional_payload(t: produced_payload) {
+              match type_node_occupancy_child(n: produced_payload) {
                 Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
                 Present { value: _ } =>
                   declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
