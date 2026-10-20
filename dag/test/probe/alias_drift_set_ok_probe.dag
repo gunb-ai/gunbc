@@ -1,0 +1,8 @@
+module test.probe.alias_drift_set_ok_probe
+
+import std.types { Set }
+import std.algebra { FinitePowerSet }
+
+fn takes_finite_power_set(xs: FinitePowerSet<Int>) -> Int { 0 }
+
+fn passes_set_as_finite_power_set(xs: Set<Int>) -> Int { takes_finite_power_set(xs: xs) }

@@ -1,0 +1,8 @@
+module test.probe.alias_drift_wrong_carrier_probe
+
+import std.types { Set }
+import std.algebra { FreeMonoid }
+
+fn takes_set(xs: Set<Int>) -> Int { 0 }
+
+fn passes_free_monoid_as_set(xs: FreeMonoid<Int>) -> Int { takes_set(xs: xs) }

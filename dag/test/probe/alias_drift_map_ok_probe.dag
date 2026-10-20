@@ -1,0 +1,8 @@
+module test.probe.alias_drift_map_ok_probe
+
+import std.types { Map }
+import std.algebra { FinitelySupportedFunction }
+
+fn takes_fsf(xs: FinitelySupportedFunction<Int, Int>) -> Int { 0 }
+
+fn passes_map_as_fsf(xs: Map<Int, Int>) -> Int { takes_fsf(xs: xs) }

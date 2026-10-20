@@ -1,0 +1,8 @@
+module test.probe.alias_drift_list_ok_probe
+
+import std.types { List }
+import std.algebra { FreeMonoid }
+
+fn takes_free_monoid(xs: FreeMonoid<Int>) -> Int { 0 }
+
+fn passes_list_as_free_monoid(xs: List<Int>) -> Int { takes_free_monoid(xs: xs) }
