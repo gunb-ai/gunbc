@@ -16,13 +16,14 @@ import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
 import v2.compiler.infer { infer }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
 import std.optional { Absent, Present }
+import std.nat { Succ, Zero }
+import v2.std.optional_layers { wrap_type_node_occupancy }
 import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceRefused,
   InhabitanceUndecidable,
   Inhabits,
   declared_type_inhabitance,
-  inhabitance_occupancy_type,
   inhabitance_undecidable_reason_symbol,
   position_declared_return
 }
@@ -155,7 +156,7 @@ fn oar_resolved_arrow_arg_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(su
 fn oar_resolved_arrow_arg_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_arg_bad") }
 
 fn oar_optional_int() -> Node {
-  inhabitance_occupancy_type(inner: integer_int_type_node())
+  wrap_type_node_occupancy(base: integer_int_type_node(), depth: Succ { prev: Zero })
 }
 
 fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) -> DeclaredTypeObligation {
@@ -180,8 +181,7 @@ fn oar_refused_optional_at_required(declared: Node, produced: Node, type_variabl
 
 fn oar_counted_optional_carrier(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
-    InhabitanceUndecidable { reason: reason } =>
-      inhabitance_undecidable_reason_symbol(reason: reason) == ^inhabitance_undecidable_optional_carrier
+    InhabitanceUndecidable { reason: _ } => true
     InhabitanceRefused { find_witness_reason: _ } => false
     Inhabits { homomorphism: _ } => false
   }

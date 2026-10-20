@@ -24,7 +24,6 @@ import v2.std.node {
   ComputationNode,
   close_lowered_image,
   Atom,
-  Occupancy,
   Conj,
   Edge,
   Authored,
@@ -134,7 +133,6 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -683,7 +681,6 @@ fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symb
                 TypeNode { connective: Atom { identity: _ } } => false
                 TypeNode { connective: Disj } => false
                 TypeNode { connective: Arrow } => false
-                TypeNode { connective: Occupancy } => false
                 TypeNode { connective: Instantiation } => false
                 ComputationNode { behavior: _ } => false
               }

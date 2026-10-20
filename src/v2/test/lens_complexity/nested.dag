@@ -28,7 +28,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Atom,
-  Occupancy,
+  Instantiation,
   ComputationNode,
   Edge,
   Node,
@@ -63,7 +63,7 @@ data nested_body: Node = Node {
 }
 
 data nested_inner: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: TypeNode { connective: Instantiation },
   children: [
     Edge { label: Positional, target: nested_body }
   ],
@@ -71,7 +71,7 @@ data nested_inner: Node = Node {
 }
 
 data nested_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: TypeNode { connective: Instantiation },
   children: [
     Edge { label: Positional, target: nested_inner }
   ],
