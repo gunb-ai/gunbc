@@ -558,21 +558,8 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
               declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
           }
         Absent =>
-          inhabitance_implicit_lift_refused(verdict: declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: obligation.produced, carrier: obligation.produced_declared_carrier)))
+          declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: obligation.produced, carrier: obligation.produced_declared_carrier))
       }
-  }
-}
-
-// A VALUE THAT IS NOT AN OPTIONAL DOES NOT INHABIT AN OPTIONAL: THE LIFT IS EXPLICIT. Present { value: x }
-// is the authoring policy (gunbc.design_ruling explicit_present_is_the_authoring_policy), so a payload that
-// would inhabit the declared payload is still no candidate for the optional itself. The payload is still
-// judged, not guessed: a refusal keeps its own reason and an undecidable payload stays undecidable, so only
-// the admission is removed.
-fn inhabitance_implicit_lift_refused(verdict: InhabitanceVerdict) -> InhabitanceVerdict {
-  match verdict {
-    Inhabits { homomorphism: _ } => InhabitanceRefused { find_witness_reason: ^find_witness_reason_no_candidate }
-    InhabitanceRefused { find_witness_reason: r } => InhabitanceRefused { find_witness_reason: r }
-    InhabitanceUndecidable { reason: r } => InhabitanceUndecidable { reason: r }
   }
 }
 
