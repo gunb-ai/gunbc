@@ -758,16 +758,19 @@ fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
 fn bind_slot_target_from(edges: List<Edge>, ordinal: Int, slot: BindSlot) -> Optional<Node> {
   match edges {
     Empty => optional_absent()
-    Cons { head: e, tail: rest } =>
-      if is_positional(e: e) {
-        if bind_positional_slot(ordinal: ordinal) == slot {
-          optional_present(value: e.target)
-        } else {
-          bind_slot_target_from(edges: rest, ordinal: ordinal + 1, slot: slot)
-        }
-      } else {
-        bind_slot_target_from(edges: rest, ordinal: ordinal, slot: slot)
-      }
+    Cons { head: e, tail: rest } => bind_slot_target_at(e: e, rest: rest, ordinal: ordinal, slot: slot)
+  }
+}
+
+fn bind_slot_target_at(e: Edge, rest: List<Edge>, ordinal: Int, slot: BindSlot) -> Optional<Node> {
+  if is_positional(e: e) {
+    if bind_positional_slot(ordinal: ordinal) == slot {
+      optional_present(value: e.target)
+    } else {
+      bind_slot_target_from(edges: rest, ordinal: ordinal + 1, slot: slot)
+    }
+  } else {
+    bind_slot_target_from(edges: rest, ordinal: ordinal, slot: slot)
   }
 }
 
