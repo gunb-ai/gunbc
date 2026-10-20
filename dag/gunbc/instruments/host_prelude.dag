@@ -245,6 +245,22 @@ fn claim_batch_claim_args(acc: List<String>, last_entry: String, c: ClaimRun) ->
 }
 
 fn claim_batch_claims_argv(source_roots: List<String>, claims: List<ClaimRun>) -> List<String> {
+  claim_batch_claims_argv_route(source_roots: source_roots, claims: claims, wet: true)
+}
+
+// THE ARGV WITH ITS ROUTE CHOSEN BY THE CALLER. `claim_batch_claims_argv` has always appended `--wet`,
+// which is correct for its own pooled call and for every caller that means "run the wet lane", but it
+// hard-codes one roster's route onto every consumer. The known-red instrument must ask a wet-schedule
+// subject on the wet route and a `floor_expected_red` roster-only subject on the HERMETIC route (the
+// roster's own governing route), because a subject run on a route its expectation does not govern answers
+// a question nobody asked. `--wet` is the wet route; omitting it leaves the harness's own default
+// (`ExecutionMode::Hermetic`) in force. The route is a flag the CALLER owns, so it is a parameter here,
+// not a constant folded into the builder.
+fn claim_batch_claims_argv_route(
+  source_roots: List<String>,
+  claims: List<ClaimRun>,
+  wet: Bool
+) -> List<String> {
   let grouped = fold(
     claims,
     init: ClaimBatchArgvAcc { args: [], last_entry: "" },
@@ -257,7 +273,11 @@ fn claim_batch_claims_argv(source_roots: List<String>, claims: List<ClaimRun>) -
   )
   concat(
     concat(source_root_transport_argv(roots: source_roots), grouped.args),
-    ["--claim-run", "--wet"]
+    if wet {
+      ["--claim-run", "--wet"]
+    } else {
+      ["--claim-run"]
+    }
   )
 }
 

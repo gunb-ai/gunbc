@@ -390,6 +390,12 @@ type KnownRedPlacedSubject {
   identity: WitnessIdentity
   path: String
   function: String
+  // THE LANE THAT OWES THIS SUBJECT, carried through placement so the dispatch can key the ROUTE by it.
+  // `origin` is decided by which population first claims the identity (the wet schedule's row, or the
+  // `floor_expected_red` roster) and is preserved by the identity dedup; a subject's expectation is
+  // governed by exactly one roster, and each roster governs one route, so the lane — not a fixed flag —
+  // decides whether the child is asked wet or hermetic.
+  lane: KnownRedSubjectPopulation
 }
 
 fn known_red_dispatchable(subjects: List<KnownRedSubject>) -> List<KnownRedPlacedSubject> {
@@ -404,7 +410,7 @@ fn known_red_dispatchable(subjects: List<KnownRedSubject>) -> List<KnownRedPlace
           Placed { path: p } =>
             list_snoc_item(
               xs: acc,
-              item: KnownRedPlacedSubject { identity: s.identity, path: p, function: s.function }
+              item: KnownRedPlacedSubject { identity: s.identity, path: p, function: s.function, lane: s.origin }
             )
           Underivable { name: _, cause: _ } => acc
         }
@@ -525,14 +531,34 @@ type KnownRedChildRun
 // child rather than being cut (cutting it would re-pay exactly the resolve the grouping exists to avoid).
 // No entry in the schedule owes that many at this commit, and the run prints its largest child so the
 // number is observed, never transcribed.
-fn known_red_chunks(placed: List<KnownRedPlacedSubject>) -> List<List<ClaimRun>> {
-  known_red_pack_groups(groups: known_red_entry_groups(placed: placed), current: [], out: [])
+// THE CHUNKING, AND THE ROUTE EACH CHUNK RUNS ON. `lane` travels with the chunk because the route is a
+// property of the CHILD, not of an individual claim: `claim_batch` takes one `--wet` flag for a whole
+// invocation, so every claim a child runs must be on the route that child was given. Keying the entry
+// groups by `(entry, lane)` — not by `entry` alone — makes that a structural fact: the two populations can
+// never be packed into one child, so a wet-schedule claim and a roster-only claim that happen to resolve to
+// the same file cannot drag each other onto the wrong route. (Measured: at the current tree no entry is
+// claimed by both populations, so this splits nothing today; the key is the invariant, not an optimization.)
+fn known_red_chunks(placed: List<KnownRedPlacedSubject>) -> List<KnownRedChildPlan> {
+  known_red_pack_groups(
+    groups: known_red_entry_groups(placed: placed),
+    current: [],
+    current_lane: WetLane,
+    out: []
+  )
 }
 
-// ALL OF ONE ENTRY'S CLAIMS, TOGETHER, in the order the schedule owes them. The entry is the unit of
-// resolution, so it is the unit of packing.
+// ALL OF ONE ENTRY'S CLAIMS ON ONE ROUTE, TOGETHER, in the order the lane owes them. The entry is the unit
+// of resolution and the lane is the unit of route, so together they are the unit of packing.
 type KnownRedEntryGroup {
   entry: String
+  lane: KnownRedSubjectPopulation
+  claims: List<ClaimRun>
+}
+
+// ONE CHILD'S WORK: a run's worth of claims, and the route that run is asked on. The route is carried next
+// to the claims precisely so it cannot be decided later, from a claim the packer no longer has in hand.
+type KnownRedChildPlan {
+  lane: KnownRedSubjectPopulation
   claims: List<ClaimRun>
 }
 
@@ -546,49 +572,64 @@ fn known_red_group_add(groups: List<KnownRedEntryGroup>, placed_subject: KnownRe
   // `Underivable` arm adds nothing. So there is no empty-string entry that could be packed, and no
   // `--entry ""` that could reach the harness.
   let path = placed_subject.path
+  let lane = placed_subject.lane
   let claim = ClaimRun { entry: path, function: placed_subject.function }
-  if known_red_has_entry(groups: groups, entry: path) {
+  if known_red_has_entry(groups: groups, entry: path, lane: lane) {
     map(
       groups,
       g =>
-        if g.entry == path {
-          KnownRedEntryGroup { entry: g.entry, claims: list_snoc_item(xs: g.claims, item: claim) }
+        if g.entry == path && g.lane == lane {
+          KnownRedEntryGroup { entry: g.entry, lane: g.lane, claims: list_snoc_item(xs: g.claims, item: claim) }
         } else {
           g
         }
     )
   } else {
-    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: path, claims: [claim] })
+    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: path, lane: lane, claims: [claim] })
   }
 }
 
-fn known_red_has_entry(groups: List<KnownRedEntryGroup>, entry: String) -> Bool {
-  any(xs: groups, predicate: fn(g) { g.entry == entry })
+fn known_red_has_entry(groups: List<KnownRedEntryGroup>, entry: String, lane: KnownRedSubjectPopulation) -> Bool {
+  any(xs: groups, predicate: fn(g) { g.entry == entry && g.lane == lane })
 }
 
 fn known_red_pack_groups(
   groups: List<KnownRedEntryGroup>,
   current: List<ClaimRun>,
-  out: List<List<ClaimRun>>
-) -> List<List<ClaimRun>> {
+  current_lane: KnownRedSubjectPopulation,
+  out: List<KnownRedChildPlan>
+) -> List<KnownRedChildPlan> {
   match groups {
     Empty =>
       if length(xs: current) > 0 {
-        list_snoc_item(xs: out, item: current)
+        list_snoc_item(xs: out, item: KnownRedChildPlan { lane: current_lane, claims: current })
       } else {
         out
       }
     Cons { head: g, tail: t } =>
       if length(xs: current) > 0
-        && (length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child
+        && (g.lane != current_lane
+          || length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child
           || known_red_child_has_name_clash(current: current, incoming: g.claims)) {
         known_red_pack_groups(
           groups: t,
           current: g.claims,
-          out: list_snoc_item(xs: out, item: current)
+          current_lane: g.lane,
+          out: list_snoc_item(xs: out, item: KnownRedChildPlan { lane: current_lane, claims: current })
+        )
+      } else if length(xs: current) == 0 {
+        // FRESH START TAKES THE GROUP'S OWN LANE. `known_red_chunks` seeds `current_lane` at `WetLane` only
+        // because the fold needs some value before the first group is seen; it is NOT a default route. On an
+        // empty accumulator the child being begun belongs to THIS group, so its route is `g.lane` — a
+        // roster-only group arriving first must not inherit the `WetLane` seed and be asked `--wet`.
+        known_red_pack_groups(
+          groups: t,
+          current: g.claims,
+          current_lane: g.lane,
+          out: out
         )
       } else {
-        known_red_pack_groups(groups: t, current: concat(current, g.claims), out: out)
+        known_red_pack_groups(groups: t, current: concat(current, g.claims), current_lane: current_lane, out: out)
       }
   }
 }
@@ -600,7 +641,7 @@ fn known_red_largest_child_claims(placed: List<KnownRedPlacedSubject>) -> Int {
   fold(
     xs: known_red_chunks(placed: placed),
     init: 0,
-    f: (acc, c) => if length(xs: c) > acc { length(xs: c) } else { acc }
+    f: (acc, c) => if length(xs: c.claims) > acc { length(xs: c.claims) } else { acc }
   )
 }
 
@@ -608,20 +649,28 @@ fn known_red_entries_owed(placed: List<KnownRedPlacedSubject>) -> Int {
   length(xs: known_red_entry_groups(placed: placed))
 }
 
-// THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the host prelude's own gate: a
-// binary that is unenrolled, unbuilt, absent, empty, or not executable is a refusal the caller can NAME,
-// not a child that silently never started. `witness_bin_release_path` is the same path the gate checked,
-// and `claim_batch_claims_argv` is the same builder the gate's pooled call uses, so what is parsed below
-// is exactly what was executed and the receipt cannot be filed against a different binary.
-fn known_red_run_child(root: String, claims: List<ClaimRun>) -> KnownRedChildRun {
+// THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the gate: a binary that is
+// unenrolled, unbuilt, absent, empty, or not executable is a refusal the caller can NAME, not a child that
+// silently never started. `witness_bin_release_path` is the same path the gate checked, and
+// `claim_batch_claims_argv_route` is the same builder the gate's pooled call uses, so what is parsed below
+// is exactly what was executed and the receipt cannot be filed against a different binary. THE ROUTE IS THE
+// PLAN'S, NOT THE BUILDER'S DEFAULT: the wet lane is asked `--wet`, the `floor_expected_red` roster's own
+// subjects on the hermetic route (the roster's governing route), so no subject is ever run on a route its
+// expectation does not govern. `Invoked` still carries only the claims, because verdict matching is by
+// `(entry, function)` and the lane was the spawn-time decision it no longer needs.
+fn known_red_run_child(root: String, plan: KnownRedChildPlan) -> KnownRedChildRun {
   let result = gunbc.WitnessBin.Run(
     workdir: root,
     bin_path: witness_bin_release_path(root: root, bin_name: "claim_batch"),
-    args: claim_batch_claims_argv(source_roots: witness_layer_roots(), claims: claims),
+    args: claim_batch_claims_argv_route(
+      source_roots: witness_layer_roots(),
+      claims: plan.claims,
+      wet: plan.lane == WetLane
+    ),
     stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
   )
   Invoked {
-    claims: claims,
+    claims: plan.claims,
     exit_code: result.exit_code,
     stdout: result.stdout,
     // THE TRUNCATION FLAG IS SPOKEN, NOT DISCARDED. A cause text printed as if it were the harness's whole
@@ -666,13 +715,13 @@ fn known_red_collect_at(root: String, placed: List<KnownRedPlacedSubject>) -> Li
   let chunks = known_red_chunks(placed: placed)
   let readiness = gunbc_claims_readiness()
   if known_red_readiness_is_ready(r: readiness) {
-    map(chunks, c => known_red_run_child(root: root, claims: c))
+    map(chunks, c => known_red_run_child(root: root, plan: c))
   } else {
     map(
       chunks,
       c =>
         known_red_uninvoked_child(
-          claims: c,
+          claims: c.claims,
           cause: concat("witness binary refused: ", known_red_readiness_reason_name(r: readiness))
         )
     )
@@ -735,9 +784,39 @@ fn known_red_line_is_pass_for(line: String, function: String) -> Bool {
   line == concat(known_red_pass_prefix(), function)
 }
 
+// A `FAIL` FOR THIS CLAIM, WITH ONE EXCLUSION THAT IS THE WHOLE POINT: the harness also prints
+// `FAIL <fn> (…)` for outcomes in which the claim NEVER REACHED ITS SUBJECT — a hermetic route with no arm
+// for the operation it needs, an entry that failed to resolve, a host tool that could not be grounded.
+// Those lines say "this is a route gap and not a verdict" in the harness's own words
+// (`src/v1/stage0/src/bin/claim_batch.rs`), and counting one as an observed false would let the instrument
+// report a claim it never evaluated as a HELD known-red — a fabricated verdict, the exact defect class this
+// module exists to refuse. A never-reached line is therefore not a fail for the claim, which sends it to
+// `Absent` — the same no-observation the instrument already gives a claim the child never mentioned. The
+// genuinely-evaluated falses keep their meaning: bare `FAIL <fn>`, and `FAIL <fn> (returned
+// ProcessExit::ExitFailure, code N: <reason>)`, which is how a claim that ran and honestly refused prints
+// (its reason channel is load-bearing for the wet real-execution reds). `UNOBSERVED <fn> (…)` — the form a
+// sibling harness change is adopting for the same outcomes — needs no handling here: it is not a `FAIL`
+// prefix, so it is already not a fail.
 fn known_red_line_is_fail_for(line: String, function: String) -> Bool {
   let head = concat(known_red_fail_prefix(), function)
-  line == head || starts_with(s: line, prefix: concat(head, " ("))
+  (line == head || starts_with(s: line, prefix: concat(head, " (")))
+    && !known_red_line_never_reached_subject(line: line)
+}
+
+// THE HARNESS'S OWN "NOT A VERDICT" MARKERS, matched on the wording it prints. Each is a halt before the
+// subject ran, so none of them may be read as the subject having answered false:
+//  - `hermetic route has no arm for <op>: … — the claim never reached its subject, so this is a route gap
+//    and not a verdict` (the arm the required floor already models as its route-gap terminal);
+//  - `entry resolve failed: <entry>` — the file named on the command line did not compile/resolve, so no
+//    claim in that group could have run;
+//  - `host tool unresolved: <tool> (probed: …)` — the host effect was never grounded.
+// Matching the reason text rather than merely the presence of a parenthesised tail is deliberate: a claim
+// that ran and refused with its own reason must stay a false.
+fn known_red_line_never_reached_subject(line: String) -> Bool {
+  string_contains(s: line, pattern: "(hermetic route has no arm")
+    || string_contains(s: line, pattern: "route gap and not a verdict")
+    || string_contains(s: line, pattern: "(entry resolve failed")
+    || string_contains(s: line, pattern: "(host tool unresolved")
 }
 
 // A VERDICT IS A LOOKUP IN WHAT THE CHILD PRINTED, and its absence is `Absent`, not `false`. That single
@@ -1694,6 +1773,12 @@ fn known_red_report(d: KnownRedDerivation) -> String {
   )
 }
 
+// THE RECEIPT LINE, LANE-NAMED. `lane` is printed because the route is now a property of the subject, not a
+// constant of the instrument: a reader reconciling one row against a verdict must be able to see WHICH route
+// that claim was asked on, since a wet-schedule subject and a `floor_expected_red` roster-only subject of the
+// same shape are expected to answer differently. The lane is the row's `origin`, which is also what chose the
+// route at spawn time -- one fact, printed where it was decided, so the receipt cannot claim a route the
+// dispatch did not take.
 fn known_red_row_line(row: KnownRedDerivationRow) -> String {
   concat(
     "  ",
@@ -1702,7 +1787,8 @@ fn known_red_row_line(row: KnownRedDerivationRow) -> String {
       concat(" @", concat(row.head, concat("  disposition=",
         concat(known_red_disposition_name(d: row.disposition),
           concat(" expectation=", concat(known_red_expectation_name(e: row.expectation),
-            concat(" entry=", known_red_entry_print(entry: row.entry)))))))
+            concat(" lane=", concat(known_red_subject_population_name(p: row.origin),
+              concat(" entry=", known_red_entry_print(entry: row.entry)))))))))
       )
     )
   )

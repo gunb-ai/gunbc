@@ -10,18 +10,23 @@ import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 // re-derived the rule here (it must not) would disagree with these arms rather than agree with itself.
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
+// THE ROUTE ITSELF, ASSERTED AT THE SEAM THE HARNESS READS. The lane→argv decision is `claim_batch_claims_argv_route`;
+// importing it (rather than re-deriving "--wet" here) is what lets an arm check that a hermetic child is really
+// asked HERMETICALLY instead of trusting the instrument's own word about its route.
+import gunbc.instruments.host_prelude { claim_batch_claims_argv_route }
 import gunbc.instruments.known_red_derivation {
   ClaimRun, KnownRedChildRun, KnownRedDerivationRow, KnownRedSubject, KnownRedSubjectPopulation,
   known_red_chunks, known_red_entries_owed, known_red_fold, known_red_int_text,
   known_red_roster_entry, KnownRedEntryPlacement, Placed, Underivable,
-  known_red_defect_of, known_red_dispatchable, KnownRedPlacedSubject, known_red_refusal_detail,
+  known_red_defect_of, known_red_dispatchable, KnownRedPlacedSubject, KnownRedChildPlan, known_red_refusal_detail,
   known_red_ambiguous_verdict_names,
   known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
   known_red_exit_code_of, known_red_exit_code_of_all, KnownRedDerivationRefusal,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
-  known_red_subjects, known_red_subject_qualified, known_red_report
+  known_red_subjects, known_red_subject_qualified, known_red_report,
+  known_red_dedup, known_red_same_identity, known_red_row_line
 }
 
 // THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
@@ -298,36 +303,36 @@ test fn a_child_that_exited_nonzero_with_no_verdict_lines_refuses_and_is_not_rea
 test fn chunking_never_splits_an_entry_across_children_and_loses_no_witness() -> Bool {
   let subjects = wide_subjects(entries: chunk_entry_paths(), per_entry: 40)
   let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
-  let total = fold(xs: chunks, init: 0, f: (n, c) => n + length(xs: c))
+  let total = fold(xs: chunks, init: 0, f: (n, c) => n + length(xs: c.claims))
   total == 120
     && known_red_no_entry_split(chunks: chunks)
     && known_red_entries_owed(placed: known_red_dispatchable(subjects: subjects)) == 3
     && (chunks |> length) > 1
-    && all(xs: chunks, predicate: fn(c) { length(xs: c) <= known_red_max_claims_per_child })
+    && all(xs: chunks, predicate: fn(c) { length(xs: c.claims) <= known_red_max_claims_per_child })
 }
 
 // EVERY ENTRY TRAVELS WHOLE: for each chunk and each entry named in it, the number of that entry's claims
 // in the chunk equals the number owed across all chunks. A positional cut through the middle of an entry
 // makes the two halves count less than the whole, and this refuses.
-fn known_red_no_entry_split(chunks: List<List<ClaimRun>>) -> Bool {
+fn known_red_no_entry_split(chunks: List<KnownRedChildPlan>) -> Bool {
   all(
     xs: chunks,
     predicate: fn(c) {
       all(
-        xs: c,
+        xs: c.claims,
         predicate: fn(k) {
-          count_of_entry(chunks: chunks, entry: k.entry) == count_of_entry_in(chunk: c, entry: k.entry)
+          count_of_entry(chunks: chunks, entry: k.entry) == count_of_entry_in(chunk: c.claims, entry: k.entry)
         }
       )
     }
   )
 }
 
-fn count_of_entry(chunks: List<List<ClaimRun>>, entry: String) -> Int {
+fn count_of_entry(chunks: List<KnownRedChildPlan>, entry: String) -> Int {
   fold(
     xs: chunks,
     init: 0,
-    f: (n, c) => n + count_of_entry_in(chunk: c, entry: entry)
+    f: (n, c) => n + count_of_entry_in(chunk: c.claims, entry: entry)
   )
 }
 
@@ -654,7 +659,7 @@ test fn the_packer_splits_clashing_names_into_separate_children() -> Bool {
   let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
   // Two children (the split happened) AND no child carries the name twice (the split was the right one).
   (chunks |> length) == 2
-    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c) })
+    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c.claims) })
 }
 
 // THE LIVE POPULATION, MEASURED. Two of the roster's own rows share function names, so this is the shape the
@@ -665,7 +670,7 @@ test fn the_live_population_shares_names_yet_no_child_is_asked_to_carry_one_twic
   let subjects = known_red_subjects()
   let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
   (subjects |> length) > 0
-    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c) })
+    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c.claims) })
     && known_red_population_has_a_shared_name(subjects: subjects)
 }
 
@@ -890,4 +895,134 @@ test fn every_refusal_is_classified_and_neither_class_is_the_default() -> Bool {
     && known_red_exit_code_of(r: ChildExitedNonzeroWithoutVerdicts { children: ["claim_batch"] }) == 2
     && known_red_exit_code_of(r: StaleEnrolmentNowPassing { identities: ["x"] }) == 1
     && known_red_exit_code_of(r: UnaccountedRedWithoutEnrolment { identities: ["x"] }) == 1
+}
+
+// ────────────────────────── the lane keys the route (manager ruling, dispatch by roster) ──────────────────────────
+
+// THE LINE A HERMETIC NO-ARM PRINTS. When a claim is asked HERMETICALLY but its subject only has an arm on
+// the wet route, the harness prints a FAIL whose text says the claim never reached its subject — a route
+// gap, not a verdict. This helper builds exactly that shape so an arm can tell it from a claim that ran and
+// genuinely returned false. The wording mirrors the harness (`claim_batch.rs`, hermetic-route-no-arm),
+// including the "route gap and not a verdict" tail the instrument keys on.
+fn route_gap_verdict(subject: KnownRedSubject) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      " (hermetic route has no arm for IsFile — the claim never reached its subject, so this is a route gap and not a verdict)\n"
+    )
+  )
+}
+
+// TWO POPULATIONS, ONE IDENTITY, ONE DISPATCH. The seven Group-C identities are BOTH wet-scheduled AND
+// roster-enrolled, so they arrive once from each source. A structural de-dup would keep both copies (they
+// differ only by `origin`, which the seed's discarded `eq` compared) and dispatch the claim TWICE — the
+// fleet's `duplicated 7`. This arm feeds the union through the instrument's OWN de-dup and requires it to
+// collapse to ONE row that keeps the WET copy, because the wet schedule is the authority that knows how to
+// actually run it. If `known_red_seen` ever regresses to structural equality, this sees two rows and fails.
+test fn two_populations_sharing_one_identity_collapse_to_one_wet_lane_copy() -> Bool {
+  let wet_copy = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_dual_identity")
+  let roster_copy = KnownRedSubject {
+    identity: WitnessIdentity { module_path: "test.claim.examples.known_red_fixture", function: "the_dual_identity" },
+    entry: Placed { path: fixture_entry() },
+    function: "the_dual_identity",
+    origin: RequiredFloor
+  }
+  let collapsed = known_red_dedup(rest: [wet_copy, roster_copy], seen: [])
+  (length(xs: collapsed) == 1)
+    // the surviving copy is the WET one — the schedule row, not the roster row, is kept
+    && match collapsed {
+      Cons { head: h, tail: _ } =>
+        known_red_same_identity(a: h.identity, b: wet_copy.identity) && h.origin == WetLane
+      Empty => false
+    }
+}
+
+// THE ROUTE FOLLOWS THE LANE, AND ONLY THE LANE. Each child plan carries the lane of the subject it packs,
+// and the argv the harness reads must match: a `WetLane` plan is asked `--wet`, a `RequiredFloor` plan is
+// asked HERMETICALLY (no `--wet`). This asks the REAL route builder — importing it rather than re-deriving
+// the flag here — so an instrument that packed the right lane but spawned with the wrong route would fail
+// this arm while its own words still looked right. The two claims share an entry so they WOULD merge under
+// a lane-blind packer; the fact that they become two plans of two different lanes is the property.
+test fn a_child_plan_carries_its_subjects_lane_and_the_route_follows_it() -> Bool {
+  let wet = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_wet_route_claim")
+  let floor = KnownRedSubject {
+    identity: WitnessIdentity { module_path: "test.claim.examples.known_red_fixture", function: "the_hermetic_route_claim" },
+    entry: Placed { path: fixture_entry() },
+    function: "the_hermetic_route_claim",
+    origin: RequiredFloor
+  }
+  let plans = known_red_chunks(placed: known_red_dispatchable(subjects: [wet, floor]))
+  let wet_argvs = claim_batch_claims_argv_route(source_roots: ["dag"], claims: [claim_run(function: "the_wet_route_claim")], wet: true)
+  let hermetic_argvs = claim_batch_claims_argv_route(source_roots: ["dag"], claims: [claim_run(function: "the_hermetic_route_claim")], wet: false)
+  // the two lanes never share a child...
+  (length(xs: plans) == 2)
+    && all(xs: plans, predicate: fn(p) {
+      length(xs: p.claims) == 1
+        && any(xs: p.claims, predicate: fn(k) {
+          match p.lane {
+            WetLane => k.function == "the_wet_route_claim"
+            RequiredFloor => k.function == "the_hermetic_route_claim"
+          }
+        })
+    })
+    // ...and each lane's route is the one its roster governs
+    && any(xs: plans, predicate: fn(p) { p.lane == WetLane })
+    && any(xs: plans, predicate: fn(p) { p.lane == RequiredFloor })
+    && string_contains(s: known_red_join(argvs: wet_argvs), pattern: "--wet")
+    && !string_contains(s: known_red_join(argvs: hermetic_argvs), pattern: "--wet")
+}
+
+fn known_red_join(argvs: List<String>) -> String {
+  fold(xs: argvs, init: "", f: (acc, a) => concat(concat(acc, " "), a))
+}
+
+// A ROUTE GAP IS NOT A VERDICT. A claim that printed a hermetic-no-arm line never reached its subject, so
+// the instrument must NOT read that line as a verdict in EITHER direction: it is not a red (that would
+// fabricate a defect from a routing mistake) and it is not a held known-red. Two subjects, the same line
+// shape: an unenrolled one whose genuine false IS an unaccounted red, but whose route-gap line is not; and
+// an enrolled one whose route-gap line leaves it neither held nor unaccounted but a plan without a terminal.
+// If `known_red_line_is_fail_for` ever stops excluding the never-reached markers, the first half turns the
+// route gap into a fabricated red and this arm fails.
+test fn a_route_gap_line_is_never_a_verdict_in_either_direction() -> Bool {
+  let gap_name = "the_never_reached_gap"
+  let unenrolled = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: gap_name)
+  let genuine = known_red_fold(
+    head: "0000000000000000000000000000000000000011",
+    subjects: [unenrolled],
+    children: [child(claims: [claim_run(function: gap_name)], stdout: "FAIL the_never_reached_gap (assertion returned false)\n")]
+  )
+  let gap = known_red_fold(
+    head: "0000000000000000000000000000000000000011",
+    subjects: [unenrolled],
+    children: [child(claims: [claim_run(function: gap_name)], stdout: route_gap_verdict(subject: unenrolled))]
+  )
+  // a genuine false on an unenrolled identity IS an unaccounted red...
+  known_red_unaccounted_reds(rows: genuine.rows)
+    == ["test.claim.examples.known_red_fixture.the_never_reached_gap"]
+    // ...but the same identity's route-gap line is NOT a red in either list
+    && (known_red_unaccounted_reds(rows: gap.rows) |> length) == 0
+    && (known_red_held_rows(rows: gap.rows) |> length) == 0
+    && (gap.reconciliation.planned_without_terminal |> length) == 1
+    && !known_red_is_green(d: gap)
+}
+
+// EVERY RECEIPT LINE NAMES THE LANE IT WAS ASKED IN. The fleet reads one printed row per subject; if that
+// row does not say which roster governed the run, a reader cannot tell a wet pass from a hermetic red. The
+// row line carries `lane=WetLane` or `lane=RequiredFloor` for the row's own origin. Built through the fold
+// (not by hand) so the `origin` on the row is the one the instrument actually derived, and read from both a
+// held red and a stale enrolment so the label is not tied to one disposition.
+test fn every_receipt_line_names_the_lane_it_was_asked_in() -> Bool {
+  let floor = enrolled_fixture()
+  let red = known_red_fold(
+    head: "0000000000000000000000000000000000000012",
+    subjects: [floor],
+    children: [child(claims: [claim_of(subject: floor)], stdout: fail_verdict(subject: floor))]
+  )
+  let line = match red.rows {
+    Cons { head: r, tail: _ } => known_red_row_line(row: r)
+    Empty => ""
+  }
+  string_contains(s: line, pattern: "lane=RequiredFloor")
+    && string_contains(s: known_red_report(d: red), pattern: "lane=")
 }
