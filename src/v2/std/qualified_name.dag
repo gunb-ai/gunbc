@@ -614,6 +614,12 @@ type DeclarationDenotation {
   type_arguments: List<Node>
 }
 
+// THE ONE RECOGNIZER of "this denotation is the std.optional declaration": optional_layers, inhabitance and
+// resolve all ask here, so no consumer compares the identity itself.
+fn declaration_denotation_is_optional(denotation: DeclarationDenotation) -> Bool {
+  denotation.declaration == optional_declaration_identity()
+}
+
 fn declaration_denotation_of_type(t: Node) -> Optional<DeclarationDenotation> {
   match t.kind {
     TypeNode { connective: Instantiation } =>

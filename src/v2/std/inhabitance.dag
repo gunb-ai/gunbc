@@ -50,7 +50,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.node_query { declared_field_from_edge }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_of_type, optional_declaration_identity }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_is_optional, declaration_denotation_of_type, optional_declaration_identity }
 import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
@@ -337,7 +337,7 @@ fn inhabitance_optional_produced_at_required_declared(
 ) -> Bool {
   match declaration_denotation_of_type(t: produced) {
     Present { value: denotation } =>
-      (denotation.declaration == optional_declaration_identity())
+      declaration_denotation_is_optional(denotation: denotation)
         && (match declared.kind {
           TypeNode { connective: Atom { identity: _ } } =>
             (count(declared.children) == 0)
