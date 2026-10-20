@@ -13,6 +13,7 @@ import v2.std.grammar {
 }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductEnumSurface,
+  MembersInsideTypeBody,
   TargetSemanticDeclSurfaceProjection,
   semantic_decl_emission_bundle,
   semantic_decl_lex_ident_row,
@@ -358,6 +359,7 @@ fn swift_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjecti
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
+    member_projection: MembersInsideTypeBody,
     coproduct_decoration_rules: []
   }
 }
