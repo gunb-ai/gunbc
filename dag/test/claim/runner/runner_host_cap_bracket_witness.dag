@@ -430,7 +430,6 @@ fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer:
 fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdout: listing) } }
 
 fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l } => l BracketRunEnded { cause: _ } => [] } }
-fn ended<T>(r: BracketRun<T>) -> Bool { match r { BracketRunEnded { cause: _ } => true BracketRunReturned { value: _, legs: _ } => false } }
 fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _ } => v BracketRunEnded { cause: _ } => [] } }
 fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
 fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
@@ -467,6 +466,17 @@ test fn an_unmasked_active_enabled_unit_is_a_settled_noop_with_only_the_read() -
   let r = release_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "active")], ns: ["01"])
   length(outcomes_of(r: r)) == 1 && any(outcomes_of(r: r), o => noop(o: o)) && length(ledger_of(r: r)) == 1
     && admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
+}
+
+// A failed FIRST read of an unmasked inactive, disabled owned unit refuses with no mutating argv: a failed
+// observation never picks the more permissive policy (a second read would be refused the same way).
+fn show_fail_leg() -> Leg { Leg { needle: "systemctl show", answer: ShellProcessExited { exit_code: 1, stdout: "", stderr: "ssh: connection reset" } } }
+
+test fn a_failed_first_read_refuses_the_release_and_issues_no_mutating_argv() -> Bool {
+  let r = release_run(legs: [show_fail_leg(), show_leg(n: "01", load: "loaded", file: "disabled", active: "inactive")], ns: ["01"])
+  length(outcomes_of(r: r)) == 1 && any(outcomes_of(r: r), o => refused(o: o)) && !all_settled(os: outcomes_of(r: r))
+    && count_containing(legs: ledger_of(r: r), needle: " unmask ") == 0 && count_containing(legs: ledger_of(r: r), needle: " enable ") == 0 && count_containing(legs: ledger_of(r: r), needle: " start ") == 0
+    && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
 // a failed start AFTER the unmask: the three argv ran, the readback shows failed, the host stays drained
