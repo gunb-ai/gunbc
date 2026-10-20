@@ -2310,6 +2310,8 @@ fn inferred_facts_from_derived_type(
   )
 }
 
+// THE ONE TYPE-EQUALITY JUDGMENT FOR BRANCH/OPERAND TYPES: atoms by identity, every other type structurally
+// ignoring provenance (raw Node == compares locus/stamp, which is not a property of the type).
 fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
   match node_atom_identity_optional(node: a) {
     Present { value: id_a } =>
@@ -2317,7 +2319,7 @@ fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
         Present { value: id_b } => id_a == id_b
         Absent => false
       }
-    Absent => a == b
+    Absent => infer_type_equal_ignoring_provenance(a: a, b: b)
   }
 }
 
@@ -3788,7 +3790,7 @@ fn infer_unify_transform_operand_types(
           // Two uses of one declared type are two nodes with different occurrences, so they are one type by
           // structure with provenance ignored, as a kernel atom is one type by identity. Equality brings declared
           // operands to this judgment (`p == q` over a record), where the bare node comparison refused them.
-          if infer_branch_type_atoms_equal(a: left_type, b: right_type) || infer_type_equal_ignoring_provenance(a: left_type, b: right_type) {
+          if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
             OperandsOneType { operand_type: left_type }
           } else {
             if infer_operand_literal_elaborates_at(literal_node: right_node, expected: left_type, resolved: resolved)
