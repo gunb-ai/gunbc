@@ -82,6 +82,11 @@ import gunbc.auth.deployment_gate_operator_steps {
 }
 import gunbc.auth.approval_run_identity {attempt_identity_of}
 import gunbc.auth.deployment_gate_authorization {
+  // THE SEALED INSTANT AND ITS ONLY DOOR (round-4 ruling). The witness reads the clock through
+  // read_observed_instant, admitted below; it never WRITES an instant. Naming the type is not
+  // constructing it, which is what the control in the forged-probe witness then proves.
+  ObservedInstant,
+  read_observed_instant,
   mint_accepted_rule_review,
   AcceptedRuleReviewReceipt,
   DeploymentGateTrialEvidence,
@@ -523,6 +528,10 @@ fn admitted_pair() -> ReviewerRemovalAdmission
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "act_with_clock"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "historical_evidence_does_not_outlive_the_rule"
     ),
     decl_ref(
@@ -596,7 +605,7 @@ fn standing_fixture(
     reviewer_present: reviewer_present,
     main_only: main_only,
     attempt: standing_attempt(),
-    observed_at: standing_instant,
+    observed_at: clock_read(instant: standing_instant),
   )
 }
 
@@ -612,7 +621,7 @@ fn standing_at(
   reviewer_present: Bool,
   main_only: Bool,
   attempt: AttemptIdentity,
-  observed_at: Timestamp
+  observed_at: Optional<ObservedInstant>
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
     decl_ref(
@@ -622,6 +631,10 @@ fn standing_at(
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_fixture"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_without_a_clock_read_only_this"
     ),
   ]
 {
@@ -694,6 +707,10 @@ fn protection_read(
 // against, this repository, and a protection that still carries both properties.
 fn standing_for_trial() -> RemovalBoundaryStandingObservation
   admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "act_with_clock"
+    ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "historical_evidence_does_not_outlive_the_rule"
@@ -780,7 +797,7 @@ fn ready_act() -> HumanIntervention?
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
     ReviewerRemovalReady { admitted: a } => Present { value: a.intervention }
     ReviewerRemovalBlocked { missing: _ } => none
@@ -906,7 +923,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     admission: admitted_pair(),
     standing: standing_disabled_rule(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked {
@@ -934,7 +951,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     main_only: true,
 ),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -960,7 +977,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     main_only: true,
 ),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -981,7 +998,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_no_reviewer(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -998,7 +1015,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_no_branch_rule(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1015,7 +1032,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: a } =>
              a.boundary.environment_name == gate_env
@@ -1038,11 +1055,19 @@ fn protection_for(
   admit_callers: [
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "completion_is_a_read_after_the_removal_not_the_admission"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "completion_without_a_clock_stamp"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1052,11 +1077,7 @@ fn protection_for(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_at"
     ),
-
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "a_completion_stamped_with_a_non_instant_is_refused_not_recorded"
-    ),  ]
+  ]
 {
   observe_environment_protection(
     owner: owner,
@@ -1087,11 +1108,7 @@ fn joined_pair(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_disabled_rule"
     ),
-
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_at_instant"
-    ),  ]
+  ]
 {
   join_protection_to_ownership(
     protection: protection_for(
@@ -1129,10 +1146,12 @@ fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
   }
 }
 
-// THE INSTANTS, DECLARED AS INSTANTS. These rows feed the comparison functions and the act, whose
-// parameters keep the Timestamp type; the two observation MINTS take text instead and refuse what the
-// calendar refuses, so a non-instant reaches a sealed record only by passing through their check.
-// What is declared here is what is compared: nothing re-casts its way past a bound.
+// THE INSTANTS, AS STRINGS THE CLOCK IS HANDED -- and nothing else. The round-4 ruling took away the
+// witnesses' ability to WRITE an instant: `standing_instant` used to be a `Timestamp` value handed
+// straight to the mint, which was the very authoring the seal now forbids. What the witnesses hold now
+// is a PROPOSED READING (a String) and a clock call that either returns a sealed instant or nothing.
+// The rows stay because the staleness arms report the pair they compared, and comparing "the standing
+// was read at 12:00" against the string the clock was asked about is exactly the claim the reds make.
 data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
 
 // AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
@@ -1140,6 +1159,104 @@ data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
 data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z"
 
 data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
+
+// THE CLOCK, CALLED, NOT ARGUED WITH. The only way this file obtains a sealed instant: it hands the
+// authority's own gate a PROPOSED reading and keeps whatever comes back -- which for a non-canonical
+// reading, or for no reading at all, is nothing. The fixtures below are the single witness door, so the
+// confinement claim stays at one place that the probe counts (a_foreign_call_through_the_clock_proxy...).
+fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_from_another_attempt_or_an_aged_one_is_not_spendable"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "completion_is_a_read_after_the_removal_not_the_admission"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ready_act"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_disabled_rule"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_fixture"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_to_default_its_own_clock"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_ready_act_claims_no_completion_before_the_human_acts"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_removal_act_is_admitted_only_by_a_typed_prerequisite"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
+    ),
+  ]
+{
+  read_observed_instant(reading: Present { value: instant as NonEmptyStr })
+}
+
+// NO READING WAS TAKEN. Not an empty string and not a placeholder time: the absence, which is the only
+// honest input when the clock was not read, and what makes the two refusal arms reachable at all.
+fn clock_absent() -> Optional<ObservedInstant>
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "completion_without_a_clock_stamp"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_without_a_clock_read_only_this"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_to_default_its_own_clock"
+    ),
+  ]
+{
+  read_observed_instant(reading: Absent)
+}
+
+// THE RAW DOOR, for the calendar arms only: it hands the seal a string the caller wrote, which is what
+// a probe reading looks like. Confining it to the one test that reads it keeps "a witness can put any
+// string into the calendar" from being true anywhere else in the corpus.
+fn clock_read_raw(instant: String) -> Optional<ObservedInstant>
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_non_canonical_clock_reading_never_becomes_an_observed_instant"
+    ),
+  ]
+{
+  read_observed_instant(reading: Present { value: instant as NonEmptyStr })
+}
 
 // THE STANDING VARIANTS THE RED NEEDS, each built through the one admitted door with its facts changed.
 // THE STANDING CANNOT BE BUILT FROM TWO ENVIRONMENTS (side chat round 4, blocker 1). The standing used
@@ -1212,10 +1329,10 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
       reviewer_present: true,
       main_only: true,
       attempt: later_attempt(),
-      observed_at: standing_instant,
+      observed_at: clock_read(instant: standing_instant),
     ),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
     ReviewerRemovalBlocked {
       missing: ActStandingIsForAnotherAttempt { standing_attempt: a, removal_attempt: r },
@@ -1236,7 +1353,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
       ReviewerRemovalReady { admitted: a } => a.standing.observation_attempt == standing_attempt()
       ReviewerRemovalBlocked { missing: _ } => false
@@ -1256,7 +1373,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant_stale,
+      now: clock_read(instant: standing_instant_stale),
     ) {
       ReviewerRemovalBlocked {
         missing: ActStandingIsStale { observed_at: o, now: n, max_age: m },
@@ -1280,7 +1397,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant_fresh,
+      now: clock_read(instant: standing_instant_fresh),
     ) {
       ReviewerRemovalReady { admitted: a } => a.standing.observed_at == standing_instant
       ReviewerRemovalBlocked { missing: _ } => false
@@ -1299,7 +1416,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
       ReviewerRemovalReady { admitted: a } =>
         a.standing.ownership.rule_id == a.evidence.approved.rule_id
@@ -1431,7 +1548,7 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
            boundary: srv1_deployment_gate_boundary,
            attempt: standing_attempt(),
-           observed_at: standing_instant,
+           observed_at: clock_read(instant: standing_instant),
          ) {
            StandingRead { standing: _ } => false
            StandingRefused { because: _ } => true
@@ -1457,7 +1574,7 @@ fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
     ),
     boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
     attempt: standing_attempt(),
-    observed_at: standing_instant,
+    observed_at: clock_read(instant: standing_instant),
   )
 }
 
@@ -1490,7 +1607,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
@@ -1511,7 +1628,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
 ),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1530,7 +1647,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1591,7 +1708,7 @@ test fn the_removal_act_names_its_subject_in_its_identity_and_in_its_route() -> 
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
@@ -1631,7 +1748,7 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
 // that did not happen keeps the refusal honest about which axis is empty.
 standing: standing_never_read(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked { missing: NoApprovingReview } => true
@@ -1643,7 +1760,7 @@ standing: standing_never_read(),
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant,
+      now: clock_read(instant: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: a } =>
              let i = a.intervention
@@ -1668,7 +1785,7 @@ test fn the_ready_act_claims_no_completion_before_the_human_acts() -> Bool {
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant,
+    now: clock_read(instant: standing_instant),
   ) {
     ReviewerRemovalReady { admitted: a } =>
       match a.intervention.completion_evidence {
@@ -1694,7 +1811,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh,
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRecorded { receipt } =>
       receipt.reviewer_removed && receipt.main_only_policy_present
@@ -1711,7 +1828,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: true,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh,
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused { because: ReviewerIsStillPresent { environment: e } } => e == gate_env
     _ => false
@@ -1725,7 +1842,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: false,
     ),
-    observed_at: standing_instant_fresh,
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused { because: BranchPolicyWentWithTheReviewer { environment: e } } =>
       e == gate_env
@@ -1740,7 +1857,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh,
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRecorded { receipt } => receipt.boundary.environment_name == sibling_env
     _ => false
@@ -1754,7 +1871,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh,
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused {
       because: CompletionReadIsOfAnotherSubject { subject: m },
@@ -2114,95 +2231,148 @@ test fn the_configured_installation_is_separate_from_the_readback() -> Bool {
     configured.installation_id.value == 1900000001 && configured.app_id.value == 1234567
 }
 
-// THE MINT ADMITS TEXT, SO THE CALENDAR CHECK IS NOW THE ONLY THING BETWEEN A STRING AND AN INSTANT.
-// Before, the parameter's own type did part of that work; a caller could not hand over a non-instant
-// without the checker refusing. Now the mint accepts any text and refuses what is not a canonical UTC
-// instant, which means a deleted guard would be silent: the same string would brand straight into the
-// sealed record and become the basis of a freshness comparison. Each arm below differs from the healthy
-// control in ONE character position -- length, a separator, a digit field, or a field out of range -- so
-// the claim is about the calendar, not about whether the caller remembered to pass something.
-fn standing_at_instant(instant: String) -> RemovalBoundaryStandingObservation
+// ---------------------------------------------------------------------------
+// 7b. THE CLOCK IS THE ONLY PRODUCER OF AN INSTANT (round-4 ruling, manager)
+// ---------------------------------------------------------------------------
+
+// Before, the witnesses handed the mint a Timestamp they had written themselves, and calendar-checking
+// a String proved only that the string WAS a date -- not that it was WHEN THE READ HAPPENED. A caller
+// supplying a well-formed but false instant made a stale observation read as fresh, defeating blocker 2's
+// freshness bound by the most polite route available. So an instant is READ (through the clock the
+// approval authority already owns) or it does not exist for this module. Each refusal below gets its own
+// arm because each sends an operator somewhere different to check (NTP, not GitHub).
+
+// THE STANDING, WITH EVERYTHING RIGHT AND NO CLOCK READING. One argument apart from standing_fixture.
+fn standing_without_a_clock_read_only_this() -> RemovalBoundaryStandingObservation
   admit_callers: [
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "an_instant_that_is_not_a_utc_instant_never_becomes_a_standing"
+      decl_name: "a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time"
     ),
   ]
 {
-  observe_removal_boundary_standing(
-    joined: joined_pair(
-      environment: gate_env,
-      reviewer_present: true,
-      main_only: true,
-      enabled: true,
-    ),
-    boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
+  standing_at(
+    environment: gate_env,
+    installation_id: 1234567,
+    identity_repo: gate_repo,
+    rule_id: 900000001,
+    reviewer_present: true,
+    main_only: true,
     attempt: standing_attempt(),
-    observed_at: instant,
+    observed_at: clock_absent(),
   )
 }
 
-test fn an_instant_that_is_not_a_utc_instant_never_becomes_a_standing() -> Bool {
-  // THE CONTROL FIRST: with everything else identical, a canonical instant does mint a standing. Without
-  // this arm the test would pass if the fixture refused for an unrelated reason.
-  match standing_at_instant(instant: "2026-10-19T12:00:00Z") {
-    StandingRead { standing: _ } => true
-    StandingRefused { because: _ } => false
+// THE COMPLETION, WITH EVERYTHING RIGHT AND NO CLOCK READING. One argument apart from the recorded
+// control in completion_is_a_read_after_the_removal_not_the_admission.
+fn completion_without_a_clock_stamp() -> ReviewerRemovalCompletion
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time"
+    ),
+  ]
+{
+  observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: clock_absent(),
+  )
+}
+
+// THE ACT, AT ANY CLOCK READING THE CALLER HAS. The parameterisation is the claim: readiness has to move
+// with the clock argument and with nothing else.
+fn act_with_clock(reading: Optional<ObservedInstant>) -> ReviewerRemovalStepDecision
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_to_default_its_own_clock"
+    ),
+  ]
+{
+  reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: standing_for_trial(),
+    removal_attempt: standing_attempt(),
+    now: reading,
+  )
+}
+
+// (A) A NON-CANONICAL READING YIELDS NO INSTANT, and the same door returns one for a canonical reading.
+// The control sits in the same test: without it, the refusals below would only be a statement about a
+// door that never opens. Feb 29 in a non-leap year is the arm a length-and-shape check alone lets through.
+test fn a_non_canonical_clock_reading_never_becomes_an_observed_instant() -> Bool {
+  match clock_read_raw(instant: "2026-10-19T12:00:00Z") {
+    Present { value: _ } => true
+    Absent => false
   }
   // TOO SHORT BY ONE CHARACTER.
-  && match standing_at_instant(instant: "2026-10-19T12:00:00") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
+  && match clock_read_raw(instant: "2026-10-19T12:00:00") {
+    Absent => true
+    Present { value: _ } => false
   }
   // THE WRONG SEPARATORS: a date-shaped string is not an instant.
-  && match standing_at_instant(instant: "2026/10/19 12:00:00Z") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
+  && match clock_read_raw(instant: "2026-10-19 12:00:00Z") {
+    Absent => true
+    Present { value: _ } => false
   }
-  // MONTH 13: every character is in place and the calendar still refuses it.
-  && match standing_at_instant(instant: "2026-13-19T12:00:00Z") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
+  // MONTH 13: every character in place, and the calendar still refuses it.
+  && match clock_read_raw(instant: "2026-13-19T12:00:00Z") {
+    Absent => true
+    Present { value: _ } => false
   }
-  // DAY 32 IN A 31-DAY MONTH: this is the arm a length-and-shape check alone would let through.
-  && match standing_at_instant(instant: "2026-10-32T12:00:00Z") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
+  // DAY 32 IN A 31-DAY MONTH.
+  && match clock_read_raw(instant: "2026-10-32T12:00:00Z") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // FEBRUARY 29 EXISTS ONLY IN A LEAP YEAR, and 2026 is not one.
+  && match clock_read_raw(instant: "2026-02-29T12:00:00Z") {
+    Absent => true
+    Present { value: _ } => false
   }
   // HOUR 24.
-  && match standing_at_instant(instant: "2026-10-19T24:00:00Z") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
-  }
-  // A LETTER WHERE A DIGIT BELONGS.
-  && match standing_at_instant(instant: "2026-XX-19T12:00:00Z") {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
-    _ => false
+  && match clock_read_raw(instant: "2026-10-19T24:00:00Z") {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-// THE SAME GUARD ON THE COMPLETION MINT, which has no door to close: it is deliberately unconfined, so
-// the calendar check is the only barrier. A post-removal read stamped with a non-instant would otherwise
-// certify "the reviewer is gone" with a receipt nobody can date -- and the freshness bound reads that
-// stamp. The healthy arm is here too, so a fixture that always refuses proves nothing.
-test fn a_completion_stamped_with_a_non_instant_is_refused_not_recorded() -> Bool {
-  match observe_reviewer_removal(
-    boundary: srv1_deployment_gate_boundary,
-    after: protection_for(
-      owner: gate_owner,
-      repo: gate_repo,
-      environment: gate_env,
-      reviewer_present: false,
-      main_only: true,
-    ),
-    observed_at: "2026-02-30T12:00:00Z",
-  ) {
-    ReviewerRemovalCompletionRefused {
-      because: CompletionInstantIsNotCanonical { observed_at: _ }
-    } => true
+// (B) NO READING, NO STANDING AND NO COMPLETION. Neither mint substitutes a time for one it was never
+// given; "just use now" would have been silent, because the sealed record carries a plausible instant
+// either way. Each refusal arm is paired with its control one argument apart, in this same test.
+test fn a_read_without_a_clock_stamp_refuses_rather_than_substitutes_a_time() -> Bool {
+  // THE STANDING, refused, and named as a CLOCK problem: the operator this refusal sends goes to NTP, not
+  // to GitHub's protection settings -- the difference between a refusal that is useful and a tour.
+  match standing_without_a_clock_read_only_this() {
+    StandingRefused { because: StandingClockWasNotRead } => true
     _ => false
   }
-  // FEBRUARY 29 EXISTS ONLY IN A LEAP YEAR: 2026 is not one, and the day-number check alone would pass it.
+  // ITS CONTROL: the identical environment and attempt, WITH a clock reading, mints a standing.
+  && match standing_fixture(
+    environment: gate_env,
+    installation_id: 1234567,
+    identity_repo: gate_repo,
+    rule_id: 900000001,
+    reviewer_present: true,
+    main_only: true,
+  ) {
+    StandingRead { standing: _ } => true
+    StandingRefused { because: _ } => false
+  }
+  // THE COMPLETION: same shape, same reason. "The reviewer is gone" is a claim about a world AT A TIME.
+  && match completion_without_a_clock_stamp() {
+    ReviewerRemovalCompletionRefused { because: CompletionClockWasNotRead } => true
+    _ => false
+  }
+  // ITS CONTROL.
   && match observe_reviewer_removal(
     boundary: srv1_deployment_gate_boundary,
     after: protection_for(
@@ -2212,27 +2382,25 @@ test fn a_completion_stamped_with_a_non_instant_is_refused_not_recorded() -> Boo
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: "2026-02-29T12:00:00Z",
+    observed_at: clock_read(instant: standing_instant_fresh),
   ) {
-    ReviewerRemovalCompletionRefused {
-      because: CompletionInstantIsNotCanonical { observed_at: _ }
-    } => true
-    _ => false
-  }
-  // THE CONTROL: the same read, canonically stamped, IS recorded -- the refusal above is about the stamp.
-  && match observe_reviewer_removal(
-    boundary: srv1_deployment_gate_boundary,
-    after: protection_for(
-      owner: gate_owner,
-      repo: gate_repo,
-      environment: gate_env,
-      reviewer_present: false,
-      main_only: true,
-    ),
-    observed_at: "2026-02-28T12:00:00Z",
-  ) {
-    ReviewerRemovalCompletionRecorded { receipt } =>
-      receipt.reviewer_removed && receipt.main_only_policy_present
+    ReviewerRemovalCompletionRecorded { receipt: _ } => true
     ReviewerRemovalCompletionRefused { because: _ } => false
+  }
+}
+
+// (C) THE ACT REFUSES TO INVENT ITS OWN CLOCK. The freshness test has two instants and the caller owns
+// the second; while that parameter was a plain Timestamp, holding `now` back a few minutes made every
+// stale standing spendable, so the staleness red was checking a number the caller chose. Readiness has to
+// move with the clock argument and with nothing else -- the two calls below differ in exactly one.
+test fn the_act_refuses_to_default_its_own_clock() -> Bool {
+  match act_with_clock(reading: clock_absent()) {
+    ReviewerRemovalBlocked { missing: ActClockWasNotRead } => true
+    _ => false
+  }
+  // THE CONTROL: the identical admission, standing, and attempt, WITH a clock reading, is Ready.
+  && match act_with_clock(reading: clock_read(instant: standing_instant)) {
+    ReviewerRemovalReady { admitted: _ } => true
+    ReviewerRemovalBlocked { missing: _ } => false
   }
 }

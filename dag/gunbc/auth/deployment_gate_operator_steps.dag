@@ -35,6 +35,13 @@ import std.types {
   Timestamp,
 }
 
+import std.optional {
+  Present,
+  Absent,
+  Optional,
+  optional_present,
+  optional_absent,
+}
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionFrequency,
@@ -64,6 +71,9 @@ import gunbc.auth.deployment_gate_authorization {
   // patterns of the scrutinee's sum and need no import; these two are named in TYPE position, so they do.
   RemovalBoundaryStandingObservation,
   CurrentRemovalBoundaryStanding,
+  // THE SEALED INSTANT (round-4 ruling). Named in TYPE position by the act's `now` parameter, so it is
+  // imported rather than merely referenced.
+  ObservedInstant,
   StandingRefused,
   OwnershipWasNotEstablished,
   OwnershipRefusalReason,
@@ -320,7 +330,12 @@ fn reviewer_removal_act_for(
   // fields a caller could set on the standing itself: the STANDING is sealed and records what was read,
   // and it is the ACT'S job to ask whether that record is still the one this removal may use.
   removal_attempt: AttemptIdentity,
-  now: Timestamp
+  // THE ACT'S OWN CLOCK READING (round-4 ruling, applied symmetrically). The freshness test has two
+  // instants and the caller supplies the second: as a plain Timestamp it was a dial, and any stale
+  // standing could be made to look fresh by holding `now` back a few minutes. It is therefore the same
+  // sealed value the standing carries -- read from the clock the authority owns, or absent, in which
+  // case the act refuses below rather than guessing a time.
+  now: Optional<ObservedInstant>
 ) -> ReviewerRemovalStepDecision {
   match admission {
     RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
@@ -408,15 +423,27 @@ fn reviewer_removal_act_for(
                   removal_attempt: removal_attempt,
                 },
               }
-            } else if !standing_is_within_age_bound(observed_at: read_now.observed_at, now: now) {
-              // THE READ IS GENUINE BUT AGED. It is not a forged standing and not a wrong subject -- it is
-              // a true statement about a world that may have moved. Refusing on age is what makes
-              // "immediately beforehand" a checked property rather than a comment (§5).
+            } else if match now {
+              Absent => true
+              Present { value: stamp } => !standing_is_within_age_bound(
+                observed_at: read_now.observed_at,
+                now: stamp.instant,
+              )
+            } {
+              // EITHER NO CLOCK WAS READ FOR THIS ACT, OR THE READ IS GENUINE BUT AGED. The first is
+              // refused rather than defaulted: filling in a time the caller never read is exactly the
+              // dial that made every stale standing spendable. The second is not a forged standing and
+              // not a wrong subject -- it is a true statement about a world that may have moved, and
+              // refusing on age is what makes "immediately beforehand" a checked property rather than a
+              // comment (§5). The two share an arm only in this `if`; each carries its own reason.
               ReviewerRemovalBlocked {
-                missing: ActStandingIsStale {
-                  observed_at: read_now.observed_at,
-                  now: now,
-                  max_age: standing_max_age,
+                missing: match now {
+                  Absent => ActClockWasNotRead
+                  Present { value: stamp } => ActStandingIsStale {
+                    observed_at: read_now.observed_at,
+                    now: stamp.instant,
+                    max_age: standing_max_age,
+                  }
                 },
               }
             } else {
@@ -512,7 +539,10 @@ data reviewer_removal_observation_window: RemovalObservationWindowLimit = Remova
 
 data frontier_removal_attempt: AttemptIdentity = "frontier-no-dispatch" as AttemptIdentity
 
-data frontier_filing_instant: Timestamp = "2026-10-19T00:00:00Z"
+// THE FRONTIER READ NO CLOCK, SO IT HAS NO INSTANT. Not a placeholder timestamp: the row's value is
+// the absence, and the act's own refusal (ActClockWasNotRead) is what the frontier reports. A dated
+// placeholder here would be the model authoring the very thing the seal exists to stop.
+data frontier_filing_instant: Optional<ObservedInstant> = optional_absent()
 
 data deployment_gate_operator_steps: DeploymentGateOperatorSequence = DeploymentGateOperatorSequence {
   app_registration: app_registration_step,

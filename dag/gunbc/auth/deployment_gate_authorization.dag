@@ -126,9 +126,13 @@ import gunbc.auth.approval_capability {
   ProposedDecision,
   ProposeApprove,
   ProposeDeny,
-  utc_instant_is_canonical,
   utc_instant_seconds_after,
 }
+// THE INSTANT COMES FROM THE CLOCK THE AUTHORITY ALREADY OWNS, not from a String a caller wrote.
+// approval_instant_from_probe is its one canonical gate (a probe reading that is not canonical UTC, or
+// is absent, yields nothing); reusing it here is what keeps this module from minting a second calendar
+// rule to disagree with the first (§2).
+import gunbc.auth.approval_gate { approval_instant_from_probe }
 import gunbc.auth.authorization_pattern_selection {
   OperatorApprovedCapability,
   AuthorizationPattern,
@@ -1457,12 +1461,71 @@ fn join_protection_to_ownership(
   }
 }
 
+// THE INSTANT AN OBSERVATION WAS MADE AT, SEALED. WHY A TYPE AND NOT A STRING (manager ruling,
+// round 4): the freshness bound is only as honest as the instant it compares. Calendar validation
+// proves a String is a date; it does not prove the date is WHEN THE READ HAPPENED -- a caller that
+// supplies a well-formed but false instant makes a stale observation read as fresh. So an instant is
+// READ (through the clock the approval authority already owns) or it does not exist for this module;
+// there is no literal anyone can write, only a value the mint returns.
+//
+// THE CHECKER DEFECT THIS MODEL SIDESTEPS, AND WHY THAT IS NOT A WORKAROUND TO BE SILENT ABOUT:
+// declaring these two mints' instant parameter as the plain alias `Timestamp` refuses EVERY value
+// shape at the call site -- an annotated row, a cast, a helper with a declared return -- while
+// byte-identical annotations on neighbouring declarations accept the identical rows. That refusal is
+// a language-layer defect, recorded in the ledger as
+// gunbc.recurring_failure_mode.a_sealed_mints_alias_parameter_refuses_every_value (§5: a routing
+// decision around a check is recorded, not absorbed). The sealed record is ALSO the better model
+// independent of the defect: it is the difference between "a string that happens to look like a time"
+// and "the time this read happened", and only the second is what a boundary-weakening decision may
+// rest on. If this record hits the same refusal, STOP and escalate before working around it twice.
+type ObservedInstant sole_constructor {
+  // THE CANONICAL READING, as the clock authority returned it. Kept as a Timestamp so the existing
+  // integer comparisons (standing_is_within_age_bound) still apply; the SEAL is what stopped callers
+  // from authoring one, not this field's spelling.
+  instant: Timestamp,
+}
+
+// THE ONLY DOOR TO AN INSTANT. Admitted to the stage-5 read (the same declared frontier that reads
+// the environment) and to the witnesses -- and to nothing else, so in the wired tree the only
+// producer of a removal-story instant is a route that called the clock. A non-canonical or absent
+// reading yields NO value rather than a refusal to inspect: the absence of a read is exactly what the
+// Optional already models, and neither mint may substitute a time for it.
+fn read_observed_instant(reading: NonEmptyStr?) -> Optional<ObservedInstant>
+  admit_callers: [
+    // THE STAGE-5 REMOVAL READ, the same declared frontier the standing mint names: the code that
+    // reads the environment is the code that reads the clock stamping that read.
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_removal",
+      decl_name: "read_removal_boundary_standing"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "clock_read"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "clock_absent"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "clock_read_raw"
+    ),
+  ]
+{
+  match approval_instant_from_probe(reading: reading) {
+    Present { value: ts } => optional_present(value: ObservedInstant { instant: ts })
+    Absent => optional_absent()
+  }
+}
+
 type StandingRefusalReason
   = JoinWasRefused { because: ProtectionJoinRefusal }
-  // THE READ'S OWN INSTANT IS NOT A CALENDAR INSTANT. Named separately because the repair is different:
-  // nothing about the environment is wrong, the caller handed over a string that is not a timestamp, and
-  // an operator sent to check GitHub's protection settings would find them perfect.
-  | StandingInstantIsNotCanonical { observed_at: Timestamp }
+  // THE READ WAS NEVER STAMPED. The caller had no clock reading to hand over, so there is no instant at
+  // which the environment was seen -- and a standing without one is unusable: the freshness bound is a
+  // comparison against this value. Named separately from JoinWasRefused because the repair is not to
+  // read GitHub again; it is to read the CLOCK (which is the stage-5 route's job, and whose absence in a
+  // wired system is an NTP problem an operator can actually check).
+  | StandingClockWasNotRead
   // THE READS ARE CONSISTENT WITH EACH OTHER BUT ABOUT ANOTHER SUBJECT. Distinct from JoinWasRefused (the
   // two READS disagreeing with each other): here the pair is coherent and simply not about the boundary
   // whose reviewer is about to be removed.
@@ -1540,7 +1603,7 @@ fn observe_removal_boundary_standing(
   joined: ProtectionOwnershipJoin,
   boundary: DeploymentGateBoundary,
   attempt: AttemptIdentity,
-  observed_at: String,
+  observed_at: Optional<ObservedInstant>,
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
     // THE PRODUCTION CALLER IS THE STAGE-5 READ, NOT THE STAGE-2 ANSWER ROUTE (side chat round 4,
@@ -1573,23 +1636,19 @@ fn observe_removal_boundary_standing(
     // fixture it can only produce a REFUSAL, because the mint's own calendar check is what names the
     // string. Naming it keeps the "the guard is load-bearing now" claim honest -- the case is reached
     // by calling the mint, not by writing a variant literal.
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_at_instant"
-    ),  ]
+  ]
 {
-  // THE INSTANT IS VALIDATED BEFORE ANYTHING ELSE, because it is about to become the basis of a
-  // freshness comparison, and std/measure's own comment is explicit that these comparisons are defined
-  // only on canonical pairs. Referring a non-canonical string to the calendar is not a stale standing; it
-  // is a standing nobody can reason about.
-  if !utc_instant_is_canonical(t: observed_at) {
-    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: observed_at } }
-  } else {
-    standing_from_join(
+  // THE INSTANT IS THE FIRST QUESTION, before the environment is even consulted: a standing is about to
+  // become the basis of a freshness comparison, and there is no version of "the environment reads healthy"
+  // that means something at an unknown time. No substitution, no default, no `now` filled in here -- a
+  // read that was never stamped refuses, and the clock is the stage-5 route's job.
+  match observed_at {
+    Absent => StandingRefused { because: StandingClockWasNotRead }
+    Present { value: stamp } => standing_from_join(
       joined: joined,
       boundary: boundary,
       attempt: attempt,
-      observed_at: observed_at as Timestamp,
+      observed_at: stamp.instant,
     )
   }
 }
@@ -1765,6 +1824,12 @@ type RemovalRefusalReason
       standing_attempt: AttemptIdentity,
       removal_attempt: AttemptIdentity,
     }
+  // THE CLOCK WAS NEVER READ FOR THIS ACT. The freshness test needs two instants, and the caller owns
+  // the second one; with no reading there is nothing to compare the standing against, and an act that
+  // quietly treated "unknown" as "now" would keep every stale standing spendable. Named apart from
+  // StandingWasNotRead because that one is about the ENVIRONMENT read and this one is about the CLOCK --
+  // the operator checks NTP, not GitHub, for this.
+  | ActClockWasNotRead
   | ActStandingIsStale {
       observed_at: Timestamp,
       now: Timestamp,
@@ -1816,7 +1881,7 @@ type ReviewerRemovalCompletion
   | ReviewerRemovalCompletionRefused { because: ReviewerRemovalCompletionRefusal }
 
 type ReviewerRemovalCompletionRefusal
-  = CompletionInstantIsNotCanonical { observed_at: Timestamp }
+  = CompletionClockWasNotRead
   | CompletionReadIsOfAnotherSubject { subject: BoundaryMismatch }
   | ReviewerIsStillPresent { environment: NonEmptyStr }
   | BranchPolicyWentWithTheReviewer { environment: NonEmptyStr }
@@ -1831,13 +1896,30 @@ type ReviewerRemovalCompletionRefusal
 fn observe_reviewer_removal(
   boundary: DeploymentGateBoundary,
   after: EnvironmentProtectionObservation,
-  observed_at: String,
+  observed_at: Optional<ObservedInstant>,
 ) -> ReviewerRemovalCompletion {
-  if !utc_instant_is_canonical(t: observed_at) {
-    ReviewerRemovalCompletionRefused {
-      because: CompletionInstantIsNotCanonical { observed_at: observed_at },
-    }
-  } else if after.repo != boundary.repository.name
+  // UNSHIMED THE SAME WAY AS THE STANDING: a completion claim without a time is a claim about no
+  // particular world, and "the reviewer is gone" stamped at an unknown instant cannot be bounded by
+  // anything downstream. The stamp is read, never written; see ObservedInstant.
+  match observed_at {
+    Absent => ReviewerRemovalCompletionRefused { because: CompletionClockWasNotRead }
+    Present { value: stamp } => reviewer_removal_from_read(
+      boundary: boundary,
+      after: after,
+      stamp: stamp,
+    )
+  }
+}
+
+// THE READS ARE COMPARED HERE, ONCE, with the stamp already known to exist -- the same split the
+// standing mint uses with standing_from_join, kept separate only so the clock guard above is not
+// repeated per arm. This function mints nothing the read did not already allow.
+fn reviewer_removal_from_read(
+  boundary: DeploymentGateBoundary,
+  after: EnvironmentProtectionObservation,
+  stamp: ObservedInstant,
+) -> ReviewerRemovalCompletion {
+  if after.repo != boundary.repository.name
     || after.environment_name != boundary.environment_name {
     // THE READ WAS NOT OF THE SUBJECT BEING WEAKENED. Distinct from a read that came back wrong: this one
     // is about somewhere else, and certifying an absence that nobody looked for is worse than reporting
@@ -1871,7 +1953,7 @@ fn observe_reviewer_removal(
         boundary: boundary,
         reviewer_removed: true,
         main_only_policy_present: true,
-        observed_at: observed_at as Timestamp,
+        observed_at: stamp.instant,
       },
     }
   }
