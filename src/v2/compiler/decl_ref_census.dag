@@ -18,7 +18,7 @@ import v2.std.decl_ref_resolution {
 import v2.std.integer { Int }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.compiler.decl_ref_disposition_roster { DeclRefDisposition, decl_ref_disposition_roster }
+import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, DeclRefDisposition, decl_ref_disposition_roster }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
@@ -170,6 +170,37 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, interior: List<Token>) -> L
   }
 }
 
+// A roster row `CitedDeclaration { reference: DeclarationRef { .. } }` names a citation it dispositions;
+// it is not itself a citation, so the scan resumes after that literal's closing brace.
+fn after_block(toks: List<Token>, depth: Int) -> List<Token> {
+  match toks {
+    Empty => toks
+    Cons { head: h, tail: rest } =>
+      if h.class == ^dag_token_lbrace {
+        after_block(toks: rest, depth: depth + 1)
+      } else if h.class == ^dag_token_rbrace {
+        if depth == 0 { rest } else { after_block(toks: rest, depth: depth - 1) }
+      } else {
+        after_block(toks: rest, depth: depth)
+      }
+  }
+}
+
+fn after_disposition_citation(toks: List<Token>) -> List<Token> {
+  match toks {
+    Empty => toks
+    Cons { head: h, tail: rest } =>
+      if token_is_ident(t: h, lexeme: "DeclarationRef") {
+        match rest {
+          Empty => rest
+          Cons { head: _, tail: inner } => after_block(toks: inner, depth: 0)
+        }
+      } else {
+        after_disposition_citation(toks: rest)
+      }
+  }
+}
+
 // A `-> DeclarationRef {` is a return type opening a function body, never a record literal.
 fn after_return_type(toks: List<Token>) -> List<Token> {
   match toks {
@@ -182,7 +213,9 @@ fn literal_scan(file: Symbol, toks: List<Token>, scan: LiteralScan) -> LiteralSc
   match toks {
     Empty => scan
     Cons { head: h, tail: r1 } =>
-      if h.lexeme == "->" {
+      if token_is_ident(t: h, lexeme: "CitedDeclaration") {
+        literal_scan(file: file, toks: after_disposition_citation(toks: r1), scan: scan)
+      } else if h.lexeme == "->" {
         literal_scan(file: file, toks: after_return_type(toks: r1), scan: scan)
       } else if token_is_ident(t: h, lexeme: "DeclarationRef") {
         match r1 {
@@ -337,6 +370,8 @@ fn span_standing(span: String, namespaces: List<String>, context: ResolutionCont
     SpanNotASymbol
   } else if !string_all_chars_in(s: span, alphabet: prose_dotted_alphabet) {
     SpanNotASymbol
+  } else if string_all_chars_in(s: span.substring(start: span.length() - 1, end: span.length()), alphabet: "._") {
+    SpanNotASymbol
   } else if !string_any_char_in(s: span, alphabet: ".") {
     SpanUnclassified
   } else if contains_text(xs: namespaces, item: span_first_segment(span: span)) {
@@ -400,7 +435,7 @@ fn span_in_refused_file(span: String, refused: List<String>) -> Bool {
 
 fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
   match s.standing {
-    SpanStale => !span_in_refused_file(span: s.span, refused: refused) && !roster_has(subject: s.span)
+    SpanStale => !span_in_refused_file(span: s.span, refused: refused) && !roster_has_span(span: s.span)
     SpanResolves => false
     SpanNotASymbol => false
     SpanUnclassified => false
@@ -450,8 +485,60 @@ fn join_segments_with(segs: List<String>, sep: String) -> String {
   }
 }
 
-fn roster_has(subject: String) -> Bool {
-  any(xs: decl_ref_disposition_roster, predicate: fn(d) { d.subject == subject })
+fn subject_is_citation(d: DeclRefDisposition, r: DeclarationRef) -> Bool {
+  match d.subject {
+    CitedDeclaration { reference: x } => x.module_path == r.module_path && x.decl_name == r.decl_name && field_key(f: x.field) == field_key(f: r.field)
+    CitedSpan { text: _ } => false
+  }
+}
+
+fn subject_is_span(d: DeclRefDisposition, span: String) -> Bool {
+  match d.subject {
+    CitedDeclaration { reference: _ } => false
+    CitedSpan { text: t } => t == span
+  }
+}
+
+fn roster_subject_text(d: DeclRefDisposition) -> String {
+  match d.subject {
+    CitedDeclaration { reference: x } => concat(x.module_path as String, " ", x.decl_name as String, " ", field_key(f: x.field))
+    CitedSpan { text: t } => t
+  }
+}
+
+fn field_key(f: DeclField) -> String {
+  match f {
+    WholeDeclaration => ""
+    NamedField { field_name: n } => n as String
+  }
+}
+
+fn roster_has_span(span: String) -> Bool {
+  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_span(d: d, span: span) })
+}
+
+fn resolution_reference(r: DeclarationRefResolution) -> Optional<DeclarationRef> {
+  match r {
+    DeclarationRefResolved { declaration_identity: _ } => optional_absent()
+    DeclarationRefModuleAbsent { reference: x } => optional_present(value: x)
+    DeclarationRefDeclarationAbsent { reference: x } => optional_present(value: x)
+    DeclarationRefFieldAbsent { reference: x } => optional_present(value: x)
+    DeclarationRefContested { reference: x, claimants: _ } => optional_present(value: x)
+  }
+}
+
+fn roster_has_resolution(r: DeclarationRefResolution) -> Bool {
+  match resolution_reference(r: r) {
+    Absent => false
+    Present { value: x } => any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_citation(d: d, r: x) })
+  }
+}
+
+fn roster_row_matches_resolution(d: DeclRefDisposition, r: DeclarationRefResolution) -> Bool {
+  match resolution_reference(r: r) {
+    Absent => false
+    Present { value: x } => subject_is_citation(d: d, r: x)
+  }
 }
 
 fn resolution_subject(r: DeclarationRefResolution) -> String {
@@ -477,12 +564,12 @@ fn resolution_is_unresolved(r: DeclarationRefResolution, refused: List<String>) 
 }
 
 fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> Bool {
-  resolution_is_unresolved(r: r, refused: refused) && !roster_has(subject: resolution_subject(r: r))
+  resolution_is_unresolved(r: r, refused: refused) && !roster_has_resolution(r: r)
 }
 
 fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
-  any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && resolution_subject(r: r) == d.subject })
-    || any(xs: c.prose, predicate: fn(s) { span_is_stale(s: s) && s.span == d.subject })
+  any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && roster_row_matches_resolution(d: d, r: r) })
+    || any(xs: c.prose, predicate: fn(s) { span_is_stale(s: s) && subject_is_span(d: d, span: s.span) })
 }
 
 fn unmatched_roster_rows(c: DeclRefCensus) -> List<DeclRefDisposition> {
@@ -641,7 +728,7 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
       left: decl_ref_refusal_lines(c: c),
       right: list_append(
         left: fold_list(xs: c.sites, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] site ", s)) }),
-        right: fold_list(xs: unmatched_roster_rows(c: c), empty: [], cons: fn(acc, d) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] roster row matches no unresolved citation: ", d.subject)) })
+        right: fold_list(xs: unmatched_roster_rows(c: c), empty: [], cons: fn(acc, d) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] roster row matches no unresolved citation: ", roster_subject_text(d: d))) })
       )
     )
   )
