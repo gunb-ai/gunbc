@@ -8,7 +8,7 @@ import std.types { SourceSpan, container_param_name }
 import std.syntax { LiteralValue }
 
 import v1.std.core { Unmarked,
-  Node, ModuleItemFunction, ModuleItemTypeDeclaration,
+  Node, ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
   authored_name_at, NewlineIndex,
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
@@ -1691,7 +1691,7 @@ fn binder_marked_item(item: Node, owner: DeclarationRef, binders: List<String>, 
 // stops an inner `fn f<T>` from borrowing the enclosing item's T. Everything else is a type-bearing
 // position, so its `inferred` is stamped through binder_marked_type.
 fn binder_marked_body_expr(n: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
-  if n.module_item_kind != none {
+  if n.module_item_kind != NotAModuleItem {
     n
   } else {
     node_with_children_params_inferred(
