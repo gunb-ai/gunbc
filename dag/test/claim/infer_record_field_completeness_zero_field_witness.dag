@@ -120,7 +120,7 @@ test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
 // module, and the same literal one expression away from the argument position, are hollow
 // constructions and refuse. All three are measured so the waiver can neither widen back into the
 // corpus-wide hole it used to be nor vanish for the sites it still covers.
-data tag_reference_at_discriminant_seam_source: String = "module v2.std.compilers.target_model\ntype Shape = PrefixToken { token: Int } | Bare\nfn f() -> String { discriminant(v: PrefixToken {}) }\n"
+data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\nimport v2.std.compilers.target_model { PrefixToken }\nfn f() -> String { discriminant(v: PrefixToken {}) }\n"
 data tag_reference_unlisted_module_source: String = "module probe_floor_tag_ref_unlisted\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
 data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 

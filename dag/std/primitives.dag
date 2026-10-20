@@ -874,7 +874,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
 // NAMED ARMS. `tag_of(v: Unit0)` names a unit arm as a value at a user function's argument
 // position and works generically. A PAYLOAD arm cannot be named outside `discriminant`'s own
 // argument -- the tag-reference result is granted only when the callee IS `discriminant`
-// (v1.compiler.infer payload_arm_tag_reference_waiver_results, enumerated constructing-module/arm-name pairs only), so `tag_of(v: WithPayload {})`
+// (v1.compiler.infer payload_arm_tag_reference_waiver_results, enumerated arm declarations only), so `tag_of(v: WithPayload {})`
 // refuses. Naming a payload arm as a value is the trigger for the frontier recorded on
 // dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag;
 // until then a payload arm's tag comes from a value of that arm.
