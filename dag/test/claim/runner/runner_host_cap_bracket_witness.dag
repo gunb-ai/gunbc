@@ -494,7 +494,7 @@ fn mixed_drain(ns: List<String>) -> BracketRun<MixedDrain> {
   bracket_run(legs: [
     // acquisition reads: 01 masked + running (ps), 02 open + active (ps)
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "02") as String, " Runner.Listener\n")),
     // mask the one owned unit: read, then the elevated mask
     show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), step_leg(verb: "mask"),
     // re-read: 01 unchanged, 02 now masked and stopped
