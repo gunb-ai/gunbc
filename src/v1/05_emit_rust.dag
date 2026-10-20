@@ -8231,7 +8231,12 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
     SharedLayerRefuse { leaf: leaf, cause: cause } => NeedsBoxRefuse { leaf: leaf, cause: cause }
     SharedLayerAtShared => NeedsNoBox
     SharedLayerAtValue =>
-      if is_container_type(name: name) {
+      // A user alias spells its own name at a type position and its right-hand side carries the layer
+      // (type_expr_names_user_alias, the type-position reader), so its stored field is never boxed here:
+      // boxing by the alias identity deref'd an Rc<Vector<..>> QualifiedName to Vector<..> (run 172).
+      if type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices) {
+        NeedsNoBox
+      } else if is_container_type(name: name) {
         if set_contains(recursive_types, name) { NeedsBox } else { NeedsNoBox }
       } else {
         match resolve_type_decl_routed(index: type_decl_items, type_expr: n, source_indices: source_indices).resolution {
