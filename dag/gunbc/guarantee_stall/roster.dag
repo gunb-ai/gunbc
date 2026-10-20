@@ -80,6 +80,7 @@ import gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall
 import gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall { filesystem_read_outcome_node_grain_census_stall }
 import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall { authored_record_field_list_standing_for_type_population_stall }
 import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { native_step_trip_awaits_fleet_job_cgroup_stall }
+import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -256,6 +257,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   filesystem_read_outcome_node_grain_census_stall,
   authored_record_field_list_standing_for_type_population_stall,
   native_step_trip_awaits_fleet_job_cgroup_stall,
+  census_live_routes_interpreted_only_stall,
   compute_cold_reserve_durable_commit_stall,
 ]
 
