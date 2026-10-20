@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.not_derived_baseline_edges_absent_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
+
+data not_derived_baseline_edges_absent_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.compiler.infer leaves every declaration's wrapper and product nodes on the grounding frontier: NotDerivedSite DeclarationWrapperEvidenceEdgesAbsent and ProductEvidenceEdgesAbsent are present in every module, including modules that emit",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable { reason: "every ingested module; read per module from NativeInferAcceptedFrontier not_derived_sites (v2.compiler.source_root_eval), not enumerated here" },
+  next_rung_trigger: climbs_when(capability: "infer derives a DerivedGrounding for declaration wrapper and product nodes, sufficient for NotDerivedSite to lose both arms and a fully derived module to report no site rows")
+}
