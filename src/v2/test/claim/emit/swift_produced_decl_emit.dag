@@ -53,6 +53,7 @@ fn swift_produced_decl_node() -> Outcome<Node> {
 
 fn swift_produced_decl_unwired_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
     produced_decl_support: ProducedDeclUnwired,
     bundle: swift_target_model().bundle,
     lex: swift_target_model().lex,
