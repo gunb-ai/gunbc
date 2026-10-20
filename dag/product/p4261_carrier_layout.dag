@@ -1524,13 +1524,13 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
   decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
 }
 
-// PIN 7 IS HELD AT 0 V; WHAT HOLDS IT IS UNREAD. Read on its own lead at 48 V, pin 7 is far below its
-// threshold (controller_enable_standing), so the input stage is held off by its enable. Unpowered, the
+// PIN 7 IS HELD AT 0 V; Q301, HELD ON, IS THE LEADING CANDIDATE. Read on its own lead at 48 V, pin 7 is
+// far below its threshold (controller_enable_standing), so the input stage is held off by its enable. Unpowered, the
 // lead's path to ground is one-way, and its node reaches bare pads on the back; no in-circuit
 // resistance names a part on it, and arithmetic over two such readings is a lead for a direct reading,
 // never a component's value (product.electrical.measured_netlist).
 data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "U1_P5's UVLO/EN (pin 7) reads 0 V with the source at 48 V, read with the probe on its own lead: below its 2.41 V minimum, so the tested configuration has not shown a permissive enable input and the input stage is held off by its enable. The leading candidate for what holds it is Q301: its lone lead is on P6's measured node (pin 7's by the operator's ruling and the third wire's signature, not by a reading), its lead a on the return, and its lead b -- fed through the '180'-marked resistor and joined to Q300's lone lead -- at a few volts energized; its K38 marking is a candidate for a BSS138, an N-channel MOSFET whose pinout would make that a switched-on pull-down. Other causes stay live: P6 not being pin 7's node after all, another pull-down or a missing or differently populated pull-up, another protection or logic condition, or damage from the probe incident",
+  claim: "U1_P5's UVLO/EN (pin 7) reads 0 V with the source at 48 V, read with the probe on its own lead: below its 2.41 V minimum, so the tested configuration has not shown a permissive enable input and the input stage is held off by its enable. The leading candidate for what holds it is Q301, held on with nothing to release it: at 54 V, Q301's lead b node reads about 4.9 V and the far end of the resistor feeding it 54 V, the input itself; Q300's lead b -- the input that would pull Q301's lead b down -- reads 0 V; and P6, on Q301's lone lead, reads 0 V. Under the candidate BSS138 pinout (K38) that is Q300 off, Q301 on and P6 at the return; P6 is pin 7's by the operator's ruling and the third wire's signature, not by a reading, and Q300's lead b, followed by eye toward U51, is where an enable would arrive. Other causes stay live: P6 not being pin 7's node after all, another pull-down, no pull-up to raise pin 7 once Q301 releases it, another protection or logic condition, or damage from the probe incident",
   sources: [
     "energized at 48 V with nothing wired to the chip, the probe held on the leads: pin 8 about 1.8 V -- what its back-side pad read at 48 V, so the count from the pin 1 marker holds -- and pin 7 0 V (controller_enable_standing). A probe touching nothing also reads 0 V; pin 8 was read the same way just before. One source setting, so whether pin 7 moves with the input is unread (enable_projection)",
     "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and U1_P5's OVLO reads below its 2.39 V minimum at 48 V on its own lead (controller_overvoltage_standing), as the pad reported on pin 8 (no baseline recorded) did at 48 V and 36 V: overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm), predicts the OVLO readings -- a reference circuit, not this board's parts",
@@ -1541,15 +1541,18 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "unpowered, the cluster's other pads read to J20's black lead, J20's red lead and VDD's point (the top end of pin 21's beige part): P10 is reported as ground (no baseline recorded); P1 to P4, P8 and P9 read above the baseline to all three. No pad of the cluster joins pin 7's pads to the return, the input or VDD directly, so its empty places are not a missing direct pull-up or pull-down to those; P9 beside the grounded P10 reads to none and did not read 0 from the third wire. Within about a centimetre on both faces, the third wire's node reaches only the three bare pads",
     "unpowered, the lone lead of Q301's three-lead package on the back reads 0.00 ohm to P6: the first fitted part found at P6, which no reading yet joins to pin 7's lead (it is pin 7's only by the third wire's signature and the operator's ruling). Q301's 'K38' marking is a candidate for Diodes Incorporated's BSS138, whose pinout puts the drain on the lone lead -- the open-drain device TI describes for holding UVLO/EN low -- a lead, not Q301's established role. Q300 and Q301 both carry the marking 'K38' (operator, photograph bench-session upload 42ffb97b); the code matches Diodes Incorporated's marking table, but no maker is read from the parts themselves, so neither's type nor pinout is established (e1_k38_candidate)",
     "unpowered, Q301's lead a reads 0 ohm and Q300's lead a 0.00 ohm to J20's return, and Q301's lead b 0.00 ohm to Q300's lone lead. No session recorded a shorted-probe baseline or the range, so these zeros, the third wire's to P5 to P7 and Q301's lone lead's to P6 are reported zeros, not joins (product.electrical.bench_session), and the netlist keeps each pair's points apart. Read as joins, Q300's lone lead drives Q301's lead b, and Q301's lone lead is on P6. Under the candidate BSS138 pinout with the silkscreen triangle on pin 1 -- lead b the gate, lead a the source, the lone lead the drain -- that is two N-channel low-side stages, Q300 able to pull Q301's gate to the return and Q301 able to pull P6 to it. The K38 identification is a candidate, so this shape is a lead, not the circuit's established role",
-    "unpowered, the resistor beside Q301 has its nearer end reported equal to Q301's lead b ('==', no display or baseline recorded); its far end's trace, followed by eye, runs on the front toward D5's tab beside J20 and up past the bare U2_P5 and U3_P5 footprints toward U1_TSE beside J1, reading 0 ohm as far as about U2_P5 and about 2 kohm beyond (hedged, points named by place). The operator reads the layout as two input sides, J1's backplane and J20; what the far end's net carries with J20 energized is unread",
-    "energized, the via on Q301's lead b node (by the visible trace, not by a reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down. Q300's triangle-side lead, the input that would do it, is unread",
+    "unpowered, the resistor beside Q301 has its nearer end reported equal to Q301's lead b ('==' and later '0.00ohm', no baseline recorded); its far end's trace, followed by eye, runs on the front toward D5's tab beside J20 and up past the bare U2_P5 and U3_P5 footprints toward U1_TSE beside J1, reading 0 ohm as far as about U2_P5 and about 2 kohm beyond (hedged, points named by place). The operator reads the layout as two input sides, J1's backplane and J20; with J20 energized at 54 V the far end reads 54 V",
+    "energized, the via on Q301's lead b node (by the visible trace and a reported 0.0 ohm, not a baselined reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down",
+    "energized at 54 V (2026-10-20), against J20's black lead: Q300's lead b 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V -- the input. With the via's 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor, and Q300's lead b at 0 V says nothing drives Q300 on. These are readings at P6 and at the parts' pads, not at pin 7, which read 0 V at 48 V on its own lead",
+    "unpowered (2026-10-20): across the resistor beside Q301, 26 kohm -- in circuit a resistor reads at or below its value, so it is at least about 26 kohm and '180' as 18 ohm is excluded; enlarged, its marking reads '18D', 150 kohm by the EIA-96 code, unresolved until the third character is confirmed (e1_q301_resistor). Q300's lead b reads 8 kohm to J20's black lead and 24 kohm to VDD's point; the via reads 0.0 to Q301's lead b. The zeros re-read (ZB2 to ZB6) name no dial position, and the shorted probes read '.005' and '.03 or something at 2k', so none of them joins",
+    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; neither marking is read, and no reading joins the trace's end to Q300's lead b",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
     "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
     "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the '180' resistor's nearer end to lead b, and the via to lead b); and across the '180' resistor's two ends. Then Q300's triangle-side lead read to J20's black lead and to VDD's point and its trace followed, and, if P6 is pin 7's, P6, Q301's lead b node, the resistor's far end and Q300's triangle-side node read energized at 48 V at points away from the leads: near 0 V on Q300's gate says Q300 is off, so Q301 stays on and the stage waits on whatever would drive that lead. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the point where its trace ends beside U51; the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. Then U51's and U49's markings read, to name what would drive Q300's lead b. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -2329,7 +2332,7 @@ data e1_q301_lead_b: ElectricalTerminalRef = e1_terminal(c: e1_q301, name: "lead
 data e1_q300: ComponentInstanceIdentity = e1_component(local: "Q300")
 data e1_q300_lone_lead: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lone lead of its three-lead package")
 data e1_q300_lead_a: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lead a: two-lead side, away from the silkscreen triangle")
-data e1_k38_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 42ffb97b, Q300 and Q301 both marked K38, the resistor beside Q301 marked 180 (not on Drive)")
+data e1_k38_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 42ffb97b, Q300 and Q301 both marked K38, and the resistor beside Q301 with its marking, first read as 180 (not on Drive)")
 // Q300 and Q301 carry 'K38', Diodes Incorporated's BSS138 product marking code (DS30144). Another maker
 // may use the same code, and the photograph shows no date-code line, so the identification is a
 // candidate. Under that row's pinout and the silkscreen triangle on pin 1, lead b would be the gate,
@@ -2343,15 +2346,14 @@ data e1_q300_q301_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator:
 data e1_q300_q301_said: NonEmptyStr = "Q301-a J20black: 0ohm, Q301-b to Q300 lone: 0.00ohm, Q300-a to J20 black: 0.00ohm"
 
 // THE RESISTOR ON Q301'S LEAD B, AND ITS FAR END. Unpowered, the end of the resistor beside Q301 (R on
-// the labelled photograph, marked '180') nearer Q301 is reported equal to Q301's lead b ('==', no
-// display or baseline recorded). The
-// operator followed its far end's trace by eye to the front: along the board edge under Q21_P5 and
+// the labelled photograph; its marking, first read as '180', reads '18D' enlarged) nearer Q301 is
+// reported equal to Q301's lead b ('==', no display or baseline recorded). The operator followed its far end's trace by eye to the front: along the board edge under Q21_P5 and
 // Q22_P5 toward D5's tab, past a pair of large bare pads, and up the left edge past the bare U2_P5 and
 // U3_P5 footprints toward U1_TSE beside J1 (two annotated photographs). From the far end they read 0 ohm
 // along that route as far as about U2_P5 and about 2 kohm beyond it toward J1, the points named only by
 // place. They read the layout as two input sides, J1's backplane and J20 -- their reading, not a
 // measurement.
-data e1_q301_resistor: ComponentInstanceIdentity = e1_component(local: "resistor beside Q301 (R on the labelled photograph), marking unread")
+data e1_q301_resistor: ComponentInstanceIdentity = e1_component(local: "resistor beside Q301 (R on the labelled photograph)")
 data e1_q301_resistor_near: ElectricalTerminalRef = e1_terminal(c: e1_q301_resistor, name: "end nearer Q301")
 data e1_q301_resistor_far: ElectricalTerminalRef = e1_terminal(c: e1_q301_resistor, name: "far end")
 data e1_route_near_u2: ElectricalTerminalRef = e1_terminal(c: e1_component(local: "front trace of the Q301 resistor's far end, as the operator traced it"), name: "point near U2_P5")
@@ -2422,11 +2424,68 @@ data e1_q301_resistances: List<ResistanceObservation> = [
   e1_route_read(to: e1_route_toward_j1, display: DisplayValue { ohms: 2000, approximate: true }, certainty: StatedHedged { verbatim: "2k ohms" }),
 ]
 
+// SHEET ZB (2026-10-20, unpowered, after the probe bridge). The operator re-read the zeros asked for.
+// The shorted probes read '.005' and, later, '.03 or something at 2k'; no pair names its dial
+// position, and the decimal places differ across them ('.005', '0.00', '0.0'), so no pair shares a
+// recorded range with a shorted-probe display and none of these zeros joins
+// (product.electrical.bench_session). Across the resistor beside Q301, 26 kohm: in circuit a resistor
+// reads at or below its value, so it is at least about 26 kohm, and '180' read as 18 ohm is excluded.
+// Q300's lead b reads 8 kohm to J20's black lead and 24 kohm to VDD's point, and the via reads 0.0 to
+// Q301's lead b.
+data e1_q300_lead_b: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lead b: two-lead side, beside the silkscreen triangle")
+data e1_zb_baseline_said: NonEmptyStr = "ZB0: .005 / ZB0: .03 or something at 2k"
+data e1_resistor_marking_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 40bc2a29, Q300, Q301 and the resistor between them; the resistor's marking enlarged in the reply, and the points V3 and ZV2 marked (not on Drive)")
+
+fn e1_zb_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, display: ResistanceDisplay, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: a, second: b,
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, OperatorStatement { stated_on: "2026-10-20", verbatim: e1_zb_baseline_said }, e1_q300_q301_photo],
+  }
+}
+
+data e1_zb_resistances: List<ResistanceObservation> = [
+  e1_zb_read(a: e1_q301_lone_lead, b: e1_terminal(c: e1_back_cluster, name: "P6"), display: DisplayZeroWithoutBaseline { reported: "0.00ohm" }, said: "ZB2: 0.00ohm"),
+  e1_zb_read(a: e1_q301_lead_a, b: e1_ground_ref, display: DisplayZeroWithoutBaseline { reported: "0.00 ohm" }, said: "ZB3: 0.00 ohm"),
+  e1_zb_read(a: e1_q301_lead_b, b: e1_q300_lone_lead, display: DisplayZeroWithoutBaseline { reported: "0.00ohm" }, said: "ZB4: 0.00ohm"),
+  e1_zb_read(a: e1_q300_lead_a, b: e1_ground_ref, display: DisplayZeroWithoutBaseline { reported: "0.00ohm" }, said: "ZB5:  0.00ohm"),
+  e1_zb_read(a: e1_q301_resistor_near, b: e1_q301_lead_b, display: DisplayZeroWithoutBaseline { reported: "0.00ohm" }, said: "ZB6:  0.00ohm"),
+  e1_zb_read(a: e1_q301_resistor_near, b: e1_q301_resistor_far, display: DisplayValue { ohms: 26000, approximate: false }, said: "ZB7: 26kohm"),
+  e1_zb_read(a: e1_q301_b_via, b: e1_q301_lead_b, display: DisplayZeroWithoutBaseline { reported: "0.0ohm" }, said: "R6: 0.0ohm"),
+  e1_zb_read(a: e1_q300_lead_b, b: e1_ground_ref, display: DisplayValue { ohms: 8000, approximate: false }, said: "R4: 8k ohm, 24kohm"),
+  e1_zb_read(a: e1_q300_lead_b, b: e1_beige_top, display: DisplayValue { ohms: 24000, approximate: false }, said: "R4: 8k ohm, 24kohm"),
+]
+
+// THE ENABLE CHAIN, ENERGIZED (2026-10-20, the source at 54 V, against J20's black lead). Q300's lead b
+// reads 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V: the input itself. With the via's
+// 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor.
+// Under the candidate BSS138 pinout that is Q300 off, Q301 on and P6 at the return; these are readings
+// at P6 and at the parts' pads, not at pin 7.
+data e1_zv_said: NonEmptyStr = "V3 - 0v / ZV1 - 0v / ZV2 - 54v"
+
+fn e1_zv_read(at: ElectricalTerminalRef, millivolts: Nat) -> NodeVoltageObservation {
+  NodeVoltageObservation {
+    asset: p4261_e1_b, at: at, reference: e1_ground_ref,
+    record: second_point_inferred(basis: "the sheet's setup: the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
+    conditions: e1_live_bench, source: volt(count: 54), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_zv_said }, OperatorStatement { stated_on: "2026-10-20", verbatim: "Yeah it was 54v" }, e1_resistor_marking_photo],
+  }
+}
+
+data e1_zv_volts: List<NodeVoltageObservation> = [
+  e1_zv_read(at: e1_q300_lead_b, millivolts: 0),
+  e1_zv_read(at: e1_terminal(c: e1_back_cluster, name: "P6"), millivolts: 0),
+  e1_zv_read(at: e1_q301_resistor_far, millivolts: 54000),
+]
+
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
   attachments: [e1_pin7_attachment, e1_w2_attachment, e1_w4_attachment],
-  voltages: concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])),
-  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances),
+  voltages: concat(concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])), e1_zv_volts),
+  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -2529,7 +2588,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_component(local: "U3_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
     InstalledComponent { component: e1_q301, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
     InstalledComponent { component: e1_q300, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
-    InstalledComponent { component: e1_q301_resistor, terminals: names(ns: ["end nearer Q301", "far end"]), identification: ResistanceCodeRead { milliohms: 18000, marking: MarkingReading { text: "180 (read from the photograph; 18 ohm by the three-digit code, not yet read across its ends)", evidence: e1_k38_photo } } },
+    InstalledComponent { component: e1_q301_resistor, terminals: names(ns: ["end nearer Q301", "far end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "18D (read from an enlarged photograph; first read as 180)", evidence: e1_resistor_marking_photo } }, discriminator: "the third character read under magnification: '18D' is 150 kohm by the EIA-96 code, which the 26 kohm read across its ends in circuit admits, since a resistor in circuit reads at or below its value; '180', 18 ohm by the three-digit code, that reading excludes" } },
     InstalledComponent { component: e1_component(local: "U2_P1"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } },
     InstalledComponent { component: e1_component(local: "Q5_P5"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 in the _P5 group (an enable-network candidate, see p4261_enable_network_hypothesis)" } },
     InstalledComponent { component: e1_component(local: "D5_P5"), terminals: names(ns: ["end nearer the OVLO (pin 8) pad", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },

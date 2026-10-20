@@ -2,7 +2,7 @@ module test.claim.product.p4261_carrier_layout_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt }
+import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
@@ -262,6 +262,8 @@ import product.p4261_carrier_layout {
   e1_q301_lead_b,
   e1_q300_lone_lead,
   e1_q300_lead_a,
+  e1_q300_lead_b,
+  e1_q301_resistor,
   e1_q301_resistor_near,
   e1_q301_resistor_far,
   e1_route_near_u2,
@@ -1552,8 +1554,8 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // Q301's lone lead is on the wire's node; Q301's and Q300's lead a are ground, and Q301's lead b is
 // Q300's lone lead, neither ground nor the wire's; the resistor beside Q301 joins lead b at its nearer
 // end, and its far end joins the traced point near U2_P5 but only links, at about 2 kohm, beyond it.
-// The via on lead b's node carries its two energized readings, and no reading yet joins it to lead b. The K1 renders its own, and the K1 with nothing
-// measured renders none.
+// The via on lead b's node carries its two energized readings, and its reported 0.0 to lead b joins
+// it only on the baselined copy. The K1 renders its own, and the K1 with nothing measured renders none.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let live = board_netlist(b: e1_measured)
   let net = board_netlist(b: baselined_board(b: e1_measured))
@@ -1583,17 +1585,19 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && !one_node(net: net, a: e1_q301_lead_b, b: e1_w4_end)
     && one_node(net: net, a: e1_q301_resistor_near, b: e1_q301_lead_b) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_q301_lead_b)
     && one_node(net: net, a: e1_q301_resistor_far, b: e1_route_near_u2) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_route_toward_j1)
-    && count(filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_q301_b_via))) == 2 && !one_node(net: net, a: e1_q301_b_via, b: e1_q301_lead_b)
+    && count(filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_q301_b_via))) == 2
+    && one_node(net: net, a: e1_q301_b_via, b: e1_q301_lead_b) && !one_node(net: live, a: e1_q301_b_via, b: e1_q301_lead_b)
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
 }
 
-// Q301's lone lead joins P6 only against a baseline read on the reading's own range. As recorded --
-// '0.00' with no baseline -- the pair stays two nodes, linked; with the supplied baseline on the
-// reading's range it is one node; with that baseline but the reading's range unrecorded, or the
-// reading on another range, or as a literal 0 ohm value, two.
+// Q301's lone lead joins P6 only against a baseline read on the readings' own range. As recorded --
+// '0.00' on 2026-10-19 and '0.00ohm' on the 2026-10-20 re-read, neither with a baseline -- the pair
+// stays two nodes, linked by both; with the supplied baseline on their range it is one node; with
+// that baseline but the range unrecorded, or the readings on another range, or as a literal 0 ohm
+// value, two.
 fn q301_join_needs_the_baseline() -> Bool {
   let read = filter(e1_bench_record.resistances, o => reads_pair(o: o, a: e1_q301_lone_lead, b: cluster_pad(name: "P6")))
   let on_range = map(read, o => baselined(o: o))
@@ -1610,10 +1614,11 @@ fn q301_join_needs_the_baseline() -> Bool {
     display: DisplayValue { ohms: 0, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence,
   })
   let recorded = measured_netlist(graph: no_beeps(), resistances: read)
-  count(read) == 1
+  count(read) == 2
     && !one_node(net: recorded, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
-    && links_between(net: recorded, a: e1_q301_lone_lead, b: cluster_pad(name: "P6")) == 1
+    && links_between(net: recorded, a: e1_q301_lone_lead, b: cluster_pad(name: "P6")) == 2
     && netlist_text(net: recorded).contains("reported as '0.00' with no shorted-probe baseline recorded")
+    && netlist_text(net: recorded).contains("reported as '0.00ohm' with no shorted-probe baseline recorded")
     && one_node(net: measured_netlist(graph: no_beeps(), resistances: on_range), a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
     && !one_node(net: measured_netlist(graph: no_beeps(), resistances: range_unrecorded), a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
     && !one_node(net: measured_netlist(graph: no_beeps(), resistances: other_range), a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
@@ -1640,6 +1645,41 @@ test fn a_marking_candidate_is_not_an_identification() -> Bool {
   let as_identified = map(parts, c => InstalledComponent { component: c.component, terminals: c.terminals, identification: IdentifiedByMarking { row: bss138, marking: MarkingReading { text: "K38", evidence: e1_k38_photo } } })
   let credited = all(as_identified, c => match mosfet_of(c: c) { Absent => false, Present { value: _ } => true })
   live && credited
+}
+
+// THE ENABLE CHAIN IS RECORDED, NOT CONCLUDED. At 54 V the record holds Q300's lead b at 0 V, P6 at
+// 0 V and the far end of the resistor beside Q301 at the input's 54 V. Across that resistor 26 kohm is
+// a link between its ends, never a join, and its marking stays unresolved -- '18D' read, no value
+// credited -- so no decoded resistance stands for it. Without the 26 kohm reading its ends are unlinked.
+test fn the_enable_chain_is_read_at_54_v() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let resistor = component_of(layout: p4261_e1_layout, c: e1_q301_resistor)
+  let without_26k = measured_netlist(graph: no_beeps(), resistances: filter(e1_bench_record.resistances, o => !reads_pair(o: o, a: e1_q301_resistor_near, b: e1_q301_resistor_far)))
+  reads_at_54(t: e1_q300_lead_b, millivolts: 0)
+    && reads_at_54(t: cluster_pad(name: "P6"), millivolts: 0)
+    && reads_at_54(t: e1_q301_resistor_far, millivolts: 54000)
+    && links_between(net: live, a: e1_q301_resistor_near, b: e1_q301_resistor_far) == 1
+    && !one_node(net: live, a: e1_q301_resistor_near, b: e1_q301_resistor_far)
+    && links_between(net: without_26k, a: e1_q301_resistor_near, b: e1_q301_resistor_far) == 0
+    && count(resistor) == 1
+    && all(resistor, c => is_unresolved_marking(c: c) && marking_text_contains(c: c, text: "18D"))
+}
+
+fn reads_at_54(t: ElectricalTerminalRef, millivolts: Nat) -> Bool {
+  any(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: t) && volt_count(v: o.source) == 54 && match o.value {
+    ReadAbout { value } => millivolt_count(v: value) == millivolts
+    ReadBelow { bound: _ } => false
+  })
+}
+
+fn marking_text_contains(c: InstalledComponent, text: NonEmptyStr) -> Bool {
+  match c.identification {
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => (m.text as String).contains(text as String)
+      Absent => false
+    }
+    _ => false
+  }
 }
 
 // THE K1 IS ITS OWN BOARD. Its readings build its own netlist. As recorded its zeros carry no baseline
