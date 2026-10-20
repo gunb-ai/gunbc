@@ -260,7 +260,7 @@ fn cap_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
               OperationObserved {
                 observation: ShellObserved { observation: m.answer },
                 state: state + 1,
-                elapsed: second(count: 0),
+                elapsed: second(count: 1),
               }
             Absent => OperationObserved {
               observation: ShellObserved {
@@ -269,8 +269,8 @@ fn cap_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
                   cause: "the cap-route scenario has no answer for this command" as NonEmptyStr,
                 },
               },
-              state: state,
-              elapsed: second(count: 0),
+              state: state + 1,
+              elapsed: second(count: 1),
             }
           }
         },
