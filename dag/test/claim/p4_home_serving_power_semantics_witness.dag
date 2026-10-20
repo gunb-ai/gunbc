@@ -34,7 +34,21 @@ import std.markdown { MarkdownDocument }
 import gunbc.plan { Plan, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_semantics_plan }
+import gunbc.plans.p4_home_serving_power_semantics {
+  p4_branch_record,
+  p4_branch_sentence,
+  p4_fleet_observation,
+  p4_fleet_sentence,
+  p4_home_serving_power_semantics_plan,
+  p4_presence_standing,
+  p4_ruling_record,
+  p4_ruling_sentence,
+  p4_trace_conditions,
+  p4_trace_freshness,
+  p4_trace_is_reliable,
+  p4_trace_negative_control,
+  p4_trace_provenance,
+}
 
 // Guards on the P4 watt-semantics decision CARRIER. DESIGN §1: "A plan's authority is
 // its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation
@@ -151,26 +165,18 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
       || string_contains(s: t, pattern: ".rs:")
       || string_contains(s: t, pattern: ".py:")
       || string_contains(s: t, pattern: "DESIGN.md:")
-      // Stripped-citation DEBRIS. Deleting a `path:line` is only half an edit: the husk it
-      // leaves (" ()", " at.", "at/.") is the same positional defect wearing different
-      // clothes, and an earlier head of this PR shipped 12 of them. Policing the citation
-      // but not its residue would be a guard that passes the bug it was written for.
-      || string_contains(s: t, pattern: " ()")
-      || string_contains(s: t, pattern: "at/.")
-      || string_contains(s: t, pattern: " at.")
-      || string_contains(s: t, pattern: "are at/")
-      || string_contains(s: t, pattern: "there at/")
-      // a citation deleted from INSIDE a parenthetical leaves the paren open on a comma:
-      // `(`:250`, which compares ...)` lost its citation and its subject together.
-      || string_contains(s: t, pattern: "(,")
-      || string_contains(s: t, pattern: ",)")
-      // ...and the general rule behind them, so the next shape is caught without being
-      // enumerated first. This is what the suffix list above could not do.
+      // The general rule, not an enumeration of shapes. An earlier head of this PR shipped 12
+      // citation husks (" ()", "at/.", "(,") left behind when a `path:line` was deleted, and an
+      // earlier revision of THIS claim policed each of those literals by hand. Review 83566
+      // (§5) was right that that was the wrong instrument: measured over the shipped body, all
+      // eight literals were absent — green by construction — and three of them match ordinary
+      // English ("looked at. The" contains " at."), so they could redden a correct document for
+      // a prose edit while never having caught the defect they were written for. What is kept is
+      // the rule that generalises: a colon introducing digits, with the character BEFORE it
+      // deciding. MUTATION CHECK: replacing `p4_last_is_digit` with one that never fires reddens
+      // this claim on the CLEAN carrier, so the rule is doing the work and is not scenery.
       || p4_has_positional_citation(t: t))
 }
-
-
-
 
 
 
@@ -569,4 +575,170 @@ test fn no_type_that_would_carry_a_power_reading_declares_one() -> Bool {
     && p4_no_power_named_field(
       qualified_name: "extdeps.nvidia.management_library::DeviceMemoryObservation"
     )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE PRESENCE OBSERVATION, EXECUTED — added because the operator's fleet answer made reliability
+// the gate: no host carries a GPU, cards and slots are empty as fact, and a software trace may count
+// as presence evidence ONLY once it is shown reliable under three named conditions (freshness,
+// provenance, a negative control where an absent GPU yields no trace). The plan records each
+// condition with a `met` Bool; a Bool that nobody re-derives is a decoration, so this claim reads the
+// committed bytes and RE-DERIVES all three, then requires the records to agree. Change a fixture and
+// the record that describes it goes red — which is the whole point of a carrier over a paragraph.
+//
+// It also carries the positive floor that makes the absence claims mean something: the two table
+// traces must contain the device-name row before the claim is allowed to conclude anything about
+// what they lack. An absence proven over bytes nobody read is green by construction.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+fn p4_fixture(name: String) -> String {
+  filesystem_read(path: join(["fixtures/gpu_bench/pro6000ws_600w_v2/", name], "")).content
+}
+
+// A dated row opens yyyy-mm-dd hh:mm:ss. Checked positionally rather than by a substring library:
+// digits at 0..3, a dash at 4, digits at 5..6, a dash at 7, digits at 8..9, a space at 10, digits at
+// 11..12, a colon at 13. That is the shape the plan's freshness instrument names.
+fn p4_row_is_dated(line: String) -> Bool {
+  if line.length() < 14 {
+    false
+  } else {
+    p4_is_digit(c: substring(s: line, start: 0, end: 1))
+      && p4_is_digit(c: substring(s: line, start: 11, end: 12))
+      && substring(s: line, start: 4, end: 5) == "-"
+      && substring(s: line, start: 7, end: 8) == "-"
+      && substring(s: line, start: 10, end: 11) == " "
+      && substring(s: line, start: 13, end: 14) == ":"
+  }
+}
+
+fn p4_dated_row_count(text: String) -> Nat {
+  count(filter(text.split(delimiter: "\n"), line => p4_row_is_dated(line: line)))
+}
+
+// The trace never names the tool that wrote it. Searched, not assumed: every spelling by which the
+// suspected producer identifies itself, in every line of every fixture.
+fn p4_names_its_producer(text: String) -> Bool {
+  any(["nvidia-smi", "nvsmi", "pynvml", "dcgm"], t => string_contains(s: text, pattern: t))
+}
+
+// The device-name row as it appears in a `nvidia-smi`-style table. Present in both table traces.
+fn p4_names_a_device(text: String) -> Bool {
+  string_contains(s: text, pattern: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition")
+}
+
+// The absent-device half. No committed fixture reports a device that is not there, which is exactly
+// why the corpus cannot show that absence produces no trace.
+fn p4_reports_absent_device(text: String) -> Bool {
+  any(["no devices were found", "No devices were found", "not found", "N/A"], t =>
+    string_contains(s: text, pattern: t))
+}
+
+test fn the_gpu_bench_trace_still_falls_short_of_reliable_presence_evidence() -> Bool {
+  let auto = p4_fixture(name: "auto.log")
+  let results = p4_fixture(name: "results_ninfer_nvfp4_pro6000ws_600w.txt")
+  let warm = p4_fixture(name: "warm_ninfer_nvfp4_pro6000ws_600w.jsonl")
+  // POSITIVE FLOOR: the read must find what a trace is expected to find, or every absence below is
+  // vacuous. Both table traces carry the device row; the receipt stream carries its run label on
+  // every line (that one is proved by the parse claim, not re-proved here).
+  let floor = p4_names_a_device(text: auto) && p4_names_a_device(text: results)
+    && count(warm.split(delimiter: "\n")) > 0
+    && count(p4_trace_conditions()) > 0
+  // Freshness: at least one dated row in the trace that has them.
+  let derived_freshness = p4_dated_row_count(text: auto) > 0
+  // Provenance: no fixture states which tool produced it. The condition is met only when one DOES.
+  let derived_provenance = p4_names_its_producer(text: auto) || p4_names_its_producer(text: results) || p4_names_its_producer(text: warm)
+  // Negative control: met only when SOME committed fixture shows an absent device producing no trace.
+  let derived_negative_control =
+    p4_reports_absent_device(text: auto) || p4_reports_absent_device(text: results) || p4_reports_absent_device(text: warm)
+  // The records must agree with the bytes. This is the line that stops the carrier describing a
+  // corpus it no longer has.
+  let records_agree =
+    p4_trace_freshness.met == derived_freshness
+      && p4_trace_provenance.met == derived_provenance
+      && p4_trace_negative_control.met == derived_negative_control
+  // And the standing must follow from the records, not be asserted beside them.
+  floor && records_agree && !p4_trace_is_reliable()
+    && string_contains(s: p4_presence_standing(), pattern: "REFUSED")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE CARRIER CANNOT DRIFT AWAY FROM ITS RECORDS. Typing the status facts only helps if the prose
+// the reader actually sees is still the rendering of them. A hand-edit to a paragraph — someone
+// "tidying" the sentence, or restating a head or a merge state from memory — would otherwise leave
+// every other claim green while the document said something the records do not. So each field of
+// each status record must appear in the rendered body, which is the same shape the citation roster
+// enforces for symbols: derive the required set from the records, then require the subject to carry
+// every one of them. Two anti-vacuity conjuncts keep this from being green on an empty read: the
+// roster must be non-empty, and no required value may be empty.
+//
+// MUTATION CHECK: changing `standing_words` on p4_ruling_record to any other phrase reddens this
+// claim while leaving the other eight green, because the sentence and the field are then different
+// text. That is the discrimination that makes it a check rather than a description.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+fn p4_status_record_values() -> List<String> {
+  [
+    p4_ruling_record.ask_id,
+    p4_ruling_record.asked_at,
+    p4_ruling_record.window,
+    p4_ruling_record.decided_by,
+    p4_ruling_record.recorded_by,
+    p4_ruling_record.recorded_at,
+    p4_ruling_record.standing_words,
+    p4_ruling_record.license,
+    p4_ruling_record.overturn,
+    p4_branch_record.pr,
+    p4_branch_record.branch,
+    p4_branch_record.model_files,
+    p4_branch_record.state_instrument,
+    p4_branch_record.tree_invariant,
+    p4_branch_record.heal_artifact,
+    p4_fleet_observation.answered_at,
+    p4_fleet_observation.answered_via,
+    p4_fleet_observation.gpu_hosts,
+    p4_fleet_observation.cards,
+    p4_fleet_observation.slots,
+    p4_fleet_observation.preferred_evidence,
+    p4_fleet_observation.consequence,
+  ]
+}
+
+test fn the_body_renders_every_field_of_its_status_records() -> Bool {
+  let t = carrier_text()
+  let values = p4_status_record_values()
+  let rendered = filter(values, v => string_contains(s: t, pattern: v))
+  // ANTI-VACUITY: a non-empty roster, and every entry non-empty. An empty `values` would make the
+  // conservation conjunct below true on its own, and an empty `v` is contained in every string.
+  count(values) > 0
+    && all(values, v => v.length() > 0)
+    // CONSERVATION: nothing in the records fails to reach the body. This is the half that stops
+    // the roster being quietly narrowed to whatever happens to render.
+    && count(rendered) == count(values)
+    // and the sentences themselves are present, not merely their fields
+    && string_contains(s: t, pattern: "The ruling was C")
+    && string_contains(s: t, pattern: "authored on a branch")
+    && string_contains(s: t, pattern: "Fleet facts")
+}
+
+// §6: "name the instrument, never transcribe its output." Review 83025 caught the carrier printing
+// a command's result beside the command; 83566 caught it doing the same to PR state. Merge state and
+// branch heads are the two facts in this decision that move under every push and every review, so the
+// rule here is directional and the two directions are asserted separately: the INSTRUMENT must be
+// named (positive — without it the reader has no way to the fact), and its OUTPUT must not be
+// transcribed (negative — a quoted head is authoritative-looking and false by tomorrow). The negative
+// half is enforced over shapes measured absent from the shipped body, so re-introducing a
+// merge-state word or a `head `SHA`` clause reddens this instead of quietly aging.
+test fn the_carrier_names_the_status_instrument_and_transcribes_no_output() -> Bool {
+  let t = carrier_text()
+  // POSITIVE: the instrument is named, so the absence below is a deferral and not a gap.
+  string_contains(s: t, pattern: "gh pr view")
+    && string_contains(s: t, pattern: "state,headRefOid")
+    && string_contains(s: t, pattern: "git rev-parse origin/main")
+    // NEGATIVE: no transcribed merge state. Each measured absent from the shipped body; a future
+    // edit that quotes one reddens this claim rather than rotting silently.
+    && !any(
+      ["MERGEABLE", "BLOCKED", "BEHIND", "DIRTY", "mergeStateStatus", "unmerged", "head `"],
+      w => string_contains(s: t, pattern: w)
+    )
+    // and the standing the fleet observation derives is actually stated in the body
+    && string_contains(s: t, pattern: p4_presence_standing())
 }

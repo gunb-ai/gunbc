@@ -158,7 +158,7 @@ fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
     p(text: "**One value binding four things**, so a rate can never be detached from the subject it was measured on — an admitted receipt identity, the `ServingPerformanceSubject`, the measured rate, and the final standing. It should reuse what exists rather than mint: the standing is `GpuBenchWarmStanding` (`gunbc.serving.gpu_bench_warm_standing::GpuBenchWarmStanding`), the subject is `ServingPerformanceSubject` (`gunbc.spark.serving_performance_subject::ServingPerformanceSubject`, `sole_constructor`), and the rate carrier already exists as `TokensPerSecond = Measure<Frequency, One, Nat>` (`std.measure::TokensPerSecond`, with `tokens_per_second`, `tokens_per_second_count`, and `MilliTokensPerSecond` on the same axis) — so a rate is not carried as a `Nat` and no new rate type is minted (§2). The precedent to imitate is one level down: `SubjectBoundCacheFit` (`gunbc.spark.serving_promotion::SubjectBoundCacheFit`), a small record whose only purpose is *\"a verdict that cannot be named without its subject key\"*, plus the `ServingPromotionEvidence` / `ServingPromotionReceipts` split, which exists so a caller can hand over receipts but cannot supply a verdict the wall computes itself — and `cache_bound_to_resolved_plan` re-checks the binding at use time rather than trusting it."),
     p(text: "**The finding that changes P4's framing: this is discharging a declared ceiling, not new scope.** `gunbc.recurring_failure_mode.benchmark_warm_capacity_violation_read_as_engine_performance` states its CEILING as *\"through the admitted receipt constructor, an observation with a proved capacity violation or other established warm-policy failure cannot become eligible warm-performance evidence\"*, and names its NEXT TRIGGER as *\"P4 selection consumes only `WarmValid` as a funded axis\"*. The machinery that CEILING clause names does not exist in the tree. `GpuBenchWarmStanding` is an **unsealed coproduct**. `WarmValid` appears outside its own module only ever as a match pattern or in prose: `git grep -n WarmValid dag` is the instrument, and the claim is a classification rather than a count — **every hit ends in `=>` (a pattern) or sits in prose, and not one is a value construction**. The module's minting functions carry no `admit_callers` either: `grep -c admit_callers dag/gunbc/serving/gpu_bench_warm_standing.dag` is zero. So nothing in the compiler today stops a P4 module from writing `WarmValid { working_set_tokens: …, measured_kv_tokens: … }` literally and pairing it with a subject it made up. The existing claims (`the_capacity_fit_becomes_evidence_only_when_the_counter_is_faced`, `a_replayed_prefix_refuses_what_an_unreplayed_one_funds`) prove the gate discriminates when the value arrives through those folds; they cannot say anything about a hand-typed arm. The witness comment at the comment above `test.claim.gpu_bench_warm_standing_witness` says the near-true thing from the other side — *\"`WarmValid` IS reachable, and only by carrying the reuse evidence into stage 3\"* — which is true of the folds and silent about the literal. (The failure-mode row itself is authored at `de0fedf0005`, `gunbai-bot[bot]`, 2026-10-14 — P1's squash. The gap belongs to nobody in particular, and naming it is not an accusation.)"),
     p(text: "Why the seal has to be a **record with one admitted mint**, not the coproduct arm: DAG coproduct arms are not sealed, and I read the enforcement rather than trusting the error text. `sole_constructor_construction_diags` (`v1.compiler.infer::sole_constructor_construction_diags`) calls `type_has_sole_constructor` and then compares `decl.span.clone.file.clone == span.file.clone`; the diagnostic reads *\"cannot be constructed outside its defining module\"* (`v1.std.core::diagnostic_to_message`), but the comparison is a **file path**, not a module path. Today that coincidence is harmless — the invariant is structural, not numerical: **zero** files under `dag/` lack a `^module` declaration and **exactly one** carries two `^module` regex hits, and that one (the row `annotation_authored_at_a_grain_the_model_does_not_carry`) is the phrase \"module item follows it\" inside a multi-line string literal, not a declaration — so one real module per file holds. (Stated as an invariant rather than a count, because the count moves with every merged PR: `git grep -L '^module ' origin/main -- 'dag/**/*.dag' | wc -l` → 0, and `git grep -c '^module ' origin/main -- 'dag/**/*.dag' | awk -F: '$NF>1'` → that one file. Re-derive both at whatever head you are on.) But a second module sharing a file would sit inside the first one's seal boundary. `admit_callers` is therefore not belt-and-braces: it gates by caller **declaration coordinates** (`constructor_admission_diags_from_lookup`, `v1.compiler.infer::constructor_admission_diags_from_lookup`, comparing `caller_decl_coords` against `admit_callers_entry_coords`), which is file-agnostic. Sealed record + single mint + `admit_callers` is the only version of \"bound\" that survives a future caller in a hurry, and it is exactly the `ObservedReceipt` pattern (`extdeps.external_authority::ObservedReceipt`) this repository already uses for receipts."),
-    p(text: "**What self-admission actually costs, measured rather than assumed.** If C is chosen with an *observed* applied limit, P4's mint must be added to `observed_receipt`'s roster — currently four entries (`extdeps.external_authority::observed_receipt`, inside the list) — which is a line in a module outside P4's own. The worry that this breaks the roster's own witness is **dispelled, not assumed away**: `dag/test/claim/admit_callers_roster_integrity_witness.dag` mentions `observed_receipt` or `external_authority` **nowhere** — every claim in it runs synthetic in-string sources through `violation_count`, so adding a fifth entry to a real roster cannot move any of them. But read the shape of those claims before trusting them: they check entry *well-formedness* (`AdmitCallersEntryNotDeclRef`) and that listed/unlisted callers are admitted/refused on the synthetic source, never that a named entry in a real roster **corresponds to a caller that actually calls**. A vacuous entry — a `decl_ref` naming a declaration that never calls `observed_receipt` — passes every claim in that file. So the roster is guarded against the historical bug (an uninterpretable entry shrinking it) but not against accretion — and the witness's own preamble is explicit that it does not close that class: about the unresolvable-entry arm it says the diagnostic is *\"the receipt that this arm is unchanged, NOT a claim that the class is closed,\"* and that such an entry *\"is simply retained and can never match any caller's coordinates.\"* A dead roster entry is therefore representable by design, not by accident. P4's own witness should therefore pin its admitted mint by naming the exact `decl_ref(module_path:, decl_name:)` pair — the module is `gunbc.serving.home_serving_accelerator_field`, whose mint name is not yet decided — so the entry cannot quietly outlive the call it admits. That is a build-time note, not a decision item."),
+    p(text: "**What self-admission actually costs, measured rather than assumed.** If C is chosen with an *observed* applied limit, P4's mint must be added to `observed_receipt`'s roster — the roster is the `admit_callers` list on `extdeps.external_authority::observed_receipt`, and how long it is today is read from that list rather than quoted here — which is a line in a module outside P4's own. The worry that this breaks the roster's own witness is **dispelled, not assumed away**: `dag/test/claim/admit_callers_roster_integrity_witness.dag` mentions `observed_receipt` or `external_authority` **nowhere** — every claim in it runs synthetic in-string sources through `violation_count`, so adding an entry to a real roster cannot move any of them. But read the shape of those claims before trusting them: they check entry *well-formedness* (`AdmitCallersEntryNotDeclRef`) and that listed/unlisted callers are admitted/refused on the synthetic source, never that a named entry in a real roster **corresponds to a caller that actually calls**. A vacuous entry — a `decl_ref` naming a declaration that never calls `observed_receipt` — passes every claim in that file. So the roster is guarded against the historical bug (an uninterpretable entry shrinking it) but not against accretion — and the witness's own preamble is explicit that it does not close that class: about the unresolvable-entry arm it says the diagnostic is *\"the receipt that this arm is unchanged, NOT a claim that the class is closed,\"* and that such an entry *\"is simply retained and can never match any caller's coordinates.\"* A dead roster entry is therefore representable by design, not by accident. P4's own witness should therefore pin its admitted mint by naming the exact `decl_ref(module_path:, decl_name:)` pair — the module is `gunbc.serving.home_serving_accelerator_field`, whose mint name is not yet decided — so the entry cannot quietly outlive the call it admits. That is a build-time note, not a decision item."),
     p(text: "One thing not to \"fix\" while building this shape: the committed receipt ends `WarmCapacityUnread` because `extdeps.ninfer.replayed_tokens_total` is `TranscribedUncited`, and `cited_figure_read_obligation` (`extdeps.external_authority::cited_figure_read_obligation`) returns `Present` only for `TranscribedUncited` — `Absent` for `CitedToAuthority` and `ObservedByReceipt`. The honest route to a `WarmValid` over that fixture is to make the counter *grounded*, not to soften the standing fold. And if that grounding is an observed reading, the fold must take no arguments and read committed in-corpus bytes, per `observed_receipt`'s admission requirement, with the honesty note at `extdeps.external_authority::ObservedReceipt` respected: a fold over transcribed bytes is a boundary transcription, so name the seam and its trigger rather than claiming the substrate checks it."),
     h2(text: "Facts, with where each was checked"),
     p(text: "Every line below was re-checked by command against `origin/main` `92ca5568ba6845dcb5d3a5d9e539b75d8574ec19` (the tip at audit time, 2026-10-19). Items carrying their own \"Verified at\" or \"Measured at\" SHA were first measured there; where that SHA's line numbers no longer match `92ca5568ba6`, both are given. Of the 26 files cited in this document, 21 are byte-identical (`git rev-parse` blob comparison) between `c4dc2576872` — the tip the document was written against — and `92ca5568ba6`; the five that moved are `dag/std/measure.dag`, `dag/extdeps/external_authority.dag`, and the Stage-0 compiler sources (`compiler_tests.rs`, `v1_compiler_infer.rs`, `v1_std_core.rs`), whose citations are updated below."),
@@ -190,19 +190,222 @@ fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
       li(text: "The warm-capacity failure-mode row — `dag/gunbc/recurring_failure_mode/benchmark_warm_capacity_violation_read_as_engine_performance.dag`, authored `de0fedf0005`, `gunbai-bot[bot]`, 2026-10-14 — states its CEILING as \"through the admitted receipt constructor …\" and its NEXT TRIGGER as \"P4 selection consumes only WarmValid as a funded axis\". (an earlier note had misplaced it in the `ExternalModelScope` comment block beneath it; `git grep -n \"fn cited_figure_read_obligation\" dag/extdeps/external_authority.dag` settles where it lives, which is why only the symbol is cited)"),
     ]),
     h2(text: "Outcome: what was decided, by whom, and what is still open"),
-    p(text: "Recorded 2026-10-19, against `origin/main` at `891198514b8`."),
-    p(text: "**The ruling was C, and it stands BY DEFAULT — it was never answered by the operator.** The escalation (ask `msg_2b573b87`, filed 12:39Z, recommendation C) drew no operator answer within the 15-minute window, so it closed with the recommendation approved. The manager (`stern-bat-401`) recorded it at 12:55:33Z in these terms: *\"Decision recorded: C stands by default (escalation msg_2b573b87, no operator answer within 15 min, recommendation approved): a recorded watt is both carriers, catalog TDP and applied limit, kept distinct, with applied > TDP refused. You may build the C model (types, mint, refusal, witnesses). Do NOT run hardware measurements yet: which cards and which power limits are still unnamed.\"* Read that as a **default, not an endorsement**: it licenses the shape, not a number, and it can be overturned by an operator answer at any time — the shipped model carries no assumption that the operator chose C, and nothing in it reads an operator preference as a fact."),
-    p(text: "**Built, but NOT YET ON MAIN: PR #14463 is open and unmerged** (branch `p4-home-serving-power-policy`, head `87eadb584f8`). It would add two authored files, `dag/gunbc/serving/home_serving_power_policy.dag` and its claim witness; neither path exists on this head -- `git cat-file -e origin/main:dag/gunbc/serving/home_serving_power_policy.dag || echo absent` says absent, and `git grep -n HomeServingPowerAdmission origin/main -- dag` returns nothing. Everything in this paragraph describes that branch, verified by running its claims at that head, and is NOT a claim about the tree you are reading. GitHub lists a third file on the branch, `src/v1/stage0/src/std_decimal.rs`, which is not authored work: the CI heal job auto-committed a re-emit of `fixed_point_trimmed_wire`, a generated function from `std.decimal` that this module never touches, because that artifact had drifted on main independently of this branch. On that branch option C is carried as construction rather than as checks -- the funded pair is a `sole_constructor` coproduct arm reachable only through one mint, and that mint's `admit_callers` roster names exactly one caller (`compare_applied_to_tdp`), with no definer exemption. The over-ceiling refusal runs on the `std.measure` carrier through `measure_le`, never on a bare integer. An unreadable ceiling yields \"unread\" rather than \"refused\", so the fold never claims a refusal against a ceiling nobody stated."),
-    p(text: "The evidence is a differential, not a green run. Fold claims: 10/10 accepted, and six separate mutations of the module each flipped at least one claim red — inverting the comparison, unsealing the type and dropping the roster, treating an uncited ceiling as a ground, deleting the roster, splitting the applied reading, and **merging the two figures into one number**, which is the conflation this whole document is about; that last one was caught by the conflation claim alone, with the other nine still green. Control claims: 11/11 accepted, plus a kill-matrix whose two negative arms were each made to go red, including the positive control's own import made unresolvable — a case that stayed falsely green before review 82779 caught it."),
-    p(text: "**Not decided, and deliberately not guessed.** Which cards, and which limits per card. The manager withheld measurement until the fleet question is answered, and the tree cannot answer it: presence is unread for all four add-in candidates. Their catalog ceilings are re-derived, not quoted here: the witness reads `gunbc.serving.home_serving_accelerator_field::home_serving_add_in_card_catalog_rows` and looks each row up in `extdeps.gpu.nvidia`, so the ceiling list and the row identity come from the tree on every run. What is asserted is their STANDING — all of them `CitedToAuthority` figures about a product line, none of them a reading of a card in a chassis. The only device-shaped evidence in the repo is one `nvidia-smi` table row, present identically in `fixtures/gpu_bench/pro6000ws_600w_v2/auto.log` and in `results_ninfer_nvfp4_pro6000ws_600w.txt`. It reports four columns — device name, total memory, used memory and max memory clock — and no hostname, UUID, PCI address or serial. The witness reads both files and is red if a power or watt column ever appears in them: as the committed bytes stand there is **no watt figure of any kind in the gpu-bench fixtures**, so the row records a card present at a moment, not a limit anyone dialed. The `600w` in that run's *name* has no backing reading of either carrier. That is the finding that made C the right call: a name is not a watt, and a name cannot be admitted."),
+    p(text: "Written 2026-10-19. The base every citation was checked against is whatever `git rev-parse origin/main` answers when the claim runs — not a SHA frozen in this document — because the citation claim re-resolves each symbol below against the tree it executes on. A drift goes red; a transcribed base would rot."),
+    p(text: p4_ruling_sentence()),
+    p(text: p4_branch_sentence()),
+    p(text: "The evidence is a differential, not a green run. The mutations below were applied one at a time to a scratch copy of the module and each copy run through `claim_batch --entry dag/test/claim/home_serving_power_policy_witness.dag`; there is no committed mutation harness to re-run, so re-deriving this means repeating those edits. The fold's claims were all accepted, and each of the following separate mutations of the module flipped at least one claim red — inverting the comparison, unsealing the type and dropping the roster, treating an uncited ceiling as a ground, deleting the roster, splitting the applied reading, and **merging the two figures into one number**, which is the conflation this whole document is about; that last one was caught by the conflation claim alone, with every other claim still green — which is why that claim is load-bearing rather than decorative. The control claims were all accepted, plus a kill-matrix whose two negative arms were each made to go red, including the positive control's own import made unresolvable — a case that stayed falsely green before review 82779 caught it."),
+    p(text: p4_fleet_sentence()),
+    ul(items: p4_trace_condition_rows()),
     p(text: "**Still open after this PR.**"),
     ol(items: [
       li(text: "The selection fold over `home_serving_add_in_card_catalog_rows` — its mint name, its roster entry, and its witness — remains undesigned here, and the note above about naming the exact `decl_ref` pair still applies to whoever builds it."),
-      li(text: "A separate ledger row is open as PR #14472 (`p4-seal-wording-row`, head `ecb5ba17ba8`, one file, no behaviour change): the seal's diagnostic says *\"defining module\"* while `sole_constructor_construction_diags` compares file paths. Its rung is **latent**, established by executed refusals — the pre-write check `warm-wolf-570` asked for, run through `claim_batch` at base `891198514b8`, refused a second `module` header in one file (exit 1, `module index refused`) and refused two files declaring one module name (exit 101, `module-path collision`), with the probe shapes asserted before each run so neither green was accidental. So the wording cannot be exercised today; the trigger is a change that relaxes one of those refusals."),
+      li(text: "A separate ledger row is open as PR #14472 (branch `p4-seal-wording-row`, one file, no behaviour change): the seal's diagnostic says *\"defining module\"* while `sole_constructor_construction_diags` compares file paths. Its rung is **latent**, established by executed refusals — the pre-write check `warm-wolf-570` asked for, run through `claim_batch` at base `891198514b8`, refused a second `module` header in one file (exit 1, `module index refused`) and refused two files declaring one module name (exit 101, `module-path collision`), with the probe shapes asserted before each run so neither green was accidental. So the wording cannot be exercised today; the trigger is a change that relaxes one of those refusals."),
       li(text: "The one-line reword of the seal diagnostic (\"module\" → \"file\") is **not** in either PR. It is deliberately left out of the row: the row's value is that it names a fork whose two readings are today held equal by enforcement, and rewording the sentence without also settling which boundary the seal means would open the module-boundary reading with nothing enforcing it. That belongs in the same change as the seal's own test, not in a ledger row."),
     ]),
     p(text: "Neither PR was merged by the author; the author is not merge-authorized."),
   ]
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════
+// THE STATUS HALF OF THE DECISION, TYPED (§4c: an event, a status, a count or a dissolution
+// condition belongs in a carrier, not in prose). Three paragraphs here used to be narrative, and
+// each was a snapshot that went false on its own schedule: the head of a branch under push, the
+// merge state of a PR, and whether the operator had answered an ask. DESIGN §6 — "name the
+// instrument, never transcribe its output" — is why the PR heads and merge states are NOT
+// recorded here at all: they move under every push and every review, and a document that quoted
+// `gh pr view` would be false by tomorrow. What IS recorded is what cannot drift silently, either
+// because a claim re-reads the tree (the trace conditions, the unresolved module) or because the
+// event is fixed in time (who asked, when, what closed it). The sentences the reader sees are
+// RENDERED FROM these rows, the idiom `demand_restatement_follow_up` establishes: derived from the
+// rows, never authored in the body, so prose and fact cannot diverge while the claim stays green.
+// ══════════════════════════════════════════════════════════════════════════════════════════
+
+type P4RulingRecord {
+  ask_id: String
+  asked_at: String
+  window: String
+  decided_by: String
+  recorded_by: String
+  recorded_at: String
+  standing_words: String
+  license: String
+  overturn: String
+}
+
+data p4_ruling_record: P4RulingRecord = P4RulingRecord {
+  ask_id: "msg_2b573b87",
+  asked_at: "2026-10-19T11:46:45Z",
+  window: "15 minutes",
+  decided_by: "the close rule, not the operator",
+  recorded_by: "manager stern-bat-401",
+  recorded_at: "2026-10-19T12:01:35Z",
+  standing_words: "by default, not by endorsement",
+  license: "the shape, not a number",
+  overturn: "an operator answer naming A or B reopens it",
+}
+
+fn p4_ruling_sentence() -> String {
+  join([
+    "**The ruling was C, and it stands ", p4_ruling_record.standing_words, "** — decided by ",
+    p4_ruling_record.decided_by, ". The escalation (ask `", p4_ruling_record.ask_id, "`, filed ",
+    p4_ruling_record.asked_at, ", recommendation C) drew no operator answer within the ",
+    p4_ruling_record.window, ", so it closed with the recommendation approved; ",
+    p4_ruling_record.recorded_by, " recorded it at ", p4_ruling_record.recorded_at, ". Read that as a default: it licenses ",
+    p4_ruling_record.license, ", and ", p4_ruling_record.overturn, ". Nothing in the shipped model reads an operator ",
+    "preference as a fact, and no mint, fold or witness branches on who decided this.",
+  ], "")
+}
+
+type P4BranchRecord {
+  pr: String
+  branch: String
+  model_files: String
+  state_instrument: String
+  tree_invariant: String
+  heal_artifact: String
+}
+
+data p4_branch_record: P4BranchRecord = P4BranchRecord {
+  pr: "14463",
+  branch: "p4-home-serving-power-policy",
+  model_files: "`dag/gunbc/serving/home_serving_power_policy.dag` and its claim witness",
+  state_instrument: "gh pr view 14463 --json state,headRefOid",
+  tree_invariant: "the_citations_in_the_plan_resolve_against_the_declaration_census",
+  heal_artifact: "`src/v1/stage0/src/std_decimal.rs`, auto-committed by the CI heal job as a re-emit of `fixed_point_trimmed_wire` — a generated function from `std.decimal` that this module never touches, after that artifact drifted on main independently of the branch",
+}
+
+fn p4_branch_sentence() -> String {
+  join([
+    "**The C model is authored on a branch, not on the tree you are reading** (PR #" + p4_branch_record.pr
+    + "). It lives on `", p4_branch_record.branch, "` as ", p4_branch_record.model_files,
+    ". Its merge state and head are deliberately ",
+    "not transcribed — both move under every push, and a pushed branch is not a merged change; `",
+    p4_branch_record.state_instrument, "` answers that, today. What IS asserted about *this* tree is the negation, ",
+    "and it is enforced by execution rather than by this sentence: `", p4_branch_record.tree_invariant,
+    "` requires `gunbc.serving.home_serving_power_policy` to stay UNRESOLVED on the head the claim runs against, so if ",
+    "this paragraph ever goes stale the claim goes red instead of the sentence rotting quietly. Everything the next ",
+    "sections say about the mint, the roster and the refusal describes that branch and is NOT a claim about this tree. ",
+    "One file GitHub lists there is not authored work: ", p4_branch_record.heal_artifact, ".",
+  ], "")
+}
+
+// THE FLEET OBSERVATION. The operator answered the ask on 2026-10-20: no host carries a GPU yet, so
+// cards and slots are empty as FACT, and P4 must refuse typed rather than select until a GPU-presence
+// observation exists; software traces are the PREFERRED presence evidence, but RELIABILITY-CONDITIONAL,
+// with three named conditions and an explicit instruction to model it as an observation, not a constant.
+// So this row is an observation with a STANDING, and the standing is derived: `p4_trace_is_reliable`
+// reads the fixture bytes on every run and only all-true conditions make it reliable. Today two are
+// false, which is why presence is refused and nothing downstream may select a card.
+type P4TraceCondition {
+  name: String
+  met: Bool
+  what_it_would_show: String
+  instrument: String
+}
+
+type P4FleetObservation {
+  answered_at: String
+  answered_via: String
+  gpu_hosts: String
+  cards: String
+  slots: String
+  preferred_evidence: String
+  consequence: String
+}
+
+// FRESHNESS: a dated row is one that opens yyyy-mm-dd hh:mm:ss. Measured over the committed bytes by
+// the claim, never quoted here.
+data p4_trace_freshness: P4TraceCondition = P4TraceCondition {
+  name: "freshness",
+  met: true,
+  what_it_would_show: "the trace was produced at a stated time rather than written down from memory, so it can be set against a run window",
+  instrument: "filesystem_read(path: \"fixtures/gpu_bench/pro6000ws_600w_v2/auto.log\") — the claim counts rows opening with a date itself",
+}
+
+// PROVENANCE: unmet, and the reason is stated as a search the claim performs. No line in any gpu-bench
+// fixture names the tool that wrote it; the tool is INFERRED from the column layout. An inference drawn
+// from a header is not provenance, so this condition fails rather than being waived.
+data p4_trace_provenance: P4TraceCondition = P4TraceCondition {
+  name: "provenance",
+  met: false,
+  what_it_would_show: "a line that states which tool wrote the file. Today none does, in any of the three fixtures — the tool is inferred from the column layout, and an inference from a header is not provenance",
+  instrument: "filesystem_read over all three fixtures/gpu_bench/pro6000ws_600w_v2 files — the claim searches every line for a tool naming itself",
+}
+
+// NEGATIVE CONTROL: unmet, and this is the condition the operator named specifically. Every committed
+// fixture is a POSITIVE — each one names a device — so none of them can show that a host WITHOUT the
+// card produces no trace. Without that half, a trace cannot distinguish "the GPU was there" from
+// "someone wrote this file", which is exactly the reliability the operator asked me to show.
+data p4_trace_negative_control: P4TraceCondition = P4TraceCondition {
+  name: "negative control",
+  met: false,
+  what_it_would_show: "a committed fixture from a host with no GPU, showing that absence produces no trace. What the tree holds is the other half only: the two table traces print the device-name row and the receipt stream carries the run label on every line, and no fixture anywhere reports an absent device. So nothing in the corpus can distinguish a card that was present from a file that was written",
+  instrument: "filesystem_read over all three fixtures/gpu_bench/pro6000ws_600w_v2 files — the claim asserts the device-name row is present in the two table traces (the positive floor, which is what makes the read non-vacuous) and that NO fixture carries an absent-device marker",
+}
+
+data p4_fleet_observation: P4FleetObservation = P4FleetObservation {
+  answered_at: "2026-10-20",
+  answered_via: "the operator, relayed by manager stern-bat-401",
+  gpu_hosts: "none — no host carries a GPU yet",
+  cards: "empty as fact, not as a choice",
+  slots: "empty as fact, not as a choice",
+  preferred_evidence: "a software trace, once shown reliable",
+  consequence: "card and power-limit selection stays a typed refusal; the candidate list stays empty",
+}
+
+fn p4_trace_conditions() -> List<P4TraceCondition> {
+  [p4_trace_freshness, p4_trace_provenance, p4_trace_negative_control]
+}
+
+fn p4_trace_is_reliable() -> Bool {
+  all(p4_trace_conditions(), c => c.met)
+}
+
+fn p4_presence_standing() -> String {
+  if p4_trace_is_reliable() {
+    "PRESENCE ESTABLISHED — a trace-backed observation may now feed selection"
+  } else {
+    "REFUSED — presence is not established, so no card and no limit may be selected"
+  }
+}
+
+fn p4_unmet_condition_names() -> String {
+  join(map(filter(p4_trace_conditions(), c => !c.met), c => c.name), ", ")
+}
+
+fn p4_fleet_sentence() -> String {
+  join([
+    "**Fleet facts, from ", p4_fleet_observation.answered_via, " on ", p4_fleet_observation.answered_at, ".** ",
+    p4_fleet_observation.gpu_hosts, ": cards are ", p4_fleet_observation.cards, " and slots are ",
+    p4_fleet_observation.slots, ", so the instruction is that P4 **refuses typed and never selects** until a ",
+    "GPU-presence observation exists — no fleet is fabricated to make the question answerable. The preferred ",
+    "presence evidence is ", p4_fleet_observation.preferred_evidence, ", and **the trace this repo holds does not yet ",
+    "meet that bar**: the standing that follows is **", p4_presence_standing()
+    + "**, and therefore ", p4_fleet_observation.consequence,
+    ". Each condition below names the instrument that re-derives it and is re-read on every run by ",
+    "`the_gpu_bench_trace_still_falls_short_of_reliable_presence_evidence`; unmet today: ",
+    p4_unmet_condition_names(), ". The candidate ceilings themselves are re-derived, not quoted here: the witness ",
+    "reads `gunbc.serving.home_serving_accelerator_field::home_serving_add_in_card_catalog_rows` and looks each row up ",
+    "in `extdeps.gpu.nvidia`, so their identity comes from the tree on every run. Their STANDING is the finding that ",
+    "made C the right call: every one of them is a `CitedToAuthority` figure about a product line, none is a reading of ",
+    "a card in a chassis, and **a run's name is not a watt** — `600w` in a run name has no backing reading on either ",
+    "carrier, and nothing here admits it.",
+  ], "")
+}
+
+fn p4_met_word(c: P4TraceCondition) -> String {
+  if c.met {
+    "MET"
+  } else {
+    "NOT MET"
+  }
+}
+
+fn p4_trace_condition_rows() -> List<MarkdownBlock> {
+  map(p4_trace_conditions(), c => li(text: join([
+    "**", c.name, "** — ", p4_met_word(c), ". It would show ",
+    c.what_it_would_show, ". Instrument: ", c.instrument, ".",
+  ], "")))
 }
 
 data p4_home_serving_power_semantics_plan: Plan = Plan {
