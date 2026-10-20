@@ -1,6 +1,6 @@
 module v2.test.claim.emit.swift_semantic_decl_routing
 
-import v2.std.compilers.semantic_decl_emission { ConformancesTargetDefault }
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.swift { swift_target_model }
@@ -59,7 +59,7 @@ fn sdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
 }
 
 fn sdr_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(header: [], docs: [], field_docs: [], conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: node, target: swift_target_model(), realization_host: swift_target_model()) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: node, target: swift_target_model(), realization_host: swift_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

@@ -5,7 +5,9 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.extdeps.languages.c { c_target_model }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclFieldDoc, ConformancesNamed, ConformancesTargetDefault, TargetSemanticDeclConformances }
+import std.decl_ref { DeclarationRef, NamedField }
+import std.types { NonEmptyStr }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclDocumentation, TargetSemanticDeclFieldDoc, ConformancesNamed, ConformancesTargetDefault, TargetSemanticDeclConformances }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.text { String }
@@ -26,15 +28,26 @@ fn sdc_point_record(type_name: Symbol) -> Node {
   }
 }
 
-fn sdc_text_with_field_docs(docs: List<String>, field_docs: List<TargetSemanticDeclFieldDoc>, conformances: TargetSemanticDeclConformances, type_name: Symbol, target: TargetModel) -> Outcome<String> {
-  match emit_semantic_type_decl(header: [], docs: docs, field_docs: field_docs, conformances: conformances, imports: [], members: [], name: ^Point, params: [], node: sdc_point_record(type_name: type_name), target: target, realization_host: target) {
+fn sdc_text_documented(documentation: TargetSemanticDeclDocumentation, conformances: TargetSemanticDeclConformances, type_name: Symbol, target: TargetModel) -> Outcome<String> {
+  match emit_semantic_type_decl(header: [], documentation: documentation, conformances: conformances, imports: [], members: [], name: ^Point, params: [], node: sdc_point_record(type_name: type_name), target: target, realization_host: target) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
 fn sdc_text(docs: List<String>, conformances: TargetSemanticDeclConformances, type_name: Symbol, target: TargetModel) -> Outcome<String> {
-  sdc_text_with_field_docs(docs: docs, field_docs: [], conformances: conformances, type_name: type_name, target: target)
+  sdc_text_documented(documentation: TargetSemanticDeclDocumentation { lines: docs, fields: [] }, conformances: conformances, type_name: type_name, target: target)
+}
+
+fn sdc_field_doc(decl: String, field: String, lines: List<String>) -> TargetSemanticDeclFieldDoc {
+  TargetSemanticDeclFieldDoc {
+    field: DeclarationRef { module_path: "m", decl_name: decl as NonEmptyStr, field: NamedField { field_name: field as NonEmptyStr } },
+    lines: lines
+  }
+}
+
+fn sdc_field_docs_text(fields: List<TargetSemanticDeclFieldDoc>, type_name: Symbol, target: TargetModel) -> Outcome<String> {
+  sdc_text_documented(documentation: TargetSemanticDeclDocumentation { lines: [], fields: fields }, conformances: ConformancesTargetDefault, type_name: type_name, target: target)
 }
 
 fn sdc_equals(o: Outcome<String>, golden: String) -> Bool {
@@ -81,21 +94,45 @@ test fn c_with_conformances_refuses_unwired() -> Bool {
 
 test fn swift_field_docs_lead_their_field() -> Bool {
   sdc_equals(
-    o: sdc_text_with_field_docs(docs: [], field_docs: [ TargetSemanticDeclFieldDoc { field: ^x, lines: ["The x."] } ], conformances: ConformancesTargetDefault, type_name: ^dag_binding_type_int, target: swift_target_model()),
+    o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "x", lines: ["The x."]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
     golden: "struct Point: Equatable, Sendable { /// The x.\nlet x: Int32 }"
   )
 }
 
-test fn swift_field_docs_name_only_their_field() -> Bool {
-  sdc_equals(
-    o: sdc_text_with_field_docs(docs: [], field_docs: [ TargetSemanticDeclFieldDoc { field: ^y, lines: ["The y."] } ], conformances: ConformancesTargetDefault, type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "struct Point: Equatable, Sendable { let x: Int32 }"
-  )
-}
-
 test fn c_with_field_docs_refuses_unwired() -> Bool {
-  match sdc_text_with_field_docs(docs: [], field_docs: [ TargetSemanticDeclFieldDoc { field: ^x, lines: ["The x."] } ], conformances: ConformancesTargetDefault, type_name: ^Int, target: c_target_model()) {
+  match sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "x", lines: ["The x."]) ], type_name: ^Int, target: c_target_model()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_doc_unwired
   }
+}
+
+fn sdc_refuses_with(o: Outcome<String>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+// RED: a doc entry for a field the record lacks is refused, never dropped.
+test fn a_field_doc_for_a_missing_field_refuses() -> Bool {
+  sdc_refuses_with(
+    o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "y", lines: ["The y."]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
+    reason: ^target_semantic_decl_field_doc_unknown_field
+  )
+}
+
+// RED: an entry keyed to ANOTHER declaration's field is not this record's field.
+test fn a_field_doc_keyed_to_another_declaration_refuses() -> Bool {
+  sdc_refuses_with(
+    o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Other", field: "x", lines: ["The x."]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
+    reason: ^target_semantic_decl_field_doc_unknown_field
+  )
+}
+
+// RED: two entries for one field refuse.
+test fn a_duplicate_field_doc_refuses() -> Bool {
+  sdc_refuses_with(
+    o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "x", lines: ["A."]), sdc_field_doc(decl: "Point", field: "x", lines: ["B."]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
+    reason: ^target_semantic_decl_field_doc_duplicate
+  )
 }

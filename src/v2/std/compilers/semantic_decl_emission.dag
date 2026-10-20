@@ -4,6 +4,7 @@ import std.types { List, Map }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaration }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -2669,16 +2670,112 @@ fn target_semantic_decl_coproduct_decoration_lines(
     )
   }
 }
-// The doc lines a field states ahead of itself, keyed by the field's declared name.
-type TargetSemanticDeclFieldDoc { field: Symbol, lines: List<String> }
+// A DECLARATION'S DOCUMENTATION IS ONE INPUT: the lines above the declaration and the lines above each field. A
+// field is keyed by its identity, a DeclarationRef whose NamedField names a field of THIS declaration.
+type TargetSemanticDeclFieldDoc { field: DeclarationRef, lines: List<String> }
 
-fn target_semantic_decl_field_doc_lines(edge: Edge, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
+type TargetSemanticDeclDocumentation { lines: List<String>, fields: List<TargetSemanticDeclFieldDoc> }
+
+fn target_semantic_decl_no_documentation() -> TargetSemanticDeclDocumentation {
+  TargetSemanticDeclDocumentation { lines: [], fields: [] }
+}
+
+// The field name a documentation entry keys, or absent when the entry names no field of the declaration `name`.
+fn target_semantic_decl_field_doc_key(entry: TargetSemanticDeclFieldDoc, name: Symbol) -> Symbol? {
+  match entry.field.field {
+    NamedField { field_name: f } =>
+      if symbol_intern_lexeme(lexeme: entry.field.decl_name as String) == name {
+        Present { value: symbol_intern_lexeme(lexeme: f as String) }
+      } else {
+        Absent
+      }
+    WholeDeclaration => Absent
+    TypeParameter { name: _ } => Absent
+  }
+}
+
+fn target_semantic_decl_record_has_field(record: Node, field: Symbol) -> Bool {
+  fold_list(
+    xs: record.children,
+    empty: false,
+    cons: fn(acc, e) {
+      acc || match declared_field_from_edge(e: e) {
+        Present { value: binder } => binder.name == field
+        Absent => false
+      }
+    }
+  )
+}
+
+// FAIL CLOSED: an entry naming a field the record lacks (or another declaration, or no field) and a second entry
+// for one field each refuse, located at the record; nothing is dropped.
+fn target_semantic_decl_documentation_fields_admitted(
+  documentation: TargetSemanticDeclDocumentation,
+  name: Symbol,
+  record: Node
+) -> Outcome<Node> {
+  fold_list(
+    xs: documentation.fields,
+    empty: outcome_accepted(value: record),
+    cons: fn(acc_o, entry) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(_) {
+          match target_semantic_decl_field_doc_key(entry: entry, name: name) {
+            Absent =>
+              outcome_rejected(d: Diagnostic {
+                reason: ^target_semantic_decl_field_doc_unknown_field,
+                at: node_locus(node: record),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            Present { value: key } =>
+              if !target_semantic_decl_record_has_field(record: record, field: key) {
+                outcome_rejected(d: Diagnostic {
+                  reason: ^target_semantic_decl_field_doc_unknown_field,
+                  at: node_locus(node: record),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
+              } else if target_semantic_decl_field_doc_count(entries: documentation.fields, name: name, key: key) > 1 {
+                outcome_rejected(d: Diagnostic {
+                  reason: ^target_semantic_decl_field_doc_duplicate,
+                  at: node_locus(node: record),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
+              } else {
+                outcome_accepted(value: record)
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_semantic_decl_field_doc_count(entries: List<TargetSemanticDeclFieldDoc>, name: Symbol, key: Symbol) -> Int {
+  fold_list(
+    xs: entries,
+    empty: 0,
+    cons: fn(acc, e) {
+      match target_semantic_decl_field_doc_key(entry: e, name: name) {
+        Present { value: k } => if k == key { acc + 1 } else { acc }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn target_semantic_decl_field_doc_lines(edge: Edge, name: Symbol, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
   match declared_field_from_edge(e: edge) {
     Present { value: binder } =>
       fold_list(
         xs: field_docs,
         empty: Empty,
-        cons: fn(acc, d) { if d.field == binder.name { list_append(left: acc, right: d.lines) } else { acc } }
+        cons: fn(acc, d) {
+          match target_semantic_decl_field_doc_key(entry: d, name: name) {
+            Present { value: k } => if k == binder.name { list_append(left: acc, right: d.lines) } else { acc }
+            Absent => acc
+          }
+        }
       )
     Absent => Empty
   }
@@ -2691,6 +2788,7 @@ fn target_semantic_decl_field_surfaces(
   edges: List<Edge>,
   projection: TargetSemanticDeclSurfaceProjection,
   doc_column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  name: Symbol,
   field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
@@ -2712,7 +2810,7 @@ fn target_semantic_decl_field_surfaces(
                 o: target_semantic_decl_surface_with_leading_lines(
                   column: doc_column,
                   reason: ^target_semantic_decl_doc_unwired,
-                  items: target_semantic_decl_line_surfaces(lines: target_semantic_decl_field_doc_lines(edge: edge, field_docs: field_docs)),
+                  items: target_semantic_decl_line_surfaces(lines: target_semantic_decl_field_doc_lines(edge: edge, name: name, field_docs: field_docs)),
                   surface: bare
                 ),
                 f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
@@ -2738,6 +2836,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
             edges: edge.target.children,
             projection: projection,
             doc_column: ColumnUnwired,
+            name: vname,
             field_docs: Empty,
             type_binding: type_binding
           ),
@@ -2809,6 +2908,7 @@ fn target_semantic_decl_variant_surface_from_edge(
             edges: edge.target.children,
             projection: projection,
             doc_column: ColumnUnwired,
+            name: vname,
             field_docs: Empty,
             type_binding: type_binding
           ),
@@ -3040,7 +3140,7 @@ fn target_semantic_struct_surface_from_record(
   record: Node,
   members: List<TargetSemanticDeclMember>,
   conformances: TargetSemanticDeclConformances,
-  field_docs: List<TargetSemanticDeclFieldDoc>,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
@@ -3053,7 +3153,7 @@ fn target_semantic_struct_surface_from_record(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
-      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, field_docs: field_docs, type_binding: type_binding)
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, documentation: documentation, type_binding: type_binding)
   }
 }
 
@@ -3064,18 +3164,24 @@ fn target_semantic_struct_surface_from_record_admitted(
   record: Node,
   members: List<TargetSemanticDeclMember>,
   conformances: TargetSemanticDeclConformances,
-  field_docs: List<TargetSemanticDeclFieldDoc>,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match record.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
-        o: target_semantic_decl_field_surfaces(
-          edges: record.children,
-          projection: projection,
-          doc_column: projection.doc_projection,
-          field_docs: field_docs,
-          type_binding: type_binding
+        o: bind_outcome(
+          o: target_semantic_decl_documentation_fields_admitted(documentation: documentation, name: name, record: record),
+          f: fn(_) {
+            target_semantic_decl_field_surfaces(
+              edges: record.children,
+              projection: projection,
+              doc_column: projection.doc_projection,
+              name: name,
+              field_docs: documentation.fields,
+              type_binding: type_binding
+            )
+          }
         ),
         f: fn(fields) {
         bind_outcome(
