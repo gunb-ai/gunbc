@@ -241,7 +241,7 @@ fn rehome_facts_in(facts: List<DeclFact>, path: String) -> List<DeclFact> {
 // normalized declaration (rehome_contract_of) and compared with every referenced name resolved to its identity. A
 // contract that cannot be established refuses typed; an incomplete projection is never read as equality.
 fn rehome_facts_verdict(from: DeclFact, to: DeclFact, row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
-  if rehome_kind_text(k: from.kind) != rehome_kind_text(k: to.kind) {
+  if !rehome_kinds_equal(a: from.kind, b: to.kind) {
     RehomePairRefused { reason: RehomeKindDiffers }
   } else {
     rehome_contracts_verdict(
@@ -349,29 +349,64 @@ fn rehome_head_text(head: SiteHeadBinding) -> String {
 // the gap, not a real kind difference, and is admitted here only under a declared representation. TRIGGER: when
 // adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the OtherItem arm, so any kind mismatch refuses.
 fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
-  if rehome_kind_text(k: from.kind) == rehome_kind_text(k: to.kind) {
+  if rehome_kinds_equal(a: from.kind, b: to.kind) {
     RehomePairSame
-  } else if rehome_is_alias_gap_pair(a: rehome_kind_text(k: from.kind), b: rehome_kind_text(k: to.kind)) {
+  } else if rehome_is_alias_gap_pair(a: from.kind, b: to.kind) {
     RehomePairSame
   } else {
     RehomePairRefused { reason: RehomeKindDiffers }
   }
 }
 
-// Exactly the gap's pair, in either order: an aliased type read OtherItem against a TypeItem (review 83179).
-fn rehome_is_alias_gap_pair(a: String, b: String) -> Bool {
-  (a == "other" && b == "type") || (a == "type" && b == "other")
-}
-
-fn rehome_kind_text(k: ItemKind) -> String {
-  match k {
-    FnItem => "fn"
-    TypeItem => "type"
-    DataItem => "data"
-    ServiceItem => "service"
-    OtherItem => "other"
+// Exactly the gap's pair, in either order: an aliased type read OtherItem against a TypeItem (review 83179). A match on the
+// closed ItemKind constructors (review 83228), so the arm's dissolution is deleting this function and its one call.
+fn rehome_is_alias_gap_pair(a: ItemKind, b: ItemKind) -> Bool {
+  match a {
+    OtherItem =>
+      match b {
+        TypeItem => true
+        _ => false
+      }
+    TypeItem =>
+      match b {
+        OtherItem => true
+        _ => false
+      }
+    _ => false
   }
 }
+
+// ItemKind equality by constructor, exhaustive over the closed sum (review 83228).
+fn rehome_kinds_equal(a: ItemKind, b: ItemKind) -> Bool {
+  match a {
+    FnItem =>
+      match b {
+        FnItem => true
+        _ => false
+      }
+    TypeItem =>
+      match b {
+        TypeItem => true
+        _ => false
+      }
+    DataItem =>
+      match b {
+        DataItem => true
+        _ => false
+      }
+    ServiceItem =>
+      match b {
+        ServiceItem => true
+        _ => false
+      }
+    OtherItem =>
+      match b {
+        OtherItem => true
+        _ => false
+      }
+  }
+}
+
 
 // ---- one file: the splices ----------------------------------------------------------------------------------------------
 
