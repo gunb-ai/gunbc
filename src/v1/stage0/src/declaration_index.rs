@@ -2102,6 +2102,10 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// For this probe a resolving citation would mean the control had lost its discriminating
 /// power. The two directions do not coincide, so the citation stays false on purpose with
 /// the other fixture carriers.
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "test.claim.altra_placement_witness",
@@ -2413,6 +2417,10 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     ),
 ];
 
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "extdeps.docker.container_inspect",
@@ -2879,6 +2887,10 @@ pub fn planted_control_findings_against(
 /// underlying trigger (citation used to refuse, now does not), materially different contract,
 /// so a different name, kind, and message. A comment asserting direction coincidence is not
 /// a second contract.
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const NEXT_RUNG_TRIGGER_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "v2.lens.enforcement.complexity_contract_subject",
