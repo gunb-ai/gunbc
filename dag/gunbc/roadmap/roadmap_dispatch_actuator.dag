@@ -235,6 +235,7 @@ import gunbc.roadmap.roadmap_provider_events {
 import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
 import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch {
@@ -2750,6 +2751,7 @@ fn dispatch_provider_inner_argv_for_launch(
             }
           } else {
             match cursor_worker_turn_argv(
+              program: cursor_agent_pinned_program(),
               snapshot: snapshot,
               worktree_path: worktree_path,
               prompt: brief as NonEmptyStr,
