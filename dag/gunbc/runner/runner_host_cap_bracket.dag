@@ -25,6 +25,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_actuation_outcome_wire,
   slot_state_active,
   slot_state_stopped,
+  slot_state_stopping,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
 import extdeps.systemd.systemctl { systemctl_mask_argv }
@@ -123,6 +124,7 @@ type SlotDrainReading {
   unit: NonEmptyStr
   masked: Bool
   listener_running: Bool
+  stopping: Bool
   activity: SlotActivityObservation
 }
 
@@ -141,13 +143,15 @@ fn drain_reading_idle_listener(r: SlotDrainReading) -> Bool {
   r.listener_running && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
 }
 
-// UNPROVEN: not masked (admission is open for it), or its activity could not be read.
+// UNPROVEN: not masked (admission is open for it), still stopping (a deactivating unit's cgroup may
+// still hold a listener whatever the worker reading says, so it stays pending until the unit is
+// stopped), or its activity could not be read.
 fn drain_reading_unproven(r: SlotDrainReading) -> Bool {
-  !r.masked || match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false }
+  !r.masked || r.stopping || match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false }
 }
 
 fn drain_reading_drained(r: SlotDrainReading) -> Bool {
-  r.masked && !r.listener_running && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
+  r.masked && !r.listener_running && !r.stopping && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
 }
 
 fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>, ticks_left: Int, time_up: Bool) -> BracketWaitStep {
@@ -226,12 +230,13 @@ fn slot_drain_needs_worker(read: SlotReadOutcome) -> Bool {
 
 fn slot_drain_reading_of(unit: NonEmptyStr, read: SlotReadOutcome, worker: SlotActivityObservation) -> SlotDrainReading {
   match read {
-    SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, masked: false, listener_running: false, activity: SlotActivityUnobserved { cause: why as NonEmptyStr } }
+    SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, masked: false, listener_running: false, stopping: false, activity: SlotActivityUnobserved { cause: why as NonEmptyStr } }
     SlotRead { reading: r } =>
       SlotDrainReading {
         unit: unit,
         masked: slot_is_masked(r: r),
         listener_running: slot_state_active(active: r.active),
+        stopping: slot_state_stopping(active: r.active),
         activity: if slot_state_stopped(active: r.active) { SlotIdle } else { worker },
       }
   }

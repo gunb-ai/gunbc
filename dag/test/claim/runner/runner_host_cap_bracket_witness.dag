@@ -35,11 +35,11 @@ import gunbc.runner.runner_host_cap_bracket {
 // discriminate at). The wet driver's route is the remote run against a fleet host.
 
 fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
-fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: false, activity: SlotIdle } }
-fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotHasLiveWorker } }
-fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotIdle } }
-fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
-fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: false, listener_running: false, activity: SlotIdle } }
+fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: false, stopping: false, activity: SlotIdle } }
+fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotHasLiveWorker } }
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotIdle } }
+fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
+fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: false, listener_running: false, stopping: false, activity: SlotIdle } }
 
 fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
 fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
@@ -126,8 +126,11 @@ test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
     && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 0, time_up: false), busy: 1, unproven: 0)
 }
 
-test fn a_deactivating_unit_with_a_quiescent_cgroup_is_drained() -> Bool {
-  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 3, time_up: false))
+// A DEACTIVATING UNIT WITH A LIVE LISTENER AND NO WORKER IS A STOP IN PROGRESS, NOT A DRAIN: it stays
+// pending until the unit is stopped, and at the bound it is unproven.
+test fn a_deactivating_unit_with_a_live_listener_and_no_worker_is_pending_never_drained() -> Bool {
+  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 3, time_up: false))
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
 }
 
 test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
