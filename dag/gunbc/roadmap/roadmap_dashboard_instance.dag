@@ -2636,14 +2636,20 @@ fn dashboard_git_subtree_readback_is_granted_under(
     && all(parsed, entry => match entry {
       Absent => false
       Present { value: line } => match line {
-        // The TOP is held to the exact per-subtree grant -- 03775 for objects/, 02775 elsewhere. Nothing
-        // lenient here: this is the directory the migration itself sets, and the two shapes are not
-        // interchangeable (see dashboard_git_worker_sticky_children).
+        // The TOP is held EXACT to the declared arm this subtree's one authority row picks
+        // (dashboard_git_worker_subtree_declared_directory_mode): 03770 for objects/, 02770 for refs/ and
+        // logs/, other --- in both. Nothing lenient here, and nothing hand-spelled: `top` arrives rendered
+        // from that row, so the install that owns the top and the readback that certifies it cannot disagree
+        // -- round-3 finding (4) is precisely what an exact top leg protects (an assert-then-sweep route
+        // that lands at some third mode must REFUSE, not be accepted by a window).
         ReadbackSubtreeTop { mode: mode, group: _ } =>
           dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
-        // An INTERIOR directory gets the lenient window, 02775 or 03775: a fan-out directory git creates
-        // tomorrow inherits setgid from its parent but NOT the sticky bit, so demanding 03775 inside
-        // objects/ would refuse a tree that is correctly granted.
+        // An INTERIOR directory gets the granted-bits-plus-floor window (see
+        // dashboard_git_worker_interior_directory_mode_is_accepted): group-writable, setgid, never
+        // world-writable, never setuid -- and the OTHER leg is whatever the host left, because the sweep
+        // adds and never clears those bits. A fan-out directory git creates tomorrow inherits setgid from
+        // its parent but NOT the sticky bit, so demanding 03770 inside objects/ would refuse a tree that is
+        // correctly granted; a 0775 that never went through the walk (no setgid) refuses.
         ReadbackInteriorDirectory { mode: mode, group: _, path: _ } =>
           dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
         // A FILE's leg depends on what git does to that subtree's files, and the two branches refuse
