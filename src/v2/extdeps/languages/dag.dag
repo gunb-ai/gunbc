@@ -7592,7 +7592,7 @@ fn dag_call_direct_arg_slots_edge(acc: List<Optional<Node>>, e: Edge) -> List<Op
 }
 
 // The DIRECT argument at one declared POSITION of one call, read off the same producer as the named lookup
-// (dag_call_direct_args): the position indexes the call's direct arguments in source order. A NAMED argument sitting at that
+// (dag_call_direct_arg_slots): the position indexes the call's direct argument SLOTS in source order. A NAMED argument sitting at that
 // position answers Absent -- its slot is decided by its name, never by where it was written -- so a call reaches its step by
 // exactly one of the two readings.
 fn dag_call_positional_arg_value_optional(node: Node, position: Int) -> Optional<Node> {

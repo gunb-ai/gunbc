@@ -252,7 +252,7 @@ import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
   resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -3661,7 +3661,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -4366,7 +4367,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -5828,7 +5830,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
@@ -7870,6 +7873,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
               Absent => empty_set()
             }
           }
+          let fn_dying_base_sites = if item_is_tco { empty_map() } else {
+            analyze_dying_base_sites(params: item.params, body: fn_body, si: env.source_indices)
+          }
           let fn_emit_info = EmitGraphInfo {
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
             type_summaries: emit_info.type_summaries,
@@ -7897,7 +7903,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_return_type: emit_info.fn_return_type,
             expected_type: emit_info.expected_type,
             tco_cursor_params: emit_info.tco_cursor_params,
-            tco_cursor_tails: emit_info.tco_cursor_tails
+            tco_cursor_tails: emit_info.tco_cursor_tails,
+            dying_base_sites: fn_dying_base_sites
           }
 
           let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
@@ -12657,6 +12664,14 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
         let concrete = authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
+      match map_get(emit_info.dying_base_sites, to_string(value: expr.span.start)) {
+        Present { value: base_param } =>
+          match dying_literal_plan(lit: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+            Present { value: plan } => return emit_dying_base_literal(plan: plan, base_param: base_param)
+            Absent => ()
+          }
+        Absent => ()
+      }
       let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let rc_name = match parent_enum {
         Present { value: en } => en
@@ -14012,7 +14027,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
-              tco_cursor_tails: emit_info.tco_cursor_tails
+              tco_cursor_tails: emit_info.tco_cursor_tails,
+              dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
         }
@@ -14051,7 +14067,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
-              tco_cursor_tails: emit_info.tco_cursor_tails
+              tco_cursor_tails: emit_info.tco_cursor_tails,
+              dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
         }
@@ -16130,14 +16147,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         } else {
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
-          let f_value = field_init_node_value(n: f)
-          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
-            && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
-          let field_val = if needs_wrap {
-            concat("Some(", val_str, ")")
-          } else { val_str }
-          let stored_val = wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
+          let stored_val = emit_stored_record_field(f: f, resolved_type: resolved_type, outer_type_name: bare_qualified_name, summary_name: variant_summary_name, ctor_name: ctor_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
@@ -16195,6 +16205,180 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
       }
   }
+}
+
+// How one record-literal field is stored: the single storage decision. emit_stored_record_field renders
+// from it and the dying-base reuse form (dying_literal_plan) authorizes nested reuse from it, so a new
+// storage form is added to this classification and both paths see it.
+type FieldStorage
+  = StoredPromotedToSome
+  | StoredOptionalSlot
+  | StoredWrapped
+  | StoredDirectRc
+
+fn record_field_storage(f_name: String, f_value: Node, summary_name: String, ctor_name: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> FieldStorage {
+  if is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name) {
+    if is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) { StoredOptionalSlot } else { StoredPromotedToSome }
+  } else if wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name) == "__slot" {
+    StoredDirectRc
+  } else { StoredWrapped }
+}
+
+// The stored representation of one record-literal field: the value rendered in its field context,
+// wrapped Some(..) when the field is optional and the value is not already, then wrapped for the
+// field's storage (callable Rc, Box). The struct literal and the dying-base reuse form both read it,
+// so the two cannot disagree on what a field holds.
+fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: String?, summary_name: String, ctor_name: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+  let f_value = field_init_node_value(n: f)
+  let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: outer_type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let field_val = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: summary_name, ctor_name: ctor_name, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+    StoredPromotedToSome => concat("Some(", val_str, ")")
+    StoredOptionalSlot => val_str
+    StoredWrapped => val_str
+    StoredDirectRc => val_str
+  }
+  wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
+}
+
+// A DYING-BASE RECORD LITERAL (v1.compiler.ownership analyze_dying_base_sites). The literal is the
+// terminal expression of a fn whose same-typed parameter is dead once it is built, so the result is
+// built in the parameter's own Rc box when that box is uniquely held: every field value is evaluated
+// into a temporary first (they read the parameter, which is still whole), then Rc::get_mut decides.
+// Held uniquely, the fields are overwritten in place and no allocation happens; held by anyone else,
+// the same literal is built behind a fresh Rc, which is the arm the emitter took before the fact, so
+// correctness does not depend on runtime uniqueness, provided eligibility, the field-storage conversions
+// and the fallback construction are correct. A field that is itself a plain literal of a shared struct
+// held in a direct Rc slot (record_field_storage is StoredDirectRc) is reused the same way, because the slot it fills is
+// overwritten and so its old box is dead too. No field's type changes: every slot stays Rc<T>, so
+// no container element widens (recurring_failure_mode by_value_record_widens_container_slots).
+type DyingLitInit {
+  name: String
+  stored: String
+}
+
+type DyingLitShape
+  = DyingPlain { stored: String }
+  | DyingNested { struct_name: String, inits: List<DyingLitInit> }
+
+type DyingLitField {
+  name: String
+  shape: DyingLitShape
+}
+
+type DyingLitPlan {
+  struct_name: String
+  fields: List<DyingLitField>
+}
+
+fn plain_shared_struct_literal_name(lit: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  let si = scope.type_env.source_indices
+  match lit.expr_data {
+    ExprRecordLit { parent_enum: parent } =>
+      match parent {
+        Present { value: _ } => none
+        Absent =>
+          match record_lit_type_name_at(texpr: lit, source_indices: si) {
+            Present { value: tn } =>
+              let rt = expand_type_for_field_access(n: resolved_type(n: lit), env: scope.type_env, module_name: scope.module_name).resolved
+              let no_generics = match lookup_type_by_name(env: scope.type_env, name: tn) {
+                Present { value: d } => d.connective == Conj && (d.params |> count) == 0
+                Absent => false
+              }
+              let covers_all_fields = match lookup_emit_type_summary(emit_info: emit_info, type_name: tn) {
+                Present { value: ts } => (sorted_map_keys(ts.field_summaries) |> count) == (lit.children |> count)
+                Absent => false
+              }
+              if set_contains(shared_types, tn) && no_generics && covers_all_fields
+                && authored_name_at(source_indices: si, node: rt) == tn
+                && !set_contains(emit_info.recursive_type_set, tn)
+                && !is_optional_variant_name(name: tn) {
+                Present { value: tn }
+              } else { none }
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> DyingLitPlan? {
+  let si = scope.type_env.source_indices
+  match plain_shared_struct_literal_name(lit: lit, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+    Absent => none
+    Present { value: tn } =>
+      let rt = expand_type_for_field_access(n: resolved_type(n: lit), env: scope.type_env, module_name: scope.module_name).resolved
+      let planned = lit.children |> map(f =>
+        let f_name = field_init_node_name_at(n: f, source_indices: si)
+        let f_value = field_init_node_value(n: f)
+        let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        let direct_rc = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: tn, ctor_name: tn, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+          StoredDirectRc => true
+          StoredPromotedToSome => false
+          StoredOptionalSlot => false
+          StoredWrapped => false
+        }
+        let inner_name = if direct_rc { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
+        match inner_name {
+          Present { value: inner_tn } =>
+            let inner_rt = expand_type_for_field_access(n: resolved_type(n: f_value), env: scope.type_env, module_name: scope.module_name).resolved
+            let inner_fields = f_value.children
+            DyingLitField {
+              name: f_name,
+              shape: DyingNested {
+                struct_name: inner_tn,
+                inits: inner_fields |> map(g => DyingLitInit {
+                  name: field_init_node_name_at(n: g, source_indices: si),
+                  stored: emit_stored_record_field(f: g, resolved_type: inner_rt, outer_type_name: Present { value: inner_tn }, summary_name: inner_tn, ctor_name: inner_tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+                })
+              }
+            }
+          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: stored } }
+        }
+      )
+      Present { value: DyingLitPlan { struct_name: tn, fields: planned } }
+  }
+}
+
+fn dying_rb_temp(field_index: Int, inner_index: Int) -> String {
+  concat("__rb_", to_string(value: field_index), "_", to_string(value: inner_index))
+}
+
+fn dying_inner_literal(struct_name: String, inits: List<DyingLitInit>, field_index: Int) -> String {
+  let rendered = inits |> enumerate |> map(np => concat(emit_ident(name: np.second.name, target: Rust), ": ", dying_rb_temp(field_index: field_index, inner_index: np.first)))
+  rust_shared_wrap_ctor(inner_expr: concat(struct_name, " \{ ", rendered |> join(separator: ", "), " \}"))
+}
+
+fn emit_dying_base_literal(plan: DyingLitPlan, base_param: String) -> String {
+  let indexed = plan.fields |> enumerate
+  let temp_lets = indexed |> flat_map(pair =>
+    match pair.second.shape {
+      DyingPlain { stored: stored } =>
+        [concat("let ", dying_rb_temp(field_index: pair.first, inner_index: 0), " = ", stored, ";")]
+      DyingNested { struct_name: _, inits: inits } =>
+        inits |> enumerate |> map(ip => concat("let ", dying_rb_temp(field_index: pair.first, inner_index: ip.first), " = ", ip.second.stored, ";"))
+    }
+  )
+  let fresh_fields = indexed |> map(pair =>
+    let fld = pair.second
+    let value = match fld.shape {
+      DyingPlain { stored: _ } => dying_rb_temp(field_index: pair.first, inner_index: 0)
+      DyingNested { struct_name: sn, inits: inits } => dying_inner_literal(struct_name: sn, inits: inits, field_index: pair.first)
+    }
+    concat(emit_ident(name: fld.name, target: Rust), ": ", value)
+  )
+  let fresh = rust_shared_wrap_ctor(inner_expr: concat(plan.struct_name, " \{ ", fresh_fields |> join(separator: ", "), " \}"))
+  let in_place = indexed |> map(pair =>
+    let fld = pair.second
+    let slot = concat("__rb_r.", emit_ident(name: fld.name, target: Rust))
+    match fld.shape {
+      DyingPlain { stored: _ } => concat(slot, " = ", dying_rb_temp(field_index: pair.first, inner_index: 0), ";")
+      DyingNested { struct_name: sn, inits: inits } =>
+        let inner_assign = inits |> enumerate |> map(np => concat("__rb_c.", emit_ident(name: np.second.name, target: Rust), " = ", dying_rb_temp(field_index: pair.first, inner_index: np.first), ";"))
+        concat("match Rc::get_mut(&mut ", slot, ") \{ Some(__rb_c) => \{ ", inner_assign |> join(separator: " "), " \} None => \{ ", slot, " = ", dying_inner_literal(struct_name: sn, inits: inits, field_index: pair.first), "; \} \}")
+    }
+  )
+  concat("\{ ", temp_lets |> join(separator: " "), " let mut __rb_h = ", emit_ident(name: base_param, target: Rust), "; match Rc::get_mut(&mut __rb_h) \{ Some(__rb_r) => \{ ", in_place |> join(separator: " "), " \} None => \{ __rb_h = ", fresh, "; \} \} __rb_h \}")
 }
 
 fn rust_zero_value(type_name: String) -> String? {
@@ -19475,6 +19659,15 @@ fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: St
   count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
     |> filter(site => site.module_name == pipeline_module)) > 0
 }
+// A startup entry MAY also declare `native_serve_startup_bound` (a Second): the bound on its own startup readiness, which the
+// rendered main reads for its readiness wait in place of gunbc.native_serve native_serve_startup_deadline. It is the driver's
+// declared data, as the handler and the startup fold are, and a driver that declares none keeps the default bound.
+data native_serve_startup_bound_name: String = "native_serve_startup_bound"
+
+fn native_serve_declares_startup_bound(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemDataValue, name: native_serve_startup_bound_name)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19633,7 +19826,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -19958,7 +20151,7 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool, startup_bound: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
@@ -19968,22 +20161,28 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
     concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
-  let startup_run = if startup {
+  let bound_import = if startup_bound { concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup_bound;", "\n") } else { "" }
+  let startup_second = if startup_bound { "native_serve_startup_bound()" } else { "contract.startup_deadline.clone()" }
+  let worker_startup = if startup {
     concat(
-      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
-      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
-      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
-      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
-      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
-      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "        let startup_value = match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "                NativeServeStartup::NativeServeStartupPassed \{ line, value \} => \{", "\n",
+      "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) \{ println!(\"\{\}\", native_serve_startup_passed_line(line.clone())); \}", "\n",
+      "                    value.clone()", "\n",
+      "                \}", "\n",
+      "                NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                    eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "                \}", "\n",
+      "            \},", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
-      "        \},", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
-      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
-      "        \}", "\n",
-      "    \}", "\n")
+      "        \};", "\n",
+      "        let _ = started_tx.send(());", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -19993,15 +20192,65 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
+  let started_decl = if startup { "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n" } else { "" }
+  let startup_wait = if startup {
+    concat(
+      "    if started_rx.recv_timeout(ready_within).is_err() \{", "\n",
+      "        eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
+      "        std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "    \}", "\n")
+  } else { "" }
+  let timeout_arm = if startup {
+    "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
+  } else {
+    "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
+  }
+  let ready_within = if startup {
+    concat("std::time::Duration::from_secs(second_count(", startup_second, ") as u64)")
+  } else {
+    "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)"
+  }
+  let ready_name = if startup { "ready_within" } else { "deadline" }
+  let ready_let = if startup { concat("    let ready_within = ", ready_within, ";", "\n") } else { "" }
+  let startup_arg = if startup { ", startup_value.clone()" } else { "" }
+  let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    "            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n"
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
   }
+  // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
+  // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
+  let realize_block = concat(
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      ready_let,
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
+      "    let mut generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
+      "        Ok(generation) => generation,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n"
+  )
+  let bind_block = concat(
+      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
+      "        Ok(listener) => listener,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound = match listener.local_addr() \{", "\n",
+      "        Ok(addr) => addr,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound_host = bound.ip().to_string();", "\n",
+      "    let bound_port = bound.port() as i64;", "\n"
+  )
+  let first_block = if startup { realize_block } else { bind_block }
+  let second_block = if startup { bind_block } else { realize_block }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -20013,7 +20262,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use std::rc::Rc;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
-      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
       "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
@@ -20023,6 +20272,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       startup_import,
+      bound_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -20087,6 +20337,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    \}", "\n",
       "\}", "\n",
       "\n",
+      startup_static,
       "struct HandlerCall \{", "\n",
       "    method: String,", "\n",
       "    path: String,", "\n",
@@ -20109,8 +20360,10 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
       "    let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
       "    let worker_state = state.clone();", "\n",
+      started_decl,
       "    std::thread::spawn(move || \{", "\n",
       "        let _guard = guard;", "\n",
+      worker_startup,
       worker_realize,
       "        let _ = ready.send(Ok(()));", "\n",
       "        while let Ok((call, reply)) = inbox.recv() \{", "\n",
@@ -20121,10 +20374,11 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            \}", "\n",
       "        \}", "\n",
       "    \});", "\n",
+      startup_wait,
       "    match readiness.recv_timeout(ready_within) \{", "\n",
       "        Ok(Ok(())) => Ok(Generation \{ calls, state \}),", "\n",
       "        Ok(Err(cause)) => Err(cause),", "\n",
-      "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),", "\n",
+      timeout_arm,
       "    \}", "\n",
       "\}", "\n",
       "", "\n",
@@ -20201,26 +20455,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      startup_run,
-      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
-      "        Ok(listener) => listener,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound = match listener.local_addr() \{", "\n",
-      "        Ok(addr) => addr,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound_host = bound.ip().to_string();", "\n",
-      "    let bound_port = bound.port() as i64;", "\n",
-      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
-      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
-      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
-      "        Ok(generation) => generation,", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \};", "\n",
+      first_block,
+      second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",
@@ -20271,7 +20507,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                            \}", "\n",
       "                        \};", "\n",
       "                        if replace \{", "\n",
-      "                            generation = match realize_generation(&stuck, deadline) \{", "\n",
+      "                            generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
       "                                Ok(generation) => generation,", "\n",
       "                                Err(cause) => \{", "\n",
       "                                    eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
