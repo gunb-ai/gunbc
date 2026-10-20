@@ -109,7 +109,7 @@ fn quote_row() -> TargetSemanticDeclEmitTransformRow {
     transform: DeclEmitStringQuote {
       open: "\"",
       close: "\"",
-      escapes: [TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" }, TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" }]
+      escapes: [TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" }, TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" }, TargetSemanticDeclEmitEscape { from: "\r", to: "\\r" }]
     }
   }
 }

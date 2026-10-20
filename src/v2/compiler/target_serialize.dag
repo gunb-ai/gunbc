@@ -95,6 +95,9 @@ import v2.std.type_binder {
 import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  ConcreteSyntaxLayoutItem,
+  LayoutToken,
+  LayoutNest,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -649,6 +652,45 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     }
   )
 }
+// THE DECL ROUTE'S FOLD OVER A LAYOUT-KEEPING SPINE: a token is spelled as in the flat fold, a nested block is
+// the same std.layout nest the grammar-row route makes (target_text_nested) by the unit the target spells, and
+// an unspelled unit refuses (translate_layout_unit_unspelled) rather than printing the block flat.
+fn serialize_concrete_syntax_layout_to_source_string(
+  target: TargetModel,
+  items: List<ConcreteSyntaxLayoutItem>
+) -> Outcome<TargetText> {
+  fold_list(
+    xs: items,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, item) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          bind_outcome(
+            o: serialize_concrete_syntax_layout_item(target: target, item: item),
+            f: fn(text) { Accepted { value: target_text_seq(acc: partial, next: text), diagnostics: ad } }
+          )
+      }
+    }
+  )
+}
+
+fn serialize_concrete_syntax_layout_item(target: TargetModel, item: ConcreteSyntaxLayoutItem) -> Outcome<TargetText> {
+  match item {
+    LayoutToken { token: tok } => serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: [tok])
+    LayoutNest { unit: unit, items: inner } =>
+      match map_get_checked(target.binding_spellings, unit) {
+        Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+          bind_outcome(
+            o: serialize_concrete_syntax_layout_to_source_string(target: target, items: inner),
+            f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
+          )
+        Accepted { value: Absent, diagnostics: _ } => outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+  }
+}
+
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
