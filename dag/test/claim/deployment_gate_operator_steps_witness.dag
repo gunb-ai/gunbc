@@ -2465,7 +2465,7 @@ test fn a_same_named_repository_in_another_account_is_a_different_subject() -> B
       observed_at: clock_read(instant: standing_instant),
     ) {
       ReviewerRemovalCompletionRefused { because: _ } => true
-      ReviewerRemovalCompletionObserved { receipt: _ } => false
+      ReviewerRemovalCompletionRecorded { receipt: _ } => false
     })
 }
 
