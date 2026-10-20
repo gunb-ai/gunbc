@@ -7509,16 +7509,13 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
         let lines = Rc::new({
             let mut __result = Vec::new();
             for path in Rc::new({
-                let mut __keyed: Vec<_> = declared
-                    .iter()
-                    .cloned()
-                    .map(|__e: String| {
-                        let __k = (|path: String| path.clone())(__e.clone());
-                        (__k, __e)
-                    })
-                    .collect();
-                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
-                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
+                let mut __sorted: Vec<_> = declared.iter().cloned().collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|path: String| path.clone())(a.clone());
+                    let __kb = (|path: String| path.clone())(b.clone());
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                });
+                __sorted
             })
             .iter()
             .cloned()
@@ -25369,6 +25366,75 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_carries_applicationless_parametric_head(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if {
+                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn rust_type_renders_bare_parametric_head(
+    t: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if !type_node_declares_parameters(t.clone(), emit_info.fn_type_env.clone()) {
+        false
+    } else {
+        {
+            let head = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), t.clone()),
+            );
+            let rendered = render_rust_type(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            );
+            ((rendered.clone() == head.clone())
+                || (rendered.clone()
+                    == v1_rt::concat(
+                        v1_rt::concat("Rc<".to_string(), head.clone()),
+                        ">".to_string(),
+                    )))
+        }
+    }
+}
+
+pub fn type_node_declares_parameters(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        Some(binding) => ((binding.params.clone().len() as i64) > 0),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -25387,13 +25453,19 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if ((rust_fold_rendered_type_has_any_spurious_generic(
+            if (((rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone()))
+                || type_node_carries_applicationless_parametric_head(
+                    map_type.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ))
                 || {
                     let mut __found = false;
                     for c in map_type.children.clone().iter().cloned() {
@@ -29545,12 +29617,19 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && crate::std_types::is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((((is_bare_container.clone()
+        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            scope.type_env.source_indices.clone(),
+            fold_emit_info.clone(),
+        );
+        let lambda_acc_type_str = if ((((((is_bare_container.clone()
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
             || acc_render_has_spurious_generic.clone())
+            || acc_carries_bare_parametric_head.clone())
         {
             "_".to_string()
         } else {
@@ -29951,19 +30030,65 @@ pub fn emit_rust_sort_by_method_call(
             sharing.iter_owned.clone(),
             recv_str.clone(),
         );
-        let e_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
+        let a_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
             sharing.clone_value.clone(),
-            "__e".to_string(),
+            "a".to_string(),
         );
-        let decorate_param = if (elem_type_str.clone() == "_".to_string()) {
-            "|__e|".to_string()
+        let b_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
+            sharing.clone_value.clone(),
+            "b".to_string(),
+        );
+        let closure_params = if (elem_type_str.clone() == "_".to_string()) {
+            "|a, b|".to_string()
         } else {
             v1_rt::concat(
-                v1_rt::concat("|__e: ".to_string(), elem_type_str.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("|a: &".to_string(), elem_type_str.clone()),
+                        ", b: &".to_string(),
+                    ),
+                    elem_type_str.clone(),
+                ),
                 "|".to_string(),
             )
         };
-        rust_shared_wrap_ctor(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{ let mut __keyed: Vec<_> = ".to_string(), iter_str.clone()), ".map(".to_string()), decorate_param.clone()), " { let __k = (".to_string()), sort_key_fn.clone()), ")(".to_string()), e_clone.clone()), "); (__k, __e) }).collect(); __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0)); __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>() }".to_string()))
+        rust_shared_wrap_ctor(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "{ let mut __sorted: Vec<_> = ".to_string(),
+                                                        iter_str.clone(),
+                                                    ),
+                                                    ".collect(); __sorted.sort_by(".to_string(),
+                                                ),
+                                                closure_params.clone(),
+                                            ),
+                                            " { let __ka = (".to_string(),
+                                        ),
+                                        sort_key_fn.clone(),
+                                    ),
+                                    ")(".to_string(),
+                                ),
+                                a_clone.clone(),
+                            ),
+                            "); let __kb = (".to_string(),
+                        ),
+                        sort_key_fn.clone(),
+                    ),
+                    ")(".to_string(),
+                ),
+                b_clone.clone(),
+            ),
+            "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }".to_string(),
+        ))
     }
 }
 
@@ -34483,7 +34608,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                 if ((candidates.clone().len() as i64) > 1) {
                                     {
                                         let candidate_names = Rc::new({
-                                            let mut __keyed: Vec<_> = Rc::new({
+                                            let mut __sorted: Vec<_> = Rc::new({
                                                 let mut __result = Vec::new();
                                                 for c in candidates.iter().cloned() {
                                                     __result.push(c.name.clone());
@@ -34492,19 +34617,13 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             })
                                             .iter()
                                             .cloned()
-                                            .map(|__e: String| {
-                                                let __k =
-                                                    (|name: String| name.clone())(__e.clone());
-                                                (__k, __e)
-                                            })
                                             .collect();
-                                            __keyed.sort_by(|__x, __y| {
-                                                v1_rt::canonical_key_cmp(&__x.0, &__y.0)
+                                            __sorted.sort_by(|a: &String, b: &String| {
+                                                let __ka = (|name: String| name.clone())(a.clone());
+                                                let __kb = (|name: String| name.clone())(b.clone());
+                                                v1_rt::canonical_key_cmp(&__ka, &__kb)
                                             });
-                                            __keyed
-                                                .into_iter()
-                                                .map(|(_, __e)| __e)
-                                                .collect::<Vec<_>>()
+                                            __sorted
                                         });
                                         Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
     candidates: candidate_names.clone(),
