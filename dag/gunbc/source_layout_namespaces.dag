@@ -143,7 +143,6 @@ fn layout_namespaces() -> List<String> {
     "extdeps.languages.wasm",
     "extdeps.languages.xml",
     "extdeps.languages.yaml",
-    "extdeps.libxcrypt",
     "extdeps.linux",
     "extdeps.llm",
     "extdeps.memory",
