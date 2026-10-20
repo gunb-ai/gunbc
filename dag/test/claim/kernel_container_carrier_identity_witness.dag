@@ -1,7 +1,9 @@
 module test.claim.kernel_container_carrier_identity_witness
 
 import std.types { String, Bool, Int, List }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains, carrier_container_alias_rows, carrier_container_arity_rows }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -13,7 +15,18 @@ import gunbc.instruments.multi_module_compile_fixture {
   fixture_blocking_rows
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// THE GRADE MOVED FROM SubstrateInputsOnly TO ReadsLiveTree, and the reason is a wall, not a
+// formality. The claims below `std_types_declares_every_declaration_position_alias` and its
+// control read the REAL `dag/std/types.dag` through `filesystem_read`, so the file's evaluation
+// touches live state. A row that DECLARES SubstrateInputsOnly while actually reading live state is
+// not re-checked by any text scan, and per the authority comment in cli_run.rs
+// (`parse_entry_live_tree_disposition`) it is now re-checked by NOTHING AT ALL — `falsifier.yml`
+// died in the 2026-08-15 floor cut, so a lying grade buys a predict-skip that nothing observes.
+// The honest grade for a file that reads the live tree is ReadsLiveTree (fail-closed: never
+// predict-skip), which is also what the other mixed fixture-plus-live-read witnesses in this
+// directory declare (cross_file_binding_assembly_witness et al.). The fixture-compile claims above
+// are unaffected: ReadsLiveTree only means they are always actually run, never scheduled away.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE SUBJECT: operator ruling 2026-09-29 -- std.types `List<element> = FreeMonoid<element>` is ONE
 // type, so FreeMonoid's constructors are values of List<T>, decided by DECLARATION IDENTITY
@@ -84,4 +97,93 @@ test fn kc_own_freemonoid_through_a_local_is_not_a_list_value() -> Bool {
 // RED: an unrelated record at List<Int>.
 test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
   carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype KcPoint { x: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: KcPoint { x: 1 }) }\n"))
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// THE SINGLE-AUTHORITY GUARD (parent ruling msg_0a8ddec5 item b): std/types and std/algebra must
+// agree about the container ALIAS spellings, and this witness is the one that keeps them honest.
+//
+// THE DEFECT THIS GUARDS AGAINST. Two files state the same fact independently. std/algebra's
+// carrier roster (dag/std/algebra.dag `algebra_carriers`) declares each container carrier with a
+// `pascal_alias_spelling` — FreeMonoid is spelled `List`, FinitePowerSet `Set`,
+// FinitelySupportedFunction `Map` — and std/types.dag INDEPENDENTLY hand-writes `type List<element>
+// = FreeMonoid<element>` (and Set/Map). std/types even CONSUMES the roster for arity
+// (`container_type_arity = map_insert(carrier_container_arity_rows(), ...)`) while still writing the
+// alias bodies by hand. That is two authorities (DESIGN §3). They agree today; nothing re-checks it
+// if one drifts, and a drifted alias is a silent wrongness (DESIGN §5): a call site using `List`
+// would resolve against the roster's carrier while the type checker compares against std/types'
+// declaration, and the two can disagree about which constructors inhabit the type.
+//
+// WHY THE DOMAIN IS THE ARITY ROWS, NOT THE ALIAS ROWS. `carrier_container_alias_rows()` is keyed by
+// EVERY RowPresent alias spelling — Pascal AND snake (`list`, `set`, `map`) and a self-named
+// `PartialFunction` row. std/types declares only the Pascal spellings (`type List<..>`, never
+// `type list<..>`), so a claim over the alias domain would be red against main for the wrong reason.
+// `carrier_container_arity_rows()` is keyed by EXACTLY the `pascal_alias_spelling` rows — the only
+// spelling helper that sets `container_arity_row: RowPresent` — which is precisely the set of names
+// std/types declares in type position. Deriving the check's subject set from the roster (never a
+// hand-typed list) is also the point: the claim cannot itself become a third authority (DESIGN §3,
+// §6 "name the instrument, never transcribe its output").
+//
+// WHY `string_contains` IS ENOUGH, AND WHERE IT WOULD LIE. The check is not a source census (ruled
+// out as a heuristic); for each roster alias it asks the two precise questions. Two independent
+// `string_contains` calls could be satisfied across two lines (a name on one line, its carrier on
+// another), which would make the guard a §4b decoration. That cannot happen here because each anchor
+// token — `type List<`, ` = FreeMonoid<`, and the Set/Map analogues — occurs EXACTLY ONCE in
+// std/types.dag, so the conjunction `type <spelling><` AND ` = <carrier><` is only true when both
+// appear on the one declaration line. It also stays green across a legal parameter RENAME (only
+// `type List<` and ` = FreeMonoid<` are pinned, never the bound variable name). The executed
+// controls below are what make this non-decoration: the predicate is pure over a supplied text, so
+// the same predicate that passes on the real file refuses a fixture with a declaration removed and a
+// fixture with the carrier repointed.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+data std_types_source_path: String = "dag/std/types.dag"
+
+fn std_types_declared_text() -> String {
+  filesystem_read(path: std_types_source_path).content
+}
+
+// THE PREDICATE, PURE OVER THE SUPPLIED TEXT. Both directions of one declaration line: the alias is
+// introduced in type position AND bound to exactly this carrier. Read as "does `text` declare
+// `<spelling>` as an alias of `<carrier>`".
+fn std_types_declares_alias_of(spelling: String, carrier: String, text: String) -> Bool {
+  string_contains(s: text, pattern: "type " + spelling + "<")
+    && string_contains(s: text, pattern: " = " + carrier + "<")
+}
+
+// GREEN BY DESIGN (not by luck): every roster declaration-position alias — the arity-row domain,
+// derived from the roster, not enumerated here — is backed by a std/types declaration binding it to
+// the SAME carrier the roster says the spelling belongs to. The carrier is looked up from the
+// roster's own alias table so the claim never hard-codes a pairing.
+test fn every_declaration_position_alias_is_declared_in_std_types() -> Bool {
+  let types_text = std_types_declared_text()
+  sorted_map_keys(carrier_container_arity_rows())
+    |> all(spelling =>
+      match carrier_container_alias_rows() |> get(spelling) {
+        Absent => false,
+        Present { value: carrier } => std_types_declares_alias_of(spelling: spelling, carrier: carrier, text: types_text)
+      })
+}
+
+// CONTROL 1 (in-tree executed RED): a std/types that LOST a declaration is refused by the SAME
+// predicate. This is the drift the guard exists to catch; without it the green claim above would be
+// green-by-construction over data that cannot fail (DESIGN §4b, §5 "a discriminating input").
+test fn a_std_types_missing_a_declaration_is_refused_by_the_same_predicate() -> Bool {
+  let drifted = "module std.types\ntype Set<element> = FinitePowerSet<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: drifted)
+}
+
+// CONTROL 2 (in-tree executed RED): a std/types that REPOINTED an alias to a different carrier is
+// refused. The alias name is still declared, so a name-only check would pass; the carrier tie is
+// what the guard actually verifies, and this control proves the tie is load-bearing.
+test fn a_std_types_repointing_an_alias_to_another_carrier_is_refused() -> Bool {
+  let repointed = "module std.types\ntype List<element> = PointwisePower<element>\ntype Set<element> = FinitePowerSet<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: repointed)
+}
+
+// CONTROL 3 (the non-decoration witness for the whole guard): the SAME predicate is genuinely
+// satisfiable — it returns TRUE on the real std/types text for a known alias, so Controls 1 and 2
+// fail for the absence-of-declaration reason and not because the predicate rejects everything.
+test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
+  std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: std_types_declared_text())
 }
