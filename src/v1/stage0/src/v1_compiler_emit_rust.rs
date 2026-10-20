@@ -415,7 +415,17 @@ pub fn render_rust_leaf_declaration_type(
             }
             __result
         });
-        let leaf_is_reference = (n.connective.clone() == Connective::NoConnective);
+        let leaf_is_reference = ((n.connective.clone() == Connective::NoConnective)
+            && !{
+                let mut __found = false;
+                for g in emit_info.fn_generic_param_names.clone().iter().cloned() {
+                    if (g.clone() == tn.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            });
         let applied_args = if leaf_is_reference.clone() {
             Rc::new({
                 let mut __result = Vec::new();
@@ -438,7 +448,20 @@ pub fn render_rust_leaf_declaration_type(
             if ((applied_args.clone().len() as i64) > 0) {
                 applied_args.clone()
             } else {
-                crate::v1_compiler_emit::named_type_vars_in_node(n.clone())
+                if {
+                    let mut __found = false;
+                    for g in emit_info.fn_generic_param_names.clone().iter().cloned() {
+                        if (g.clone() == tn.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Rc::new(vec![])
+                } else {
+                    crate::v1_compiler_emit::named_type_vars_in_node(n.clone())
+                }
             }
         };
         let declared_spelled = if ((declared_params.clone().len() as i64) > 0) {
@@ -3621,12 +3644,7 @@ pub fn render_rust_declaration_position(
                 TypeDeclResolution::TypeDeclResolved { .. } => true,
                 _ => false,
             };
-        let bare_declared_leaf = ((((names_declaration.clone()
-            && (crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) == std::option::Option::None))
+        let bare_declared_leaf = (((names_declaration.clone()
             && (n.return_cardinality.clone() != Cardinality::CardOptional))
             && !crate::std_types::is_container_type(leaf.clone()))
             && !{
