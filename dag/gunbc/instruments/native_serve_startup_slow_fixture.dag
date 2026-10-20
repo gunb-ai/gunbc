@@ -1,0 +1,33 @@
+module gunbc.instruments.native_serve_startup_slow_fixture
+
+import std.types { String, Int, List, CommitSha }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import std.measure { Second, second }
+import extdeps.http.server { ServeWireResponse }
+import gunbc.native_serve { native_serve_text_plain, NativeServeStartup, NativeServeStartupPassed }
+
+// THE CONTROL SERVICE FOR "STARTUP DOES NOT INHERIT THE REQUEST DEADLINE" (gunbc.native_serve native_serve_startup_deadline).
+// Its startup fold is a calibrated spin of gunbc.instruments.native_serve_fixture fixture_spin: the fold sees only the
+// executable's octets and cannot sleep, so its duration is a step count, deterministic as a RATIO and not as a wall time.
+// The margins are chosen at 5x or more on both sides of the unknown step cost (about 2 to 8 ns per step of this modular
+// hash): 3*10^8 steps is about 0.6 to 2.4 s, which is over five times the 100 ms request deadline the reader
+// (gunbc.instruments.native_serve_startup_slow_probe) launches it with, and far under the 30 s default startup bound.
+// So the startup is slower than the request deadline and inside its own bound: it must announce, bind and serve. A launch
+// whose startup were bounded by the request deadline would exit before binding and the reader would be red.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+// The same modular-hash countdown as gunbc.instruments.native_serve_fixture fixture_spin (the accumulator's modulus keeps
+// the optimizer from folding it to a closed form), restated here because importing that module would make its
+// compiler pipeline entry a second entry of this crate.
+fn startup_spin(n: Int, acc: Int) -> Int {
+  if n == 0 { acc } else { startup_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
+}
+
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<Int> {
+  let spun = startup_spin(n: 300000000, acc: 7)
+  NativeServeStartupPassed { line: concat("slow startup finished after a spin of ", to_string(value: spun)), value: spun }
+}
+
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, spun: Int) -> ServeWireResponse {
+  ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: concat("served after a startup that spun ", concat(to_string(value: spun), "\n")), headers: [] }
+}
