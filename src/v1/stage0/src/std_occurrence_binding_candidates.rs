@@ -1103,171 +1103,475 @@ pub fn bound_reference_population_fold_step(
     match (*projection.clone()).clone() {
         ReferenceBindingProjection::ReferenceBindingProjectionBound {
             provider: provider, ..
-        } => Rc::new(BoundReferencePopulationBuild {
-            providers_reversed: v1_rt::concat(
+        } => {
+            let __rb_0_0 = v1_rt::concat(
                 Rc::new(vec![provider.clone()]),
                 acc.providers_reversed.clone(),
-            ),
-            first_failure: acc.first_failure.clone(),
-            more_failures_reversed: acc.more_failures_reversed.clone(),
-        }),
+            );
+            let __rb_1_0 = acc.first_failure.clone();
+            let __rb_2_0 = acc.more_failures_reversed.clone();
+            let mut __rb_h = acc;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.providers_reversed = __rb_0_0;
+                    __rb_r.first_failure = __rb_1_0;
+                    __rb_r.more_failures_reversed = __rb_2_0;
+                }
+                None => {
+                    __rb_h = Rc::new(BoundReferencePopulationBuild {
+                        providers_reversed: __rb_0_0,
+                        first_failure: __rb_1_0,
+                        more_failures_reversed: __rb_2_0,
+                    });
+                }
+            }
+            __rb_h
+        }
         ReferenceBindingProjection::ReferenceBindingProjectionUnbound { occurrence: _, .. } => {
             match acc.first_failure.clone() {
-                std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                    providers_reversed: acc.providers_reversed.clone(),
-                    first_failure: Some(projection.clone()),
-                    more_failures_reversed: acc.more_failures_reversed.clone(),
-                }),
-                Some(_) => Rc::new(BoundReferencePopulationBuild {
-                    providers_reversed: acc.providers_reversed.clone(),
-                    first_failure: acc.first_failure.clone(),
-                    more_failures_reversed: v1_rt::concat(
+                std::option::Option::None => {
+                    let __rb_0_0 = acc.providers_reversed.clone();
+                    let __rb_1_0 = Some(projection.clone());
+                    let __rb_2_0 = acc.more_failures_reversed.clone();
+                    let mut __rb_h = acc;
+                    match Rc::get_mut(&mut __rb_h) {
+                        Some(__rb_r) => {
+                            __rb_r.providers_reversed = __rb_0_0;
+                            __rb_r.first_failure = __rb_1_0;
+                            __rb_r.more_failures_reversed = __rb_2_0;
+                        }
+                        None => {
+                            __rb_h = Rc::new(BoundReferencePopulationBuild {
+                                providers_reversed: __rb_0_0,
+                                first_failure: __rb_1_0,
+                                more_failures_reversed: __rb_2_0,
+                            });
+                        }
+                    }
+                    __rb_h
+                }
+                Some(_) => {
+                    let __rb_0_0 = acc.providers_reversed.clone();
+                    let __rb_1_0 = acc.first_failure.clone();
+                    let __rb_2_0 = v1_rt::concat(
                         Rc::new(vec![projection.clone()]),
                         acc.more_failures_reversed.clone(),
-                    ),
-                }),
+                    );
+                    let mut __rb_h = acc;
+                    match Rc::get_mut(&mut __rb_h) {
+                        Some(__rb_r) => {
+                            __rb_r.providers_reversed = __rb_0_0;
+                            __rb_r.first_failure = __rb_1_0;
+                            __rb_r.more_failures_reversed = __rb_2_0;
+                        }
+                        None => {
+                            __rb_h = Rc::new(BoundReferencePopulationBuild {
+                                providers_reversed: __rb_0_0,
+                                first_failure: __rb_1_0,
+                                more_failures_reversed: __rb_2_0,
+                            });
+                        }
+                    }
+                    __rb_h
+                }
             }
         }
         ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
             occurrence: _, ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionModulePathRefused {
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionExposureRefused {
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionAuthoredOrderRefused {
             refusal: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionDeclarationBucketRefused {
             occurrence: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
             occurrence: _,
             ..
         } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
+            std::option::Option::None => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = Some(projection.clone());
+                let __rb_2_0 = acc.more_failures_reversed.clone();
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
+            Some(_) => {
+                let __rb_0_0 = acc.providers_reversed.clone();
+                let __rb_1_0 = acc.first_failure.clone();
+                let __rb_2_0 = v1_rt::concat(
                     Rc::new(vec![projection.clone()]),
                     acc.more_failures_reversed.clone(),
-                ),
-            }),
+                );
+                let mut __rb_h = acc;
+                match Rc::get_mut(&mut __rb_h) {
+                    Some(__rb_r) => {
+                        __rb_r.providers_reversed = __rb_0_0;
+                        __rb_r.first_failure = __rb_1_0;
+                        __rb_r.more_failures_reversed = __rb_2_0;
+                    }
+                    None => {
+                        __rb_h = Rc::new(BoundReferencePopulationBuild {
+                            providers_reversed: __rb_0_0,
+                            first_failure: __rb_1_0,
+                            more_failures_reversed: __rb_2_0,
+                        });
+                    }
+                }
+                __rb_h
+            }
         },
         ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory { .. } => {
             match acc.first_failure.clone() {
-                std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                    providers_reversed: acc.providers_reversed.clone(),
-                    first_failure: Some(projection.clone()),
-                    more_failures_reversed: acc.more_failures_reversed.clone(),
-                }),
-                Some(_) => Rc::new(BoundReferencePopulationBuild {
-                    providers_reversed: acc.providers_reversed.clone(),
-                    first_failure: acc.first_failure.clone(),
-                    more_failures_reversed: v1_rt::concat(
+                std::option::Option::None => {
+                    let __rb_0_0 = acc.providers_reversed.clone();
+                    let __rb_1_0 = Some(projection.clone());
+                    let __rb_2_0 = acc.more_failures_reversed.clone();
+                    let mut __rb_h = acc;
+                    match Rc::get_mut(&mut __rb_h) {
+                        Some(__rb_r) => {
+                            __rb_r.providers_reversed = __rb_0_0;
+                            __rb_r.first_failure = __rb_1_0;
+                            __rb_r.more_failures_reversed = __rb_2_0;
+                        }
+                        None => {
+                            __rb_h = Rc::new(BoundReferencePopulationBuild {
+                                providers_reversed: __rb_0_0,
+                                first_failure: __rb_1_0,
+                                more_failures_reversed: __rb_2_0,
+                            });
+                        }
+                    }
+                    __rb_h
+                }
+                Some(_) => {
+                    let __rb_0_0 = acc.providers_reversed.clone();
+                    let __rb_1_0 = acc.first_failure.clone();
+                    let __rb_2_0 = v1_rt::concat(
                         Rc::new(vec![projection.clone()]),
                         acc.more_failures_reversed.clone(),
-                    ),
-                }),
+                    );
+                    let mut __rb_h = acc;
+                    match Rc::get_mut(&mut __rb_h) {
+                        Some(__rb_r) => {
+                            __rb_r.providers_reversed = __rb_0_0;
+                            __rb_r.first_failure = __rb_1_0;
+                            __rb_r.more_failures_reversed = __rb_2_0;
+                        }
+                        None => {
+                            __rb_h = Rc::new(BoundReferencePopulationBuild {
+                                providers_reversed: __rb_0_0,
+                                first_failure: __rb_1_0,
+                                more_failures_reversed: __rb_2_0,
+                            });
+                        }
+                    }
+                    __rb_h
+                }
             }
         }
     }
@@ -2352,13 +2656,34 @@ pub fn merge_occurrence_transports(
     left: Rc<OccurrenceTransport>,
     right: Rc<OccurrenceTransport>,
 ) -> Rc<OccurrenceTransport> {
-    Rc::new(OccurrenceTransport {
-        index: Rc::new(OccurrenceIndex {
-            entries: v1_rt::concat(left.index.entries.clone(), right.index.entries.clone()),
-        }),
-        declarations: v1_rt::concat(left.declarations.clone(), right.declarations.clone()),
-        references: v1_rt::concat(left.references.clone(), right.references.clone()),
-    })
+    {
+        let __rb_0_0 = v1_rt::concat(left.index.entries.clone(), right.index.entries.clone());
+        let __rb_1_0 = v1_rt::concat(left.declarations.clone(), right.declarations.clone());
+        let __rb_2_0 = v1_rt::concat(left.references.clone(), right.references.clone());
+        let mut __rb_h = right;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                match Rc::get_mut(&mut __rb_r.index) {
+                    Some(__rb_c) => {
+                        __rb_c.entries = __rb_0_0;
+                    }
+                    None => {
+                        __rb_r.index = Rc::new(OccurrenceIndex { entries: __rb_0_0 });
+                    }
+                }
+                __rb_r.declarations = __rb_1_0;
+                __rb_r.references = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(OccurrenceTransport {
+                    index: Rc::new(OccurrenceIndex { entries: __rb_0_0 }),
+                    declarations: __rb_1_0,
+                    references: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn cross_file_binding_closure_row(
