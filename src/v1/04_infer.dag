@@ -5848,9 +5848,11 @@ fn select_formal_for_call_argument(argument: Node, argument_index: Int, argument
 // which the selection never reads), once per (formal, argument) PAIR in build_call_application_plan's
 // inverse search, and once per argument plus once per (argument, earlier argument) PAIR in
 // direct_call_shape_diags' formal-identity duplicate check. The two pair-shaped uses are quadratic
-// in argument count; the audit measured the family at 2.03% / 1.7 s with the quadratic loops
-// (0.64% shape diags + 0.45% its fold + 0.73% the plan's inverse search) making up all of it
-// (§5a D.2, `direct_call_shape_diags` re-runs the rule over every earlier argument). This type
+// in argument count; the §5a lane-D row for this family (v1-interface-cull-audit §3a, the srv1
+// `perf record -F 299 --call-graph fp` capture attached to the seed compile of the required entry,
+// re-derivable from the §3a scripts; the quadratic loops -- the shape diags, its fold, and the
+// plan's inverse search -- made up the whole row) is the measurement; this comment names the
+// capture rather than its numbers. This type
 // holds the correspondence for ONE call over ONE (arguments, value_params) domain: `selections` is
 // index-aligned with `arguments` and answers WHICH formal an argument selects; `claimants_by_formal`
 // answers the inverse the plan and the duplicate wall need, recording the claimants for each formal
@@ -8082,7 +8084,9 @@ fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node
 // point presentation?" and answers by classifying the formal's three candidate nodes. The declared
 // type was classified TWICE per view: once here to enforce host-text precedence, and again inside
 // the peel as the last arm, because the peel could not see the answer the precedence check had
-// already computed (measured 8.20% / 7.1 s inclusive, all of it inside the argument fold, §5a D.7).
+// already computed (§5a lane-D row D.7 -- the srv1 `perf record -F 299 --call-graph fp` capture
+// behind that row is the measurement; this comment names the instrument, not its number, per
+// DESIGN.md §6 "name the instrument, never transcribe its output").
 // The classification is now done once and its verdict REUSED -- the same value, the same call, read
 // where it is needed. WHAT STAYS UNCHANGED: the order of judgment (host text wins first; then
 // declaration-bound conformance, then substitution basis, then the declared type, each as a code-
@@ -14672,7 +14676,8 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
 // positively to select the generic ones. The predicate reads the authored parameter (its name, its
 // type annotation) and re-enters param_node_type_expr / param_node_name_at / type_node_label /
 // is_type_variable every time, so the two loops were two identical answers computed twice, not two
-// questions -- measured 0.65% / 0.6 s for the frame (§5a D.3). A single fold classifies each
+// questions -- the §5a lane-D row D.3 is the measurement (the srv1 perf capture behind the §3a
+// rows; this comment names the instrument, never its output, per DESIGN.md §6). A single fold classifies each
 // parameter ONCE and routes it. The two outputs keep their exact prior contents and order:
 // value_params stays the non-generic parameters in declaration order, generic_names stays the
 // generic parameters' names in declaration order, so the consumers (the argument fold, the
