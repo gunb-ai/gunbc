@@ -47,22 +47,31 @@ import v2.workflow.outside_discovery_roots_census_live {
 // THE EXPECTATION, imported rather than restated: the same list the hermetic witness holds its injected
 // listings against. Two copies of a population, in two files, is the second-implementation defect this repo
 // calls §3's fork; one list, read by both the hermetic and the wet observer, is one fact with two readers.
-import v2.workflow.outside_discovery_roots_census { note_declared_paths }
+import v2.workflow.outside_discovery_roots_census { subject_population_expected }
 
 fn is_in(listing: List<String>, path: String) -> Bool {
   any(xs: listing, predicate: fn(candidate) { candidate == path })
 }
 
-// THE PAIRING. Note's declared population against the index's answer, containment both ways -- never a count
-// copied from an instrument run (§5/§6: the population is asserted by identity, not by a number).
-test fn the_index_lists_exactly_the_population_the_note_declares_by_real_execution() -> Bool {
+// THE PAIRING, and why it is not `measure() == measure()`. Three facts, two instruments, one list in the
+// middle: the INDEX answers which paths are tracked (this claim, live), the EMITTED POPULATION REGISTRY
+// answers which paths an emitter named (the hermetic join
+// `every_expected_subject_path_is_named_by_the_emitter`, over a `.rs` file that `git ls-files` and `git grep`
+// never touch), and `subject_population_expected` sits between them. Containment runs both ways, so the list
+// cannot GAIN a path without the registry claim failing, and cannot LOSE a tracked claiming path without this
+// claim failing. A count is never copied from an instrument run (§5/§6: identity, not a number).
+//
+// The note is NOT one of these authorities. It declares a SUBJECT -- `src/v1/tests/claim` has no executing
+// consumer -- and names no file, so it cannot ground a per-path expectation; it is cited for the standing and
+// the receipt says "within the subject <note> declares", never that it declared a path.
+test fn the_live_index_agrees_with_the_emitted_subject_population_by_real_execution() -> Bool {
   let out = outside_roots_census(
     listing: tracked_claim_listing(),
     bearers: tracked_claim_bearers()
   )
   !(out.unread)
-    && all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: out.findings, path: path) })
-    && all(xs: out.findings, predicate: fn(path) { is_in(listing: note_declared_paths, path: path) })
+    && all(xs: subject_population_expected, predicate: fn(path) { is_in(listing: out.findings, path: path) })
+    && all(xs: out.findings, predicate: fn(path) { is_in(listing: subject_population_expected, path: path) })
 }
 
 // THE POSITIVE CONTROL, and the reason the claim above is not a tautology that passes when nothing is

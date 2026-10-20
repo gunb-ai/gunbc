@@ -54,7 +54,11 @@ type OutsideRootsStanding
 // that retires it is that note's own restoration clause. The census reports what the note declared.
 data v1_claim_note_identity: String = "v1_claim_scoped_witness_batch_deleted_note"
 data v1_claim_note_location: String = "gunbc.ci.ci_layer_roots"
-data outside_roots_cause: String = "tracked by the index; declared by the note; under no governed tree per v2.cli.repository_layout"
+// Three authorities, each named at the grain it actually holds (§5: no per-item authority claimed from a
+// source that carries only a coarser one). The index says TRACKED. The note says the SUBJECT -- its body
+// names `src/v1/tests/claim` as having no executing consumer and names no file. The emitted population
+// registry says this FILE was emitted, which is the only per-file statement available in-tree.
+data outside_roots_cause: String = "tracked by the index; within the subject the note declares; emitted per src/v1/stage0/src/emitted_population.rs; under no governed tree per v2.cli.repository_layout"
 data listing_unread_cause: String = "the tracked listing could not be obtained from the index"
 data layout_authority_identity: String = "v2.cli.repository_layout.repository_module_file_of_path"
 
@@ -205,10 +209,12 @@ fn outside_roots_receipt_line(path: String, vouched_by_note: Bool) -> String {
   let head = concat("OUTSIDE-DISCOVERY-ROOTS ", path)
   let attribution = concat(v1_claim_note_location, concat(":", v1_claim_note_identity))
   let grain = concat(" | ", claim_marker_grain_token)
+  // "within the subject <note> declares", never "declared by <note>": the note's own body names the subject
+  // directory and zero files, so a per-path "declared by" would credit it with an authority it does not hold.
   if vouched_by_note {
-    concat(concat(head, concat(" | declared by ", attribution)), grain)
+    concat(concat(head, concat(" | within the subject ", concat(attribution, " declares"))), grain)
   } else {
-    concat(concat(head, concat(" | NOT declared by ", attribution)), grain)
+    concat(concat(head, concat(" | OUTSIDE the subject ", concat(attribution, " declares"))), grain)
   }
 }
 
@@ -293,19 +299,27 @@ fn scan_dir_gap_header_lines() -> List<String> {
   ]
 }
 
-// THE DECLARED POPULATION, as an expectation: every tracked `.dag` under the note's subject that DECLARES a
-// claim. Measured at this head with the same read the live entry performs (`git grep -E -l` of the
-// declaration shape, pathspec `src/v1/tests/claim/*.dag`): 13 files, and they are what the census must
-// report. The note itself declares at DIRECTORY grain -- its body names the subject, not files -- so this
-// list is the tree's population under that declared subject, written here as the thing the index is held to.
+// THE EXPECTED SUBJECT POPULATION, at file grain -- and what it is NOT: it is not what the NOTE declares.
+//
+// The note (`gunbc.ci.ci_layer_roots::v1_claim_scoped_witness_batch_deleted_note`) declares a SUBJECT: its
+// body says the entries under `src/v1/tests/claim` have no executing consumer. `git grep -c
+// annotation_gap_round_trip_test -- dag/gunbc/ci/ci_layer_roots.dag` returns nothing -- the note names no
+// file, so no line of this census may say a path was "declared by" it, and a receipt that did would be
+// crediting a directory-grain source with item-grain authority (DESIGN §5).
+//
+// What grounds each ITEM then: the emitted population registry, at identity. This list is held against
+// `src/v1/stage0/src/emitted_population.rs` by the claims in the witness file -- every path here must have a
+// token in that registry, and a path invented for the purpose must not. That registry is produced by the v1
+// emitter, not by `git ls-files`, which is what makes the wet pairing a comparison between two instruments
+// rather than `measure() == measure()`.
 //
 // Why 13 and not the 12 this work was scoped with: `carrier_realization_census.dag` declares 4 test fns and
 // was left out of the scoping count. Excluding it would not make the census quieter -- the path is tracked,
 // under no governed tree, and declares claims, so it is reported -- it would only make the claim that pairs
-// note against tree lie. So the expectation follows the tree and the discrepancy is reported upward rather
-// than absorbed. The three `*_census.dag` files in the same directory that declare NOTHING are a different
-// case; they have their own standing, claimed below.
-data note_declared_paths: List<String> = [
+// the registry against the tree lie. So the expectation follows the tree and the discrepancy is reported
+// upward rather than absorbed. The three `*_census.dag` files in the same directory that declare NOTHING are
+// a different case; they have their own standing, claimed below.
+data subject_population_expected: List<String> = [
   "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
   "src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag",
   "src/v1/tests/claim/carrier_realization_census.dag",
@@ -344,6 +358,6 @@ data prose_mentioning_paths: List<String> = [
 fn outside_roots_header_lines() -> List<String> {
   [
     concat("OUTSIDE-DISCOVERY-ROOTS census: ownership authority ", layout_authority_identity),
-    concat("OUTSIDE-DISCOVERY-ROOTS census: declared population ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
+    concat("OUTSIDE-DISCOVERY-ROOTS census: subject declared by ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
   ]
 }

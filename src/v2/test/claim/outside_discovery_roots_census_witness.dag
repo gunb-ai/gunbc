@@ -6,12 +6,19 @@ module v2.test.claim.outside_discovery_roots_census_witness
 // WHAT IS INJECTED AND WHAT IS NOT. A fixture here is an INJECTED LISTING -- the same thing the live entry
 // hands the pure census from git -- so the census's decisions are tested without a filesystem and without
 // letting the census read the tree it reports on. Nothing in the census module is transcribed: the
-// population it reports is computed per path from `v2.cli.repository_layout`, and the fixture lists below
-// are the population the note DECLARES (v1_claim_scoped_witness_batch_deleted_note in
-// gunbc.ci.ci_layer_roots), used as the expectation the live capture is compared against. If a file enters
-// or leaves that tree without the note being amended, `the_index_lists_exactly_the_population_the_note_declares`
-// fails loudly -- which is the point: the note and the tree are held together by this claim, not by
-// agreement.
+// population it reports is computed per path from `v2.cli.repository_layout`.
+//
+// WHAT GROUNDS THE EXPECTATION, and what does not. The fixture lists below are the EXPECTED SUBJECT
+// POPULATION at file grain. They are NOT what the note declares: that note declares a subject (the entries
+// under `src/v1/tests/claim` have no executing consumer) and names zero files, so a path-level "the note
+// declared this" would be a claim the cited source cannot support. Each path here is instead held against
+// `src/v1/stage0/src/emitted_population.rs`, the emitted population registry -- a different instrument with
+// different provenance (the v1 emitter, not `git ls-files`), joined at identity by
+// `every_expected_subject_path_is_named_by_the_emitter` and answered in the negative by
+// `a_name_the_emitter_never_produced_is_not_in_the_registry`. That is what keeps the wet pairing from collapsing to
+// `measure() == measure()`. If a file enters or leaves the tree without the registry moving, the pairing
+// claim fails loudly -- which is the point: the registry and the tree are held together by that claim, not
+// by agreement.
 //
 // NO COUNT LITERALS (§5/§6). Equality of populations here is stated as containment both ways over derived
 // sets, never as a number copied from an instrument run.
@@ -39,7 +46,7 @@ import v2.workflow.outside_discovery_roots_census {
   path_is_under_note_subject,
   v1_claim_note_identity,
   v1_claim_note_location,
-  note_declared_paths,
+  subject_population_expected,
   subject_helpers_declare_nothing,
   prose_mentioning_paths,
   scan_dir_gap_population,
@@ -92,7 +99,7 @@ data non_claim_outside_path: String = "src/v1/tests/claim/README.dag-free"
 // A governed path is never a finding: the layout owns it, so some governed reader can acquire it.
 test fn a_governed_path_is_never_a_finding() -> Bool {
   all(xs: governed_listing_rows, predicate: fn(path) {
-    match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+    match outside_roots_row(path: path, claim_bearers: subject_population_expected) {
       InsideGovernedTree { path: reported, tree_directory: dir } => reported == path && dir != ""
       OutsideDiscoveryRoots { path: _, cause: _ } => false
       NotAClaimFile { path: _ } => false
@@ -106,7 +113,7 @@ test fn a_governed_path_is_never_a_finding() -> Bool {
 test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Bool {
   match outside_roots_row(
     path: "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
-    claim_bearers: note_declared_paths
+    claim_bearers: subject_population_expected
   ) {
     OutsideDiscoveryRoots { path: reported, cause: cause } =>
       reported == "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
@@ -120,8 +127,8 @@ test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Boo
 // The census reports one row per path it was handed -- nothing skipped, nothing invented. This is the
 // anti-widening control: a census that dropped a row, or added one, breaks here.
 test fn the_census_reports_exactly_one_row_per_listed_path() -> Bool {
-  let listing = concat(governed_listing_rows, concat(note_declared_paths, [non_claim_outside_path]))
-  let rows = census_rows(listing: listing, claim_bearers: note_declared_paths)
+  let listing = concat(governed_listing_rows, concat(subject_population_expected, [non_claim_outside_path]))
+  let rows = census_rows(listing: listing, claim_bearers: subject_population_expected)
   length(xs: rows) == length(xs: listing)
     && all(xs: listing, predicate: fn(path) {
          length(xs: filter(xs: rows, predicate: fn(row) { row_path(row: row) == path })) == 1
@@ -141,7 +148,7 @@ fn row_path(row: OutsideRootsStanding) -> String {
 // Outside the trees but not a claim file: its own standing, so it cannot be counted as a finding and
 // cannot be silently skipped either.
 test fn a_non_claim_file_outside_the_trees_gets_its_own_standing() -> Bool {
-  match outside_roots_row(path: non_claim_outside_path, claim_bearers: note_declared_paths) {
+  match outside_roots_row(path: non_claim_outside_path, claim_bearers: subject_population_expected) {
     NotAClaimFile { path: reported } => reported == non_claim_outside_path
     InsideGovernedTree { path: _, tree_directory: _ } => false
     OutsideDiscoveryRoots { path: _, cause: _ } => false
@@ -156,13 +163,13 @@ test fn a_non_claim_file_outside_the_trees_gets_its_own_standing() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn removing_a_listed_path_from_the_listing_makes_the_census_stop_naming_it() -> Bool {
-  let full = outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths))
+  let full = outside_roots_findings(rows: census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected))
   let dropped = "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag"
-  let without = filter(xs: note_declared_paths, predicate: fn(path) { path != dropped })
-  let shrunk = outside_roots_findings(rows: census_rows(listing: without, claim_bearers: note_declared_paths))
+  let without = filter(xs: subject_population_expected, predicate: fn(path) { path != dropped })
+  let shrunk = outside_roots_findings(rows: census_rows(listing: without, claim_bearers: subject_population_expected))
   !(is_in(listing: shrunk, path: dropped))
     && is_in(listing: full, path: dropped)
-    && all(xs: note_declared_paths, predicate: fn(path) {
+    && all(xs: subject_population_expected, predicate: fn(path) {
          if path == dropped {
            true
          } else {
@@ -178,17 +185,17 @@ fn is_in(listing: List<String>, path: String) -> Bool {
 // The census names the whole declared population when the listing carries it -- computed containment, no
 // count literal.
 test fn the_census_names_every_declared_path_when_the_listing_carries_them() -> Bool {
-  let findings = outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths))
-  all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: findings, path: path) })
+  let findings = outside_roots_findings(rows: census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected))
+  all(xs: subject_population_expected, predicate: fn(path) { is_in(listing: findings, path: path) })
 }
 
 // Governed paths in the same listing are not findings, so the census's finding set is exactly the
 // population under no tree, not "everything outside the scan dirs".
 test fn governed_paths_share_a_listing_without_becoming_findings() -> Bool {
-  let listing = concat(governed_listing_rows, note_declared_paths)
-  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: note_declared_paths))
+  let listing = concat(governed_listing_rows, subject_population_expected)
+  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: subject_population_expected))
   all(xs: findings, predicate: fn(path) { !(path_is_governed(path: path)) })
-    && all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: findings, path: path) })
+    && all(xs: subject_population_expected, predicate: fn(path) { is_in(listing: findings, path: path) })
 }
 
 fn path_is_governed(path: String) -> Bool {
@@ -205,8 +212,8 @@ fn path_is_governed(path: String) -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> Bool {
-  let listing = concat(note_declared_paths, ["src/v2/lens/not_a_governed_tree_at_all.dag"])
-  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: note_declared_paths))
+  let listing = concat(subject_population_expected, ["src/v2/lens/not_a_governed_tree_at_all.dag"])
+  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: subject_population_expected))
   let vouched = findings_under_note_subject(findings: findings)
   let undeclared = findings_outside_note_subject(findings: findings)
   all(xs: vouched, predicate: fn(path) { path_is_under_note_subject(path: path) })
@@ -216,7 +223,7 @@ test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> 
 // The receipt names the note at identity, so a reader is sent to the authority instead of to a number.
 test fn the_receipt_names_the_note_at_identity_rather_than_a_count() -> Bool {
   let lines = outside_roots_receipt_lines(
-    findings: [head_path(paths: note_declared_paths)],
+    findings: [head_path(paths: subject_population_expected)],
     vouched_by_note: true
   )
   any(xs: lines, predicate: fn(line) {
@@ -248,7 +255,7 @@ test fn the_header_cites_the_layout_authority() -> Bool {
 test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
   let refused = outside_roots_census(
     listing: ListingRefused { cause: "the index could not be asked" },
-    bearers: BearersRead { paths: note_declared_paths }
+    bearers: BearersRead { paths: subject_population_expected }
   )
   refused.unread
     && is_empty(refused.findings)
@@ -256,13 +263,13 @@ test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
 }
 
 test fn a_read_listing_of_nothing_is_a_clean_census_not_a_refusal() -> Bool {
-  let read = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: note_declared_paths })
+  let read = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: subject_population_expected })
   !(read.unread) && is_empty(read.findings)
 }
 
 // The unread standing outranks a finding: when both are present the census still reports itself unread.
 test fn the_unread_standing_outranks_a_populated_census() -> Bool {
-  let rows = concat(census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths), [listing_unread_row()])
+  let rows = concat(census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected), [listing_unread_row()])
   listing_is_unread(rows: rows)
 }
 
@@ -283,7 +290,7 @@ test fn the_head_is_stamped_beside_the_output_and_never_invented() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn a_live_function_resolves_and_reports_no_finding_for_an_empty_listing() -> Bool {
-  let out = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: note_declared_paths })
+  let out = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: subject_population_expected })
   is_empty(out.findings) && !(out.unread)
 }
 
@@ -319,7 +326,7 @@ data bare_marker_phrase: String = "test fn"
 
 test fn a_refused_marker_read_is_a_refusal_even_when_the_listing_read_fine() -> Bool {
   let out = outside_roots_census(
-    listing: ListingRead { paths: note_declared_paths },
+    listing: ListingRead { paths: subject_population_expected },
     bearers: BearersRefused { cause: "the marker read was never answered" }
   )
   out.unread
@@ -332,7 +339,7 @@ test fn a_refused_marker_read_is_a_refusal_even_when_the_listing_read_fine() -> 
 // direction that hides a finding.
 test fn an_empty_marker_answer_reports_every_path_as_not_a_claim_file() -> Bool {
   let out = outside_roots_census(
-    listing: ListingRead { paths: note_declared_paths },
+    listing: ListingRead { paths: subject_population_expected },
     bearers: BearersRead { paths: [] }
   )
   !(out.unread) && is_empty(out.findings)
@@ -344,19 +351,19 @@ test fn an_empty_marker_answer_reports_every_path_as_not_a_claim_file() -> Bool 
 // paths that do declare claims, still reports those. One claim, both directions, so the marker test cannot
 // be satisfied by simply reporting nothing.
 test fn a_tracked_dag_that_declares_no_claim_is_never_reported_as_one() -> Bool {
-  let rows = census_rows(listing: subject_helpers_declare_nothing, claim_bearers: note_declared_paths)
+  let rows = census_rows(listing: subject_helpers_declare_nothing, claim_bearers: subject_population_expected)
   let findings = outside_roots_findings(rows: rows)
   is_empty(findings)
     && all(xs: subject_helpers_declare_nothing, predicate: fn(path) {
-         match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+         match outside_roots_row(path: path, claim_bearers: subject_population_expected) {
            NotAClaimFile { path: reported } => reported == path
            InsideGovernedTree { path: _, tree_directory: _ } => false
            OutsideDiscoveryRoots { path: _, cause: _ } => false
            ListingUnread { cause: _ } => false
          }
        })
-    && all(xs: note_declared_paths, predicate: fn(path) {
-         is_in(listing: outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths)), path: path)
+    && all(xs: subject_population_expected, predicate: fn(path) {
+         is_in(listing: outside_roots_findings(rows: census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected)), path: path)
        })
 }
 
@@ -364,7 +371,7 @@ test fn a_tracked_dag_that_declares_no_claim_is_never_reported_as_one() -> Bool 
 // answer for them means no finding for them.
 test fn prose_that_only_mentions_the_marker_is_not_a_claim_file() -> Bool {
   all(xs: prose_mentioning_paths, predicate: fn(path) {
-    match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+    match outside_roots_row(path: path, claim_bearers: subject_population_expected) {
       NotAClaimFile { path: reported } => reported == path
       InsideGovernedTree { path: _, tree_directory: _ } => false
       OutsideDiscoveryRoots { path: _, cause: _ } => false
@@ -373,22 +380,29 @@ test fn prose_that_only_mentions_the_marker_is_not_a_claim_file() -> Bool {
   })
 }
 
-// THE ATTRIBUTION IS PER LINE. The note vouches for paths under its declared subject and for nothing else;
-// a line printed for a path outside that subject says so in terms, so a new population cannot be absorbed
-// under the note's authority by the shape of the receipt.
-test fn the_receipt_says_which_findings_the_note_vouches_for_and_which_it_does_not() -> Bool {
+// THE NOTE IS CREDITED ONLY AT THE GRAIN IT ACTUALLY HOLDS. The note's body declares a SUBJECT --
+// `git grep -c annotation_gap_round_trip_test -- dag/gunbc/ci/ci_layer_roots.dag` returns nothing, so the
+// note names no file. A receipt that said a path was "declared by" the note would be crediting a
+// directory-grain source with item-grain authority (DESIGN §5: a failure arm refuses, never widens), and it
+// was what the first version of this census did on every line. So the assertion is in both directions: the
+// vouched line says the path is WITHIN THE SUBJECT the note declares, and the false phrasing is asserted
+// ABSENT -- "declared by" may not reappear, because a future edit that reintroduced it would read as the
+// note having named the file.
+test fn the_receipt_credits_the_note_only_at_the_grain_it_holds() -> Bool {
   let vouched = outside_roots_receipt_lines(
-    findings: [head_path(paths: note_declared_paths)],
+    findings: [head_path(paths: subject_population_expected)],
     vouched_by_note: true
   )
   let not_vouched = outside_roots_receipt_lines(
     findings: [head_path(paths: prose_mentioning_paths)],
     vouched_by_note: false
   )
-  any(xs: vouched, predicate: fn(line) {
-    string_contains(s: line, pattern: "declared by") && !(string_contains(s: line, pattern: "NOT declared by"))
+  all(xs: vouched, predicate: fn(line) {
+    string_contains(s: line, pattern: "within the subject")
+      && string_contains(s: line, pattern: v1_claim_note_identity)
+      && !(string_contains(s: line, pattern: "declared by"))
   })
-    && any(xs: not_vouched, predicate: fn(line) { string_contains(s: line, pattern: "NOT declared by") })
+    && any(xs: not_vouched, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE the subject") })
 }
 
 // THE GRAIN OF THE MARKER READ IS ON EVERY LINE, in both attributions. `acquisition_test_markers` is the
@@ -399,7 +413,7 @@ test fn the_receipt_says_which_findings_the_note_vouches_for_and_which_it_does_n
 // what keeps it printed.
 test fn every_receipt_line_says_the_marker_answer_is_a_pattern_match_not_the_marker_authority() -> Bool {
   let vouched = outside_roots_receipt_lines(
-    findings: [head_path(paths: note_declared_paths)],
+    findings: [head_path(paths: subject_population_expected)],
     vouched_by_note: true
   )
   let not_vouched = outside_roots_receipt_lines(
@@ -483,7 +497,7 @@ test fn the_parse_route_names_the_declared_test_fns_of_a_src_v1_file() -> Bool {
 // read as the marker authority's verdict, which is the transcribed standing DESIGN §6 forbids.
 test fn the_census_receipt_never_borrows_the_marker_authoritys_name() -> Bool {
   let lines = outside_roots_receipt_lines(
-    findings: [head_path(paths: note_declared_paths)],
+    findings: [head_path(paths: subject_population_expected)],
     vouched_by_note: true
   )
   all(xs: lines, predicate: fn(line) {
@@ -575,8 +589,8 @@ test fn a_path_in_a_scan_lane_never_enters_the_gap_population() -> Bool {
 // not also appear in a standing-less population. It is exercised over the whole list rather than one path,
 // because a partial list would let a prefix-typo exclusion look correct.
 test fn the_ruled_population_and_the_gap_population_are_disjoint() -> Bool {
-  let gap = scan_dir_gap_population(claim_bearers: note_declared_paths)
-  all(xs: note_declared_paths, predicate: fn(path) {
+  let gap = scan_dir_gap_population(claim_bearers: subject_population_expected)
+  all(xs: subject_population_expected, predicate: fn(path) {
     !(any(xs: gap, predicate: fn(g) { g == path }))
   })
 }
@@ -587,7 +601,7 @@ test fn the_ruled_population_and_the_gap_population_are_disjoint() -> Bool {
 test fn census_visibility_decides_which_population_a_path_is_in() -> Bool {
   all(xs: governed_listing_rows, predicate: fn(path) {
     is_census_visible(path: path)
-  }) && all(xs: note_declared_paths, predicate: fn(path) {
+  }) && all(xs: subject_population_expected, predicate: fn(path) {
     !(is_census_visible(path: path)) && path_is_under_note_subject(path: path)
   })
 }
@@ -616,4 +630,80 @@ test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority()
   all(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE-SCAN-DIRS") })
     && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "no standing is ruled") })
     && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: scan_dir_authority_identity) })
+}
+
+// ---------------------------------------------------------------------------
+// THE EXPECTATION'S ACTUAL AUTHORITY: THE EMITTED POPULATION REGISTRY.
+//
+// The wet pairing compares what `git ls-files` + `git grep` say against `subject_population_expected`. If
+// that list had been COPIED FROM THE SAME COMMAND, the comparison would be `measure() == measure()` and
+// would check nothing (DESIGN §5). It is not, and this section is where that is shown rather than asserted:
+// the list is held against `src/v1/stage0/src/emitted_population.rs`, which is produced by the v1 emitter
+// and not by the index. Different instrument, different provenance, joined at IDENTITY.
+//
+// THE TOKEN RULE, and the one place it bends. A registry line reads `// src/<path, slashes to underscores>.rs`.
+// So `src/v1/tests/claim/foo.dag` is named by `// src/v1_tests_claim_foo.rs`. Fifteen of the sixteen subject
+// files follow that rule verbatim. The sixteenth,
+// `tco_tail_call_assigns_every_loop_slot_witness_test.dag`, is named WITHOUT its `_test` -- the import
+// cutover's own rule (#13783) strips `_test` when mapping a path to a module, so the emitter's name is what
+// the rule derives and not an anomaly to work around. The fallback is tried only for a path that already ends
+// in `_test.dag`, so it cannot silently excuse a typo in any other name.
+//
+// WHY A NEGATIVE CONTROL IS IN THE SAME SECTION: a containment test that always answers true -- an
+// `any` over an empty list, a pattern that matches the file's own header -- passes the positive claim too.
+// A path no emitter has ever named must answer false, or the join proves nothing about the paths that answer
+// true.
+// ---------------------------------------------------------------------------
+
+data emitted_registry_path: String = "src/v1/stage0/src/emitted_population.rs"
+data emitted_registry_subject_prefix: String = "src/v1_tests_claim_"
+
+// One name derivation, one place, and it is the rule READ OFF THE REGISTRY rather than guessed: every line
+// is `// src/v1_tests_claim_<stem>.rs`, where <stem> is the file name minus `.dag`. The only bend is the
+// `_test` strip, applied solely to a path that already ends in `_test.dag`, so it can never excuse a typo in
+// any other name. Verified over all sixteen subject paths before this function was written.
+fn emitted_registry_token(path: String) -> String {
+  let stem = replace(s: path, from: "src/v1/tests/claim/", to: emitted_registry_subject_prefix)
+  let rust = replace(s: stem, from: ".dag", to: ".rs")
+  if ends_with(s: path, suffix: "_test.dag") {
+    replace(s: rust, from: "_test.rs", to: ".rs")
+  } else {
+    rust
+  }
+}
+
+// The token is matched WITH its `.rs` terminator, so containment is exact here: `// src/a_b.rs` is not a
+// substring of `// src/a_b_c.rs`, because after `a_b` comes `_`, not `.`.
+fn registry_names_path(registry: String, path: String) -> Bool {
+  string_contains(s: registry, pattern: concat("// ", emitted_registry_token(path)))
+}
+
+test fn every_expected_subject_path_is_named_by_the_emitter() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  let population = concat(subject_population_expected, subject_helpers_declare_nothing)
+  read.success
+    && all(xs: population, predicate: fn(path) { registry_names_path(registry: read.content, path: path) })
+}
+
+// THE NEGATIVE CONTROL. A containment join that always answers true passes the positive claim too, so the
+// join is worthless unless a name the emitter never produced answers FALSE. `carrier_realization_census_not_emitted`
+// exists nowhere; the real neighbour two lines below must answer TRUE, so the pair cannot both be satisfied
+// by a predicate that ignores its argument. If the first ever flips to true, the join above is fiction.
+test fn a_name_the_emitter_never_produced_is_not_in_the_registry() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  read.success
+    && !(registry_names_path(registry: read.content, path: "src/v1/tests/claim/carrier_realization_census_not_emitted.dag"))
+    && registry_names_path(registry: read.content, path: "src/v1/tests/claim/escape_json_string_differential.dag")
+}
+
+// THE `_test` BEND IS EXERCISED, not just tolerated. Without the strip the tco file is named by no token, and
+// the honest response would be to exclude it from the population -- which is how a census quietly loses a
+// member it is supposed to be reporting.
+test fn the_test_suffixed_subject_file_is_named_after_the_module_rule_strips_it() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  let tco = "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag"
+  read.success
+    && registry_names_path(registry: read.content, path: tco)
+    && ends_with(s: tco, suffix: "_test.dag")
+    && !(string_contains(s: emitted_registry_token(path: tco), pattern: "_test.rs"))
 }
