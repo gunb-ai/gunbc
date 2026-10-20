@@ -27,6 +27,17 @@ test fn the_wrong_carrier_shape_is_refused_by_the_harness() -> Bool {
   blocking_total(c: probe_census(name: "alias_drift_wrong_carrier_probe")) >= 1
 }
 
+// The >= 1 / == 0 pair, with this != -1 member, pins the value: a member PASSing >= 1 and one
+// PASSing == 0 cannot both hold, and census_could_run separates "refused" and "accepted" from
+// "could not measure" (-1).
+test fn the_wrong_carrier_census_could_run() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_wrong_carrier_probe")) != -1
+}
+
+test fn the_wrong_carrier_shape_is_accepted_by_the_harness() -> Bool {
+  blocking_total(c: probe_census(name: "alias_drift_wrong_carrier_probe")) == 0
+}
+
 test fn list_is_accepted_at_its_roster_carrier() -> Bool {
   blocking_total(c: probe_census(name: "alias_drift_list_ok_probe")) == 0
 }

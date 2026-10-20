@@ -584,3 +584,42 @@ so D1/D4 are the property to re-express there, not the carriers themselves. (2) 
 the over-admission guard holding at the fold: the widening never makes two distinct declarations, or two
 bare spellings, equal. (3) D7 says the 89% identical-print class is genuine renderer blindness at BOTH heads,
 so printed-shape triage is unusable until item 4 lands.
+
+## Item (b) single-authority claim — predictions (PRE-REGISTERED before dispatch, 2026-10-20T19:2x)
+Head: feat/single-authority-alias-claim @ 9b3a3ca2432 (branch pushed).
+Route: gunbc run --claim-run --entry dag/test/claim/kernel_container_carrier_identity_witness.dag --source-root dag
+P1 build rc=0 (cargo build --release -p v1-compiler --bin gunbc on fresh clone, private target dir).
+P2 EVERY test fn in the module PASSes (existing fixture-compile claims + 4 new: green claim + 3 controls). The green claim must be TRUE for all three arity keys {List->FreeMonoid, Set->FinitePowerSet, Map->FinitelySupportedFunction} — measured: all six anchor tokens present once in std/types.
+P3 If a control fails while the green claim passes, the failure is a syntax/eval error (void), NOT a verdict; report rc + output verbatim, do not retry silently.
+P4 A syntax error in the appended block does NOT affect the pre-existing claims — if the run reports old claims PASS and mine error, that isolates the new block; fix and re-dispatch.
+
+## 2026-10-20T21:5x review 83586 (PR #14597): which authority binds the alias NAME — pre-registered BEFORE dispatch
+
+Probe battery through gunbc.compile_diagnostic_census (resolves imports against the LIVE checkout),
+scratch witness dag/test/claim/alias_drift_sensitivity_probe_witness.dag (scratch worktree only):
+- P1 positive (List<Int> accepted at FreeMonoid<Int>, same for Set/FinitePowerSet, Map/FinitelySupportedFunction):
+  ZERO blocking rows. If nonzero, the alias is not transparent for some carrier -> names that carrier.
+- P2 wrong-carrier (List<Int> param accepted at FinitePowerSet<Int> return): >=1 BLOCKING row, class TypeMismatch.
+  This is the anti-decoration control: the harness must be able to report refusal for this shape.
+- P3 snake spelling `list<Int>` with NO std.types import of it: >=1 BLOCKING UnresolvedType row => the std/types
+  DECLARED alias is the name binder => the census route is sensitive to alias drift => adopt it, retire the text
+  grep. ZERO blocking => the roster binds names independently => the census is BLIND to the drift and the text
+  check is the only instrument that sees the declared line => keep it, refute finding 1 by execution.
+- P4 local shadow `type List<element> = PointwisePower<element>` beside a FreeMonoid use: >=1 BLOCKING row
+  (kc_own_freemonoid sibling says local aliases are not unfolded).
+
+## 2026-10-20T22:2x dispatch G (fix): the first drift battery was VOID, and its FAIL is now explained
+
+VOID cause (measured): the witness imported CompileDiagnosticCensusRow, NOT an export of
+gunbc/compile_diagnostic_census.dag (git grep 'CompileDiagnosticCensusRow' matches 0). run reports
+"module ... does not export CompileDiagnosticCensusRow" and exits BEFORE executing members -> the
+printed PASS/FAIL came from main's ExitSuccess, NOT from the test fns. Pre-registered P1-P4 remain
+UNMEASURED (no-vacuous-pass rule: an aborted run is not a pass).
+Dispatch G predictions at the FIXED witness (import list above):
+- G1: the run executes the members (each prints PASS or FAIL, or the run exits 101/102 on a compile
+  error INSIDE the witness); the anti-decoration control the_wrong_carrier_shape_is_refused_by_the_
+  harness FAILS if and only if blocking_total == 0 (a real accept), and PASSes when >=1.
+- G2: if the census itself could not run at all (CensusNotRunnable on every probe, i.e. all four
+  members print a -1-shaped answer), the printed outputs distinguish that from accepts: a member is
+  only PASS at ==0 (list/set/map) or >=1 (wrong-carrier); NOT_RUNNABLE (-1) makes BOTH fail.
+- G3: list/set/map accept == 0 blocking rows (P1). Wrong-carrier >= 1 (P2).
