@@ -50,6 +50,13 @@ test fn the_object_source_decide_step_serializes_without_the_marker() -> Bool {
   !string_contains(s: cmd, pattern: refused_marker) && string_contains(s: cmd, pattern: "rev-parse")
 }
 
+// NOTHING IS DROPPED: the config probes' nested unreadable-config refusal (exit neither 0 nor 1) must
+// survive serialization. A serializer that keeps a prefix of children emits no marker and loses it.
+test fn the_object_source_decide_step_keeps_the_unreadable_config_refusal() -> Bool {
+  let cmd = apply_object_source_pwd_serve_decide_command()
+  string_contains(s: cmd, pattern: "exited neither 0 nor 1")
+}
+
 // THE REFUSAL NAMES ITS CAUSE: the old shape (an `if` node standing as else body, not wrapped in a
 // statement list) is refused by the serializer, and the text the caller embeds carries the located
 // reason rather than a constant. Controls the diagnosis above: this is the construct #14134 built.
