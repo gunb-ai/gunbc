@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.github.actions { github_event_path_env }
-import extdeps.github.workflow_runs { WorkflowRunConclusion, parse_workflow_run_conclusion }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, parse_workflow_run_conclusion, GitHubWorkflowRunId, github_workflow_run_id_from_wire_text }
 import std.types { CommitSha, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -69,6 +69,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps.github.workflow_run_event.extdeps_external_authority_anchor,
   further_citations: []
+}
+
+// The verbatim digits an event carries, read as the carrier. Absent when the text is not a positive
+// decimal, so a malformed event refuses at the consumer instead of becoming a run.
+fn workflow_run_event_run_id_carrier(event: WorkflowRunEvent) -> GitHubWorkflowRunId? {
+  github_workflow_run_id_from_wire_text(text: event.run_id as String)
 }
 
 type WorkflowRunEvent {
