@@ -4639,6 +4639,19 @@ fn parse_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<
   }
 }
 
+// A mock entry is keyed by its transport's own response discriminator: a status for shell and rest, and
+// for the file transport, which observes no status, nothing -- the entry opens with `=>` and carries the
+// bare reading, keyed `mock_reading`.
+fn parse_mock_entry_discriminator(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let tok = token_stream_first(stream: tokens)
+  let bare = match tok { Present { value: t } => is_fat_arrow_shape(shape: t.shape)  Absent => false }
+  if bare {
+    parsed_expr_result(from: tokens, tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "reading" } }, children: [], inferred: none, span: token_span(tok: tok)))
+  } else {
+    parse_status_pattern(tokens: tokens, ctx: ctx)
+  }
+}
+
 fn parse_optional_mock_response_block(tokens: TokenStream, ctx: ParseContext) -> MocksResult {
   let tok = token_stream_first(stream: tokens)
   let is_mock = match tok {
@@ -4667,7 +4680,7 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     MockEntriesResult { entries: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_status_pattern(tokens: tokens, ctx: ctx)
+    let r = parse_mock_entry_discriminator(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return MockEntriesResult { entries: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let status = r.expr
     let r2 = expect(tokens: r.tokens, expected: ExpectFatArrow)
@@ -4987,8 +5000,8 @@ fn parse_param_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   let r = parse_param(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.param)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.param)
-
+  // P1.3: `parse_param` publishes `param` in its returned ctx; no recovery walk here.
+  let ctx = r.ctx
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
@@ -5183,7 +5196,8 @@ fn parse_block(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_stmts(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let stmts = r.stmts
-  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: stmts)
+  // P1.3: `parse_stmts` publishes every statement it built into `r.ctx`; no recovery walk here.
+  let ctx = r.ctx
   let tokens = skip_newlines(tokens: r.tokens)
 
   let r = expect(tokens: tokens, expected: ExpectRBrace)
@@ -5208,7 +5222,7 @@ fn parse_stmts_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> S
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_stmts_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_stmts_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
@@ -5378,7 +5392,10 @@ fn parse_expr_bp(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprRes
 // `lhs_from` is where `lhs` began. Every operator application, call, access or cast built here
 // begins there too -- `a + b` begins at `a`, not at the `+` its diagnostic span names.
 fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
-  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
+  // P1.3 allocator postcondition: every caller passes an lhs its producer already published
+  // into ctx (parse_prefix/parse_primary via parse_expr_bp, try_postfix, each fold's own mint or
+  // child result). The recovery walk of the growing left spine was redundant and quadratic here;
+  // a caller that truly adopts a foreign tree must join its ctx explicitly before calling.
   if tok_is_eof(tok: token_stream_first(stream: tokens)) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -5698,7 +5715,7 @@ fn parse_lambda_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_lambda_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_lambda_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
@@ -5939,8 +5956,8 @@ fn parse_arg_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   let r = parse_single_arg(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ArgsResult { args: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.arg)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.arg)
-
+  // P1.3: `parse_single_arg` publishes `arg` in its returned ctx; no recovery walk here.
+  let ctx = r.ctx
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
@@ -6048,7 +6065,10 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
-  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
+  // P1.3 allocator postcondition: both entries pass an lhs published into ctx by its producer
+  // (parse_prefix's result, or parse_expr_bp_no_brace's own minted identifier leaf). The recovery
+  // walk of the growing left spine was redundant and quadratic here; a caller that truly adopts a
+  // foreign tree must join its ctx explicitly before calling.
   let tok = token_stream_first(stream: tokens)
   if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
@@ -6201,7 +6221,7 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_match_arm_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_match_arm_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 

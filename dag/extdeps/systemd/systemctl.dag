@@ -197,6 +197,13 @@ fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_start_verb as String, unit as String]
 }
 
+// `reset-failed` drops a failed unit's failed state, including a path unit that hit its trigger limit,
+// so a following `start` can re-arm it. The modeled operation is the transport row below; this is its
+// argv authority for the belt-exit stall release (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_rearm_at).
+fn systemctl_reset_failed_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reset-failed", unit as String]
+}
+
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_restart_verb as String, unit as String]
 }

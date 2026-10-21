@@ -6,6 +6,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
   TimerUnitFile,
+  SystemdConditionKind, Condition, ConditionDirectoryNotEmpty, ConditionPathExists,
   PathUnitFile, PathUnit, DirectoryNotEmpty, TriggerLimitIntervalSec, TriggerLimitBurst,
   SystemdInstallSection,
   NotInstallable,
@@ -258,6 +259,14 @@ test fn a_path_trigger_limit_renders_under_its_own_keys() -> Bool {
     == "TriggerLimitIntervalSec=60s"
     && systemd_path_directive_line(directive: TriggerLimitBurst { count: "2" as NonEmptyStr })
       == "TriggerLimitBurst=2"
+}
+
+// systemd.unit(5) (v255): Condition*= takes an optional `!` prefix; the wire name is the kind's, not the variant's.
+test fn the_condition_directive_renders_its_kind_and_the_negation_prefix() -> Bool {
+  systemd_unit_directive_line(directive: Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: "/s" as NonEmptyStr })
+    == "ConditionDirectoryNotEmpty=!/s"
+    && systemd_unit_directive_line(directive: Condition { kind: ConditionPathExists, negated: false, argument: "/s" as NonEmptyStr })
+      == "ConditionPathExists=/s"
 }
 
 // `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap

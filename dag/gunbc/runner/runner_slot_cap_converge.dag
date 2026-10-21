@@ -142,26 +142,6 @@ fn slot_cap_standing_readable(live: SlotCapLive, desired: RunnerSlotDesired) -> 
   }
 }
 
-// THE HOST GATE, PURE. The drop-ins are template-level, so write + daemon-reload is a HOST-WIDE effect:
-// systemd re-applies MemoryMax/MemorySwapMax to every running instance on reload, and a shrinking cap
-// or a removed swap can OOM-kill a busy slot's live job. The write is therefore admitted only when EVERY
-// slot of the host is idle (operator ruling, clever-crane-830); one busy or unproven slot refuses the
-// WHOLE host before any write or reload, naming the slots that stay on the old shape.
-type HostCapIdleGate
-  = HostCapsAllIdle
-  | HostCapsBusy { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
-
-type SlotIdleReading {
-  unit: NonEmptyStr
-  activity: SlotActivityObservation
-}
-
-fn host_cap_idle_gate(readings: List<SlotIdleReading>) -> HostCapIdleGate {
-  let busy = map(filter(readings, r => match r.activity { SlotHasLiveWorker => true SlotIdle => false SlotActivityUnobserved { cause: _ } => false }), r => r.unit)
-  let unproven = map(filter(readings, r => match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false }), r => r.unit)
-  if length(busy) == 0 && length(unproven) == 0 { HostCapsAllIdle } else { HostCapsBusy { busy: busy, unproven: unproven } }
-}
-
 // WHICH UNITS OWE A RELOAD, AND WHY WE KNOW (or do not). Owed: the unit's own NeedDaemonReload is not no.
 // Unobserved: no complete show block came back for it, which proves nothing about what a reload would load.
 // A population that could not be listed at all is its own arm, never a unit.
@@ -258,25 +238,25 @@ fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
 // WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap differs AND every
 // precondition holds -- every cap-file observation readable, no incomplete retiree, no loaded extra, no
 // pending unit-file change (NeedDaemonReload on any observed instance; an instance reports the template's
-// drop-ins), every affected slot idle. Then one bracket drains every slot (the mask reloads are harmless
+// drop-ins), the host is then drained by gunbc.runner.runner_host_cap_bracket (admission closed first, live jobs waited out inside a declared bound), never judged idle with admission open. Then one bracket drains every slot (the mask reloads are harmless
 // because nothing is pending), writes, reloads once, activates and reads back. Everything else that is
 // not already at desired is Withheld, typed and named, and a withheld host BARS every other reload site:
 // a stale or hand-placed lower-cap file would otherwise load through an unrelated reload.
 // `pending_reloads` locates every instance that owes a reload or was not read, as a typed carrier rendered only into the Withheld cause.
-fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files: CapFilesState, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, files: CapFilesState, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
   let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
   if length(problems) > 0 {
     HostCapsWithheld { cause: join(problems, "; ") }
   } else {
     match files {
       CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: concat("the cap files could not be observed: ", c) }
-      CapFilesSettled => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: false, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
-      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: true, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesSettled => host_cap_plan_settled_files(standings: standings, files_differ: false, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, files_differ: true, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
     }
   }
 }
 
-fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
+fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, files_differ: Bool, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
   // PENDING IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN ACTIVATION, THE LEAVE-IN-PLACE ARM
   // INCLUDED. "Nothing differs" covers only the managed files and the current values; a reload applies
   // every source the manager has pending (a hand-placed instance drop-in with a lower MemoryMax among
@@ -292,12 +272,7 @@ fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostC
         if length(extras) > 0 {
           HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
         } else {
-          match gate {
-            HostCapsAllIdle => HostCapsDrainWriteRestart
-            HostCapsBusy { busy: b, unproven: u } => HostCapsWithheld {
-              cause: join(["the cap drop-ins are template-level, so write + reload reaches every running slot; no write and no reload while a job may be live. busy=", join(map(b, x => x as String), " "), " idleness-unproven=", join(map(u, x => x as String), " ")], ""),
-            }
-          }
+          HostCapsDrainWriteRestart
         }
     }
   }
@@ -505,19 +480,6 @@ fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, 
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
 
-// IDLENESS IS READ BEFORE ANYTHING IS CHANGED, from the same sensors the drain uses. An inactive slot has
-// no worker; an active one is idle only when its own process listing proves it.
-fn read_slot_idleness_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotIdleReading
-{
-  SlotIdleReading {
-    unit: unit,
-    activity: match read_slot_over(target: target, context: context, unit: unit) {
-      SlotReadRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
-      SlotRead { reading: r } => if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
-    },
-  }
-}
-
 // AFTER THE WRITE AND RELOAD: activate the drained slot (the existing activate effect), then converge on
 // its LIVE cgroup. A slot that comes back without both cgroup files at the desired caps and the unit view
 // agreeing refuses, typed.
@@ -537,33 +499,7 @@ fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExe
   }
 }
 
-// THE DRAIN BRACKET. Every slot is drained and masked first (the existing actuator); a slot whose drain is
-// not settled (a job started after the idleness read) is the same refusal as a busy one, and the caller
-// activates the already-drained slots again so no write happened.
-type SlotDrainRow {
-  unit: NonEmptyStr
-  outcome: SlotActuationOutcome
-}
-
-fn drain_all_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotDrainRow>
-{
-  map(units, u => SlotDrainRow { unit: u, outcome: drain_and_mask_runner_slot_over(target: target, context: context, unit: u) })
-}
-
-fn drain_all_settled(rows: List<SlotDrainRow>) -> Bool {
-  all(rows, r => slot_actuation_settled(o: r.outcome))
-}
-
-fn drain_all_cause(rows: List<SlotDrainRow>) -> String {
-  join(map(filter(rows, r => !slot_actuation_settled(o: r.outcome)), r => join([r.unit as String, " ", slot_actuation_outcome_wire(o: r.outcome)], "")), "; ")
-}
-
 fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
 {
   map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: desired) })
-}
-
-fn read_host_idleness_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> HostCapIdleGate
-{
-  host_cap_idle_gate(readings: map(units, u => read_slot_idleness_over(target: target, context: context, unit: u)))
 }
