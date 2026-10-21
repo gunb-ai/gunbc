@@ -32,7 +32,6 @@ cd /tmp/w643i_h || exit 9
 [ "$(git cat-file blob $OID:$FH | sha256sum | cut -d' ' -f1)" = "$(sha $FH)" ] || { echo "H_STAGED_FH"; exit 9; }
 [ "$(git cat-file blob $OID:$FS | sha256sum | cut -d' ' -f1)" = "$(sha $FS)" ] || { echo "H_STAGED_FS"; exit 9; }
 grep -c 'import v2.std.operation_argv' $FH $FS | sed 's/^/  head_stale_count(both must be 0): /'
-export CARGO_TARGET_DIR=/root/workspace/repo-root/.t643i cargo 2>/dev/null || true
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.t643i
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 [ "$(git rev-parse HEAD)" = "$OID" ] || { echo "BUILT_AT_WRONG_COMMIT"; exit 9; }
