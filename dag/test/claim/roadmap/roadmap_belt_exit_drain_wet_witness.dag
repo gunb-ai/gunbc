@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
   attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -13,7 +13,7 @@ import gunbc.durable_handoff_host {
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
-  belt_exit_stall_failures, belt_exit_stall_read_at, BeltExitStallNone, BeltExitStallHeld, belt_exit_stall_release_at, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
+  belt_exit_stall_failures, belt_exit_stall_read_at, BeltExitStallNone, BeltExitStallHeld, belt_exit_stall_release_at, belt_exit_stall_analyze_at, belt_exit_stall_record_at, BeltExitStallEntry, BeltExitStallUnreadable, belt_exit_stall_record_text, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -416,4 +416,33 @@ test fn release_refuses_while_an_entry_is_unmovable_then_clears_the_record_and_h
     && belt_exit_stall_read_at(root: root) == BeltExitStallNone
     && names_at(root: root, stage: AttemptExitQueued) == [worker_exit]
     && count(names_in(root: root, stage_is_queued: false)) == 0
+}
+
+// Analyze classifies ownership only from two successful readings: an unread principal is "owner unknown",
+// never "foreign-owned" (which would point the operator at a privileged effect on no observation).
+test fn analyze_does_not_call_an_entry_foreign_when_the_principal_is_unread() -> Bool {
+  let root = fresh_spool(tag: "analyze")
+  let wrote = record(root: root, name: worker_exit)
+  let recorded = belt_exit_stall_failures(root: root, d: unmovable_pass(root: root))
+  let unread = belt_exit_stall_analyze_at(root: root, whoami: BeltExitStallUnobserved { reason: "id -un refused" })
+  let other = belt_exit_stall_analyze_at(root: root, whoami: BeltExitStallObserved { value: "nobody-else" })
+  wrote && count(recorded) == 1
+    && any(unread, l => string_contains(s: l, pattern: "owner unknown")) && !any(unread, l => string_contains(s: l, pattern: "foreign-owned"))
+    && any(other, l => string_contains(s: l, pattern: "foreign-owned"))
+}
+
+// One encoding: the record is JSON, so a cause with newlines, quotes and the old " :: " separator round-trips
+// byte-for-byte; and a record that is not the schema's JSON is Unreadable, never a shorter list.
+test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadable() -> Bool {
+  let root = fresh_spool(tag: "json")
+  let cause = "mv exited 1:\nmv: \"x\" :: Permission denied"
+  let wrote = belt_exit_stall_record_at(root: root, unmovable: [BeltExitStallEntry { entry: worker_exit, step: "claim", cause: cause }])
+  let round_trips = match belt_exit_stall_read_at(root: root) {
+    BeltExitStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == ["claim"]
+    _ => false
+  }
+  let bad_root = fresh_spool(tag: "badjson")
+  let made = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["mkdir -p $(dirname ", attempt_exit_stall_record_path(instance_root: bad_root), ") && printf 'unmovable :: x' > ", attempt_exit_stall_record_path(instance_root: bad_root)], "")]), workdir: "/")
+  let unreadable = match belt_exit_stall_read_at(root: bad_root) { BeltExitStallUnreadable { reason: _ } => true _ => false }
+  round_trips && unreadable
 }
