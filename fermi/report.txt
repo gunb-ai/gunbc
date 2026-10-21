@@ -1,0 +1,22 @@
+BINDING merge/4 repro package (clever-carp-254, run ids + verbatim rows):
+
+== THE FLIP (std.fermi, byte-identical file both sides; only tree delta base 02b9486ad13 vs head 80fe982d = dag/extdeps/git/versioning.dag):
+base_row	binding_partial	std.fermi	first	0	ambient:primitive_authority	std.primitives.first_contract	72:20
+head_row	binding_unbound	std.fermi	first	72:20
+head_row	binding_unbound	std.fermi	first	72:20
+head_row	binding_unbound	std.fermi	first	72:20
+head_row	binding_unbound	std.fermi	first	72:20
+
+== module counts (77 base vs 76 head):
+base_row	binding_partial_module	std.fermi	77	0	0
+base_row	binding_unbound_module	std.fermi	1	0
+head_row	binding_unbound_module	std.fermi	2	0
+head_row	binding_partial_module	std.fermi	76	0	0
+
+== the 3-row flip is ALL the difference for std.fermi (prefix-normalized sorted md5 of the four shard extractions is identical: 97e04de5eae9553cbc71add58ee1f9c4; base differs from it by exactly 3 rows):
+< base_row	binding_partial_module	std.fermi	77	0	0
+> base_row	binding_partial_module	std.fermi	76	0	0
+< base_row	binding_partial	std.fermi	first	0	ambient:primitive_authority	std.primitives.first_contract	72:20
+< base_row	binding_unbound_module	std.fermi	1	0
+> base_row	binding_unbound_module	std.fermi	2	0
+> base_row	binding_unbound	std.fermi	first	72:20
