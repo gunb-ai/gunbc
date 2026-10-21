@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_of_pass
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data required_evidence_absent_reads_as_evidence_of_pass: RecurringFailureMode = RecurringFailureMode {
   identity: "required_evidence_absent_reads_as_evidence_of_pass" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a gate that admits when its required evidence has not reported, because the admission arm keys on OBSERVED FAILURE rather than on OBSERVED SUCCESS.** INVALID STATE: a required check exists, is correctly configured, and is consulted -- and the consulting arm asks `has anything reported a failure` where the guarantee needs `has everything reported a success`. Between those two questions sits the state where nothing has reported at all, and it is admitted. HARM, AND THE REASON THE CLASS SURVIVES REVIEW: every artifact reads as present and correct. The gate is enumerated in the required roster, it is active, it blocks a reported failure exactly as advertised, and a reader auditing the configuration finds no drift -- because there is none. The defect is in the QUANTIFIER, and a quantifier has no configuration surface to inspect. DISTINGUISHING FACT, AND IT IS THE RACE RATHER THAN ANY FIELD: the class is only reachable inside the window between the evidence being DEMANDED and the evidence ARRIVING, so it is invisible to any observation taken after that window closes -- afterwards the check has reported, the record looks ordinary, and only the ORDER of two timestamps distinguishes an admitted merge from a blocked one. RECOGNITION RULE: for every gate, find the arm that admits and read what it is quantified over. If it enumerates the evidence that HAS arrived and asks a property of each, the empty enumeration admits. If it enumerates the evidence that is REQUIRED and asks each for a success, it refuses. The two spellings are one word apart and behave identically on every input except the one the class lives in. DISTINCT FROM `absorbing_fallback`: that arm WIDENS when it cannot compute an answer and is at least loud about doing work; this arm NARROWS to the empty set and is silent, because a fold over nothing returns its seed and nobody wrote the seed down as a decision.",

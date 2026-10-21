@@ -1,9 +1,10 @@
 module test.claim.rung_drop_superseded_standing_witness
 
 import std.types { String, Bool, NonEmptyStr, List }
+import std.algebra { FreeSemigroup }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, Enumerated, PopulationDeleted, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.standing { standing_rung_drops_of, dissolved_populations_empty, superseded_loss_holders_stand }
@@ -97,7 +98,7 @@ fn holder_fixture(id: String, standing: RungDropStanding) -> RungDrop {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
       reason: DeletedWithoutReplacement,
-      population: ["fixture.population"],
+      population: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
       restoration_trigger: "fixture trigger"
     }
   }
@@ -160,11 +161,11 @@ test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
   let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
   let live = RungDrop {
     identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: Enumerated { members: FreeSemigroup { head: "still-live", tail: [] } }, restoration_trigger: "t" }
   }
   let empty = RungDrop {
     identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
   }
   (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
 }
@@ -177,11 +178,11 @@ test fn w_RED_the_standing_accounting_keeps_an_invalid_dissolved_row_live() -> B
   let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
   let live = RungDrop {
     identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: Enumerated { members: FreeSemigroup { head: "still-live", tail: [] } }, restoration_trigger: "t" }
   }
   let empty = RungDrop {
     identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
   }
   let kept = map(standing_rung_drops_of(ds: [live, empty]), d => d.identity as String)
   length(xs: filter(kept, i => i == "fixture.live")) == 1 && length(xs: filter(kept, i => i == "fixture.empty")) == 0
@@ -194,11 +195,11 @@ test fn w_RED_an_invalid_dissolved_row_does_not_render_as_dissolved() -> Bool {
   let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
   let live = RungDrop {
     identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: Enumerated { members: FreeSemigroup { head: "still-live", tail: [] } }, restoration_trigger: "t" }
   }
   let empty = RungDrop {
     identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
   }
   let bad = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) })
   let good = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: empty.standing, admissible: dissolved_is_admissible(drop: empty)) })

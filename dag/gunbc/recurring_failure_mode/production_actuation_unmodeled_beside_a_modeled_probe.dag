@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data production_actuation_unmodeled_beside_a_modeled_probe: RecurringFailureMode = RecurringFailureMode {
   identity: "production_actuation_unmodeled_beside_a_modeled_probe" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**PRODUCTION ACTUATION UNMODELED BESIDE A MODELED PROBE** (INVALID STATE: one effect -- what CAUSES a thing to happen -- has two homes. The install path and a probe of the effect are modeled as ArgvCommand and executed through the modeled transport, so the corpus reads as owning the effect; the path PRODUCTION actually takes is hand-authored outside .dag, and .dag carries RECEIPTS of it after the fact. Both homes are honest on their own. Together they answer one question twice, and the modeled half is the one a reader finds first.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.argument_order_silently_orders_two_effects
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data argument_order_silently_orders_two_effects: RecurringFailureMode = RecurringFailureMode {
   identity: "argument_order_silently_orders_two_effects" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: an application in which two or more actuals -- the callee expression counted as one -- each perform an effect, so the ONLY thing ordering those two effects is the position the author happened to write them in. HARM: the order is an unstated fact. Reordering named arguments is identity-preserving (v2.std.node canonicalize_positional_then_named sorts a named suffix for the content hash, so f(b: eff2(), a: eff1()) and f(a: eff1(), b: eff2()) are one node), yet the two spellings perform their effects in opposite orders. An edit that is a no-op to identity changes behaviour, silently.",

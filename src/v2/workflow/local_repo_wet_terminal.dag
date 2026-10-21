@@ -8,7 +8,7 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
-  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
@@ -400,6 +400,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_boot_phase_timing_witness", function: "the_real_uptime_clock_reads_and_does_not_go_back" },
       entry: "dag/test/claim/machine_intake/mtcollins1_boot_phase_timing_witness.dag",
       function: "the_real_uptime_clock_reads_and_does_not_go_back",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.fci1_bounded_store_wet_witness", function: "the_store_state_reads_present_absent_and_unlistable_from_the_real_filesystem" },
+      entry: "dag/test/claim/live_deploy/fci1_bounded_store_wet_witness.dag",
+      function: "the_store_state_reads_present_absent_and_unlistable_from_the_real_filesystem",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3343,6 +3349,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_a_coproduct_and_a_record_is_refused" },
       entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
       function: "w_an_equality_between_a_coproduct_and_a_record_is_refused",
@@ -3537,6 +3555,7 @@ fn local_repo_wet_identity_passed_on_candidate(
               PanickedBeforeVerdict => false
               NotAttemptedAfterAbort => false
               ObservationUnreadableBeforeVerdict => false
+              SubjectUnresolvedBeforeVerdict => false
             }
         }
     }

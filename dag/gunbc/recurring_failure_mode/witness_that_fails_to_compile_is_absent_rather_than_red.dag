@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data witness_that_fails_to_compile_is_absent_rather_than_red: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_that_fails_to_compile_is_absent_rather_than_red" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a witness that fails to COMPILE is ABSENT rather than red, and running its SUBJECT proves nothing about it** (a claim file is committed, reviewed and merged while it cannot compile, so none of its assertions ever execute and the guarantee it was written to carry does not exist; the class it polices reports as walled while nothing walls it, which is worse than an absent witness because the file is cited as coverage by its own author and by its reviewers).",

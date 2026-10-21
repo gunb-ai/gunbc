@@ -1889,6 +1889,111 @@ fn eval_transform_node(
   }
 }
 
+// A CONTROL SITE'S JUDGMENT IS EVAL'S, WHOEVER DRIVES ITS STEPS. A Branch or a Match is evaluated as: admit the
+// site's inferred facts, dispatch its interpreter, evaluate the selector, let the interpretation choose, evaluate
+// the chosen root, accept that value against the SITE's facts. v2.workflow.runtime_run drives those steps one at a
+// time so it can record what ran and check the choice against the derived activation
+// (v2.compiler.activation_dependency); it must not re-implement any of them, or a site whose facts are missing, or
+// whose chosen value violates the site's declared result, would succeed under the run and refuse under eval. So the
+// admission (eval_control_enter), the choice (eval_control_choose, which this module's own Branch and Match paths
+// call too) and the acceptance (eval_control_complete) are this module's, and the run only sequences them.
+type EvalControlScope {
+  tree: InferredTree
+  interpretation: InterpretationAlgebra
+  environment: EvaluationEnvironment
+  runtime: V4EvaluatorRuntime
+  effect_io: EffectIoEvalContext
+}
+
+type EvalControlFrame {
+  site: Node
+  facts: InferredFacts
+  interpreter: RuntimeBehaviorInterpreter
+}
+
+// The scope eval_with_context evaluates a root in.
+fn eval_control_scope(tree: InferredTree, context: EvalContext) -> EvalControlScope {
+  EvalControlScope {
+    tree: tree,
+    interpretation: eval_context_interpretation(context: context),
+    environment: empty_evaluation_environment(),
+    runtime: eval_runtime(),
+    effect_io: eval_context_effect_io(context: context)
+  }
+}
+
+fn eval_control_node(scope: EvalControlScope, node: Node) -> Outcome<RuntimeValue> {
+  eval_runtime_node(
+    node: node,
+    tree: scope.tree,
+    interpretation: scope.interpretation,
+    environment: scope.environment,
+    runtime: scope.runtime,
+    effect_io: scope.effect_io
+  )
+}
+
+// ENTER BEFORE THE SELECTOR RUNS: the site's facts are admitted and its interpreter dispatched first, exactly as
+// eval_runtime_control_node does, so a site eval would refuse performs no selector effect under the run either.
+// An interpreter that does not answer the site's behavior refuses here, where eval_branch_node_eval and
+// eval_match_node_eval refuse it (before their selector), with the same diagnostic.
+fn eval_control_enter(scope: EvalControlScope, site: Node) -> Outcome<EvalControlFrame> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: scope.tree, node: site),
+    f: fn(facts) {
+      match site.kind {
+        ComputationNode { behavior: b } =>
+          eval_control_frame_if_agreeing(
+            site: site,
+            facts: facts,
+            interpreter: interpretation_behavior_dispatch(interpretation: scope.interpretation, behavior: b)
+          )
+        TypeNode { connective: _ } =>
+          outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
+      }
+    }
+  )
+}
+
+fn eval_control_frame_if_agreeing(
+  site: Node,
+  facts: InferredFacts,
+  interpreter: RuntimeBehaviorInterpreter
+) -> Outcome<EvalControlFrame> {
+  let frame = EvalControlFrame { site: site, facts: facts, interpreter: interpreter }
+  match site.kind {
+    ComputationNode { behavior: Branch } =>
+      match interpreter {
+        BranchRuntimeInterpreter { interpreter: _ } => Accepted { value: frame, diagnostics: None }
+        _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
+      }
+    ComputationNode { behavior: Match } =>
+      match interpreter {
+        MatchRuntimeInterpreter { interpreter: _ } => Accepted { value: frame, diagnostics: None }
+        _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
+      }
+    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
+  }
+}
+
+// THE ONE CHOICE: the interpretation's chooser for the site's behavior, in the site's environment.
+fn eval_control_choose(
+  site: Node,
+  interpreter: RuntimeBehaviorInterpreter,
+  selector_value: RuntimeValue,
+  environment: EvaluationEnvironment
+) -> Outcome<Node> {
+  match interpreter {
+    BranchRuntimeInterpreter { interpreter: branch } => branch.choose_branch(site, selector_value, environment)
+    MatchRuntimeInterpreter { interpreter: match_interpreter } => match_interpreter.choose_arm(site, selector_value, environment)
+    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
+  }
+}
+
+fn eval_control_complete(frame: EvalControlFrame, value: RuntimeValue) -> Outcome<RuntimeValue> {
+  eval_accept_runtime_value_with_facts(node: frame.site, facts: frame.facts, value: value)
+}
+
 fn eval_branch_node_eval(
   node: Node,
   tree: InferredTree,
@@ -1899,7 +2004,7 @@ fn eval_branch_node_eval(
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
-    BranchRuntimeInterpreter { interpreter: branch } =>
+    BranchRuntimeInterpreter { interpreter: _ } =>
       bind_outcome(
         o: eval_branch_condition(node: node),
         f: fn(cond_node) {
@@ -1914,7 +2019,7 @@ fn eval_branch_node_eval(
             ),
             f: fn(condition) {
               bind_outcome(
-                o: branch.choose_branch(node, condition, environment),
+                o: eval_control_choose(site: node, interpreter: interpreter, selector_value: condition, environment: environment),
                 f: fn(chosen) {
                   eval_runtime_node(
                     node: chosen,
@@ -2096,7 +2201,7 @@ fn eval_match_node_eval(
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
-    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+    MatchRuntimeInterpreter { interpreter: _ } =>
       bind_outcome(
         o: eval_match_scrutinee(node: node),
         f: fn(scrutinee_target) {
@@ -2111,7 +2216,7 @@ fn eval_match_node_eval(
             ),
             f: fn(scrutinee_value) {
               bind_outcome(
-                o: match_interpreter.choose_arm(node, scrutinee_value, environment),
+                o: eval_control_choose(site: node, interpreter: interpreter, selector_value: scrutinee_value, environment: environment),
                 f: fn(chosen) {
                   eval_runtime_node(
                     node: chosen,
