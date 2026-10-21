@@ -137,8 +137,12 @@ fn protection_text(p: SourceProtection) -> String {
   }
 }
 
+fn setting_only_text(s: SourceSetting) -> String {
+  join([to_string(volt_count(v: s.voltage)), " V through a ", ma_text(i: s.current_limit), " limit with ", protection_text(p: s.protection)], "")
+}
+
 fn setting_text(o: SourceDrawObservation) -> String {
-  join([to_string(volt_count(v: o.setting.voltage)), " V through a ", ma_text(i: o.setting.current_limit), " limit with ", protection_text(p: o.setting.protection)], "")
+  setting_only_text(s: o.setting)
 }
 
 fn peak_text(o: SourceDrawObservation) -> String {

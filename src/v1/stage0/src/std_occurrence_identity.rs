@@ -8,6 +8,7 @@ use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
+use self::ReferencePosition::*;
 pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -175,6 +176,18 @@ pub fn occurrence_category_clause_e_dependency_inducing_verdict(
 pub enum OccurrenceRole {
     DeclarationRole,
     ReferenceRole,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ReferencePosition {
+    ValuePosition,
+    TypeAnnotationPosition,
+    ReturnPosition,
+    LabelPosition,
+    PatternTagPosition,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -351,6 +364,20 @@ pub enum NodeOccurrenceIdentity {
     OccurrencePending {
         caused_by: OccurrenceId,
     },
+}
+
+pub fn authored_occurrence_of(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { caused_by, .. } => {
+            Some(caused_by.occurrence.clone())
+        }
+        NodeOccurrenceIdentity::OccurrencePending {
+            caused_by: caused_by,
+            ..
+        } => Some(caused_by.clone()),
+        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -980,3 +1007,13 @@ pub struct MethodOccurrence;
 pub struct DeclarationRole;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceRole;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ValuePosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeAnnotationPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReturnPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LabelPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PatternTagPosition;

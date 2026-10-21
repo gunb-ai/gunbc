@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.constructor_equality_consumes_the_branch_brace
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data constructor_equality_consumes_the_branch_brace: RecurringFailureMode = RecurringFailureMode {
   identity: "constructor_equality_consumes_the_branch_brace" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
   receipts: [
     "HARM AND INVALID STATE: an if-condition ending in equality with a constructor name refuses valid nested-match and field-access branch bodies at a Dot token. Source inspection identifies an attempted record-literal parse of the branch brace before the conditional retry; this mechanism is distinct from any claim that a differently interpreted program is accepted. Parenthesizing the equality is a local workaround, not a parser repair.",
     "MEASUREMENT SUBJECT: installed arm64 /usr/local/bin/gunbc, SHA256 e713b7eece9b251a26347bcc1565e4d7c1178b7dfc9eb4a861371569600c42a6, observed 2026-09-05. Its source revision is not established; this receipt does not label it origin/main. Each isolated run resolves one source. With type Connective = Conj | NoConnective and type Item { connective: Connective, inferred: Int? }, fn probe(declaration: Item) -> Int { if declaration.connective == NoConnective { match declaration.inferred { Present { value: target } => target Absent => 0 } } else { 0 } } refuses expected expression, found Dot at the inferred field access, emitting zero files. Parenthesizing only the equality emits five files and zero diagnostics.",

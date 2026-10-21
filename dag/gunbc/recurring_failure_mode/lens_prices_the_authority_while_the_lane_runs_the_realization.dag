@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data lens_prices_the_authority_while_the_lane_runs_the_realization: RecurringFailureMode = RecurringFailureMode {
   identity: "lens_prices_the_authority_while_the_lane_runs_the_realization" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "A COST LENS READS THE AUTHORITY AND THE LANE RUNS THE REALIZATION, so a verdict about one is cited as a fact about the other. The invalid state is a lens verdict presented as a cost fact when the declaration it priced and the code that executes have different cost shapes. The harm is worse than a wrong number, because the verdict is directional: it can convict a construction that is fast and acquit one that is quadratic, and it is cited as coverage in both cases. ",

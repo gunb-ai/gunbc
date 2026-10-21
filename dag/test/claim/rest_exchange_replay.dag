@@ -15,7 +15,7 @@ import extdeps.transports.rest {
   RestResponseObserved, RestExchangeRefused,
   RestBoundOperationInvocation, RestExchangeObservation, RestExchangeFixture,
 }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused,
   evaluate_in_witness_frame, witness_evaluation_frame_active,

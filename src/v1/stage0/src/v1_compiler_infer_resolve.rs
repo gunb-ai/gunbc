@@ -2642,32 +2642,6 @@ pub fn resolve_resource_use(
     }
 }
 
-pub fn resolve_named_arg(
-    arg: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<NamedArgResolveResult> {
-    {
-        let value_result = resolve_expr_types(
-            crate::v1_std_core::arg_value(arg.clone()),
-            env.clone(),
-            module_name.clone(),
-        );
-        let value_expr = value_result.expr.clone();
-        let value_diags = value_result.diagnostics.clone();
-        Rc::new(NamedArgResolveResult {
-            arg: crate::v1_std_core::make_arg_node(
-                arg.occurrence_identity.clone(),
-                crate::v1_std_core::arg_name_at(arg.clone(), env.source_indices.clone()),
-                value_expr.clone(),
-                arg.span.clone(),
-                crate::v1_std_core::node_name_span(arg.clone()),
-            ),
-            diagnostics: value_diags.clone(),
-        })
-    }
-}
-
 pub fn resolve_field_init(
     field_init: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -2694,74 +2668,6 @@ pub fn resolve_field_init(
             ),
             diagnostics: value_diags.clone(),
         })
-    }
-}
-
-pub fn resolve_match_arm(
-    arm: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<MatchArmResolveResult> {
-    {
-        let arm_g = crate::v1_std_core::arm_guard(arm.clone());
-        let guard_result = match arm_g.clone() {
-            Some(guard) => Some(resolve_expr_types(
-                guard.clone(),
-                env.clone(),
-                module_name.clone(),
-            )),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let guard_diags = match guard_result.clone() {
-            Some(result) => result.diagnostics.clone(),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        let body_result = resolve_expr_types(
-            crate::v1_std_core::arm_body(arm.clone()),
-            env.clone(),
-            module_name.clone(),
-        );
-        let body_expr = body_result.expr.clone();
-        let body_diags = body_result.diagnostics.clone();
-        Rc::new(MatchArmResolveResult {
-            arm: crate::v1_std_core::make_arm_node(
-                arm.occurrence_identity.clone(),
-                crate::v1_std_core::arm_pattern(arm.clone()),
-                match guard_result.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    std::option::Option::None => std::option::Option::None,
-                },
-                body_expr.clone(),
-                arm.span.clone(),
-            ),
-            diagnostics: v1_rt::concat(guard_diags.clone(), body_diags.clone()),
-        })
-    }
-}
-
-pub fn resolve_string_part(
-    part: Rc<StringPart>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<StringPartResolveResult> {
-    match (*part.clone()).clone() {
-        StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
-            part: Rc::new(StringPart::Text {
-                value: value.clone(),
-            }),
-            diagnostics: Rc::new(vec![]),
-        }),
-        StringPart::Interpolation { expr: expr, .. } => {
-            let expr_result = resolve_expr_types(expr.clone(), env.clone(), module_name.clone());
-            let resolved_expr = expr_result.expr.clone();
-            let expr_diags = expr_result.diagnostics.clone();
-            Rc::new(StringPartResolveResult {
-                part: Rc::new(StringPart::Interpolation {
-                    expr: resolved_expr.clone(),
-                }),
-                diagnostics: expr_diags.clone(),
-            })
-        }
     }
 }
 

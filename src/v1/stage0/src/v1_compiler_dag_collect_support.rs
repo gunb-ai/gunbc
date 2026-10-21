@@ -307,28 +307,3 @@ pub fn dag_collect_fp_memo_reset() -> bool {
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint(node.clone())
 }
-
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    {
-        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
-        let detail = if synthetic.clone() {
-            " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
-                .to_string()
-        } else {
-            "".to_string()
-        };
-        crate::v1_std_core::make_error_node(
-            Rc::new(CompilerDiagnostic::InternalError {
-                message: v1_rt::concat(
-                    v1_rt::concat(
-                        "dag artifact: distinct nodes share identity key ".to_string(),
-                        json_quote(key.clone()),
-                    ),
-                    detail.clone(),
-                ),
-                span: span.clone(),
-            }),
-            "".to_string(),
-        )
-    }
-}

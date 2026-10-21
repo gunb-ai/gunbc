@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_binding_position_recorded_as_a_declaring_i
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_binding_position_recorded_as_a_declaring_identity: RecurringFailureMode = RecurringFailureMode {
   identity: "a_binding_position_recorded_as_a_declaring_identity" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**a position that merely BINDS a name is recorded as the position that DECLARES it** (INVALID STATE: an index that keys declarations by their declaring path takes a row's TARGET as that path. A target names a position the index can answer at, which is a declaration only when a declaration was written there; for a re-export it is another row's binding. v2.compiler.symbol_index_fill symbol_index_bind_pending_round passed p.row.target straight to symbol_index_bind_at as declaring_path.)",
     "HARM. One declaration acquires one identity PER RELAY it is reached through, so the map that exists to make identity single-valued is the thing that forks it. Nothing refuses: every path resolves, and the reference is Accepted. It surfaces downstream as a wrong answer with no diagnostic -- a target that spells a declaration by its module emits a path into the relay module, which declares nothing and therefore has no item to name, so the emitted program refers to something that was never written.",

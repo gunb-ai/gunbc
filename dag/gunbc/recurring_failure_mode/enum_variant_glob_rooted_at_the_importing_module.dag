@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.enum_variant_glob_rooted_at_the_importing_module
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data enum_variant_glob_rooted_at_the_importing_module: RecurringFailureMode = RecurringFailureMode {
   identity: "enum_variant_glob_rooted_at_the_importing_module" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a module that imports a coproduct AND its arms (`import std.types \{ Bool, True, False \}` in v2.std.logic) declares neither, yet a consumer importing the coproduct from it was emitted `use crate::v2_std_logic::Bool::*;`, a path no crate can resolve. INVALID STATE: a use-line whose module is the module the name was imported THROUGH rather than the module that DECLARES it. HARM: E0432 `unresolved import crate::v2_std_logic::Bool` at stage0/src/v2_compiler_infer.rs, in the emitted compiler build of gunbc test //gunbc/instruments:v2-native-census-scoped; reported by silent-raven-360 (PR #14217). Importing Bool alone emitted fine.",

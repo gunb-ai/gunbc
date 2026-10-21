@@ -1,0 +1,78 @@
+module v2.test.claim.compiler.chars_ambient_authority_retired
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source, bla_q_artifact }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE chars AMBIENT AUTHORITY IS RETIRED (NAMESPACE-XL T1.1, ruling H4). The one authority for the name
+// `chars` is the declared import of its ruled home (std.host_text `fn chars(text: HostText) -> List<Char>`);
+// the std.primitives `chars_contract` row that let the last resolve tier admit the name with no import is
+// DELETED, not aliased. THIS CLAIM READS THE REAL std.primitives CLOSURE FROM DISK -- not a restated peer --
+// so it fails at the moment it is written against a tree where the ambient row still exists (RED), and
+// stands once the row is gone: a module using `chars` WITHOUT the declared import refuses AT RESOLVE with
+// resolve_reason_unbound_symbol, the same refusal as any name no authority declares. The control proves the
+// assembly and the surviving ambient tier are sound: a name whose contract row still stands (`to_string`)
+// binds at resolve exactly as before, so the refusal is chars's retirement, not a broken harness.
+
+fn chars_live_peer(path: String) -> DagSourceReadWitness {
+  bla_source(src: filesystem_read(path: path).content, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)
+}
+
+// The real std.primitives import closure, read from disk: the bytes are the authority (no inline copy).
+fn chars_live_primitives_closure() -> List<DagSourceReadWitness> {
+  [
+    chars_live_peer(path: "dag/std/primitives.dag"),
+    chars_live_peer(path: "dag/std/types.dag"),
+    chars_live_peer(path: "dag/std/algebra.dag"),
+    chars_live_peer(path: "dag/std/optional.dag"),
+    chars_live_peer(path: "dag/std/error_primitives.dag"),
+    chars_live_peer(path: "dag/std/unicode/types.dag")
+  ]
+}
+
+fn chars_resolve_reason(p_src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: p_src, peers: chars_live_primitives_closure()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => ^accepted
+  }
+}
+
+// THE RED: a subject that uses `chars` with NO import of std.host_text refuses at resolve. With the ambient
+// chars_contract row deleted, the last tier (v2.compiler.resolve resolve_atom_primitive_authority) finds no
+// declaration at std.primitives.chars_contract and the name falls through every tier to the unbound refusal.
+test fn chars_without_the_declared_import_refuses_at_resolve() -> Bool {
+  chars_resolve_reason(p_src: "module p\n\nfn f(x: Int) -> Int {\n  chars(x)\n}\n")
+    == ^resolve_reason_unbound_symbol
+}
+
+// THE CONTROL: the tier itself is intact -- a name whose std.primitives contract row still stands binds at
+// resolve. If this refused, the RED would be proving a broken assembly, not chars's retirement.
+test fn surviving_contract_row_still_binds_at_resolve() -> Bool {
+  chars_resolve_reason(p_src: "module p\n\nfn f(x: Int) -> String {\n  to_string(x)\n}\n")
+    == ^accepted
+}
+
+// THE OTHER HALF OF H4: the declared route stays admissible -- the subject's own import line is what binds
+// the home. The home peer is restated minimally (declaration only): this leg checks the import tier admits
+// the name through a declared import of std.host_text while the ambient tier refuses it without one.
+test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
+  match bla_assemble_with_peers(
+    p_src: "module p\n\nimport std.host_text { chars }\n\nfn f(text: String) -> String {\n  chars(text)\n}\n",
+    peers: [
+      bla_source(
+        src: "module std.host_text\n\ntype HostText\n\nfn chars(text: HostText) -> Int {\n  chars(text: text)\n}\n",
+        artifact: bla_q_artifact,
+        cu: ^body_let_annotation_q_cu
+      )
+    ]
+  ) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => ^accepted
+  } == ^accepted
+}
