@@ -734,6 +734,21 @@ test fn acd_o_scrutinee_only_match_is_its_own_case_and_validity_is_inferences_ho
     && acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, accepted: false)
 }
 
+test fn acd_o1_never_half() -> Bool {
+  acd_zero_alternatives_then_infers(src: acd_never_source, accepted: true)
+}
+
+test fn acd_o2_inhabited_half() -> Bool {
+  acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, accepted: false)
+}
+
+test fn acd_o3_never_assembles() -> Bool {
+  match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
 fn acd_zero_alternatives_then_infers(src: String, accepted: Bool) -> Bool {
   match acd_assemble_with(src: src, peers: Cons { head: acd_never_peer(), tail: Empty }) {
     Absent => false
