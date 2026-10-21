@@ -21,6 +21,8 @@ import v2.std.node {
   TypeNode,
   EdgeLabel,
   StructuralLabel,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
 }
 import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name {
@@ -185,7 +187,10 @@ fn reference_sites_in_edge(
         )
       }
     StructuralLabel { label: _ } =>
-      if dag_surface_module_header_metadata_edge(e: edge) {
+      // The declared-order edge is carried through resolve unchanged (v2.compiler.lexical_scope
+      // arrow_slot ArrowCarriedSlot): its list head is the compiler's own encoding of the parameter
+      // labels and is never resolved, so it is not a mention and demands no module.
+      if dag_surface_module_header_metadata_edge(e: edge) || edge_is_core(e: edge, marker: ArrowSignatureOrderEdge) {
         acc
       } else {
         reference_sites_in_node(
