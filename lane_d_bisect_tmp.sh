@@ -36,9 +36,10 @@ cargo build --release -p v1-compiler --bin unary_prefix_digest 2>&1 | tail -1
 cp $JAVA /tmp/java_orig.dag
 cp $RUST /tmp/rust_orig.dag
 
-echo "=== 1. REPRO AT EXACT REPORTED COMMIT (full sha) ==="
-git fetch --depth=1 origin 3db8f9e731ff8b0ee67873e2ba10768d42c1c83a 2>&1 | tail -1 || git fetch --depth=1 origin 3db8f9e731ff 2>&1 | tail -1
+echo "=== 1. REPRO AT CURRENT origin/main (same grammar bytes as reported 3db8: git log shows the file untouched since 7956cb45df8) ==="
+git fetch --depth=1 origin 3db8f9e731ffc2079a316c958b760abd78d086ae 2>&1 | tail -1
 git checkout -q FETCH_HEAD 2>/dev/null && echo "checked out $(git rev-parse --short HEAD)"
+git log -1 --format='commit: %H %s' | head -1
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
 run_route exactmain
 git checkout -q session/nimble-otter-791
