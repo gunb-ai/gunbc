@@ -55,7 +55,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
@@ -4733,7 +4733,35 @@ fn infer_literal_elaboration_refusal_reason(cause: LiteralElaborationRefusal) ->
   }
 }
 
+// A LITERAL AT AN OPTIONAL POSITION IS NOT PRESENT (ruling explicit_present_is_the_authoring_policy): `1` at `Int?` would be an implicit lift,
+// so it refuses with its own typed reason rather than falling through to ungrounded literal facts (infer_grounding_not_derived).
 fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferLiteralElaboration {
+  if infer_node_is_literal(node: literal_node) && infer_expected_is_optional(expected: expected, declarations: declarations, bindings: bindings) {
+    InferLiteralElaborationRefused { cause: ^infer_literal_at_optional_is_not_present }
+  } else {
+    infer_literal_elaborates_at_declared(literal_node: literal_node, expected: expected, declarations: declarations, bindings: bindings)
+  }
+}
+
+fn infer_node_is_literal(node: Node) -> Bool {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      match infer_negated_int_literal_value(node: node) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn infer_expected_is_optional(expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> Bool {
+  match declaration_denotation_of_type(t: infer_type_alias_normalized_at(t: expected, bodies: declarations, bindings: bindings)) {
+    Absent => false
+    Present { value: denotation } => declaration_denotation_is_optional(denotation: denotation)
+  }
+}
+
+fn infer_literal_elaborates_at_declared(literal_node: Node, expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferLiteralElaboration {
   match dag_canonical_literal_from_node(node: literal_node) {
     Rejected { diagnostics: _ } =>
       match infer_negated_int_literal_value(node: literal_node) {
