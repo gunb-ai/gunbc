@@ -25,6 +25,17 @@ import gunbc.runner.runner_host_cap_bracket {
   AdmissionOpen,
   RunStopped,
   RunListenerIdle,
+  RosterNotBusy,
+  RosterBusy,
+  RosterUnread,
+  RosterDisagrees,
+  ListenerRosterReading,
+  AdmissionMaskRosterAndNoWorker,
+  listener_roster_reading_of,
+  stop_admitted_listener_over,
+  ListenerStopped,
+  ListenerStopRefused,
+  ListenerRestart,
   RunWorkerLive,
   RunUnobserved,
   BracketWaitStep,
@@ -84,14 +95,14 @@ import gunbc.runner.runner_host_cap_bracket {
 fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
 fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunStopped } }
 fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunWorkerLive } }
-fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle } }
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle { roster: RosterNotBusy } } }
 fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
 fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunStopped } }
 
-fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls } => length(ls) == 1 BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false } }
+fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { listeners: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { listeners: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
 
 // the bound is a declared policy row that yields a positive tick count
 test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
@@ -176,7 +187,7 @@ fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutco
 
 fn projected(active: String, listing: String) -> SlotDrainReading {
   let read = slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: active))
-  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle })
+  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle }, roster: RosterNotBusy)
 }
 
 test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
@@ -197,8 +208,8 @@ test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
 }
 
 test fn an_unknown_or_missing_active_state_is_unproven_never_idle() -> Bool {
-  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle)
-  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle)
+  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle, roster: RosterNotBusy)
+  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle, roster: RosterNotBusy)
   exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
     && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
 }

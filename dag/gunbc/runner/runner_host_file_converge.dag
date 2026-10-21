@@ -34,7 +34,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
+import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -2396,7 +2396,7 @@ fn run_runner_host_cap_bracket(
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
       match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-        BracketDrained => {
+        BracketDrained { listeners: admitted } => {
           let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
           let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
           let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
@@ -2404,8 +2404,18 @@ fn run_runner_host_cap_bracket(
           let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
           // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
           // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
+          // AN ADMITTED IDLE LISTENER IS STOPPED ONLY AFTER ITS THREE READINGS ARE TAKEN AGAIN (stop_admitted_listener_over);
+          // the activation then starts it, which is what applies the caps. A listener whose reading no longer holds
+          // is not stopped and is reported by name with the residual; the obligation stays held, so the release finalizer unmasks it.
+          let restarts = if written { map(filter(owned, u => any(admitted, a => a == u)), u => stop_admitted_listener_over(target: subject.target, context: context, unit: u)) } else { [] }
           let owned_slots = map(owned, u => if written {
-            activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+            match first(filter(restarts, r => listener_restart_unit(r: r) == u)) {
+              Present { value: r } => match listener_restart_refusal(r: r) {
+                Present { value: why } => SlotCapsRefused { unit: u, step: "listener-restart", reason: why }
+                Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+              }
+              Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+            }
           } else {
             SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
           })
@@ -2419,7 +2429,7 @@ fn run_runner_host_cap_bracket(
           let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
           CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note) }
         }
-        BracketAdmissionNotClosed { listeners: ls } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls }))
+        BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
         BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
       }
