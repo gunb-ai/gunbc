@@ -19,18 +19,16 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashb
 // says why in AtCeiling.ceiling_reason (gunbc.recurring_failure_mode RungStanding). Every carrier
 // that takes this type is therefore below its ceiling by construction and cannot be handed the
 // contradiction; test.claim.rung_climb_witness enrols that as a RED the compiler must refuse.
-// THE CAPABILITY LIVES ONCE, AS THE PAYLOAD OF THE ARM (AwaitsOneGrounding.grounding or
-// ClimbableButUnbuilt.capability); no carrier holds it beside the blocker.
 // AwaitsOneGrounding carries the authority it waits on: a stall that cannot name what it is
 // waiting for is not waiting, it is unbuilt, and the two rank differently for work.
 type ClimbBlocker
   = AwaitsOneGrounding { grounding: String }
-  | ClimbableButUnbuilt { capability: String }
+  | ClimbableButUnbuilt
 
 fn climb_blocker_label(b: ClimbBlocker) -> String {
   match b {
     AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", g)
-    ClimbableButUnbuilt { capability: c } => concat("climbable now but unbuilt: ", c)
+    ClimbableButUnbuilt => "climbable now but unbuilt"
   }
 }
 

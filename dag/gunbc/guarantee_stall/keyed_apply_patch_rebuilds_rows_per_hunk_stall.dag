@@ -16,7 +16,7 @@ data keyed_apply_patch_rebuilds_rows_per_hunk_stall: GuaranteeStall = GuaranteeS
   subject: "std.change keyed_apply_patch: a fold over patch hunks that copies its row accumulator (filter + concat) on every hunk",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
-  blocker: ClimbableButUnbuilt { capability: "std.change keyed_apply_patch applies a patch with work linear in rows plus hunks -- no fold step rebuilds or re-appends the accumulated row list -- while preserving its contract that an applied Added or Modified row lands after the untouched rows in hunk order and a later hunk for a key supersedes an earlier one, established by a witness over a multi-hunk patch with a repeated key and by dag/test/claim/keyed_delta_fold_witness_test passing unchanged" },
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: [
       "std.change keyed_apply_patch filter (KeyedDiffAddedHunk arm)",
       "std.change keyed_apply_patch filter (KeyedDiffRemovedHunk arm)",

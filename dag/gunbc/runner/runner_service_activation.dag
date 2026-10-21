@@ -568,7 +568,7 @@ data runner_activation_safety_stall: GuaranteeStall = GuaranteeStall {
   subject: "gunbc.runner.runner_service_activation -- a runner unit activated without a RunnerActivationAdmission",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt { capability: "the job user stops holding the systemctl verbs: activation runs through a root-owned helper that consumes and validates an activation receipt, or through a root-owned convergence service that holds the systemd authority while the job user holds none. A narrower sudoers match does not climb this rung -- any grant that lets the sanctioned path run the command lets the grantee run it directly" },
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: map(fleet_runner_host_deploys, d => d.host_label as String),
   },

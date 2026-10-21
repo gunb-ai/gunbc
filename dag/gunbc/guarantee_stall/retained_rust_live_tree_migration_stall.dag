@@ -9,7 +9,7 @@ data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   subject: "live Rust-test discovery disagrees with the retained-kernel migration authority",
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
-  blocker: ClimbableButUnbuilt { capability: "live Rust-test discovery and the retained-kernel authority join exactly" },
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v2.test.claim.manual.test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Empty {} } },
   next_rung_trigger: climbs_when(capability: "live Rust-test discovery and the retained-kernel authority join exactly")
 }

@@ -82,7 +82,7 @@ fn row_is_below_ceiling(r: RecurringFailureMode) -> Bool {
     RungRead { found_at: _, standing: s } =>
       match s {
         AtCeiling { rung: _, ceiling_reason: _ } => false
-        BelowCeiling { current: _, ceiling: _, blocker: _ } => true
+        BelowCeiling { current: _, ceiling: _, blocker: _, trigger_capability: _ } => true
       }
   }
 }
@@ -113,24 +113,28 @@ data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  trigger_capability: "control capability restored",
 }
 
 data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "" },
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  trigger_capability: "",
 }
 
 data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: StructurallyGuaranteed },
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  trigger_capability: "control capability restored",
 }
 
 data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
   current: FoundBelowTheLadder,
   ceiling: Mitigatable,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  trigger_capability: "control capability restored",
 }
 
 data control_at_ceiling: RungStanding = AtCeiling {

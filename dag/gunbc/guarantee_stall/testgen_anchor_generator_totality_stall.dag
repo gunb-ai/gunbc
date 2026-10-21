@@ -8,7 +8,7 @@ data testgen_anchor_generator_totality_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2.lens.testgen generator_id_for_claim_anchor is not total over enrolled ClaimAnchorKey values",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt { capability: "every enrolled ClaimAnchorKey mapping to a GeneratorId, so a claim with no generator is unwritable" },
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["v2.lens.testgen"] },
   next_rung_trigger: climbs_when(capability: "every enrolled ClaimAnchorKey mapping to a GeneratorId, so a claim with no generator is unwritable")
 }

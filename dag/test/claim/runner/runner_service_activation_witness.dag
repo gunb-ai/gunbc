@@ -425,12 +425,12 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
         && string_contains(s: cause, pattern: "no host observation transaction exists")
         && string_contains(s: g, pattern: "CompilePoolInRunnerSlots")
         && !string_contains(s: cause, pattern: "CompilePoolInRunnerSlots")
-    ClimbableButUnbuilt { capability: _ } => false
+    ClimbableButUnbuilt => false
   }
     && stall_is_below_ceiling(s: runner_activation_reachability_stall)
     && match runner_activation_reachability_stall.blocker {
       AwaitsOneGrounding { grounding: _ } => true
-      ClimbableButUnbuilt { capability: _ } => true
+      ClimbableButUnbuilt => true
     }
 }
 
@@ -450,7 +450,7 @@ test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool 
     && stall_is_below_ceiling(s: runner_activation_safety_stall)
     && match runner_activation_safety_stall.blocker {
       AwaitsOneGrounding { grounding: _ } => true
-      ClimbableButUnbuilt { capability: _ } => true
+      ClimbableButUnbuilt => true
     }
     && string_contains(s: runner_activation_safety_stall.next_rung_trigger.capability, pattern: "root-owned")
 }
