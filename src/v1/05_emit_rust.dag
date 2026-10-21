@@ -21100,7 +21100,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
               "\"module\": entry.module.clone(),", "\n",
               "\"path\": entry.path.clone(),", "\n",
               "\"nanos\": span_nanos(started),", "\n",
-              "\"outcome\": outcome_label.clone(),", "\n",
+              "\"outcome\": outcome_label,", "\n",
               "\"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
               "\"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
           "\}));", "\n",
