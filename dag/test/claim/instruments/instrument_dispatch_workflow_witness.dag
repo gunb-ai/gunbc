@@ -29,7 +29,11 @@ import std.measure { byte_size, byte_size_count }
 
 // THE OPERATOR'S CONDITIONS FOR THE DISPATCH-ONLY INSTRUMENT WORKFLOW, AS THE GENERATED TEXT CARRIES
 // THEM. The drift gate (gunbc.generated_artifact) holds the committed file to this generator; these
-// claims hold the generator to the conditions.
+// claims hold the generator to the conditions. COVERAGE, STATED: no required job executes these rows
+// (nothing in .github/workflows names this file), so they are evidence I run by hand, not gate
+// coverage -- §4b. What makes them live rather than decorative is that each was measured against a
+// mutation: reverting the one concurrency-group row fails exactly the two group rows, and deleting the
+// swap observation from the guard fails exactly the swap row, with every other row green in both runs.
 
 // The input is a closed choice whose every option is a rostered instrument label.
 test fn every_dispatch_option_is_a_rostered_instrument_label_holds() -> Bool {
