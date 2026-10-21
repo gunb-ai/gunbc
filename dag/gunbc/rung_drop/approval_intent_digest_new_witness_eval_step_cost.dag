@@ -18,8 +18,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_approva
 // WHY THE OVERRUN IS THE PRIMITIVE'S AND NOT THE CLAIM'S. An approval request digests its intent
 // with SHA-256, which the seed interpreter realizes as Word32 folds because it reifies no machine
 // width -- the same realization the app-attest interpreted-crypto drop prices. The claims' subjects
-// were split first: the intent is derived once (gunbc.auth.approved_secret_grants
-// secret_grants_intent, gunbc.fabric.fabric_storage_state_provision fabric_state_provision_intent), and
+// were split first: the intent is derived once (gunbc.fabric.fabric_storage_state_provision fabric_state_provision_intent), and
 // every binding and separation claim reads the intent as a supplied value inside the budget. What
 // remains here is ONE inhabitance claim per constructor: the real digest, and the gate admitting
 // exactly that revision while refusing another. Supplying the digest as a fixture would remove the
@@ -30,7 +29,7 @@ data approval_intent_digest_new_witness_eval_step_cost_population: List<String> 
 data approval_intent_digest_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "approval_intent_digest_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the one real-path claim of each approval-request constructor (secret grants, fabric-state material): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the one real-path claim of each approval-request constructor (fabric-state material; RE-SUBJECTED 2026-10-19: the secret-grants constructor, gunbc.auth.approved_secret_grants, was deleted with its claim when the GCP IAM converge became the one binder of secret cells): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-10-02",
 

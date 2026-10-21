@@ -20,6 +20,7 @@ import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequire
 import product.fabric.isolation { tenant_workload_isolation_requirement }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
+import std.host_text { chars }
 
 // THE PUBLIC ALLOCATION ID IS ONE PATH SEGMENT. The idempotency key a request is created under is
 // the id GET /allocations/{allocation_id} and its release route bind, and the route matcher takes

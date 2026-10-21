@@ -1,0 +1,230 @@
+module test.claim.fleet.organization_runner_roster_rest_witness
+
+import std.logic { Bool }
+import std.integer { PositiveInt }
+import std.types { String, NonEmptyStr, Int, List }
+import std.page_fold { PageCursor, OffsetPage, LinkNext, ContinuationClosed, ContinuationNext }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.github.pagination { github_max_page_size }
+import extdeps.github.actions_self_hosted_runners {
+  OrganizationRunnerLabelWire,
+  OrganizationRunnerRosterEntryWire,
+  OrganizationRunnerRosterPageWire
+}
+import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable }
+import gunbc.fleet.organization_runner_roster_read {
+  OrganizationRunnerScope,
+  OrganizationRunnerListing,
+  OrganizationRunnerRosterPageRead,
+  OrganizationRunnerRosterReport,
+  RosterPageDelivered,
+  RosterPageFailed,
+  RosterTransportResponse,
+  RosterTransportAnswered,
+  roster_walk_begin,
+  roster_walk_pump,
+  roster_walk_pump_by,
+  fetch_roster_page_via,
+  classify_roster_walk,
+  roster_page_read_from_wire,
+  rest_page_refusal_cause
+}
+import gunbc.ci.ci_spec {
+  gunbc_ci_service_runner_lost_boot_sweep_invoke,
+  gunbc_ci_org_admin_app_token_prelude,
+  gunbc_run_step_script_with_prelude,
+  witness_layer_roots,
+  gunbc_ci_service_runner_lost_boot_sweep_target
+}
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY INPUT IS A SUPPLIED DECODED PAGE of GET /orgs/{org}/actions/runners?per_page=&page=, the
+// value the typed rest operation github.ActionsSelfHostedRunners ListOrganizationRunnersPage hands
+// back. The pure half (roster_page_read_from_wire) and the shared fold are exercised here; the
+// network exchange itself is the sweep mode's live dry run.
+
+fn entry(id: Int, name: String, status: String) -> OrganizationRunnerRosterEntryWire {
+  OrganizationRunnerRosterEntryWire {
+    id: id, name: name, os: "Linux", status: status, busy: false,
+    ephemeral: none, version: none,
+    labels: [OrganizationRunnerLabelWire { name: "self-hosted" }]
+  }
+}
+
+fn wire_page(total: Int, runners: List<OrganizationRunnerRosterEntryWire>) -> OrganizationRunnerRosterPageWire {
+  OrganizationRunnerRosterPageWire { total_count: total, runners: runners }
+}
+
+data org: NonEmptyStr = "gunb-ai"
+
+fn wire_read(page: PositiveInt, per_page: Int, wire: OrganizationRunnerRosterPageWire) -> OrganizationRunnerRosterPageRead {
+  roster_page_read_from_wire(org: org, page: page, per_page: per_page, wire: wire)
+}
+
+test fn a_page_short_of_total_count_continues_by_the_next_offset() -> Bool {
+  match wire_read(page: 1, per_page: 1, wire: wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")])) {
+    RosterPageDelivered { page: p, continuation: ContinuationNext { cursor: OffsetPage { page: n } } } => (n as Int) == 2 && length(xs: p.registrations) == 1
+    _ => false
+  }
+}
+
+test fn the_page_that_reaches_total_count_closes_the_listing() -> Bool {
+  match wire_read(page: 2, per_page: 1, wire: wire_page(total: 2, runners: [entry(id: 12, name: "b", status: "offline")])) {
+    RosterPageDelivered { page: _, continuation: ContinuationClosed } => true
+    _ => false
+  }
+}
+
+test fn an_empty_page_before_total_count_is_a_failure_not_a_closure() -> Bool {
+  match wire_read(page: 1, per_page: 1, wire: wire_page(total: 5, runners: [])) {
+    RosterPageFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unrecognized_status_refuses_the_page() -> Bool {
+  match wire_read(page: 1, per_page: 100, wire: wire_page(total: 1, runners: [entry(id: 11, name: "a", status: "paused")])) {
+    RosterPageFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unnamed_label_refuses_the_page() -> Bool {
+  let bad = OrganizationRunnerRosterEntryWire {
+    id: 11, name: "a", os: "Linux", status: "online", busy: false, ephemeral: none, version: none,
+    labels: [OrganizationRunnerLabelWire { name: "" }]
+  }
+  match wire_read(page: 1, per_page: 100, wire: wire_page(total: 1, runners: [bad])) {
+    RosterPageFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+data rest_scripted: List<OrganizationRunnerRosterPageWire> = []
+
+fn scripted_fetch(pages: List<OrganizationRunnerRosterPageWire>) -> fn(PageCursor) -> OrganizationRunnerRosterPageRead {
+  fn(c) {
+    match c {
+      OffsetPage { page: n } => match get(xs: pages, index: (n as Int) - 1) {
+        Present { value: w } => wire_read(page: n, per_page: 1, wire: w)
+        Absent => RosterPageFailed { cause: "no scripted page" }
+      }
+      LinkNext { target: _ } => RosterPageFailed { cause: "a Link cursor reached the offset fetch" }
+      _ => RosterPageFailed { cause: "an opaque cursor reached the offset fetch" }
+    }
+  }
+}
+
+fn rest_report(pages: List<OrganizationRunnerRosterPageWire>) -> OrganizationRunnerRosterReport {
+  classify_roster_walk(
+    walk: roster_walk_pump_by(walk: roster_walk_begin(), fetch: scripted_fetch(pages: pages)),
+    observed_on: "2026-10-18" as NonEmptyStr
+  )
+}
+
+// THE SHARED CLASSIFIER IS THE ONE THAT RUNS: two pages that close and agree are Observed.
+test fn a_two_page_offset_walk_that_closes_is_observed() -> Bool {
+  match rest_report(pages: [
+    wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")]),
+    wire_page(total: 2, runners: [entry(id: 12, name: "b", status: "offline")]),
+  ]).evidence {
+    RosterObserved { observed_on: _, registrations: regs } => length(xs: regs) == 2
+    _ => false
+  }
+}
+
+// total_count DISAGREEMENT ACROSS PAGES IS PARTIAL ON THE REST WALK TOO: same classifier, no copy.
+test fn offset_pages_disagreeing_on_total_count_are_partial_not_observed() -> Bool {
+  match rest_report(pages: [
+    wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")]),
+    wire_page(total: 1, runners: [entry(id: 12, name: "b", status: "offline")]),
+  ]).evidence {
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
+    _ => false
+  }
+}
+
+// A SHIFTED OFFSET WALK (the same runner read on two pages) cannot complete the roster.
+test fn a_row_repeated_across_offset_pages_is_not_observed() -> Bool {
+  match rest_report(pages: [
+    wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")]),
+    wire_page(total: 2, runners: [entry(id: 11, name: "a", status: "online")]),
+  ]).evidence {
+    RosterObserved { observed_on: _, registrations: _ } => false
+    _ => true
+  }
+}
+
+// THE gh REALIZATION STILL FOLDS THROUGH THE SAME WALK. roster_walk_pump (what the observe mode,
+// apply and the capacity realize read) is roster_walk_pump_by over fetch_roster_page_via, so a
+// supplied gh response yields the same report either way.
+data gh_first_target: String = "orgs/gunb-ai/actions/runners?per_page=100"
+data gh_one_runner_page: String = "HTTP/2.0 200 OK\nContent-Type: application/json\n\n\{\"total_count\":1,\"runners\":[\{\"id\":11,\"name\":\"a\",\"os\":\"Linux\",\"status\":\"online\",\"busy\":false,\"labels\":[\{\"name\":\"self-hosted\"}]}]}"
+
+fn gh_respond(t: NonEmptyStr) -> RosterTransportResponse {
+  RosterTransportAnswered { stdout: gh_one_runner_page, stderr: "" }
+}
+
+data gh_listing: OrganizationRunnerListing = OrganizationRunnerListing {
+  scope: OrganizationRunnerScope { login: "gunb-ai" as NonEmptyStr, id: none },
+  page_size: github_max_page_size
+}
+
+test fn the_gh_walk_and_the_generalized_walk_agree_over_a_supplied_response() -> Bool {
+  let direct = classify_roster_walk(
+    walk: roster_walk_pump(listing: gh_listing, walk: roster_walk_begin(), respond: gh_respond),
+    observed_on: "2026-10-18" as NonEmptyStr
+  )
+  let general = classify_roster_walk(
+    walk: roster_walk_pump_by(walk: roster_walk_begin(), fetch: fn(c) { fetch_roster_page_via(listing: gh_listing, cursor: c, respond: gh_respond) }),
+    observed_on: "2026-10-18" as NonEmptyStr
+  )
+  match direct.evidence {
+    RosterObserved { observed_on: _, registrations: a } => match general.evidence {
+      RosterObserved { observed_on: _, registrations: b } => length(xs: a) == 1 && length(xs: b) == 1 && direct.pages_read == general.pages_read
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// NO TOKEN IN A REFUSAL CAUSE: a status refusal reports the status, never the response body, which
+// may echo the Authorization header or a credential.
+test fn a_status_refusal_cause_does_not_echo_the_body() -> Bool {
+  let cause = rest_page_refusal_cause(page: 1, refusal: RestStatusRefused { status: 401, body: "Bad credentials ghs_SECRETTOKEN" }) as String
+  string_contains(s: cause, pattern: "401") && !string_contains(s: cause, pattern: "SECRETTOKEN")
+}
+
+// ONE CREDENTIAL SOURCE FOR THE SWEEP STEP: its script carries no org-admin prelude (which exports
+// GH_TOKEN and GUNBC_ORG_ADMIN_TOKEN), while a step built with that prelude does -- the positive
+// control that the probe can see it.
+fn prelude_marker() -> String {
+  "GUNBC_ORG_ADMIN_TOKEN"
+}
+
+test fn the_sweep_step_has_no_prelude_credential_path() -> Bool {
+  let sweep = gunbc_ci_service_runner_lost_boot_sweep_invoke()
+  let with_prelude = gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+  string_contains(s: with_prelude, pattern: prelude_marker())
+    && !string_contains(s: sweep, pattern: prelude_marker())
+    && !string_contains(s: sweep, pattern: "GH_TOKEN")
+}
+
+// THE LADDER IS ONE FUNCTION FOR BOTH TRANSPORTS (registration_from_fields), so a refusal the json
+// route owes the typed route owes too.
+test fn a_negative_id_refuses_the_page() -> Bool {
+  match wire_read(page: 1, per_page: 100, wire: wire_page(total: 1, runners: [entry(id: -3, name: "a", status: "online")])) {
+    RosterPageFailed { cause: _ } => true
+    _ => false
+  }
+}

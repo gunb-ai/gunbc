@@ -1,0 +1,35 @@
+module extdeps.gpu.nvidia_a16
+
+import std.measure { Micrometer, micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA A16 PCIe GPU Accelerator product brief PB-10518-001_v02, March 2022, read 2026-10-19.
+// Table 1 states SKU PG171 (NVPN 699-2G171-0200-xxx), passive thermal solution, and mechanical form
+// factor "Full-height, full-length (FHFL) 10.5", dual-slot". It publishes no dimension drawing, no
+// thickness and no airflow requirement; "Airflow Direction Support" states only that the heat sink
+// is bidirectional. The A16 is ONE board carrying FOUR GA107 GPUs, so it is deliberately not a
+// GpuModelCatalogRow, whose fields describe a single GPU.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "images.nvidia.com/content/Solutions/data-center/vgpu-a16-product-brief.pdf"
+  }
+}
+
+// 10.5 inches is exactly 266.7 mm. The brief does not say whether the figure includes the I/O
+// bracket; a consumer comparing it with a drawn outline must carry that ambiguity, not resolve it.
+data a16_stated_length: Micrometer = micrometer(count: 266700)
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu.nvidia_a16",
+      decl_name: "a16_stated_length",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

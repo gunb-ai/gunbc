@@ -37,6 +37,7 @@ fn w_row(source: String, start: Int, end: Int, thousandths: Int) -> VastAiCharge
     source: source,
     description: "GPU instance rental",
     amount: ExactDecimal { units: thousandths, fraction_digits: 3 },
+    metadata: none,
     items: [],
   }
 }

@@ -27,7 +27,7 @@ import gunbc.site.gunb_ai_tokens {
   token_border_strong, token_text, token_text_body, token_text_dim, token_text_faint,
   token_accent, token_accent_deep, token_callout, token_callout_deep,
   token_highlight, token_highlight_deep,
-  gunb_measure_page, measure_prose,
+  gunb_measure_page, site_measure_prose,
   gap_sm, gap_md, gap_lg, gap_xl, scale_body, scale_heading, scale_label, font_body,
   role_var, token_swatches, token_root_decls,
 }
@@ -332,7 +332,7 @@ fn shell_rules(grid: GridChoice) -> List<BuildRule> {
       decl(prop: Color, value: role_var(t: token_text)),
     ] },
     StaticRule { selector: ClassSelector { name: "lede" }, decls: [
-      decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
+      decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
       decl(prop: Color, value: role_var(t: token_text_dim)),
     ] },
     StaticRule { selector: ClassSelector { name: "cards" }, decls: [
@@ -424,7 +424,7 @@ fn auto_wire() -> String {
 // (§3: one home; a token read here but not listed is a witness gap, and the list is
 // derived from the same rows the rules use, so it cannot drift).
 fn layout_scale_tokens() -> List<ScaleToken> {
-  [gunb_measure_page, measure_prose, gap_sm, gap_md, gap_lg, gap_xl,
+  [gunb_measure_page, site_measure_prose, gap_sm, gap_md, gap_lg, gap_xl,
    scale_body, scale_heading, scale_label, font_body, border_1, card_min]
 }
 

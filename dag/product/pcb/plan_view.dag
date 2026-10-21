@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import std.markup { Fragment, FragmentText, Element, RawNode }
+import std.markup { Fragment, FragmentText, Element, RawNode, Serialized, Rejected }
 import std.affine_space { signed_frame_component_count }
 import std.orthogonal_geometry {
   AxisAlignedRectangle2,
@@ -80,6 +80,11 @@ type OutlineExtent {
 type PcbSceneRefusal
   = PcbSceneWorldRefused { cause: PcbWorldRefusal }
   | PcbSceneSubjectDropped { identity: NonEmptyStr }
+  // The SVG serializer can refuse: it now checks, at the moment it writes, that no comment ends its own
+  // comment and no raw-text content ends its element. A scene whose markup refuses is a refused scene with
+  // the serializer's reason on it -- not a scene with an empty document, which would be a PCB viewer that
+  // renders nothing and reports success.
+  | PcbSceneMarkupRefused { reason: String }
 
 type PcbSceneConstruction<T>
   = PcbSceneReady { value: T }
@@ -336,6 +341,7 @@ fn fragment_text_labels(frag: Fragment) -> List<NonEmptyStr> {
         [c as NonEmptyStr]
       }
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
     Element { tag: _, attributes: _, children: kids } =>
       fold(kids, init: [], f: fn(acc, k) {
         concat(acc, fragment_text_labels(frag: k))
@@ -378,18 +384,18 @@ fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
       match first_unrepresented_scene_identity(scene: scene, represented: scene_fragment_labels(frags: fragments)) {
         Present { value: id } => PcbSceneRefused { cause: PcbSceneSubjectDropped { identity: id } }
         Absent =>
-          PcbSceneReady {
-            value: pcb_plan_view_scene(
-              world: w,
-              document: serialize_svg_document(
-                doc: svg_document(
-                  view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
-                  class_name: "pcb-world-scene",
-                  aria_label: "PCB plan view",
-                  children: concat([svg_style(css: plan_view_stylesheet())], fragments),
-                )
-              ),
+          match serialize_svg_document(
+            doc: svg_document(
+              view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
+              class_name: "pcb-world-scene",
+              aria_label: "PCB plan view",
+              children: concat([svg_style(css: plan_view_stylesheet())], fragments),
             )
+          ) {
+            Serialized { html: document } =>
+              PcbSceneReady { value: pcb_plan_view_scene(world: w, document: document) }
+            Rejected { reason: why } =>
+              PcbSceneRefused { cause: PcbSceneMarkupRefused { reason: why } }
           }
       }
   }
