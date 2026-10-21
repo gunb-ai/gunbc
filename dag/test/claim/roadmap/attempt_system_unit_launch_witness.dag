@@ -49,7 +49,10 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 }
 import gunbc.live_deploy.lab_host_plan { lab_plan_worker_sandbox_choice, SystemManagerLauncherSelected, LabPlanRefused, LabOsUnobserved }
 import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.spool_stall { SpoolStallEntry }
 import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptUnitDrainPass, attempt_unit_pass_retired, AttemptUnitAnswered, AttemptUnitAnswerUnwritten,
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
   attempt_system_unit_start_admitted,
   attempt_system_unit_privileged_effect, attempt_system_unit_instance_for_root,
@@ -954,4 +957,36 @@ test fn a_gunbc_running_service_in_a_slice_the_apply_never_installs_is_found_uns
 
 test fn a_gunbc_running_service_in_an_installed_slice_with_no_memory_max_is_found_unsliced() -> Bool {
   !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=gunbc-unbounded.slice\n"))
+}
+
+fn fresh_drain_pass() -> AttemptUnitDrainPass {
+  AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
+}
+
+// A refusal is an answer: the pass counts it and its exit stays success. POSITIVE CONTROL: a started request.
+test fn a_refused_request_is_counted_and_does_not_fail_the_pass() -> Bool {
+  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: "start request is truncated" })
+  pass.refused == 1 && pass.retired == 1 && exit_is_success(e: pass.exit)
+}
+
+test fn a_started_request_is_retired_without_a_refusal() -> Bool {
+  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: "" })
+  pass.refused == 0 && pass.retired == 1 && exit_is_success(e: pass.exit)
+}
+
+// RED: the drain failing at its job (no answer written) fails the pass, and stays failed past later refusals.
+test fn a_request_whose_answer_cannot_be_written_fails_the_pass() -> Bool {
+  let failed = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswerUnwritten { reason: "k: the answer could not be written" })
+  let later = attempt_unit_pass_retired(pass: failed, handled: AttemptUnitAnswered { refusal: "x" })
+  match later.exit {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written") && later.refused == 1
+    ExitSuccess => false
+  }
+}
+
+fn exit_is_success(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
 }
