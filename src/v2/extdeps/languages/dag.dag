@@ -1048,15 +1048,22 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
 // nothing else can follow, so that guard is unconditional. `true` and `false` are literal PATTERNS, so the
 // field-pattern guard does not refuse them.
 fn dag_grammar_value_name_keyword_terminal(admit_bool_literals: Bool) -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_value_name_keyword_tokens(admit_bool_literals: admit_bool_literals),
-    right: dag_grammar_keyword_expr(lexeme: "none")
-  )
+  if admit_bool_literals {
+    dag_grammar_value_name_keyword_tokens(admit_bool_literals: admit_bool_literals)
+  } else {
+    dag_grammar_choice(
+      left: dag_grammar_value_name_keyword_tokens(admit_bool_literals: admit_bool_literals),
+      right: dag_grammar_keyword_expr(lexeme: "none")
+    )
+  }
 }
 
 // `none` is an identifier TOKEN, not a keyword token class, but it is reserved the same way: the
 // none_literal production owns the word, so every binder position refuses it through this one terminal
 // (dag_absence_is_one_meaning) rather than through a second local check. A field LABEL is not read here.
+// The field-pattern VALUE position (admit_bool_literals: true) admits `none` as it admits `true` / `false`:
+// the corpus writes the absence pattern there, and a native pattern-position `none` is the declared
+// follow-up (PR body), so that position is left as it was rather than refused.
 fn dag_grammar_value_name_keyword_tokens(admit_bool_literals: Bool) -> GrammarExpr {
   fold_list(
     xs: dag_binding_name_keyword_tokens(),
