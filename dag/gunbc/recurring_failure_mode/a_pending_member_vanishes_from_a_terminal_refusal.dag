@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_pending_member_vanishes_from_a_terminal_re
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pending_member_vanishes_from_a_terminal_refusal: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pending_member_vanishes_from_a_terminal_refusal" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a fold over N obligations collects refusing causes and keeps only a Bool for the pending ones, so once any obligation refuses and the verdict becomes TERMINAL, every obligation still pending is simply absent** -- the report reads as complete and names one cause where the run owed several.",

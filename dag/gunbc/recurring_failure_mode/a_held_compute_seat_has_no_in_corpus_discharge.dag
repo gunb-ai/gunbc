@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_held_compute_seat_has_no_in_corpus_dischar
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = RecurringFailureMode {
   identity: "a_held_compute_seat_has_no_in_corpus_discharge" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a quantitative reservation is taken under a release law that never lapses, and the only path that returns it is the settlement of the run that took it. When that settlement cannot prove the unit is gone -- or cannot append at all -- the encumbrance stays Held and NO DECLARATION IN THE CORPUS CAN DISCHARGE IT. HARM: the host's compute pool shrinks by one grant per occurrence and never grows back; at gunbc.compute.host_capacity compute_pool_slots = 2, two occurrences consume the whole appropriation, after which every request is refused for capacity on a host with its memory free.",
