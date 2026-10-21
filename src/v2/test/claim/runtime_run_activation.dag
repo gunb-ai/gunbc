@@ -407,10 +407,13 @@ test fn rr_b_false_branch_runs_only_the_else_arm_holds() -> Bool {
     && rr_no_receipt_for(log: log, node: program_effect_io_roundtrip)
 }
 
-// (c) THE UNTAKEN EFFECT IS NOT PERFORMED, observed at the effect boundary rather than in the receipts: with no
-// effect handler, an effect that runs refuses. The true Branch's answer changes when the handler is removed (the
-// control: its effect runs), and the false Branch's does not (its effect never runs, on any path).
-test fn rr_c_untaken_effect_is_not_performed_holds() -> Bool {
+// (c) THE FALSE BRANCH'S ANSWER DOES NOT DEPEND ON THE EFFECT HANDLER: with no handler an effect that runs refuses,
+// so the true Branch's answer changes when the handler is removed (the control: its chosen effect runs) and the
+// false Branch's does not. This is a statement about the ROOT OUTCOME only. A run that also evaluated the untaken
+// effect and discarded its result would still pass here (measured: the all-alternatives mutation leaves this claim
+// green), because the pure effect fixture returns no record of its invocations; that the untaken effect never ran
+// at all is (b)'s receipt fact, which that mutation turns red.
+test fn rr_c_false_branch_answer_does_not_depend_on_the_effect_handler_holds() -> Bool {
   let with_true = rr_root_of(result: runtime_run(tree: rr_tree(root: program_pick_if_branch_with_effect_io), root: program_pick_if_branch_with_effect_io, context: rr_context()))
   let without_true = rr_root_of(result: runtime_run(tree: rr_tree(root: program_pick_if_branch_with_effect_io), root: program_pick_if_branch_with_effect_io, context: rr_context_without_effects()))
   let with_false = rr_root_of(result: runtime_run(tree: rr_tree(root: rr_false_site), root: rr_false_site, context: rr_context()))
