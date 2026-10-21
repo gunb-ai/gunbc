@@ -1196,21 +1196,35 @@ type SessionSlotRecords
   = SessionSlotRecordsRead { records: List<AttemptRecord>, unreadable: List<String> }
   | SessionSlotRecordsRefused { detail: String }
 
+// ONE READ PER SLOT: each key is read once into this classification, then records and unreadable are
+// projections of the same reads, so a slot that changes state mid-serve cannot appear in both lists or
+// neither, and the lists are built by flat_map rather than a copied accumulator.
+type SessionSlotObserved
+  = SessionSlotObservedHeld { record: AttemptRecord }
+  | SessionSlotObservedUnreadable { line: String }
+  | SessionSlotObservedAbsent
+
 fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlotRecords {
   match cas_slot_keys(root: stores.slots_root) {
-    CasSlotKeysListed { keys } =>
+    CasSlotKeysListed { keys } => {
+      let observed = map(keys, k => match attempt_slot_read(root: stores.slots_root, reference: k) {
+        AttemptSlotHeld { record: r, generation: _ } => SessionSlotObservedHeld { record: r }
+        AttemptSlotAbsent => SessionSlotObservedAbsent
+        AttemptSlotUnreadable { detail: d } => SessionSlotObservedUnreadable { line: join([k as String, ": ", d], "") }
+      })
       SessionSlotRecordsRead {
-        records: fold(keys, init: [], f: (acc, k) => match attempt_slot_read(root: stores.slots_root, reference: k) {
-          AttemptSlotHeld { record: r, generation: _ } => concat(acc, [r])
-          AttemptSlotAbsent => acc
-          AttemptSlotUnreadable { detail: _ } => acc
+        records: flat_map(observed, o => match o {
+          SessionSlotObservedHeld { record: r } => [r]
+          SessionSlotObservedUnreadable { line: _ } => []
+          SessionSlotObservedAbsent => []
         }),
-        unreadable: fold(keys, init: [], f: (acc, k) => match attempt_slot_read(root: stores.slots_root, reference: k) {
-          AttemptSlotUnreadable { detail: d } => concat(acc, [join([k as String, ": ", d], "")])
-          AttemptSlotHeld { record: _, generation: _ } => acc
-          AttemptSlotAbsent => acc
+        unreadable: flat_map(observed, o => match o {
+          SessionSlotObservedUnreadable { line: l } => [l]
+          SessionSlotObservedHeld { record: _ } => []
+          SessionSlotObservedAbsent => []
         }),
       }
+    }
     CasSlotKeysListingRefused { root: r, detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
     CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSlotRecordsRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
   }
