@@ -516,7 +516,7 @@ fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
 fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
-    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided and no argv was issued: ", why) }
+    SlotReadRefused { reason: _ } => activate_runner_slot_over(target: target, context: context, unit: unit)
     SlotRead { reading: r } =>
       if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
       else if slot_activation_read_back_holds(r: r) {
