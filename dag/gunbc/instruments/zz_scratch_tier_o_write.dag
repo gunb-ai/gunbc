@@ -1,0 +1,23 @@
+module gunbc.instruments.zz_scratch_tier_o_write
+
+import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
+import gunbc.tier_o_artifact_emit { tier_o_artifacts, tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
+
+fn write_one(a: GeneratedArtifact) -> String {
+  match tier_o_artifact_body(a: a) {
+    TierOArtifactNotTierO => "skip"
+    TierOArtifactRefused { reason } => concat("refused ", reason)
+    TierOArtifactProduced { content } => {
+      let w = Filesystem.Write(path: artifact_path(a: a), content: content)
+      if w.success { "ok" } else { concat("writefail ", w.error) }
+    }
+  }
+}
+
+fn main() -> ProcessExit {
+  let rs = map(tier_o_artifacts(), a => write_one(a: a))
+  exit_failure(reason: join(rs, ","))
+}
