@@ -3163,24 +3163,17 @@ fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> 
 // refuses it (ConstructorCallAdmissionRefused), which is the evidence the seal holds.
 // THE PRESEED HALF OF THE SERVED BUNDLE, RENDERED OR REFUSED. The debconf answer file is rendered from the seed's
 // intents; a seed that asks nothing carries NoDebconfQuestionsToAnswer and a seed that asks carries the exact text
-// that will be served. `cast_preseed_text` isolates the one place the rendered text is promised non-empty, so the
-// honest-but-unreachable cast-failure arm lives here once rather than being written inline in every caller.
-fn cast_preseed_text(intents: List<PackageIntent>) -> Optional<NonEmptyStr> {
-  seed_preseed_file(intents: intents) as NonEmptyStr
-}
-
-fn render_served_preseed(seed: AltraAutoinstallSeed) -> Optional<ServedPreseed> {
-  match seed_preseed_file(intents: all_package_intents(seed: seed)) == "" {
-    True => Present { value: NoDebconfQuestionsToAnswer }
-    // THE CAST CANNOT FAIL ON THIS ARM (the text is non-empty by the test above), and the arm is still written:
-    // the alternative is an unwritten arm the compiler fills by refusing to resolve, or a silent Absent the binder
-    // reads as "unservable seed". The day a renderer can produce non-empty text that will not cast, this arm
-    // becomes real and the refusal is already the right answer.
-    False =>
-      match cast_preseed_text(intents: all_package_intents(seed: seed)) {
-        Absent => Absent
-        Present { value: lines } => Present { value: DebconfAnswersCarried { lines: lines } }
-      }
+// that will be served. The emptiness is decided FIRST by the `== ""` guard, and only on the non-empty arm is the
+// rendered text cast to its non-empty type in argument position — the same total-cast-under-a-guard shape
+// rendered_document_digest uses for the sha hex. On the non-empty arm the cast cannot fail; if a renderer ever
+// learned to produce text that will not cast, the compiler refuses to resolve the fn rather than silently serving
+// a wrong-typed answer file, which is the honest outcome (an empty file is NoDebconfQuestionsToAnswer, never a
+// one-line file with an empty value).
+fn render_served_preseed(seed: AltraAutoinstallSeed) -> ServedPreseed {
+  let intents = all_package_intents(seed: seed)
+  match seed_preseed_file(intents: intents) == "" {
+    True => NoDebconfQuestionsToAnswer
+    False => DebconfAnswersCarried { lines: seed_preseed_file(intents: intents) as NonEmptyStr }
   }
 }
 
@@ -3197,8 +3190,7 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
         Absent => Absent
         Present { value: document } =>
           match render_served_preseed(seed: seed) {
-            Absent => Absent
-            Present { value: preseed } =>
+            preseed =>
               Present {
                 value: ServedSeedBundle {
                   user_data: content,
