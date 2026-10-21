@@ -256,21 +256,27 @@ test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
 // declaration carrying the real carrier in its comment) -- but never TOGETHER on one declaration
 // line. The per-line predicate refuses. This input is what the retired whole-text form would have
 // PASSED; it is the executed proof that the split is load-bearing and the guard is not a decoration.
+test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
+  let crossed = "module std.types\ntype List<element>\ntype Set<element> = FreeMonoid<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: crossed)
+}
+
 // THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (§3c; review 83623 finding 2). The first
 // version read substrings out of a description literal written a few lines above it -- a change
 // detector that went red only when someone edited that literal. This consumer tests the MECHANISM's
-// partition over typed evidence instead, in the corpus frontier idiom. dissolution_trigger_fired
-// discharges a DeclarationRetires trigger on ABSENCE, so the arms are:
-//   * [] (nothing present) -> the named debt (std.types.List) is absent -> FIRED.
-//   * [the exact debt ref] -> present -> PENDING (the second authority is still hand-written; the
-//     guard is still needed).
-//   * [a same-MODULE lookalike, std.types.Set] -> the EXACT ref (std.types,List) is still absent ->
-//     PENDING. Presence is keyed on the full (module_path, decl_name) pair (declaration_ref_in_list
-//     is structural equality), so a sibling in the same module does NOT make the named declaration
-//     present. This is the arm that separates a real keying from an "any decl in std.types" collapse:
-//     rebind the trigger's decl_name to Set and the SECOND arm goes red. It also cannot be satisfied
-//     by the guard's own deletion or by deleting the hand-written aliases (both leave the producer
-//     absent -> Pending -> guard still owed), which were the first two versions' defects.
+// partition over typed evidence instead, in the corpus frontier idiom (the firmware standing probe:
+// handing the frontier its producer ref flips it, withholding does not). dissolution_trigger_fired
+// discharges a DeclarationAppears trigger on PRESENCE, so the arms are:
+//   * [] (nothing present) -> the capability producer has not arrived -> PENDING (guard owed).
+//   * [the exact producer ref] -> present -> FIRED (the cure arrived; the guard retires with it).
+//   * [a same-MODULE lookalike, std.types.container_template_alias_rows -- a real declaration at
+//     std/types.dag:83] -> the EXACT ref is still absent -> PENDING. Presence is keyed on the full
+//     (module_path, decl_name) pair (declaration_ref_in_list is structural equality), so a sibling
+//     in the same module does NOT make the named declaration present. This is the arm that
+//     separates a real keying from an "any decl in std.types" collapse: rebind the trigger's
+//     decl_name to the lookalike and the SECOND arm goes red. Neither the guard's own deletion nor
+//     deleting the hand-written aliases can satisfy the trigger (both leave the producer absent ->
+//     Pending -> guard still owed), which is what the two retired versions' defects were.
 test fn the_dissolution_fires_only_when_the_capability_arrives() -> Bool {
   dissolution_status(condition: single_authority_alias_dissolve_on, present_decls: [])
     == DissolutionPending
