@@ -74,7 +74,19 @@ fn plant_parse_gate(root: String, lib_source: String) -> PlantedParseGate {
   }
 }
 
-fn parse_gate_args(dir: String) -> List<String> {
+// The refusal fires in the module-index walk, before any policy module is resolved, so the RED needs
+// only the planted root: walking `dag` as well cost ~42s of wall the refusal never reads. The control reaches
+// a verdict, and a verdict needs `gunbc.output_policy`, which resolves only from `dag`; that walk is
+// the control's irreducible cost.
+fn parse_gate_refusal_args(dir: String) -> List<String> {
+  [
+    "--source-root", dir,
+    "--entry", concat(dir, "/parse_gate_entry.dag"),
+    "--function", "parse_gate_entry_holds"
+  ]
+}
+
+fn parse_gate_verdict_args(dir: String) -> List<String> {
   [
     "--source-root", "dag",
     "--source-root", dir,
@@ -94,7 +106,7 @@ test fn an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line() 
       let result = gunbc.WitnessBin.Run(
         workdir: root,
         bin_path: concat(root, "/target/release/claim_batch"),
-        args: parse_gate_args(dir: dir)
+        args: parse_gate_refusal_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
@@ -119,7 +131,7 @@ test fn a_parseable_imported_module_reaches_a_real_pass_verdict() -> Bool {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
         bin_path: concat(root, "/target/release/claim_batch"),
-        args: parse_gate_args(dir: dir)
+        args: parse_gate_verdict_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
