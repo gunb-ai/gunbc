@@ -73,7 +73,7 @@ fn atom_grounding_node_evidence(inferred: InferredTree, n: Node) -> Optional<Nod
     Absent => Absent
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => Absent
+        GroundingNotDerived { node: _, site: _ } => Absent
         DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
       }
   }
@@ -101,7 +101,7 @@ fn atom_grounding_census_frontier(inferred: InferredTree) -> Int {
         Absent => acc
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => acc + 1
+            GroundingNotDerived { node: _, site: _ } => acc + 1
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -204,7 +204,7 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => true
+            GroundingNotDerived { node: _, site: _ } => true
             DerivedGrounding { grounding: _ } => false
           }
       }
@@ -271,7 +271,7 @@ test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool {
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => true
+            GroundingNotDerived { node: _, site: _ } => true
             DerivedGrounding { grounding: _ } => false
           }
       }

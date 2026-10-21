@@ -11,7 +11,7 @@ import gunbc.generated_artifact_producer_coverage {
   generated_artifact_producer_coverage_rendered,
   every_generated_artifact_producer_covered
 }
-import v2.std.decl_ref_resolution { DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, DeclarationRefFieldAbsent, DeclarationRefAmbiguous }
+import v2.std.decl_ref_resolution_host { DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, DeclarationRefFieldAbsent, DeclarationRefAmbiguous }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

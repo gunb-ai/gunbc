@@ -1,0 +1,13 @@
+module v2.test.claim.manual.ctor_tag_forge_predicate_red
+
+// Route 2: the predicate-taking entry must not exist. Written as a call so the refusal is the
+// ordinary resolve-time `not found in scope`, the same shape as any unknown function.
+
+import std.primitives { same_arm }
+
+type Fg2 = A { a: Int } | B { b: Bool } | C
+
+test fn r2_predicate_taking_entry_must_not_exist() -> Bool {
+  let forged = constructor_tag(accepts: fn(_w) { true })
+  same_arm(tag: forged, v: A { a: 1 }) && same_arm(tag: forged, v: B { b: true }) && same_arm(tag: forged, v: C)
+}
