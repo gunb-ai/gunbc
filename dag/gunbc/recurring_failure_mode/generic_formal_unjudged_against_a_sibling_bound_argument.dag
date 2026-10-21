@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.generic_formal_unjudged_against_a_sibling_bo
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.guarantee_rung { Mitigatable }
 
 data generic_formal_unjudged_against_a_sibling_bound_argument: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_formal_unjudged_against_a_sibling_bound_argument" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a direct call to a generic function whose type parameter is already FIXED by one argument admits a later argument of a different concrete type at a formal declared as that same parameter. Measured on main 7af52ea7e2 (entry compile of a scratch probe): `pair<U>(a: U, b: U)` called as `pair(a: Item { .. }, b: other())` with `other() -> Other` is admitted, and so is `list_snoc_item(xs: xs, item: other())` with `xs: List<Item>`. Each such argument raises only the advisory DeclaredTypeInhabitanceUndecided with reason UndecidableGenericFormal. The same argument at a CONCRETE formal (`take(b: Item)`) refuses DeclaredTypeNotInhabited in the same run, so refusal is reachable at the position and the admission is a gap, not a limit.",

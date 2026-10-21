@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.empty_grouping_key_silently_deletes_its_population
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data empty_grouping_key_silently_deletes_its_population: RecurringFailureMode = RecurringFailureMode {
   identity: "empty_grouping_key_silently_deletes_its_population" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "a non-empty key carrier for collector keys (`NonEmptyStr` already exists in `std.types`), so `skip when key is empty` fails to type-check and a deliberate omission must be an explicit arm that says so." } },
 
   receipts: [
     "an empty dedup or grouping key silently deletes its population (A COLLECTOR THAT DROPS ON A KEY PREDICATE DELETES EVERY MEMBER WHOSE KEY CAN BE EMPTY, and the deletion is indistinguishable at every consumer from the population being genuinely empty.",

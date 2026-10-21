@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.probe_keys_a_diagnostic_class_its_fixture_sh
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit: RecurringFailureMode = RecurringFailureMode {
   identity: "probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**a census probe keys its expected red on a diagnostic class the compiler does not emit for the fixture's shape, so a refused subject reads as unrefused** (INVALID STATE: one defect, a value that does not inhabit the declared type it crosses into, is reported under different classes by position and by the kind of the value. A mismatch at a return position, or a primitive actual at a call argument, reports `TypeMismatch`. A Product actual at a call argument reports `DeclaredTypeNotInhabited`. A probe counting `TypeMismatch` for the Product-argument shape reads 0 while the compile refuses.)",
     "HARM. The miss was read as a PATH defect: 'the census fixture path reaches less than `gunbc compile`'. That reading blocked enrolment of a real wall, gunbc#12375's obligated-tree bypass, as 'unauthorable on the fixture path' (DESIGN §4b), and dispatched a root-cause lane at the wrong boundary. The same key mismatch in the other direction is a vacuous green: an ExpectZeroDiagnostics-style assertion scoped to the wrong class passes over a refused source.",

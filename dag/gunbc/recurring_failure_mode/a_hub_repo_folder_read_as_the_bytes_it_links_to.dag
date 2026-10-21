@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_hub_repo_folder_read_as_the_bytes_it_links_to
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_hub_repo_folder_read_as_the_bytes_it_links_to: RecurringFailureMode = RecurringFailureMode {
   identity: "a_hub_repo_folder_read_as_the_bytes_it_links_to" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a Hugging Face repo folder read as the bytes it links to** (a repo folder's blobs/<hash> entry MAY be a symlink into a hub-level shared store, <cache_root>/blobs/<2 hex>/<sha256>, decided per file -- upstream shares Xet-backed files under the symlink cache and falls back to a repo-local blob where sharing fails -- so a size, copy, mount or hard link of the repo folder that does not dereference can read or hand out pointers rather than bytes).",
