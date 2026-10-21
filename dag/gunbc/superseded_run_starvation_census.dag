@@ -6,6 +6,8 @@ import std.algebra { Cons, Empty, trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs
 import extdeps.github.workflow_runs {
+  GitHubWorkflowRunId,
+  github_workflow_run_id_wire_text,
   WorkflowRun,
   WorkflowRunList,
   WorkflowRunPullRequest,
@@ -59,9 +61,9 @@ import std.page_fold {
 
 type SupersededRunPair {
   pull_request: Int
-  superseded_run: Int
+  superseded_run: GitHubWorkflowRunId
   superseded_head: String
-  live_head_run: Int
+  live_head_run: GitHubWorkflowRunId
   live_head: String
 }
 
@@ -75,7 +77,7 @@ type CensusReadEnvelope {
 }
 
 type CensusBoundaryObligation
-  = LeftBoundaryLookbackExhausted { pull_request: Int, earliest_observed_run: Int }
+  = LeftBoundaryLookbackExhausted { pull_request: Int, earliest_observed_run: GitHubWorkflowRunId }
 
 fn dead_head_start_standing(
   dead_first_job_started_at: Timestamp?,
@@ -129,7 +131,7 @@ type RefreshedPair {
 
 type RefreshResult
   = RefreshComplete { pair: RefreshedPair }
-  | JobListTruncated { run_id: Int, total_jobs: Int, returned_jobs: Int }
+  | JobListTruncated { run_id: GitHubWorkflowRunId, total_jobs: Int, returned_jobs: Int }
   | RefreshReadRefused { cause: NonEmptyStr }
 
 type RefreshPairsResult
@@ -144,7 +146,7 @@ type StartStandingRow {
 
 type CancellationRow {
   pr: Int
-  dead_run: Int
+  dead_run: GitHubWorkflowRunId
   cancelled_jobs: Int
   failed_jobs: Int
   queued_jobs: Int
@@ -552,12 +554,12 @@ fn refresh_pair(
     auth_token: auth_token,
     owner: owner,
     repo: repo,
-    run_id: pair.superseded_run as String,
+    run_id: github_workflow_run_id_wire_text(id: pair.superseded_run),
   ) {
     RestRefused { refusal } =>
       RefreshReadRefused {
         cause: census_read_refusal_cause(
-          operation: join(["github.WorkflowRuns.GetRun for run ", pair.superseded_run as String], ""),
+          operation: join(["github.WorkflowRuns.GetRun for run ", github_workflow_run_id_wire_text(id: pair.superseded_run)], ""),
           refusal: refusal,
         )
       }
@@ -566,12 +568,12 @@ fn refresh_pair(
         auth_token: auth_token,
         owner: owner,
         repo: repo,
-        run_id: pair.superseded_run as String,
+        run_id: github_workflow_run_id_wire_text(id: pair.superseded_run),
       ) {
         RestRefused { refusal } =>
           RefreshReadRefused {
             cause: census_read_refusal_cause(
-              operation: join(["github.WorkflowRuns.ListJobs for run ", pair.superseded_run as String], ""),
+              operation: join(["github.WorkflowRuns.ListJobs for run ", github_workflow_run_id_wire_text(id: pair.superseded_run)], ""),
               refusal: refusal,
             )
           }

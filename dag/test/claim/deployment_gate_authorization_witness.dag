@@ -1,5 +1,6 @@
 module test.claim.deployment_gate_authorization_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 // Witness file for the authorization decision behind "answer a pending environment gate for a run".
 // This is where the fixtures live; the production module gunbc.auth.deployment_gate_authorization
 // carries types and folds only, exactly as DESIGN §3 wants a deciding module to read.
@@ -202,7 +203,7 @@ data fork_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
   },
   environment_name: srv1_production_environment_name,
 }
-data gate_run_id: Int = 35447067113
+data gate_run_id: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }
 // THE CARRIERS, imported rather than invented: an installation id and an app id are typed upstream,
 // so the fixtures build the same types the model produces.
 data gate_app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
@@ -216,7 +217,7 @@ data other_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { 
 
 // What the WORKFLOW claims, filed by the earlier ungated job in the same run.
 data gate_claim: GateRequestClaim = GateRequestClaim {
-  run_id: 35447067113,
+  run_id: GitHubWorkflowRunId { value: 35447067113 },
   environment: gated_env,
   escalation_id: "srv1-gate-35447067113",
   request_revision: "rev-1",
@@ -602,7 +603,7 @@ data hostile_repo: NonEmptyStr = "gunbc/../other"
 // actually hold at the moment GitHub answers: the repository addressed, the body it posted, the status
 // it returned, and the sealed ownership that authorised the call. THE PATH IS NOT AN ARGUMENT — the mint
 // builds that route, which is the difference between checking a path and being unable to lie about one.
-fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt?
+fn fx_receipt(run_id: GitHubWorkflowRunId, state: ReviewState) -> AcceptedRuleReviewReceipt?
   admit_callers: [
   // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
@@ -670,7 +671,7 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt?
 fn fx_mint_probe(
   owner: NonEmptyStr,
   repo: NonEmptyStr,
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   environment_name: NonEmptyStr,
   intended: ReviewState,
   review: DeploymentProtectionRuleReview,
@@ -746,7 +747,7 @@ fn waiting_on(environment_name: NonEmptyStr, named: List<PendingDeploymentReview
 }
 
 // The run, as GitHub's record of it — the only way in, since a bare id verifies nothing.
-fn run_record(run_id: Int, settled: Bool, failed: Bool) -> WorkflowRunRecord {
+fn run_record(run_id: GitHubWorkflowRunId, settled: Bool, failed: Bool) -> WorkflowRunRecord {
   WorkflowRunRecord {
     run_id: run_id,
     event: "workflow_dispatch",
@@ -776,7 +777,7 @@ fn an_answerable_wait() -> PendingDeploymentWait {
 }
 
 fn an_in_flight_run() -> WorkflowRunRecord {
-  run_record(run_id: 35447067113, settled: false, failed: false)
+  run_record(run_id: GitHubWorkflowRunId { value: 35447067113 }, settled: false, failed: false)
 }
 
 // THE VERDICT'S NAME, as a fixture rather than a predicate over the sum: it goes through the decision
@@ -882,7 +883,7 @@ test fn a_wait_for_another_environment_is_never_answered() -> Bool {
        == "WaitNamesAnotherEnvironment"
 }
 
-// THE RUN MUTATION, AND THE SELF-COMPARISON IT REPLACES. verified_run_id: Int beside claim.run_id: Int
+// THE RUN MUTATION, AND THE SELF-COMPARISON IT REPLACES. verified_run_id: Int beside claim.run_id: GitHubWorkflowRunId
 // was the mistake: a caller that passed the claim's id straight through "verified" the run, and the
 // fold could not tell that from a real check. Now the caller supplies GitHub's RECORD, so an id that
 // GitHub's record does not carry is refused — and a concluded run is refused INSIDE the fold rather
@@ -891,7 +892,7 @@ test fn a_run_the_submission_did_not_file_is_never_answered() -> Bool {
   answerable_refusal_name() == "BrokerMayAnswer"
     && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
-         run: run_record(run_id: 35447067114, settled: false, failed: false),
+         run: run_record(run_id: GitHubWorkflowRunId { value: 35447067114 }, settled: false, failed: false),
          claim: gate_claim,
          ownership: minted_ownership()
        )
@@ -901,14 +902,14 @@ test fn a_run_the_submission_did_not_file_is_never_answered() -> Bool {
     // and a Bool made them one.
     && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
-         run: run_record(run_id: 35447067113, settled: true, failed: false),
+         run: run_record(run_id: GitHubWorkflowRunId { value: 35447067113 }, settled: true, failed: false),
          claim: gate_claim,
          ownership: minted_ownership()
        )
        == "TheRunHasConcluded"
     && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
-         run: run_record(run_id: 35447067113, settled: true, failed: true),
+         run: run_record(run_id: GitHubWorkflowRunId { value: 35447067113 }, settled: true, failed: true),
          claim: gate_claim,
          ownership: minted_ownership()
        )
@@ -949,7 +950,7 @@ test fn the_app_answers_its_own_rule_while_a_human_reviewer_is_configured() -> B
     && (match fx_mint_probe(
       owner: gate_owner,
       repo: gate_repo,
-      run_id: 35447067113,
+      run_id: GitHubWorkflowRunId { value: 35447067113 },
       environment_name: gated_env,
       intended: Approved,
       review: DeploymentProtectionRuleReview {
@@ -967,7 +968,7 @@ test fn the_app_answers_its_own_rule_while_a_human_reviewer_is_configured() -> B
     && (match fx_mint_probe(
       owner: gate_owner,
       repo: gate_repo,
-      run_id: 35447067114,
+      run_id: GitHubWorkflowRunId { value: 35447067114 },
       environment_name: gated_env,
       intended: Rejected,
       review: DeploymentProtectionRuleReview {
@@ -1053,7 +1054,7 @@ test fn when_several_checks_would_refuse_the_first_one_in_order_is_reported() ->
     wait: waiting_on(
       environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
     ),
-    run: run_record(run_id: 35447067114, settled: true, failed: true),
+    run: run_record(run_id: GitHubWorkflowRunId { value: 35447067114 }, settled: true, failed: true),
     claim: gate_claim,
     capability: gate_capability(decision: ProposeApprove),
     ownership: unattributed_ownership()
@@ -1106,7 +1107,7 @@ test fn when_several_checks_would_refuse_the_first_one_in_order_is_reported() ->
 // A FILING whose ATTEMPT is not the one the capability fixture authenticated — the fourth fault, so the
 // ordering test can break all four checks at once without duplicating the capability record.
 data tap_from_another_request: GateRequestClaim = GateRequestClaim {
-  run_id: 35447067113,
+  run_id: GitHubWorkflowRunId { value: 35447067113 },
   environment: gated_env,
   escalation_id: "srv1-gate-35447067113",
   request_revision: "rev-1",
@@ -1567,8 +1568,8 @@ test fn the_documented_example_is_not_our_gate() -> Bool {
 // Split into three tests on purpose: this file's reds are the seal, and a 200-line conjunction that
 // returns false tells a reader nothing about which shortcut got through.
 test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from() -> Bool {
-  match fx_receipt(run_id: 35447067113, state: Approved) {
-    Present { value: good_approve } => match fx_receipt(run_id: 35447067114, state: Rejected) {
+  match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved) {
+    Present { value: good_approve } => match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067114 }, state: Rejected) {
       Present { value: good_reject } =>
         match admit_reviewer_removal(
           approved: Present { value: good_approve },
@@ -1608,7 +1609,7 @@ test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
       })
     // ONE ARM MISSING, NAMED.
     && (match admit_reviewer_removal(
-          approved: fx_receipt(run_id: 35447067113, state: Approved),
+          approved: fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
           rejected: none,
           boundary: srv1_deployment_gate_boundary,
         ) {
@@ -1622,7 +1623,7 @@ test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
 // the "both arms witnessed" claim would be satisfied by two approvals — the run that shows nothing about
 // refusing.
 test fn an_approving_arm_dressed_as_the_rejecting_arm_is_refused() -> Bool {
-  match fx_receipt(run_id: 35447067113, state: Approved) {
+  match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved) {
     Present { value: good_approve } =>
       match admit_reviewer_removal(
         approved: Present { value: good_approve },
@@ -1641,8 +1642,8 @@ test fn an_approving_arm_dressed_as_the_rejecting_arm_is_refused() -> Bool {
 // carry the rule and installation identity, so nothing but the run-id comparison refuses it.
 test fn one_dispatch_dressed_as_two_trials_is_refused() -> Bool {
   match admit_reviewer_removal(
-    approved: fx_receipt(run_id: 35447067113, state: Approved),
-    rejected: fx_receipt(run_id: 35447067113, state: Rejected),
+    approved: fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
+    rejected: fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Rejected),
     boundary: srv1_deployment_gate_boundary,
   ) {
     RemovalRefused { missing: BothArmsOneDispatch } => true
@@ -1656,8 +1657,8 @@ test fn one_dispatch_dressed_as_two_trials_is_refused() -> Bool {
 // gcp-iam-bootstrap — sleek-bee-335 gates that one with this same rule). A pair witnessed elsewhere must
 // not unlock this one's reviewer.
 test fn a_pair_witnessed_on_another_environment_unlocks_nothing_here() -> Bool {
-  match fx_receipt(run_id: 35447067113, state: Approved) {
-    Present { value: good_approve } => match fx_receipt(run_id: 35447067114, state: Rejected) {
+  match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved) {
+    Present { value: good_approve } => match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067114 }, state: Rejected) {
       Present { value: good_reject } =>
         match admit_reviewer_removal(
           approved: Present { value: good_approve },
@@ -1707,7 +1708,7 @@ test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
   match fx_mint_probe(
     owner: gate_owner,
     repo: gate_repo,
-    run_id: 35447067113,
+    run_id: GitHubWorkflowRunId { value: 35447067113 },
     environment_name: gated_env,
     intended: Approved,
     review: DeploymentProtectionRuleReview {
@@ -1735,7 +1736,7 @@ test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
   match fx_mint_probe(
     owner: gate_owner,
     repo: gate_repo,
-    run_id: 35447067113,
+    run_id: GitHubWorkflowRunId { value: 35447067113 },
     environment_name: gated_env,
     intended: Approved,
     review: DeploymentProtectionRuleReview {
@@ -1762,7 +1763,7 @@ test fn the_mint_refuses_the_right_run_on_an_unread_repository() -> Bool {
   match fx_mint_probe(
     owner: gate_owner,
     repo: other_repo,
-    run_id: 35447067113,
+    run_id: GitHubWorkflowRunId { value: 35447067113 },
     environment_name: gated_env,
     intended: Approved,
     review: DeploymentProtectionRuleReview {
@@ -1797,7 +1798,7 @@ test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
   match fx_mint_probe(
     owner: gate_owner,
     repo: hostile_repo,
-    run_id: 35447067113,
+    run_id: GitHubWorkflowRunId { value: 35447067113 },
     environment_name: gated_env,
     intended: Approved,
     review: DeploymentProtectionRuleReview {
@@ -1831,7 +1832,7 @@ test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
 // observed pair to agree, and then writes the OBSERVED pair into the receipt — so a receipt cannot
 // survive as evidence for a repository that was never read, even if some third source named it.
 test fn the_receipt_carries_the_observed_repository_not_the_callers() -> Bool {
-  match fx_receipt(run_id: 35447067113, state: Approved) {
+  match fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved) {
     Present { value: receipt } =>
       (receipt.owner as String) == "gunb-ai" && (receipt.repo as String) == "gunbc"
     none => false
@@ -1883,7 +1884,7 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
   match fx_mint_probe(
     owner: gate_owner,
     repo: gate_repo,
-    run_id: 35447067113,
+    run_id: GitHubWorkflowRunId { value: 35447067113 },
     environment_name: gated_env,
     intended: Approved,
     review: DeploymentProtectionRuleReview {
@@ -1931,7 +1932,7 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
   (match fx_mint_probe(
          owner: gate_owner,
          repo: gate_repo,
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          environment_name: gated_env,
          intended: Rejected,
          review: DeploymentProtectionRuleReview {
@@ -1960,7 +1961,7 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
     && (match fx_mint_probe(
            owner: gate_owner,
            repo: gate_repo,
-           run_id: 35447067113,
+           run_id: GitHubWorkflowRunId { value: 35447067113 },
            environment_name: gated_env,
            intended: Approved,
            review: DeploymentProtectionRuleReview {
@@ -1983,7 +1984,7 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
     && (match fx_mint_probe(
            owner: gate_owner,
            repo: gate_repo,
-           run_id: 35447067113,
+           run_id: GitHubWorkflowRunId { value: 35447067113 },
            environment_name: gated_env,
            intended: Approved,
            review: DeploymentProtectionRuleReview {
@@ -2003,8 +2004,8 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
     // admission it would otherwise have unlocked.
     && (match admit_reviewer_removal(
            boundary: srv1_deployment_gate_boundary,
-           approved: fx_receipt(run_id: 35447067113, state: Approved),
-           rejected: fx_receipt(run_id: 35447067114, state: Approved),
+           approved: fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
+           rejected: fx_receipt(run_id: GitHubWorkflowRunId { value: 35447067114 }, state: Approved),
          ) {
            RemovalRefused { missing: RejectingArmWasNotARejection } => true
            RemovalRefused { missing: _ } => false
@@ -2018,7 +2019,7 @@ test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
   (match fx_mint_probe(
          owner: gate_owner,
          repo: gate_repo,
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          environment_name: gated_env,
          intended: Approved,
          review: DeploymentProtectionRuleReview {

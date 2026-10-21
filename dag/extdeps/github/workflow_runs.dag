@@ -72,6 +72,51 @@ type WorkflowRunPullRequest {
   number: Int
 }
 
+// THE ONE CARRIER FOR GITHUB'S WORKFLOW RUN ID (the `id` of a workflow run, the `run_id` of a job, the
+// `workflow_run_id` of a dispatch receipt, the `{run_id}` path parameter). GitHub's wire sends it as an
+// integer, so the carrier is { value: Int } like the sibling record ids (GitHubAppId,
+// GitHubAppInstallationId, GitHubRepositoryId in extdeps.github.app; GitHubDeploymentProtectionRuleId
+// beside the rule). It is a distinct NOMINAL type: a rule id, an installation id or a bare Int at a
+// position holding this carrier is refused, and the converse. (A carrier given BY REFERENCE at a
+// position declared Int is accepted today, gunbc.recurring_failure_mode
+// product_value_at_a_scalar_formal_is_accepted, so every run-id position holds THIS type and not Int;
+// test.claim.workflow_run_id_axis_witness executes both halves.)
+//
+// WHY HERE. Each record id lives with its upstream object, and the run is this module's object
+// (WorkflowRun, WorkflowJobRun). The import edges are facts of the tree at this head: this module
+// imports extdeps.github.errors, extdeps.github.github and extdeps.github.workflow_runs_contracts;
+// github imports github_contracts; none of those reaches actions_runs, workflows,
+// deployment_protection_rule or workflow_run_event, which are the consumers and import this module.
+//
+// THE WIRE IS DECIMAL TEXT IN PATHS AND IN THE ACTIONS ENVIRONMENT, AN INTEGER IN JSON. The two
+// conversions below are the only ones: one decode (text to carrier), one encode (carrier to text).
+// std.types WorkflowRunId, a branded string that was never GitHub's id, is deleted; there is no
+// string-shaped run identity beside this one.
+//
+// POSITIVITY. GitHub run ids are positive; that is an upstream wire fact, so its single check is here
+// and every consumer calls it. { value: Int } still REPRESENTS zero and negatives, so this is a
+// validation rung (4b: mechanically preventable), not a construction one; the where-refinements that
+// could make it unwritable are unenforced today, and the restoration trigger is a positive-Int
+// refinement the compiler enforces at construction. The decode refuses a non-positive value.
+type GitHubWorkflowRunId {
+  value: Int,
+}
+
+fn github_workflow_run_id_is_positive(id: GitHubWorkflowRunId) -> Bool {
+  id.value > 0
+}
+
+fn github_workflow_run_id_wire_text(id: GitHubWorkflowRunId) -> String {
+  id.value as String
+}
+
+fn github_workflow_run_id_from_wire_text(text: String) -> GitHubWorkflowRunId? {
+  match parse_int(s: text) {
+    Present { value: n } => if n > 0 { Present { value: GitHubWorkflowRunId { value: n } } } else { none }
+    _ => none
+  }
+}
+
 // FIVE FIELDS THE RESPONSE CARRIES THAT NO CONSUMER COULD READ. actor, triggering_actor,
 // event, head_branch and run_attempt are all in GitHub's workflow-run response and were absent
 // from this projection, so a .dag consumer asking "which actor triggered this, on what event,
@@ -89,7 +134,7 @@ type WorkflowRunPullRequest {
 // person who approved. A model carrying only one of them cannot distinguish an ordinary
 // execution from a released one.
 type WorkflowRun {
-  id: Int
+  id: GitHubWorkflowRunId
   name: String?
   display_title: String?
   path: String?
@@ -204,7 +249,7 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // this tree written before the fields existed carries none rather than a guessed value.
 type WorkflowJobRun {
   id: Int
-  run_id: Int
+  run_id: GitHubWorkflowRunId
   run_attempt: Int
   name: String
   status: WorkflowRunStatus

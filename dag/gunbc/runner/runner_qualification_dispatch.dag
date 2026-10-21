@@ -27,6 +27,7 @@ import extdeps.github.expressions {
 }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
+  GitHubWorkflowRunId,
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
@@ -566,7 +567,7 @@ fn dispatch_qualification_floor(
 type QualificationRunRefusal
   = RunReadUnreadable { refusal: RestExchangeRefusal }
   | RunCollectedUnderAnotherInstallation { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
-  | RunSubjectMismatch { observed_run_id: Int, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
+  | RunSubjectMismatch { observed_run_id: GitHubWorkflowRunId, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
   | RunAdvancedPastDispatchedAttempt { observed_attempt: Int }
   | RunRevisionNotPinned { pinned: CommitSha, observed: CommitSha }
   | RunOnAnotherBranch { pinned: NonEmptyStr, observed: String? }
@@ -591,7 +592,7 @@ type CollectedQualificationRun sole_constructor {
 
 type QualificationRunCollection
   = QualificationRunCollected { collected: CollectedQualificationRun }
-  | QualificationRunRefused { run_id: Int, refusal: QualificationRunRefusal }
+  | QualificationRunRefused { run_id: GitHubWorkflowRunId, refusal: QualificationRunRefusal }
 
 fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
   match c {
@@ -666,7 +667,7 @@ fn decide_floor_job(subject: QualificationRunExpectation, run: WorkflowRun, conc
 
 fn decide_qualification_run(
   subject: QualificationRunExpectation,
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   run_read: RestResult<WorkflowRun>,
   jobs_read: RestResult<WorkflowJobRunList>,
 ) -> QualificationRunVerdict {
@@ -722,14 +723,14 @@ fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: Gi
 // the_real_mint_admits_the_attempt_through_the_sealed_subject), not a property of an effectful path
 // no test can reach.
 type QualificationCollectionRead
-  = ReadQualificationRun { run_id: Int }
-  | ReadQualificationAttemptJobs { run_id: Int, attempt: Int }
+  = ReadQualificationRun { run_id: GitHubWorkflowRunId }
+  | ReadQualificationAttemptJobs { run_id: GitHubWorkflowRunId, attempt: Int }
 
 type QualificationCollectionPlan
   = CollectionRefusedBeforeAnyRead { refusal: QualificationRunRefusal }
-  | CollectionReadsPlanned { run_id: Int, attempt: Int }
+  | CollectionReadsPlanned { run_id: GitHubWorkflowRunId, attempt: Int }
 
-fn plan_qualification_collection(subject: QualificationDispatchSubject, run_id: Int, token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId) -> QualificationCollectionPlan {
+fn plan_qualification_collection(subject: QualificationDispatchSubject, run_id: GitHubWorkflowRunId, token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId) -> QualificationCollectionPlan {
   if !token_names_registration(token_app: token_app, token_installation: token_installation, subject: subject) {
     CollectionRefusedBeforeAnyRead {
       refusal: RunCollectedUnderAnotherInstallation { token_app: token_app, token_installation: token_installation },
@@ -1091,7 +1092,7 @@ fn conclude_claim_cost_download(artifact_id: Int, archive: RestResult<Bytes>) ->
   }
 }
 
-fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> ClaimCostArtifactRead
+fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> ClaimCostArtifactRead
   uses net: Network
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments_under"),
@@ -1137,18 +1138,18 @@ type QualificationCollectOutcome
 // on what the collector reads.
 type CollectRead
   = ReadFloorJobLog { job_id: Int }
-  | ReadRunArtifacts { run_id: Int }
+  | ReadRunArtifacts { run_id: GitHubWorkflowRunId }
 
 type CollectReadPlan
   = CollectReadsRefused { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
-  | CollectReadsPlanned { job_id: Int, run_id: Int }
+  | CollectReadsPlanned { job_id: Int, run_id: GitHubWorkflowRunId }
 
 fn collect_read_plan(
   subject: QualificationDispatchSubject,
   token_app: DeclaredGitHubApp,
   token_installation: GitHubAppInstallationId,
   floor_job_id: Int,
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
 ) -> CollectReadPlan {
   if token_names_registration(token_app: token_app, token_installation: token_installation, subject: subject) {
     CollectReadsPlanned { job_id: floor_job_id, run_id: run_id }

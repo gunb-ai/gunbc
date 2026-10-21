@@ -1,5 +1,6 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
 import std.algebra { Cons, Empty }
@@ -196,24 +197,24 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77))) == 0
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: 77))) == 0
-                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
+                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
                   CollectReadsRefused { token_app: _, token_installation: _ } => true
                   CollectReadsPlanned { job_id: _, run_id: _ } => false
                 })
-                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
-                  CollectReadsPlanned { job_id: 501, run_id: 77 } => true
+                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
+                  CollectReadsPlanned { job_id: 501, run_id: GitHubWorkflowRunId { value: 77 } } => true
                   _ => false
                 })
-                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
-                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: other_installation_id))) == 0
-                && (match plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation) {
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: s.registration.app, token_installation: other_installation_id))) == 0
+                && (match plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: gunbai_ci_declared, token_installation: s.registration.installation) {
                   CollectionRefusedBeforeAnyRead { refusal: RunCollectedUnderAnotherInstallation { token_app: a, token_installation: _ } } => a == gunbai_ci_declared
                   _ => false
                 })
-                && (match planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: s.registration.installation)) {
-                  Cons { head: ReadQualificationRun { run_id: 77 }, tail: Cons { head: ReadQualificationAttemptJobs { run_id: 77, attempt: 1 }, tail: Empty {} } } => true
+                && (match planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: s.registration.app, token_installation: s.registration.installation)) {
+                  Cons { head: ReadQualificationRun { run_id: GitHubWorkflowRunId { value: 77 } }, tail: Cons { head: ReadQualificationAttemptJobs { run_id: GitHubWorkflowRunId { value: 77 }, attempt: 1 }, tail: Empty {} } } => true
                   _ => false
                 })
                 && (s.host as String) == (h.host as String)
@@ -462,7 +463,7 @@ fn mutation_standing(refusal: RestRefusal) -> QualificationDispatchStanding {
 }
 
 data dispatch_receipt: WorkflowDispatchReceipt = WorkflowDispatchReceipt {
-  workflow_run_id: 77,
+  workflow_run_id: GitHubWorkflowRunId { value: 77 },
   run_url: "https://api.github.com/repos/gunb-ai/gunbc/actions/runs/77" as NonEmptyStr,
   html_url: "https://github.com/gunb-ai/gunbc/actions/runs/77" as NonEmptyStr,
 }
@@ -527,7 +528,7 @@ fn dispatched_run(attempt_n: Int) -> WorkflowRun {
 fn job(id: Int, name: String, runner_id: Int, runner: String, started: Bool, attempt_n: Int) -> WorkflowJobRun {
   WorkflowJobRun {
     id: id,
-    run_id: 77,
+    run_id: GitHubWorkflowRunId { value: 77 },
     run_attempt: attempt_n,
     name: name,
     status: Completed,
@@ -550,7 +551,7 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
 }
 
 fn decide_run(r: WorkflowRun, js: WorkflowJobRunList) -> QualificationRunVerdict {
-  decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: r }, jobs_read: RestAnswered { answer: js })
+  decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestAnswered { answer: r }, jobs_read: RestAnswered { answer: js })
 }
 
 fn decide_jobs(js: WorkflowJobRunList) -> QualificationRunVerdict {
@@ -637,11 +638,11 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
       RunVerdictRefused { refusal: RunJobsTruncated { returned: rt, total: t } } => rt == 1 && t == 2
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestRefused { refusal: RestTransportRefused { cause: "fixture" } }, jobs_read: RestAnswered { answer: floor }) {
+    && (match decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestRefused { refusal: RestTransportRefused { cause: "fixture" } }, jobs_read: RestAnswered { answer: floor }) {
       RunVerdictRefused { refusal: RunReadUnreadable { refusal: _ } } => true
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: dispatched_run(attempt_n: 1) }, jobs_read: RestRefused { refusal: RestStatusRefused { status: 404, body: "fixture" } }) {
+    && (match decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestAnswered { answer: dispatched_run(attempt_n: 1) }, jobs_read: RestRefused { refusal: RestStatusRefused { status: 404, body: "fixture" } }) {
       RunVerdictRefused { refusal: RunJobsUnreadable { refusal: _ } } => true
       _ => false
     })

@@ -7,6 +7,7 @@ import std.types { NonEmptyStr, Secret, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.transports.rest { RestResult }
 
@@ -28,7 +29,7 @@ data workflows_api_version: NonEmptyStr = "2026-03-10"
 // response schema, read 2026-08-01.
 
 type WorkflowDispatchReceipt {
-  workflow_run_id: Int
+  workflow_run_id: GitHubWorkflowRunId
   run_url: NonEmptyStr
   html_url: NonEmptyStr
 }
