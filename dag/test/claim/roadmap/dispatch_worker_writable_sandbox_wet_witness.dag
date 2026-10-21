@@ -188,9 +188,9 @@ fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path:
 }
 
 // The same-shape positive control for the refused cells: the worker unit shape must RUN a touch that
-// is allowed, or no refusal from it counts. It writes under the attempt log directory and cleans up.
+// is allowed, or no refusal from it counts. It writes a dedicated path in the worker directory that nothing else names (systemd itself opens worker-stdout.log, so that file proves nothing about touch) and cleans up.
 fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance) -> Bool {
-  let control = join([probe_worker_dir(instance: instance), "/worker-stdout.log"], "")
+  let control = join([probe_worker_dir(instance: instance), "/.gunbc-worker-control-probe"], "")
   sandbox_touch_wrote(
     instance: instance,
     unit: "gunbc-writable-probe-control.service" as NonEmptyStr,
@@ -235,7 +235,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let wt = probe_attempt_worktree(instance: inst)
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
-  let log_probe = join([scratch, "/worker-stdout.log"], "")
+  let log_probe = join([scratch, "/.gunbc-worker-write-probe"], "")
   prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,

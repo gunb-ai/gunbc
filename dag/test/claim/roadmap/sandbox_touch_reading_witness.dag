@@ -1,13 +1,13 @@
 module test.claim.roadmap.sandbox_touch_reading_witness
 
 import std.types { Bool }
-import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouchRan, SandboxTouchUnrunnable, SandboxTouchNeverRan, SandboxTouchWroteReading,
   SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
 }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Supplied exit statuses at the one boundary the direct write probes read. Status 218 is what srv1's
 // systemd 255 user manager returns for the worker shape (EXIT_CAPABILITIES): the OLD reading
@@ -36,6 +36,13 @@ test fn a_failed_touch_whose_path_exists_and_a_success_and_a_transport_refusal_a
       }
       _ => false
     }
+    _ => false
+  }
+}
+
+test fn a_zero_status_with_the_path_absent_from_the_host_is_not_a_write() -> Bool {
+  match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 0 }, path_present: false) {
+    SandboxTouchInconclusive => true
     _ => false
   }
 }

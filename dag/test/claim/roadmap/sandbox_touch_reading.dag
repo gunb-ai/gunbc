@@ -11,7 +11,7 @@ type SandboxTouch
 // A DIRECT-PROBE READING keeps three facts apart: the unit never executed the touch (systemd failed
 // its exec setup, e.g. status 218 EXIT_CAPABILITIES on srv1's user manager, or the transport
 // refused), the touch ran and wrote, and the touch ran and was refused. Only the last is a refusal,
-// and it needs the touch's own failure status (coreutils touch exits 1) AND the probe path absent
+// a write needs status 0 AND the path present in the host's view (status 0 with the path absent wrote into a view the target does not share), and a refusal needs the touch's own failure status (coreutils touch exits 1) AND the probe path absent
 // afterwards; an unlisted nonzero status is neither wrote nor refused.
 type SandboxTouchReading
   = SandboxTouchNeverRan
@@ -26,7 +26,7 @@ fn sandbox_touch_reading_of(touch: SandboxTouch, path_present: Bool) -> SandboxT
       match exec_setup_failure_of_status(status: exit_code) {
         Present { value: _ } => SandboxTouchNeverRan
         Absent =>
-          if exit_code == 0 { SandboxTouchWroteReading }
+          if exit_code == 0 && path_present { SandboxTouchWroteReading }
           else if exit_code == 1 && !path_present { SandboxTouchRefusedReading }
           else { SandboxTouchInconclusive }
       }
