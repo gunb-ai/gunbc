@@ -1282,70 +1282,6 @@ mod compiler_tests {
     /// the merge path.
     #[test]
     #[ignore]
-    fn scratch_subtraction() {
-        let dir = std::env::var("SUB_DIR").unwrap();
-        let mut paths: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .collect();
-        paths.sort();
-        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
-        for path in paths {
-            let source = std::fs::read_to_string(&path).unwrap();
-            let name = source
-                .lines()
-                .find(|l| l.starts_with("module "))
-                .unwrap()
-                .trim_start_matches("module ")
-                .trim()
-                .replace('.', "_");
-            let sources = match crate::cli_run::resolve_virtual_source_with_imports(
-                "fixture.dag",
-                &source,
-                &module_index,
-            ) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("SUB {} RESOLVE-ERR {}", path.display(), e);
-                    continue;
-                }
-            };
-            let result = crate::v1_compiler_compile::compile_sources(
-                std::rc::Rc::new(sources.into()),
-                crate::v1_compiler_artifact::RenderTarget::Rust,
-            );
-            let hard: Vec<String> = result
-                .diagnostics
-                .iter()
-                .filter(|d| crate::cli_run::compile_clean_diagnostic_is_hard(d))
-                .map(|d| format!("{d:?}"))
-                .collect();
-            let mut refused = vec![];
-            for f in result.files.iter() {
-                if f.content.contains("shared layer refused")
-                    && format!("{:?}", f.path).contains(&name)
-                {
-                    for l in f
-                        .content
-                        .lines()
-                        .filter(|l| l.contains("shared layer refused"))
-                    {
-                        refused.push(l.chars().take(200).collect::<String>());
-                    }
-                }
-            }
-            eprintln!(
-                "SUB {} hard={} refused={} {:?}",
-                path.display(),
-                hard.len(),
-                refused.len(),
-                refused.first()
-            );
-        }
-    }
-
-    #[test]
-    #[ignore]
     fn fixture_closure_rustc_discrimination() {
         let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
@@ -1776,105 +1712,6 @@ mod compiler_tests {
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
             crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
-        );
-    }
-
-    /// Statement-position match lowering, subject `v1.compiler.emit_rust` `emit_rust_block_stmts`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    fn an_ambiguous_leaf_whose_declarations_disagree_on_layer_refuses() {
-        let ident = |owner: &str| {
-            crate::v1_compiler_infer_emit_info::type_decl_identity(
-                owner.to_string(),
-                "Word64".to_string(),
-            )
-        };
-        let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-        for owner in ["a", "b"] {
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "Word64".to_string(),
-                shaped_type_node("Word64", Vec::new()),
-            );
-        }
-        let mut one = im::OrdSet::new();
-        one.insert(ident("a"));
-        let red = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(one.clone()),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        match &*red {
-            crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
-                assert_eq!(leaf.as_str(), "Word64");
-                assert_eq!(cause.as_str(), "TypeDeclLeafAmbiguous");
-            }
-            _ => panic!("disagreeing declarations of one leaf must refuse, never be guessed"),
-        }
-        let mut both = one;
-        both.insert(ident("b"));
-        let agree = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(both),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        assert!(
-            matches!(
-                &*agree,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "declarations that agree answer their shared layer"
-        );
-        let none = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(im::OrdSet::new()),
-            "Word64".to_string(),
-            index,
-        );
-        assert!(
-            matches!(
-                &*none,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "declarations that all sit at the value layer answer the value layer"
-        );
-    }
-
-    /// A USER TYPE SPELLED `FreeMonoid` is not the std native alias: it must not answer `SharedLayerAtShared`
-    /// through the container-template key. The positive control is the `std.algebra` declaration, which does.
-    #[test]
-    fn a_user_type_spelled_freemonoid_does_not_answer_shared() {
-        let mut set = im::OrdSet::new();
-        set.insert("FreeMonoid".to_string());
-        let shared = std::rc::Rc::new(set);
-        let answer = |owner: &str| {
-            let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "FreeMonoid".to_string(),
-                shaped_type_node("FreeMonoid", Vec::new()),
-            );
-            crate::v1_compiler_emit_rust::shared_layer_of_leaf(
-                shared.clone(),
-                "FreeMonoid".to_string(),
-                index,
-                std::rc::Rc::new(Vec::new().into()),
-            )
-        };
-        assert!(
-            matches!(
-                &*answer("user.mod"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "a user FreeMonoid is at the value layer"
-        );
-        assert!(
-            matches!(
-                &*answer("std.algebra"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "the std.algebra declaration answers the shared layer"
         );
     }
 
@@ -4711,28 +4548,15 @@ mod compiler_tests {
         let empty_shared = std::rc::Rc::new(im::OrdSet::new());
         assert_eq!(
             crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                empty_shared.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index()
+                empty_shared.clone()
             ),
             "Option<NonEmptyDiagnostics>"
         );
         let mut shared_ned_inner = im::OrdSet::new();
-        shared_ned_inner.insert(crate::v1_compiler_infer_emit_info::type_decl_identity(
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-        ));
-        let declared_ned = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-            shaped_type_node("NonEmptyDiagnostics", Vec::new()),
-        );
+        shared_ned_inner.insert("NonEmptyDiagnostics".to_string());
         let shared_ned = std::rc::Rc::new(shared_ned_inner);
         assert_eq!(
-            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                shared_ned,
-                declared_ned
-            ),
+            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),
             "Option<Rc<NonEmptyDiagnostics>>"
         );
         assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(
@@ -4873,7 +4697,6 @@ mod compiler_tests {
             source_indices,
             variant_to_enum,
             env,
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             !rendered.contains('.'),
@@ -4905,7 +4728,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(populated_env_value),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert_eq!(
             populated, "Box<Time>",
@@ -4918,7 +4740,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             crate::v1_compiler_infer_env::empty_type_env(),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
@@ -5948,7 +5769,6 @@ mod compiler_tests {
                 source_indices.clone(),
                 std::rc::Rc::new(HashMap::new()),
                 observed_env.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
             )
         };
         let red = render(shaped_type_node("Optional", Vec::new()));
@@ -6421,7 +6241,9 @@ mod compiler_tests {
                     graph,
                     std::rc::Rc::new(source_indices),
                     intern_table_p.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -6621,7 +6443,9 @@ mod compiler_tests {
                     norm.graph.clone(),
                     source_indices.clone(),
                     intern_table_fp.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_elapsed = t.elapsed();
                 let type_errors: usize = typed
                     .diagnostics

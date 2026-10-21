@@ -8,6 +8,7 @@ pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_generated_provider::GeneratedProviderDemand;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -3233,84 +3234,30 @@ pub fn census_heads_node(
     children: Rc<Vec<Rc<Node>>>,
     body: Option<Rc<Node>>,
 ) -> Rc<Node> {
-    {
-        let __rb_0_0 = node.occurrence_identity.clone();
-        let __rb_1_0 = node.name.clone();
-        let __rb_2_0 = node.ident.clone();
-        let __rb_3_0 = node.span.clone();
-        let __rb_4_0 = node.ident_span.clone();
-        let __rb_5_0 = children.clone();
-        let __rb_6_0 = node.connective.clone();
-        let __rb_7_0 = node.params.clone();
-        let __rb_8_0 = node.inferred.clone();
-        let __rb_9_0 = node.return_cardinality.clone();
-        let __rb_10_0 = Rc::new(vec![]);
-        let __rb_11_0 = body.clone();
-        let __rb_12_0 = node.transport.clone();
-        let __rb_13_0 = node.properties.clone();
-        let __rb_14_0 = node.type_annotation.clone();
-        let __rb_15_0 = node.is_self_recursive.clone();
-        let __rb_16_0 = node.has_non_tail_self_call.clone();
-        let __rb_17_0 = std::option::Option::None;
-        let __rb_18_0 = node.module_item_kind.clone();
-        let __rb_19_0 = node.declaration_marker.clone();
-        let __rb_20_0 = node.declaration.clone();
-        let __rb_21_0 = Rc::new(ExprData::NoExprData);
-        let mut __rb_h = node;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
+        name: node.name.clone(),
+        ident: node.ident.clone(),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: Rc::new(vec![]),
+        body: body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: std::option::Option::None,
+        module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
 }
 
 pub fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
@@ -3578,6 +3525,7 @@ pub fn stage0_self_compile_refusal_message(
 pub struct ResolvedPipelineResult {
     pub graph: Option<Rc<ResolvedGraph>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub provider_demands: Rc<Vec<Rc<GeneratedProviderDemand>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub complexity: Rc<ComplexityReport>,
     pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
@@ -3601,6 +3549,7 @@ pub fn compile_to_resolved_with_options(
             std::option::Option::None => Rc::new(ResolvedPipelineResult {
                 graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
+                provider_demands: Rc::new(vec![]),
                 source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: crate::v1_compiler_complexity::empty_complexity_report(),
                 ownership: Rc::new(vec![]),
@@ -3619,11 +3568,12 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let typed = crate::v1_compiler_infer::reconcile(
+                let pass = crate::v1_compiler_infer::reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                let typed = pass.graph.clone();
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
                 let complexity = if options.analyze_complexity.clone() {
@@ -3654,6 +3604,7 @@ pub fn compile_to_resolved_with_options(
                         ),
                         test_reference_diags.clone(),
                     ),
+                    provider_demands: pass.provider_demands.clone(),
                     source_indices: source_indices.clone(),
                     complexity: complexity.clone(),
                     ownership: ownership.clone(),

@@ -50,6 +50,10 @@ pub use crate::std_coercion::{
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
+use crate::std_generated_provider::GeneratedProviderUnavailableCause::*;
+pub use crate::std_generated_provider::{
+    generated_provider_unavailable_message, GeneratedProviderUnavailableCause,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -641,6 +645,11 @@ pub enum CompilerDiagnostic {
         route: String,
         span: Rc<SourceSpan>,
     },
+    GeneratedProviderUnavailable {
+        declaration: Rc<DeclarationRef>,
+        cause: GeneratedProviderUnavailableCause,
+        span: Rc<SourceSpan>,
+    },
     AlgebraApplicationEvidenceUnavailable {
         receiver_type: String,
         argument_index: i64,
@@ -1022,6 +1031,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { span: s, .. } => s.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
@@ -1101,6 +1111,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text crossing with no implicit route: expected ".to_string(), e.clone()), ", got ".to_string()), g.clone()), " -- host text and a code-point sequence meet only through a declared conversion plan; call ".to_string()), r.clone()), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)".to_string()),
+    CompilerDiagnostic::GeneratedProviderUnavailable { declaration: d, cause: c, .. } => crate::std_generated_provider::generated_provider_unavailable_message(d.clone(), c.clone()),
     CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position: p, .. } => v1_rt::concat(v1_rt::concat("text boundary unjudged at ".to_string(), p.clone()), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
@@ -1266,6 +1277,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::GeneratedProviderUnavailable { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -3848,90 +3863,36 @@ pub fn transport_env(
 }
 
 pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
-    {
-        let __rb_0_0 = node.occurrence_identity.clone();
-        let __rb_1_0 = node.name.clone();
-        let __rb_2_0 = node.ident.clone();
-        let __rb_3_0 = node.span.clone();
-        let __rb_4_0 = node.ident_span.clone();
-        let __rb_5_0 = Rc::new({
+    Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
+        name: node.name.clone(),
+        ident: node.ident.clone(),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: Rc::new({
             let mut __result = Vec::new();
             for child in node.children.clone().iter().cloned() {
                 __result.push(transform(child.clone()));
             }
             __result
-        });
-        let __rb_6_0 = node.connective.clone();
-        let __rb_7_0 = node.params.clone();
-        let __rb_8_0 = node.inferred.clone();
-        let __rb_9_0 = node.return_cardinality.clone();
-        let __rb_10_0 = node.uses.clone();
-        let __rb_11_0 = node.body.clone();
-        let __rb_12_0 = node.transport.clone();
-        let __rb_13_0 = node.properties.clone();
-        let __rb_14_0 = node.type_annotation.clone();
-        let __rb_15_0 = node.is_self_recursive.clone();
-        let __rb_16_0 = node.has_non_tail_self_call.clone();
-        let __rb_17_0 = node.match_pattern.clone();
-        let __rb_18_0 = node.module_item_kind.clone();
-        let __rb_19_0 = node.declaration_marker.clone();
-        let __rb_20_0 = node.declaration.clone();
-        let __rb_21_0 = node.expr_data.clone();
-        let mut __rb_h = node;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+        }),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: node.uses.clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(),
+        module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
+        expr_data: node.expr_data.clone(),
+    })
 }
 
 pub fn expr_has_self_call(
@@ -5417,165 +5378,57 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
 }
 
 pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
-    {
-        let __rb_0_0 = n.occurrence_identity.clone();
-        let __rb_1_0 = n.name.clone();
-        let __rb_2_0 = n.ident.clone();
-        let __rb_3_0 = n.span.clone();
-        let __rb_4_0 = n.ident_span.clone();
-        let __rb_5_0 = n.children.clone();
-        let __rb_6_0 = n.connective.clone();
-        let __rb_7_0 = n.params.clone();
-        let __rb_8_0 = n.inferred.clone();
-        let __rb_9_0 = Cardinality::CardOptional;
-        let __rb_10_0 = n.uses.clone();
-        let __rb_11_0 = n.body.clone();
-        let __rb_12_0 = n.transport.clone();
-        let __rb_13_0 = n.properties.clone();
-        let __rb_14_0 = n.type_annotation.clone();
-        let __rb_15_0 = n.is_self_recursive.clone();
-        let __rb_16_0 = n.has_non_tail_self_call.clone();
-        let __rb_17_0 = n.match_pattern.clone();
-        let __rb_18_0 = n.module_item_kind.clone();
-        let __rb_19_0 = n.declaration_marker.clone();
-        let __rb_20_0 = n.declaration.clone();
-        let __rb_21_0 = n.expr_data.clone();
-        let mut __rb_h = n;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: Cardinality::CardOptional,
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
 }
 
 pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
-    {
-        let __rb_0_0 = n.occurrence_identity.clone();
-        let __rb_1_0 = n.name.clone();
-        let __rb_2_0 = n.ident.clone();
-        let __rb_3_0 = n.span.clone();
-        let __rb_4_0 = n.ident_span.clone();
-        let __rb_5_0 = n.children.clone();
-        let __rb_6_0 = n.connective.clone();
-        let __rb_7_0 = n.params.clone();
-        let __rb_8_0 = n.inferred.clone();
-        let __rb_9_0 = Cardinality::Required;
-        let __rb_10_0 = n.uses.clone();
-        let __rb_11_0 = n.body.clone();
-        let __rb_12_0 = n.transport.clone();
-        let __rb_13_0 = n.properties.clone();
-        let __rb_14_0 = n.type_annotation.clone();
-        let __rb_15_0 = n.is_self_recursive.clone();
-        let __rb_16_0 = n.has_non_tail_self_call.clone();
-        let __rb_17_0 = n.match_pattern.clone();
-        let __rb_18_0 = n.module_item_kind.clone();
-        let __rb_19_0 = n.declaration_marker.clone();
-        let __rb_20_0 = n.declaration.clone();
-        let __rb_21_0 = n.expr_data.clone();
-        let mut __rb_h = n;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: Cardinality::Required,
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
 }
 
 pub fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {

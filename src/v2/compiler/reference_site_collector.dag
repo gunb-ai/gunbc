@@ -40,6 +40,8 @@ import v2.compiler.lexical_scope {
   ChildSeesParentValuesAndUndecided,
   ChildSeesParentValuesBeyondCurrentArm,
   ChildValueScope,
+  arrow_slot,
+  arrow_slot_is_carried,
   child_value_scope,
   declaration_names_value,
   module_root_bindings,
@@ -185,7 +187,9 @@ fn reference_sites_in_edge(
         )
       }
     StructuralLabel { label: _ } =>
-      if dag_surface_module_header_metadata_edge(e: edge) {
+      // A slot resolve carries unchanged (v2.compiler.lexical_scope arrow_slot_is_carried: the declared
+      // order, the contract metadata) is never resolved, so it is not a mention and demands no module.
+      if dag_surface_module_header_metadata_edge(e: edge) || arrow_slot_is_carried(slot: arrow_slot(e: edge, ordinal: 0)) {
         acc
       } else {
         reference_sites_in_node(
