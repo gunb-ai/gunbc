@@ -59,7 +59,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
@@ -1028,7 +1028,7 @@ fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, exit: ProcessExit) -> A
 
 fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: SpoolStallStep, cause: String) -> AttemptUnitDrainPass {
   AttemptUnitDrainPass {
-    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))),
+    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))),
     retired: pass.retired,
     unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
   }
