@@ -10,7 +10,7 @@ import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
 import v2.compiler.occurrence_role { AtomOccurrenceRole, OccurrenceRolesRead, OccurrenceRoleTableRefused, dag_name_table_admission, occurrence_role_index, occurrence_roles_of_admitted }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
-import v2.compiler.reference_conservation { authored_occurrence_of }
+import v2.compiler.reference_conservation { authored_occurrence_of, authored_occurrence_of_identity }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -18,7 +18,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
-import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, ProductionEdge, CoreMarker, symbol_lexeme, ComputationNode, TypeNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation, Value, Transform, Branch, Loop, Bind, Match }
+import v2.std.node { DeclaresAt, NotADeclaration, Authored, Edge, Node, Positional, StructuralLabel, ProductionEdge, CoreMarker, symbol_lexeme, ComputationNode, TypeNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation, Value, Transform, Branch, Loop, Bind, Match }
 import v2.std.text { String }
 import std.algebra { map_lookup, string_contains }
 import std.integer { int_to_decimal_string }
@@ -71,6 +71,30 @@ fn edge_text(edge: Edge) -> String {
   }
 }
 
+fn edge_declaration_row(edge: Edge, depth: Int, spelling: String, index: Map<OccurrenceId, AtomOccurrenceRole>) -> List<String> {
+  match edge.declaration {
+    NotADeclaration => []
+    DeclaresAt { occurrence: occ } =>
+      match edge.label {
+        Authored { name: n } =>
+          if symbol_lexeme(sym: n) == spelling {
+            match map_lookup(m: index, key: authored_occurrence_of_identity(identity: occ)) {
+              Absent => ["E" + int_to_decimal_string(value: depth) + "/miss"]
+              Present { value: r } =>
+                match r.role {
+                  DeclarationRole => ["E" + int_to_decimal_string(value: depth) + "/DECL"]
+                  ReferenceRole => ["E" + int_to_decimal_string(value: depth) + "/REF"]
+                }
+            }
+          } else {
+            []
+          }
+        StructuralLabel { label: _ } => []
+        Positional => []
+      }
+  }
+}
+
 fn atoms_of(acc: List<String>, node: Node, depth: Int, via: String, spelling: String, index: Map<OccurrenceId, AtomOccurrenceRole>) -> List<String> {
   let here = match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -81,7 +105,7 @@ fn atoms_of(acc: List<String>, node: Node, depth: Int, via: String, spelling: St
       }
     Absent => []
   }
-  fold(node.children, init: fold_list(xs: here, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), f: fn(inner, edge) { atoms_of(acc: inner, node: edge.target, depth: depth + 1, via: edge_text(edge: edge), spelling: spelling, index: index) })
+  fold(node.children, init: fold_list(xs: here, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), f: fn(inner, edge) { atoms_of(acc: fold_list(xs: edge_declaration_row(edge: edge, depth: depth, spelling: spelling, index: index), empty: inner, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), node: edge.target, depth: depth + 1, via: edge_text(edge: edge), spelling: spelling, index: index) })
 }
 
 fn joined(xs: List<String>) -> String {
