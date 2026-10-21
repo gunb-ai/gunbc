@@ -3164,11 +3164,10 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
             value: ServedSeedBundle {
                 user_data: content,
                 preseed: NoDebconfQuestionsToAnswer,
-                bundle_digest:
-                  served_bundle_digest(
-                    document: rendered_document_digest(content: content),
-                    preseed: NoDebconfQuestionsToAnswer,
-                  ),
+                bundle_digest: served_bundle_digest(
+                  document: rendered_document_digest(content: content),
+                  preseed: NoDebconfQuestionsToAnswer,
+                ),
               },
           }
         False =>
@@ -3184,11 +3183,10 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
                 value: ServedSeedBundle {
                     user_data: content,
                     preseed: DebconfAnswersCarried { lines: lines },
-                    bundle_digest:
-                      served_bundle_digest(
-                        document: rendered_document_digest(content: content),
-                        preseed: DebconfAnswersCarried { lines: lines },
-                      ),
+                    bundle_digest: served_bundle_digest(
+                      document: rendered_document_digest(content: content),
+                      preseed: DebconfAnswersCarried { lines: lines },
+                    ),
                   },
               }
           }
@@ -3891,11 +3889,10 @@ fn record_supplied_served_document(
     attempt: attempt,
     supplied_user_data: supplied_user_data,
     supplied_preseed: supplied_preseed,
-    supplied_bundle_digest:
-      served_bundle_digest(
-        document: rendered_document_digest(content: supplied_user_data),
-        preseed: supplied_preseed,
-      ),
+    supplied_bundle_digest: served_bundle_digest(
+      document: rendered_document_digest(content: supplied_user_data),
+      preseed: supplied_preseed,
+    ),
     supplied_from: supplied_from,
   }
 }
