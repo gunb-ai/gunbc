@@ -5,11 +5,8 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
-import gunbc.firmware_network_boot_standing {
-  BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, SecureBootEnabled, BiosVersionObserved,
-  ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized,
-  BootOrderEntry, FirmwareBootObservation, FirmwareReadRefused, Refused, firmware_network_boot_standing,
-}
+import gunbc.firmware_network_boot_standing { BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, BiosVersionObserved, BootOrderEntry, FirmwareBootObservation, FirmwareReadRefused, Refused, firmware_network_boot_standing }
+import gunbc.secure_boot_observation { SecureBootEnabled, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis, BootOptionsAxis,
   DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, supplied_probe_input, BmcResponded, firmware_boot_family_rows,

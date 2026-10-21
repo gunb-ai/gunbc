@@ -48,9 +48,10 @@ test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
   }
 }
 
-// RED: no part of one root appears under another. Every residential id is absent from the duct and
-// every duct id from the residential cassette.
-test fn w_roots_do_not_share_part_ids() -> Bool {
+// RED: the duct and the residential cassette share no part id. This is a claim about that pair only;
+// the rack review and the residential cassette overlap by design, and the prepared-root digest
+// (w_the_prepared_root_is_bound_by_the_manifest_digest) is what keeps overlapping roots apart.
+test fn w_duct_and_residential_cassette_share_no_part_ids() -> Bool {
   match selected(root: ResidentialCassette) {
     Present { value: c } => match selected(root: A16InletDuct) {
       Present { value: d } =>
@@ -78,6 +79,7 @@ test fn w_duct_manifest_names_its_root_and_keepout() -> Bool {
     Present { value: a } => {
       let m = serialize_json(v: printable_manifest(a: a))
       string_contains(s: m, pattern: "\"root\": \"a16-inlet-duct\"") && string_contains(s: m, pattern: "\"required_keepouts\": [\"POWER-KEEPOUT\"]")
+        && string_contains(s: m, pattern: "\"presentation\": {\"axes\": ")
     }
     Absent => false
   }
