@@ -321,6 +321,10 @@ fn ownership_with_enabled_for_owner(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_on_another_repository"
     ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_environment"
+    ),
       decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
@@ -1246,6 +1250,10 @@ fn protection_for(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_environment"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
     ),
 ]
@@ -1429,6 +1437,10 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_completion_read_from_another_repository_never_certifies_our_removal"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_environment"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1910,6 +1922,12 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
 // arm finds Ready; with the repo term dropped the second does. The final arm is the control -- the same
 // construction with the real account, which must issue the act. Without it, "the act refuses" would be
 // satisfiable by an act that always refuses.
+// MATRIX NOTE (manager msg_ffc85b78): this act site is witnessed on OWNER and REPOSITORY. ENVIRONMENT is
+// NOT a gap here, it is UNREACHABLE at this comparison -- dropping it keeps the witness green (32/32), so
+// no RED is owed: ActAddressedAnotherEnvironment forces evidence.boundary.env == boundary.env, the
+// trial-evidence mint refuses any approved/rejected receipt whose environment differs from its boundary,
+// and ActStandingDisagreesOnEnvironment forces read_now.boundary.env == evidence.approved.env. The
+// repository axis at the act, by contrast, IS reachable and IS caught below.
 test fn the_act_refuses_a_standing_sealed_for_another_account_or_another_repository() -> Bool {
   // M6: THE STANDING IS HONESTLY ABOUT someone-else/gunbc/srv1-production. Both reads are about it, the
   // mint seals it (so the mint's own subject check agrees -- which is exactly why the act needs its own),
@@ -3102,6 +3120,105 @@ test fn a_completion_read_from_another_repository_never_certifies_our_removal() 
         seen_repo == other_repo && asked_repo == gate_repo
       ReviewerRemovalCompletionRefused { because: _ } => false
       ReviewerRemovalCompletionRecorded { receipt: _ } => false
+    })
+}
+
+test fn a_standing_refuses_a_pair_witnessed_on_another_environment() -> Bool {
+  // ROUND-8 SURVIVOR 3 (manager, msg_ffc85b78; srv2 at e6a28861d7b, 32/32): the standing site's
+  // ENVIRONMENT comparison had no witness of its own -- the third leg of the same gap shape as
+  // round 6's M1s and the two repo REDs. And unlike a dead check, this one IS reachable:
+  // observe_removal_boundary_standing takes `joined` and `boundary` as INDEPENDENT arguments, and
+  // no check before the comparison ties the pair's environment to the boundary's. Deleting the env
+  // term at standing_from_join alone left every prior claim green.
+  //
+  // WHY THE JOIN CLAIM DOES NOT COVER IT: the_join_refuses_a_read_from_another_environment_or_another_repository
+  // tests protection-vs-ownership AT THE JOIN -- the pair disagrees and the join refuses. Nothing handed
+  // the standing a pair that AGREES internally on a third environment. That is the threat: ownership +
+  // protection both read honestly for gunb-ai/gunbc/<sibling env>, the join ESTABLISHES, and only the
+  // standing's subject check stands between that coherent foreign pair and a CurrentRemovalBoundaryStanding
+  // naming OUR srv1-production boundary -- the credential the act consumes. Environments are the boundary:
+  // a fully coherent read of gcp-iam-bootstrap says nothing about who reviews srv1-production.
+  //
+  (match join_protection_to_ownership(
+    protection: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: sibling_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    ownership: ownership_with_enabled_for_owner(
+      owner: gate_owner,
+      environment: sibling_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+    ),
+  ) {
+    // THE PREMISE, ASSERTED NOT ASSUMED: the pair must join. A refused join would take the standing down
+    // for the wrong reason (JoinWasRefused) and this claim would pass on an accident.
+    ProtectionJoinEstablished { protection: _, ownership: _ } => true
+    ProtectionJoinRefused { because: _ } => false
+  })
+    // THE MUTATION: owners and repositories byte-identical, environments both sibling_env, against the
+    // srv1-production boundary. The refusal must name EnvironmentDiffers BY NAME (observed = the pair,
+    // other = the boundary) -- under the manager's mutation (env dropped at the standing site) the mint
+    // returns StandingRead, this arm does not match, and the claim fails.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: gate_owner,
+          repo: gate_repo,
+          environment: sibling_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: gate_owner,
+          environment: sibling_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRefused {
+        because: StandingIsAboutAnotherBoundary {
+          because: EnvironmentDiffers { observed_environment: seen_env, other_environment: asked_env },
+        },
+      } =>
+        seen_env == sibling_env && asked_env == gate_env
+      StandingRefused { because: _ } => false
+      StandingRead { standing: _ } => false
+    })
+    // THE CONTROL: the identical chain with the environment back to gate_env. It mints. Not the fixtures,
+    // the clock, the attempt or the installation earns the refusal -- the environment does.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: gate_owner,
+          repo: gate_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: gate_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRead { standing: s } => s.boundary.environment_name == gate_env
+      StandingRefused { because: _ } => false
     })
 }
 
