@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal: RecurringFailureMode = RecurringFailureMode {
   identity: "a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "every refusal that reaches a process boundary is carried as one typed cause through the typecheck chain and the process edge matches it exhaustively to a declared exit terminal, so a panic or a kill has no path to that boundary" } },
 
   receipts: [
     "a fail-closed gate refuses by panic or by a kill instead of a typed refusal: the refusal is correct (the run has no memory bound, so nothing it computes may be trusted to fit) but it reaches the process boundary as a panic, a SIGKILL (rc=137) or a generic exit 1, so a reader cannot tell no observation from a finding or from a crash. DESIGN section 5 requires a loud, typed, located refusal; a panic is loud and untyped, and it is not a verdict.",
