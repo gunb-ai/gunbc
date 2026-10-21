@@ -5818,7 +5818,7 @@ fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> Fu
         let tv = fresh_type_variable(path: body_lower_unpositioned_path(), label: label)
         FunctionValueSignature {
           domain: list_snoc_item(xs: acc.domain, item: binder_edge(name: label, type_node: body_lower_function_value_type_var_atom(tv: tv))),
-          type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Authored { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }),
+          type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Authored { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv), declaration: NotADeclaration }),
           order: acc.order
         }
       Positional =>
