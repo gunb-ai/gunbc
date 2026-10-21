@@ -23,6 +23,9 @@ data generated_provider_acquire_seed_growth_justification: SeedGrowthJustificati
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "step_outcome", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "compile_to_provider_fixed_point", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "extend_with_acquired", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "ClosureOfError", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "Extension", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "unreadable", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "tests", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "supplied", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "refused_classes", field: WholeDeclaration },
@@ -35,6 +38,8 @@ data generated_provider_acquire_seed_growth_justification: SeedGrowthJustificati
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "entry_resolve_pool_acquires_the_demanded_module_and_a_stalled_extension_refuses_typed", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "a_present_provider_acquires_nothing_and_a_chained_demand_acquires_only_its_own_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emissions_are_built_and_projected_only_at_their_named_sites", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "extended_sources", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "a_read_failure_during_acquisition_refuses_as_module_unreadable", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_closure_of", field: WholeDeclaration }
   ],
