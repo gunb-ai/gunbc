@@ -24176,8 +24176,10 @@ mod underlay_identity_proof_tests {
             .next()
             .expect("the pool is not empty")
             .clone();
+        // A FRESH allocation of equal content: deref to the SourceFile and clone the value, so
+        // the Rc is not the underlay's Rc even though the bytes are identical.
         let copy = Rc::new(
-            (*base
+            (**base
                 .source_files
                 .get(&some_path)
                 .expect("the pool lists a key it holds"))
