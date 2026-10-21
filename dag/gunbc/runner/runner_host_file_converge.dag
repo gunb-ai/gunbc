@@ -2396,18 +2396,32 @@ fn run_runner_host_cap_bracket(
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
       match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-        BracketDrained { listeners: admitted } =>
-          // THE FRESH ADMISSION READING GATES THE FIRST CAP-APPLYING EFFECT, FOR EVERY AFFECTED LIVE LISTENER. The
-          // write and the reload that follows it are what apply a cap to a running unit, so the three readings
-          // are taken again for every observed unit, owned or foreign, before the write and not only before the stop.
-          match cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: subject.desired_units, owned: owned, readings: read_slot_drain_pass_over(target: subject.target, context: context, units: subject.desired_units)) {
-            CapWriteRefused { causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: concat("no cap was written, reloaded, stopped or started: the admission was read again immediately before the first cap-applying effect and no longer holds: ", join(cs, "; ")))
-            CapWriteAdmitted => write_reload_and_restart_admitted_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, admitted: admitted)
-          }
+        BracketDrained { listeners: admitted } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, admitted: admitted)
         BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
         BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
       }
+  }
+}
+
+// EVERYTHING AFTER A DRAINED BRACKET, as one function so the order is executable on its own: the fresh
+// admission reading, then (only if it admits) the first cap-applying effect.
+fn cap_phase_after_drain_over(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  desired: RunnerSlotDesired,
+  owned: List<NonEmptyStr>,
+  admitted: List<NonEmptyStr>,
+) -> RunnerHostCapPhase
+{
+  // THE FRESH ADMISSION READING GATES THE FIRST CAP-APPLYING EFFECT, FOR EVERY AFFECTED LIVE LISTENER. The
+  // write and the reload that follows it are what apply a cap to a running unit, so the three readings
+  // are taken again for every observed unit, owned or foreign, before the write and not only before the stop.
+  match cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: subject.desired_units, owned: owned, readings: read_slot_drain_pass_over(target: subject.target, context: context, units: subject.desired_units)) {
+    CapWriteRefused { causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: concat("no cap was written, reloaded, stopped or started: the admission was read again immediately before the first cap-applying effect and no longer holds: ", join(cs, "; ")))
+    CapWriteAdmitted => write_reload_and_restart_admitted_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, admitted: admitted)
   }
 }
 

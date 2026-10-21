@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -19,6 +19,7 @@ import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, Not
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.runner.runner_host_cap_bracket { cap_write_gate_of, CapWriteGate, CapWriteAdmitted, CapWriteRefused, runner_host_cap_admission_closure, read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
@@ -884,4 +885,38 @@ test fn a_foreign_masked_live_listener_blocks_the_first_cap_write() -> Bool {
 // a foreign unit that is not running is not a live listener: it does not block the write
 test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bool {
   gate_admitted(r: gate_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive")], roster: admitted_roster(), owned: []))
+}
+
+
+// ── the full flow: after the drain, through the production phase function ─────────────────────────────────
+// cap_phase_after_drain_over is the whole of run_runner_host_cap_bracket after BracketDrained, so this drives
+// the call-site ORDER: the fresh reading, then (only if it admits) the first cap-applying effect. The drain
+// said admitted; the re-read turns busy (or the unit is a foreign live listener). The issued-argv ledger must
+// hold no cap-file mention, no daemon-reload and no stop. (Release after the refusal does issue its own
+// unmask/start of the units this run owns; that restores service and applies no cap.)
+
+fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
+    cap_phase_after_drain_over(
+      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
+      context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
+      owned: owned, admitted: [u(n: "01")])
+  })
+}
+
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
+  let legs = ledger_of(r: r)
+  count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
+    + length(filter(legs, c => any(runner_host_cap_files(), f => string_contains(s: c, pattern: f.path as String))))
+}
+
+test fn a_reread_that_turns_busy_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
+}
+
+test fn a_foreign_live_listener_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
 }
