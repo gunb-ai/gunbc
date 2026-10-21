@@ -184,3 +184,10 @@ test fn the_lab_root_is_outside_the_home_tree() -> Bool {
   !starts_with(s: srv1_dashboard_lab_root as String, prefix: "/home/")
     && starts_with(s: srv1_dashboard_lab_root as String, prefix: "/opt/gunbc-lab/")
 }
+
+// The pre-add climb judges the instance root and everything above it: the prefix the srv1 lab blocked
+// in, and the part that exists before dispatch creates a worktree. Pairing with the real lab instance.
+test fn the_pre_add_chain_is_the_instance_root_and_its_ancestors() -> Bool {
+  dispatch_worker_chain_paths(handed: [HandedPath { path: srv1_lab_dashboard_instance().instance_root as String, leaf_is_directory: true }])
+    == ["/opt", "/opt/gunbc-lab", "/opt/gunbc-lab/codex-provider-feedback-v0"]
+}

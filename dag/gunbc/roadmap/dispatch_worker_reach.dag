@@ -259,3 +259,18 @@ fn dispatch_worker_reach_for_plan(instance: HostDashboardInstance, plan: Dispatc
     membership: dispatch_worker_membership_observe(worker: dashboard_instance_worker_user(instance: instance)),
   )
 }
+
+// THE ANCESTORS DISPATCH DOES NOT CREATE, JUDGED BEFORE DISPATCH CREATES ANYTHING. The attempt worktree,
+// its state directory and its git entries do not exist until the spawn's steps run, so the full chain
+// of dispatch_worker_reach_for_plan cannot be stat'd earlier. Every one of those paths sits under the
+// instance root, and the root with everything above it exists from the deploy: that prefix is where the
+// srv1 lab (2026-10-21) blocked, and judging it first means a refusal leaves no added worktree behind
+// to release. The full per-plan chain is still judged after the add.
+fn dispatch_worker_reach_for_instance_root(instance: HostDashboardInstance) -> DispatchWorkerReach {
+  let handed = [HandedPath { path: instance.instance_root as String, leaf_is_directory: true }]
+  dispatch_worker_reach_admit(
+    handed: handed,
+    stats: map(dispatch_worker_chain_paths(handed: handed), p => dispatch_worker_ancestor_observe(path: p)),
+    membership: dispatch_worker_membership_observe(worker: dashboard_instance_worker_user(instance: instance)),
+  )
+}

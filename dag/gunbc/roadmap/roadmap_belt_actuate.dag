@@ -51,6 +51,7 @@ import gunbc.roadmap.dispatch_unit_created_paths {
 }
 import gunbc.roadmap.dispatch_worker_reach {
   dispatch_worker_reach_for_plan,
+  dispatch_worker_reach_for_instance_root,
   dispatch_worker_reach_wire,
   DispatchWorkerReach,
   DispatchWorkerReachAdmitted,
@@ -1543,6 +1544,15 @@ fn belt_worker_reach_outcome(reach: DispatchWorkerReach) -> BeltExecStepsOutcome
       ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
     DispatchWorkerReachCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
       ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
+  }
+}
+
+// BEFORE THE CLAIM AND THE ADD: the instance root and its ancestors (dispatch_worker_reach_for_instance_root)
+// are judged for a unit container before any worktree exists, so a refusal has nothing to release.
+fn belt_worker_instance_reach_before_add(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
+  match container {
+    TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => ExecStepsOk
+    SystemdUnitContainer { plan: _ } => belt_worker_reach_outcome(reach: dispatch_worker_reach_for_instance_root(instance: instance))
   }
 }
 
@@ -3501,6 +3511,16 @@ fn belt_spawn_admitted(
   let node = addressing.node
   let attempt_key = addressing.attempt_key
   let session_name = addressing.session_name
+  match belt_worker_instance_reach_before_add(instance: instance, container: cmds.session_container) {
+    ExecStepFailed { step, detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: step,
+        detail: detail,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ExecStepsOk =>
   match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
     WorktreeClaimNotRecorded { detail } =>
       SpawnFailed {
@@ -3696,6 +3716,7 @@ fn belt_spawn_admitted(
   }
   }
       }
+  }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
