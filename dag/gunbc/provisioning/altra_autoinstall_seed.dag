@@ -20,16 +20,20 @@ module gunbc.provisioning.altra_autoinstall_seed
 //     dag/test/claim/altra_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
 //     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
 //     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
-//   * CONSUMED IN A NAMED SIBLING CUT: gunbc.provisioning.provisioning_arm (cut 6, S5, gunb-ai/gunbc#14378)
-//     imports AltraAutoinstallSeedBinding, so the binding record is not waiting on its own — it already has a
-//     production importer on that branch, which is the answer to "a module nothing imports".
-//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is also consumed by cut 6 step 3 (the install-attempt
-//     record), which needs the digest of the seed a board booted and nothing else from this module. The
-//     projection into extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload is consumed by cut 6 step 4, where
-//     a seed becomes bytes an installer can fetch; until that step lands, project_autoinstall_identity and
-//     project_storage_policy have a witness but no production caller, which is why they are the frontier and not
-//     the product. If step 4 arrives and does not use them, they are scaffold and must be deleted rather than
-//     left imported-by-nobody.
+//   * CONSUMED ON MAIN: test.claim.altra_autoinstall_seed_witness, as above. That is the only EXECUTING consumer
+//     of anything here while this change stands on its own, and this header says so rather than borrowing a
+//     sibling's unmerged branch for standing.
+//   * DECLARED FRONTIER, NAMED, WITH ITS TRIGGER — NOT CITED AS JUSTIFICATION: the binding record is imported
+//     (not yet executed) by the S5 sibling, gunbc.provisioning.provisioning_arm, whose branch imports
+//     AltraAutoinstallSeedBinding. Naming that import as this module's consumer would be circular — S5 resolves
+//     only because S4 exists, so S5's branch cannot be what justifies S4 (review: swift-wren-451; the PR's
+//     earlier wording did exactly that and is withdrawn here). What is true and checkable on main is the
+//     frontier itself: cut 6 step 3 must mint the install-attempt record through bind_altra_autoinstall_seed and
+//     read binding_digest — if step 3 lands and never calls this module, these declarations are scaffold and must
+//     be deleted, which is the same rule that already governs project_autoinstall_identity and
+//     project_storage_policy: consumed by cut 6 step 4 (a seed becomes bytes an installer can fetch via
+//     extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload), and until that step lands they have a witness but
+//     no production caller — which is why they are the frontier and not the product.
 //   * NOT A FRONTIER: nothing else. A module that later wants a seed must import this one rather than copy it —
 //     the review already caught one duplicated spelling of these names, and a fork is that defect with more
 //     files.
@@ -80,6 +84,7 @@ module gunbc.provisioning.altra_autoinstall_seed
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
+import std.decl_ref { decl_ref }
 import std.optional { Optional, Absent, Present }
 import std.content_hash {
   Fnv1a64Structural,
@@ -1238,11 +1243,25 @@ type DiskSelectionProvenance sole_constructor {
 // MINTED ONLY BY THE ADMISSION BRANCH, AND IT MINTS THE DISK'S IDENTITY ITSELF from the device it was handed.
 // Before this the caller passed the device to a separate evidence builder, which is the seam HOLD section 2
 // found: a legitimate provenance and a different device could be paired by hand.
+// THE SOLE MINT OF PROVENANCE, SEALED TO THE ONE ROUTE THAT EARNED IT (review: merry-fox-82, HOLD section 2).
+// sole_constructor already makes a hand-written DiskSelectionProvenance literal a compile refusal
+// (SoleConstructorViolation — same-file literals included); what remained open was this function: any caller
+// could hand it an arbitrary `admitted` device plus an arbitrary `observed` population and mint a provenance
+// record whose chosen identity had never been produced by a rule. admit_callers closes that: the compiler's
+// declaration index refuses every other call site with ConstructorCallAdmissionRefused at resolve time, and a
+// refusal of any file in the closure executes NOTHING — so "the direct probe" (a test that tried to call this)
+// is not a test that can print a failure, it IS the compiler refusing the whole claim run. That is the
+// evidence the seal holds; the differential in the witness (same file, same fixtures, calls through
+// select_target_disk: 100+ rows green) shows the seal admits exactly the route it names and nothing else.
+// FUTURE REQUIREMENT: a second legitimate selection route adds its decl_name to the list below — a named,
+// reviewable widening, never an open mint.
 fn disk_selection_provenance(
   selector: TargetDiskSelector,
   admitted: StorageDevice,
   observed: List<StorageDevice>,
-) -> DiskSelectionProvenance {
+) -> DiskSelectionProvenance admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "select_target_disk")
+] {
   DiskSelectionProvenance {
     selector: selector,
     chosen: bound_disk_identity(
@@ -3046,6 +3065,155 @@ fn rendered_document_digest(content: NonEmptyStr) -> Fnv1a64Structural {
   }
 }
 
+// THE SERVED BUNDLE — WHAT THE BOARD ACTUALLY RECEIVES, AS ONE DIGESTED THING. (review: merry-fox-82, HOLD
+// section 1, taken as option (ii): "Model a rendered document bundle containing both user-data and the preseed
+// artifact, with the binding digest covering the complete served bundle".)
+//
+// THE DEFECT THIS CLOSES. The audit certifies a seed noninteractive by answering its debconf questions, and
+// seed_preseed_file derives exactly the lines that make those answers true on the installer — but nothing
+// carried those lines into the bytes the board is handed. The consequence merry named: a semantic seed digest
+// could move (an answer changed) while the served-document digest stayed fixed, because the document never
+// contained the answer. That is a pairing failure, and this module must not be able to express it. The bundle
+// makes the pairing structural rather than aspirational: user_data and preseed travel together, and the digest
+// is computed over BOTH by the only mint, so no caller can bind a seed to a served bundle whose preseed half
+// was dropped, substituted, or never derived.
+//
+// sole_constructor, and the mint is admit_callers-sealed to the binder: a bundle whose halves were authored
+// separately is exactly what this record cannot be allowed to be. A future requirement (a third served part,
+// say network-config for a board whose NIC needs an early firmware blob) adds a field AND a digest term in the
+// same mint — a field that does not move the digest cannot be added, because the fold below lists the parts it
+// covers and the compiler catches a field it does not mention (the digest is derived here, never stored beside
+// the parts it digests).
+type ServedSeedBundle sole_constructor {
+  user_data: NonEmptyStr,
+  preseed: ServedPreseed,
+  bundle_digest: Fnv1a64Structural,
+}
+
+// THE PRESEED HALF, WITH ITS EMPTY CASE NAMED. (review: merry-fox-82, HOLD section 1) A seed whose packages ask
+// no questions has no preseed lines, and that is not an absent part of the bundle — the installer is still
+// handed a preseed file, it just contains nothing. Two arms rather than a String plus an emptiness test,
+// because the two situations must not share a digest term with a real answer file: "the answer set is empty"
+// and "the answer set is these lines" are different claims about what the board was served, and a digest that
+// conflated them would let an answer file be dropped and still match. FUTURE REQUIREMENT: a new kind of served
+// text (network-config, say) is a new field plus a new digest tag in the mint below, not a new arm here — this
+// union answers "is there any debconf content?" and nothing else.
+type ServedPreseed
+  = NoDebconfQuestionsToAnswer
+  | DebconfAnswersCarried { lines: NonEmptyStr }
+
+// THE COMPLETE SERVED BUNDLE IS IN THE ADDRESS (review: merry-fox-82, HOLD section 5: "binding_digest omits the
+// served-document digest. Add it, with a discriminator"). Previously the address covered the configuration, the
+// unit, the attempt and the disk — nothing derived from the bytes the board is handed — so a renderer revision or
+// a dropped answer file left the address untouched, and "the machine booted seed X" was answerable from memory
+// instead of evidence. This is the address's single served-bytes term, and it folds BOTH halves, each
+// individually named:
+//
+//   - the "document" term IS binding.document_digest — the same derivation (rendered_document_digest), not a
+//     second spelling beside it. Two authorities over one claim is what collisions eat, so the field and the
+//     address share this fn rather than each hashing the content their own way, and merry's item 5 is satisfied
+//     literally: the served-document digest is now a term of the binding address.
+//   - the "preseed" term is the half a document-only fold would still have omitted: the debconf answer file is
+//     part of what is served, and its two cases are distinguished BY TAG, so an answer file being dropped
+//     changes the digest instead of colliding with the empty case.
+//
+// EACH SUB-TERM HAS ITS OWN DISCRIMINATING WITNESS, which is what makes a fold term evidence instead of
+// decoration: deleting the document term goes RED on the vault-read discriminator (two bindings the public
+// builder produces from identical configuration and rendering whose reads carry different digests —
+// credential_diagnostic covers the handle's locator and version only, so the read is the one axis that moves the
+// document but not the configuration), and deleting the preseed term goes RED on the answer-pairing witness (two
+// seeds differing only in an answer VALUE). A fold term no test can lose is a comment with arithmetic in it.
+fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "gunbc.provisioning.altra_autoinstall_seed.bundle/1",
+    payload: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "document", payload: document),
+      right: match preseed {
+        NoDebconfQuestionsToAnswer =>
+          content_hash_tagged_structural(
+            tag: "preseed/none",
+            payload: content_hash_atom(value: "no-questions-to-answer" as NonEmptyStr),
+          )
+        DebconfAnswersCarried { lines: lines } =>
+          content_hash_tagged_structural(
+            tag: "preseed/answered",
+            payload: content_hash_atom(value: lines),
+          )
+      },
+    ),
+  )
+}
+
+// THE ONLY ROUTE TO A BUNDLE: DERIVED FROM THE SEED ITSELF, NEVER SUPPLIED. Both halves are computed here from
+// the same seed record the binder is binding — user_data through the REAL upstream renderer (seed_document →
+// autoinstall_payload → gunbc.os_install_emit::autoinstall_user_data), preseed through the derived debconf file
+// over the install AND late intents (both lists can carry answered questions; covering only the install list
+// would leave a late-package answer outside the served bytes, which is the same defect one list later).
+// admit_callers: the binder is the only caller. A test that wants a bundle asks the binder for one — that IS
+// the point: an independently authored bundle is the forgery this seal exists to refuse, and the compiler
+// refuses it (ConstructorCallAdmissionRefused), which is the evidence the seal holds.
+fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "bind_altra_autoinstall_seed")
+] {
+  match seed_document(seed: seed) {
+    DocumentRefused { reason: _ } => Absent
+    DocumentBuilt { payload: _, content: content } =>
+      match seed_preseed_file(intents: all_package_intents(seed: seed)) == "" {
+        True =>
+          Present {
+            value:
+              ServedSeedBundle {
+                user_data: content,
+                preseed: NoDebconfQuestionsToAnswer,
+                bundle_digest:
+                  served_bundle_digest(
+                    document: rendered_document_digest(content: content),
+                    preseed: NoDebconfQuestionsToAnswer,
+                  ),
+              },
+          }
+        False =>
+          match seed_preseed_file(intents: all_package_intents(seed: seed)) as NonEmptyStr {
+            // THE CAST CANNOT FAIL ON THIS ARM (the text is non-empty by the test above), and the arm is still
+            // written: the alternative is an unwritten arm, which the compiler would fill by refusing to
+            // resolve, or a silent Absent that the binder reads as "unservable seed". Refusing here would be
+            // wrong-but-honest; the day a renderer can produce non-empty text that will not cast, this arm
+            // becomes real and the binder's refusal is already the right answer.
+            Absent => Absent
+            Present { value: lines } =>
+              Present {
+                value:
+                  ServedSeedBundle {
+                    user_data: content,
+                    preseed: DebconfAnswersCarried { lines: lines },
+                    bundle_digest:
+                      served_bundle_digest(
+                        document: rendered_document_digest(content: content),
+                        preseed: DebconfAnswersCarried { lines: lines },
+                      ),
+                  },
+              }
+          }
+      }
+  }
+}
+
+// THE INTENTS THE PRESEED IS DERIVED FROM: install first, then late, in the order the installer applies them.
+// Its own fn because the mint needs it twice (the emptiness test and the digest both read it) and an expression
+// repeated is an expression that can drift. Structurally recursive rather than a list concatenation, matching
+// preseed_records' own construction — records arrive one at a time, in the order they were authored.
+fn all_package_intents(seed: AltraAutoinstallSeed) -> List<PackageIntent> {
+  intents_after(left: seed.install_packages, right: seed.late_packages)
+}
+
+fn intents_after(left: List<PackageIntent>, right: List<PackageIntent>) -> List<PackageIntent> {
+  match left {
+    Empty => right
+    Cons { head: intent, tail: rest } =>
+      Cons { head: intent, tail: intents_after(left: rest, right: right) }
+  }
+}
+
 // EVERY DERIVED SPELLING BELOW EXISTS SO THAT THE RENDERING NEVER READS A STORED STRING. Each is the only
 // place its wire token appears, and a missing row would be a compile error rather than a silent fallback —
 // which is why closed unions are the right carrier for these axes.
@@ -3460,6 +3628,15 @@ type AltraAutoinstallSeedBinding sole_constructor {
   seed_digest: Fnv1a64Structural
   document_digest: Fnv1a64Structural
   seed_rendering: NonEmptyStr
+  // THE SERVED BYTES, NOT JUST THE CONFIGURATION IDENTITY. (review: merry-fox-82, HOLD section 1) A binding
+  // that carried only a semantic digest could report "the machine booted seed X" while the bytes the board
+  // received omitted the debconf answers that make X noninteractive — the digest moved, the served document
+  // did not, and nothing in the record could see the mismatch. The bundle is derived by the mint from THIS
+  // seed (serve_seed_bundle), so it cannot name a document this seed did not produce, and binding_digest
+  // folds its digest — an answer changed is a different binding, provably. Absent here would mean the
+  // renderer refused, which the binder refuses outright rather than binding (no binding describes an
+  // unservable seed), so the field is present-and-derived or the record does not exist.
+  served: ServedSeedBundle
   delivery: SeedDeliveryStrategy
   disk: TargetDiskSelector
   disk_selection: BoundDiskEvidence
@@ -3550,6 +3727,17 @@ fn bind_altra_autoinstall_seed(
                 DocumentRefused { reason: why } =>
                   BindRefused { blocker: SeedHasNoRenderableDocument { reason: why } }
                 DocumentBuilt { payload: _, content: document } =>
+              match serve_seed_bundle(seed: seed) {
+                // UNREACHABLE IN THIS ARM, AND STILL SAID. serve_seed_bundle mints its halves from the same
+                // seed_document this arm already built, so once a document exists the bundle exists. Saying
+                // Absent => BindRefused anyway, reusing the blocker that already means "this seed has no
+                // servable document", is the honest shape: the alternative is an unwritten arm that would
+                // silently bind nothing, or a panic on a path a compiler cannot see is dead. If a future
+                // renderer can produce a document but not a bundle, this arm becomes real and the refusal is
+                // already the right answer.
+                Absent =>
+                  BindRefused { blocker: SeedHasNoRenderableDocument { reason: "bundle-mint-refused-after-document-built" as NonEmptyStr } }
+                Present { value: served } =>
               Bound {
                 binding: AltraAutoinstallSeedBinding {
                   unit_key: unit_key,
@@ -3560,10 +3748,12 @@ fn bind_altra_autoinstall_seed(
                   // seed still existing. And the disk evidence is inside the digest below, so "the machine
                   // booted seed X" cannot be answered for a machine that was pointed at a different drive.
                   seed_rendering: render_altra_autoinstall_seed(seed: seed),
+                  served: served,
                   delivery: seed.delivery,
                   disk: seed.disk,
                   disk_selection: provenance_chosen_identity(provenance: provenance),
                 },
+              }
               }
               }
           }
@@ -3609,7 +3799,7 @@ fn selectors_are_the_same(a: TargetDiskSelector, b: TargetDiskSelector) -> Bool 
 // the past tense of a boot. The names used to be BootedThisSeed / BootedADifferentSeed, and the body advertised
 // a standing it had no way to observe: a caller reading "BootedThisSeed" from a local digest compare would
 // believe an event had happened. What is actually decided here is whether the RECORD agrees with the SEED. The
-// boot standing lives below, in boot_standing, and is reachable only through an observation.
+// supplied-bytes comparison lives below, in supplied_document_standing, and is reachable only through a record.
 //
 // THREE ARMS, ALL POSITIVE CLAIMS ABOUT RECORDS. A fourth — "unobserved" — would be redundant here: this
 // function is never the place a boot is reported, so it never needs to say "not yet".
@@ -3658,59 +3848,97 @@ fn check_binding_against_seed(
 // built from something that was actually fetched. The authority is the anchor for where the text came from — the
 // TFTP/HTTP location and the fetch — because "the machine booted seed X" is only evidence if someone can go and
 // re-read the source.
-type SeedBootObservation sole_constructor {
-  observed_document_digest: Fnv1a64Structural
-  observed_from: ExternalAuthority
+// WHAT THIS RECORD IS, AND WHAT IT IS NOT (review: merry-fox-82, HOLD section 4, taken as option (a): "Rename
+// this to a supplied-document comparison, with no BootedThisSeed claim"). This module must not decide HOW the
+// seed is delivered, so it can never be the authority that a fetch happened — sealing this mint to a
+// delivery/readback route would name a transport it is not allowed to name, and a route that does not exist yet
+// is not a seal. So the honest move is to say exactly what the record holds: bytes somebody SUPPLIED to us as
+// what a board was served, under an identity they name, with the comparison digest derived here rather than
+// supplied. The old name (SeedBootObservation) and the old arms (BootedThisSeed / BootedADifferentSeed) claimed
+// an event this module cannot witness. The word "boot" appears nowhere below on purpose: a boot is the SERVING
+// route's claim to make, and when a delivery seam eventually reports one, that report joined with THIS record is
+// the boot evidence — neither half alone ever is.
+//
+// THE RECORD CARRIES BOTH SERVED PARTS (the user-data and the preseed), for the same reason the bundle does
+// (HOLD section 1): a comparison that read only the user-data would let a served preseed full of answers be
+// matched against nothing, which reopens the pairing gap one layer up. The supplied digest is folded by
+// served_bundle_digest — the mint's own function — so the equality in supplied_document_standing compares
+// like with like; a second spelling of the fold here would be two authorities over one comparison.
+//
+// THE IDENTITY IS IN THE RECORD (the second half of merry's item 4: "The same observation can also be applied to
+// another unit's binding with the same document digest"). unit_key and attempt are carried at mint time, so the
+// record answers "this text, supplied for THIS attempt" or it is not the record at all; the comparison below
+// joins them to the binding and cannot answer about the bytes alone.
+//
+// sole_constructor keeps the digest from being typed by hand: the mint recomputes it from the supplied text, so
+// a record cannot assert a digest its own text would not produce.
+type SuppliedServedDocument sole_constructor {
+  unit_key: UnitKey,
+  attempt: IntakeAttemptId,
+  supplied_user_data: NonEmptyStr,
+  supplied_preseed: ServedPreseed,
+  supplied_bundle_digest: Fnv1a64Structural,
+  supplied_from: ExternalAuthority,
 }
 
-fn record_seed_boot_observation(
-  served_document: NonEmptyStr,
-  observed_from: ExternalAuthority,
-) -> SeedBootObservation {
-  SeedBootObservation {
-    observed_document_digest: rendered_document_digest(content: served_document),
-    observed_from: observed_from,
+fn record_supplied_served_document(
+  unit_key: UnitKey,
+  attempt: IntakeAttemptId,
+  supplied_user_data: NonEmptyStr,
+  supplied_preseed: ServedPreseed,
+  supplied_from: ExternalAuthority,
+) -> SuppliedServedDocument {
+  SuppliedServedDocument {
+    unit_key: unit_key,
+    attempt: attempt,
+    supplied_user_data: supplied_user_data,
+    supplied_preseed: supplied_preseed,
+    supplied_bundle_digest:
+      served_bundle_digest(
+        document: rendered_document_digest(content: supplied_user_data),
+        preseed: supplied_preseed,
+      ),
+    supplied_from: supplied_from,
   }
 }
 
-// THE STANDING, JOINED. `BootStandsForTheSeed` is now reachable from exactly one place: an observation whose digest
-// equals the digest of the document THIS binding was built to serve. With no observation the answer is
-// BootNotObserved — a first-class outcome, not an error and not a sentinel — which is what every attempt looks
-// like until somebody fetches what the board fetched.
-//
-// THE ARMS COMPARE RECORDS AND MAKE NO PAST-TENSE CLAIM (review: merry-fox-82, HOLD section 4). The arms used to
-// be spelled BootedThisSeed / BootedADifferentSeed, and that spelling was a lie this function had no way to keep:
-// its only input is an observation record whose digest this module recomputed — it never contacted a board, a
-// TFTP server, or a console, so it cannot know a boot HAPPENED. What it can know is narrower and worth saying
-// precisely: the bytes somebody recorded as served are the bytes this binding promised. The event itself is the
-// serving route's claim to make, when a delivery seam (which this module must not name) reports one; the two
-// claims joined are the boot evidence, and this type is only half of it.
-//
-// WHY THE COMPARISON IS AGAINST THE DOCUMENT DIGEST AND NOT THE CONFIGURATION DIGEST: the board was handed
-// bytes. Two configurations can render to the same document and one configuration can render differently
-// across writer versions, so only the document is what the boot can be matched against. The configuration
-// digest stays on the binding, where it answers "which configuration did we intend".
-type BootStanding
-  = BootStandsForTheSeed
-  | BootDoesNotStandForTheSeed
-  // UNOBSERVED IS AN OUTCOME. No fetch, no standing — and the caller has to carry that forward rather than
-  // defaulting to the flattering arm. A future requirement to distinguish "nobody looked" from "looked and the
-  // document was not there" adds an arm with its own evidence, not a note field here.
-  | BootNotObserved
+// WHAT THE COMPARISON CAN SAY, WITH NO PAST-TENSE IN ANY ARM. Four answers about RECORDS:
+//   - the supplied bytes are the bytes this binding promised;
+//   - they are not;
+//   - the supplied record is not about this (unit, attempt) at all, so the bytes are irrelevant — a first-class
+//     arm rather than a silent "differs", because "wrong owner" and "wrong bytes" are different facts an
+//     operator needs apart (the first is a filing error; the second is a serve that delivered something else);
+//   - nothing was supplied: UNOBSERVED AS AN OUTCOME, carried forward rather than defaulted to the flattering
+//     arm. A future requirement to distinguish "nobody looked" from "looked and it was not there" adds an arm
+//     with its own evidence, not a note field here.
+type SuppliedDocumentStanding
+  = SuppliedBytesAreWhatThisBindingPromised
+  | SuppliedBytesAreNotWhatThisBindingPromised
+  | SuppliedRecordIsNotAboutThisAttempt
+  | NothingSupplied
 
-fn boot_standing(
+// THE JOINED COMPARISON. Identity first: a record for another attempt can never be made to speak about this
+// one, even when the bytes coincide (two attempts CAN be served identical bytes; that must not make one
+// attempt's record usable as the other's evidence). Then the bytes, compared as BUNDLES — the digest of the
+// same tagged fold the mint used, so both user-data and preseed must agree. The configuration digest stays on
+// the binding answering "which configuration did we intend"; the served bytes answer "what did the board get".
+fn supplied_document_standing(
   binding: AltraAutoinstallSeedBinding,
-  observation: Optional<SeedBootObservation>,
-) -> BootStanding {
-  match observation {
-    Absent => BootNotObserved
+  supplied: Optional<SuppliedServedDocument>,
+) -> SuppliedDocumentStanding {
+  match supplied {
+    Absent => NothingSupplied
     Present { value: seen } =>
-      match content_hash_eq_structural(
-        left: binding.document_digest,
-        right: seen.observed_document_digest,
-      ) {
-        True => BootStandsForTheSeed
-        False => BootDoesNotStandForTheSeed
+      match binding.unit_key == seen.unit_key && binding.attempt == seen.attempt {
+        False => SuppliedRecordIsNotAboutThisAttempt
+        True =>
+          match content_hash_eq_structural(
+            left: binding.served.bundle_digest,
+            right: seen.supplied_bundle_digest,
+          ) {
+            True => SuppliedBytesAreWhatThisBindingPromised
+            False => SuppliedBytesAreNotWhatThisBindingPromised
+          }
       }
   }
 }
@@ -3729,7 +3957,7 @@ fn boot_standing(
 // the same one.
 fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/2",
+    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/3",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
         left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),
@@ -3737,25 +3965,42 @@ fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
       ),
       right: content_hash_combine_structural(
         left: content_hash_combine_structural(
-          left: content_hash_combine_structural(
-            left: binding.seed_digest,
-            right: content_hash_atom(value: binding.seed_rendering),
-          ),
-          // THE SERVED-DOCUMENT DIGEST IS IN THE ADDRESS (review: merry-fox-82, HOLD section 5). The binding
-          // was addressable by everything EXCEPT the bytes it exists to vouch for: two bindings differing only
-          // because a renderer revision produced different served bytes shared an address — the exact
-          // distinction document_digest was added to preserve, dropped by the address that should protect it.
-          // Tagged with the hash of the Fnv1a64Structural itself, not a decimal re-spelling: a decimal is a
-          // second spelling of the same number, and two spellings of one value is what collisions eat.
-          right: content_hash_tagged_structural(
-            tag: "document",
-            payload: content_hash_atom(value: to_string(binding.document_digest) as NonEmptyStr),
-          ),
+          left: binding.seed_digest,
+          right: content_hash_atom(value: binding.seed_rendering),
         ),
-        // The disk's own tagged structural hash, not a re-derivation of its fields: BoundDisk and
-        // BoundDiskUnread are different claims, and they must not be able to collide with each other or with a
-        // bound disk whose serial happens to read like a part number.
-        right: content_hash_atom(value: bound_disk_evidence_diagnostic(evidence: binding.disk_selection)),
+        right: content_hash_combine_structural(
+          // THE COMPLETE SERVED BUNDLE IS IN THE ADDRESS (review: merry-fox-82, HOLD sections 1 and 5; the tag
+          // bumps to /3 because the address gains meaning, not just spelling). Previously the address covered the
+          // configuration, the unit, the attempt and the disk — nothing derived from the bytes the board is handed
+          // — so a renderer revision or a dropped answer file left the address untouched, and "the machine booted
+          // seed X" was answerable from memory instead of evidence. This one term carries BOTH served halves,
+          // each tagged by role inside served_bundle_digest: the "document" term IS the served-document digest
+          // merry's item 5 asked to be added — literally so, since it folds rendered_document_digest(content), the
+          // SAME derivation binding.document_digest holds, not a second spelling beside it — and the preseed term
+          // is the half a document-only fold would still have omitted.
+          //
+          // WHY ONE SERVED TERM AND NOT binding.document_digest ALONGSIDE IT. A fold term that no test can lose is
+          // decoration, and a separate document term could not be lost: served_bundle_digest already folds
+          // rendered_document_digest(content), so deleting a second term over the same derivation changes nothing
+          // and no mutation could name a RED witness for it. The address instead says, in one spelling, exactly
+          // what it vouches for — and EACH sub-term inside served_bundle_digest has its own discriminating
+          // witness: deleting the document term
+          // goes RED on the vault-read discriminator (two seeds identical in configuration and rendering whose
+          // read carries a different digest — credential_diagnostic covers the handle's locator and version
+          // only, so this is the one axis that moves the document but not the configuration), and deleting the
+          // preseed term goes RED on the answer-pairing witness. The record still CARRIES document_digest,
+          // because it answers a different question (supplied_document_standing compares what somebody supplied
+          // against what this binding promised); what it cannot do is pretend to protect an address it
+          // contributes nothing distinguishable to.
+          left: content_hash_tagged_structural(
+            tag: "bundle",
+            payload: binding.served.bundle_digest,
+          ),
+          // The disk's own tagged structural hash, not a re-derivation of its fields: BoundDisk and
+          // BoundDiskUnread are different claims, and they must not be able to collide with each other or with a
+          // bound disk whose serial happens to read like a part number.
+          right: content_hash_atom(value: bound_disk_evidence_diagnostic(evidence: binding.disk_selection)),
+        ),
       ),
     ),
   )

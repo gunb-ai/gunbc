@@ -75,7 +75,7 @@ import extdeps.external_authority {
   TranscribedUncited,
 }
 import std.measure { CharacterCount, character_count }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -136,19 +136,20 @@ import gunbc.provisioning.altra_autoinstall_seed {
   BmcSolConsoleUnlocked,
   BoundConfigurationMatchesSeed,
   BoundConfigurationDiffersFromSeed,
-  BootDoesNotStandForTheSeed,
-  BootStandsForTheSeed,
-  BootNotObserved,
+  SuppliedRecordIsNotAboutThisAttempt,
+  SuppliedBytesAreNotWhatThisBindingPromised,
+  SuppliedBytesAreWhatThisBindingPromised,
+  NothingSupplied,
   BindingIsForeign,
   DocumentBuilt,
   DocumentRefused,
   SeedHasNoRenderableDocument,
-  boot_standing,
+  supplied_document_standing,
   configuration_identity_of_selector,
   package_prompting_verdict,
   password_field_from,
   provenance_chosen_identity,
-  record_seed_boot_observation,
+  record_supplied_served_document,
   silenced_package,
   selectors_are_the_same,
   rendered_document_digest,
@@ -241,6 +242,9 @@ import gunbc.provisioning.altra_autoinstall_seed {
   TargetDiskSelection,
   UnitKeyUnbound,
   TargetDiskSelector,
+  ServedPreseed,
+  NoDebconfQuestionsToAnswer,
+  DebconfAnswersCarried,
   TargetRefused,
   UsLayout,
   VirtualMediaStrategy,
@@ -282,7 +286,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   selector_admits_observed,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ---------------------------------------------------------------------------
 // Fixtures. A witness's evidence should be readable without a builder call chain; nothing here names a
@@ -1634,10 +1638,10 @@ test fn a_binding_for_another_unit_or_attempt_is_foreign() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
       match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_b_key, attempt: attempt_one, ) {
-        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BootStandsForTheSeed" would also accept a
-        // missing-arm defect that routed a foreign binding to BootDoesNotStandForTheSeed -- the two verdicts have
-        // opposite remedies (wrong machine vs same machine, stale seed), so only the foreign verdict proves
-        // the identity check ran.
+        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BoundConfigurationMatchesSeed" would also
+        // accept a missing-arm defect that routed a foreign binding to BoundConfigurationDiffersFromSeed -- the
+        // two verdicts have opposite remedies (wrong machine vs same machine, stale seed), so only the foreign
+        // verdict proves the identity check ran.
         BindingIsForeign =>
           match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_two, ) {
             BindingIsForeign => true
@@ -4299,44 +4303,90 @@ test fn a_handle_with_no_read_builds_but_never_renders_and_never_binds() -> Bool
   }
 }
 
-// THE BOOT STANDING COMES FROM AN OBSERVATION OR FROM NOTHING AT ALL (review: merry-fox-82, HOLD section 1).
-// Three arms, each reached through the public recording fn:
-//  * no observation            -> BootNotObserved  (the honest default; nobody may infer a boot from a binding)
-//  * observation of OUR bytes   -> BootStandsForTheSeed   (the only place that arm is constructible)
-//  * observation of OTHER bytes -> BootDoesNotStandForTheSeed
-// The digest compare lives in the module, not in this file, so the arms cannot be conjured here.
-test fn the_boot_standing_is_answered_only_by_an_observation_joined_to_the_served_bytes() -> Bool {
+// THE SUPPLIED-DOCUMENT COMPARISON ANSWERS ABOUT RECORDS AND MAKES NO BOOT CLAIM (review: merry-fox-82, HOLD
+// section 4, option (a)). Four arms, each reached through the public recording fn and the module's join:
+//  * nothing supplied            -> NothingSupplied                        (never defaultable to the flattering arm)
+//  * supplied bytes ARE this binding's promised bytes -> SuppliedBytesAreWhatThisBindingPromised
+//  * supplied bytes are different                     -> SuppliedBytesAreNotWhatThisBindingPromised
+//  * supplied record names another (unit, attempt)    -> SuppliedRecordIsNotAboutThisAttempt
+// The digest compare lives in the module, not in this file, so no arm can be conjured here — and no arm's NAME
+// claims that a boot happened, because this module never contacted a board. A future writer of the delivery
+// seam joins its own transport report with this record; neither half alone is boot evidence.
+test fn the_supplied_document_standing_is_answered_only_by_the_joined_record() -> Bool {
   match built_seed_and_binding() {
     Absent => false
     Present { value: pair } =>
       match seed_document(seed: pair.seed) {
         DocumentRefused { reason: _ } => false
         DocumentBuilt { payload: _, content: content } =>
-          // (1) NO OBSERVATION YET. A binding that agrees with its seed is not a boot.
-          match boot_standing(binding: pair.binding, observation: Absent) {
-            BootNotObserved =>
-              // (2) SOMEBODY FETCHED WHAT THE BOARD FETCHED, from the delivery source.
-              match boot_standing(
+          // (1) NOTHING SUPPLIED YET. A binding that agrees with its seed proves no bytes were ever fetched.
+          match supplied_document_standing(binding: pair.binding, supplied: Absent) {
+            NothingSupplied =>
+              // (2) SOMEBODY SUPPLIED THE BYTES THIS BINDING PROMISED, for THIS attempt.
+              match supplied_document_standing(
                 binding: pair.binding,
-                observation: Present {
-                  value: record_seed_boot_observation(
-                    served_document: content,
-                    observed_from: archive_authority(),
+                supplied: Present {
+                  value: record_supplied_served_document(
+                    unit_key: unit_a_key,
+                    attempt: attempt_one,
+                    supplied_user_data: content,
+                    supplied_preseed: pair.binding.served.preseed,
+                    supplied_from: archive_authority(),
                   ),
                 },
               ) {
-                BootStandsForTheSeed =>
-                  // (3) THE BOARD FETCHED SOMETHING ELSE. The same recording path, different bytes.
-                  match boot_standing(
+                SuppliedBytesAreWhatThisBindingPromised =>
+                  // (3) SUPPLIED BYTES ARE DIFFERENT. Same recording path, different text: the answer must be
+                  // the mismatch arm, not the flattering one and not "foreign".
+                  match supplied_document_standing(
                     binding: pair.binding,
-                    observation: Present {
-                      value: record_seed_boot_observation(
-                        served_document: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
-                        observed_from: archive_authority(),
+                    supplied: Present {
+                      value: record_supplied_served_document(
+                        unit_key: unit_a_key,
+                        attempt: attempt_one,
+                        supplied_user_data: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
+                        supplied_preseed: pair.binding.served.preseed,
+                        supplied_from: archive_authority(),
                       ),
                     },
                   ) {
-                    BootDoesNotStandForTheSeed => true
+                    SuppliedBytesAreNotWhatThisBindingPromised =>
+                      // (4) A RECORD FOR ANOTHER ATTEMPT CANNOT SPEAK ABOUT THIS ONE — even when the bytes are
+                      // the right bytes (merry: "The same observation can also be applied to another unit's
+                      // binding with the same document digest"). The identity join runs BEFORE the digest
+                      // compare, so the answer is foreign, never promised.
+                      match supplied_document_standing(
+                        binding: pair.binding,
+                        supplied: Present {
+                          value: record_supplied_served_document(
+                            unit_key: unit_a_key,
+                            attempt: attempt_two,
+                            supplied_user_data: content,
+                            supplied_preseed: pair.binding.served.preseed,
+                            supplied_from: archive_authority(),
+                          ),
+                        },
+                      ) {
+                        SuppliedRecordIsNotAboutThisAttempt =>
+                          // AND THE IDENTITY JOIN IS NOT THE BYTE COMPARE: a foreign record whose bytes are
+                          // wrong is STILL foreign — it never gets to answer about bytes it cannot own.
+                          match supplied_document_standing(
+                            binding: pair.binding,
+                            supplied: Present {
+                              value: record_supplied_served_document(
+                                unit_key: unit_b_key,
+                                attempt: attempt_one,
+                                supplied_user_data: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
+                                supplied_preseed: pair.binding.served.preseed,
+                                supplied_from: archive_authority(),
+                              ),
+                            },
+                          ) {
+                            SuppliedRecordIsNotAboutThisAttempt => true
+                            _ => false
+                          }
+                        _ => false
+                      }
                     _ => false
                   }
                 _ => false
@@ -4347,16 +4397,19 @@ test fn the_boot_standing_is_answered_only_by_an_observation_joined_to_the_serve
   }
 }
 
-// THE OBSERVATION CARRIES WHO OBSERVED IT. A digest with no source is a number, and a number cannot be audited
-// later; the standing's evidence includes where the bytes came from, in the same closed shape every other
+// THE SUPPLIED RECORD CARRIES WHO SUPPLIED IT. A digest with no source is a number, and a number cannot be
+// audited later; the record's evidence includes where the bytes came from, in the same closed shape every other
 // externally-sourced fact in this programme uses.
-test fn a_boot_observation_names_where_the_bytes_were_observed_from() -> Bool {
-  match record_seed_boot_observation(
-    served_document: "#cloud-config\n" as NonEmptyStr,
-    observed_from: archive_authority(),
+test fn a_supplied_served_document_names_where_the_bytes_came_from() -> Bool {
+  match record_supplied_served_document(
+    unit_key: unit_a_key,
+    attempt: attempt_one,
+    supplied_user_data: "#cloud-config\n" as NonEmptyStr,
+    supplied_preseed: NoDebconfQuestionsToAnswer,
+    supplied_from: archive_authority(),
   ) {
-    observation =>
-      match (observation.observed_from.uri.locator as String).contains("ports.ubuntu.com") {
+    record =>
+      match (record.supplied_from.uri.locator as String).contains("ports.ubuntu.com") {
         True => true
         False => false
       }
