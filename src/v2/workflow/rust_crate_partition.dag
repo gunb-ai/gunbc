@@ -266,6 +266,9 @@ fn stage0_std_primitive_modules() -> List<String> {
   [
     "std_content_hash",
     "std_coercion",
+    // std.host_text (HostText, chars) is imported by std_coercion and by seed-mirrored modules since NAMESPACE-XL
+    // wave 1 gave chars its declared home; it imports only std.types, so it sits in this lowest tier with its importers.
+    "std_host_text",
     "extdeps_currency_currency",
     "std_decl_ref",
     "std_keyed_row",

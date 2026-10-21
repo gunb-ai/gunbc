@@ -3202,10 +3202,14 @@ fn span_offset_in(location: &SourceLocation, rel_path: &str) -> Option<i64> {
 
 /// Render one finding as a typed, LOCATED refusal line.
 ///
-/// The offset becomes `line:col` by reading the offending file only — a finding is rare, and
-/// holding the corpus's text resident so a green run could render nothing is the cost shape
-/// this module exists to remove. A finding with no offset renders as the path alone, never a
-/// fabricated `1:1`.
+/// THE LOCATION IS THE AUTHORITY'S, not this module's. It used to do its own arithmetic here --
+/// `build_newline_index` then `byte_to_line_col`, then `format!("{}:{}:{}", path, lc.line, lc.col)`
+/// -- which is a SECOND renderer in host Rust, the exact fork this PR removes (DESIGN 6b: one
+/// authority owns the arithmetic AND the format). It now calls the function emitted from the seed's
+/// span authority, through the stream entry, so a file that lexes to nothing but trivia gets the
+/// authority's typed unlocated phrase naming its own file rather than a position the file does not
+/// have. The file is read only when a finding exists -- a finding is rare, and holding the corpus
+/// resident so a green run could render nothing is the cost shape this module exists to remove.
 pub fn render_finding(
     workspace: &std::path::Path,
     finding: &DeclarationIntegrityFinding,
@@ -3213,13 +3217,53 @@ pub fn render_finding(
     let located = match finding.offset {
         Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
             Ok(content) => {
-                let index =
-                    crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
-                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
-                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
+                let tokens = crate::v1_compiler_tokenize::tokenize(
+                    content.clone(),
+                    finding.rel_path.clone(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let index = crate::v1_std_core::build_newline_index(
+                    finding.rel_path.clone(),
+                    content.clone(),
+                );
+                let mut source_indices: im::HashMap<
+                    String,
+                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                > = im::HashMap::new();
+                source_indices.insert(finding.rel_path.clone(), index);
+                let span = crate::v1_std_core::SourceSpan {
+                    file: finding.rel_path.clone(),
+                    // A finding carries ONE offset: the site's start. End is the same boundary --
+                    // the renderer's start arm is what an author reads, and the authority, not this
+                    // number, decides whether a position exists at all.
+                    start: offset,
+                    end: offset,
+                };
+                // THE STREAM SAYS WHETHER THE FILE HAS ANY LEXEME; the authority says what that
+                // means, in its own words. This module never formats a position.
+                crate::v1_compiler_tokenize::render_span_location_in_stream(
+                    std::rc::Rc::new(span),
+                    tokens,
+                    std::rc::Rc::new(source_indices),
+                )
             }
-            Err(_) => finding.rel_path.clone(),
+            // THE FILE COULD NOT BE READ, so there is genuinely no source index for it. That is
+            // the authority's `NoSourceIndex` cause, and it renders as
+            // `<path>: (no position: no source index for this file)` -- typed, and it keeps the
+            // file name. Not a bare path (which reads as a location with the position missing) and
+            // not a `1:1`.
+            Err(_) => crate::v1_std_core::render_span_location(
+                std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: finding.rel_path.clone(),
+                    start: offset,
+                    end: offset,
+                }),
+                std::rc::Rc::new(im::HashMap::new()),
+            ),
         },
+        // NO OFFSET AT ALL: this finding carries no site, so there is no position to render and
+        // nothing to dress one up from. The path alone, as before -- it carries no digit-after-colon
+        // run, so it does not read as a location.
         None => finding.rel_path.clone(),
     };
     format!(

@@ -28,6 +28,7 @@ import extdeps.uri_path { uri_query_param }
 import extdeps.http.server { MediaType, text_plain_utf8, application_json_utf8, ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import std.host_text { chars }
 
 fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
   ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }

@@ -1,0 +1,80 @@
+module test.claim.gcp_iam_bootstrap_first_use_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, gcp_cells_bindings }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, cell_preimage }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, ApprovalMacKeyProvision, IamBootstrapApply, OrgAdminAppKeyAccessConverge }
+import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
+  iam_bootstrap_root_ceremony_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_resource_key, delta_owned,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapSubjectObservation, SubjectPolicyRead, SubjectUnobservable, SubjectNotFound,
+  BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused,
+  bootstrap_delta_over, roster_subjects, subject_cells,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route { BootstrapDeltaRequestAdmitted, RootCeremonyCellsMissing, BootstrapDeltaUnrequestable, bootstrap_delta_requestable }
+import gunbc.auth.gcp_iam_bootstrap {
+  RootReadback, RootReadbackAdmitted, RootReadbackRefused, iam_bootstrap_root_readback_roster, iam_bootstrap_root_readback_verdict,
+  CustodyContainerStep, CustodyContainerLeave, CustodyContainerSettle, CustodyContainerCreateBare, CustodyContainerRunCeremonyFirst, CustodyContainerRefuse,
+  CustodyObservedAbsent, CustodyObservedPresent, CustodyJournalRead, custody_container_step, iam_bootstrap_bound_secrets,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── FIRST USE AND THE TRUST-ROOT CONTAINER (side chat on gunbc#14360, blockers 1 and 3) ────────
+
+fn bound_policy(cells: List<IamBootstrapBinding>) -> GcpPolicy {
+  GcpPolicy { bindings: gcp_cells_bindings(cs: map(cells, b => b.cell)), etag: "e1", version: 3 }
+}
+
+fn bound(r: List<IamBootstrapBinding>, s: IamBootstrapResource) -> BootstrapSubjectObservation {
+  BootstrapSubjectObservation { subject: s, reading: match s {
+    BootstrapProject => SubjectUnobservable
+    BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapBucket { bucket: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+  } }
+}
+
+// BLOCKER 1. The readback before workflow trust covers the root population only.
+test fn the_root_readback_covers_the_root_population_only() -> Bool {
+  let roster = iam_bootstrap_root_readback_roster()
+  count(roster) > 0 && !any(roster, b => delta_owned(b: b)) && count(roster) == count(iam_bootstrap_root_ceremony_bindings())
+}
+
+// THE CONTROL: with every root subject bound and an ordinary target absent, the root readback admits
+// (workflow trust follows), and the delta over the whole population for that target is requestable.
+test fn an_absent_target_does_not_block_trust_and_its_delta_is_requestable() -> Bool {
+  let all_cells = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let root = iam_bootstrap_root_readback_roster()
+  let targets = filter(roster_subjects(roster: all_cells), s => all(subject_cells(roster: all_cells, subject: s), b => delta_owned(b: b)))
+  let absent = match targets.first() { Present { value: t } => [t]  Absent => [] }
+  let with_absent = map(roster_subjects(roster: all_cells), s => if any(absent, a => iam_bootstrap_resource_key(resource: a) == iam_bootstrap_resource_key(resource: s)) { BootstrapSubjectObservation { subject: s, reading: SubjectNotFound } } else { bound(r: all_cells, s: s) })
+  count(absent) == 1
+    && (match iam_bootstrap_root_readback_verdict(delta: bootstrap_delta_over(roster: root, observations: map(roster_subjects(roster: root), s => bound(r: root, s: s)))) { RootReadbackAdmitted => true  RootReadbackRefused { reason: _ } => false })
+    && (match bootstrap_delta_over(roster: all_cells, observations: with_absent) {
+      BootstrapDeltaRequired { subjects, root_residual: _ } => count(subjects) == 1 && (match bootstrap_delta_requestable(subjects: subjects) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
+      _ => false
+    })
+}
+
+// BLOCKER 3. The ceremony creates no trust-root secret: the approval-submission MAC key, absent, is its
+// value ceremony's to create, and the refusal names that ceremony; present, the ceremony leaves it.
+fn names_mac_ceremony(st: CustodyContainerStep) -> Bool {
+  match st {
+    CustodyContainerRunCeremonyFirst { ceremony: c } => match c { ApprovalMacKeyProvision => true  IamBootstrapApply => false  OrgAdminAppKeyAccessConverge => false }
+    _ => false
+  }
+}
+
+test fn an_absent_trust_root_secret_is_never_created_by_this_ceremony() -> Bool {
+  let mac = approval_submission_mac_key_secret_ref.secret
+  any(iam_bootstrap_bound_secrets(), s => (s as String) == (mac as String))
+    && names_mac_ceremony(st: custody_container_step(secret: mac, o: CustodyObservedAbsent, journal: CustodyJournalRead { unresolved: [] }))
+    && (match custody_container_step(secret: mac, o: CustodyObservedPresent, journal: CustodyJournalRead { unresolved: [] }) { CustodyContainerLeave => true  _ => false })
+}

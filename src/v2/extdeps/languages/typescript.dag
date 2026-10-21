@@ -45,7 +45,7 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LiteralPattern,
-  lex_rule_set_token_class_member,
+  lex_rule_set_token_class_map,
   ModeledLexRules,
   OneOrMorePattern,
   RepeatPattern,
@@ -93,7 +93,7 @@ import v2.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v2.std.node_query { find_named_child }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
   IntLiteralUnwired,
   ProducedDeclParamSegment,
@@ -213,9 +213,10 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.logic { bool_boolean_algebra, bool_node }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape, map_contains_key }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
@@ -1354,6 +1355,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
@@ -1465,6 +1467,7 @@ fn ts_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ts_produced_decl_support(),
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -1566,13 +1569,14 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^ts_token_colon,
       param_list_separator: ^ts_token_comma
     },
-    occupancy_form: TargetGenericApply {
-      surface: ^ts_surface_type_occupancy,
+    optional_instantiation_form: TargetGenericApply {
+      surface: ^ts_surface_type_optional_instantiation,
       open: ^ts_token_lt,
       separator: ^ts_token_comma,
       field_label_separator: optional_absent(),
       close: ^ts_token_gt
     },
+    optional_head: ^Optional,
     instantiation_form: TargetGenericApply {
       surface: ^ts_surface_type_generic_apply,
       open: ^ts_token_lt,
@@ -1702,6 +1706,7 @@ fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
@@ -1953,6 +1958,7 @@ fn ts_task_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
@@ -1973,7 +1979,7 @@ fn ts_fn_add_target_model() -> Node {
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
@@ -2385,8 +2391,14 @@ fn ts_lex() -> LexRules {
   ModeledLexRules { root: ts_lex_rules() }
 }
 
+// The token-class membership map for ts_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data ts_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: ts_lex_rules())
+
 fn ts_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(rules: ts_lex_rules(), token_class: sym)
+  map_contains_key(m: ts_lex_token_class_membership, key: sym)
 }
 
 fn ts_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
