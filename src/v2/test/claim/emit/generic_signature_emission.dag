@@ -52,7 +52,7 @@ fn signature_emission_verdict_of(source: String) -> SignatureEmissionVerdict {
 }
 
 fn signature_emission_applied_type_verdict() -> SignatureEmissionVerdict {
-  signature_emission_verdict_of(source: "module v2.test.signature_emission\n\nimport std.types { List }\n\nfn f<T>(x: List<T>) -> List<T> { x }\n")
+  signature_emission_verdict_of(source: "module v2.test.signature_emission\n\ntype Box<T> { value: T }\n\nfn f<T>(x: Box<T>) -> Box<T> { x }\n")
 }
 
 test fn an_applied_type_of_the_functions_own_parameter_is_spelled_in_its_signature_holds() -> Bool {
