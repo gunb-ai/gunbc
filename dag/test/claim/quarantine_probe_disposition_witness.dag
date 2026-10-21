@@ -326,14 +326,26 @@ test fn every_admitted_probe_row_has_at_least_one_holder() -> ProcessExit {
 }
 
 // THE ZERO-HOLDER PROJECTION, one predicate, used by the claim above and exercised by the fixture below.
-// The arm test goes through `unheld_disposition_arm`, so the file matches on the sum type in exactly one
-// place.
+// THE ARM IS SELECTED BY CONSTRUCTOR, never by comparing the rendered label. An earlier spelling here read
+// `unheld_disposition_arm(disposition: d) == "QuarantineProbeNowPassing"`, which made the display string a
+// second authority for which arm is the zero-holder arm: rename or reword that label and the filter selects
+// nothing, the live claim goes green vacuously, and only the fixture below notices (review 84130, DESIGN §5
+// — make the wrong state unwritable where a constructor match is available). `is_zero_holder_disposition`
+// is that match, and it is total over the three arms so a fourth cannot default its way in.
+fn is_zero_holder_disposition(d: QuarantineProbeDisposition) -> Bool {
+  match d {
+    QuarantineProbeNowPassing { identity: _, entry: _, function: _ } => true
+    HeldByExactlyOne { identity: _, holder: _ } => false
+    QuarantineProbeHeldByMoreThanOne { identity: _, holders: _ } => false
+  }
+}
+
 fn zero_holder_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
   fold_list(
     xs: ds,
     empty: Empty {},
     cons: fn(acc, d) {
-      if unheld_disposition_arm(disposition: d) == "QuarantineProbeNowPassing" {
+      if is_zero_holder_disposition(d: d) {
         Cons { head: disposition_identity(d: d), tail: acc }
       } else {
         acc
