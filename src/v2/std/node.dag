@@ -821,6 +821,12 @@ fn match_positional_slot(ordinal: Int) -> MatchSlot {
   }
 }
 
+fn child_slot_edge(slot: ChildSlot) -> Edge { slot.edge }
+
+fn child_slot_target(slot: ChildSlot) -> Node {
+  slot.edge.target
+}
+
 // WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
 // (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
 // Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
