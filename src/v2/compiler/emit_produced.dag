@@ -41,13 +41,8 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
-<<<<<<< HEAD
-import v2.std.type_binder { type_param_names, GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding, produced_type_binding_with_params }
-=======
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, kinded_type_param_names, type_decl_view, type_param_names }
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
->>>>>>> origin/session/quiet-moth-196
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding, produced_type_binding_with_params }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
