@@ -728,3 +728,31 @@ test fn a_supplied_accepted_advisory_is_rendered_by_identity_holds() -> Bool {
   any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " body_lowering_reason_postfix_suffix_carried" })
     && !any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " parse_grammar_choice_overlap_residue" })
 }
+
+test fn zz_diag_rep_drops_0_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()), wanted: ^rc_rep) == 0
+}
+test fn zz_diag_all_drops_0_holds() -> Bool {
+  length(xs: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()).dropped) == 0
+}
+test fn zz_diag_removed_present_holds() -> Bool {
+  match nth_authored_atom(subject: repeated_spelling_subject(), identity: ^rc_rep, n: 1) { Absent => false  Present { value: _ } => true }
+}
+test fn zz_diag_rep_drops_1_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()), wanted: ^rc_rep) == 1
+}
+test fn zz_diag_all_drops_1_holds() -> Bool {
+  length(xs: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()).dropped) == 1
+}
+test fn zz_diag_rep_drops_2_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()), wanted: ^rc_rep) == 2
+}
+test fn zz_diag_all_drops_2_holds() -> Bool {
+  length(xs: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()).dropped) == 2
+}
+test fn zz_diag_rep_drops_3_holds() -> Bool {
+  report_drop_count(report: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()), wanted: ^rc_rep) == 3
+}
+test fn zz_diag_all_drops_3_holds() -> Bool {
+  length(xs: conservation_report_of(subject: repeated_spelling_let_binder_removed_subject()).dropped) == 3
+}
