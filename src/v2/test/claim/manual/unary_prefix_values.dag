@@ -5,11 +5,21 @@ module v2.test.claim.manual.unary_prefix_values
 //
 // A claim body is parsed by the v1 parser and evaluated by the v1 interpreter, so the arms below
 // ARE the interpreter's own reading of `-1 - 2`, `-a + b`, `!a && b` -- no host plumbing, no
-// second tree. The seed's own body parsing is what the fix changes, so before the mirror is
-// regenerated to the fix these arms evaluate the OLD binding (this file is the RED: `-1 - 2`
-// computes 1, `!a && b` with a=true,b=false computes true), and after the regenerated mirror they
-// compute the fixed values. That is the "evaluates to -3 on the v1 interpreter" channel, run
-// through the same executor every claim in this repository runs through.
+// second tree. Measured, not asserted (D2 lane, invocation 83b6b361-8dd2-475e-9aba-1e165f8c6c15,
+// and D5 for the shape channel): with the language mirrors' declared rows patched back to the
+// historical powers (prefix 12, `as` 13 -- the parser as it was at main), the THREE MINUS ARMS
+// refuse with the defect's own values -- `-1 - 2 = 1 (want -3)`, `-1 + 2 = -3 (want 1)`,
+// `-1 - 2 - 3 = 4 (want -6)` -- and with the declared rows at 18/19 the claim passes. That is the
+// "evaluates to -3 on the v1 interpreter" channel, run through the same executor every claim in
+// this repository runs through.
+//
+// THE BANG &&/|| ARMS ARE CONTROLS, NOT REDS (an earlier draft of this comment claimed the old
+// binding computed `!a && b` = true; it did not, and the correction is recorded here because the
+// claim must only advertise what was measured). The old prefix arm parsed at min_bp 12, and `&&` /
+// `||` carry left_bp 7 / 5 -- below 12 -- so the loop already stopped there: `(\!a) && b` was the
+// parse under BOTH bindings, and a=true,b=false computes false under both. The bang absorption the
+// defect class names happens against operators ABOVE the old 12 -- `\!a * b` (`*` left_bp 15) --
+// and it is pinned in the shape channel by unary_prefix_v1_v2_agreement's `!a * b` arm.
 //
 // The emitted-Rust channel is the text arm below: the emitter reads the SAME tree, so the emitted
 // program shows whether the parenthesization changed -- pre-fix `-1 - 2` emits the minus applied
@@ -19,11 +29,16 @@ import std.types { Bool, Int, String, List }
 import std.optional { Absent, Present }
 import std.process { ProcessExit, exit_failure, ExitSuccess }
 
-// THE DISTINGUISHING ARMS. Chosen so old binding and new binding compute DIFFERENT values:
+// THE ARMS. The three minus arms are the distinguishing ones (measured RED under the historical
+// binding, D2 invocation 83b6b361-8dd2-475e-9aba-1e165f8c6c15):
 //   -1 - 2      old: -(1 - 2) = 1    new: (-1) - 2 = -3
 //   -1 + 2      old: -(1 + 2) = -3   new: (-1) + 2 = 1
-//   !a && b     (a,b = true,false)   old: !(true && false) = true   new: (!true) && false = false
-//   !a || b     (a,b = true,true)    old: !(true || true) = false   new: (!true) || true = true
+//   -1 - 2 - 3  old: -((1 - 2) - 3) = 4   new: ((-1) - 2) - 3 = -6
+// The two bang arms compute the SAME (correct) value under both bindings -- `&&`/`||` sit below the
+// old gate 12, so they never absorbed; they stay as pins that the raised power did not regress the
+// cases that already worked:
+//   !a && b     (a,b = true,false)   both: (!true) && false = false
+//   !a || b     (a,b = true,true)    both: (!true) || true = true
 // Controls (same value both bindings -- they must stay true, the fix must not move them):
 //   -(1 - 2) == 1 (parenthesized), -1 * 2 == -2 (multiplication is unaffected in VALUE),
 //   -1 < 0, standalone -3 == -3.
