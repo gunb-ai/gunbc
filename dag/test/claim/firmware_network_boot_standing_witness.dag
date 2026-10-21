@@ -171,9 +171,11 @@ import gunbc.firmware_network_boot_standing {
   SecureBootRefused,
   SecureBootUnobserved,
   AuthenticationRequired,
+  AuthorizationDenied,
+  UnexpectedHttpStatus,
   ReplyShapeUnrecognized,
   ResourceNotFound,
-  TransportRefusedVendorCommand,
+  FirmwareReadRefused,
   VendorCommandRejected,
   UnansweredAxis,
   UefiShellOverSol,
@@ -433,15 +435,15 @@ fn text_contains(haystack: NonEmptyStr, needle: NonEmptyStr) -> Bool {
 // (go ask vs. stop asking that way) and the report line differs too.
 test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
   match standing_of(observation: with_boot_order(boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } })) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
+    Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
     _ => false
   }
     && match standing_of(observation: with_nics(nics: NicsRefused { refusal: ResourceNotFound { detail: "redfish nic collection denied" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
+         Refused { cause: FirmwareReadRefused { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
          _ => false
        }
     && match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthenticationRequired { detail: "secure boot property hidden" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => true
+         Refused { cause: FirmwareReadRefused { refusal: _ }, gaps: _ } => true
          _ => false
        }
 }
@@ -1573,7 +1575,7 @@ test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
+    Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
       d == "ipmi vendor command rejected"
         && any(gaps, g => names_boot_order_axis(gap: g))
         && any(gaps, g => names_secure_boot_axis(gap: g))
@@ -1598,7 +1600,7 @@ test fn the_kind_of_absence_is_typed_per_axis() -> Bool {
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
+    Refused { cause: FirmwareReadRefused { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
       d == "credentials absent"
         && any(gaps, g => gap_was_not_asked(gap: g))
         && any(gaps, g => gap_was_refused(gap: g))
@@ -2079,7 +2081,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     // EVERY OTHER REFUSAL NAMED, so a wrong cause cannot satisfy this test. A `_ => false` here
     // would pass on Refused { cause: NoSuchUnit } -- which is a refusal, so the test would report
     // 'the conflict is named' while the seam named something else entirely.
-    Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => false
+    Refused { cause: FirmwareReadRefused { refusal: _ }, gaps: _ } => false
     Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => false
     Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
     Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
@@ -3750,5 +3752,21 @@ test fn an_enumeration_grounding_on_an_attribute_slot_refuses_rather_than_binds(
         && string_contains(s: owed, pattern: "attribute")
     RouteExecutable { route: _, requires: _ } => false
     RouteNotExecutable { mechanism: _, refusal: _ } => false
+  }
+}
+
+// A 403 keeps its own arm through to the final refusal (it is neither a login nor a route problem).
+test fn authorization_denied_survives_to_the_final_refusal() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthorizationDenied { detail: "role lacks ConfigureComponents" } })) {
+    Refused { cause: FirmwareReadRefused { refusal: AuthorizationDenied { detail: d } }, gaps: _ } => d == "role lacks ConfigureComponents"
+    _ => false
+  }
+}
+
+// A supplied 500 keeps its status through to the final refusal; the status is decision-bearing, not decoration.
+test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: UnexpectedHttpStatus { status: 500, detail: "the service answered with a non-success HTTP status" } })) {
+    Refused { cause: FirmwareReadRefused { refusal: UnexpectedHttpStatus { status: st, detail: _ } }, gaps: _ } => st == 500
+    _ => false
   }
 }
