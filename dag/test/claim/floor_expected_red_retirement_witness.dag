@@ -46,7 +46,7 @@ module test.claim.floor_expected_red_retirement_witness
 // perturbing ONE field of one synthetic row and demanding the whole predicate flip, so an arm that
 // stops refusing can be seen: the arms differ by one field and by nothing else.
 
-import std.types { Bool, List, Int, NonEmptyStr, CommitSha, commit_sha_text_holds, string_non_empty }
+import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds, string_non_empty }
 import std.algebra { fold_list, list_append, length, Empty }
 import std.optional { Optional, Present, Absent }
 import std.execution_mode { ExecutionMode, Wet, Hermetic }
@@ -56,8 +56,6 @@ import gunbc.declined_live_tree_defect_classification {
   ReMeasurement,
   AttributedToChange,
   RestsOnExecutedCheck,
-  PullRequest,
-  NamedChange,
 }
 import gunbc.doc_graph_roots { hand_authored_works_resolution_pool_roots }
 import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
