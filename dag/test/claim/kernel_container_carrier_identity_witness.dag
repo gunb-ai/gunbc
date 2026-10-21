@@ -8,6 +8,7 @@ import std.dissolution {
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
+import gunbc.source_layout { layout_module_storage_path }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -157,12 +158,46 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // separate declarations, and this claim is the one instrument that refuses drift between them; the
 // §5 ideal (make the wrong state unwritable) is the named next rung below, not a pretense here.
 //
+// WHY THE CHECK READS TEXT AND NOT A LENS / TYPECHECK (DESIGN §6b: the root-generalization duty --
+// the author owes why the existing resolved-declaration surface was not used; §5: "a typecheck and a
+// .contains() grep are not consumers"). Both candidate structural instruments were measured against
+// the EXACT fact this guard holds -- which carrier a given spelling is aliased to in std/types -- and
+// neither observes it:
+//   1. The compile-fixture route (multi_module_compile_fixture, the semantic arm already in this
+//      file): its own contract excludes the filesystem, so std/types is never loaded into it, and it
+//      was measured (scratch instrument, see PREDICTIONS_PIN) to be INSENSITIVE to the alias body --
+//      repointing the alias target leaves the acceptance verdict unchanged. It can only prove a locally
+//      redeclared carrier is not the kernel's; it cannot see std/types' alias body at all.
+//   2. The Node-tree reader (v2.std.decl_index DeclFact.node, the §6 lens): measured to ABORT in this
+//      lane (importing it drags a closure with unrelated generic-inference mismatches), and the host
+//      marshal for a transparent type alias returns a unit node with NO children (the alias RHS lives
+//      only in the node's `inferred`, which the TypeItem marshal arm does not carry). So even when the
+//      reader loads, it cannot see the alias body the guard compares.
+// The guard's subject is a PARSE-data declaration whose spelling<->carrier pairing is observable, at
+// the granularity the debt requires, only from the source text. That is the §6b answer: not "a lens
+// was cheaper" but "the lens and the typecheck are both blind to this fact, and one of them aborts".
+// The text check is therefore the discriminating instrument today; the lens becomes the instrument
+// only when the substrate carries an alias body in the reflected Node tree, which is the same next
+// rung the dissolution names.
+//
 // ────────────────────────────────────────────────────────────────────────────────────────
 
-data std_types_source_path: String = "dag/std/types.dag"
+// THE PATH IS DERIVED FROM THE MODULE NAME, NOT HANDED IN. Hand-typing "dag/std/types.dag" restated
+// the storage rule (gunbc.plans.source_layout_authority R5: module `a.b.c` lives at `<root(a)>/b/c
+// .dag`) as a second authority for one fact (DESIGN §3): a layout move of std.types would keep this
+// string pointing at the OLD location and the guard would read a missing file. So the module name
+// `std.types` -- what this guard is actually about -- is the only spelling kept here, and the path
+// comes from the corpus's own storage policy, gunbc.source_layout.layout_module_storage_path. The
+// refusal arm is NOT silent: if the policy ever stops answering for std.types, every text-reading
+// member below reads the empty string and goes RED (the predicate finds no declaration line), which
+// is the loud failure the guard owes.
+data std_types_module: String = "std.types"
 
 fn std_types_declared_text() -> String {
-  filesystem_read(path: std_types_source_path).content
+  match layout_module_storage_path(module: std_types_module) {
+    Absent => ""
+    Present { value: path } => filesystem_read(path: path).content
+  }
 }
 
 // THE PREDICATE, PURE OVER THE SUPPLIED TEXT, BOUND PER LINE. Both halves must hold on the SAME
@@ -224,26 +259,26 @@ test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
 // THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (§3c; review 83623 finding 2). The first
 // version read substrings out of a description literal written a few lines above it -- a change
 // detector that went red only when someone edited that literal. This consumer tests the MECHANISM's
-// partition over typed evidence instead. It follows the frontier idiom's SHAPE but its EXPECTATIONS
-// are inverted, and that inversion is the point: dissolution_trigger_fired discharges a
-// DeclarationRetires trigger on ABSENCE (=> !present), the opposite polarity from the
-// DeclarationAppears frontier this file's siblings use. So:
-//   * [] (nothing present) -> the named predicate is absent -> FIRED.
-//   * [the exact named predicate] -> present -> PENDING (the debt is still live).
-//   * [a same-module lookalike] -> the EXACT ref is still absent -> FIRED. Presence is keyed on the
-//     full (module_path, decl_name) pair (declaration_ref_in_list is structural equality), so a
-//     lookalike does NOT make the named declaration present. This is the arm that separates a real
-//     keying from an "any decl in this module" collapse, and the string version could not have it:
-//     rebind the trigger's decl_name to the lookalike and the SECOND arm goes red.
-test fn the_dissolution_fires_only_when_the_named_predicate_retires() -> Bool {
+// partition over typed evidence instead, in the corpus frontier idiom. dissolution_trigger_fired
+// discharges a DeclarationRetires trigger on ABSENCE, so the arms are:
+//   * [] (nothing present) -> the named debt (std.types.List) is absent -> FIRED.
+//   * [the exact debt ref] -> present -> PENDING (the second authority is still hand-written; the
+//     guard is still needed).
+//   * [a same-MODULE lookalike, std.types.Set] -> the EXACT ref (std.types,List) is still absent ->
+//     FIRED. Presence is keyed on the full (module_path, decl_name) pair (declaration_ref_in_list is
+//     structural equality), so a sibling in the same module does NOT make the named declaration
+//     present. This is the arm that separates a real keying from an "any decl in std.types" collapse:
+//     rebind the trigger's decl_name to Set and the SECOND arm goes red. It also cannot be satisfied
+//     by the guard's own deletion, which was the first version's defect.
+test fn the_dissolution_fires_only_when_the_named_debt_retires() -> Bool {
   dissolution_status(condition: single_authority_alias_dissolve_on, present_decls: [])
     == DissolutionFired
     && dissolution_status(
       condition: single_authority_alias_dissolve_on,
       present_decls: [
         decl_ref(
-          module_path: "test.claim.kernel_container_carrier_identity_witness",
-          decl_name: "std_types_declares_alias_of",
+          module_path: "std.types",
+          decl_name: "List",
         ),
       ],
     )
@@ -252,8 +287,8 @@ test fn the_dissolution_fires_only_when_the_named_predicate_retires() -> Bool {
       condition: single_authority_alias_dissolve_on,
       present_decls: [
         decl_ref(
-          module_path: "test.claim.kernel_container_carrier_identity_witness",
-          decl_name: "the_alias_predicate_is_satisfiable_on_the_real_file",
+          module_path: "std.types",
+          decl_name: "Set",
         ),
       ],
     )
@@ -272,23 +307,20 @@ test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Boo
 // measured, not assumed: the only generated declarations are emitter output into src/v1/stage0 Rust,
 // which are artifacts, not .dag module items). When that facility lands and the three std/types
 // container aliases are DERIVED from the roster -- the §5 ideal of making the drifted state
-// unwritable -- this claim's subject disappears: there is one declaration to agree with, and both
-// the claim and its controls are deleted. Until then this is the named next rung, not a pretense.
+// unwritable -- there is one declaration to agree with and this claim's subject disappears.
+//
+// THE TRIGGER NAMES THE DEBT, NOT THE GUARD. The first version bound a DeclarationRetires trigger to
+// this file's own `std_types_declares_alias_of` predicate -- but dissolution_trigger_fired discharges a
+// DeclarationRetires trigger on ABSENCE, so that version FIRED when someone deleted the guard, and
+// deleting the guard is not the dissolution of the debt. The debt is the SECOND AUTHORITY, the
+// hand-written `type List<element> = FreeMonoid<element>` in std/types (DESIGN §3). It is retired the
+// moment std.types stops hand-writing it and starts deriving it from the roster. So the trigger names
+// std.types.List -- a declaration that EXISTS TODAY (verified: `type List<element> = ...` in the file
+// this guard reads), which is the checkable-now property the std.dissolution header demands, rather
+// than a promise about a generated-form facility nobody has named yet.
 data single_authority_alias_dissolve_on: DissolutionCondition = retires_dissolution(
-  // A BOUND trigger, not a description. std.dissolution's own header records why the description
-  // shape is a defect: an UnboundDissolution's text "is unreadable to dissolution_status by
-  // construction -- so the debt's retirement condition became prose nobody could check." A bound
-  // trigger names a declaration the mechanism can look up.
-  //
-  // The retirement that dissolves this guard is the deletion of the DRIFT PREDICATE ITSELF. When the
-  // substrate gains the generated-declaration form and std/types' three container aliases are DERIVED
-  // from the std/algebra roster, the hand-written alias body and this predicate both go away, and the
-  // predicate's absence is precisely the evidence the mechanism consumes -- a DeclarationRetires trigger
-  // over a declaration that exists TODAY (verified: std_types_declares_alias_of below), which is the
-  // property std.dissolution states for that trigger shape, rather than a promise about a name nobody
-  // has chosen yet.
   decl_ref(
-    module_path: "test.claim.kernel_container_carrier_identity_witness",
-    decl_name: "std_types_declares_alias_of",
+    module_path: "std.types",
+    decl_name: "List",
   ),
 )
