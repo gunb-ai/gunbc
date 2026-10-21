@@ -5,7 +5,21 @@ import std.algebra { Cons, Empty, list_flat_map }
 // The retirement carrier below reuses the closure-receipt shape this repo already declares for a
 // defect closed by prior work, rather than minting a second one (DESIGN §2). No cycle: that module
 // imports only std.types, v2.std.integer and std.algebra.
-import gunbc.declined_live_tree_defect_classification { ClosureReceipt }
+import gunbc.declined_live_tree_defect_classification {
+  Closure,
+  ReMeasurement,
+  AttributedToChange,
+  RestsOnExecutedCheck,
+  PullRequest,
+  NamedChange,
+}
+import std.types { CommitSha, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.execution_mode { ExecutionMode, Wet, Hermetic }
+import std.optional { Optional, Present, Absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed, ClaimExpectation, ExpectedRed, ExpectedToHold }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
@@ -1421,58 +1435,188 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 // receipt. That is also the join that makes the retirement safe: DESIGN §4b(4) says a probe that
 // greens stays enrolled as a permanent regression control, and this witness is what stops "retired"
 // from quietly meaning "nothing runs it any more".
+// WHY THERE IS NO `why: String` AND NO CHUNK-NAME STRING. The tuple this replaces had four
+// String fields and a reader that checked only two of them for non-emptiness; `why` and
+// `standing_before` were read by nobody (review 84071), which is DESIGN §4c's test for dead data:
+// a declaration whose only purpose is commentary. Everything the old `why` prose carried that a
+// program could CHECK is now a typed field: the standing, the enrollment date, the route coverage,
+// the named discharge condition, the closure and the re-measurement. What remains of the narrative
+// — why passing is legitimate rather than a stopped heartbeat — is prose, and prose lives in the
+// comment above each row, where it can be read by humans and cannot be mistaken for a receipt.
+//
+// FIELD-BY-FIELD, the witness (`retired_rows_are_accounted_for` + the three arm controls) reads
+// EVERY field of this record, so none can lie quietly:
+//  - identity: joined against the live roster (arm 1) and the wet schedule (arm 2).
+//  - standing_before: refused unless it is ExpectedRed — a row cannot retire from a standing it
+//    never held, and the field is checked rather than decorative.
+//  - enrolled_on: a real calendar date (the module's own civil-date round-trip) on or before the
+//    re-measurement day; Absent where the ledger never recorded one, which row 3 discloses.
+//  - on_both_routes: must agree with the closure's own route list, so "passes on both routes"
+//    cannot be asserted next to a single-route receipt.
+//  - trigger: the declaration naming the row's OWN discharge condition, when it had one; when
+//    Present it must resolve, which is what stops a trigger being pacified by deleting the row it
+//    names.
+//  - closure: see gunbc.declined_live_tree_defect_classification — two arms, no third.
 type RetiredExpectedRedRow {
-  identity: String,
-  standing_before: String,
-  why: String,
-  closure: ClosureReceipt,
+  identity: WitnessIdentity,
+  standing_before: ClaimExpectation,
+  enrolled_on: Optional<Iso8601CivilDate>,
+  on_both_routes: Bool,
+  trigger: Optional<DeclarationRef>,
+  closure: Closure,
 }
 
 fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
+  // FOUR ROWS, AND EVERY FIELD BELOW IS READ. `test.claim.floor_expected_red_retirement_witness`
+  // joins each row against three live populations (this roster's own chunks, the wet lane's own
+  // schedule, and the declaration index) and reads every field of the closure; a field it does not
+  // read is a bug in one of the two files, not a convenience. The narrative that used to sit in
+  // `why:` sits in the comment above each row instead, where a human reads it and a program cannot
+  // mistake it for a receipt.
+  //
+  // HEAD AND DAY ARE THE SAME FOR ALL FOUR, because all four were re-measured in one run of the wet
+  // lane at head a162e67d1af846dc8431329871e2297768284613 on 2026-10-21, through the same host the
+  // scheduled lane uses (`claim_batch --claim-run --wet`). The receipt NAMES the instrument rather
+  // than copying what it printed, so there is no figure here that can rot while the instrument says
+  // otherwise (review 84083: "the receipts copy measurement output instead of naming the instrument").
+  //
+  // WHY NO COMMIT HASH APPEARS ANYWHERE BELOW. The 2026-10 mega-squash rewrote history, so the
+  // commits that closed these rows are not reachable from this head; a hash would send a reader to an
+  // object they cannot check out, which is a citation nobody can check. Each closure instead carries
+  // `durable_account` -- declarations in this tree that record the same event -- and the witness
+  // resolves every one against the live index, so deleting or renaming an account fails a claim
+  // rather than leaving a graceful-looking sentence behind. Accounts name FNS, not `data` rows or
+  // `type` names: the keyed read `v2.std.decl_index` `decl_facts_at` answers "what does the corpus
+  // declare under this qualified name" over the whole corpus, so an fn account resolves from a
+  // production module while a `data` row would resolve only by accident of that same census.
+  //
+  // ENROLMENT DATES ARE `Absent` WHERE THE LEDGER NEVER RECORDED ONE. The old prose carried dates
+  // inside a sentence nobody parsed. Two of these rows were enrolled on a date their own chunk
+  // comment states; two state none. `Absent` is the honest value and the witness refuses an
+  // `enrolled_on` that post-dates its own re-measurement, so a date cannot be invented forward.
   [
+    // THE WEAK CASE, DISCLOSED AS ONE. No repair commit is established for this row: nothing in the
+    // tree touches the claim's own file, and the guarantee that named it was itself retired by the
+    // declaration-bound formal carrier (see gunbc.guarantee_probe_corpus: "the former module-wide v2.*
+    // exemption is retired by the declaration-bound formal carrier"). So the closure is not attributed
+    // to a change at all -- it rests on the executed discrimination check, which is what
+    // `RestsOnExecutedCheck` exists to say. The durable account is the probe corpus the trio is
+    // declared in, so the check's subject cannot vanish silently.
     RetiredExpectedRedRow {
-      identity: "test.claim.direct_call_argument_type_witness.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
-      standing_before: "ExpectedRed, floor_expected_red_chunk_19 (enrolled 2026-08-22, on a route this roster had not carried before)",
-      why: "It now passes on BOTH routes, so the refusal it stood for exists. No repair commit is ESTABLISHED for this row: no commit touches the claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier (see gunbc.guarantee_probe_corpus: 'the former module-wide v2.* exemption is retired by the declaration-bound formal carrier'). Its removal therefore rests on the executed discrimination check in the receipt, NOT on an attributed fix — the weak case, disclosed rather than dressed up.",
-      closure: ClosureReceipt {
-        closed_by: [
-          "no attributed fix commit: the 2026-10 history rewrite (mega-squash) removed the commits that could pin it, so none is reachable from this head",
-          "executed discrimination check at head a162e67d1af8 (2026-10-21): the claim's three-claim trio ran on the host — the v2-module red REFUSES (nonzero), the paired ordinary-module control refuses, and the v2 green control returns zero diagnostics — so the claim still discriminates and its green is an observation, not a stopped heartbeat (verdict lines counted at head, /tmp receipt in the PR body)",
+      identity: WitnessIdentity {
+        module_path: "test.claim.direct_call_argument_type_witness",
+        function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
+      },
+      standing_before: ExpectedRed,
+      enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
+      on_both_routes: true,
+      trigger: Absent,
+      closure: RestsOnExecutedCheck {
+        why_no_change: "no attributed fix commit exists: no commit touches this claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier, so the removal rests on the executed check rather than on a change" as NonEmptyStr,
+        durable_account: [
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows"),
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_ordinary"),
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_v2_module_red_probe"),
         ],
-        re_measured_at: "2026-10-21 at head a162e67d1af8: PASS (executed, claim_batch host, per-entry invocation)",
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: [Wet, Hermetic],
+          outcome: Passed,
+          instrument: decl_ref(module_path: "test.claim.direct_call_argument_type_witness", decl_name: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch"),
+        },
       },
     },
+    // IT PASSED BECAUSE THE STALE AUTHORITY WAS REMOVED AFTER ITS CONTROLS SURVIVED ELSEWHERE -- the
+    // sequence DESIGN 4b(4) demands -- not because a failing behaviour started passing. Its red came
+    // from 19 declared binds pointing at docs/probes/ files the 2026-08-24 measurement bankruptcy
+    // deleted; the 2026-08-25 repair rehomed the three g1-cited-symbol discriminating controls as
+    // machine planted controls for the cited-symbol lens, then deleted the orphan binds and the emitted
+    // plan root. The equality holds for a reason that cannot re-fire: the declarations it failed on are
+    // gone. Its classification carrier moved with it in this same change (the `doc_reachability_rows`
+    // census in gunbc.declined_live_tree_defect_classification, which records the same closure).
     RetiredExpectedRedRow {
-      identity: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted",
-      standing_before: "ExpectedRed, floor_expected_red_chunk_live_tree_admission (enrolled 2026-08-28, that chunk's only doc-graph count row)",
-      why: "It now PASSES, and it passes because the stale authority it failed on was removed AFTER its controls survived elsewhere — the sequence DESIGN §4b(4) demands — not because a failing behaviour started passing. Its red came from 19 declared binds pointing at docs/probes/ files the 2026-08-24 measurement bankruptcy deleted; the 2026-08-25 repair rehomed the three g1-cited-symbol discriminating controls as machine planted controls for the cited-symbol lens and then deleted the orphan binds and the emitted plan root. So the equality holds for a reason that cannot re-fire: the declarations it failed on are gone. Its classification carrier moved with it, in this same change: gunbc.declined_live_tree_defect_classification doc_reachability_rows now records ClosedByPriorChange with the receipt below and the re-measured figure, replacing NeedsOperatorRuling and the stale 228/209 census (that module's owner, gunbai-bot[bot], is named in the PR).",
-      closure: ClosureReceipt {
-        closed_by: [
-          "2026-08-25 (operator ruling): rehomed the three g1-cited-symbol discriminating controls as machine planted controls for the cited-symbol lens, then deleted the 16 dead ProbeDoc binds and the emitted plan root. Commit hashes are deliberately NOT cited: the 2026-10 mega-squash left those objects unreachable from this head, and a hash here would point at something a reader cannot check out. Durable account: dag/gunbc/doc_graph_roots.dag header ('They moved to that lens as a typed control carrier on 2026-08-25 (operator ruling)'; 'SIXTEEN PROBE-DOC BINDS WERE DELETED THE SAME DAY, AND THE HOME AXIS DELIBERATELY SURVIVED THEM') and dag/test/claim/doc_graph_reference_partition_witness.dag `cited_symbol_partition_third_bucket_note`.",
+      identity: WitnessIdentity {
+        module_path: "test.claim.doc_reachability_witness",
+        function: "doc_graph_registered_plan_roots_all_admitted",
+      },
+      standing_before: ExpectedRed,
+      enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 28 } },
+      on_both_routes: true,
+      trigger: Absent,
+      closure: RestsOnExecutedCheck {
+        why_no_change: "closed by the 2026-08-25 operator ruling that rehomed the g1 controls and deleted the dead binds; the objects of that change are unreachable from this head after the 2026-10 mega-squash, so it is named rather than hashed and rests on the executed count check" as NonEmptyStr,
+        durable_account: [
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
         ],
-        re_measured_at: "2026-10-21 at head a162e67d1af8: declared roots 27, admitted roots 27, claim PASS (executed through the claim_batch host, same route the claim uses). Supersedes the 2026-08-24 census (228 declared / 209 admitted), which counted a population that no longer exists.",
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: [Wet],
+          outcome: Passed,
+          instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
+        },
       },
     },
+    // ITS OWN HEADER NAMED THE DISCHARGE CONDITION -- "the code-point encoding carries a string
+    // identity, or content_hash gains a non-symbol atom arm" -- and the first half landed: character
+    // atoms now carry a string identity through the scalar producer. The three sibling *_violates rows
+    // retired on the same trigger; this is the standing half of that family. Because the row named its
+    // own exit, `trigger` is Present and points at the capability it named: the witness resolves it, so
+    // deleting the thing this row was waiting for cannot pacify the row.
     RetiredExpectedRedRow {
-      identity: "v2.test.claim.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds",
-      standing_before: "ExpectedRed, floor_expected_red_chunk_19",
-      why: "Its own header named the discharge condition — the code-point encoding carries a string identity, or content_hash gains a non-symbol atom arm — and that trigger landed; the three sibling *_violates rows retired on the same trigger, and this is the standing half of that family. It now passes on both routes.",
-      closure: ClosureReceipt {
-        closed_by: [
-          "the character-atom string-identity repair (#9250, 'give character atoms a string identity'), the exact arm this row's header named as its discharge condition. Commit hash not cited: unreachable from this head after the 2026-10 mega-squash; named by its own header's trigger and by the sibling retirements that recorded the same event.",
+      identity: WitnessIdentity {
+        module_path: "v2.test.claim.manual.bootstrap_footprint_anchor",
+        function: "bootstrap_footprint_canonical_holds",
+      },
+      standing_before: ExpectedRed,
+      enrolled_on: Absent,
+      on_both_routes: true,
+      trigger: Present { value: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point") },
+      closure: AttributedToChange {
+        change: PullRequest { number: 9250 },
+        durable_account: [
+          decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point"),
+          decl_ref(module_path: "gunbc.floor.floor_non_verdict_classification", decl_name: "non_verdict_row_identity"),
         ],
-        re_measured_at: "2026-10-21 at head a162e67d1af8: PASS (executed, claim_batch host, per-entry invocation)",
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: [Wet, Hermetic],
+          outcome: Passed,
+          instrument: decl_ref(module_path: "v2.test.claim.manual.bootstrap_footprint_anchor", decl_name: "bootstrap_footprint_canonical_holds"),
+        },
       },
     },
+    // THE ONE ROW WITH A REAL FIX BEHIND IT, not a verdict alone. The repair names this identity
+    // verbatim in its body and lands the grounding: `algebra_ref_is_grounded` now admits a kind atom
+    // whose `kind_denoted_by_node` is Present, which is exactly the arm (`infer_algebra_ref_ungrounded`)
+    // this row stood for. It was enrolled on a named forecast and the forecast came true, so this is
+    // the dissolution its own header specified. The other two identities in that file stay enrolled.
     RetiredExpectedRedRow {
-      identity: "v2.test.claim.manual.ingest_bridge.ingest_identity_coercion_accepts_source_present_in_authored_roster",
-      standing_before: "ExpectedRed, floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded (enrolled 2026-09-27)",
-      why: "It passes on both routes, and this one has a real closure receipt rather than a verdict alone: the repair commit names this identity verbatim in its body and lands the grounding in src/v2/compiler/04_infer.dag — `algebra_ref_is_grounded` in src/v2/compiler/infer.dag now admits a kind atom whose `kind_denoted_by_node` is Present, which is the exact arm (`infer_algebra_ref_ungrounded`) the row stood for. The row was enrolled on a named forecast and the forecast came true, so this is the dissolution its own header specified. The other two identities in that file stay enrolled.",
-      closure: ClosureReceipt {
-        closed_by: [
-          "the kind-atom grounding fix (#12919, 'A kind atom is grounded by its declared authority (std.kind): fixes the #12290 accepting-control red', 2026-09-29), whose body names this identity verbatim; the arm it stood for is src/v2/compiler/infer.dag `infer_algebra_ref_ungrounded`, now closed for kind atoms by `algebra_ref_is_grounded`. Commit hash not cited: unreachable from this head after the 2026-10 mega-squash.",
+      identity: WitnessIdentity {
+        module_path: "v2.test.claim.manual.ingest_bridge",
+        function: "ingest_identity_coercion_accepts_source_present_in_authored_roster",
+      },
+      standing_before: ExpectedRed,
+      enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 9, day: 27 } },
+      on_both_routes: true,
+      trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic") },
+      closure: AttributedToChange {
+        change: PullRequest { number: 12919 },
+        durable_account: [
+          decl_ref(module_path: "v2.compiler.infer", decl_name: "algebra_ref_is_grounded"),
+          decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic"),
         ],
-        re_measured_at: "2026-10-21 at head a162e67d1af8: PASS (executed, claim_batch host, per-entry invocation)",
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: [Wet, Hermetic],
+          outcome: Passed,
+          instrument: decl_ref(module_path: "v2.test.claim.manual.ingest_bridge", decl_name: "ingest_identity_coercion_accepts_source_present_in_authored_roster"),
+        },
       },
     },
   ]
