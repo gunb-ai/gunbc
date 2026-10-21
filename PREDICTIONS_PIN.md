@@ -951,3 +951,11 @@ Escape-hatch env on. If H3 refuses, STOP (no H4-H6), report.
   5. stage0: bootstrap = take MAIN'S WHOLE src/v1/stage0/src (NOT per-file: H2 PROVED partial-take mixes generations — kept-PR-2 mirrors call 7-arg unify_generics while main's define 5-arg -> E0061 5-vs-7 + no-field-subst. NEVER mix). Then regen trio regenerates from merged .dag.
 - H2 lesson (script bug, recorded): force-taking only CONFLICTED mirrors keeps auto-merged other mirrors at PR-2 generation -> guaranteed mismatch. Fix: whole-dir main-side take.
 - H2/H5 build rc=101 as above; H3-H6 never ran (rc=127 no binary). CHAIN UNVERIFIED past H2 — do NOT claim regen works on true rebase yet. PRED-H2 = corrected rehearsal with these exact resolutions, full chain to claim-run PASS.
+
+## PRED-H2 (2026-10-21, corrected true-rebase rehearsal; resolutions per PRED-H analysis; measurement-only)
+- H2-0: merge origin/main into 97e47f8 -> same conflict set as H1 (recorded; deviation = surprise, stop).
+- H2-1: apply the 5 resolutions verbatim (frontier-row deletion taking main's retirement; import union; receipts-union; git rm probe; whole-dir main-side stage0 take).
+- H2-2 build rc=0 (main's whole mirror set + PR-2 .dag = buildable bootstrap; H2 proved the per-file take breaks it).
+- H2-3 regen-round-cost rc=0 installs>=0, NO 'refused' (trace.dag is gone -> Product(SpanMapping) cannot recur; if it DOES recur, report verbatim).
+- H2-4 heal_wet + seed_regen rc=0; changed set hand-maintained-free.
+- H2-5 rebuild rc=0. H2-6 prebake claim file (cp from scratch prebake) claim-run: 3/3 PASS rc=0.
