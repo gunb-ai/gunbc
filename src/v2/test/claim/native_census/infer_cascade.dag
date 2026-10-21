@@ -342,13 +342,15 @@ test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Boo
 // ── the occurrence column of a cause-group row (T2.5-B) ──
 //
 // A cause-group row that carries NO node identity cannot be located: the ranking report could name a
-// refusal's reason and path but not the authored occurrence it refuses at. These two controls close
-// that. THE ROUTE CLAIM below runs the real census-infer route and demands the occurrence be PRESENT
-// on the b-side resolve root the route files (dropping the fatal read at its populate site -- the
-// root member at add_module -- reds it); the a-side infer member's populate site (the cascade member
-// at add_infer_module) is red-proved by the SUPPLIED-VALUE CLAIM above, which runs
-// native_census_infer_member over a chain of its own and fails if the code keys on the chain's head
-// instead of its fatal. THE KEYING CLAIM supplies the four identity arms directly, because which occurrence a node
+// refusal's reason and path but not the authored occurrence it refuses at. Three controls below
+// close that. THE ROUTE CLAIM (census_infer_member_carries_the_authored_occurrence_b_side_holds)
+// runs the real census-infer route and demands the occurrence be PRESENT on the b-side resolve root
+// the route files (dropping the fatal read at its populate site -- the root member at add_module --
+// reds it). THE SUPPLIED-VALUE CLAIM (census_infer_member_populate_reads_the_fatal_occurrence_holds)
+// runs native_census_infer_member over a chain of its own, so the a-side populate site (the cascade
+// member at add_infer_module) is red-proved there: it fails if that site drops the fatal read or
+// keys the chain's head instead of its fatal. THE KEYING CLAIM
+// (census_occurrence_keying_rule_is_the_authored_one_holds) supplies the four identity arms directly, because which occurrence a node
 // ANSWERS FOR is a decision, not a production: the projected and pending arms must follow the cause,
 // and the older own-id projection (node_occurrence_id_optional) answers 900 where the authored answer
 // is 7 -- supplied values make that disagreement a fact the claim checks rather than a reading.
@@ -367,15 +369,15 @@ fn occurrence_is_id(occurrence: Optional<OccurrenceId>, id: Int) -> Bool {
   }
 }
 
-// THE ONE REAL-ROUTE CONTROL FOR THE COLUMN. a's member is the infer refusal this file's route claim
-// already pins (the projection miss, fatal at the projection SITE node); b's root member is the unbound
-// resolve fatal at its authored node. Both are authored parses, so both must answer with an id. RED if
-// either populate site files the column absent, and RED if the route stops reading the fatal at all.
-// THE POPULATE SITE ITSELF, SUPPLIED. The real route's a-side member no longer exists on current main
-// (its infer refusal is now a resolve refusal -- the pre-existing census_infer_provider_cascade claim
-// reds on pristine main for the same reason), so the a-side column is checked at the producer rather
-// than through the drifted fixture, per this file's own rule that every non-route control supplies
-// values to the decision it judges. The chain's LAST diagnostic is a node refusal at a minted node, so
+// THE POPULATE SITE ITSELF, SUPPLIED. The route claim above checks the b-side root member only,
+// because the real route's a-side infer member no longer exists on current main: the refusal that
+// used to be filed at infer is now filed at resolve, so no route run produces an a-side infer member
+// to read the column from. That dropped rung is carried, with its next-rung trigger, by the typed row
+// gunbc.recurring_failure_mode.census_row_shape_moved_without_moving_its_consumer (a census row's
+// shape moved and its consumers were left reading the old fact; the three cascade claims that observe
+// the move are named there with their measured cells), not by this comment. So the a-side column is
+// checked at the producer rather than through the drifted fixture, per this file's own rule that every
+// non-route control supplies values to the decision it judges. The chain's LAST diagnostic is a node refusal at a minted node, so
 // the fatal the populate site reads must carry that occurrence; its HEAD is a declaration locus, which
 // the site must NOT key (a head-keyed member would be Absent). RED if the populate site drops the
 // fatal read, keys the head instead of the fatal, or files the column absent.
