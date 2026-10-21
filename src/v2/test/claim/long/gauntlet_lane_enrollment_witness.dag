@@ -20,7 +20,10 @@ import std.realization_schedule {
 import std.algebra { length }
 import v2.std.text { String }
 
-// Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow
+// Executing consumer for the per-PR half of the FalsifierCadenceJob lane -- the lane itself is
+// declared but UNREALIZED (its executor falsifier.yml was deleted at 611fd02770/#8283; the loss is
+// carried by the typed frontier and gunbc.rung_drop.falsifier_rehomed_rows_unexecuted, #14615)
+// (gunbc.commit_workflow
 // falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole
 // value is the difference between 're-homed' and 'dropped', and that difference is invisible in a
 // diff: both look like a surface list edit. Three claims, the third a RED control so the first two
