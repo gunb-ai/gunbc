@@ -16,6 +16,7 @@ import v2.std.text { string_eq }
 data privileged_helper_forbidden_paths: List<String> = [
   "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag",
   "dag/gunbc/roadmap/roadmap_belt.dag",
+  "dag/gunbc/roadmap/roadmap_belt_actuate.dag",
   "dag/gunbc/harness/harness_backend.dag"
 ]
 
