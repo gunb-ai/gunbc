@@ -1882,6 +1882,18 @@ fn observe_removal_boundary_standing(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
     ),
+    // THE REPO- AND ENV-AXIS REDS AT THE STANDING SITE (round 8, manager msg_7866ef0e + msg_ffc85b78).
+    // Same kind of admission as the owner RED above: each can only produce what the mint itself decides
+    // -- the pair is built from real reads through the confining join, and the mint's own subject
+    // comparison is what names the refusal. They are not second doors.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_repository"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_environment"
+    ),
 ]
 {
   // THE INSTANT IS THE FIRST QUESTION, before the environment is even consulted: a standing is about to
