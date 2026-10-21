@@ -333,7 +333,7 @@ data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" a
 // (dashboard_instance_provision_parent_directory) and the instance root beneath it is
 // briansrls:gunbc-attempt 0750 (dashboard_instance_root_directory): the shared group traverses by
 // membership and other gets nothing. Reachability is established before a unit starts by
-// gunbc.roadmap.dispatch_worker_reach.
+// gunbc.roadmap.dispatch_worker_traversal.
 data srv1_dashboard_lab_provision_parent: FilePath = "/opt/gunbc-lab" as FilePath
 data srv1_dashboard_lab_root: FilePath = "/opt/gunbc-lab/codex-provider-feedback-v0" as FilePath
 // srv2's roots stay under the home tree on purpose: the preview is DashboardObserveOnly and the srv2

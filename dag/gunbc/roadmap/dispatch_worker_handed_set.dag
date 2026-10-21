@@ -19,7 +19,7 @@ import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire 
 
 // THE PATHS A WORKER UNIT IS HANDED ARE ONE TYPED SET, AND THE UNIT IS RENDERED FROM IT. Path text
 // appears only when rendering. Before this module the plan rendered WorkingDirectory=, ReadWritePaths=
-// and the rest from their own sources while the reach check (gunbc.roadmap.dispatch_worker_reach)
+// and the rest from their own sources while the reach check (gunbc.roadmap.dispatch_worker_traversal)
 // assembled a SECOND list of the same facts beside them: reusing the renderer's helpers meant the two
 // could not drift today, but a path a later change handed the unit through a new property was silently
 // outside the check, and the harness argv's --source-root operands (the controller's dag/ and src/v2
@@ -35,8 +35,8 @@ import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire 
 //
 // CONSUMERS: dispatch_worker_unit_stream_properties renders its path settings from
 // dispatch_worker_set_path_settings; gunbc_harness_spawn_argv reads its --source-root operands from
-// dispatch_worker_source_roots; gunbc.roadmap.dispatch_worker_reach folds over the set. Executing
-// route: test.claim.roadmap.dispatch_worker_reach_witness.
+// dispatch_worker_source_roots; gunbc.roadmap.dispatch_worker_traversal folds over the set. Executing
+// route: test.claim.roadmap.dispatch_worker_traversal_witness.
 type HandedPathRole
   = HandedWorkingDirectory
   | HandedReadWrite
@@ -66,6 +66,27 @@ fn handed_entry_leaf_is_directory(entry: HandedEntry) -> Bool {
     HandedExecutable => false
     HandedSourceRoot => true
   }
+}
+
+// WHOSE PATH IT IS. The exit root is the MANAGER's: ExecStopPost carries the "+" prefix, so the hook
+// runs outside the sandbox with the manager's privileges and the worker uid never touches the inbox.
+// The set keeps it because the unit renders ExecStopPost from it; the worker-traversal fold
+// (gunbc.roadmap.dispatch_worker_traversal) reads only the entries the worker itself enters. The exit
+// root belongs to the manager-created-path handoff (gunbc.roadmap.dispatch_unit_created_paths), with
+// the manager as creator and the drain principal as consumer.
+fn handed_entry_is_entered_by_the_worker(entry: HandedEntry) -> Bool {
+  match entry.role {
+    HandedExitRoot => false
+    _ => true
+  }
+}
+
+fn dispatch_worker_set_exit_root(set: List<HandedEntry>) -> String {
+  fold(set, init: "", f: (acc, e) =>
+    match e.role {
+      HandedExitRoot => e.path
+      _ => acc
+    })
 }
 
 // THE MODULE ROOTS THE HARNESS WORKER LOADS FROM, minted here once. gunbc_harness_spawn_argv takes its

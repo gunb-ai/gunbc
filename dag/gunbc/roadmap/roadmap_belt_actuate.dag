@@ -49,13 +49,13 @@ import gunbc.roadmap.dispatch_unit_created_paths {
   dispatch_unit_created_paths_judge,
   dispatch_unit_created_path_wire,
 }
-import gunbc.roadmap.dispatch_worker_reach {
-  dispatch_worker_reach_for_plan,
-  dispatch_worker_reach_wire,
-  DispatchWorkerReach,
-  DispatchWorkerReachAdmitted,
+import gunbc.roadmap.dispatch_worker_traversal {
+  dispatch_worker_traversal_for_plan,
+  dispatch_worker_traversal_wire,
+  DispatchWorkerTraversal,
+  DispatchWorkerTraversalAdmitted,
   DispatchWorkerAncestorNotTraversable,
-  DispatchWorkerReachCouldNotLook,
+  DispatchWorkerTraversalCouldNotLook,
 }
 import gunbc.dispatch_attempt_launch {
   PreparedAttemptLaunch,
@@ -1529,21 +1529,21 @@ fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCr
 // refuses first, so no placement record is written and no start request is enqueued.
 // The tmux container runs as the controller itself and hands no User=, so only a unit container
 // climbs.
-fn belt_worker_reach_outcome(reach: DispatchWorkerReach) -> BeltExecStepsOutcome {
+fn belt_worker_traversal_outcome(reach: DispatchWorkerTraversal) -> BeltExecStepsOutcome {
   match reach {
-    DispatchWorkerReachAdmitted => ExecStepsOk
+    DispatchWorkerTraversalAdmitted => ExecStepsOk
     DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: _, observed_owner: _, observed_mode: _ } =>
-      ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
-    DispatchWorkerReachCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
-      ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
   }
 }
 
-fn belt_worker_reach_before_spawn(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
+fn belt_worker_traversal_before_spawn(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => ExecStepsOk
     SystemdUnitContainer { plan } =>
-      match belt_worker_reach_outcome(reach: dispatch_worker_reach_for_plan(instance: instance, plan: plan)) {
+      match belt_worker_traversal_outcome(reach: dispatch_worker_traversal_for_plan(instance: instance, plan: plan)) {
         ExecStepFailed { step: s, detail: d } => ExecStepFailed { step: s, detail: d }
         ExecStepsOk => belt_worker_created_paths_outcome(verdict: dispatch_unit_created_paths_judge(created: dispatch_worker_created_paths(instance: instance, plan: plan)))
       }
@@ -3483,7 +3483,7 @@ fn belt_spawn_admitted(
             launch: launch,
           }
         AttemptWorktreePresent { path: _ } =>
-      match belt_worker_reach_before_spawn(instance: instance, container: cmds.session_container) {
+      match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
         ExecStepFailed { step, detail } =>
           SpawnFailed {
             node_id: node.node as String,

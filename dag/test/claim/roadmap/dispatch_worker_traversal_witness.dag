@@ -1,9 +1,9 @@
-module test.claim.roadmap.dispatch_worker_reach_witness
+module test.claim.roadmap.dispatch_worker_traversal_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.access.posix { FileMode, FileOwnership, PermissionBits, file_mode_of_octal_text }
-import gunbc.roadmap.dispatch_worker_reach {
+import gunbc.roadmap.dispatch_worker_traversal {
   HandedPath,
   AncestorStat,
   AncestorStatObserved,
@@ -11,16 +11,17 @@ import gunbc.roadmap.dispatch_worker_reach {
   WorkerMembership,
   WorkerMembershipObserved,
   WorkerMembershipUnobserved,
-  DispatchWorkerReachAdmitted,
+  DispatchWorkerTraversalAdmitted,
   DispatchWorkerAncestorNotTraversable,
-  DispatchWorkerReachCouldNotLook,
-  dispatch_worker_reach_admit,
-  dispatch_worker_reach_wire,
+  DispatchWorkerTraversalCouldNotLook,
+  dispatch_worker_traversal_admit,
+  dispatch_worker_traversal_wire,
   dispatch_worker_handed_chain,
   dispatch_worker_chain_paths,
   worker_membership_of_id_line,
+  dispatch_worker_entered_paths,
 }
-import gunbc.roadmap.roadmap_belt_actuate { belt_worker_reach_outcome }
+import gunbc.roadmap.roadmap_belt_actuate { belt_worker_traversal_outcome }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties,
   dispatch_worker_handed_set,
@@ -33,6 +34,7 @@ import gunbc.roadmap.dispatch_worker_handed_set {
   HandedReadOnly,
   dispatch_worker_source_roots,
   dispatch_worker_path_settings_are_the_set,
+  dispatch_worker_set_exit_root,
 }
 import extdeps.systemd { ReadOnlyPathsProperty, BindPathsProperty }
 import extdeps.systemd.systemd_run { NamedUnitSetting, SystemdRunProperty }
@@ -99,14 +101,14 @@ fn new_chain() -> List<AncestorStat> {
 // owner and mode, and the belt maps it to a failed step -- belt_session_container_create (placement
 // record, enqueue, argv) is reached only on ExecStepsOk, so no spawn argv exists on this path.
 test fn the_observed_lab_chain_refuses_naming_local_share_and_emits_no_spawn() -> Bool {
-  let reach = dispatch_worker_reach_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: worker())
+  let reach = dispatch_worker_traversal_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: worker())
   match reach {
     DispatchWorkerAncestorNotTraversable { worker: w, handed_path: _, blocking_dir: d, observed_owner: o, observed_mode: _ } =>
       w == "gunbc-worker" && d == "/home/briansrls/.local/share" && o.uid == 1000
-        && string_contains(s: dispatch_worker_reach_wire(reach: reach), pattern: "710")
-        && string_contains(s: dispatch_worker_reach_wire(reach: reach), pattern: "/home/briansrls/.local/share")
-        && match belt_worker_reach_outcome(reach: reach) {
-          ExecStepFailed { step: s, detail: _ } => s == "worker-reach"
+        && string_contains(s: dispatch_worker_traversal_wire(reach: reach), pattern: "710")
+        && string_contains(s: dispatch_worker_traversal_wire(reach: reach), pattern: "/home/briansrls/.local/share")
+        && match belt_worker_traversal_outcome(reach: reach) {
+          ExecStepFailed { step: s, detail: _ } => s == "worker-traversal"
           ExecStepsOk => false
         }
     _ => false
@@ -115,8 +117,8 @@ test fn the_observed_lab_chain_refuses_naming_local_share_and_emits_no_spawn() -
 
 // GREEN: the same judge, the same worker, the re-rooted chain.
 test fn the_re_rooted_lab_chain_admits() -> Bool {
-  match dispatch_worker_reach_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: worker()) {
-    DispatchWorkerReachAdmitted => true
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: worker()) {
+    DispatchWorkerTraversalAdmitted => true
     _ => false
   }
 }
@@ -126,7 +128,7 @@ test fn the_re_rooted_lab_chain_admits() -> Bool {
 // declares gunbc-attempt.
 test fn a_declared_group_the_host_lacks_does_not_admit() -> Bool {
   let without = WorkerMembershipObserved { worker: "gunbc-worker", uid: 1004, gids: [1004] }
-  match dispatch_worker_reach_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: without) {
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: without) {
     DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } =>
       d == "/opt/gunbc-lab/codex-provider-feedback-v0"
     _ => false
@@ -134,12 +136,12 @@ test fn a_declared_group_the_host_lacks_does_not_admit() -> Bool {
 }
 
 test fn unobserved_membership_is_a_could_not_look_refusal() -> Bool {
-  match dispatch_worker_reach_admit(
+  match dispatch_worker_traversal_admit(
     handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"),
     stats: new_chain(),
     membership: WorkerMembershipUnobserved { worker: "gunbc-worker", reason: "id could not look the account up" },
   ) {
-    DispatchWorkerReachCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "the worker's group membership"
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "the worker's group membership"
     _ => false
   }
 }
@@ -149,8 +151,8 @@ test fn an_unstatted_ancestor_is_a_could_not_look_refusal_not_a_pass() -> Bool {
     dir(path: "/opt", uid: 0, gid: 0, octal: "755"),
     AncestorStatUnobserved { path: "/opt/gunbc-lab", reason: "stat could not read the path" },
   ]
-  match dispatch_worker_reach_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: stats, membership: worker()) {
-    DispatchWorkerReachCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "/opt/gunbc-lab"
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: stats, membership: worker()) {
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "/opt/gunbc-lab"
     _ => false
   }
 }
@@ -159,8 +161,8 @@ test fn an_unstatted_ancestor_is_a_could_not_look_refusal_not_a_pass() -> Bool {
 // passes by OBSERVATION (owner execute), even through the 0710 .local/share that refuses the worker.
 test fn the_service_user_passes_the_old_chain_by_observation() -> Bool {
   let service = WorkerMembershipObserved { worker: "briansrls", uid: 1000, gids: [1000] }
-  match dispatch_worker_reach_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: service) {
-    DispatchWorkerReachAdmitted => true
+  match dispatch_worker_traversal_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: service) {
+    DispatchWorkerTraversalAdmitted => true
     _ => false
   }
 }
@@ -173,7 +175,7 @@ test fn id_output_parses_to_numeric_groups_and_garbage_is_unobserved() -> Bool {
     line: "uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)\n",
   )
   (match parsed {
-    WorkerMembershipObserved { worker: _, uid: u, gids: g } => u == 1004 && g == [1004, 1003]
+    WorkerMembershipObserved { worker: _, uid: u, gids: g } => u == 1004 && g == [1004, 1004, 1003]
     WorkerMembershipUnobserved { worker: _, reason: _ } => false
   })
     && (match worker_membership_of_id_line(worker: "w", line: "id: 'w': no such user") {
@@ -286,8 +288,34 @@ test fn an_unreachable_source_root_refuses_naming_it() -> Bool {
     dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0/source", uid: 1000, gid: 1003, octal: "2770"),
     dir(path: root, uid: 1000, gid: 1000, octal: "700"),
   ]
-  match dispatch_worker_reach_admit(handed: [HandedPath { path: root, leaf_is_directory: true }], stats: stats, membership: worker()) {
+  match dispatch_worker_traversal_admit(handed: [HandedPath { path: root, leaf_is_directory: true }], stats: stats, membership: worker()) {
     DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => d == root
     _ => false
   }
+}
+
+// THE EXIT ROOT IS THE MANAGER'S, NOT THE WORKER'S. A layout in which the worker cannot even traverse
+// the exit inbox (0700 owned by the service user) is ADMITTED, because the "+" hook creates the record
+// as the manager; the worker-entered fold leaves the exit root out. The control: judging the same
+// chain with the exit root included refuses naming the inbox, so the stats do discriminate. RED on the
+// head that folded HandedExitRoot into worker traversal.
+test fn a_layout_the_worker_cannot_traverse_to_the_exit_inbox_is_admitted() -> Bool {
+  let set = fixture_set()
+  let inbox = dispatch_worker_set_exit_root(set: set)
+  let everything = map(set, e => HandedPath { path: e.path, leaf_is_directory: true })
+  let stats = map(dispatch_worker_chain_paths(handed: everything), p =>
+    if starts_with(s: p, prefix: inbox) {
+      dir(path: p, uid: 1000, gid: 1000, octal: "700")
+    } else {
+      dir(path: p, uid: 0, gid: 0, octal: "755")
+    })
+  (match dispatch_worker_traversal_admit(handed: dispatch_worker_entered_paths(set: set), stats: stats, membership: worker()) {
+    DispatchWorkerTraversalAdmitted => true
+    _ => false
+  })
+    && (match dispatch_worker_traversal_admit(handed: everything, stats: stats, membership: worker()) {
+      DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => starts_with(s: d, prefix: inbox)
+      _ => false
+    })
+    && count(dispatch_worker_entered_paths(set: set)) + 1 == count(set)
 }

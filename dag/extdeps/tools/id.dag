@@ -2,7 +2,8 @@ module extdeps.tools.id
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, List, Bool, Unit }
+import std.types { NonEmptyStr, List, Bool, Unit, Int, String }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -61,6 +62,60 @@ fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
 // -u WITH AN OPERAND: the named account's numeric uid, from the account database (as above).
 fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-u", "--", user as String])
+}
+
+// id(1) WITH AN OPERAND prints `uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)`
+// (man7.org id.1): the numeric id leads each `N(name)` entry. THE GRAMMAR IS THE TOOL'S, so the parse
+// lives here and a consumer reads the structured result. A line that does not carry a uid, a gid and
+// a groups list, or carries a non-numeric id, is unobserved with its reason, never an empty group list.
+type IdCredentials
+  = IdCredentialsObserved { uid: Int, primary_gid: Int, supplementary_gids: List<Int> }
+  | IdCredentialsUnobserved { reason: String }
+
+fn id_numbered_entry(segment: String) -> Int? {
+  match get(xs: split(s: segment, delimiter: "("), index: 0) {
+    Absent => none
+    Present { value: head } => parse_int(s: head)
+  }
+}
+
+fn id_field_value(fields: List<String>, prefix: String) -> String? {
+  match get(xs: filter(fields, f => starts_with(s: f, prefix: prefix)), index: 0) {
+    Absent => none
+    Present { value: f } => some(substring(s: f, start: string_length(s: prefix), end: string_length(s: f)))
+  }
+}
+
+fn id_credentials_of_line(line: String) -> IdCredentials {
+  let fields = split(s: trim(s: line), delimiter: " ")
+  match id_field_value(fields: fields, prefix: "uid=") {
+    Absent => IdCredentialsUnobserved { reason: "id printed no uid field" }
+    Present { value: u } =>
+      match id_field_value(fields: fields, prefix: "gid=") {
+        Absent => IdCredentialsUnobserved { reason: "id printed no gid field" }
+        Present { value: g } =>
+          match id_field_value(fields: fields, prefix: "groups=") {
+            Absent => IdCredentialsUnobserved { reason: "id printed no groups field" }
+            Present { value: gs } => {
+              let segments = split(s: gs, delimiter: ",")
+              let gids = flat_map(segments, seg => match id_numbered_entry(segment: seg) { Present { value: n } => [n]  Absent => [] })
+              match id_numbered_entry(segment: u) {
+                Absent => IdCredentialsUnobserved { reason: "id printed a uid that is not a number" }
+                Present { value: uid } =>
+                  match id_numbered_entry(segment: g) {
+                    Absent => IdCredentialsUnobserved { reason: "id printed a gid that is not a number" }
+                    Present { value: pg } =>
+                      if gids.count() != segments.count() {
+                        IdCredentialsUnobserved { reason: "id printed a group that is not a number" }
+                      } else {
+                        IdCredentialsObserved { uid: uid, primary_gid: pg, supplementary_gids: gids }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
 }
 
 service os.Id {
