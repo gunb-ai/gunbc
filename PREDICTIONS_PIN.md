@@ -737,3 +737,31 @@ kc_local_alias_of_the_carrier_admits_its_constructor FAIL (documented in body, o
 Specifically the_dissolution_fires_only_when_the_named_predicate_retires PASSES (DissolutionFired on
 [], Pending on the named ref, Pending on the lookalike). If it FAILS → retires_dissolution over a
 same-file predicate name does not partition as the firmware idiom claims; re-read dissolution_status.
+
+## Dispatch R (Map-family disposition on fierce-bee-518's C1.2c branch, requested msg_6df8b8da)
+fierce-bee-518 branch session/fierce-bee-518 @ PR head 4cef33dbeb (their cited d3c1f18 is an
+ancestor; PR #14594 head is authoritative). Instrument: gate_two_closures_14152.sh (head=their
+branch vs BASE_REF=main), comparator from scratch/rebind-census, then rebind_census.sh over the
+self-host logs. Pre-registered BEFORE dispatch:
+ - CONTROL: main's own self-host rebind census must be reproducible from this run's main log
+   (the gate's built-in control; if main is not the previously-recorded baseline, instrument wrong).
+ - ARITY-N PREDICTION: the descent makes Map<K,V>/FSF<K,V> BIND K and V instead of binding nothing.
+   On main the arity-1-only arm binds nothing for a 2-param generic, so those call sites produce NO
+   rebind refusal (silent Optional<>). On their head the positional descent CAN now produce a rebind
+   refusal where the two actuals disagree. So the MAP-class count should RISE on head vs main where
+   the pair was previously silently accepted, and CLEAR (fall) only where both actuals already agreed.
+   Therefore "clear" for fierce-bee means: the Map(Primitive(K),Primitive(V)) identities that were
+   PRESENT on main fall to 0 on head. If they PERSIST unchanged, the descent does not touch them and
+   they belong to a different owner (the fabricated-placeholder / declaration class).
+
+## Dispatch S1 — #14597 at review-83674 fixes (PR tree, head bf49043d08fe)
+Pre-registered BEFORE the run. Claim-run, --source-root dag only.
+ - ALL members PASS except the pre-existing kc_local_alias_of_the_carrier_admits_its_constructor
+   (present on origin/main, FAILS at clean tree P1, passes only when a hand-typed presentable
+   alias line is readable — the F2 path-derivation change must NOT change which file is read:
+   layout_module_storage_path("std.types") must equal the old "dag/std/types.dag"; if the
+   text-reading members go RED that equality broke).
+ - the_dissolution_fires_only_when_the_named_debt_retires PASSES: [] => Fired (std.types List
+   absent), [std.types/List] => Pending (present), [std.types/Set] => Fired (exact ref still
+   absent; presence keyed on full (module_path, decl_name)).
+ - BUILD_RC=0 (the new import gunbc.source_layout lives under the dag root: dag/gunbc/source_layout.dag).
