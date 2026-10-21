@@ -30,6 +30,7 @@ import extdeps.bmc.ipmitool_hpm_check {
   HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
   HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
 }
+import gunbc.host.boot_attempt { HostPowerState, PowerOn, PowerOff, PowerUnread }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.machine_intake.receipt { same_intake_subject }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_socket_count }
@@ -53,8 +54,8 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   HostEnding, RestartedRepeatedly, ReachedCensus, StoppedWithStatedFailure, StoppedWithoutRestart, HostEndingNotEstablished,
 }
 import gunbc.machine_intake.ampere_checkpoint_console_observation { AmpereCheckpointRelation }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  SelSnapshotReading, SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken,
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  SelSnapshotReading, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread,
 }
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, EngineeringSample, ProductionPart,
@@ -97,10 +98,11 @@ import gunbc.fleet.mtcollins_firmware_baseline {
 // operator needs on a machine whose next failure may be a brick.
 
 // ── What is observed ───────────────────────────────────────────────────────────────────────────
-type HostPowerReading
-  = HostPoweredOff
-  | HostPoweredOn
-  | HostPowerUnreadable { reason: NonEmptyStr }
+// THE ON/OFF/UNREADABLE STATE IS NOT MINTED HERE. It is gunbc.host.boot_attempt.HostPowerState —
+// the protocol-neutral power vocabulary the boot-attempt core owns (review 81732: this module held a
+// second three-arm copy under the name HostPowerReading, and one name must not carry two meanings
+// when the boot side needed a carrier for "was the read even attempted"). A reflash that cannot
+// observe the host answers with PowerUnread { reason }, which is what the refusal paths below read.
 
 type BmcAnswer
   = BmcAnswering
@@ -482,7 +484,7 @@ type MtCollinsFirmwareWorld {
   endpoint: BmcControllerEndpoint
   managed: ManagedCredentialReference
   opened_at: EpochMs
-  host_power: HostPowerReading
+  host_power: HostPowerState
   bmc: BmcAnswer
   installed: List<InstalledVersionReading>
   cpus: List<MtCollins1SocketCpu>
@@ -514,7 +516,7 @@ type PreFlashSel
   | SelCaptured { capture: SelCapture }
 
 type PreFlashReceipt {
-  host_power: HostPowerReading
+  host_power: HostPowerState
   power_observed_at: EpochMs
   sel: PreFlashSel
 }
@@ -799,9 +801,9 @@ fn execution_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: Flas
     Present { value: PreFlashPowerReadingOutsideAttempt { target: t, observed_at: rec.pre_flash.power_observed_at } }
   } else {
     match rec.pre_flash.host_power {
-      HostPoweredOn => Present { value: HostNotPoweredOffWhenFlashed { target: t } }
-      HostPowerUnreadable { reason: why } => Present { value: HostPowerUnobservable { reason: why } }
-      HostPoweredOff =>
+      PowerOn => Present { value: HostNotPoweredOffWhenFlashed { target: t } }
+      PowerUnread { reason: why } => Present { value: HostPowerUnobservable { reason: why } }
+      PowerOff =>
         match predecessor_refusal(t: t, rec: rec, predecessor: predecessor) {
           Present { value: c } => Present { value: c }
           Absent => executed_sel_refusal(t: t, world: world, rec: rec)
@@ -1000,9 +1002,9 @@ fn pending_step_verdict(
             Present { value: later } => Present { value: refused(cause: StepOutOfOrder { attempted: later.target, unconverged_predecessor: t }) }
             Absent =>
               match world.host_power {
-                HostPoweredOn => Present { value: refused(cause: HostNotPoweredOff) }
-                HostPowerUnreadable { reason: why } => Present { value: refused(cause: HostPowerUnobservable { reason: why }) }
-                HostPoweredOff =>
+                PowerOn => Present { value: refused(cause: HostNotPoweredOff) }
+                PowerUnread { reason: why } => Present { value: refused(cause: HostPowerUnobservable { reason: why }) }
+                PowerOff =>
                   match world.bmc {
                     BmcNotAnswering { reason: why } => Present { value: refused(cause: BmcNotAnsweringBeforeStep { target: t, reason: why }) }
                     BmcAnswering => sel_gate(t: t, world: world, step: step)

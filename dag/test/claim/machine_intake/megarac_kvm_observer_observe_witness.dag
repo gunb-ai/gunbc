@@ -6,7 +6,9 @@ import std.measure { second, millisecond }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseFailed, OwnedReleaseNotOwned, OwnedRunning, OwnedNotRecorded, OwnedForeign }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_kvm_observer_dir
+}
 import gunbc.machine_intake.megarac_kvm_still {
   KvmObserverRecord, KvmObserverNotStarted, KvmJournalText, KvmInstant,
   KvmRetainedStill, KvmStillHashed, KvmTerminalStill, KvmTerminalStillAnswered, KvmTerminalStillUnanswered,

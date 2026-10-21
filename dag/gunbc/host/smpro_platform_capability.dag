@@ -1,0 +1,41 @@
+// WHAT SMpro WAS READ ON THIS MACHINE, kept separate from the controller and from MegaRAC.
+//
+// SMpro is the Ampere SoC's own out-of-band register interface (the master-write-read path into the
+// RAS error registers). It belongs to the platform, not to the BMC controller: whether a machine can
+// answer an SMpro read is a fact about its SoC, and it is read through a different path than any
+// IPMI/Redfish control route. That is why the reading is owned here and not inside a controller
+// adapter -- a MegaRAC board and an SMpro-less board are the same thing to the controller and differ
+// only as platforms.
+//
+// The reading is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
+// .megarac_boot_diagnostic_bundle) because it is consumed by more than the bundle: the MegaRAC
+// boot diagnostic bundle carries an SMpro field, and it must not mint the type in its own public
+// surface. Both import the type from here. The raw pass observation it wraps still comes from the
+// observation module this reads through.
+module gunbc.host.smpro_platform_capability
+
+import std.types { NonEmptyStr }
+import gunbc.machine_intake.ampere_smpro_observation { SmproPassObservation }
+
+// AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
+// including when none of them was answered), or the typed fact that no pass was taken and why.
+// The two arms are exhaustive and carry no more than what happened: a reading never claims a pass
+// it did not take, and a not-taken fact never carries probe data that could contradict it.
+type SmproReading
+  = SmproProbed { observation: SmproPassObservation }
+  | SmproNotTaken { reason: NonEmptyStr }
+
+// WHY THERE IS NO CAPABILITY TYPE HERE. An earlier revision of this owner derived a platform
+// capability by keying on Architecture: Aarch64 => "the platform carries SMpro". That fabricated a
+// platform fact from the instruction set. SMpro is the Ampere SoC's interface, not the ARM ISA's, so
+// an Aarch64 board without it (Graviton, Grace) came out as carrying SMpro -- and a machine with no
+// reading came out as SmproCapabilityPassNotTaken, which asserts "the platform DOES carry SMpro and
+// no pass was taken", when the truth was that it never carried it (review 81108; DESIGN §5: no
+// plausible output is fabricated). The deciding fact is the SoC / platform identity, and the corpus
+// has no such identity to key on yet, so nothing is inferred in its place.
+//
+// What this owner reports is therefore the READING: was a pass taken, with its raw observation, or
+// the typed reason it was not. A consumer that genuinely needs "does this platform carry SMpro"
+// must ask the platform -- a board identity, once one exists -- not the ISA. Until that fact has a
+// home, an x86 or SMpro-less machine simply has no SMpro reading, which is what SmproNotTaken
+// already says without the module pretending to know why.

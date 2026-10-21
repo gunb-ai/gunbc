@@ -56,7 +56,7 @@ fn pass_of(label: NonEmptyStr, outcomes: List<SmproProbeOutcome>) -> List<SmproP
 // are constructed here: console readings by running the real readers over EXACT BYTES of real
 // captures, and the opaque checkpoint relation supplied as a value -- its production from a reference
 // capture is held by power_on_console_readers_witness_test, and the whole bundle route by
-// mtcollins1_boot_diagnostic_bundle_witness_test's inhabitance claim.
+// megarac_boot_diagnostic_bundle_witness_test's inhabitance claim.
 // branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
 // (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
 // excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.

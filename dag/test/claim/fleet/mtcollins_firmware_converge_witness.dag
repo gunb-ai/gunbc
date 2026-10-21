@@ -44,7 +44,9 @@ import gunbc.machine_intake.kernel_module_decompression_observation { kernel_mod
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart }
 import extdeps.bmc.ipmi_sel { SystemRestart }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  SelSnapshotNotTaken, SelSnapshotRead,
+}
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
@@ -61,13 +63,14 @@ import gunbc.fleet.mtcollins_firmware_baseline {
   BaselineAdmissionRefusal, BaselineMissingTarget, BaselineDuplicateTarget, BaselineBiosScpUnpaired, BaselineInteropUnmet,
   baseline_ampere_ticket_7426_delivery, select_firmware_baseline, select_mtcollins1_baseline, interop_requirement_met,
 }
+import gunbc.host.boot_attempt { HostPowerState, PowerOn, PowerOff, PowerUnread }
 import gunbc.fleet.mtcollins_firmware_converge {
   MtCollinsFirmwareWorld, InstalledVersionReading, FlashStepRecord, AcPowerCycleWitness,
   SelCapture, PreFlashReceipt, PreFlashSel, SelNotRequired, SelCaptured,
   ManagedRightsReceipt, RightReading, RightGranted, RightNotGranted, ManagedAccountRight,
   IpmiAdministratorOnLanChannel, RedfishSessionRight,
   RemoteMediaReceipt, RemoteMediaReadback, RemoteMediaImagesEnumerated, RemoteMediaNotConfigured, RemoteMediaNotRestored, KvmRight, mtcollins1_required_managed_rights, VersionReadback, UncitedReadback, hpm_check_readback, hpm_app_patch_standing, hpm_major_minor_standing,
-  HostPoweredOff, HostPoweredOn, BmcAnswering, BmcNotAnswering,
+  BmcAnswering, BmcNotAnswering,
   FirmwareCredentialReprovisionDue, FirmwareBootReadbackDue,
   BmcCredentialReestablishment, ManagedRightNotRestored, ManagedRightMissingFromReceipt, BootProgressLostAfterFirmwareSet, BootReachedUefiThenRestartedRepeatedly,
   CredentialNotReestablished, CredentialEpochNotAdvancedPastFlash,
@@ -212,7 +215,7 @@ fn world_of(subject: MachineIntakeSubject, w: WorldShape) -> MtCollinsFirmwareWo
     endpoint: w.endpoint,
     managed: at_epoch(m: mtcollins1_managed_credential, epoch: w.managed_epoch),
     opened_at: opened_at,
-    host_power: if w.power_off { HostPoweredOff } else { HostPoweredOn },
+    host_power: if w.power_off { PowerOff } else { PowerOn },
     bmc: BmcAnswering,
     installed: w.installed,
     cpus: w.cpus,
@@ -333,7 +336,7 @@ fn good_credential() -> BmcCredentialReestablishment? {
 
 // ── Step records ───────────────────────────────────────────────────────────────────────────────
 fn pre_flash(t: FirmwareTarget, off: Bool, sel: PreFlashSel) -> PreFlashReceipt {
-  PreFlashReceipt { host_power: if off { HostPoweredOff } else { HostPoweredOn }, power_observed_at: flash_start(t: t) - 10000, sel: sel }
+  PreFlashReceipt { host_power: if off { PowerOff } else { PowerOn }, power_observed_at: flash_start(t: t) - 10000, sel: sel }
 }
 
 fn bmc_sel() -> PreFlashSel { SelCaptured { capture: sel_read_capture(at: sel_read_at) } }
@@ -661,7 +664,7 @@ test fn executed_bmc_step_without_a_sel_snapshot_refuses() -> Bool {
 
 test fn step_started_before_its_predecessor_completed_refuses() -> Bool {
   let early = record(t: HostBios, r: RecordShape {
-    pre: PreFlashReceipt { host_power: HostPoweredOff, power_observed_at: opened_at + 1, sel: SelNotRequired },
+    pre: PreFlashReceipt { host_power: PowerOff, power_observed_at: opened_at + 1, sel: SelNotRequired },
     completed_at: flash_end(t: HostBios), digest: digest_of(r: mt_collins_bios_0acod014_hpm), credential: Absent, ac: good_ac_cycle(t: HostBios), readback: v(major: 0, minor: 14, patch: 0),
   })
   let bios_early = FlashStepRecord {

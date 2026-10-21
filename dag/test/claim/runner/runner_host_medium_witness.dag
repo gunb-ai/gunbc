@@ -6,7 +6,9 @@ import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.host.smpro_platform_capability {
+  SmproNotTaken
+}
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import std.optional { Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

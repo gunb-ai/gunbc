@@ -17,7 +17,7 @@ import extdeps.languages.json.parse {
 // object), Processor, and the Resource schema's `Status` object (`State`, `Health`). The property
 // names are DMTF's, kept verbatim. This module carries what the SCHEMA says a member is. What a
 // particular controller was OBSERVED to return is a receipt in the observing layer
-// (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle), never a row here.
+// (gunbc.machine_intake.megarac_boot_diagnostic_bundle), never a row here.
 //
 // WHAT THIS MODULE HAS NOT READ (DESIGN section 4d). No response from mtcollins1's MegaRAC
 // Memory or Processors collection exists in this corpus, so nothing here claims which optional
