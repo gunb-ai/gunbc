@@ -18,7 +18,7 @@ import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
 import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
-import gunbc.runner.runner_host_cap_bracket { read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire }
+import gunbc.runner.runner_host_cap_bracket { read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
@@ -822,4 +822,11 @@ test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
 // The residual is declared in the refusal text itself: the window between the last reading and the stop.
 test fn the_declared_residual_and_frontier_are_in_the_refusal_wire() -> Bool {
   string_contains(s: listener_restart_residual_wire(), pattern: "residual: ") && string_contains(s: listener_restart_residual_wire(), pattern: "frontier: ")
+}
+
+
+// the cancel-leaves-masked residual is typed AND carried on the wire with its bound and its restoration trigger
+test fn the_cancellation_residual_names_its_bound_and_its_restoration_trigger() -> Bool {
+  let w = release_envelope_wire(policy: runner_host_cap_drain_policy)
+  string_contains(s: w, pattern: "after 300s") && string_contains(s: w, pattern: "needs 1140s") && string_contains(s: w, pattern: "restoration trigger: the next bracket run reading a durable hold")
 }

@@ -164,7 +164,7 @@ fn release_envelope_standing(policy: HostCapDrainPolicy) -> ReleaseEnvelopeStand
 fn release_envelope_wire(policy: HostCapDrainPolicy) -> String {
   match release_envelope_standing(policy: policy) {
     ReleaseFitsEnvelope => "release fits the cancellation envelope"
-    ReleaseMayOutliveCancellation { needed: n, envelope: e } => join(["residual: a cancelled job force-cancels the release after ", to_string(second_count(s: e)), "s and the release needs ", to_string(second_count(s: n)), "s, so a cancellation can leave the host masked until a human acts"], "")
+    ReleaseMayOutliveCancellation { needed: n, envelope: e } => join(["residual: a cancelled job force-cancels the release after ", to_string(second_count(s: e)), "s and the release needs ", to_string(second_count(s: n)), "s, so a cancellation can leave the host masked until a human acts; restoration trigger: the next bracket run reading a durable hold the bracket took on the host slots (std.durable_exclusive_hold) and re-admitting the slots it names, with readback, before any new drain"], "")
   }
 }
 
