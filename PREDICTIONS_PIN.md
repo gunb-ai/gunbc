@@ -777,3 +777,17 @@ Pre-registered BEFORE the run. Claim-run --source-root dag.
    FAIL (pre-existing on origin/main).
  - New ledger row file parses: gunbc run --entry <row file> --source-root dag => NoSuchFunction{main}
    (parse+resolve OK; ledger rows have no main, that IS the pass signal — established in dispatch N).
+
+## S1-S3 OUTCOMES (post-run record)
+ - S1 (review-83674 fixes @ bf49043d08fe): as pre-registered — 13 PASS + dissolution member PASS,
+   kc_local_alias_of_the_carrier_admits_its_constructor FAIL (pre-existing; reproduces on main's own
+   file at dispatch P1; passes only on scratch's hand-typed presentable alias line).
+ - S2 (review-83706 capability trigger @ c1b5e2a859a0): as pre-registered — 13 PASS incl.
+   the_dissolution_fires_only_when_the_capability_arrives (Appears polarity arms executed); same
+   single pre-existing FAIL.
+ - S3 (row parse check): ROW_RC=1 with cause NoSuchFunction{main} after resolve_entry_graph_inclusive
+   (closure_files=8) — PARSE+RESOLVE OK per dispatch N's established signal. Row file good.
+ - Gate R (fierce-bee-518 request, 4cef33dbeb vs main): both arms build rc=0 self-host rc=0
+   emitted=2; census Map-class 0 on BOTH — instrument scope negative (Acc lives only on PR-2 head);
+   reported to fierce-bee-518 + tidy-raven-397. Correct arm = Acc-head ⊕ C1.2c vs Acc-head, queued
+   into PR-2 rebase.
