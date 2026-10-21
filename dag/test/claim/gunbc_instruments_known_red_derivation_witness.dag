@@ -37,7 +37,8 @@ import gunbc.instruments.known_red_derivation {
   // Held' could not tell a located field from a fallback that copied the line, which is the defect review
   // 83992 found. So these are imported and probed directly, marker by marker.
   known_red_entry_resolve_cause, known_red_entry_resolve_halted_by,
-  known_red_untied_markers_in, known_red_print_authorities,
+  known_red_untied_markers_in, known_red_untied_arms_in, known_red_print_authorities,
+  KnownRedPrintedArm, known_red_printed_arm_literal,
   known_red_transport_source_claim_batch, known_red_transport_source_cli_run,
   known_red_print_markers_untied, known_red_transport_decoder_dissolution,
   known_red_route_gap_ground_of, known_red_route_gap_operation, known_red_host_tool_name,
@@ -1827,8 +1828,7 @@ test fn every_decoder_marker_is_present_in_the_source_that_prints_it() -> Bool {
 
 // THE TIE IS NOT VACUOUS: THE SAME FUNCTION REPORTS A MOVED MARKER. A check that only ever returns empty is
 // decoration. Handed a source text with one marker's wording changed, it names that marker, qualified by the
-// file it was supposed to be in -- because a refusal that says only 'something moved' cannot be acted on.
-test fn the_source_tie_reports_a_marker_that_moved_out_of_its_source() -> Bool {
+// file it was supposed to be in -- because a refusal that says only 'something moved' cannot be acted on.test fn the_source_tie_reports_a_marker_that_moved_out_of_its_source() -> Bool {
   let source = "src/v1/stage0/src/bin/claim_batch.rs"
   let markers = [known_red_marker_exit_failure, known_red_marker_runtime_error]
   let both_present =
@@ -1876,6 +1876,87 @@ test fn the_tied_markers_are_the_ones_the_decoder_matches_on() -> Bool {
     && any(xs: known_red_print_authorities, predicate: fn(a) { a.source == known_red_transport_source_claim_batch })
     && any(xs: known_red_print_authorities, predicate: fn(a) { a.source == known_red_transport_source_cli_run })
     && !any(xs: known_red_print_authorities, predicate: fn(a) { (a.markers |> length) == 0 })
+}
+
+// THE PAIR TIE CATCHES WHAT THE FRAGMENT TIE CANNOT, AND IS NOT VACUOUS. `#14539` re-labelled the route-gap
+// and entry-resolve arms from `FAIL {} (…)` to `UNOBSERVED {} (…)`; the bracketed fragments were untouched, so
+// the fragment check still found every marker and reported a clean tie while the classifier -- which keys on
+// the `FAIL ` prefix -- had silently stopped seeing those lines. Handed that text, the fragment checker
+// returns nothing (proving it is not the check that could have caught it) and the pair checker names the arm.
+// The pair is required as one literal, so a word swap is a refusal rather than a reclassification.
+test fn a_relabelled_arm_is_reported_although_its_fragment_still_survives() -> Bool {
+  let source = known_red_transport_source_claim_batch
+  let arm = KnownRedPrintedArm {
+    word: known_red_word_fail,
+    marker: known_red_marker_route_gap
+  }
+  // A source text in which the arm survives as a fragment but not as a pair.
+  let relabelled = concat("UNOBSERVED {} ", known_red_marker_route_gap)
+  let fragment_check =
+    known_red_untied_markers_in(source: source, markers: [known_red_marker_route_gap], text: relabelled)
+  let pair_check = known_red_untied_arms_in(source: source, arms: [arm], text: relabelled)
+  // The fragment tie sees nothing wrong -- which is exactly the hole.
+  (fragment_check |> length) == 0
+    // The pair tie names the arm, qualified by the file that should print it, compared exactly: a refusal
+    // that says only 'something moved' cannot be acted on, and a substring test would pass on a report that
+    // named the wrong file.
+    && pair_check
+      == [concat(source, " :: ", known_red_printed_arm_literal(arm: arm))]
+    // And the pair check is not simply 'always reports': given the arm as actually printed, it is silent.
+    && (known_red_untied_arms_in(
+        source: source,
+        arms: [arm],
+        text: known_red_printed_arm_literal(arm: arm)
+      )
+      |> length)
+      == 0
+}
+
+// EVERY ARM THE CLASSIFIER DECIDES ON IS REGISTERED AS A PAIR. An arm added to the decoder without being
+// registered would be tied by neither strength -- the same silent hole, moved up one level. The list here is
+// the classifier's own decision surface: each arm `known_red_terminal_of_body` can reach through a bracketed
+// body must appear among the registered pairs.
+test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
+  let registered =
+    fold(
+      xs: known_red_print_authorities,
+      init: [],
+      f: (acc, a) =>
+        fold(
+          xs: a.arms,
+          init: acc,
+          f: (inner, arm) => list_snoc_item(xs: inner, item: known_red_printed_arm_literal(arm: arm))
+        )
+    )
+  let decides_on =
+    [
+      known_red_marker_exit_failure,
+      known_red_marker_not_bool,
+      known_red_marker_runtime_error,
+      known_red_marker_panicked,
+      known_red_marker_not_attempted,
+      known_red_marker_host_tool,
+      known_red_marker_route_gap,
+      known_red_marker_entry_resolve
+    ]
+  (registered |> length) == (decides_on |> length)
+    && !any(
+      xs: decides_on,
+      predicate: fn(m) =>
+        !any(
+          xs: known_red_print_authorities,
+          predicate: fn(a) =>
+            any(
+              xs: a.arms,
+              predicate: fn(arm) =>
+                arm.marker == m
+                  && (
+                    (arm.word == known_red_word_panicked && m == known_red_marker_panicked)
+                      || (arm.word == known_red_word_fail && m != known_red_marker_panicked)
+                  )
+            )
+        )
+    )
 }
 
 // THE GENERALIZATION IS DECLARED, WITH ITS TRIGGER (DESIGN 6b). This module matches a human-readable

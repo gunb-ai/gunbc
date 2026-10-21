@@ -949,10 +949,28 @@ data known_red_marker_ground_no_mock_response: String = "operation declares no m
 data known_red_transport_source_claim_batch: String = "src/v1/stage0/src/bin/claim_batch.rs"
 data known_red_transport_source_cli_run: String = "src/v1/stage0/src/cli_run.rs"
 
+// AN ARM THE TRANSPORT PRINTS WITH A VERDICT WORD IN FRONT OF IT. Tying the PAIR rather than the fragment
+// is what makes the check able to see a re-labelled arm: `#14539` moved the route-gap and entry-resolve arms
+// from `FAIL {} (…)` to `UNOBSERVED {} (…)` and my fragment check still PASSED, because the bracketed text
+// was untouched -- while the classifier, which keys on the `FAIL ` prefix, had silently stopped seeing those
+// lines at all. A row that silently stops being classified is the failure this instrument must not have, so
+// an arm is tied only when the word and the marker appear together, as one literal, in the file that prints
+// them.
+type KnownRedPrintedArm {
+  word: String
+  marker: String
+}
+
 // THE TIE: which file prints which marker. Grouped by source so the fold reads each file once.
 type KnownRedPrintAuthority {
   source: String
   markers: List<String>
+  arms: List<KnownRedPrintedArm>
+}
+
+// The pair as the transport spells it: `<WORD> {} <marker>`, from the harness's own format literal.
+fn known_red_printed_arm_literal(arm: KnownRedPrintedArm) -> String {
+  concat(arm.word, " {} ", arm.marker)
 }
 
 data known_red_print_authorities: List<KnownRedPrintAuthority> = [
@@ -974,7 +992,18 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
       known_red_marker_host_tool,
       known_red_marker_probed,
       known_red_marker_route_gap,
-      known_red_marker_entry_resolve
+      known_red_marker_entry_resolve,
+      // THE ARMS THAT DECIDE A CLASSIFICATION, tied as word+marker pairs. These are the ones the classifier
+      // reads: if a word moves off one of these arms, the row it describes stops being seen, so the pair is
+      // what has to be present -- not the bracketed fragment on its own.
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_exit_failure },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_not_bool },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_runtime_error },
+      KnownRedPrintedArm { word: known_red_word_panicked, marker: known_red_marker_panicked },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_not_attempted },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_host_tool },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_route_gap },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_entry_resolve }
     ]
   },
   KnownRedPrintAuthority {
@@ -986,7 +1015,11 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
       known_red_marker_ground_unpublished_mock,
       known_red_marker_ground_filesystem_removal,
       known_red_marker_ground_no_mock_response
-    ]
+    ],
+    // No arm pairs here: the budget and ground fragments are printed MID-literal, inside the message the
+    // harness builds for an arm this file already ties by word (`FAIL {} (…)`), so there is no word adjacent
+    // to them to tie. They stay fragment-tied, which is the honest strength of the check for a tail.
+    arms: []
   }
 ]
 
@@ -1026,27 +1059,82 @@ fn known_red_untied_markers_in(
   )
 }
 
-// THE TIE, AS A LIST OF WHAT IS NOT TIED. Empty means every marker this file matches on still appears in
-// the file that is supposed to print it. It is a property of the RUN, not of any fold's inputs, so the CLI
-// producer checks it once and the fold stays a pure function of the children it was handed.
+// THE TIE FOR THE ARMS THAT DECIDE A CLASSIFICATION: which registered word+marker pairs do not appear, as
+// the literal `<WORD> {} <marker>`, in the text that is supposed to print them. A separate function from the
+// fragment check on purpose: a fragment tie is the right strength for a tail printed mid-message, and too
+// weak for an arm whose WORD the classifier keys on. Reported the same way (`source :: literal`) so both
+// refusals name the same pair of authorities.
+fn known_red_untied_arms_in(
+  source: String,
+  arms: List<KnownRedPrintedArm>,
+  text: String
+) -> List<String> {
+  fold(
+    xs: arms,
+    init: [],
+    f: (acc, a) =>
+      if string_contains(s: text, pattern: known_red_printed_arm_literal(arm: a)) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: concat(source, " :: ", known_red_printed_arm_literal(arm: a))
+        )
+      }
+  )
+}
+
+// WHAT ONE AUTHORITY FAILS TO TIE, in one pass over its source: the fragments it no longer prints, and the
+// word+marker PAIRS it no longer prints as pairs. Both are reported `source :: thing`, so a refusal always
+// names both authorities that were meant to agree. Kept as one function rather than two so each source file
+// is read once per run.
+fn known_red_untied_in_authority(
+  authority: KnownRedPrintAuthority,
+  text: String
+) -> List<String> {
+  fold(
+    xs: known_red_untied_markers_in(
+      source: authority.source,
+      markers: authority.markers,
+      text: text
+    ),
+    init: known_red_untied_arms_in(source: authority.source, arms: authority.arms, text: text),
+    f: (acc, m) => list_snoc_item(xs: acc, item: m)
+  )
+}
+
+// THE TIE, AS A LIST OF WHAT IS NOT TIED. Empty means every marker this file matches on still appears in the
+// file that is supposed to print it, AND every classification arm still appears as the printed pair. It is a
+// property of the RUN, not of any fold's inputs, so the CLI producer checks it once and the fold stays a pure
+// function of the children it was handed.
 fn known_red_print_markers_untied() -> List<String> {
   fold(
     xs: known_red_print_authorities,
     init: [],
     f: (outer, a) =>
       match known_red_transport_source_content(source: a.source) {
-        // An unreadable authority ties NOTHING: every marker it was supposed to carry is reported, so a
-        // missing file cannot be read as 'all markers present'.
+        // An unreadable authority ties NOTHING: everything it was supposed to carry is reported, so a missing
+        // file cannot be read as 'all markers present'.
         Absent =>
           fold(
             xs: a.markers,
-            init: outer,
+            init: fold(
+              xs: a.arms,
+              init: outer,
+              f: (acc, arm) =>
+                list_snoc_item(
+                  xs: acc,
+                  item: concat(
+                    a.source, " :: ", known_red_printed_arm_literal(arm: arm), " (source unreadable)"
+                  )
+                )
+            ),
             f: (acc, m) =>
               list_snoc_item(xs: acc, item: concat(a.source, " :: ", m, " (source unreadable)"))
           )
         Present { value: text } =>
           fold(
-            xs: known_red_untied_markers_in(source: a.source, markers: a.markers, text: text),
+            xs: known_red_untied_in_authority(authority: a, text: text),
             init: outer,
             f: (acc, m) => list_snoc_item(xs: acc, item: m)
           )
