@@ -9,7 +9,7 @@ module v2.test.claim.compiler.slot_targets_on_shared_nodes
 import std.types { Int, List }
 import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag { dag_type_atom_node }
-import v2.std.compilers.body_lowering { lower_bind, lower_match }
+import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated, lower_match }
 import v2.std.node {
   BindBinderSlot,
   BindBodySlot,
@@ -18,6 +18,9 @@ import v2.std.node {
   MatchScrutineeSlot,
   Node,
   bind_slot_target,
+  MatchSlot,
+  match_role_slots,
+  child_slot_target,
   match_slot_target,
   node_synthetic,
   content_hash,
@@ -58,4 +61,27 @@ test fn sts_match_scrutinee_equal_to_an_arm_keeps_its_slot() -> Bool {
   let m = lower_match(scrutinee: shared, arms: [other, shared])
   sts_is(found: match_slot_target(n: m, slot: MatchScrutineeSlot), expected: shared)
     && sts_is(found: match_slot_target(n: m, slot: MatchArmSlot), expected: other)
+}
+
+test fn sts_an_annotation_edge_does_not_shift_the_bind_roles() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let bind = lower_bind_annotated(key_binding: key, value: value, body_binding: body, annotation: value)
+  sts_is(found: bind_slot_target(n: bind, slot: BindBinderSlot), expected: key)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindValueSlot), expected: value)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: body)
+}
+
+test fn sts_match_role_slots_return_every_arm_in_order() -> Bool {
+  let shared = sts_atom(identity: ^sts_shared)
+  let other = sts_atom(identity: ^sts_other)
+  let m = lower_match(scrutinee: shared, arms: [other, shared, other])
+  match match_role_slots(n: m, role: MatchArmSlot) {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      content_hash(n: child_slot_target(slot: a)) == content_hash(n: other)
+        && content_hash(n: child_slot_target(slot: b)) == content_hash(n: shared)
+        && content_hash(n: child_slot_target(slot: c)) == content_hash(n: other)
+    _ => false
+  }
 }
