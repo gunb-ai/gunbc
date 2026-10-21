@@ -13084,8 +13084,16 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
               } else { variant_name }
           }
       }
+      // A literal whose resolved type is the declaration it names answers THAT declaration's layer: the
+      // leaf spelling is shared by every declarer of the leaf, so reading it here lets a homonym's layer
+      // stand for this one.
+      let literal_declaration_named = parent_enum == none && expanded_rt.ident_span != none && rc_name == variant_name && authored_name_at(source_indices: si, node: expanded_rt) == variant_name
       if rc_name != "" && !rust_expr_is_grounded_shared_value(expr: raw) {
-        rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: rc_name, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
+        if literal_declaration_named {
+          rust_maybe_shared_wrap(answer: shared_layer_of_type_expr(shared_types: shared_types, type_expr: expanded_rt, type_decl_items: emit_info.type_decl_items, source_indices: si, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
+        } else {
+          rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: rc_name, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
+        }
       } else { raw }
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
