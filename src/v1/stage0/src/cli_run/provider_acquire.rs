@@ -339,4 +339,48 @@ mod tests {
             .is_err()
         );
     }
+
+    /// Provider already in the closure: the fixed point holds on the first pass and nothing is
+    /// acquired. A chained demand on the next round acquires only the newly missing module.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn a_present_provider_acquires_nothing_and_a_chained_demand_acquires_only_its_own_module() {
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let fixture = "module test.fixture.generated_provider_present\n\nimport std.coercion { unicode_scalar_unfold }\n\nfn one() -> Int { 1 }\n";
+        let sources = super::super::resolve_virtual_source_with_imports(
+            super::super::emit_host::FIXTURE_SOURCE_PATH,
+            fixture,
+            &pool,
+        )
+        .expect("fixture closure");
+        let resolved =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(sources.clone().into()));
+        let graph = resolved.graph.clone().expect("fixture compiles");
+        let in_pool = |m: &str| pool.contains_key(m);
+        assert!(matches!(
+            judge_closure(
+                &supplied("std.coercion", "unicode_scalar_unfold"),
+                graph.modules.clone(),
+                resolved.source_indices.clone(),
+                &in_pool
+            ),
+            ClosureProviderStep::Complete
+        ));
+        let mut chained = (*supplied("std.coercion", "unicode_scalar_unfold")).clone();
+        chained.extend(supplied("std.graph", "CallGraph").iter().cloned());
+        match judge_closure(
+            &Rc::new(chained),
+            graph.modules.clone(),
+            resolved.source_indices.clone(),
+            &in_pool,
+        ) {
+            ClosureProviderStep::Acquire(modules) => {
+                assert_eq!(modules, vec!["std.graph".to_string()])
+            }
+            other => panic!(
+                "expected Acquire, got refused={:?}",
+                refused_classes(&other)
+            ),
+        }
+    }
 }
