@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.slot_targets_on_shared_nodes
 
 // WHAT THIS CLAIMS (gunbc.plans.demand_engine_program 2.4). The v2.std.node slot tables name a Bind's, a
-// Match's and a Branch's roles by positional ordinal, so a node shared by two roles (a value equal to its
+// Match's roles by positional ordinal, so a node shared by two roles (a value equal to its
 // body, a scrutinee equal to an arm) and an annotation edge standing
 // first among the children still resolve each role to its own slot. v2.compiler.eval and v2.compiler.infer
 // read these roles through the tables.
