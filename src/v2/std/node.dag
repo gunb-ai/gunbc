@@ -775,7 +775,7 @@ fn match_arm_slots_step(acc: List<ChildSlot>, s: ChildSlot) -> List<ChildSlot> {
 }
 
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
-  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == slot })
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == optional_present(value: slot) })
 }
 
 fn positional_target_where(edges: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
@@ -809,23 +809,27 @@ fn match_positional_slot(ordinal: Int) -> MatchSlot {
   }
 }
 
-// WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 and beyond the else
-// arm (lower_branch, v2.std.compilers.body_lowering branch_view: exactly three whole positionals, so a Branch
-// with fewer or more is malformed and the table does not decide which). The table is Match's beside it: the
-// first positional is what selects, every later one is an alternative, and which alternative a slot is lives
-// here, so a reader holding a ChildSlot reads its role and never compares edges.
+// WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
+// (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
+// Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
+// an ordinal of 3 or more has no role: the table answers Absent and the caller refuses the malformed
+// Branch, rather than reading a fourth child as a second else. Match and Branch keep separate tables
+// because the arity differs (total vs. three roles); both are read by the one positional walker
+// positional_target_where, which is where the shared "find the positional child by role" lives.
 type BranchSlot
   = BranchConditionSlot
   | BranchThenSlot
   | BranchElseSlot
 
-fn branch_positional_slot(ordinal: Int) -> BranchSlot {
+fn branch_positional_slot(ordinal: Int) -> Optional<BranchSlot> {
   if ordinal == 0 {
-    BranchConditionSlot
+    optional_present(value: BranchConditionSlot)
   } else if ordinal == 1 {
-    BranchThenSlot
+    optional_present(value: BranchThenSlot)
+  } else if ordinal == 2 {
+    optional_present(value: BranchElseSlot)
   } else {
-    BranchElseSlot
+    optional_absent()
   }
 }
 
