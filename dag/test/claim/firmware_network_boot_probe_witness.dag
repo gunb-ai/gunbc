@@ -2,9 +2,10 @@ module test.claim.firmware_network_boot_probe_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, BootOptionsUnobserved, NicsObserved, NicsUnobserved, NicsRefused, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+  FirmwareBootObservation, BootOptionsUnobserved, NicsObserved, NicsUnobserved, NicsRefused,
+  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved,
 }
+import gunbc.secure_boot_observation { AuthenticationRequired, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
   firmware_boot_axis_reader_frontier_status, no_reply_reason, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,

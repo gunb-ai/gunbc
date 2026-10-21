@@ -8,7 +8,8 @@ import extdeps.ietf.http_semantics { http_status_is_success, http_unauthorized, 
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
-import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_standing { boot_order_entry }
+import gunbc.secure_boot_observation { FirmwareReadRefusal, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, BootOptionsAxis, SecureBootAxis, BiosVersionAxis,
   ReadRoute, RedfishGetRoute, OpenBmcRedfishGetRoute, MegaRacRestGetRoute,

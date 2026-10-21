@@ -124,6 +124,17 @@ fn sr_rest_entry(pat: Node, key: String) -> Node {
   ])
 }
 
+fn sr_reading_arm() -> Node {
+  sr_conj(children: [sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))])
+}
+// A file entry: the transport observes no status, so its mock carries bare readings and no pattern.
+fn sr_file_entry(mocks: List<Node>) -> Node {
+  sr_conj(children: [
+    sr_transport(kind: "file", fields: [sr_named(name: ^path, target: sr_string(value: "/x"))]),
+    sr_named(name: realization_mock_arms_label(), target: sr_list(elements: mocks)),
+    sr_projection(field: ^out, key: "byte_count")
+  ])
+}
 fn sr_leaf(op: Symbol, entry: Node) -> Node {
   sr_conj(children: [sr_named(name: op, target: entry)])
 }
@@ -175,6 +186,16 @@ test fn a_binding_field_of_another_kind_refuses_holds() -> Bool {
 test fn a_status_pattern_of_the_other_transport_refuses_holds() -> Bool {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_atom(id: sr_lex(s: "5xx")))], field: ^out, key: "stdout")), reason: ^service_realization_status_pattern_not_of_transport)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "nonzero")), key: "x")), reason: ^service_realization_status_pattern_not_of_transport)
+}
+
+// A mock is keyed by its transport's own discriminator: the file transport has none, so its mock is one
+// bare reading; a status-keyed arm on file stays refused (the RED), a second reading is malformed, and a
+// pattern-less arm on shell or rest is malformed.
+test fn a_file_mock_is_one_bare_reading_holds() -> Bool {
+  sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_reading_arm()])))
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_arm(pat: sr_code(lexeme: "0"))])), reason: ^service_realization_status_pattern_not_of_transport)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_reading_arm(), sr_reading_arm()])), reason: ^service_realization_arm_malformed)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_reading_arm()], field: ^out, key: "stdout")), reason: ^service_realization_arm_malformed)
 }
 
 test fn a_repeated_status_pattern_refuses_holds() -> Bool {

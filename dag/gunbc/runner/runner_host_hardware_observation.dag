@@ -1,6 +1,7 @@
 module gunbc.runner.runner_host_hardware_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.secure_boot_observation { SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import extdeps.pci.identity { PciAddress, PciClassCode, PciDeviceId, PciVendorId }
 
 // WHAT THE UNIT PRESENTED, AT A GRAIN A BUILDER CAN CONSUME. The first version of this module
@@ -105,12 +106,7 @@ data mtcollins1_pci_mass_storage_population: PciClassPopulationObservation = Pci
 // signature" a property of the image. A BIOS change flips it while every identifier here stays the
 // same, which is why the delivery decision must join the artifact to a fresh observation rather than
 // to this row's memory of one.
-type SecureBootStanding
-  = SecureBootEnabled
-  | SecureBootDisabled
-  | SecureBootUnreadable { cause: NonEmptyStr }
-
-data mtcollins1_secure_boot_observed: SecureBootStanding = SecureBootDisabled
+data mtcollins1_secure_boot_observed: SecureBootObservation = SecureBootDisabled
 
 // FIRMWARE NETWORK BOOT, AT THE GRAIN THE CONSOLE ACTUALLY PRINTED. The line was "Start PXE over
 // IPv6" -- so the observation is about the IPv6 path. An earlier revision widened it to "no DHCP
@@ -185,11 +181,12 @@ type RunnerHostPlatformRequirements {
 // THE SIGNATURE REQUIREMENT IS DERIVED FROM THE STANDING RATHER THAN ASSERTED, so a later
 // observation of SecureBootEnabled changes what delivery is permitted without anyone editing a
 // policy row -- and an unreadable observation refuses rather than defaulting to the permissive arm.
-fn efi_signature_requirement(standing: SecureBootStanding) -> EfiSignatureRequirement {
+fn efi_signature_requirement(standing: SecureBootObservation) -> EfiSignatureRequirement {
   match standing {
     SecureBootDisabled => UnsignedEfiPermittedWhileSecureBootDisabled
     SecureBootEnabled => SignedEfiRequired
-    SecureBootUnreadable { cause: _ } => SignedEfiRequired
+    SecureBootUnobserved { reason: _ } => SignedEfiRequired
+    SecureBootRefused { refusal: _ } => SignedEfiRequired
   }
 }
 
