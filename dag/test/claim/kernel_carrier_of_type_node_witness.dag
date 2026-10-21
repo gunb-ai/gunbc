@@ -1,0 +1,78 @@
+module test.claim.kernel_carrier_of_type_node_witness
+
+import std.types { String, List, Bool }
+import v2.std.diagnostic { Accepted, Rejected, InvariantPortLocus, LocusAnchor, diagnostics_reason_lexemes }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme, host_text_type_node }
+import v2.std.node_reflection { kernel_carrier_of_type_node }
+
+// THE CLAIM for kernel_carrier_of_type_node: Timestamp, NonEmptyStr and LeaseToken each reach the
+// kernel String through the reflected alias / refinement chain, by keyed reads only. The RED is a
+// chain that stops short of a kernel atom (an undeclared spelling, a declared type that is neither
+// alias nor refinement): it refuses typed and the claim asserts WHICH reason and the atom it names.
+
+fn pool() -> List<String> { ["dag", "src/v2"] }
+
+fn atom(spelling: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: spelling) } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The binding the kernel String row carries (v2.std.node host_text_type_node): the reader answers a
+// BINDING, not the spelling spelled at the field.
+fn kernel_string() -> String {
+  match host_text_type_node().kind {
+    TypeNode { connective: Atom { identity: i } } => symbol_lexeme(sym: i)
+    _ => "NOT_AN_ATOM"
+  }
+}
+
+fn reached(spelling: String) -> String {
+  match kernel_carrier_of_type_node(pool_roots: pool(), node: atom(spelling: spelling)) {
+    Accepted { value: b, diagnostics: _ } => symbol_lexeme(sym: b)
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn refusal(spelling: String) -> String {
+  match kernel_carrier_of_type_node(pool_roots: pool(), node: atom(spelling: spelling)) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: ds } => diagnostics_reason_lexemes(diagnostics: ds)
+  }
+}
+
+fn refused_at(spelling: String) -> String {
+  match kernel_carrier_of_type_node(pool_roots: pool(), node: atom(spelling: spelling)) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } => symbol_lexeme(sym: port)
+        _ => "OTHER_LOCUS"
+      }
+  }
+}
+
+test fn timestamp_reaches_string() -> Bool { reached(spelling: "Timestamp") == kernel_string() }
+
+test fn a_refinement_reaches_string() -> Bool { reached(spelling: "NonEmptyStr") == kernel_string() }
+
+test fn a_branded_refinement_reaches_string_through_its_refinement() -> Bool { reached(spelling: "LeaseToken") == kernel_string() }
+
+test fn a_kernel_atom_answers_itself() -> Bool { reached(spelling: "String") == kernel_string() }
+
+// RED: an undeclared spelling reaches no kernel atom and no declaration; the reason is the keyed
+// route's own, and the atom is named.
+test fn an_undeclared_spelling_refuses_naming_the_atom() -> Bool {
+  refusal(spelling: "NoSuchDomainAtomXyz") == "type_declaration_absent"
+    && refused_at(spelling: "NoSuchDomainAtomXyz") == "NoSuchDomainAtomXyz"
+}
+
+// RED: a declared type that is neither alias nor refinement (a closed coproduct) is not a carrier
+// chain; it refuses with the reason that says so, naming it.
+test fn a_declared_non_alias_type_refuses_as_reaching_no_kernel_atom() -> Bool {
+  refusal(spelling: "Diagnostic") == "carrier_chain_reaches_no_kernel_atom"
+    && refused_at(spelling: "Diagnostic") == "Diagnostic"
+}
