@@ -75,7 +75,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // The relation remains blind on composed argv regardless.
 
 // THE UNMATERIALIZED POPULATION IS FOUR NAMED CLASSES, each a symbol-named list below and each
-// derived from the declarations at row identity (v2.std.operation_argv operation_argv_row_classify),
+// derived from the declarations at row identity (std.operation_argv operation_argv_row_classify),
 // not a count: a count copied from the tree is a change detector (DESIGN 5). A claim joins the
 // classified corpus against these lists by identity, so a new unclassified row, a removed member
 // and a member that changed class each red.
