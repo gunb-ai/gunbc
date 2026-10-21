@@ -262,6 +262,7 @@ fn ordered_tags() -> List<String> {
       instance: srv1_live_dashboard_instance(),
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
       holding: deployment_spec_srv1().role_singletons,
+      lab_plan: deployment_spec_srv1().target.lab_plan,
     ),
     init: [],
     f: (acc, step) => {

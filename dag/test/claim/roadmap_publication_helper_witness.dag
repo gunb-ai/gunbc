@@ -490,7 +490,7 @@ test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool
   any(lines, l => l == join(["DirectoryNotEmpty=", request_dir], ""))
     && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
     && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
-    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
+    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
 }
 
 test fn a_second_write_of_the_same_publication_request_key_is_refused_not_overwritten() -> Bool {

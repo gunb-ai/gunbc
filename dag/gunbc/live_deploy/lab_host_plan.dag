@@ -60,6 +60,20 @@ type LabDeployPlan
     }
   | LabPlanRefused { cause: LabDeployPlanRefusal }
 
+// THE ONE READ OF THE PLAN'S WORKER-SANDBOX CHOICE. A deployment carries the attempt-worker slice and
+// the attempt-unit drain (path unit plus its root service) exactly when this answers true; both
+// live_deploy.spec (the roster) and live_deploy.emit (the applying path) read it here, so the
+// selection is one fact in one place and a second choice extends this match, not a call site.
+fn lab_plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
+  match plan {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => true
+      }
+  }
+}
+
 fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection {
   match user_manager_sandbox_enforcement(surface: surface) {
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } =>

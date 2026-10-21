@@ -29,6 +29,7 @@ import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
 import gunbc.live_deploy.lab_host_plan {
   LabDeployPlan,
   srv1_lab_deploy_plan,
+  lab_plan_selects_system_manager_launcher,
 }
 import gunbc.host.host_software_surface {
   srv1_software_surface,
@@ -1151,6 +1152,7 @@ fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
   holding: RoleSingletonHolding,
+  lab_plan: LabDeployPlan,
 ) -> List<DeploymentArtifactStep> {
   concat([
     DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: instance.serve_binary as String as NonEmptyStr },
@@ -1165,12 +1167,8 @@ fn deployment_owned_steps(
       kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
     },
-    DeploymentArtifactStep {
-      kind: UpsertOwned { kind: AttemptUnitDrainPathUnit },
-      path: deployment_attempt_unit_drain_path_unit_path(names: names),
-    },
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
-  ], concat(deployment_tailnet_door_steps(names: names), concat([
+  ], concat(deployment_attempt_unit_drain_steps(names: names, lab_plan: lab_plan), concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
       kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
@@ -1178,7 +1176,25 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  ))))))
+  )))))))
+}
+
+// THE DRAIN BELONGS TO THE SELECTED WORKER-SANDBOX REALIZATION, NOT TO EVERY DEPLOYMENT. The path
+// unit and its root service replace the attempt-system-unit launcher grant, which was installed only
+// when the plan selected the system-manager launcher; a deployment whose plan does not select it has
+// nothing that enqueues on the attempt-unit spool, so a root service there would be a member nothing
+// consumes (DESIGN 3c) and a root surface for nothing. The selector is read once, in lab_host_plan.
+fn deployment_attempt_unit_drain_steps(names: DeploymentNames, lab_plan: LabDeployPlan) -> List<DeploymentArtifactStep> {
+  if lab_plan_selects_system_manager_launcher(plan: lab_plan) {
+    [
+      DeploymentArtifactStep {
+        kind: UpsertOwned { kind: AttemptUnitDrainPathUnit },
+        path: deployment_attempt_unit_drain_path_unit_path(names: names),
+      },
+    ]
+  } else {
+    []
+  }
 }
 
 // THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
@@ -1350,7 +1366,7 @@ fn deployment_steps_apply_order(
   concat(
     map(deployment_ensured_steps(target: target, holding: holding), s => Dependency { step: s }),
     map(
-      deployment_owned_steps(instance: instance, names: names, holding: holding),
+      deployment_owned_steps(instance: instance, names: names, holding: holding, lab_plan: target.lab_plan),
       s => ArtifactStep { step: s },
     )
   )

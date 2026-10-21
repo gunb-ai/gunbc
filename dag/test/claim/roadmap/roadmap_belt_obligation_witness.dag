@@ -110,7 +110,7 @@ test fn the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer() -
   let spec = deployment_spec_srv1()
   let lines = systemd_unit_file_lines(file: live_deploy_belt_exit_path_unit_file(spec: spec))
   let inbox = attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)
-  let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons)
+  let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
   any(lines, l => l == join(["DirectoryNotEmpty=", inbox], ""))
     && any(lines, l => l == join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
     && !any(steps, st => string_contains(s: st.path as String, pattern: "-belt.timer"))

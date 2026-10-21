@@ -205,6 +205,7 @@ import gunbc.live_deploy.lab_host_plan {
   LabPlanReady,
   LabPlanRefused,
   lab_plan_refused_emit_line,
+  lab_plan_selects_system_manager_launcher,
   SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
@@ -1396,15 +1397,13 @@ fn attempt_unit_drain_steps(spec: DeploymentSpec, revision: ReleaseRevisionBindi
 
 // THE PLAN'S WORKER-SANDBOX CHOICE IS THE REALIZATION SELECTOR. User-manager ProtectHome is not
 // an option on a host whose user manager does not enforce; LabPlanReady.worker_sandbox is
-// SystemManagerLauncherSelected, and that identity is this grant plus the attempt-worker slice,
-// not a second start path beside them.
+// SystemManagerLauncherSelected, and that identity is the attempt-worker slice plus the attempt-unit
+// drain (the roster member AttemptUnitDrainPathUnit), not a second start path beside them.
 fn apply_selected_worker_sandbox_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  match spec.target.lab_plan {
-    LabPlanRefused { cause: _ } => []
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
-      match choice {
-        SystemManagerLauncherSelected => apply_attempt_worker_slice_install_steps()
-      }
+  if lab_plan_selects_system_manager_launcher(plan: spec.target.lab_plan) {
+    apply_attempt_worker_slice_install_steps()
+  } else {
+    []
   }
 }
 
