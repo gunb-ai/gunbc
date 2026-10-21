@@ -211,7 +211,7 @@ test fn a_partial_batch_names_the_unread_exchange_and_decodes_the_rest() -> Bool
 
 // No exchange answered: no response-derived reply, both exchanges unread; the two replies left are exactly the NIC and BootOptions decoder gaps.
 // Nothing here is a responded contact.
-test fn a_no_response_batch_is_all_unread_with_no_replies() -> Bool {
+test fn a_no_response_batch_has_no_response_derived_replies_and_keeps_the_two_decoder_gaps() -> Bool {
   match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: r } =>
