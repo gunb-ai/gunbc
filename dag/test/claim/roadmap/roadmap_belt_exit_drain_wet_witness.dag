@@ -513,12 +513,12 @@ test fn the_real_stall_and_stat_route_yields_the_admission_shapes_and_analyze_na
   let own = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: me, group: grp)
   let other = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
   let absent = belt_exit_stall_clear_at(root: root, entry: "not-recorded", whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
+  let report = belt_exit_stall_analyze_at(root: root, whoami: BeltExitStallObserved { value: "nobody-else" })
   let rm = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["rmdir ", attempt_exit_inbox_dir(instance_root: root), "/", worker_exit, " && ln -s /tmp ", attempt_exit_inbox_dir(instance_root: root), "/", worker_exit], "")]), workdir: "/")
   let linked = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
-  let report = belt_exit_stall_analyze_at(root: root, whoami: BeltExitStallObserved { value: "nobody-else" })
   wrote && count(recorded) == 1
     && admission_refused(a: own)
-    && match other { BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: worker_exit)) _ => false }
+    && match other { BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: worker_exit)) && any(argv, w => string_contains(s: w, pattern: "[ -L")) _ => false }
     && admission_refused(a: absent)
     && admission_refused(a: linked)
     && any(report, l => string_contains(s: l, pattern: "belt_exit_stall_clear_cli") && string_contains(s: l, pattern: "entry="))
