@@ -783,7 +783,7 @@ fn acd_zero_alternatives_then_infers(src: String, accepted: Bool) -> Bool {
   }
 }
 
-data acd_never_source: String = "module acd\n\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+data acd_never_source: String = "module std.error_primitives\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
 data acd_inhabited_empty_source: String = "module acd\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
 // (h) A MALFORMED SITE IS A TYPED ROW, NEVER A DEMAND OR A SKIP: a two-child Branch, a Match with no arms, a
