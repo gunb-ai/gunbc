@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.default_value_has_no_carrier
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data default_value_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "default_value_has_no_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a default value (`= expr`) on a fn or pattern parameter (`version: NonEmptyStr = \"latest\"`) or on a record field (`headless: Bool = false`), which v1 reads (`v1` `02_parse` `parse_param` / `parse_field`), has nothing to hold it on the lowered parameter or field: the one binder the lowering builds carries a name and a type, not an optional default.",

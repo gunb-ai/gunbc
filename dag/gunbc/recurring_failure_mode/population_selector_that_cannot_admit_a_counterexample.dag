@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.population_selector_that_cannot_admit_a_counterexample
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data population_selector_that_cannot_admit_a_counterexample: RecurringFailureMode = RecurringFailureMode {
   identity: "population_selector_that_cannot_admit_a_counterexample" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a population selector that cannot admit a counterexample** (the population under study is enumerated by a LEXICAL PROXY FOR THE PREDICATE being asked, so the selector and the evidence are one object. Every member is then found to satisfy the claim -- not because the claim holds, but because no member that would refute it was reachable by the query that defined membership. The output is a CATEGORICAL VERDICT that is UNFALSIFIABLE BY CONSTRUCTION: no member of that population could have come back the other way.",
