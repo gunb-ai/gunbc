@@ -201,7 +201,7 @@ fn known_red_fail_prefix() -> String {
 // line is this one was ATTEMPTED and lost its way -- which is a different fact from 'printed nothing' and
 // must not collapse into it.
 fn known_red_panicked_prefix() -> String {
-  "PANICKED "
+  concat(known_red_word_panicked, " ")
 }
 
 // The cause printed for the floor subject, spelled FROM the withdrawal row rather than invented here: the
@@ -1075,35 +1075,63 @@ data known_red_transport_decoder_dissolution: DissolutionCondition =
 fn known_red_terminal_of_line(line: String, function: String) -> Optional<ClaimAttemptTerminal> {
   match known_red_line_body(line: line, function: function) {
     Absent => Absent
-    Present { value: "PASS" } =>
-      Present { value: Returned { observation: ObservedVerdict { holds: true } } }
-    Present { value: "" } =>
-      Present { value: Returned { observation: ObservedVerdict { holds: false } } }
-    Present { value: body } => known_red_terminal_of_body(body: body)
+    Present { value: printed } => known_red_terminal_of_printed(printed: printed)
   }
 }
+
+// WHICH TERMINAL THE VERDICT WORD + BODY PAIR MEANS. The word is matched against the `known_red_word_*`
+// constants themselves, so a rewording of `claim_batch` that updates only the constants moves this match
+// too -- it cannot leave the classifier on the old spelling while the source-tying check goes green.
+fn known_red_terminal_of_printed(printed: KnownRedPrintedLine) -> Optional<ClaimAttemptTerminal> {
+  if printed.verdict_word == known_red_word_pass {
+    Present { value: Returned { observation: ObservedVerdict { holds: true } } }
+  } else {
+    if printed.verdict_word == known_red_word_fail {
+      if printed.body == "" {
+        Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+      } else {
+        known_red_terminal_of_body(body: printed.body)
+      }
+    } else {
+      if printed.verdict_word == known_red_word_panicked {
+        known_red_terminal_of_body(body: printed.body)
+      } else {
+        Absent
+      }
+    }
+  }
+}
+
+// THE PRINTED LINE, BEFORE IT IS A TERMINAL. `known_red_line_body` strips the verdict word and the function
+// name off one stdout line and carries WHICH WORD IT MATCHED, as one of the three `known_red_word_*`
+// constants, beside the body that remains. The word travels as the constant's value rather than as a private
+// sentinel standing for it: a sentinel is a second, unstated spelling of the verdict, so a rewording that
+// updates the constants would leave the classifier matching the sentinel and every line of that kind would
+// decode as 'not about this claim' -- which reports as an absent line rather than as a refusal, the one
+// outcome this decoder must not produce (review 84034, DESIGN §3).
+data KnownRedPrintedLine { verdict_word: String, body: String }
 
 // STRIP THE VERDICT WORD AND THE FUNCTION NAME, or report that this line is not about this claim. The
 // transport prints the BARE FUNCTION NAME with no module path, which is why a line is attributed within one
 // child and never across children — see the identity-ambiguity refusal.
-fn known_red_line_body(line: String, function: String) -> Optional<String> {
-  let pass = concat("PASS ", function)
-  let fail = concat("FAIL ", function)
-  let panic = concat("PANICKED ", function)
-  if line == pass {
-    Present { value: "PASS" }
+fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrintedLine> {
+  let pass_head = concat(known_red_pass_prefix(), function)
+  let fail_head = concat(known_red_fail_prefix(), function)
+  let panic_head = concat(known_red_panicked_prefix(), function)
+  if line == pass_head {
+    Present { value: KnownRedPrintedLine { verdict_word: known_red_word_pass, body: "" } }
   } else {
-    if line == fail {
-      Present { value: "" }
+    if line == fail_head {
+      Present { value: KnownRedPrintedLine { verdict_word: known_red_word_fail, body: "" } }
     } else {
-      if starts_with(s: line, prefix: concat(pass, " ")) && trim(s: known_red_after(s: line, n: string_length(s: pass) + 1)) == "" {
-        Present { value: "PASS" }
+      if starts_with(s: line, prefix: concat(pass_head, " ")) && trim(s: known_red_after(s: line, n: string_length(s: pass_head) + 1)) == "" {
+        Present { value: KnownRedPrintedLine { verdict_word: known_red_word_pass, body: "" } }
       } else {
-        if starts_with(s: line, prefix: concat(fail, " (")) {
-          Present { value: trim(s: known_red_after(s: line, n: string_length(s: fail) + 1)) }
+        if starts_with(s: line, prefix: concat(fail_head, " (")) {
+          Present { value: KnownRedPrintedLine { verdict_word: known_red_word_fail, body: trim(s: known_red_after(s: line, n: string_length(s: fail_head) + 1)) } }
         } else {
-          if starts_with(s: line, prefix: concat(panic, " (")) {
-            Present { value: trim(s: known_red_after(s: line, n: string_length(s: panic) + 1)) }
+          if starts_with(s: line, prefix: concat(panic_head, " (")) {
+            Present { value: KnownRedPrintedLine { verdict_word: known_red_word_panicked, body: trim(s: known_red_after(s: line, n: string_length(s: panic_head) + 1)) } }
           } else {
             Absent
           }

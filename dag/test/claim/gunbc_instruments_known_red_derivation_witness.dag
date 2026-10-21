@@ -47,7 +47,9 @@ import gunbc.instruments.known_red_derivation {
   known_red_marker_host_tool, known_red_marker_probed, known_red_marker_route_gap,
   known_red_marker_entry_resolve, known_red_marker_budget_word, known_red_marker_budget_unmeasured,
   known_red_marker_ground_unpublished_mock, known_red_marker_ground_filesystem_removal,
-  known_red_marker_ground_no_mock_response
+  known_red_marker_ground_no_mock_response,
+  known_red_word_pass, known_red_word_fail, known_red_word_panicked,
+  known_red_terminal_of_line
 }
 import std.dissolution { dissolution_description }
 
@@ -1188,6 +1190,57 @@ fn row_halted_by(rows: List<KnownRedDerivationRow>) -> String {
     NotAttempted { halted_by: cause } => cause
     _ => ""
   }
+}
+
+// ONE AUTHOR FOR THE VERDICT WORD, CHECKED AT THE SEAM (review 84034). The classifier used to carry its own
+// copies of "PASS ", "FAIL ", "PANICKED " while `known_red_word_pass/fail/panicked` sat beside them unread:
+// a rewording that updated the constants (to satisfy the source-tying check) would have left the classifier
+// matching the OLD word, so a PASS line would decode as 'not about this claim' -- an absent line, not a
+// refusal, which is exactly the outcome this decoder exists to avoid. These fixtures are built FROM the
+// constants, so a rewording moves them and the classifier together: the claim still passes, and the point is
+// that it cannot silently stop matching. The control is a line the classifier does not own: a word the
+// constants never spell decodes as Absent.
+// Built WITHOUT the trailing newline: the fold splits stdout on '\n' before it hands a line to the
+// classifier, so a line here carries exactly what the classifier is given.
+fn verdict_line_of(word: String, function: String) -> String {
+  concat(word, concat(" ", function))
+}
+
+// The bracketed tail is passed EXACTLY as the transport prints it, marker included, so the only thing this
+// builder invents is the verdict word -- which is the fact under test.
+fn verdict_line_with_body_of(word: String, function: String, body: String) -> String {
+  concat(word, concat(" ", concat(function, concat(" ", body))))
+}
+
+test fn the_verdict_word_is_read_from_the_constants_a_reword_moves_the_classifier_with_it() -> Bool {
+  let bare_pass = verdict_line_of(word: known_red_word_pass, function: "the_claim")
+  let bare_fail = verdict_line_of(word: known_red_word_fail, function: "the_claim")
+  let failed = verdict_line_with_body_of(
+    word: known_red_word_fail,
+    function: "the_claim",
+    body: concat(known_red_marker_exit_failure, "1: boom)")
+  )
+  let unwound = verdict_line_with_body_of(
+    word: known_red_word_panicked,
+    function: "the_claim",
+    body: concat(known_red_marker_panicked, "boom)")
+  )
+  let holds = known_red_terminal_of_line(line: bare_pass, function: "the_claim")
+    == Present { value: Returned { observation: ObservedVerdict { holds: true } } }
+  let lost = known_red_terminal_of_line(line: bare_fail, function: "the_claim")
+    == Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+  let exited = known_red_terminal_of_line(line: failed, function: "the_claim")
+    == Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+  let unwound_terminal = known_red_terminal_of_line(line: unwound, function: "the_claim")
+    == Present { value: Panicked { payload: "boom" } }
+  let not_a_verdict_word = known_red_terminal_of_line(line: "PASSED the_claim\n", function: "the_claim")
+    == Absent
+  holds
+    && lost
+    && exited
+    && unwound_terminal
+    // A word the constants never spell is not silently ranked: it is no line at all, and the fold refuses.
+    && not_a_verdict_word
 }
 
 // TWO POPULATIONS, ONE IDENTITY, ONE DISPATCH. The seven Group-C identities are BOTH wet-scheduled AND
