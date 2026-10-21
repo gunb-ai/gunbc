@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.witness_module_absent_from_the_executed_set
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data witness_module_absent_from_the_executed_set: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_module_absent_from_the_executed_set" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a witness module that discriminates correctly is absent from the runner's executed set** (THE CHECK IS RIGHT, ITS ARMS ARE ENROLLED, AND ITS SUBJECT IS REAL -- the only missing thing is membership in the population the required run actually schedules, so every signal a reader consults says covered and none of them is the one that decides.",

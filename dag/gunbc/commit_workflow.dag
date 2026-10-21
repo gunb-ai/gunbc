@@ -1789,45 +1789,12 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
-      check_fns: [
-        "bind_census_ingested_executes_holds",
-        "bind_census_ingested_wrong_value_red_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
-      check_fns: [
-        "loop_census_ingested_executes_holds",
-        "loop_census_ingested_wrong_value_red_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
       check_fns: ["witness_resolve_distinct_param_bindings_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
     surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
-      check_fns: ["witness_parse_binding_fidelity_distinct_identifiers_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -1969,6 +1936,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
         "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
         "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/falsifier_rehomed_rows_unexecuted_witness.dag",
+      check_fns: [
+        "falsifier_rehomed_drop_population_is_the_identity_join_of_both_frontiers",
+        "falsifier_rehomed_drop_population_names_entry_and_function",
+        "falsifier_rehomed_drop_population_excludes_unlisted_RED_control_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

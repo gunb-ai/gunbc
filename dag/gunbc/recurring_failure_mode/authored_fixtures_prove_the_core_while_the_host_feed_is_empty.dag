@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.authored_fixtures_prove_the_core_while_the_host_feed_is_empty
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data authored_fixtures_prove_the_core_while_the_host_feed_is_empty: RecurringFailureMode = RecurringFailureMode {
   identity: "authored_fixtures_prove_the_core_while_the_host_feed_is_empty" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a lens splits into a pure core over a projection type and a thin host boundary that fills it, the core is proven by authored fixtures, and NOTHING executes the boundary -- so a feed that yields ZERO rows leaves every refusing arm unreachable and the lens permanently green** (INVALID STATE: the fixture suite constructs the projection rows DIRECTLY, which is the whole point of the split and is what makes the core witnessable; but constructing them directly is also exactly what bypasses the one function that touches the corpus. Green fixtures therefore establish that the core would refuse IF FED, and say nothing about whether it is ever fed. HARM: the lens is enrolled, reads clean on every subject forever, and is cited as coverage for a class it has never once been able to see -- DESIGN section 4b, a check whose RED is not authorable is worse than absent.)",

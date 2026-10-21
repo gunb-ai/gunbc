@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.bare_imported_service_invisible_to_derived_d
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data bare_imported_service_invisible_to_derived_demand: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_imported_service_invisible_to_derived_demand" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a service imported by bare name is invisible to derived service demand** (INVALID STATE: a function calls an operation through a service it imported by name -- `import extdeps.filesystem.filesystem_io { Filesystem }`, then `Filesystem.Read(...)` -- and the compiler's DERIVED service demand for that function is empty, so the carrier that decides whether a function is effectful reports it pure.",

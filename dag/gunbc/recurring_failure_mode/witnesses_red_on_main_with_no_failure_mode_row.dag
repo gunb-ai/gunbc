@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.witnesses_red_on_main_with_no_failure_mode_row
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
+  identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
+
+  receipts: [
+    "**a witness red at origin/main has no row, so every PR that touches its module rediscovers and re-attributes it** (INVALID STATE: a committed witness fails under `gunbc run --claim-run` at the default branch head and nothing records that, which test, or whether the required path runs it).",
+
+    "HARM: each lane has to re-measure the failure against main to show it is not its own, and a lane that skips the comparison either blames itself or absorbs the red. SPECIMEN (gunbc#14384, main 6ae9b3b9591, executed with `gunbc run --source-root dag --source-root src/v2 --entry <witness> --claim-run`): test.claim.rung_drop_superseded_standing_witness the_live_roster_loss_holders_resolve_and_stand; test.claim.compiler_frontend_program_status_witness every_declared_instrument_is_distinct_and_awaited; test.claim.exact_witness_admission_witness no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row and both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal. Whether any of the four is on the required path was not established by that lane.",
+
+    "RUNG FOUND AT 1, mitigatable: the red is visible to whoever runs the witness and to no gate. CEILING 3, structurally guaranteed for the enrolled population: a witness on the required path cannot be red at main because the merge queue refuses it; the unenrolled remainder is a ratchet.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: an instrument label whose run executes the witness population and states, per identity, whether it is green at the default branch head and whether the required path runs it. SUFFICIENT FOR: the four specimens above being counted, or shown absent, by that run rather than by this row.",
+
+    "RECOGNITION RULE: a red you did not cause is a fact about main, not about your lane. Run the same witness at origin/main, cite the sha, and check this ledger before attributing it.",
+  ],
+
+  evidence: [],
+}
