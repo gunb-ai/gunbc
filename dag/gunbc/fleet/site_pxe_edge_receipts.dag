@@ -1,7 +1,6 @@
 module gunbc.fleet.site_pxe_edge_receipts
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr }
-import std.list { first_where }
 import std.content_hash {
   ContentHash,
   ContentHashEqual,
@@ -226,16 +225,9 @@ type SuppliedExchangeBinding
   = SuppliedExchangeBound { supplied: SuppliedNetbootExchange }
   | SuppliedExchangeRefused { refusal: SuppliedExchangeRefusal }
 
-// An offer is a CANDIDATE for a client when it names the same client and exchange (MAC + xid); it
-// is TAKEN when the client's accepted answer also names that offer's server and filename. Both are
-// derived from the client's own reading, never from list position.
-fn offer_is_candidate_for(edge: SuppliedEdgeOffer, client: SuppliedClientExchange) -> Bool {
-  edge.client_mac == client.client_mac && edge.transaction == client.transaction
-}
-
-fn offer_taken_by(edge: SuppliedEdgeOffer, client: SuppliedClientExchange) -> Bool {
-  offer_is_candidate_for(edge: edge, client: client) && edge.next_server == client.accepted_from && edge.offered_filename == client.accepted_filename
-}
+// An offer is a CANDIDATE for a client when it names the same client and exchange (MAC + xid; the
+// ExchangeKey); it is TAKEN when the client's accepted answer also names that offer's server and
+// filename (the AcceptanceKey). Both are derived from the client's own reading, never from list position.
 
 // THE ONE SELECTION OUTCOME PER CLIENT. Both the binder and untaken_offers read it, so the two
 // cannot disagree about which offer a client chose: a second selection rule beside this one would
@@ -265,71 +257,74 @@ fn exchange_key_of_client(client: SuppliedClientExchange) -> ExchangeKey {
   ExchangeKey { client_mac: client.client_mac, transaction: client.transaction }
 }
 
-// Offers bucketed by exchange once, so each client reads its candidates from one bucket instead of
-// scanning every offer; a batch of n offers and m clients is then n + m, not n * m.
-fn offers_by_exchange(edges: List<SuppliedEdgeOffer>) -> Map<ExchangeKey, List<SuppliedEdgeOffer>> {
-  edges |> fold(init: empty_map(), f: (m, e) =>
-    map_insert(m, exchange_key_of_offer(edge: e), concat(candidates_in(index: m, key: exchange_key_of_offer(edge: e)), [e]))
+// What the client's acceptance names: its exchange plus the server and filename it took. An offer
+// with the same key is one the client's answer names.
+type AcceptanceKey {
+  exchange: ExchangeKey
+  server: Ipv4Address
+  filename: NonEmptyStr
+}
+
+fn acceptance_key_of_offer(edge: SuppliedEdgeOffer) -> AcceptanceKey {
+  AcceptanceKey { exchange: exchange_key_of_offer(edge: edge), server: edge.next_server, filename: edge.offered_filename }
+}
+
+fn acceptance_key_of_client(client: SuppliedClientExchange) -> AcceptanceKey {
+  AcceptanceKey { exchange: exchange_key_of_client(client: client), server: client.accepted_from, filename: client.accepted_filename }
+}
+
+// How many offers share a key, and one of them. A selection only ever needs "none, exactly this
+// one, or several", so a count replaces a growing bucket: no append copies a list, and a client
+// reads its answer in one lookup however many same-key offers or same-key clients the batch holds.
+type OfferTally {
+  first: SuppliedEdgeOffer
+  count: Int
+}
+
+type OfferIndex {
+  candidates: Map<ExchangeKey, OfferTally>
+  named: Map<AcceptanceKey, OfferTally>
+}
+
+fn tally_bump(prior: OfferTally?, edge: SuppliedEdgeOffer) -> OfferTally {
+  match prior {
+    Present { value: t } => OfferTally { first: t.first, count: t.count + 1 }
+    Absent => OfferTally { first: edge, count: 1 }
+  }
+}
+
+// Indexed once, so a batch of n offers and m clients is n + m lookups, not n * m.
+fn index_offers(edges: List<SuppliedEdgeOffer>) -> OfferIndex {
+  edges |> fold(init: OfferIndex { candidates: empty_map(), named: empty_map() }, f: (ix, e) =>
+    OfferIndex {
+      candidates: map_insert(ix.candidates, exchange_key_of_offer(edge: e), tally_bump(prior: map_get(ix.candidates, exchange_key_of_offer(edge: e)), edge: e))
+      named: map_insert(ix.named, acceptance_key_of_offer(edge: e), tally_bump(prior: map_get(ix.named, acceptance_key_of_offer(edge: e)), edge: e))
+    }
   )
 }
 
-fn candidates_in(index: Map<ExchangeKey, List<SuppliedEdgeOffer>>, key: ExchangeKey) -> List<SuppliedEdgeOffer> {
-  match map_get(index, key) {
-    Present { value: es } => es
-    Absent => []
-  }
-}
-
 fn select_offer(client: SuppliedClientExchange, edges: List<SuppliedEdgeOffer>) -> OfferSelection {
-  select_indexed(client: client, index: offers_by_exchange(edges: edges))
+  select_indexed(client: client, index: index_offers(edges: edges))
 }
 
-fn select_indexed(client: SuppliedClientExchange, index: Map<ExchangeKey, List<SuppliedEdgeOffer>>) -> OfferSelection {
-  select_among(client: client, candidates: candidates_in(index: index, key: exchange_key_of_client(client: client)))
-}
-
-fn select_among(client: SuppliedClientExchange, candidates: List<SuppliedEdgeOffer>) -> OfferSelection {
-  if candidates.length() == 0 {
-    NoCandidateOffers
-  } else {
-    if candidates.length() == 1 {
-      lone_candidate(client: client, xs: candidates)
-    } else {
-      choose_named(candidates: candidates, taken: candidates |> filter(e => offer_taken_by(edge: e, client: client)))
-    }
-  }
-}
-
-fn choose_named(candidates: List<SuppliedEdgeOffer>, taken: List<SuppliedEdgeOffer>) -> OfferSelection {
-  if taken.length() == 0 {
-    NoOfferNamedByAcceptance { candidates: candidates.length() }
-  } else {
-    if taken.length() == 1 {
-      accepted_only(xs: taken)
-    } else {
-      AmbiguousSelected { candidates: taken.length() }
-    }
-  }
-}
-
-// Reached only with exactly one element; the Absent arms are the empty list, which the callers have
-// already routed elsewhere, and they report no candidate rather than inventing an offer.
-fn lone_candidate(client: SuppliedClientExchange, xs: List<SuppliedEdgeOffer>) -> OfferSelection {
-  match first_where(xs: xs, keep: e => true) {
+fn select_indexed(client: SuppliedClientExchange, index: OfferIndex) -> OfferSelection {
+  match map_get(index.candidates, exchange_key_of_client(client: client)) {
     Absent => NoCandidateOffers
-    Present { value: edge } =>
-      if offer_taken_by(edge: edge, client: client) {
-        UniqueAccepted { edge: edge }
-      } else {
-        UniqueCandidate { edge: edge }
+    Present { value: seen } =>
+      match map_get(index.named, acceptance_key_of_client(client: client)) {
+        Present { value: named } =>
+          if named.count == 1 {
+            UniqueAccepted { edge: named.first }
+          } else {
+            AmbiguousSelected { candidates: named.count }
+          }
+        Absent =>
+          if seen.count == 1 {
+            UniqueCandidate { edge: seen.first }
+          } else {
+            NoOfferNamedByAcceptance { candidates: seen.count }
+          }
       }
-  }
-}
-
-fn accepted_only(xs: List<SuppliedEdgeOffer>) -> OfferSelection {
-  match first_where(xs: xs, keep: e => true) {
-    Absent => NoCandidateOffers
-    Present { value: edge } => UniqueAccepted { edge: edge }
   }
 }
 
@@ -394,10 +389,10 @@ fn bind_matched_digests(edge: SuppliedEdgeOffer, client: SuppliedClientExchange)
 // UniqueAccepted contributes, so an ambiguity marks none of its duplicates and a lone candidate the
 // client did not accept stays untaken.
 fn selected_offers(edges: List<SuppliedEdgeOffer>, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
-  selected_in(index: offers_by_exchange(edges: edges), clients: clients)
+  selected_in(index: index_offers(edges: edges), clients: clients)
 }
 
-fn selected_in(index: Map<ExchangeKey, List<SuppliedEdgeOffer>>, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
+fn selected_in(index: OfferIndex, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
   clients |> flat_map(c =>
     match select_indexed(client: c, index: index) {
       UniqueAccepted { edge: e } => [e]
