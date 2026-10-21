@@ -8,7 +8,6 @@ import gunbc.compile_diagnostic_census {
   // CLASS-SCOPED COUNTING (a_run_id_where_a_rule_id_belongs_is_refused_at_the_row): keyed counting
   // is census_count_at_key's job; the class-only denominator belongs here because a claim that must
   // count "every row of a class, whatever the host renders the subject as" is not a guess at a key.
-  census_blocking_rows,
   census_rows_of_class,
   census_total_count,
 }
@@ -88,38 +87,6 @@ fn control_type_mismatch_count() -> Int {
   type_mismatch_count(c: control_census())
 }
 
-fn axis_census() -> CompileDiagnosticCensus {
-  // THE SAME IDIOM AS probe_census, and not by accident: the inline-string cut of this source read
-  // zero TypeMismatch rows with no way to see why (unrunnable? refused earlier? never attempted?) --
-  // exactly the silent zero §5 says to refuse. As a file on disk, compiled through the same
-  // probe_source the evidence probe uses, a zero can be interrogated against the compiler's own
-  // diagnostics, and it sits in the same probe directory its sibling already lives in.
-  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_forgery"))
-}
-
-fn axis_type_mismatch_count() -> Int {
-  type_mismatch_count(c: axis_census())
-}
-
-// THE LOCALISERS, for the same reason a witness should never assert only its conclusion: the
-// refusal claim can fail because the census never RAN, because the source COMPILES CLEAN, or
-// because the refusal lands under a different class -- and those three readings demand different
-// fixes. Each is measured, not inferred from the one boolean.
-fn axis_total_row_count() -> Int {
-  match axis_census() {
-    CensusNotRunnable { cause: _ } => 0 - 1
-    CensusObserved { rows: rows } => census_total_count(rows: rows)
-  }
-}
-
-fn axis_blocking_row_count() -> Int {
-  match axis_census() {
-    CensusNotRunnable { cause: _ } => 0 - 1
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: rows))
-  }
-}
-
 fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
   match c {
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -186,8 +153,8 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
 // claim asked for two rows; it read one. Measured, not theorised: this census surfaces the FIRST type
 // error of a module and stops, so a second deliberate type error in the same source is invisible to it.
 // Each deliberate type error therefore gets its own compiled source, and each is counted on its own --
-// the run digits here, the foreign carrier in deployment_gate_carrier_axis_forgery.dag. A claim that asked two for one
-// row would go green while one of the two axes had silently stopped being refused.
+// the run digits here, the foreign carrier in deployment_gate_carrier_axis_direct.dag. A claim that asked two
+// for one row would go green while one of the two axes had silently stopped being refused.
 //
 // DELETING THE CARRIER REDDENS THIS: the rule slot reverts to plain Int, forged_rule_row_from_run_digits
 // compiles, the row disappears, count drops to zero.
@@ -195,106 +162,40 @@ test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
   probe_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
 }
 
-// THE CARRIER'S OWN TEST (review 83825): a value that is ALREADY a typed GitHub id, on the WRONG axis.
-// forged_rule_row_from_run_digits above proves the rule slot refuses an untyped digit -- which a plain
-// Int field also did, at runtime, inside the mint. The question the carrier exists to answer is whether
-// it refuses an installation id, GitHubAppInstallationId: the same { value: Int } shape, imported from
-// extdeps.github.app, the closest neighbour the confusion could actually take. If the rule field had been
-// given the installation type by mistake, or a single "GitHubId" type had been minted to cover both, the
-// line in the axis forgery file would COMPILE -- which is precisely the mistake separate carriers prevent,
-// and why §5 prefers the construction over checking digits at runtime. The control imports
-// GitHubAppInstallationId too, so a refusal cannot be an artifact of an unknown name; only a wrong AXIS
-// produces the row. Delete the separate carriers and this claim goes red.
-test fn an_installation_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
-  axis_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
-}
-
-// MEASUREMENT CLAIMS (temporary, until the axis forgery's fate is known). If the census cannot
-// run, total reads negative and THIS is the claim that says so. If it runs and reports nothing,
-// the foreign-carrier line COMPILES -- which would be a host-physics finding (plain-record field
-// conformance does not refuse a foreign product value) and the refusal claim would have to be
-// deleted, not re-worded: a claim that cannot go green for a false statement is not negotiable.
-test fn the_axis_source_census_runs() -> Bool {
-  axis_total_row_count() >= 0
-}
-
-test fn the_axis_source_reports_some_refusal() -> Bool {
-  axis_blocking_row_count() >= 1
-}
-
-// THE CLASS SWEEP. The axis census runs and blocks -- so the foreign-carrier line is refused --
-// but not under TypeMismatch, while the run-digits line in the sibling probe IS. Same construct
-// (a value in EnabledDeploymentProtectionRule.id), different value kind: a kernel Int against a
-// nominal record, versus a foreign nominal record against another nominal record. These claims
-// are written as == 0 so exactly one goes red and the failing NAME is the measurement; they are
-// scaffolding around one fact, and they collapse into the refusal claim (or the refusal claim is
-// deleted) as soon as the class is known.
-fn axis_class_count(class: String) -> Int {
-  match axis_census() {
-    CensusNotRunnable { cause: _ } => 0 - 1
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: class))
-  }
-}
-
-test fn the_axis_refusal_is_not_declared_type_inhabitance_undecided() -> Bool {
-  axis_class_count(class: "DeclaredTypeInhabitanceUndecided") == 0
-}
-
-test fn the_axis_refusal_is_not_declared_type_not_inhabited() -> Bool {
-  axis_class_count(class: "DeclaredTypeNotInhabited") == 0
-}
-
-test fn the_axis_refusal_is_not_unresolved_type() -> Bool {
-  axis_class_count(class: "UnresolvedType") == 0
-}
-
-test fn the_axis_refusal_is_not_field_not_found() -> Bool {
-  axis_class_count(class: "FieldNotFound") == 0
-}
-
-test fn the_axis_refusal_is_not_kernel_mint_shape_mismatch() -> Bool {
-  axis_class_count(class: "KernelMintShapeMismatch") == 0
-}
-
-test fn the_axis_refusal_is_not_unlisted_import_use() -> Bool {
-  axis_class_count(class: "UnlistedImportUse") == 0
-}
-
-// THE BASELINE HALF, without which the sweep above proves nothing. These four classes are import
-// and inhabitance diagnostics -- the kind a harness source can accumulate just by NAMING the
-// modules, whether or not any forgery is refused. If the control (which builds the row CORRECTLY
-// and forges nothing) shows the same four, then the axis source's rows are harness baseline and the
-// cross-axis line COMPILES CLEAN -- structural record interchangeability, a finding about the host
-// that would make the refusal claim false as written, and a claim that cannot go green for a false
-// statement is deleted rather than re-worded. If the control shows none, the rows belong to the
-// forgery and the source is fixed. Read the two halves together; neither means anything alone.
-fn control_class_count(class: String) -> Int {
-  match control_census() {
-    CensusNotRunnable { cause: _ } => 0 - 1
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: class))
-  }
-}
-
-test fn the_control_shows_no_baseline_unresolved_type() -> Bool {
-  control_class_count(class: "UnresolvedType") == 0
-}
-
-test fn the_control_shows_no_baseline_unlisted_import_use() -> Bool {
-  control_class_count(class: "UnlistedImportUse") == 0
-}
-
-test fn the_control_shows_no_baseline_declared_type_inhabitance_rows() -> Bool {
-  control_class_count(class: "DeclaredTypeNotInhabited") == 0
-    && control_class_count(class: "DeclaredTypeInhabitanceUndecided") == 0
-}
-
-// THE PUREST FORM OF THE CLAIM, with no record literal in the way (the direct-annotation file): an
-// installation id in a slot whose declared type is the rule carrier. A record literal can hide a
-// check in its own conformance pass; an annotated binding cannot. If THIS refuses, the carriers are
-// nominal and the wall is real. If it compiles, two { value: Int } records are interchangeable and
-// the model must SAY so instead of implying a wall its witnesses cannot show.
+// THE CROSS-AXIS WITNESS, AND THE THREE CUTS IT TOOK TO FIND ITS TARGET. The wrong targets are the
+// finding worth keeping, because each looked like a pass while asserting nothing.
+//
+// CUT 1, AT THE MINT, keyed on subject "Primitive(Int)": read zero, twice. mint_accepted_rule_review is
+// admit_callers-confined -- a foreign call dies at the ADMISSION GATE before any argument is type-checked
+// (that refusal is the ConstructorCallAdmissionRefused claim above) -- so a confined callee cannot
+// witness a type wall at all. Separately, the census keys a TypeMismatch by the offending expression's
+// own shape, which node_type_shape renders for a named Int datum by its AUTHORED NAME; pinning the
+// kernel word was a guess about the host's rendering. Both readings demanded different fixes, which is
+// why the claim counts a CLASS and discriminates against the control instead of naming a subject.
+//
+// CUT 2, A RECORD LITERAL carrying a foreign id (EnabledDeploymentProtectionRule { id: <installation
+// id> ... }): the census RAN and BLOCKED -- and every row was UnresolvedType / UnlistedImportUse /
+// DeclaredTypeNotInhabited / DeclaredTypeInhabitanceUndecided. The control, which builds that same row
+// CORRECTLY and forges nothing, reported the SAME classes. So the rows were harness baseline from
+// NAMING the modules, and the cross-axis literal had compiled clean. A claim written there would have
+// gone green on noise: a blocking row is not a refusal OF THE THING UNDER TEST unless the class says so.
+//
+// CUT 3, THE ANNOTATION, which is what stands: an installation id bound directly to a name whose
+// DECLARED type is the rule carrier, with no record literal to hide a conformance pass behind. This
+// refuses under TypeMismatch, and that cannot be baseline -- the control's TypeMismatch count is zero,
+// asserted below by the same control_census the sibling claim reads.
+//
+// WHAT EACH CROSS-AXIS CLAIM GUARDS, so they are not mistaken for each other:
+// a_run_id_where_a_rule_id_belongs_is_refused_at_the_row guards the FIELD -- GitHub sends digits, and
+// the readback row's id refuses when they arrive as a run's Int. THIS claim guards the NOMINAL
+// DISTINCTNESS OF THE TWO CARRIERS: mistype the rule field as the installation type, or collapse
+// GitHubDeploymentProtectionRuleId and GitHubAppInstallationId into one shared GitHubId (both are plain
+// { value: Int } records, so the shapes are identical and only the NAMES differ), and the line below
+// stops being an error -- this claim goes red. §5's construction-over-validation, made testable.
+//
+// ONE DELIBERATE TYPE ERROR PER COMPILED SOURCE, measured not theorised: this census surfaces a
+// module's FIRST type error and stops, so a second in the same source is invisible. The run digits live
+// in the evidence probe; the foreign carrier lives in deployment_gate_carrier_axis_direct.dag.
 fn direct_census() -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_direct"))
 }
@@ -307,8 +208,8 @@ fn direct_class_count(class: String) -> Int {
   }
 }
 
-test fn the_direct_annotation_refuses_a_foreign_carrier_by_type() -> Bool {
-  direct_class_count(class: "TypeMismatch") >= 1
+test fn an_installation_id_where_a_rule_id_belongs_is_refused_at_the_annotation() -> Bool {
+  direct_class_count(class: "TypeMismatch") >= 1 && control_type_mismatch_count() == 0
 }
 
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
