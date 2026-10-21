@@ -11,7 +11,7 @@ import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.node { Atom, Conj, MatchArmBodyEdge, MatchArmPatternEdge, Node, TypeNode, core_edge, node_synthetic }
 import v2.std.node { Symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.runtime { RuntimePrimitive, RuntimeValue }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue, runtime_match_unimplemented }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
@@ -59,9 +59,11 @@ test fn a_bind_evaluates_to_its_body_not_its_value_holds() -> Bool {
   }
 }
 
-// The Match twin: eval reads the scrutinee through match_slot_target. The scrutinee is the Bool literal
-// `true`; the arms are `true => 1` and `false => 2`, so a reader that took an arm slot for the scrutinee
-// has no Bool value to choose on.
+// The Match twin: eval reads the scrutinee through match_slot_target. v2_evaluator_interpretation's
+// choose_arm is runtime_reject_match_arm, so a Match can never evaluate to a value; what separates the
+// slots is WHERE it refuses. With the scrutinee `true` read correctly, eval reaches choose_arm and refuses
+// with runtime_match_unimplemented; a reader that took an arm slot for the scrutinee evaluates the arm's
+// Conj node instead and refuses for another reason. Infer admits the supplied Match (the second claim).
 fn bse_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -87,10 +89,20 @@ fn bse_match() -> Node {
   )
 }
 
-test fn a_match_on_true_evaluates_the_first_arm_holds() -> Bool {
-  match bse_eval(root: bse_match()) {
-    Present { value: n } => n == 1
-    Absent => false
+fn bse_first_reason_is_match_unimplemented(o: Outcome<RuntimeValue>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == runtime_match_unimplemented
+  }
+}
+
+test fn a_match_scrutinee_is_evaluated_before_the_arm_is_chosen_holds() -> Bool {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: bse_match())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      bse_first_reason_is_match_unimplemented(
+        o: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: bse_match()))
+      )
   }
 }
 
