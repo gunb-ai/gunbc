@@ -2839,18 +2839,16 @@ fn infer_match(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
   let arms = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
-      if is_empty(xs: arms) {
-        infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
-      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
-        infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
-        infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
-      } else {
-        infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      }
-  
+  if is_empty(xs: arms) {
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
+  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+  } else {
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
+  }
 }
 
 // THE COPRODUCT THE SCRUTINEE'S TYPE DENOTES, INSTANTIATED. `Outcome<ParseArtifact>` is an
