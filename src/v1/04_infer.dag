@@ -3845,6 +3845,24 @@ fn structured_application_lit_is_declared_optional_variant(
   }
 }
 
+// The declaration a record literal's name denotes: the settled declaration of a type spelling, or, for a
+// coproduct constructor (`Empty`, `Cons`), the declaration of the coproduct that owns it. Both sides of
+// application_type_names_compatible are read through this one relation, so an alias formal and a constructor
+// of its target settle to the same declaration and a constructor of another owner does not.
+fn settled_declaration_of_literal_name(lit_name: String, type_env: TypeEnv) -> DeclarationRef? {
+  match settled_declaration_of_type_name(type_name: lit_name, type_env: type_env) {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match symbol_index_lookup(index: type_env.symbol_index, qualified_name: lit_name) {
+        Present { value: owner } =>
+          if owner.connective == Disj && has_child_named(n: owner, name: qualified_last_segment(name: lit_name), source_indices: type_env.source_indices) {
+            declaration_ref_of_type_node(rt: owner, source_indices: type_env.source_indices, env: type_env)
+          } else { none }
+        Absent => none
+      }
+  }
+}
+
 // Two spellings of ONE declaration (`NonEmptyStr` and the census-qualified `std.types.NonEmptyStr`)
 // agree by the declaration each spelling names, read before any peel: the peel reaches a refinement's
 // body, which names no declaration, and the spelling-keyed alias relation that used to bridge the pair
@@ -3861,18 +3879,10 @@ fn application_type_names_compatible(
   } else if formal_name == lit_name {
     true
   } else {
-    let same_declaration = match lookup_type_by_name(env: type_env, name: formal_name) {
-      Present { value: formal_item } =>
-        match lookup_type_by_name(env: type_env, name: lit_name) {
-          Present { value: lit_item } =>
-            match declaration_ref_of_declaration_node(decl: formal_item, source_indices: source_indices, env: type_env) {
-              Present { value: formal_item_ref } =>
-                match declaration_ref_of_declaration_node(decl: lit_item, source_indices: source_indices, env: type_env) {
-                  Present { value: lit_item_ref } => declaration_ref_eq(a: formal_item_ref, b: lit_item_ref)
-                  Absent => false
-                }
-              Absent => false
-            }
+    let same_declaration = match settled_declaration_of_type_name(type_name: formal_name, type_env: type_env) {
+      Present { value: formal_ref } =>
+        match settled_declaration_of_literal_name(lit_name: lit_name, type_env: type_env) {
+          Present { value: lit_ref } => declaration_ref_eq(a: formal_ref, b: lit_ref)
           Absent => false
         }
       Absent => false
