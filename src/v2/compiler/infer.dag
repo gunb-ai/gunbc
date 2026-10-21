@@ -2399,7 +2399,7 @@ fn infer_match_bool_arm_body_type(
 // A MATCH ARM IS JUDGED AT THE EXPECTED TYPE BY THE SAME POSITION JUDGMENT AS A BRANCH ARM (infer_judge_branch_arms_at_expected):
 // infer_judge_declared_position_closing, so the if and match forms of one shape refuse with one reason (a bare x: Int? at Optional<Int?>
 // is optional-layer depth, not a join conflict).
-fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<Diagnostics> {
+fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<NonEmptyDiagnostics> {
   match expected {
     Absent => Absent
     Present { value: e } =>
@@ -2420,8 +2420,8 @@ fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entrie
   }
 }
 
-fn infer_match_arms_refusal_at_expected(match_node: Node, bodies: List<Node>, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<Diagnostics> {
-  let no_refusal: Optional<Diagnostics> = Absent
+fn infer_match_arms_refusal_at_expected(match_node: Node, bodies: List<Node>, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<NonEmptyDiagnostics> {
+  let no_refusal: Optional<NonEmptyDiagnostics> = Absent
   fold(bodies, init: no_refusal, f: fn(cur, body) {
     match cur {
       Present { value: _ } => cur
