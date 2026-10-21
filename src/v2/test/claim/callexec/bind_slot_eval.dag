@@ -93,3 +93,10 @@ test fn a_match_on_true_evaluates_the_first_arm_holds() -> Bool {
     Absent => false
   }
 }
+
+test fn a_supplied_match_is_admitted_by_infer_holds() -> Bool {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: bse_match())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
