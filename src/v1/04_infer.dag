@@ -15637,8 +15637,13 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // can only weaken the relation (two names failing to agree), never strengthen it into a false
 // agreement.
 
-fn transparent_alias_target_name(item: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let item_shape_admits = (item.params |> count) == 0 && item.connective == NoConnective && (item.children |> count) == 0 && (item.properties |> count) == 0 && item.type_annotation == none
+// THE ONE ALIAS EDGE RULE. An alias declaration's edge is its right-hand-side HEAD, a plain, a parameterized (`type A<T> = B<T>`) or a
+// self (`type A = A`) alias alike, because a cycle through any of them is a cycle. `plain_only` is the declared filter for the IDENTITY
+// relation (representatives), which only equates a plain alias with its target: no generic parameters, no applied head, not itself. A
+// container head or a generic parameter's own name is no edge in either reading.
+fn transparent_alias_target_name(item: Node, source_indices: Map<String, NewlineIndex>, plain_only: Bool) -> String {
+  let item_shape_admits = item.connective == NoConnective && (item.children |> count) == 0 && (item.properties |> count) == 0 && item.type_annotation == none && item.body == none && item.transport == none
+    && (!plain_only || (item.params |> count) == 0)
   if !item_shape_admits {
     ""
   } else {
@@ -15646,10 +15651,10 @@ fn transparent_alias_target_name(item: Node, source_indices: Map<String, Newline
       Present { value: Resolved { node: target } } =>
         let self_name = authored_name_at(source_indices: source_indices, node: item)
         let target_name = authored_name_at(source_indices: source_indices, node: target)
-        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == Required
-        if !target_shape_admits {
-          ""
-        } else if target_name == "" || target_name == self_name {
+        let target_shape_admits = target.connective == NoConnective && target.type_annotation == none && target.return_cardinality == Required
+          && (!plain_only || ((target.children |> count) == 0 && (target.params |> count) == 0))
+        let names_a_parameter = item.params |> any(p => generic_param_name_at(n: p, source_indices: source_indices) == target_name)
+        if !target_shape_admits || target_name == "" || names_a_parameter || (plain_only && target_name == self_name) {
           ""
         } else if is_declared_container_alias_spelling(name: target_name) || is_container_type(name: qualified_last_segment(name: target_name)) {
           ""
@@ -15700,11 +15705,11 @@ fn transparent_alias_qualified_name(decl_modules: Map<String, String>, name: Str
   }
 }
 
-fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>) -> Map<String, String> {
+fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>, plain_only: Bool) -> Map<String, String> {
   fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     fold(module_items(n: module_node), init: edges, f: (acc, item) =>
-      let raw_target = transparent_alias_target_name(item: item, source_indices: source_indices)
+      let raw_target = transparent_alias_target_name(item: item, source_indices: source_indices, plain_only: plain_only)
       if raw_target == "" {
         acc
       } else {
@@ -15805,35 +15810,10 @@ fn transparent_alias_graph_facts(edges: Map<String, String>) -> AliasGraphFacts 
   )
 }
 
-// The cycle relation's edges: any alias declaration's right-hand-side HEAD, parameterized (`type A<T> = B<T>`) and self (`type A = A`)
-// included, because a cycle through either is still a cycle. Wider than `transparent_alias_direct_edges` (identity needs a plain
-// alias); a container head or a generic parameter's own name is not an edge.
-fn transparent_alias_cycle_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>) -> Map<String, String> {
-  fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
-    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
-    fold(module_items(n: module_node), init: edges, f: (acc, item) =>
-      let shape_admits = item.connective == NoConnective && (item.children |> count) == 0 && (item.properties |> count) == 0 && item.type_annotation == none && item.body == none && item.transport == none
-      match item.inferred {
-        Present { value: Resolved { node: target } } =>
-          let self_name = authored_name_at(source_indices: source_indices, node: item)
-          let target_name = authored_name_at(source_indices: source_indices, node: target)
-          let target_shape_admits = target.connective == NoConnective && target.type_annotation == none && target.return_cardinality == Required
-          let is_param = item.params |> any(p => generic_param_name_at(n: p, source_indices: source_indices) == target_name)
-          if !shape_admits || !target_shape_admits || target_name == "" || is_param || is_declared_container_alias_spelling(name: target_name) || is_container_type(name: qualified_last_segment(name: target_name)) {
-            acc
-          } else {
-            map_insert(acc, concat(module_path, ".", self_name), transparent_alias_qualified_name(decl_modules: decl_modules, name: target_name))
-          }
-        _ => acc
-      }
-    )
-  )
-}
-
 fn transparent_alias_graph(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> AliasGraphFacts {
   let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
-  let identity = transparent_alias_graph_facts(edges: transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules))
-  let cyclic = transparent_alias_graph_facts(edges: transparent_alias_cycle_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules))
+  let identity = transparent_alias_graph_facts(edges: transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules, plain_only: true))
+  let cyclic = transparent_alias_graph_facts(edges: transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules, plain_only: false))
   AliasGraphFacts { rep: identity.rep, cycles: cyclic.cycles }
 }
 
