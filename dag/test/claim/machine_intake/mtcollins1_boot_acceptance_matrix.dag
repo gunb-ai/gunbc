@@ -434,22 +434,16 @@ data boot_route_fan_rows_first_zero: List<String> = [
   "FAN3_1_Speed       | 05h | ns  | 29.1 | No Reading",
 ]
 
-fn boot_route_sdr_answer(fan_rows: List<String>) -> fn(MtCollins1BootWorld, OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  fn(state, call) {
-    let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
-      Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { fan_rows } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
-      Absent => boot_route_temperature_rows
-    }
-    OperationObserved {
-      observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
-      state: state,
-      elapsed: second(count: 1),
-    }
-  }
-}
-
 fn boot_route_sdr_rows(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  boot_route_sdr_answer(fan_rows: boot_route_fan_rows)(state: state, call: call)
+  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
+    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
+    Absent => boot_route_temperature_rows
+  }
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
 }
 
 fn matrix_boot_route_frame_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -490,7 +484,15 @@ fn matrix_boot_route_frame_without_fans(world: MtCollins1BootWorld) -> WitnessEv
 }
 
 fn boot_route_sdr_rows_refused(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  boot_route_sdr_answer(fan_rows: boot_route_fan_rows_first_zero)(state: state, call: call)
+  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
+    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows_first_zero } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
+    Absent => boot_route_temperature_rows
+  }
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
 }
 
 // EXECUTE THE PRODUCTION BOOT ENTRY IN THE FAN-REFUSED WORLD: same entry, same subject; only the fan
