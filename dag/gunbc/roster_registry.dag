@@ -133,6 +133,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: single_roster(module_path: "gunbc.ci.ci_layer_roots", decl_name: "falsifier_rehomed_roster_rows"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "commit-roster witness rows that rode the FalsifierCadenceJob surface, whose executor (falsifier.yml) was deleted at 611fd02770 (#8283); carried as a typed frontier because a row enrolled only on that surface is a bare de-enrollment; reason and dissolution in-row, loss declared by gunbc.rung_drop.falsifier_rehomed_rows_unexecuted",
+      dissolution: unbound_dissolution(description: "per row: an executor runs it, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; roster-wide, the enforcement-intent registry absorbs the frontier")
+    }
+  },
+  RosterRegistration {
     roster: single_roster(module_path: "gunbc.ci.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
