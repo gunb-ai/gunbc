@@ -1,0 +1,4 @@
+module v2.test.fixture.alias_cycle_probe.param
+
+type CycPA<T> = CycPB<T>
+type CycPB<T> = CycPA<T>

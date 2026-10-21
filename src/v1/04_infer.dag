@@ -15741,8 +15741,12 @@ fn transparent_alias_chase(edges: Map<String, String>, name: String, fuel: Int) 
 fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
   let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
   let edges = transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules)
-  fold(sorted_map_keys(edges), init: empty_map(), f: (acc, k) =>
-    map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: 16))
+  // An acyclic chain is no longer than the edge count; a cycle is refused at declaration resolution (alias_cycle_members), so the
+  // fuel only bounds the census walk and can no longer cut a legitimate chain short and answer its midpoint.
+  let keys = sorted_map_keys(edges)
+  let chain_bound = keys |> count
+  fold(keys, init: empty_map(), f: (acc, k) =>
+    map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: chain_bound))
   )
 }
 
