@@ -2,7 +2,7 @@ module v2.test.claim.branch_slot
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.optional { Absent, Present }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import std.types { Bool }
 import v2.std.node {
   Atom,
@@ -44,9 +44,33 @@ fn bs_branch() -> Node {
 }
 
 test fn bs_a_table_maps_ordinals_to_roles_holds() -> Bool {
-  branch_positional_slot(ordinal: 0) == BranchConditionSlot
-    && branch_positional_slot(ordinal: 1) == BranchThenSlot
-    && branch_positional_slot(ordinal: 2) == BranchElseSlot
+  branch_positional_slot(ordinal: 0) == optional_present(value: BranchConditionSlot)
+    && branch_positional_slot(ordinal: 1) == optional_present(value: BranchThenSlot)
+    && branch_positional_slot(ordinal: 2) == optional_present(value: BranchElseSlot)
+}
+
+// A FOURTH POSITIONAL CHILD HAS NO ROLE: ordinal 3 is Absent, and the else slot still reads the third child,
+// never the fourth, so a malformed Branch is not read as having two else arms.
+test fn bs_c_fourth_positional_has_no_role_holds() -> Bool {
+  branch_positional_slot(ordinal: 3) == optional_absent()
+    && branch_positional_slot(ordinal: 9) == optional_absent()
+    && match branch_slot_target(n: bs_branch_four(), slot: BranchElseSlot) {
+      Present { value: e } => e == bs_atom(s: ^bs_else)
+      Absent => false
+    }
+}
+
+fn bs_branch_four() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
+      Edge { label: Positional, target: bs_atom(s: ^bs_else) },
+      Edge { label: Positional, target: bs_atom(s: ^bs_fourth) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
 }
 
 test fn bs_b_shared_condition_and_then_resolve_by_slot_holds() -> Bool {
