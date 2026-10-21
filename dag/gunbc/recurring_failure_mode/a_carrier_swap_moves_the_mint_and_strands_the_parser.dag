@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_carrier_swap_moves_the_mint_and_strands_the_parser
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_carrier_swap_moves_the_mint_and_strands_the_parser: RecurringFailureMode = RecurringFailureMode {
   identity: "a_carrier_swap_moves_the_mint_and_strands_the_parser" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "A carrier swap moves the MINT and strands the PARSER. INVALID STATE: one value has a producer and an inverse -- a digest and the reader of its wire form, an id and its parser, an encoder and its decoder -- and a migration retypes the producer while the inverse keeps admitting only the OLD form. The two halves are separate declarations, so nothing relates them, and the type system is satisfied on both sides: each is internally consistent with the type it names, and only their COMPOSITION is broken.",
