@@ -175,6 +175,7 @@ pub(crate) fn compile_to_provider_fixed_point(
                             resolved.diagnostics.clone(),
                             resolved.source_indices.clone(),
                             &failed,
+                            pool,
                         ),
                     };
                 match typed_refusal {
@@ -236,19 +237,22 @@ pub(crate) fn extend_with_acquired(
 }
 
 /// The model's refusal for a provider whose source the pool named but could not read: the same
-/// closure judged again with that module answered Unreadable.
+/// closure judged again through the builder's own pool, with only the failed module's answer replaced
+/// by Unreadable. Every other demanded module keeps the answer its pool gives -- a readable provider
+/// beside the failed one is never reported absent.
 pub(crate) fn unreadable(
     demands: &ProviderDemands,
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diagnostics: Rc<im::Vector<Rc<ErrorNode>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     failed: &str,
+    pool: &dyn Fn(&str) -> PoolAnswer,
 ) -> ClosureProviderStep {
     judge_closure(demands, modules, diagnostics, source_indices, &|m: &str| {
         if m == failed {
             PoolAnswer::Unreadable
         } else {
-            PoolAnswer::Lacks
+            pool(m)
         }
     })
 }
@@ -650,35 +654,127 @@ mod tests {
         );
     }
 
-    /// A provider whose bytes cannot be read DURING acquisition (after the pool answered) is the
-    /// model's ModuleUnreadable, decided by re-judging the closure -- never a prose error.
+    /// A provider whose ACTUAL read fails during acquisition, after its pool answered Holds, refuses
+    /// as the model's ModuleUnreadable at its own demanding site -- through the real emit-check pool
+    /// answer and the real emit-check read, not an injected error -- and a readable provider demanded
+    /// beside it is not reported absent. The provider file is a regular file throughout; its bytes
+    /// become invalid UTF-8 between the observation and the acquisition read.
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn a_read_failure_during_acquisition_refuses_as_module_unreadable() {
-        let pool = super::super::build_module_path_index_from_witness_roots();
+        use crate::std_types::SourceSpan;
+        let rel_dir = format!(
+            "target/generated_provider_read_probe_{}",
+            std::process::id()
+        );
+        let rel_file = format!("{rel_dir}/read_probe_provider.dag");
+        let ws = super::super::process_workspace_root();
+        std::fs::create_dir_all(ws.join(&rel_dir)).expect("probe dir");
+        std::fs::write(
+            ws.join(&rel_file),
+            "module test.fixture.read_probe_provider\n\nfn probe_route(s: String) -> Int { 0 }\n",
+        )
+        .expect("probe provider");
+        let mut pool = super::super::build_module_path_index_from_witness_roots();
+        pool.insert(
+            "test.fixture.read_probe_provider".to_string(),
+            rel_file.clone(),
+        );
+        let answer = |m: &str| super::super::emit_host::fixture_pool_answer(m, &pool);
+        assert!(matches!(
+            answer("test.fixture.read_probe_provider"),
+            PoolAnswer::Holds
+        ));
+        let site = |start: i64| {
+            Rc::new(GeneratedProviderSite {
+                cause: GeneratedProviderCause::GeneratedConversionRoute,
+                at: Rc::new(SourceSpan {
+                    file: "test.dag".to_string(),
+                    start,
+                    end: start + 5,
+                }),
+                occurrence: None,
+            })
+        };
+        let demand = |module: &str, decl: &str, start: i64| {
+            crate::std_generated_provider::generated_provider_demand(
+                Rc::new(DeclarationRef {
+                    module_path: module.to_string(),
+                    decl_name: decl.to_string(),
+                    field: Rc::new(DeclField::WholeDeclaration),
+                }),
+                site(start),
+            )
+        };
+        let demands: ProviderDemands = Rc::new(im::vector![
+            demand("test.fixture.read_probe_provider", "probe_route", 10),
+            demand("std.graph", "CallGraph", 30)
+        ]);
         let sources = emit_check_sources(
-            "module test.fixture.generated_provider_plain_read\n\nfn one() -> Int { 1 }\n",
+            "module test.fixture.read_probe_consumer\n\nfn one() -> Int { 1 }\n",
             &pool,
         );
         let resolved = compile(&sources);
-        let graph = resolved.graph.clone().expect("the closure compiles");
-        let demand = supplied("std.coercion", "unicode_scalar_unfold");
-        let e = extend_with_acquired(sources, &["std.coercion".to_string()], &|_: &str| {
-            Err(ClosureOfError::Unreadable)
-        })
-        .expect("a read failure is not a closure error");
-        let Extension::Unreadable(failed) = e else {
-            panic!("expected Unreadable")
+        let graph = resolved.graph.clone().expect("the consumer compiles");
+        let modules = match judge(&demands, &resolved, &answer) {
+            ClosureProviderStep::Acquire(m) => m,
+            other => panic!(
+                "expected Acquire, got refused={:?}",
+                refused_classes(&other)
+            ),
         };
         assert_eq!(
-            refused_classes(&unreadable(
-                &demand,
-                graph.modules.clone(),
-                resolved.diagnostics.clone(),
-                resolved.source_indices.clone(),
-                &failed
-            )),
-            vec!["GeneratedProviderUnavailable/UnavailableModuleUnreadable".to_string()]
+            modules,
+            vec![
+                "test.fixture.read_probe_provider".to_string(),
+                "std.graph".to_string()
+            ]
+        );
+        // The model judged the pool's Holds; the acquisition read that follows will not succeed.
+        std::fs::write(ws.join(&rel_file), [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
+        let failed = match extend_with_acquired(sources, &modules, &|m: &str| {
+            super::super::emit_host::fixture_pool_closure_of(m, &pool)
+        })
+        .expect("a read failure is not a closure error")
+        {
+            Extension::Unreadable(failed) => failed,
+            Extension::Extended(_) => panic!("the corrupted provider joined the closure"),
+            Extension::Stalled => panic!("expected Unreadable, got Stalled"),
+        };
+        assert_eq!(failed, "test.fixture.read_probe_provider");
+        let step = unreadable(
+            &demands,
+            graph.modules.clone(),
+            resolved.diagnostics.clone(),
+            resolved.source_indices.clone(),
+            &failed,
+            &answer,
+        );
+        let refused: Vec<String> = match &step {
+            ClosureProviderStep::Refused(diagnostics) => diagnostics
+                .iter()
+                .map(|d| match d.diagnostic.as_ref() {
+                    CompilerDiagnostic::GeneratedProviderUnavailable {
+                        declaration,
+                        cause,
+                        span,
+                    } => format!(
+                        "{}.{} {cause:?} {}:{}..{}",
+                        declaration.module_path,
+                        declaration.decl_name,
+                        span.file,
+                        span.start,
+                        span.end
+                    ),
+                    other => format!("{other:?}"),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let _ = std::fs::remove_dir_all(ws.join(&rel_dir));
+        assert_eq!(
+            refused,
+            vec!["test.fixture.read_probe_provider.probe_route UnavailableModuleUnreadable test.dag:10..15".to_string()]
         );
     }
 
