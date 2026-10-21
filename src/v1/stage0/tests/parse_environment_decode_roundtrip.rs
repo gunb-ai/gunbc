@@ -451,12 +451,14 @@ fn drop_data_block(source: &str, marker: &str) -> String {
     let mut depth = 0usize;
     let bytes = source.as_bytes();
     let mut end = start + open;
+    let mut closed = false;
     while end < bytes.len() {
         match bytes[end] {
             b'[' => depth += 1,
             b']' => {
                 depth -= 1;
                 if depth == 0 {
+                    closed = true;
                     break;
                 }
             }
@@ -464,6 +466,9 @@ fn drop_data_block(source: &str, marker: &str) -> String {
         }
         end += 1;
     }
+    // Never slice past the end: an unbalanced scan is a refusal naming the marker, not a panic
+    // with a byte-index message.
+    assert!(closed, "{marker} carries an unbalanced list initializer");
     let mut end = end + 1;
     while end < bytes.len() && bytes[end] != b'\n' {
         end += 1;
@@ -471,9 +476,17 @@ fn drop_data_block(source: &str, marker: &str) -> String {
     if end < bytes.len() {
         end += 1;
     }
+    // Snap to a char boundary: the line we skipped may hold multi-byte characters (comments in this
+    // repository do), and the caller slices by these byte offsets.
+    while end < bytes.len() && (bytes[end] & 0xC0) == 0x80 {
+        end += 1;
+    }
+    // Byte-indexed slicing of a str panics at a multi-byte boundary; go through bytes so the strip
+    // is byte-safe regardless of what the declaration's comments contain.
+    let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
-    out.push_str(&source[..start]);
-    out.push_str(&source[end..]);
+    out.push_str(std::str::from_utf8(&bytes[..start]).expect("strip start is char-aligned"));
+    out.push_str(std::str::from_utf8(&bytes[end..]).expect("strip end is char-aligned"));
     out
 }
 
