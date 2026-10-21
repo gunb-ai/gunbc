@@ -77,8 +77,6 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostFileWithheld,
   runner_host_file_desired_population_from_uid_reading,
   runner_host_files_deliver_fragment,
-  runner_host_slot_role_files,
-  runner_host_slot_role_withheld_files,
   RunnerSlotExpectation,
   runner_slot_expectation,
   SlotReloadNotPending,
