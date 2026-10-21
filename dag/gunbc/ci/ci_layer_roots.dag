@@ -1950,12 +1950,6 @@ data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
   }
 ]
 
-fn falsifier_rehomed_roster_entries() -> List<ScheduleWitnessEntry> {
-  fold(falsifier_rehomed_roster_rows, init: [], f: fn(acc, r) {
-    concat(acc, [bin_wet(entry: r.entry, f: r.function)])
-  })
-}
-
 fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {
     concat(acc, [bin_wet(entry: r.entry, f: r.function)])
