@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data unary_minus_absorbs_a_following_additive_operator: RecurringFailureMode = RecurringFailureMode {
   identity: "unary_minus_absorbs_a_following_additive_operator" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**unary minus absorbs a following additive operator** (invalid state: the seed parser reads `-1 - j` as `-(1 - j)` and `-a + b` as `-(a + b)`. v1.compiler.parse parse_prefix parses the operand of ShMinus at min_bp 12, while extdeps.languages.dag.syntax gives infix `+` and `-` left_bp 13 (and `*`, `/` 15), so the operand loop keeps consuming every additive and multiplicative operator after the prefix. Harm: silent wrongness. The program is accepted and computes a different integer, with no diagnostic on any route that reads the seed's parse tree, which is the interpreter and every emitter.)",

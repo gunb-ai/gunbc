@@ -12919,7 +12919,7 @@ fn is_collection_typed_expr(texpr: Node, source_indices: Map<String, NewlineInde
 
 // A zero-field literal of a coproduct VARIANT is a TAG REFERENCE, not a construction --
 // the frontend already sanctions exactly this shape (04_infer.dag
-// zero_field_variant_tag_reference_frontier_note, operator Ruling 1a). The variant is named
+// payload_arm_tag_reference_waiver_results, gunbc.rung_drop payload_arm_tag_reference_hollow_value). The variant is named
 // statically, so its discriminant is a compile-time constant and the lowering folds to that
 // name. Constructing an instance in order to read a name it already has is the redundant
 // second representation DESIGN section 2 forbids -- and for a variant carrying required

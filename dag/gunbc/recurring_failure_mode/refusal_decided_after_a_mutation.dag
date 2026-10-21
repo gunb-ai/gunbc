@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.refusal_decided_after_a_mutation
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data refusal_decided_after_a_mutation: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_decided_after_a_mutation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a withholdable or fail-closed step that runs after a host mutation is a refusal after its effects** (INVALID STATE: a later command withholds or exits nonzero after a Mutate, so the host already holds the candidate binary, tree or unit when the apply fails. RECOGNITION RULE: the emit concatenates mutation commands, then a poison or a runtime fail-fast; a restart would start the new bytes under the still-loaded old claim.)",
