@@ -1,7 +1,7 @@
 module v2.compiler.decl_ref_census
 
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup, string_contains }
-import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration }
+import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration, declaration_ref_display_key, declaration_ref_eq }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List, NonEmptyStr }
 import v2.compiler.name_resolve { ResolutionContext }
@@ -487,7 +487,7 @@ fn join_segments_with(segs: List<String>, sep: String) -> String {
 
 fn subject_is_citation(d: DeclRefDisposition, r: DeclarationRef) -> Bool {
   match d.subject {
-    CitedDeclaration { reference: x } => x.module_path == r.module_path && x.decl_name == r.decl_name && field_key(f: x.field) == field_key(f: r.field)
+    CitedDeclaration { reference: x } => declaration_ref_eq(a: x, b: r)
     CitedSpan { text: _ } => false
   }
 }
@@ -501,15 +501,8 @@ fn subject_is_span(d: DeclRefDisposition, span: String) -> Bool {
 
 fn roster_subject_text(d: DeclRefDisposition) -> String {
   match d.subject {
-    CitedDeclaration { reference: x } => concat(x.module_path as String, " ", x.decl_name as String, " ", field_key(f: x.field))
+    CitedDeclaration { reference: x } => declaration_ref_display_key(ref: x)
     CitedSpan { text: t } => t
-  }
-}
-
-fn field_key(f: DeclField) -> String {
-  match f {
-    WholeDeclaration => ""
-    NamedField { field_name: n } => n as String
   }
 }
 
