@@ -145,6 +145,7 @@ import v2.std.provenance {
   span_index_empty,
   span_index_textual_locus_optional,
 }
+import v2.std.primitive_contract_ref { primitive_contract_module_path }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
   SourceLineCol,
@@ -4225,9 +4226,37 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
   })
 }
 
-// ONE ACQUISITION OVER EVERY SUBJECT: the entries are all the subject modules, so a member two closures
-// share is read, resolved and inferred once. The population is exactly the union of the named subjects'
-// closures; the scope's subject is the first label's module, and `reach` attributes each member.
+// THE DECLARED CENSUS SUBSTRATE. These modules are loaded into EVERY scoped census population regardless
+// of which subjects were named, because the resolver's ambient primitive-authority tier binds an unimported
+// spelling (first, contains, map_get, ...) to a contract row READ FROM THE LOADED POPULATION's symbol index
+// (v2.compiler.resolve resolve_atom_primitive_authority -> <substrate>.<name>_contract). Left population-
+// derived, whether a byte-identical module's ambient name binds depends on which SUBJECTS were asked -- not
+// on the module or its closure -- which is the non-hermetic census this closes (recurring_failure_mode:
+// census_rows_read_the_loaded_population). The roster is NOT a hand-listed second name for the primitive
+// authority: it is read from the authority's OWN declaration (v2.std.primitive_contract_ref
+// primitive_contract_module_path), so it cannot drift from the tier that consumes it. A consumer that needs
+// more ambient tiers adds them HERE, at the one home, naming the tier it serves.
+fn native_census_substrate_entries() -> List<String> {
+  [primitive_contract_module_path()]
+}
+
+// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: the subject modules, in argv order, with every declared
+// substrate module appended once if no subject already names it. Split from the ingest so the inclusion is
+// one fact a claim can read without a host filesystem (the acquisition itself reads real files).
+fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
+  fold_list(xs: native_census_substrate_entries(), empty: subjects, cons: fn(acc, substrate) {
+    match list_find_first(xs: acc, predicate: fn(m) { m == substrate }) {
+      Present { value: _ } => acc
+      Absent => list_snoc_item(xs: acc, item: substrate)
+    }
+  })
+}
+
+// ONE ACQUISITION OVER EVERY SUBJECT: the entries are the subject modules UNION the declared substrate (see
+// native_census_substrate_entries), so a member two closures share is read, resolved and inferred once, and
+// the ambient primitive tier always has its contract rows present. The population is the union of the named
+// subjects' closures plus the substrate; the scope's subject is the first label's module, and `reach`
+// attributes each member (the substrate rides every subject's reach as it would ride any shared member).
 fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
   match native_census_subject_modules(labels: Cons { head: label, tail: rest }) {
     NativeCensusSubjectModulesUnavailable { label: bad, reason: reason } => native_lane_refused(reason: reason, detail: bad)
@@ -4240,7 +4269,7 @@ fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_ro
             Cons { head: first, tail: others } =>
               native_census_scoped_from(
                 subjects: FreeSemigroup { head: first, tail: others },
-                acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: subjects)
+                acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: native_census_scoped_entries(subjects: subjects))
               )
           }
         SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
