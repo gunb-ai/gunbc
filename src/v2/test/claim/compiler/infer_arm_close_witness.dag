@@ -200,7 +200,7 @@ test fn rb_n1_nested_optional_sibling_must_not_win() -> Bool { ers_has(o: rb_n1(
 fn rb_n2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? { if b { Absent } else { x } }\n") }
 test fn rb_n2_same_shape_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n2()) }
 fn rb_n3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
-test fn rb_n3_match_sibling_must_not_win() -> Bool { ers_has(o: rb_n3(), reason: ^infer_match_arm_type_mismatch) }
+test fn rb_n3_match_sibling_must_not_win() -> Bool { ers_has(o: rb_n3(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 fn rb_n4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Int? {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
 test fn rb_n4_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n4()) }
 
@@ -257,7 +257,7 @@ test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accep
 // RULE A FOR THE Bool MATCH: the open arm is closed at the declared Optional<Int?>, so the join cannot choose the Int? layer; Int? beside it conflicts.
 fn rb_m4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
 fn rb_m5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
-test fn rb_m4_bool_match_must_not_choose_a_layer() -> Bool { ers_has(o: rb_m4(), reason: ^infer_match_arm_type_mismatch) }
+test fn rb_m4_bool_match_must_not_choose_a_layer() -> Bool { ers_has(o: rb_m4(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 test fn rb_m5_same_bool_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_m5()) }
 
 // [] PERMUTATION INVARIANCE: an empty-list arm beside a declaring [1] arm gives one verdict (acceptance) in every order, declared and let-bound.
@@ -289,3 +289,8 @@ fn rb_h1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Int, b: Bool) 
 fn rb_h2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Bool, b: Bool) -> Int? { if b { Present { value: 1 } } else { if n { Absent } else { Absent } } }\n") }
 test fn rb_h1_non_bool_inner_condition_refuses_after_a_hand_up() -> Bool { ers_has(o: rb_h1(), reason: ^infer_branch_cond_not_bool) && !ers_infer_accepted(o: rb_h1()) }
 test fn rb_h2_same_shape_with_a_bool_condition_accepts() -> Bool { ers_infer_accepted(o: rb_h2()) }
+
+// ONE REASON FOR ONE SHAPE: the if and match forms of a bare x: Int? at Optional<Int?> refuse with the same optional-layer-depth reason (match arms are judged by infer_judge_declared_position_closing like branch arms).
+fn rb_s1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+fn rb_s2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+test fn rb_s_if_and_both_match_forms_refuse_with_one_reason() -> Bool { ers_has(o: rb_n1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_has(o: rb_s1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_has(o: rb_s2(), reason: ^inhabitance_optional_layer_depth_mismatch) }

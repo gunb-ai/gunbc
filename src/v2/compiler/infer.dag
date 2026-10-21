@@ -2396,6 +2396,53 @@ fn infer_match_bool_arm_body_type(
   }
 }
 
+// A MATCH ARM IS JUDGED AT THE EXPECTED TYPE BY THE SAME POSITION JUDGMENT AS A BRANCH ARM (infer_judge_branch_arms_at_expected):
+// infer_judge_declared_position_closing, so the if and match forms of one shape refuse with one reason (a bare x: Int? at Optional<Int?>
+// is optional-layer depth, not a join conflict).
+fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<Diagnostics> {
+  match expected {
+    Absent => Absent
+    Present { value: e } =>
+      match infer_judge_declared_position_closing(
+        position: position_declared_return(),
+        application: match_node,
+        entries: entries,
+        declarations: resolved.resolved_declarations,
+        bindings: resolved.symbol_index,
+        formal: InhabitanceFormal { parameter_identity: ^match_arm, declared: e },
+        produced_at: body,
+        type_params: Empty,
+        instances: infer_no_type_variable_instances()
+      ) {
+        Rejected { diagnostics: r } => Present { value: r }
+        Accepted { value: _, diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn infer_match_arms_refusal_at_expected(match_node: Node, bodies: List<Node>, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<Diagnostics> {
+  let no_refusal: Optional<Diagnostics> = Absent
+  fold(bodies, init: no_refusal, f: fn(cur, body) {
+    match cur {
+      Present { value: _ } => cur
+      Absent => infer_match_arm_body_refusal_at_expected(match_node: match_node, body: body, entries: entries, expected: expected, resolved: resolved)
+    }
+  })
+}
+
+fn infer_no_nodes() -> List<Node> { Empty }
+
+fn infer_coproduct_row_bodies(rows: List<InferCoproductArmRow>) -> List<Node> {
+  fold(rows, init: infer_no_nodes(), f: fn(acc, row) { list_snoc_item(xs: acc, item: row.body) })
+}
+
+fn infer_match_bool_arm_body(arm: Node) -> Optional<Node> {
+  match find_core_child(root: arm, marker: MatchArmBodyEdge) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+  }
+}
+
 fn infer_match_bool_arm_rows_accept(
   node: Node,
   partials: List<Node>,
@@ -2423,6 +2470,21 @@ fn infer_match_bool_arm_rows_accept(
         Accepted { value: second_row, diagnostics: sd } =>
           let first_body = first_row.body_type
           let second_body = second_row.body_type
+          let at_expected = infer_match_arms_refusal_at_expected(
+            match_node: node,
+            bodies: fold([first_arm_target, second_arm_target], init: infer_no_nodes(), f: fn(acc, arm) {
+              match infer_match_bool_arm_body(arm: arm) {
+                Absent => acc
+                Present { value: body } => list_snoc_item(xs: acc, item: body)
+              }
+            }),
+            entries: entries,
+            expected: expected,
+            resolved: resolved
+          )
+          match at_expected {
+            Present { value: r } => Rejected { diagnostics: r }
+            Absent =>
           match infer_bool_literal_exhaustiveness_merge(
             left: first_row.coverage,
             right: second_row.coverage
@@ -2461,6 +2523,7 @@ fn infer_match_bool_arm_rows_accept(
               outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
             InferBoolLiteralMissingBoth =>
               outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          }
           }
       }
   }
@@ -3462,6 +3525,10 @@ fn infer_match_coproduct_rows(
         Accepted { value: _, diagnostics: _ } =>
           {
             let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, expected: expected, resolved: resolved)
+            let at_expected = infer_match_arms_refusal_at_expected(match_node: node, bodies: infer_coproduct_row_bodies(rows: rows), entries: entries, expected: expected, resolved: resolved)
+            match at_expected {
+            Present { value: r } => Rejected { diagnostics: r }
+            Absent =>
             if infer_match_no_arm_declares(rows: rows, entries: entries, instances: coproduct.instances, expected: expected, resolved: resolved) {
               outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: node))
             } else if bodies.mismatch {
@@ -3483,6 +3550,7 @@ fn infer_match_coproduct_rows(
                       }
                   }
               }
+            }
             }
           }
       }
