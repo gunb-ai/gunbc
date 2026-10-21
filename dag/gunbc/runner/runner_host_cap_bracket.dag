@@ -591,6 +591,34 @@ fn listener_restart_refusal(r: ListenerRestart) -> String? {
   }
 }
 
+// THE GATE ON THE FIRST CAP-APPLYING EFFECT. A cap write and the manager reload after it apply a cap to a
+// RUNNING unit, so the ruling-B reading is taken again for every observed unit immediately before the write.
+// An owned unit must still read as an admitted idle listener or as drained. A unit someone else masked is
+// not ours to stop or start, so a foreign unit that is a live listener is refused: the reload would give it a cap
+// this run can neither restart it under nor prove. A foreign unit that is not running is not refused.
+type CapWriteGate
+  = CapWriteAdmitted
+  | CapWriteRefused { causes: List<String> }
+
+fn cap_write_unit_cause(closure: AdmissionClosure, owned: List<NonEmptyStr>, unit: NonEmptyStr, readings: List<SlotDrainReading>) -> String {
+  let is_owned = any(owned, o => (o as String) == (unit as String))
+  match first(filter(readings, r => (r.unit as String) == (unit as String))) {
+    Absent => join([unit as String, " was not read immediately before the first cap-applying effect"], "")
+    Present { value: r } =>
+      match slot_drain_class(closure: closure, r: r) {
+        ClassDrained => ""
+        ClassListenerAdmitted =>
+          if is_owned { "" } else { join([unit as String, " is masked by someone else and is a live listener: it is not stopped or restarted here, so a reload would cap it unproven"], "") }
+        c => join([unit as String, ": ", listener_stop_cause(c: c)], "")
+      }
+  }
+}
+
+fn cap_write_gate_of(closure: AdmissionClosure, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, readings: List<SlotDrainReading>) -> CapWriteGate {
+  let causes = filter(map(observed, u => cap_write_unit_cause(closure: closure, owned: owned, unit: u, readings: readings)), c => length(c) > 0)
+  if length(causes) == 0 { CapWriteAdmitted } else { CapWriteRefused { causes: causes } }
+}
+
 // ── The release obligation ──────────────────────────────────────────────────────────────────────
 
 // WHAT THIS ATTEMPT OWES THE HOST, ESTABLISHED AFTER ADMISSION AND BEFORE THE FIRST MASK. The owned set is
