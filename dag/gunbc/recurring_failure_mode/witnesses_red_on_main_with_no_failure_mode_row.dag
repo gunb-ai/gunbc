@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.witnesses_red_on_main_with_no_failure_mode_row
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
   identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a witness red at origin/main has no row, so every PR that touches its module rediscovers and re-attributes it** (INVALID STATE: a committed witness fails under `gunbc run --claim-run` at the default branch head and nothing records that, which test, or whether the required path runs it).",
