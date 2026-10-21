@@ -26369,9 +26369,30 @@ pub fn field_access_field_is_boxed(
                     }),
                 }
             }
-            _ => Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
+            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
+                Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
+                    leaf: field.clone(),
+                    cause: v1_rt::concat("FieldAccessBaseLeafAmbiguous:".to_string(), l.clone()),
+                })
+            }
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: l, .. } => {
+                Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
+                    leaf: field.clone(),
+                    cause: v1_rt::concat(
+                        "FieldAccessBaseKernelSpellingUndecided:".to_string(),
+                        l.clone(),
+                    ),
+                })
+            }
+            TypeDeclResolution::TypeDeclNotDeclared => Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
                 leaf: field.clone(),
-                cause: "FieldAccessBaseNamesNoDeclaration".to_string(),
+                cause: v1_rt::concat(
+                    "FieldAccessBaseNamesNoDeclaration:".to_string(),
+                    crate::v1_std_core::authored_name_at(
+                        si.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(base.clone()),
+                    ),
+                ),
             }),
         }
     }
