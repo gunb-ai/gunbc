@@ -1,4 +1,4 @@
-module gunbc.rung_drop.operation_argv_catalog_call_executable_unjudged
+module gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged
 
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
@@ -8,11 +8,11 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // gunbc#14174 moved executables to the ProgramIdentity catalog (a call such as sshpass_program()),
 // which the seed materializer cannot evaluate: its InterpContext holds only the entry's import
 // closure. The population is census-classified at row identity in
-// test.claim.operation_argv_corpus_witness (operation_argv_catalog_call_executable_operations).
-data operation_argv_catalog_call_executable_unjudged: RungDrop = RungDrop {
-  identity: "operation_argv_catalog_call_executable_unjudged" as NonEmptyStr,
+// test.claim.operation_argv_corpus_witness (operation_argv_closed_unevaluated_executable_operations).
+data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop {
+  identity: "operation_argv_closed_unevaluated_executable_unjudged" as NonEmptyStr,
 
-  subject: "the executable-position wall of shell_materialize_operation_argv over operations whose argv[0] is a ProgramIdentity catalog call",
+  subject: "the executable-position wall of shell_materialize_operation_argv over operations whose argv[0] is a closed zero-input expression the materializer does not evaluate (in the corpus, ProgramIdentity catalog calls; the classifier does not check the callee)",
 
   declared: "2026-10-20",
 
@@ -70,6 +70,6 @@ data operation_argv_catalog_call_executable_unjudged: RungDrop = RungDrop {
       "dag/extdeps/tools/openssl.dag openssl.Dgst.SignSha256Hex",
       "dag/extdeps/tools/openssl.dag openssl.Enc.Aes256CtrPassphrase",
     ],
-    restoration_trigger: "argv materialization evaluates closed argv elements over the declaring module's closure, in the native v2 materializer, not the seed. Observed at retirement: the population rows materialize or are refused by the wall on the evaluated value, and operation_argv_catalog_call_executable_operations is empty."
+    restoration_trigger: "argv materialization evaluates closed argv elements over the declaring module's closure, in the native v2 materializer, not the seed. Observed at retirement: the population rows materialize or are refused by the wall on the evaluated value, and operation_argv_closed_unevaluated_executable_operations is empty."
   }
 }

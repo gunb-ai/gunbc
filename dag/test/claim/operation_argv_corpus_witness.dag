@@ -13,7 +13,7 @@ import v2.std.operation_argv {
   ArgvRowMaterialized,
   ArgvRowExpressionResidue,
   ArgvRowExecutablePositionRefused,
-  ArgvRowExecutableIsCatalogCall,
+  ArgvRowExecutableClosedUnevaluated,
   ArgvRowOtherRefusal,
   operation_argv_row_classify,
   operation_argv_ref_label,
@@ -80,9 +80,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //  - expression residue: an argv element past position 0 is a call or field access, which
 //    materialization does not evaluate (a deficit held constant; dissolves with argv element
 //    evaluation over the declaring module's closure in the native v2 materializer).
-//  - catalog-call executable: argv[0] is a zero-input closed expression (a ProgramIdentity catalog
+//  - closed-unevaluated executable: argv[0] reads no declared input and is not evaluated (observed: ProgramIdentity catalog
 //    call, moved there by #14174), which the wall cannot judge. LOST COVERAGE, declared as
-//    gunbc.rung_drop operation_argv_catalog_call_executable_unjudged with this list as its
+//    gunbc.rung_drop operation_argv_closed_unevaluated_executable_unjudged with this list as its
 //    bounded population.
 //  - input-reading executable: argv[0] reads a declared input, so the wall correctly refuses.
 //  - unbound data reference: an argv element names a module `data` declaration; the materializer
@@ -93,7 +93,7 @@ type ArgvClassifiedOperation {
   reason: String
 }
 
-data operation_argv_reason_catalog: String = "argv[0] is a closed zero-input ProgramIdentity catalog call (extdeps.exec.command / extdeps.exec.program); materialization does not evaluate it, so the executable-position wall cannot judge the program"
+data operation_argv_reason_catalog: String = "argv[0] reads no declared input and is not evaluated (observed: a ProgramIdentity catalog call, extdeps.exec.command / extdeps.exec.program; the callee is not checked); materialization does not evaluate it, so the executable-position wall cannot judge the program"
 data operation_argv_reason_residue_call: String = "an argv element after position 0 is a call expression, which materialization binds around but does not evaluate"
 data operation_argv_reason_residue_field: String = "an argv element is a field access on a bound input (TransportScript.body), which materialization does not evaluate"
 data operation_argv_reason_data_ref: String = "an argv element names a module data declaration, which materialization reads as an unbound declared input"
@@ -144,7 +144,7 @@ data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOper
   ArgvClassifiedOperation { operation: "dag/test/fixture/argv_executable_position_probe.dag ArgvExecutablePositionProbe.SmuggleExecutable", reason: operation_argv_reason_fixture }
 ]
 
-data operation_argv_catalog_call_executable_operations: List<ArgvClassifiedOperation> = [
+data operation_argv_closed_unevaluated_executable_operations: List<ArgvClassifiedOperation> = [
   ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RunCommand", reason: operation_argv_reason_catalog },
   ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ReadFile", reason: operation_argv_reason_catalog },
   ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ResolvePath", reason: operation_argv_reason_catalog },
@@ -208,7 +208,7 @@ type ArgvCorpusTally {
   materialized: Int
   expression_residue: Int
   input_reading_executable: Int
-  catalog_call_executable: Int
+  closed_unevaluated_executable: Int
   unbound_data_reference: Int
   other_refusal_not_unbound: Int
   unlisted: Int
@@ -221,7 +221,7 @@ data operation_argv_empty_tally: ArgvCorpusTally = ArgvCorpusTally {
   materialized: 0,
   expression_residue: 0,
   input_reading_executable: 0,
-  catalog_call_executable: 0,
+  closed_unevaluated_executable: 0,
   unbound_data_reference: 0,
   other_refusal_not_unbound: 0,
   unlisted: 0,
@@ -261,16 +261,16 @@ fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRo
   let m = operation_argv_row_materialization(row: row)
   let classification = operation_argv_row_classify(row: row, m: m)
   let label = operation_argv_ref_label(at: row.at)
-  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableIsCatalogCall => false, ArgvRowOtherRefusal => false }
-  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableIsCatalogCall => false, ArgvRowOtherRefusal => false }
-  let input_exec = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowExecutableIsCatalogCall => false, ArgvRowOtherRefusal => false }
-  let catalog = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableIsCatalogCall => true, ArgvRowOtherRefusal => false }
-  let other = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableIsCatalogCall => false, ArgvRowOtherRefusal => true }
+  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let input_exec = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let catalog = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => true, ArgvRowOtherRefusal => false }
+  let other = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => true }
   let listed = match classification {
     ArgvRowMaterialized => true
     ArgvRowExpressionResidue => operation_argv_is_listed(list: operation_argv_expression_residue_operations, label: label)
     ArgvRowExecutablePositionRefused => operation_argv_is_listed(list: operation_argv_input_reading_executable_operations, label: label)
-    ArgvRowExecutableIsCatalogCall => operation_argv_is_listed(list: operation_argv_catalog_call_executable_operations, label: label)
+    ArgvRowExecutableClosedUnevaluated => operation_argv_is_listed(list: operation_argv_closed_unevaluated_executable_operations, label: label)
     ArgvRowOtherRefusal => operation_argv_is_listed(list: operation_argv_unbound_data_reference_operations, label: label)
   }
   let other_unbound = other && string_contains(operation_argv_refusal_label(m: m), "=> DeclaredInputUnbound:")
@@ -280,7 +280,7 @@ fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRo
     materialized: acc.materialized + operation_argv_flag(b: materialized),
     expression_residue: acc.expression_residue + operation_argv_flag(b: residue),
     input_reading_executable: acc.input_reading_executable + operation_argv_flag(b: input_exec),
-    catalog_call_executable: acc.catalog_call_executable + operation_argv_flag(b: catalog),
+    closed_unevaluated_executable: acc.closed_unevaluated_executable + operation_argv_flag(b: catalog),
     unbound_data_reference: acc.unbound_data_reference + operation_argv_flag(b: other),
     other_refusal_not_unbound: acc.other_refusal_not_unbound + operation_argv_flag(b: other && !other_unbound),
     unlisted: acc.unlisted + operation_argv_flag(b: !listed),
@@ -308,7 +308,7 @@ test fn operation_argv_corpus_every_row_is_materialized_or_counted() -> Bool {
 
 test fn operation_argv_corpus_tally_is_total() -> Bool {
   let t = operation_argv_corpus_tally()
-  (t.materialized + t.expression_residue + t.input_reading_executable + t.catalog_call_executable + t.unbound_data_reference) == t.rows
+  (t.materialized + t.expression_residue + t.input_reading_executable + t.closed_unevaluated_executable + t.unbound_data_reference) == t.rows
 }
 
 // The identity join: every unmaterialized row is in its class's list (unlisted == 0, in
@@ -319,13 +319,13 @@ test fn operation_argv_corpus_classified_set_equals_the_named_lists() -> Bool {
   t.unlisted == 0
     && t.expression_residue == length(xs: operation_argv_expression_residue_operations)
     && t.input_reading_executable == length(xs: operation_argv_input_reading_executable_operations)
-    && t.catalog_call_executable == length(xs: operation_argv_catalog_call_executable_operations)
+    && t.closed_unevaluated_executable == length(xs: operation_argv_closed_unevaluated_executable_operations)
     && t.unbound_data_reference == length(xs: operation_argv_unbound_data_reference_operations)
 }
 
 // The wall's true scope: it fires on the negative-control fixture plus exactly the named list of
-// operations whose argv[0] reads a declared input, each carrying its reason. Catalog-call
-// executables are NOT in this claim: the wall cannot judge them (declared drop).
+// operations whose argv[0] reads a declared input, each carrying its reason.
+// closed-unevaluated executables are NOT in this claim: the wall cannot judge them (declared drop).
 test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_and_the_named_input_readers() -> Bool {
   let t = operation_argv_corpus_tally()
   t.unlisted == 0
@@ -336,12 +336,12 @@ test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_and_
     )
 }
 
-// Positive control by symbol: a catalog-call row (the bytes of a literal executable are controlled by
-// RED_literal_executable_control_materializes; a catalog row cannot materialize, which is the drop). Its executable is a ProgramIdentity the
+// Positive control by symbol: a closed-unevaluated row (the bytes of a literal executable are controlled by
+// RED_literal_executable_control_materializes; such a row cannot materialize, which is the drop). Its executable is a ProgramIdentity the
 // wall cannot judge, so it is classified as such (not as the wall firing on an input).
-test fn operation_argv_corpus_catalog_call_row_is_classified_and_not_an_input_reader() -> Bool {
+test fn operation_argv_corpus_closed_unevaluated_row_is_classified_and_not_an_input_reader() -> Bool {
   operation_argv_is_listed(
-    list: operation_argv_catalog_call_executable_operations,
+    list: operation_argv_closed_unevaluated_executable_operations,
     label: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet"
   ) && !operation_argv_is_listed(
     list: operation_argv_input_reading_executable_operations,
