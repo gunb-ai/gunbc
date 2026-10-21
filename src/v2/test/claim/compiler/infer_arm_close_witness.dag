@@ -240,3 +240,9 @@ fn rb_m4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?)
 fn rb_m5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
 test fn rb_m4_bool_match_must_not_choose_a_layer() -> Bool { ers_has(o: rb_m4(), reason: ^infer_arm_join_deferred_to_declared_type) }
 test fn rb_m5_same_bool_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_m5()) }
+
+// ADMISSION IS NEVER SKIPPED BY A HAND-UP (Manager 1): an inner branch whose condition is not Bool refuses even when its held arms are closed by an enclosing declaring arm.
+fn rb_h1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Int, b: Bool) -> Int? { if b { Present { value: 1 } } else { if n { Absent } else { Absent } } }\n") }
+fn rb_h2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Bool, b: Bool) -> Int? { if b { Present { value: 1 } } else { if n { Absent } else { Absent } } }\n") }
+test fn rb_h1_non_bool_inner_condition_refuses_after_a_hand_up() -> Bool { ers_has(o: rb_h1(), reason: ^infer_branch_cond_not_bool) && !ers_infer_accepted(o: rb_h1()) }
+test fn rb_h2_same_shape_with_a_bool_condition_accepts() -> Bool { ers_infer_accepted(o: rb_h2()) }
