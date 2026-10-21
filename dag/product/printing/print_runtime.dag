@@ -1,0 +1,253 @@
+module product.printing.print_runtime
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { trim }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.exec.command { ArgvCommand, LocalExec, env_prefixed_command_in }
+import extdeps.python { python_interpreter_at }
+import extdeps.cadquery.cadquery { cadquery_run_program_command, cadquery_import_probe_command }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
+import extdeps.shell
+import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent }
+import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slicer_linux_aarch64_appimage_sha256 }
+import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
+import std.types { FilePath }
+import gunbc.command_runner { run_shell_command_capture }
+import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
+import product.printing.runtime_dependencies { runtime_packages, ubuntu2404, observe_package }
+
+// THE PRINT RUNTIME IS A VALUE THE WORKFLOW HOLDS, NOT A PREFLIGHT IT PASSED. Before this module the
+// check returned an exit status and every CAD step then resolved `python3` through PATH again, so
+// a green check said nothing about the interpreter that later built the solids. Now one observation
+// mints CadRuntimeReady, naming the exact interpreter it probed, and every CadQuery program on the
+// print path is launched from that value; no consumer on the path names an interpreter itself.
+//
+// PLACEMENT. The workflow runs on the printer LAN host (print_workflow provision_and_run refuses
+// elsewhere) and observes it with LocalExec. The CAD environment lives under print_runtime_root, in
+// a directory named by the spec digest, so a changed pin names a new environment rather than
+// mutating the one an earlier preparation ran in. Where that root is is a deployment fact about this
+// host, so it is declared here and not in extdeps.
+data print_runtime_root: String = "/var/lib/gunbc/print-runtime"
+
+fn cad_environment_prefix(spec: CadRuntimeSpec) -> String {
+  join([print_runtime_root, "/cad/", cad_runtime_spec_digest(spec: spec)], "")
+}
+
+fn cad_environment_interpreter(spec: CadRuntimeSpec) -> String {
+  concat(cad_environment_prefix(spec: spec), "/bin/python")
+}
+
+// THE ONLY MINT IS read_cad_environment. A holder of this value holds a published environment
+// whose interpreter was run, answered from its own executable path, reported the spec's CPython
+// tag, and imported every declared distribution at its pinned version.
+type CadRuntimeReady sole_constructor {
+  interpreter: NonEmptyStr
+  spec_digest: String
+}
+
+fn cad_runtime_interpreter(c: CadRuntimeReady) -> NonEmptyStr { c.interpreter }
+
+fn cad_program_command(c: CadRuntimeReady, script_path: String) -> ArgvCommand {
+  cadquery_run_program_command(interpreter: python_interpreter_at(executable: c.interpreter), script_path: script_path)
+}
+
+type CadRuntimeObservation
+  = CadRuntimeObserved { runtime: CadRuntimeReady }
+  | CadRuntimeRefused { reason: String }
+
+type RuntimeJudgement = RuntimeMatches | RuntimeMismatch { reason: String }
+
+fn string_field_equals(v: JsonValue, key: String, want: String) -> Bool {
+  match json_field_string(obj: v, key: key) {
+    FieldRead { value: s } => s == want
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+// The host must report the spec's architecture through `uname -m`; a spelling extdeps.tools.uname
+// does not cite refuses rather than resolving to the nearest architecture.
+fn judge_host_architecture(spec: CadRuntimeSpec, uname_stdout: String) -> RuntimeJudgement {
+  match uname_linux_machine_architecture(spelling: trim(s: uname_stdout)) {
+    Absent => RuntimeMismatch { reason: concat("Host machine spelling is not a cited Linux architecture: ", trim(s: uname_stdout)) }
+    Present { value: a } =>
+      if a == spec.architecture { RuntimeMatches }
+      else { RuntimeMismatch { reason: concat("Host architecture differs from the print runtime spec: ", trim(s: uname_stdout)) } }
+  }
+}
+
+// The probe reply must come from the selected interpreter, carry the spec's CPython tag, and name
+// every declared distribution at its pinned version. Each requirement is looked up by name, so a
+// short reply refuses rather than passing on what it happened to include.
+fn judge_cad_probe(spec: CadRuntimeSpec, interpreter: String, reply: String) -> RuntimeJudgement {
+  match parse_json_document(s: reply) {
+    JsonDocumentUnreadable { gap: _ } => RuntimeMismatch { reason: "CAD runtime probe reply is not JSON" }
+    JsonDocumentParsed { value: v } => {
+      if !string_field_equals(v: v, key: "executable", want: interpreter) {
+        return RuntimeMismatch { reason: concat("CAD runtime probe answered from an interpreter other than the selected ", interpreter) }
+      }
+      if !string_field_equals(v: v, key: "python_tag", want: spec.python_tag as String) {
+        return RuntimeMismatch { reason: concat("Selected CAD interpreter is not ", spec.python_tag as String) }
+      }
+      match json_field(obj: v, key: "distributions") {
+        FieldAbsent => RuntimeMismatch { reason: "CAD runtime probe reply names no distributions" }
+        FieldMalformed { cause: c } => RuntimeMismatch { reason: c }
+        FieldRead { value: d } => {
+          let unmet = filter(spec.requirements, r => !string_field_equals(v: d, key: r.distribution as String, want: r.version as String))
+          if count(unmet) == 0 { RuntimeMatches }
+          else { RuntimeMismatch { reason: concat("CAD distributions absent or at another version: ", join(map(unmet, r => r.distribution as String), ", ")) } }
+        }
+      }
+    }
+  }
+}
+
+// PUBLICATION IS A MARKER, NOT A RENAME. A conda prefix records its own absolute path in what it
+// installs, so an environment built in a side directory and renamed into place is not the
+// environment that was checked. It is built at its final prefix instead, and is published only when
+// the ready marker -- holding the exact spec text -- is written after the probe passes. A prefix
+// without the marker is an unpublished build, never a usable one. The lock is a sibling directory
+// created exclusively (shell.Mkdir NewOwnerOnly), so two convergences cannot build one prefix.
+data cad_environment_ready_marker: String = ".gunbc-cad-runtime-ready"
+
+fn cad_environments_directory() -> String { concat(print_runtime_root, "/cad") }
+fn cad_environment_lock_name(spec: CadRuntimeSpec) -> String { concat(cad_runtime_spec_digest(spec: spec), ".converging") }
+fn cad_environment_lock(spec: CadRuntimeSpec) -> String { join([cad_environments_directory(), "/", cad_environment_lock_name(spec: spec)], "") }
+fn cad_environment_marker(spec: CadRuntimeSpec) -> String { join([cad_environment_prefix(spec: spec), "/", cad_environment_ready_marker], "") }
+
+
+// FOUR READINGS, because they have four remedies: build it, use it, refuse without touching it, and
+// refuse because nobody could look.
+type CadEnvironmentReading
+  = CadEnvironmentAbsent
+  | CadEnvironmentReady { runtime: CadRuntimeReady }
+  | CadEnvironmentWrong { reason: String }
+  | CadEnvironmentUnreadable { reason: String }
+
+fn cad_environment_reading_reason(r: CadEnvironmentReading) -> String {
+  match r {
+    CadEnvironmentAbsent => concat("No CAD environment at ", cad_environment_prefix(spec: cad_runtime_spec))
+    CadEnvironmentReady { runtime: c } => concat("CAD environment ready at ", c.interpreter as String)
+    CadEnvironmentWrong { reason: w } => w
+    CadEnvironmentUnreadable { reason: u } => u
+  }
+}
+
+fn read_cad_environment() -> CadEnvironmentReading {
+  let spec = cad_runtime_spec
+  let interpreter = cad_environment_interpreter(spec: spec)
+  let prefix = cad_environment_prefix(spec: spec)
+  match run_shell_command_capture(command: uname_machine_command(), transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: e } => return CadEnvironmentUnreadable { reason: concat("Cannot observe host architecture: ", e) }
+    ProcessOutputAbsent => return CadEnvironmentUnreadable { reason: "Host architecture observation printed nothing" }
+    ProcessOutputPresent { text: t } => match judge_host_architecture(spec: spec, uname_stdout: t) {
+      RuntimeMismatch { reason: r } => return CadEnvironmentWrong { reason: r }
+      RuntimeMatches => {}
+    }
+  }
+  match listed_entry_presence(directory: cad_environments_directory(), name: cad_environment_lock_name(spec: spec)) {
+    FilesystemEntryAbsent(_) => {}
+    FilesystemEntryListed { directory: _, name: _ } => return CadEnvironmentUnreadable { reason: join(["A CAD environment convergence holds ", cad_environment_lock(spec: spec), ", or died holding it; remove it only after confirming no convergence is running"], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
+  }
+  match listed_entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
+    FilesystemEntryAbsent(_) => return CadEnvironmentAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
+    FilesystemEntryListed { directory: _, name: _ } => {}
+  }
+  match listed_entry_presence(directory: prefix, name: cad_environment_ready_marker) {
+    FilesystemEntryAbsent(_) => return CadEnvironmentWrong { reason: join(["The CAD environment at ", prefix, " was never published (no ready marker); it is not used or modified -- remove it to rebuild"], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
+    FilesystemEntryListed { directory: _, name: _ } => {}
+  }
+  let marker = Filesystem.Read(path: cad_environment_marker(spec: spec))
+  if !marker.success { return CadEnvironmentUnreadable { reason: concat("Cannot read the CAD environment ready marker: ", marker.error) } }
+  if marker.content != cad_runtime_spec_text(spec: spec) { return CadEnvironmentWrong { reason: concat("The ready marker at ", cad_environment_marker(spec: spec), " names a different spec") } }
+  match probe_cad_interpreter(spec: spec, interpreter: interpreter) {
+    RuntimeMismatch { reason: r } => CadEnvironmentWrong { reason: r }
+    RuntimeMatches => CadEnvironmentReady { runtime: CadRuntimeReady { interpreter: interpreter as NonEmptyStr, spec_digest: cad_runtime_spec_digest(spec: spec) } }
+  }
+}
+
+// THE PROBE, RUN AGAINST ONE INTERPRETER. Convergence calls this on a just-built, unpublished
+// environment before writing its marker; observation calls it on a published one.
+fn probe_cad_interpreter(spec: CadRuntimeSpec, interpreter: String) -> RuntimeJudgement {
+  let probe = run_shell_command_capture(
+    command: cadquery_import_probe_command(interpreter: python_interpreter_at(executable: interpreter as NonEmptyStr), distributions: map(spec.requirements, r => r.distribution as String)),
+    transport: LocalExec,
+  )
+  match probe {
+    ProcessRefused { exit_code: _, stderr: e } => RuntimeMismatch { reason: join(["CAD interpreter ", interpreter, " could not import the declared distributions: ", e], "") }
+    ProcessOutputAbsent => RuntimeMismatch { reason: "CAD runtime probe printed nothing" }
+    ProcessOutputPresent { text: t } => judge_cad_probe(spec: spec, interpreter: interpreter, reply: t)
+  }
+}
+
+// OBSERVE THE CAD RUNTIME ON THIS HOST. No install happens here; only a published, matching
+// environment mints the runtime.
+fn observe_cad_runtime() -> CadRuntimeObservation {
+  match read_cad_environment() {
+    CadEnvironmentReady { runtime: c } => CadRuntimeObserved { runtime: c }
+    CadEnvironmentAbsent => CadRuntimeRefused { reason: join([cad_environment_reading_reason(r: CadEnvironmentAbsent), "; converge it with product.printed_chassis.print_workflow.provision_and_run"], "") }
+    CadEnvironmentWrong { reason: w } => CadRuntimeRefused { reason: w }
+    CadEnvironmentUnreadable { reason: u } => CadRuntimeRefused { reason: u }
+  }
+}
+
+// THE WHOLE PRINT RUNTIME: host OS and packages, the CAD interpreter, and the pinned Orca artifact,
+// observed once and written as ONE receipt. The receipt's sha256 travels with the runtime so each
+// prepared plate can name the runtime it was produced under.
+type PrintRuntimeReady sole_constructor {
+  cad: CadRuntimeReady
+  receipt_sha256: String
+}
+
+fn print_runtime_cad(r: PrintRuntimeReady) -> CadRuntimeReady { r.cad }
+fn print_runtime_receipt_sha256(r: PrintRuntimeReady) -> String { r.receipt_sha256 }
+
+type PrintRuntimeObservation
+  = PrintRuntimeObserved { runtime: PrintRuntimeReady }
+  | PrintRuntimeRefused { reason: String }
+
+fn observe_print_runtime(appimage: String, receipt: String) -> PrintRuntimeObservation {
+  let os_read = Filesystem.Read(path: "/etc/os-release")
+  if !os_read.success || !ubuntu2404(text: os_read.content) { return PrintRuntimeRefused { reason: "Print runtime requires an observed Ubuntu 24.04 host" } }
+  let packages = map(runtime_packages(), p => observe_package(package: p))
+  let missing = filter(packages, p => !p.admitted)
+  if count(missing) > 0 {
+    return PrintRuntimeRefused { reason: concat("Declared print runtime packages absent or unreadable; use product.printed_chassis.print_workflow.converge_runtime: ", join(map(missing, p => p.package as String), ", ")) }
+  }
+  let cad = match observe_cad_runtime() {
+    CadRuntimeObserved { runtime: c } => c
+    CadRuntimeRefused { reason: r } => return PrintRuntimeRefused { reason: r }
+  }
+  let scratch = concat(receipt, ".orca")
+  if !shell.Mkdir.Parents(path: scratch as FilePath).success { return PrintRuntimeRefused { reason: "Cannot isolate runtime probe output" } }
+  let orca_probe = match with_verified_orca(appimage: appimage as FilePath, use: e => run_shell_command_capture(command: env_prefixed_command_in(directory: scratch, bindings: [], command: orca_version_probe_command(executable: e)), transport: LocalExec)) {
+    ProcessRefused { exit_code: _, stderr: e } => return PrintRuntimeRefused { reason: concat("Pinned Orca runtime probe failed before CAD preparation: ", e) }
+    ProcessOutputAbsent => return PrintRuntimeRefused { reason: "Orca runtime probe returned no help output" }
+    ProcessOutputPresent { text: t } => t
+  }
+  let body = serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc.print-runtime-receipt.v1")),
+    json_kv(key: "os_release", value: json_string(s: os_read.content)),
+    json_kv(key: "packages", value: json_array(elements: map(packages, p => json_object(members: [json_kv(key: "package", value: json_string(s: p.package as String)), json_kv(key: "evidence", value: json_string(s: p.evidence))])))),
+    json_kv(key: "cad", value: json_object(members: [
+      json_kv(key: "interpreter", value: json_string(s: cad.interpreter as String)),
+      json_kv(key: "spec", value: json_string(s: cad_runtime_spec_text(spec: cad_runtime_spec))),
+      json_kv(key: "spec_sha256", value: json_string(s: cad.spec_digest)),
+    ])),
+    json_kv(key: "orca", value: json_object(members: [
+      json_kv(key: "archive_sha256", value: json_string(s: orca_slicer_linux_aarch64_appimage_sha256 as String)),
+      json_kv(key: "probe", value: json_string(s: orca_probe)),
+    ])),
+  ]))
+  if !Filesystem.WriteCreateNew(path: receipt, content: body).success { return PrintRuntimeRefused { reason: "Print runtime receipt already exists or is not writable" } }
+  PrintRuntimeObserved { runtime: PrintRuntimeReady { cad: cad, receipt_sha256: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: body))) } }
+}
