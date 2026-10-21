@@ -343,9 +343,12 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstantMemberEdge => ^core_constant_member_edge
   }
 }
+type EdgeDeclaration = DeclaresAt { occurrence: NodeOccurrenceIdentity } | NotADeclaration
+
 type Edge {
   label: EdgeLabel
   target: Node
+  declaration: EdgeDeclaration
 }
 
 type EdgeShape {

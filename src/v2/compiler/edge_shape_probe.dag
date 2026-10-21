@@ -1,17 +1,10 @@
 module v2.compiler.edge_shape_probe
 
-import v2.std.node { Edge, Node, Authored, Symbol }
+import v2.compiler.compile { compile_lens_grain_name }
+import v2.compiler.body_lowering_fold { body_lower_param_edges }
+import v2.compiler.infer { infer_grounding_not_derived_diagnostic }
+import v2.compiler.name_resolve { resolution_context }
 import std.process { exit_failure, ProcessExit }
-
-fn label_only(e: Edge) -> Bool {
-  match e {
-    Edge { label: _ } => true
-  }
-}
-
-fn edges_equal(a: Edge, b: Edge) -> Bool {
-  a == b
-}
 
 fn edge_shape_probe_exit() -> ProcessExit {
   exit_failure(reason: "probe")
