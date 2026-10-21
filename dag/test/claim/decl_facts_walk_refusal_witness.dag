@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is an external effect, so no in-process assertion observes it, and a Rust test would sit off the
 // merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path).
 //
-// THE CLASS: gunbc.recurring_failure_mode corpus_walk_skips_what_it_cannot_parse. Before the
+// THE CLASS: gunbc.recurring_failure_mode a_corpus_walk_skips_the_file_it_cannot_parse. Before the
 // refusal the walk `continue`d past an unparsable file and returned a SMALLER fact list, so every
 // census over it kept passing on a population missing the file that broke -- a `concept_index_*`
 // count that silently excluded a module read as "that module declares nothing".
