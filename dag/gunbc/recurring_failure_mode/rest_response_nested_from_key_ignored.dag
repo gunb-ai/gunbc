@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.rest_response_nested_from_key_ignored
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data rest_response_nested_from_key_ignored: RecurringFailureMode = RecurringFailureMode {
   identity: "rest_response_nested_from_key_ignored" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A nested REST response field read under a spelling the wire does not use** (INVALID STATE: an interpreted program reads a field of a record nested inside a REST response -- `extdeps.cloud.gcp.gcp` `WifProviderWire.attribute_condition`, `WifOidcWire.issuer_uri` -- and gets null although the body carried the value under its wire key, `attributeCondition`, `issuerUri`).",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bounded_reader_reinterprets_what_it_does_not_model
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data bounded_reader_reinterprets_what_it_does_not_model: RecurringFailureMode = RecurringFailureMode {
   identity: "bounded_reader_reinterprets_what_it_does_not_model" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a bounded reader or writer answers outside its subset with a plausible wrong meaning instead of a refusal** (a reader that models part of a format falls through to the most permissive arm -- \"anything else is a string\" -- and a writer drops or reshapes what it cannot write, so a document outside the subset is accepted with a tree it does not denote, and a value is written as text that reads back as something else).",

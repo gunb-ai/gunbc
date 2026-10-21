@@ -1,0 +1,169 @@
+module test.claim.generated_provider_step
+
+import std.types { Bool, List, NonEmptyStr, SourceSpan }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.generated_provider {
+  GeneratedProviderDemand, GeneratedProviderSite, GeneratedConversionRoute, GeneratedListHead,
+  ObservedProviderDemand, GeneratedProviderObservation, GeneratedProviderUnavailableCause, ProviderAcquisitionStep, ProviderSatisfied, ProviderModuleAvailable, ProviderModuleAbsent,
+  ProviderModuleUnreadable, ProviderModuleAmbiguous, ProviderDeclarationAbsent, ProviderDeclarationRefused,
+  UnavailableModuleAbsent, UnavailableModuleUnreadable, UnavailableModuleAmbiguous,
+  UnavailableDeclarationAbsent, UnavailableDeclarationRefused, AcquisitionMadeNoProgress,
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused,
+  generated_provider_demand, group_provider_demands, provider_acquisition_step,
+  UnavailableProviderDemand, ModuleInClosure, ModuleInPool, ModuleNotInPool,
+  observe_provider_demand, generated_provider_unavailable_message, stalled_acquisition_step
+}
+
+// Supplied inputs at the std.generated_provider interface (DESIGN section 3, a witness discriminates
+// at one interface): demands and builder observations are given, never produced by a crossing. The
+// inhabitance claim that a real producer emits this shape lands with the inference sidecar.
+
+fn site(start: Int) -> GeneratedProviderSite {
+  GeneratedProviderSite { cause: GeneratedConversionRoute, at: SourceSpan { file: "fixture.dag", start: start, end: start + 1 }, occurrence: Absent }
+}
+
+fn unfold_ref() -> DeclarationRef { decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_unfold") }
+fn fold_ref() -> DeclarationRef { decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold") }
+fn list_head_ref() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "Cons") }
+
+fn observed(d: GeneratedProviderDemand, o: GeneratedProviderObservation) -> ObservedProviderDemand {
+  ObservedProviderDemand { demand: d, observation: o }
+}
+
+fn modules_of(step: ProviderAcquisitionStep) -> List<NonEmptyStr> {
+  match step {
+    AcquireModules { modules: ms } => [ms.head] |> concat(ms.tail)
+    AcquisitionComplete => []
+    ProviderAcquisitionRefused { refusals: _ } => []
+  }
+}
+
+fn refusal_count(step: ProviderAcquisitionStep) -> Int {
+  match step {
+    ProviderAcquisitionRefused { refusals: rs } => 1 + (rs.tail |> count)
+    AcquisitionComplete => 0
+    AcquireModules { modules: _ } => 0
+  }
+}
+
+fn first_refusal_cause_is(step: ProviderAcquisitionStep, want: GeneratedProviderUnavailableCause) -> Bool {
+  match step {
+    ProviderAcquisitionRefused { refusals: rs } => rs.head.cause == want
+    AcquisitionComplete => false
+    AcquireModules { modules: _ } => false
+  }
+}
+
+// Two sites demanding one declaration group into one demand that keeps both sites.
+test fn two_sites_one_declaration_group_and_keep_both_sites() -> Bool {
+  let grouped = group_provider_demands(demands: [
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 10)),
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 20))
+  ])
+  (grouped |> count) == 1
+    && match grouped |> first {
+      Present { value: g } => (1 + (g.sites.tail |> count)) == 2
+      Absent => false
+    }
+}
+
+// The same declaration reached through a different cause is still one acquisition key.
+test fn distinct_declarations_stay_distinct_demands() -> Bool {
+  let grouped = group_provider_demands(demands: [
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)),
+    generated_provider_demand(declaration: fold_ref(), site: site(start: 2)),
+    generated_provider_demand(declaration: list_head_ref(), site: GeneratedProviderSite { cause: GeneratedListHead, at: SourceSpan { file: "fixture.dag", start: 3, end: 4 }, occurrence: Present { value: OccurrenceSynthetic } })
+  ])
+  (grouped |> count) == 3
+}
+
+// Two declarations in one module: one module acquisition.
+test fn two_declarations_one_module_acquire_the_module_once() -> Bool {
+  let step = provider_acquisition_step(observed: [
+    observed(d: generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)), o: ProviderModuleAvailable),
+    observed(d: generated_provider_demand(declaration: fold_ref(), site: site(start: 2)), o: ProviderModuleAvailable)
+  ], closure_modules: ["v2.std.text" as NonEmptyStr])
+  modules_of(step: step) == ["std.coercion" as NonEmptyStr]
+}
+
+test fn all_satisfied_is_the_fixed_point() -> Bool {
+  match provider_acquisition_step(observed: [
+    observed(d: generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)), o: ProviderSatisfied)
+  ], closure_modules: ["std.coercion" as NonEmptyStr]) {
+    AcquisitionComplete => true
+    AcquireModules { modules: _ } => false
+    ProviderAcquisitionRefused { refusals: _ } => false
+  }
+}
+
+test fn no_demand_is_the_fixed_point() -> Bool {
+  match provider_acquisition_step(observed: [], closure_modules: []) {
+    AcquisitionComplete => true
+    AcquireModules { modules: _ } => false
+    ProviderAcquisitionRefused { refusals: _ } => false
+  }
+}
+
+// A builder reporting a module available that is already in the closure is not progress.
+test fn available_module_already_in_closure_refuses_as_no_progress() -> Bool {
+  first_refusal_cause_is(step: provider_acquisition_step(observed: [
+    observed(d: generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)), o: ProviderModuleAvailable)
+  ], closure_modules: ["std.coercion" as NonEmptyStr]), want: AcquisitionMadeNoProgress)
+}
+
+// Each terminal observation refuses with its own cause: declaration absent is not module absent.
+test fn each_unavailable_observation_keeps_its_own_cause() -> Bool {
+  let d = generated_provider_demand(declaration: unfold_ref(), site: site(start: 1))
+  first_refusal_cause_is(step: provider_acquisition_step(observed: [observed(d: d, o: ProviderModuleAbsent)], closure_modules: []), want: UnavailableModuleAbsent)
+    && first_refusal_cause_is(step: provider_acquisition_step(observed: [observed(d: d, o: ProviderModuleUnreadable)], closure_modules: []), want: UnavailableModuleUnreadable)
+    && first_refusal_cause_is(step: provider_acquisition_step(observed: [observed(d: d, o: ProviderModuleAmbiguous)], closure_modules: []), want: UnavailableModuleAmbiguous)
+    && first_refusal_cause_is(step: provider_acquisition_step(observed: [observed(d: d, o: ProviderDeclarationAbsent)], closure_modules: []), want: UnavailableDeclarationAbsent)
+    && first_refusal_cause_is(step: provider_acquisition_step(observed: [observed(d: d, o: ProviderDeclarationRefused)], closure_modules: []), want: UnavailableDeclarationRefused)
+}
+
+// Any unavailable demand refuses the step, naming every unavailable demand, and nothing is acquired.
+test fn refusal_names_every_unavailable_demand_and_acquires_nothing() -> Bool {
+  let step = provider_acquisition_step(observed: [
+    observed(d: generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)), o: ProviderModuleAbsent),
+    observed(d: generated_provider_demand(declaration: list_head_ref(), site: site(start: 2)), o: ProviderModuleAvailable),
+    observed(d: generated_provider_demand(declaration: fold_ref(), site: site(start: 3)), o: ProviderDeclarationAbsent)
+  ], closure_modules: [])
+  refusal_count(step: step) == 2 && (modules_of(step: step) |> count) == 0
+}
+
+// Order permutation: the same acquired module set and the same refusal count.
+test fn demand_order_does_not_change_the_step() -> Bool {
+  let a = observed(d: generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)), o: ProviderModuleAvailable)
+  let b = observed(d: generated_provider_demand(declaration: list_head_ref(), site: site(start: 2)), o: ProviderModuleAvailable)
+  let forward = modules_of(step: provider_acquisition_step(observed: [a, b], closure_modules: []))
+  let backward = modules_of(step: provider_acquisition_step(observed: [b, a], closure_modules: []))
+  (forward |> count) == 2 && (backward |> count) == 2
+    && (forward |> all(m => backward |> any(n => n == m)))
+}
+
+// The builder reports a fact; the decision of what a missing declaration means is the model's.
+test fn module_in_closure_without_the_declaration_is_declaration_absent_not_module_absent() -> Bool {
+  let d = generated_provider_demand(declaration: unfold_ref(), site: site(start: 1))
+  observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_fold" as NonEmptyStr], refused: [] }).observation == ProviderDeclarationAbsent
+    && observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_unfold" as NonEmptyStr], refused: [] }).observation == ProviderSatisfied
+    && observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_unfold" as NonEmptyStr], refused: ["unicode_scalar_unfold" as NonEmptyStr] }).observation == ProviderDeclarationRefused
+    && observe_provider_demand(demand: d, fact: ModuleInPool).observation == ProviderModuleAvailable
+    && observe_provider_demand(demand: d, fact: ModuleNotInPool).observation == ProviderModuleAbsent
+}
+
+test fn refusal_message_names_the_declaration_and_the_cause() -> Bool {
+  generated_provider_unavailable_message(declaration: unfold_ref(), cause: UnavailableDeclarationAbsent)
+    == "generated provider unavailable: std.coercion.unicode_scalar_unfold -- its module does not declare it; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
+}
+
+// A builder whose acquisition added nothing gets the model's AcquisitionMadeNoProgress, for exactly
+// the demands on the stalled modules.
+test fn a_stalled_acquisition_refuses_as_no_progress_for_its_own_demands() -> Bool {
+  let step = stalled_acquisition_step(demands: [
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)),
+    generated_provider_demand(declaration: list_head_ref(), site: site(start: 2))
+  ], stalled_modules: ["std.coercion" as NonEmptyStr])
+  refusal_count(step: step) == 1 && first_refusal_cause_is(step: step, want: AcquisitionMadeNoProgress)
+}

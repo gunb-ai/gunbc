@@ -9,10 +9,10 @@ import product.printed_chassis.print_workflow {run}
 // Boundary tests are entered individually by the witness runner, never called here.
 // End-to-end local validation entry. The production root is fixed to preparation;
 // this function cannot file an approval or start a printer.
-fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String) -> ProcessExit {
+fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String,root:String) -> ProcessExit {
  if !approval_changes_with_device_bytes_version_or_attempt() {return exit_failure(reason:"Approval identity did not bind the print inputs")}
  match exercise_kernel(script:control_script) {
-  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:"prepare")
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:"prepare",root:root)
   other=>other
  }
 }

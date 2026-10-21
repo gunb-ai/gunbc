@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.fn_body_record_construct_unjudged_on_native_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fn_body_record_construct_unjudged_on_native_route: RecurringFailureMode = RecurringFailureMode {
   identity: "fn_body_record_construct_unjudged_on_native_route" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a record construct inside a fn body on the v2 native route is admitted without its field values being judged against the record's declared field types. HARM: a value of the wrong type at a declared field (`OarA { n: optional_int }` at a required Int field) is silently admitted, below the floor, and reaches realization. CAUSE: since fa44b981025 (gunbc#13641) the closure fold in v2.compiler.name_resolve handed the record-declaration index the empty map, so infer's record-construct row found no declared record and judged nothing.",
     "DISTINGUISHING FACTS: not the inhabitance relation's defect (the data-constant route, which reads the declared record through its own path, still refused) and not the construct row's. Bisected by execution: infer_optional_at_required_witness `oar_an_optional_at_a_required_record_field_refuses_holds` PASSES at fa44b981025~1 and FAILS at fa44b981025. Nothing on the required path caught it: the required witnesses job no longer evaluates .dag witness claims (gunbc.rung_drop v1_required_lanes_withdrawn).",

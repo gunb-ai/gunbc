@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.workflow_dispatch_input_limit_unchecked
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data workflow_dispatch_input_limit_unchecked: RecurringFailureMode = RecurringFailureMode {
   identity: "workflow_dispatch_input_limit_unchecked" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: a generated workflow is valid YAML and passes local generation but declares more workflow_dispatch inputs than GitHub accepts. Every manual mode is then unavailable, including modes that use only a few fields. A YAML parser cannot prove the hosted API's cardinality contract.",
     "OBSERVED 2026-10-09 during srv1 workspace bringup, PR #13607: base 2a519d27f6f77db2a20696a2ffc4f540dbd88f40 declares 28 inputs. Adding the image artifact locator made 29; dispatch at 048d345cd302d412565d6b214f1e912a788ffecb returned HTTP 422 with 'you may only define up to 25 inputs'. Push run 37877157911 also failed workflow validation, before any host job ran. GitHub documents 25 at https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs .",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.two_modules_answer_to_one_logical_qualified_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data two_modules_answer_to_one_logical_qualified_name: RecurringFailureMode = RecurringFailureMode {
   identity: "two_modules_answer_to_one_logical_qualified_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**two modules answer to ONE logical qualified name, so a citation that names its module is still not an identity** (INVALID STATE: the declaration index's logical qualified name strips a leading `v2.` -- v2.std.decl_index logical_qualified_name_from_module -- so under the v2-mirror layout `v2.std.integer` and `std.integer` both answer to `std.integer`. A caller that cites module plus declaration name, believing it has said exactly which declaration it means, has said something two declarations satisfy. HARM: a route keyed on the qualified name binds ONE GRAIN DOWN to whichever row the keyed read ordered first -- the same first-match-without-a-diagnostic shape a bare spelling has, arrived at by a caller who did the right thing and named the module.",

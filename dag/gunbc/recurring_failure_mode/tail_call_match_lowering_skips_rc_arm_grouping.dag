@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.tail_call_match_lowering_skips_rc_arm_groupi
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data tail_call_match_lowering_skips_rc_arm_grouping: RecurringFailureMode = RecurringFailureMode {
   identity: "tail_call_match_lowering_skips_rc_arm_grouping" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: an exhaustive .dag match whose arms discriminate a variant nested under an Rc-shared field (`TypeNode { connective: Conj }` beside `TypeNode { connective: Disj }` ...) inside a function whose self-call is lowered to a loop. The front end accepts it with zero diagnostics; the emitted Rust refuses with E0004 (`pattern NodeKind::TypeNode { .. } not covered`).",
