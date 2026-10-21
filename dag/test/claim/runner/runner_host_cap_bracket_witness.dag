@@ -8,7 +8,7 @@ import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { InputTextList, OperationInputBinding }
+import std.operation_argv { InputTextList, OperationInputBinding }
 import v2.std.operation_realization { OperationRealization, OperationBinding, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
