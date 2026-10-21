@@ -36,6 +36,18 @@
 //!
 //! RECURRING FAILURE MODE ROW:
 //! dag/gunbc/recurring_failure_mode/nominal_isomorphic_record_admitted_at_sibling_declaration.dag
+//!
+//! HAND-WRITTEN-RUST RECEIPT (ctrl review policy; reviews 83758/83778/83935
+//! advisories). DEFERRAL, naming a lane and a tracking row: this file is a
+//! ROUTE harness, not seed behavior -- it shells the production `gunbc`
+//! (`CARGO_BIN_EXE_gunbc run --claim-run`) so the judgment is observed at the
+//! CLI route rather than in-process. Seed `.dag` cannot express spawning the
+//! real binary, so no deleted scaffold could replace it and a seed census of
+//! this file is not meaningful; the before/after census it asks for IS the
+//! arm roster measured here (main: mismatch arms RED `3 passed; 2 failed`;
+//! head: `8 passed; 0 failed`), and it is tracked by the RFM row named above,
+//! in the v1 stage0 test lane (same route idiom as scoped_run_observation.rs,
+//! the pre-existing production-CLI-route test in this directory).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
