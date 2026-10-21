@@ -313,6 +313,28 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
   }
 }
 
+// THE UNELABORATED STANDING OF A REFLECTED PREDICATE SET. The host reflection route
+// (coproduct_reflection marshal_non_connective_type_item) cannot elaborate a where-predicate, so it
+// reflects the captured predicates as their source spellings beside the edge
+// reflected_predicate_standing -> source_spelled_unelaborated. An elaborated set
+// (body_lowering_fold body_lower_kept_where_clause) has no such edge. A reader that INTERPRETS a
+// predicate asks this and refuses on true; it never treats the set as satisfied or as empty.
+// Retired when predicates are elaborated on the v2 reflection route.
+fn where_clause_is_unelaborated(clause: Node) -> Bool {
+  match find_labeled_child(root: clause, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: production, diagnostics: _ } =>
+      match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: captured, diagnostics: _ } =>
+          match find_named_child(root: captured, name: ^reflected_predicate_standing) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
 // A DECLARATION'S BINDER EDGE: the <type-parameters> edge of a type-declaration wrapper -- a generic
 // member, an alias or an opaque declaration, as type_decl_view classifies the parent -- never the same
 // marker on an Arrow. It carries names the binder authority checks and resolve scopes, not values, so

@@ -743,7 +743,155 @@ fn concept_decl_node(
     match item.connective {
         Connective::Disj => marshal_disj_type_item(ctx, si, item),
         Connective::Conj => marshal_variant_arm_target(ctx, si, item),
+        Connective::NoConnective => marshal_non_connective_type_item(ctx, si, item),
         _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+// A TYPE DECLARATION WITH NO CONNECTIVE IS AN ALIAS, A REFINEMENT OR A BODYLESS (OPAQUE) DECLARATION;
+// it is never an empty Conj. Each reflects as the wrapper v2.std.type_binder reads unchanged:
+// alias -> type_alias_wrapper (TypeParamsEdge binders, TypeAliasEdge carrier); bodyless ->
+// type_opaque_wrapper (TypeParamsEdge only); refinement -> Conj { <type-expr>: carrier,
+// where-clause production edge: clause } (refinement_declaration_of_node). The carrier is the
+// authored type name, the same flattening a field type gets (marshal_type_expr_ref). The host cannot
+// elaborate a where-predicate (v2 body_lower_kept_where_clause resolves calls), so the captured
+// predicates carry the standing edge `reflected_predicate_standing` -> `source_spelled_unelaborated`
+// beside each predicate's source spelling; a reader that interprets predicates refuses on that mark
+// (v2.std.type_binder where_clause_is_unelaborated). Retired when predicates are elaborated on the v2
+// reflection route.
+fn marshal_non_connective_type_item(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let rhs = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "marshal_non_connective_type_item: type `{}` has no connective and no right-hand side",
+                item.name
+            ),
+        })?;
+    let conj = |edges: Vec<Value>| {
+        node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            edges,
+        )
+    };
+    let mut binder_edges = Vec::new();
+    for p in item.params.iter() {
+        let pname = authored_name_at(si.clone(), p.clone());
+        if pname.is_empty() {
+            continue;
+        }
+        binder_edges.push(edge_named(ctx, &pname, atom_identity_node(ctx, &pname)));
+    }
+    let binders = conj(binder_edges);
+    let bodyless = rhs.connective == Connective::NoConnective
+        && rhs.name == item.name
+        && rhs.type_annotation.is_none();
+    if bodyless {
+        return Ok(conj(vec![core_edge_value(ctx, "TypeParamsEdge", binders)]));
+    }
+    if let (Connective::Conj, Some(predicate), 1) = (
+        rhs.connective.clone(),
+        rhs.type_annotation.clone(),
+        rhs.children.len(),
+    ) {
+        let carrier = marshal_type_expr_ref(ctx, si, &rhs.children[0])?;
+        let mut captured = vec![edge_named(
+            ctx,
+            "reflected_predicate_standing",
+            atom_identity_node(ctx, "source_spelled_unelaborated"),
+        )];
+        for pred in predicate.children.iter() {
+            let spelling = predicate_spelling(pred);
+            captured.push(edge_positional(ctx, atom_identity_node(ctx, &spelling)));
+        }
+        let production = conj(vec![
+            edge_named(
+                ctx,
+                "grammar_production_identity_node_projection",
+                atom_identity_node(ctx, "dag_surface_where_refinement_clause"),
+            ),
+            edge_named(
+                ctx,
+                "grammar_production_captured_node_projection",
+                conj(captured),
+            ),
+        ]);
+        let clause = conj(vec![production_edge_value(
+            ctx,
+            "dag_surface_where_refinement_clause",
+            production,
+        )]);
+        return Ok(conj(vec![
+            edge_named(ctx, "dag_surface_type_expr", carrier),
+            production_edge_value(ctx, "dag_surface_where_refinement_clause", clause),
+        ]));
+    }
+    let carrier = marshal_type_expr_ref(ctx, si, &rhs)?;
+    Ok(conj(vec![
+        core_edge_value(ctx, "TypeParamsEdge", binders),
+        core_edge_value(ctx, "TypeAliasEdge", carrier),
+    ]))
+}
+
+// A PARSED PREDICATE'S SPELLING: the parser has already folded `brand("X")` into a field-init node
+// (name Brand, one literal child) with no source span, so the spelling is the predicate name plus its
+// literal argument when it has one. It is the unelaborated form the standing edge names, not source text.
+fn predicate_spelling(pred: &Rc<Node>) -> String {
+    let literal = pred
+        .children
+        .first()
+        .and_then(|c| match c.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+                crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                    Some(format!("\"{s}\""))
+                }
+                crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
+                crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                _ => None,
+            },
+            _ => None,
+        });
+    match literal {
+        Some(l) => format!("{}({l})", pred.name),
+        None => pred.name.clone(),
+    }
+}
+
+fn production_edge_value(ctx: &InterpContext, edge: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("ProductionEdge"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("language"),
+                                    str_value("dag_language_model_surface_id"),
+                                ),
+                                (ctx.sym("edge"), str_value(edge)),
+                            ])),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
     }
 }
 
@@ -1844,6 +1992,23 @@ pub struct DeclFactsCorpusWalk {
 // dependency-pool-index / the module source index used by compile/load. Where roots
 // shadow the same module path, this producer may emit facts for both the winning
 // source and the shadowed stub; compile binds only the winner.
+// REFLECTION-LOCAL CLASSIFICATION (v1 item_kind is frozen and keeps its answer): a type declaration
+// with no connective and no body is an alias, a refinement or a bodyless declaration, so it
+// reflects as a TypeItem carrying its wrapper instead of an OtherItem with an empty node.
+fn reflected_item_kind(item: &Rc<Node>) -> ItemKind {
+    let kind = item_kind(item.clone());
+    if kind == ItemKind::OtherItem
+        && item.module_item_kind
+            == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
+        && item.connective == Connective::NoConnective
+        && item.transport.is_none()
+    {
+        ItemKind::TypeItem
+    } else {
+        kind
+    }
+}
+
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
     let mut files_scanned = 0usize;
@@ -1874,7 +2039,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             if name.is_empty() {
                 continue;
             }
-            let kind = item_kind(item.clone());
+            let kind = reflected_item_kind(item);
             out.push(DeclFactRaw {
                 qualified_name: decl_logical_qualified_name(&module_path, &name),
                 name,

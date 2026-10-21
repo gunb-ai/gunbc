@@ -22,6 +22,7 @@ import v2.std.decl_index {
   type_declarer_qualified_names
 }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.type_binder { refinement_declaration_of_node, where_clause_is_unelaborated }
 import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 
 // THE HOST TYPE-REFLECTION SURFACE, AND WHY ONE OF ITS TWO SEAMS IS GONE.
@@ -121,6 +122,27 @@ fn type_declarer_names(pool_roots: List<String>, type_name: Symbol) -> List<Stri
     pool_roots: pool_roots,
     bare_name: symbol_lexeme(sym: type_name)
   )
+}
+
+// THE PREDICATE-INTERPRETING READ OF A REFLECTED REFINEMENT: its where clause, or a typed refusal.
+// A declaration that is no refinement refuses, and so does one whose predicates the host reflected
+// unelaborated (type_binder where_clause_is_unelaborated): a predicate is never read as satisfied or
+// as empty. kernel_carrier_of_type_node reads the carrier only and does not come through here.
+fn refinement_predicate_clause(type_name: Symbol, decl: Node) -> Outcome<Node> {
+  match refinement_declaration_of_node(decl: decl) {
+    Absent =>
+      outcome_rejected(
+        d: scoped_type_reflection_diagnostic(type_name: type_name, invariant: ^type_declaration_is_not_a_refinement)
+      )
+    Present { value: r } =>
+      if where_clause_is_unelaborated(clause: r.where_clause) {
+        outcome_rejected(
+          d: scoped_type_reflection_diagnostic(type_name: type_name, invariant: ^refinement_predicates_unelaborated)
+        )
+      } else {
+        outcome_accepted(value: r.where_clause)
+      }
+  }
 }
 
 fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Diagnostic {

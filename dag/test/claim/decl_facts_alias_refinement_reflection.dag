@@ -1,0 +1,88 @@
+module test.claim.decl_facts_alias_refinement_reflection
+
+import std.types { String, List, Bool, Int }
+import std.optional { Optional, Present, Absent }
+import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node, where_clause_is_unelaborated }
+import v2.std.node_reflection { refinement_predicate_clause }
+
+// THE INHABITANCE CLAIM for the host reflection of an alias and a refinement: decl_facts_at yields a
+// TypeItem whose node type_binder reads UNCHANGED (type_decl_view, refinement_declaration_of_node), so
+// the carrier chain Timestamp -> String, NonEmptyStr -> String, LeaseToken -> NonEmptyStr is readable
+// without a per-atom row. Before the marshal, each reflected as an OtherItem over an empty Conj.
+// Keyed decl_facts_at only: the whole-pool type census costs ~10 minutes.
+
+fn pool() -> List<String> { ["dag", "src/v2"] }
+
+fn fact_of(qn: String) -> List<DeclFact> {
+  decl_facts_at(pool_roots: pool(), qualified_name: qn)
+}
+
+fn atom_name(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: i } } => symbol_lexeme(sym: i)
+    TypeNode { connective: _ } => "NOT_AN_ATOM"
+    _ => "NOT_A_TYPE"
+  }
+}
+
+fn alias_carrier(n: Node) -> String {
+  match type_decl_view(target: n) {
+    TypeAlias { binders: _, aliased: a } => atom_name(n: a)
+    GenericTypeDecl { binders: _, member: _ } => "GENERIC"
+    OpaqueTypeDecl { binders: _ } => "OPAQUE"
+    PlainTypeDecl { member: _ } => "PLAIN"
+    NotATypeDecl => "NOT_A_TYPE_DECL"
+  }
+}
+
+fn refinement_carrier(n: Node) -> String {
+  match refinement_declaration_of_node(decl: n) {
+    Present { value: r } => atom_name(n: r.carrier)
+    Absent => "NOT_A_REFINEMENT"
+  }
+}
+
+fn refinement_unelaborated(n: Node) -> Bool {
+  match refinement_declaration_of_node(decl: n) {
+    Present { value: r } => where_clause_is_unelaborated(clause: r.where_clause)
+    Absent => false
+  }
+}
+
+test fn a_plain_alias_reflects_as_a_type_item_aliasing_its_carrier() -> Bool {
+  let hits = fact_of(qn: "std.types.Timestamp")
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && alias_carrier(n: f.node) == "String")
+}
+
+test fn a_refinement_reflects_its_carrier_and_an_unelaborated_predicate() -> Bool {
+  let hits = fact_of(qn: "std.types.NonEmptyStr")
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "String" && refinement_unelaborated(n: f.node))
+}
+
+test fn a_branded_refinement_reflects_the_refinement_it_brands() -> Bool {
+  let hits = fact_of(qn: "std.types.LeaseToken")
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "NonEmptyStr" && refinement_unelaborated(n: f.node))
+}
+
+// RED: a predicate-interpreting read of the reflected refinement refuses, naming the unelaborated
+// standing; the predicate is neither satisfied nor empty. CONTROL: the same refinement shape without
+// the standing edge (what an elaborating route produces) is handed back, so the refusal is the mark.
+fn reason_of(o: Outcome<Node>) -> String {
+  match o {
+    Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+  }
+}
+
+test fn a_predicate_reader_refuses_the_unelaborated_predicate() -> Bool {
+  let hits = fact_of(qn: "std.types.NonEmptyStr")
+  count(hits) == 1 && all(hits, f => reason_of(o: refinement_predicate_clause(type_name: symbol_intern_lexeme(lexeme: "NonEmptyStr"), decl: f.node)) == "refinement_predicates_unelaborated")
+}
+
+test fn a_predicate_reader_refuses_a_declaration_that_is_no_refinement() -> Bool {
+  let hits = fact_of(qn: "std.types.Timestamp")
+  count(hits) == 1 && all(hits, f => reason_of(o: refinement_predicate_clause(type_name: symbol_intern_lexeme(lexeme: "Timestamp"), decl: f.node)) == "type_declaration_is_not_a_refinement")
+}
