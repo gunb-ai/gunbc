@@ -155,6 +155,21 @@ type ArrowSlotScope
   | SlotScopeParamsOverTypeParams
   | SlotScopeParamsOverOuter
 
+// WHETHER RESOLVE CARRIES THE SLOT'S TARGET UNCHANGED AND NEVER WALKS IT: the declared order and the
+// contract metadata. Nothing under it is resolved, so nothing under it is a mention; the reference-site
+// collector asks this and keeps no list of such edges.
+fn arrow_slot_is_carried(slot: ArrowSlot) -> Bool {
+  match slot {
+    ArrowTypeParamsSlot => false
+    ArrowCarriedSlot => true
+    ArrowResourceRequirementsSlot => false
+    ArrowDomainSlot => false
+    ArrowCodomainSlot => false
+    ArrowBodyOrNamedSlot => false
+    ArrowAuthoredSlot => false
+  }
+}
+
 fn arrow_slot_scope(slot: ArrowSlot) -> ArrowSlotScope {
   match slot {
     ArrowTypeParamsSlot => SlotScopeOuter

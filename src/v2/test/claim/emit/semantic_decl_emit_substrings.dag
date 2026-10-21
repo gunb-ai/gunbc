@@ -28,7 +28,7 @@ fn semantic_bool_coproduct() -> Node {
 data golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 
 test fn emit_eq_golden() -> Bool {
-  match emit_semantic_type_decl(
+  match emit_semantic_type_decl(header: [], imports: [], members: [], 
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),

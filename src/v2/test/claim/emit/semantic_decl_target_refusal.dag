@@ -31,7 +31,7 @@ fn sdtr_bool_coproduct() -> Node {
 }
 
 fn sdtr_unwired_target_refuses() -> Bool {
-  match emit_semantic_type_decl(
+  match emit_semantic_type_decl(header: [], imports: [], members: [], 
     name: ^Bool,
     params: Empty,
     node: sdtr_bool_coproduct(),

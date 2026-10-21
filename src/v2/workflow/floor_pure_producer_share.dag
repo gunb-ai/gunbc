@@ -1232,7 +1232,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "oar_an_optional_at_a_required_record_field_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "oar_an_optional_returned_at_a_declared_int_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "oar_the_lift_is_still_accepted_on_the_route_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "oar_a_bare_lift_is_refused_on_the_route_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

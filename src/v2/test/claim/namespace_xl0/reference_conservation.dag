@@ -6,7 +6,6 @@ import v2.compiler.reference_conservation {
   ReferenceConservationReport,
   ReferenceConservationSubject,
   authored_atom_population,
-  authored_occurrence_of,
   dag_declared_token_classes,
   reference_conservation_accepted,
   reference_conservation_admitted,
@@ -18,6 +17,7 @@ import v2.compiler.reference_conservation {
   report_with_advisories,
   OccurrenceRoleTableUnadmitted
 }
+import std.occurrence_identity { authored_occurrence_of }
 import std.algebra { Cons, Empty, fold_list, length, list_map }
 import std.optional { Absent, Optional, Present }
 import std.occurrence_identity { OccurrenceId }
@@ -349,7 +349,7 @@ fn node_without_occurrence(node: Node, occurrence: OccurrenceId) -> Node {
   node_rebuild(
     n: node,
     children: fold(node.children, init: [], f: fn(acc, e) {
-      match authored_occurrence_of(node: e.target) {
+      match authored_occurrence_of(identity: e.target.occurrence_id) {
         Present { value: o } =>
           if o.value == occurrence.value {
             acc

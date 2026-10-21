@@ -97,6 +97,7 @@ import std.occurrence_identity {
   OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
+  authored_occurrence_of,
   occurrence_id_allocator_initial,
   scoped_occurrence_allocator,
 }
@@ -141,7 +142,6 @@ import std.optional {
 import v2.std.provenance {
   SpanIndex,
   node_authored_span_optional,
-  node_occurrence_id_optional,
   span_index_empty,
   span_index_textual_locus_optional,
 }
@@ -418,6 +418,7 @@ import v2.compiler.inferred_tree {
   AuthoredOccurrenceCollision,
   DerivedGrounding,
   GroundingNotDerived,
+  NotDerivedSite,
   authored_occurrence_collisions,
 }
 import v2.std.node_query {
@@ -555,6 +556,7 @@ type NativeInferAdvisoryCount {
 
 type NativeInferAcceptedFrontier {
   grounding_not_derived: Int
+  not_derived_sites: List<NativeInferSiteCount>
   advisories: List<NativeInferAdvisoryCount>
 }
 
@@ -584,16 +586,38 @@ fn native_infer_advisory_counts(d: Diagnostics) -> List<NativeInferAdvisoryCount
   }
 }
 
-fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
+// THE CENSUS OF WHICH SITE LEFT EACH NODE UNDERIVED (v2.compiler.inferred_tree NotDerivedSite). The advisory
+// is one reason, so its count says how many and never why; the site on each GroundingNotDerived fact is the
+// cause. One row per site present, in first-met order, keyed on the NotDerivedSite value itself. The frontier's
+// grounding_not_derived total is the sum of these rows: one walk, not two.
+type NativeInferSiteCount {
+  site: NotDerivedSite
+  count: Int
+}
+
+fn native_infer_site_counts_add(acc: List<NativeInferSiteCount>, site: NotDerivedSite) -> List<NativeInferSiteCount> {
+  match acc {
+    Empty => [NativeInferSiteCount { site: site, count: 1 }]
+    Cons { head: row, tail: rest } =>
+      if row.site == site {
+        Cons { head: NativeInferSiteCount { site: site, count: row.count + 1 }, tail: rest }
+      } else {
+        Cons { head: row, tail: native_infer_site_counts_add(acc: rest, site: site) }
+      }
+  }
+}
+
+fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferSiteCount> {
   fold_list(
     xs: node_subtree_nodes(root: tree.root),
-    empty: 0,
+    empty: [],
     cons: fn(acc, n) {
       match tree.facts.lookup(n) {
         Absent => acc
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => acc + 1
+            GroundingNotDerived { node: _, site: s } =>
+              native_infer_site_counts_add(acc: acc, site: s)
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -601,11 +625,20 @@ fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
   )
 }
 
-fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+fn native_infer_site_rows_total(rows: List<NativeInferSiteCount>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.count })
+}
+
+fn native_infer_accepted_frontier_from_sites(sites: List<NativeInferSiteCount>, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
   NativeInferAcceptedFrontier {
-    grounding_not_derived: native_infer_grounding_not_derived_count(tree: tree),
+    grounding_not_derived: native_infer_site_rows_total(rows: sites),
+    not_derived_sites: sites,
     advisories: native_infer_advisory_counts(d: diagnostics)
   }
+}
+
+fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+  native_infer_accepted_frontier_from_sites(sites: native_infer_not_derived_site_counts(tree: tree), diagnostics: diagnostics)
 }
 
 fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason: Symbol) -> Int {
@@ -1330,7 +1363,6 @@ fn native_test_eval_one(
             TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
-            TypeNode { connective: Occupancy } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
@@ -3585,12 +3617,30 @@ type NativeCensusClosureFanOut
   | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
   | NativeCensusClosureFanOutUnavailable { reason: Symbol }
 
+// THE OCCURRENCE COLUMN OF A CAUSE-GROUP ROW (T2.5-B, M1 GO): the authored occurrence the member's
+// fatal answers for, read through the authored keying rule `census_occurrence_from_locus` ->
+// std.occurrence_identity authored_occurrence_of. A member whose fatal is a node refusal carries
+// `Present`; a member filed WITHOUT a fatal of its own -- a cascade member of someone else's root, or
+// a front-end refusal whose chain was collapsed to a FileRefusalAt before the census read it --
+// carries `Absent`, which is the measured (B) finding, not a guess.
+// CONSUMERS, named (DESIGN 3c): (1) the emitted census main prints every cause group and every
+// ranked root through serde (src/v1/05_emit_rust.dag, the `cause_group` and `census_root` printlns) --
+// the field is on the row, so the ranked report names the refusal's authored occurrence, which is
+// what the ranking could not do before; (2) `native_census_cause_member_read` relays it when a member
+// is re-keyed through locate, so relocation never drops it; (3) the claim suite
+// test.claim.native_census.infer_cascade (route, supplied-value, keying).
+// NOT a second keying rule: `native_census_owner_key` below answers a DIFFERENT question -- which id
+// the census POSITION TABLE can be joined on, for locating -- and fails closed on Pending and
+// Synthetic, where the authored rule still answers. Where they disagree (Pending), locate's
+// fail-closed collapse is the law (M1 GO: no second locus authority). The obligation rows'
+// `occurrence` reads the same authored helper as this column; these two are the row identity fields.
 type NativeCensusCauseMember {
   stage: NativeCensusCauseStage
   path: Symbol
   module: Optional<QualifiedName>
   head_reason: Symbol
   at: FileRefusalAt
+  occurrence: Optional<OccurrenceId>
   cascade: NativeCensusCascade
 }
 
@@ -3773,6 +3823,12 @@ fn native_census_cause_groups_add_file_refusal(
       module: refusal.module,
       head_reason: native_test_file_refusal_head_reason(fr: refusal),
       at: native_test_file_refusal_fatal_link(fr: refusal).at,
+      // MEASURED, NOT CHOSEN (T2.5-B, (B) finding). A front-end refusal reaches the census through
+      // `NativeTestFileRefusal` (v2.compiler.native_test_vocabulary), whose chain links carry a
+      // classified `FileRefusalAt` and NO `Locus` -- the absorb resolved positions and dropped the
+      // node identity before this read (native_test_vocabulary's own header names the constraint).
+      // So there is no fatal to key here; a non-Absent value would be a fabrication.
+      occurrence: optional_absent(),
       cascade: NativeCensusCascadeRoot {
         closure_fan_out: native_census_closure_fan_out(index: closure, root: refusal),
         resolve_refused_importers: optional_absent()
@@ -3797,6 +3853,7 @@ fn native_census_cause_groups_add_residual(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
       head_reason: row.chain.head.reason,
       at: row.at,
+      occurrence: census_occurrence_from_locus(at: diagnostics_fatal(d: row.chain).at),
       cascade: cascade
     }
   )
@@ -3818,6 +3875,7 @@ fn native_census_cause_groups_add_cascade_member(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
       head_reason: ^native_prepare_reason_import_target_file_refused,
       at: FileRefusalAtUnresolvedNode,
+      occurrence: optional_absent(),
       cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
     }
   )
@@ -4056,6 +4114,7 @@ fn native_census_infer_member(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
       head_reason: chain.head.reason,
       at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions),
+      occurrence: census_occurrence_from_locus(at: diagnostics_fatal(d: chain).at),
       cascade: cascade
     }
   )
@@ -4303,6 +4362,7 @@ fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: Nati
         module: member.module,
         head_reason: member.head_reason,
         at: member.at,
+        occurrence: member.occurrence,
         cascade: NativeCensusCascadeRoot {
           closure_fan_out: fan_out,
           resolve_refused_importers: match groups.importers {
@@ -5965,7 +6025,7 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
   match at {
-    NodeLocus { anchor: a } => node_occurrence_id_optional(node: a.at)
+    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.occurrence_id)
     _ => optional_absent()
   }
 }

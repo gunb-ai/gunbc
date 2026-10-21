@@ -41,7 +41,7 @@ import v2.std.node {
   node_synthetic,
   NotADeclaration
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
@@ -118,6 +118,7 @@ fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
 
 fn add_body_fold_target_model_minus_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_minus()
@@ -132,6 +133,7 @@ fn add_body_fold_target_model_minus_catalog() -> TargetModel {
 
 fn add_body_fold_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_empty()

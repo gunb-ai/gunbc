@@ -2,7 +2,7 @@ module v2.test.claim.binder_atom_keying
 
 import std.algebra { fold_list, list_snoc_item }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, DeclarationRole, ReferenceRole }
+import std.occurrence_identity { authored_occurrence_of, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, DeclarationRole, ReferenceRole }
 import std.optional { Absent, Optional, Present }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.types { List, Map }
@@ -10,7 +10,6 @@ import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
 import v2.compiler.occurrence_role { AtomOccurrenceRole, OccurrenceRolesRead, OccurrenceRoleTableRefused, dag_name_table_admission, occurrence_role_index, occurrence_roles_of_admitted }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
-import v2.compiler.reference_conservation { authored_occurrence_of, authored_occurrence_of_identity }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -18,7 +17,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
-import v2.std.node { DeclaresAt, NotADeclaration, Authored, Edge, Node, Positional, StructuralLabel, ProductionEdge, CoreMarker, symbol_lexeme, ComputationNode, TypeNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation, Value, Transform, Branch, Loop, Bind, Match }
+import v2.std.node { DeclaresAt, NotADeclaration, Authored, Edge, Node, Positional, StructuralLabel, ProductionEdge, CoreMarker, symbol_lexeme, ComputationNode, TypeNode, Atom, Conj, Disj, Arrow, Instantiation, Value, Transform, Branch, Loop, Bind, Match }
 import v2.std.text { String }
 import std.algebra { map_lookup, string_contains }
 import std.integer { int_to_decimal_string }
@@ -53,7 +52,7 @@ fn identity_text(identity: NodeOccurrenceIdentity) -> String {
 }
 
 fn role_text(index: Map<OccurrenceId, AtomOccurrenceRole>, node: Node) -> String {
-  match authored_occurrence_of(node: node) {
+  match authored_occurrence_of(identity: node.occurrence_id) {
     Absent => "unkeyable"
     Present { value: id } =>
       match map_lookup(m: index, key: id) {
@@ -82,7 +81,7 @@ fn edge_declaration_row(edge: Edge, depth: Int, spelling: String, index: Map<Occ
       match edge.label {
         Authored { name: n } =>
           if symbol_lexeme(sym: n) == spelling {
-            match authored_occurrence_of_identity(identity: occ) {
+            match authored_occurrence_of(identity: occ) {
               Absent => ["E" + int_to_decimal_string(value: depth) + "/unkeyable"]
               Present { value: id } =>
                 match map_lookup(m: index, key: id) {

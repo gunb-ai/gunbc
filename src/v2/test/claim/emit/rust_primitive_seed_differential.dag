@@ -1,0 +1,108 @@
+module v2.test.claim.emit.rust_primitive_seed_differential
+
+import std.algebra { fold_list, string_contains }
+import std.optional { Optional, Present, Absent }
+import extdeps.languages.rust.emit { rt_function_registry, rust_simple_method_specs }
+import v2.extdeps.languages.rust { rust_primitive_realization_rows }
+import v2.std.compilers.target_model {
+  PrimitiveFreeCall,
+  PrimitiveMethodCall,
+  PrimitivePassBySharedReference,
+  PrimitivePassByValue,
+  PrimitiveResultAsReturned,
+  PrimitiveResultInSharedHandle,
+  TargetPrimitiveRealization
+}
+import v2.std.node { symbol_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rust_primitive_seed_row_named(name: String) -> Optional<TargetPrimitiveRealization> {
+  fold_list(
+    xs: rust_primitive_realization_rows(),
+    empty: Absent,
+    cons: fn(acc, row) {
+      if row.primitive.decl_name == concat(name, "_contract", "") { Present { value: row } } else { acc }
+    }
+  )
+}
+
+fn rust_primitive_first_arg_by_shared_reference(row: TargetPrimitiveRealization) -> Bool {
+  fold_list(
+    xs: row.arguments,
+    empty: false,
+    cons: fn(acc, a) {
+      acc || match a.passing {
+        PrimitivePassBySharedReference { prefix_token: _ } => true
+        PrimitivePassByValue => false
+      }
+    }
+  )
+}
+
+fn rust_primitive_result_wraps(row: TargetPrimitiveRealization) -> Bool {
+  match row.result {
+    PrimitiveResultAsReturned => false
+    PrimitiveResultInSharedHandle { constructor: _ } => true
+  }
+}
+
+// For every rt_function_registry entry the v2 Rust rows realize, the row agrees on callee, passing mode and result wrap.
+fn rust_primitive_agrees_with_registry(name: String) -> Bool {
+  fold_list(
+    xs: rt_function_registry,
+    empty: false,
+    cons: fn(acc, entry) {
+      if entry.name == name {
+        match rust_primitive_seed_row_named(name: name) {
+          Present { value: row } =>
+            match row.form {
+              PrimitiveFreeCall { callee: c } =>
+                (symbol_lexeme(sym: c) == entry.bridge_name)
+                && (rust_primitive_first_arg_by_shared_reference(row: row) == entry.passes_by_ref)
+                && (rust_primitive_result_wraps(row: row) == entry.wraps_result)
+              PrimitiveMethodCall { method: _ } => false
+            }
+          Absent => false
+        }
+      } else { acc }
+    }
+  )
+}
+
+// A method primitive agrees with rust_simple_method_specs: same method, and `&` before the argument iff the row passes by reference.
+fn rust_primitive_agrees_with_method_spec(name: String) -> Bool {
+  fold_list(
+    xs: rust_simple_method_specs,
+    empty: false,
+    cons: fn(acc, spec) {
+      if spec.method_name == name {
+        match rust_primitive_seed_row_named(name: name) {
+          Present { value: row } =>
+            match row.form {
+              PrimitiveMethodCall { method: m } =>
+                (symbol_lexeme(sym: m) == spec.method_name)
+                && (string_contains(s: spec.template, pattern: "&\{arg\}") == rust_primitive_first_arg_by_shared_reference(row: row))
+                && (rust_primitive_result_wraps(row: row) == spec.wraps_result)
+              PrimitiveFreeCall { callee: _ } => false
+            }
+          Absent => false
+        }
+      } else { acc }
+    }
+  )
+}
+
+test fn rust_string_length_row_agrees_with_registry() -> Bool {
+  rust_primitive_agrees_with_registry(name: "string_length")
+}
+
+test fn rust_join_row_agrees_with_method_spec() -> Bool {
+  rust_primitive_agrees_with_method_spec(name: "join")
+}
+
+// Control: the witness discriminates. A name the registry holds but no row realizes does not agree.
+test fn rust_registry_entry_without_row_does_not_agree() -> Bool {
+  !rust_primitive_agrees_with_registry(name: "map_keys")
+}

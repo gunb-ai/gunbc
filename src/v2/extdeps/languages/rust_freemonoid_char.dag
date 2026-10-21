@@ -1,6 +1,6 @@
 module v2.extdeps.languages.rust_freemonoid_char
 
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetModel,
   ProducedDeclUnwired,
   target_model_emit_transforms_empty,
@@ -17,6 +17,7 @@ import v2.extdeps.languages.rust {
 
 fn fmc_fixture_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: fmc_fixture_bundle_core(),
     lex: VoidLexRules,

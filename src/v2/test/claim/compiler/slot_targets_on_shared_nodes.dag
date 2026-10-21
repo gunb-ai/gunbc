@@ -1,0 +1,145 @@
+module v2.test.claim.compiler.slot_targets_on_shared_nodes
+
+// WHAT THIS CLAIMS (gunbc.plans.demand_engine_program 2.4). The v2.std.node slot tables name a Bind's, a
+// Match's roles by positional ordinal, so a node shared by two roles (a value equal to its
+// body, a scrutinee equal to an arm) and an annotation edge standing
+// first among the children still resolve each role to its own slot. v2.compiler.eval and v2.compiler.infer
+// read these roles through the tables.
+
+import std.algebra { Cons, Empty, list_at_optional }
+import v2.extdeps.languages.dag { dag_type_atom_node }
+import v2.std.compilers.body_lowering { lower_bind, lower_match }
+import v2.std.integer { Int }
+import v2.std.type_binder { type_annotation_edge }
+import v2.std.node {
+  NotADeclaration,
+  ComputationNode,
+  Bind,
+  Edge,
+  Positional,
+  node_synthetic,
+  Symbol,
+  BindBinderSlot,
+  BindBodySlot,
+  BindValueSlot,
+  MatchArmSlot,
+  MatchScrutineeSlot,
+  Node,
+  bind_slot_target,
+  match_role_slots,
+  child_slot_target,
+  match_slot_target,
+  content_hash,
+}
+import std.optional { Optional, Present, Absent }
+
+fn sts_atom(identity: Symbol) -> Node {
+  dag_type_atom_node(identity: identity)
+}
+
+fn sts_is(found: Optional<Node>, expected: Node) -> Bool {
+  match found {
+    Present { value: n } => content_hash(n: n) == content_hash(n: expected)
+    Absent => false
+  }
+}
+
+test fn sts_bind_value_and_body_share_a_node_yet_keep_their_slots() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let shared = sts_atom(identity: ^sts_shared)
+  let bind = lower_bind(key_binding: key, value: shared, body_binding: shared)
+  sts_is(found: bind_slot_target(n: bind, slot: BindBinderSlot), expected: key)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindValueSlot), expected: shared)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: shared)
+}
+
+test fn sts_bind_binder_equal_to_value_is_not_the_body() -> Bool {
+  let shared = sts_atom(identity: ^sts_shared)
+  let body = sts_atom(identity: ^sts_body)
+  let bind = lower_bind(key_binding: shared, value: shared, body_binding: body)
+  sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: body)
+    && !sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: shared)
+}
+
+test fn sts_match_scrutinee_equal_to_an_arm_keeps_its_slot() -> Bool {
+  let shared = sts_atom(identity: ^sts_shared)
+  let other = sts_atom(identity: ^sts_other)
+  let m = lower_match(scrutinee: shared, arms: [other, shared])
+  sts_is(found: match_slot_target(n: m, slot: MatchScrutineeSlot), expected: shared)
+    && sts_is(found: match_slot_target(n: m, slot: MatchArmSlot), expected: other)
+}
+
+fn sts_edge_is_positional(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    _ => false
+  }
+}
+
+fn sts_child_is_positional_at(n: Node, index: Int) -> Bool {
+  match list_at_optional(xs: n.children, index: index) {
+    Present { value: e } => sts_edge_is_positional(e: e)
+    Absent => false
+  }
+}
+
+fn sts_bind_roles_hold(bind: Node, key: Node, value: Node, body: Node) -> Bool {
+  sts_is(found: bind_slot_target(n: bind, slot: BindBinderSlot), expected: key)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindValueSlot), expected: value)
+    && sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: body)
+}
+
+// The annotation edge is stored FIRST: children are [annotation, binder, value, body], so a reader that
+// counted children rather than positional ordinals would take the annotation for the binder.
+test fn sts_an_annotation_edge_stored_first_does_not_shift_the_bind_roles() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let annotation = sts_atom(identity: ^sts_annotation)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      type_annotation_edge(annotation: annotation),
+      Edge { label: Positional, target: key, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
+    ]
+  )
+  !sts_child_is_positional_at(n: bind, index: 0)
+    && sts_child_is_positional_at(n: bind, index: 1)
+    && sts_bind_roles_hold(bind: bind, key: key, value: value, body: body)
+}
+
+// The annotation edge is stored BETWEEN positionals: [binder, value, annotation, body]. The annotation
+// is the same node as the value, so neither edge equality nor child index tells them apart.
+test fn sts_an_annotation_edge_interleaved_between_positionals_does_not_shift_the_bind_roles() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: key, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      type_annotation_edge(annotation: value),
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
+    ]
+  )
+  sts_child_is_positional_at(n: bind, index: 1)
+    && !sts_child_is_positional_at(n: bind, index: 2)
+    && sts_child_is_positional_at(n: bind, index: 3)
+    && sts_bind_roles_hold(bind: bind, key: key, value: value, body: body)
+}
+
+test fn sts_match_role_slots_return_every_arm_in_order() -> Bool {
+  let shared = sts_atom(identity: ^sts_shared)
+  let other = sts_atom(identity: ^sts_other)
+  let m = lower_match(scrutinee: shared, arms: [other, shared, other])
+  match match_role_slots(n: m, role: MatchArmSlot) {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      content_hash(n: child_slot_target(slot: a)) == content_hash(n: other)
+        && content_hash(n: child_slot_target(slot: b)) == content_hash(n: shared)
+        && content_hash(n: child_slot_target(slot: c)) == content_hash(n: other)
+    _ => false
+  }
+}
