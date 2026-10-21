@@ -904,7 +904,7 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
   })
 }
 
-fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => falseCapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false CapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
 fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
   let legs = ledger_of(r: r)
   count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
