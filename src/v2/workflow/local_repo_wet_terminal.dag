@@ -3358,6 +3358,8 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
       entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
       function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
+      expectation: ExpectedToHold {}
+    },
     // THE FOUR PERMANENT CONTROLS THE #14545 RETIREMENT MOVED HERE, one row per identity, so each keeps
     // an EXECUTING lane. All four greened while enrolled in `gunbc.workflow.floor_expected_red` as
     // ExpectedRed, and DESIGN §4b meta-obligation 4 says a greened expecting-red probe becomes a
