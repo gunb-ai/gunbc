@@ -240,7 +240,7 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // absent) and then BISECTING between the last present and the first absent generation. The head
 // search needs only Read and no parsing of names back into numbers -- a filesystem layout that had to
 // be re-parsed to be understood would be a second identity authority beside the key. The one listing
-// this store takes is cas_first_generation_absent's, on the single arm where generation 1 reads absent,
+// this store takes is cas_first_generation_absent_over's, on the single arm where generation 1 reads absent,
 // to tell an EMPTY slot from an UNINITIALIZED store; it establishes absence, it never finds a head.
 //
 // WHY NOT A LINEAR WALK FROM 1, which is what this was. The walk read every superseded generation on
@@ -487,7 +487,7 @@ fn cas_generation_of_digits(s: String) -> CasGeneration? {
 }
 
 // THIS key's generations named by a listing of the slot root. The listing is the same filesystem
-// authority cas_first_generation_absent consults, and a root that cannot be listed carries its cause.
+// authority cas_first_generation_absent_over consults, and a root that cannot be listed carries its cause.
 type CasWindowGenerations
   = CasWindowGenerationsListed { generations: List<CasGeneration> }
   | CasWindowGenerationsUnlisted { cause: String }
