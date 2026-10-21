@@ -93,7 +93,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { positional_child_target_nodes, content_hash }
+import v2.std.node { positional_child_target_nodes, content_hash, symbol_lexeme }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -170,7 +170,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, absent_declaration_identity, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -744,7 +744,8 @@ fn body_term_seal(node: Node, shape: LoweredShape) -> Node
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_outcome"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_lowering"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_identity_absent"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   if body_lower_has_grammar_projection_edge(node: node) {
@@ -768,9 +769,11 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_by_identity"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch_non_leaf"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_raw"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_function_value_body"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   match o {
@@ -782,7 +785,8 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
 fn body_term_sealed_lowering(o: Outcome<BodyLowering>, shape: LoweredShape) -> Outcome<BodyLowering>
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_forward_row_apply"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted_non_leaf")
   ]
 {
   match o {
@@ -1844,12 +1848,13 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
-      if emitted == ^dag_string_template {
-        match body_lower_string_template(shell: node) {
-          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
-          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
-        }
-      } else {
+      match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+        Present { value: leaf } =>
+          match leaf {
+            Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+            Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+          }
+        Absent =>
       match parse_production_captured_child_optional(node: node) {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
@@ -3475,6 +3480,13 @@ fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
 }
 
 fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: folded) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_reduce_emitted_non_leaf(folded: folded, emitted: emitted)
+  }
+}
+
+fn body_lower_reduce_emitted_non_leaf(folded: Node, emitted: Symbol) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
@@ -3487,11 +3499,6 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
-  } else if emitted == ^dag_string_template {
-    match body_term_sealed_outcome(o: body_lower_string_template(shell: folded), shape: LoweredOperatorExpression) {
-      Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    }
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
@@ -3677,6 +3684,27 @@ fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node>
   body_lower_callback_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
 }
 
+// `none` IS THE MARKED REFERENCE TO std.optional's ABSENT VARIANT, generated at the source occurrence
+// exactly as `T?` writes the marked reference to the Optional declaration (v2.std.qualified_name
+// declaration_reference_node): resolve answers it by declaration identity, with no import, and refuses
+// it as resolve_reason_generated_reference_declaration_absent when the closure lacks std.optional. No
+// payload type is chosen here: with no expected Optional<T> the reference is the constructor of an
+// unsolved variable, exactly as a bare Absent is (a refusal at a non-Optional position; `let x = none` gets
+// whatever verdict `let x = Absent` gets, whichever way infer settles an unsolved constructor binding).
+fn body_lower_leaf_literal_optional(emitted: Symbol, shell: Node) -> Optional<Outcome<Node>> {
+  if emitted == ^dag_surface_none_literal {
+    Present { value: body_lower_none_literal(shell: shell) }
+  } else if emitted == ^dag_string_template {
+    Present { value: body_lower_string_template(shell: shell) }
+  } else {
+    Absent
+  }
+}
+
+fn body_lower_none_literal(shell: Node) -> Outcome<Node> {
+  outcome_accepted(value: declaration_reference_node(qn: absent_declaration_identity(), occurrence_id: shell.occurrence_id))
+}
+
 fn body_lower_algebra_constructor_reference(name: Symbol, source: Node) -> Node {
   body_lower_qualified_name_spine_node(
     segments: [
@@ -3826,6 +3854,13 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
 }
 
 fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_fold_dispatch_non_leaf(node: node, emitted: emitted)
+  }
+}
+
+fn body_lower_fold_dispatch_non_leaf(node: Node, emitted: Symbol) -> Outcome<Node> {
         if emitted == ^dag_surface_match_expr {
           body_term_sealed_outcome(o: body_lower_match_expr(shell: node), shape: LoweredMatch)
         } else if emitted == ^dag_surface_if_expr {
@@ -3836,8 +3871,6 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
           body_term_sealed_outcome(o: body_lower_let_expr(shell: node), shape: LoweredLet)
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
-        } else if emitted == ^dag_string_template {
-          body_term_sealed_outcome(o: body_lower_string_template(shell: node), shape: LoweredOperatorExpression)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -9898,7 +9931,10 @@ fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
 // the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
 // form lowers to: the label is the name, and the target is the reference the name denotes as a value,
 // built as the pattern pun's binder is (body_lower_field_pattern_edge). Only a tagged record's list
-// parses a pun; a headless brace has no pun production to reach here.
+// parses a pun; a headless brace has no pun production to reach here. A pun named `none` is refused here,
+// located at the name: `none` is the absence literal (body_lower_none_literal), so the pun would name a
+// value no reference can name. The grammar admits it so that a speculative record probe over a match body
+// does not hard-stop (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
 fn body_lower_field_init_is_pun(item: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
     Present { value: id } => id == ^dag_surface_field_init_pun
@@ -9913,12 +9949,16 @@ fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
       match node_atom_identity_optional(node: atom) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
         Present { value: field_name } =>
-          outcome_accepted(
-            value: Edge {
-              label: Authored { name: field_name },
-              target: body_lower_param_ref_atom(source: atom, identity: field_name)
-            }
-          )
+          if symbol_lexeme(sym: field_name) == "none" {
+            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_reserved_value_name_pun, n: atom))
+          } else {
+            outcome_accepted(
+              value: Edge {
+                label: Authored { name: field_name },
+                target: body_lower_param_ref_atom(source: atom, identity: field_name)
+              }
+            )
+          }
       }
   }
 }
@@ -12407,6 +12447,13 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
 }
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: shell) {
+    Present { value: leaf } => body_term_sealed_lowering(o: body_lowering_lowered(o: leaf), shape: LoweredOperatorExpression)
+    Absent => body_lower_production_emitted_non_leaf(shell: shell, emitted: emitted, fn_body_pass_through: fn_body_pass_through)
+  }
+}
+
+fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_term_sealed_lowering(o: body_lower_service_decl(shell: shell), shape: LoweredServiceDeclaration)
   } else if emitted == ^dag_surface_resource_decl {
@@ -12427,8 +12474,6 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
-  } else if emitted == ^dag_string_template {
-    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_string_template(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_surface_postfix_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_postfix_expr(shell: shell)), shape: LoweredPostfix)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
