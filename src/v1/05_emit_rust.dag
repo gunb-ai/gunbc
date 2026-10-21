@@ -12235,7 +12235,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 // is no second route through the expanded copy.
 fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> NeedsBoxAnswer {
   let si = scope.type_env.source_indices
-  match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: resolved_type(n: base), source_indices: si).resolution {
+  // The DECLARATION is found through the base's alias expansion (Gigabyte = Measure<..> declares no field; Measure does:
+  // run 183, 7 refusals in std.measure); only the FIELD's type is read off the declaring item, never off the expanded copy.
+  let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name).resolved
+  match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: base_struct, source_indices: si).resolution {
     TypeDeclResolved { identity: _, decl: d } =>
       match find_child_named(n: d, name: field, source_indices: si) {
         Present { value: ch } =>
