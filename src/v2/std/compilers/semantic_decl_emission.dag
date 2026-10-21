@@ -45,8 +45,11 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_model_emit_transforms_empty,
   TokenClassEmitTransform,
   EmitLineBreaks,
+  EmitSpellingConstant,
+  EmitSpellingIdentity,
   EmitSpellingQuote,
   EmitSpellingEscape,
+  EmitSpellingWrap,
   target_model_type_atom_node,
   target_model_type_conj_node,
   target_model_named_edge,
@@ -156,20 +159,13 @@ type TargetSemanticDeclSerializeProfile {
 }
 
 // A token class whose lexeme the target transforms on emit: the TokenClassEmitTransform rows a TargetModel
-// carries, restricted to the two the declaration route is proven for. Every profile states its rows; a
-// target whose declarations print on one line with no quoted text states the empty list.
+// carries, held as that type. The bundle encodes two arms (EmitLineBreaks, EmitSpellingQuote); a profile
+// holding any other arm encodes it as the unproven marker, which decoding refuses with a typed diagnostic.
+// Every profile states its rows; a target whose declarations print on one line with no quoted text states
+// the empty list.
 type TargetSemanticDeclEmitTransformRow {
   token_class: Symbol
-  transform: TargetSemanticDeclEmitTransform
-}
-
-type TargetSemanticDeclEmitTransform
-  = DeclEmitLineBreaks { before: Int, after: Int }
-  | DeclEmitStringQuote { open: String, close: String, escapes: List<TargetSemanticDeclEmitEscape> }
-
-type TargetSemanticDeclEmitEscape {
-  from: String
-  to: String
+  transform: TokenClassEmitTransform
 }
 
 // Bundle row nodes are the single authority; lex and binding_spellings are derived at point of use via semantic_decl_profile_lex_rules / semantic_decl_profile_binding_spellings.
@@ -217,8 +213,12 @@ fn semantic_decl_char_identity(c: Char) -> Symbol {
 // missing view. That diagnostic is what sent this to the `String`-fork program on first reading; it
 // is a missing conversion at one site.
 fn semantic_decl_string_to_bundle_node(s: String) -> Node {
+  semantic_decl_chars_to_bundle_node(cs: chars(text: s))
+}
+
+fn semantic_decl_chars_to_bundle_node(cs: v2.std.text.String) -> Node {
   fold_list(
-    xs: chars(text: s),
+    xs: cs,
     empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
       target_model_type_conj_node(
@@ -822,29 +822,57 @@ fn semantic_decl_serialize_profile_bundle(
 }
 
 // A count is a conj of that many unit atoms: the bundle has no Int node, and a count read back is the
-// children's length, so the encoding cannot disagree with itself.
+// children's length, so the encoding cannot disagree with itself. A negative count has no conj; it is the
+// marker atom, which semantic_decl_count_from_node refuses rather than reading as zero.
 fn semantic_decl_count_node(n: Int) -> Node {
-  target_model_type_conj_node(
-    children: if n <= 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit) }]) }
-  )
+  if n < 0 {
+    target_model_type_atom_node(identity: ^semantic_decl_count_negative)
+  } else {
+    target_model_type_conj_node(
+      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit) }]) }
+    )
+  }
 }
 
-fn semantic_decl_count_from_node(n: Node) -> Int {
-  fold(n.children, init: 0, f: fn(acc, e) { acc + 1 })
+fn semantic_decl_count_from_node(n: Node) -> Outcome<Int> {
+  match n.kind {
+    TypeNode { connective: Conj } => outcome_accepted(value: fold(n.children, init: 0, f: fn(acc, e) { acc + 1 }))
+    TypeNode { connective: Atom { identity: _ } } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Disj } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Arrow } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Instantiation } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    ComputationNode { behavior: _ } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+  }
 }
 
-fn semantic_decl_emit_escape_node(e: TargetSemanticDeclEmitEscape) -> Node {
+fn semantic_decl_emit_transform_unproven_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^semantic_decl_emit_transform_arm_unproven,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn semantic_decl_emit_escape_node(e: EmitSpellingEscape) -> Node {
   target_model_type_conj_node(
     children: [
-      target_model_named_edge(name: ^semantic_decl_emit_escape_field_from, target: semantic_decl_string_to_bundle_node(s: e.from)),
-      target_model_named_edge(name: ^semantic_decl_emit_escape_field_to, target: semantic_decl_string_to_bundle_node(s: e.to))
+      target_model_named_edge(name: ^semantic_decl_emit_escape_field_from, target: semantic_decl_chars_to_bundle_node(cs: e.from)),
+      target_model_named_edge(name: ^semantic_decl_emit_escape_field_to, target: semantic_decl_chars_to_bundle_node(cs: e.to))
     ]
   )
 }
 
-fn semantic_decl_emit_transform_node(t: TargetSemanticDeclEmitTransform) -> Node {
+fn semantic_decl_emit_unproven_node() -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_unproven))
+    ]
+  )
+}
+
+fn semantic_decl_emit_transform_node(t: TokenClassEmitTransform) -> Node {
   match t {
-    DeclEmitLineBreaks { before: b, after: a } =>
+    EmitLineBreaks { before: b, after: a } =>
       target_model_type_conj_node(
         children: [
           target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_line_breaks)),
@@ -852,10 +880,11 @@ fn semantic_decl_emit_transform_node(t: TargetSemanticDeclEmitTransform) -> Node
           target_model_named_edge(name: ^semantic_decl_emit_transform_field_after, target: semantic_decl_count_node(n: a))
         ]
       )
-    DeclEmitStringQuote { open: o, close: c, escapes: es } =>
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
       target_model_type_conj_node(
         children: [
           target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_string_quote)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_prefix, target: semantic_decl_string_to_bundle_node(s: p)),
           target_model_named_edge(name: ^semantic_decl_emit_transform_field_open, target: semantic_decl_string_to_bundle_node(s: o)),
           target_model_named_edge(name: ^semantic_decl_emit_transform_field_close, target: semantic_decl_string_to_bundle_node(s: c)),
           target_model_named_edge(
@@ -870,6 +899,9 @@ fn semantic_decl_emit_transform_node(t: TargetSemanticDeclEmitTransform) -> Node
           )
         ]
       )
+    EmitSpellingIdentity => semantic_decl_emit_unproven_node()
+    EmitSpellingConstant { value: _ } => semantic_decl_emit_unproven_node()
+    EmitSpellingWrap { prefix: _, suffix: _ } => semantic_decl_emit_unproven_node()
   }
 }
 
@@ -894,19 +926,23 @@ fn semantic_decl_emit_transform_rows_catalog(rows: List<TargetSemanticDeclEmitTr
   )
 }
 
-fn decode_semantic_decl_emit_escape(row: Node) -> Outcome<TargetSemanticDeclEmitEscape> {
+fn decode_semantic_decl_chars(bundle: Node) -> Outcome<v2.std.text.String> {
+  bind_outcome(o: semantic_decl_string_from_bundle_node(bundle: bundle), f: fn(s) { outcome_accepted(value: chars(text: s)) })
+}
+
+fn decode_semantic_decl_emit_escape(row: Node) -> Outcome<EmitSpellingEscape> {
   bind_outcome(
     o: find_named_child(root: row, name: ^semantic_decl_emit_escape_field_from),
     f: fn(from_node) {
       bind_outcome(
-        o: semantic_decl_string_from_bundle_node(bundle: from_node),
+        o: decode_semantic_decl_chars(bundle: from_node),
         f: fn(from) {
           bind_outcome(
             o: find_named_child(root: row, name: ^semantic_decl_emit_escape_field_to),
             f: fn(to_node) {
               bind_outcome(
-                o: semantic_decl_string_from_bundle_node(bundle: to_node),
-                f: fn(to) { outcome_accepted(value: TargetSemanticDeclEmitEscape { from: from, to: to }) }
+                o: decode_semantic_decl_chars(bundle: to_node),
+                f: fn(to) { outcome_accepted(value: EmitSpellingEscape { from: from, to: to }) }
               )
             }
           )
@@ -916,7 +952,7 @@ fn decode_semantic_decl_emit_escape(row: Node) -> Outcome<TargetSemanticDeclEmit
   )
 }
 
-fn decode_semantic_decl_emit_escapes(catalog: Node) -> Outcome<List<TargetSemanticDeclEmitEscape>> {
+fn decode_semantic_decl_emit_escapes(catalog: Node) -> Outcome<List<EmitSpellingEscape>> {
   fold(
     catalog.children,
     init: outcome_accepted(value: Empty),
@@ -934,52 +970,82 @@ fn decode_semantic_decl_emit_escapes(catalog: Node) -> Outcome<List<TargetSemant
   )
 }
 
-fn decode_semantic_decl_emit_transform(t: Node) -> Outcome<TargetSemanticDeclEmitTransform> {
+fn decode_semantic_decl_emit_line_breaks(t: Node) -> Outcome<TokenClassEmitTransform> {
+  bind_outcome(
+    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_before),
+    f: fn(before_node) {
+      bind_outcome(
+        o: semantic_decl_count_from_node(n: before_node),
+        f: fn(before) {
+          bind_outcome(
+            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_after),
+            f: fn(after_node) {
+              bind_outcome(
+                o: semantic_decl_count_from_node(n: after_node),
+                f: fn(after) { outcome_accepted(value: EmitLineBreaks { before: before, after: after }) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_quote(t: Node) -> Outcome<TokenClassEmitTransform> {
+  bind_outcome(
+    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_prefix),
+    f: fn(prefix_node) {
+      bind_outcome(
+        o: semantic_decl_string_from_bundle_node(bundle: prefix_node),
+        f: fn(prefix) {
+          bind_outcome(
+            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_open),
+            f: fn(open_node) {
+              bind_outcome(
+                o: semantic_decl_string_from_bundle_node(bundle: open_node),
+                f: fn(open) {
+                  bind_outcome(
+                    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_close),
+                    f: fn(close_node) {
+                      bind_outcome(
+                        o: semantic_decl_string_from_bundle_node(bundle: close_node),
+                        f: fn(close) {
+                          bind_outcome(
+                            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_escapes),
+                            f: fn(esc_node) {
+                              bind_outcome(
+                                o: decode_semantic_decl_emit_escapes(catalog: esc_node),
+                                f: fn(escapes) { outcome_accepted(value: EmitSpellingQuote { prefix: prefix, open: open, close: close, escapes: escapes }) }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// The arm is read from the kind atom's identity: the two proven arms decode, the unproven marker refuses
+// typed, and any other kind is a malformed bundle.
+fn decode_semantic_decl_emit_transform(t: Node) -> Outcome<TokenClassEmitTransform> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: t, field: ^semantic_decl_emit_transform_field_kind),
     f: fn(kind) {
       if kind == ^semantic_decl_emit_transform_line_breaks {
-        bind_outcome(
-          o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_before),
-          f: fn(before) {
-            bind_outcome(
-              o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_after),
-              f: fn(after) {
-                outcome_accepted(value: DeclEmitLineBreaks { before: semantic_decl_count_from_node(n: before), after: semantic_decl_count_from_node(n: after) })
-              }
-            )
-          }
-        )
+        decode_semantic_decl_emit_line_breaks(t: t)
       } else if kind == ^semantic_decl_emit_transform_string_quote {
-        bind_outcome(
-          o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_open),
-          f: fn(open_node) {
-            bind_outcome(
-              o: semantic_decl_string_from_bundle_node(bundle: open_node),
-              f: fn(open) {
-                bind_outcome(
-                  o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_close),
-                  f: fn(close_node) {
-                    bind_outcome(
-                      o: semantic_decl_string_from_bundle_node(bundle: close_node),
-                      f: fn(close) {
-                        bind_outcome(
-                          o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_escapes),
-                          f: fn(esc_node) {
-                            bind_outcome(
-                              o: decode_semantic_decl_emit_escapes(catalog: esc_node),
-                              f: fn(escapes) { outcome_accepted(value: DeclEmitStringQuote { open: open, close: close, escapes: escapes }) }
-                            )
-                          }
-                        )
-                      }
-                    )
-                  }
-                )
-              }
-            )
-          }
-        )
+        decode_semantic_decl_emit_quote(t: t)
+      } else if kind == ^semantic_decl_emit_transform_unproven {
+        outcome_rejected(d: semantic_decl_emit_transform_unproven_diagnostic(bundle: t))
       } else {
         outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: t))
       }
@@ -1022,30 +1088,13 @@ fn decode_semantic_decl_emit_transform_rows_catalog(catalog: Node) -> Outcome<Li
   )
 }
 
-fn semantic_decl_emit_transform_to_token_class_transform(t: TargetSemanticDeclEmitTransform) -> TokenClassEmitTransform {
-  match t {
-    DeclEmitLineBreaks { before: b, after: a } => EmitLineBreaks { before: b, after: a }
-    DeclEmitStringQuote { open: o, close: c, escapes: es } =>
-      EmitSpellingQuote {
-        prefix: "",
-        open: o,
-        close: c,
-        escapes: fold_list(
-          xs: es,
-          empty: Empty,
-          cons: fn(acc, e) { list_snoc_item(xs: acc, item: EmitSpellingEscape { from: chars(text: e.from), to: chars(text: e.to) }) }
-        )
-      }
-  }
-}
-
 // The profile's rows as the TargetModel's emit transforms.
 fn semantic_decl_emit_transforms(rows: List<TargetSemanticDeclEmitTransformRow>) -> Map<Symbol, TokenClassEmitTransform> {
   fold_list(
     xs: rows,
     empty: target_model_emit_transforms_empty,
     cons: fn(acc, row) {
-      map_insert(m: acc, key: row.token_class, value: semantic_decl_emit_transform_to_token_class_transform(t: row.transform))
+      map_insert(m: acc, key: row.token_class, value: row.transform)
     }
   )
 }

@@ -83,9 +83,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claim, not in a compiler module. Each claim assembles its fixture ONCE and passes the ResolvedTree down,
 // so no claim runs the front end more than once.
 //
-// THE CONSUMER IS A DECLARED FRONTIER, NOT A GAP HERE: A4 (v2.program's run reads these rows and the
-// hand-written program_run_dependencies row is deleted) is the production consumer named in the plan. No
-// claim here pretends a consumer exists yet.
+// THE CONSUMER IS A DECLARED FRONTIER, NOT A GAP HERE: the check that the body evaluator's order on a RESOLVED
+// program respects these relations (gunbc.plans.demand_engine_program M2). v2.program's run is not it: it has
+// no resolve, and takes its order from v2.compiler.activation_dependency instead. No claim here pretends a
+// consumer exists yet.
 
 data vudd_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -214,7 +215,7 @@ test fn vudd_c_parameter_uses_are_input_dispositions_holds() -> Bool {
 // node is NOT that child (so the fixture discriminates: sourcing at the record fails here); and a
 // scheduler that has completed exactly the resolved value finds the row's dependent unblocked
 // (v2.workflow.scheduler scheduler_relation_unblocked under scheduler_node_eq, over the row's own
-// v2.std.dependency dependency_view_relation) -- the interface A4 will consume.
+// v2.std.dependency dependency_view_relation) -- the interface the declared consumer will read.
 test fn vudd_f_source_is_the_resolved_value_holds() -> Bool {
   match vudd_assemble(src: vudd_resolved_source_source) {
     Absent => false
@@ -454,7 +455,7 @@ fn vudd_with_bind_value_at(acc: List<Node>, n: Node, binder_site: NodeOccurrence
   }
 }
 
-// THE EXPORTED PROJECTION CARRIES EVERY RELATION: value_use_views is what A4 reads, so the positive claims
+// THE EXPORTED PROJECTION CARRIES EVERY RELATION: value_use_views is what a consumer reads, so the positive claims
 // assert through it -- same length as the relation population, and every relation's view present in it.
 // A projection that returned [] or dropped a row would leave the relation population intact and fail here.
 fn vudd_views_carry_every_relation(d: ValueUseDependencies) -> Bool {
