@@ -329,7 +329,7 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // binary is absent, which is the reachability risk every member carries. The refusal row passes only
 // the planted root; the control must also walk the dag root so gunbc.output_policy resolves, which
 // is irreducible while a verdict needs that module and puts the control over the per-row wall budget
-// that nothing on this lane arms (gunbc.rung_drop local_repo_wet_lane_per_row_wall_budget_unarmed).
+// that nothing on this lane arms (gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall).
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
