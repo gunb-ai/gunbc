@@ -73,6 +73,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
+use crate::v1_std_core::SpanLocation::Located;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
@@ -89,20 +90,20 @@ pub use crate::v1_std_core::{
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node,
+    local_transport_node, locate_span, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
-    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
-    TokenShape, UnaryOpKind,
+    param_node_type_expr, pre_intern_tokens, render_span_location, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, type_param_kind_property_name, unlocated_cause_phrase, variant_node_fields,
+    variant_node_name_at, with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
+    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode,
+    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier,
+    ParsedModuleItemKind, SpanLocation, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -18797,16 +18798,13 @@ pub fn duplicate_field_init_message(
 }
 
 pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> String {
-    match v1_rt::map_get(&ctx.source_indices.clone(), span.file.clone()) {
-        Some(index) => {
-            let lc = crate::v1_std_core::byte_to_line_col(index.clone(), span.start.clone());
-            v1_rt::concat(
-                v1_rt::concat(int_to_string(lc.line.clone()), ":".to_string()),
-                int_to_string(lc.col.clone()),
-            )
-        }
-        std::option::Option::None => {
-            v1_rt::concat("byte ".to_string(), int_to_string(span.start.clone()))
+    match (*crate::v1_std_core::locate_span(span.clone(), ctx.source_indices.clone())).clone() {
+        SpanLocation::Located { at: at, .. } => v1_rt::concat(
+            v1_rt::concat(int_to_string(at.start_line.clone()), ":".to_string()),
+            int_to_string(at.start_col.clone()),
+        ),
+        SpanLocation::Unlocated { cause: cause, .. } => {
+            crate::v1_std_core::unlocated_cause_phrase(cause.clone())
         }
     }
 }
