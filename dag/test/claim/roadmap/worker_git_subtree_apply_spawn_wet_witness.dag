@@ -41,7 +41,9 @@ import extdeps.git {
 }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, install_empty_file_command,
+  install_directory_owned_argv_command,
 }
+import gunbc.managed_directory { declared_directory_mode }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
@@ -51,6 +53,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_subtree_readback_is_granted, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_objects_child,
   dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
+  dashboard_git_worker_subtree_declared_directory_mode, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_subtree_path,
+  dashboard_git_worker_directory_mode_octal, dashboard_git_worker_subtree_granted_directory_mode_octal,
 }
 import gunbc.roadmap.roadmap_dashboard_instance_apply {
   dashboard_apply_provision_op, dashboard_git_worker_subtree_is_granted,
@@ -198,7 +203,21 @@ fn wet_lab_local_instance(root: String) -> HostDashboardInstance {
 // group and the worker could not write into it). Modes are STATED, not inherited from the umask, because the
 // claim's premise is the state before the grant and the umask of whatever process runs the witness is not
 // evidence for it.
-fn wet_plant_repository(git: String, uid: Int, gid: Int) -> Bool {
+//
+// THE THREE GRANTED TOPS ARE THE ROUTE'S FACT, NOT THIS FIXTURE'S. `objects`, `refs` and `logs` are the
+// subtrees the deploy asserts through the owned-directory provider, whose provider installs each TOP with
+// `install -d -o -g -m` -- an ABSOLUTE restatement of mode, owner and group -- and only then sweeps the
+// interior. A fixture that mkdir's those three and lets the migration's ADDITIVE sweep be the only thing
+// touching them is therefore not the composition the route performs: from 0755 the sweep can only ADD bits,
+// so a top whose declared arm clears the other-triple lands at the wrong mode and the readback's exact top
+// leg refuses the route's own result. That is precisely the round-3 defect this witness went red for (see
+// gunbc.recurring_failure_mode.declared_mode_authority_split_across_model_and_witness), and the fix is not
+// to widen the readback but to plant the way the deploy plants: the same admitted install primitive, at the
+// mode the model's own arm declares, owner and group numeric from the process itself (install(1) takes
+// either spelling; the wet account is the fixture's principal, as everywhere else here). Children --
+// fan-out, pack, info, hooks, info -- stay mkdir'd at 0755 with their 0644 files, because those are NOT
+// what the route installs; they are what the route finds.
+fn wet_plant_repository(git: String, uid: Int, gid: Int, instance: HostDashboardInstance) -> Bool {
   let directories = [
     git, join([git, "/objects"], ""), join([git, "/objects/f9"], ""), join([git, "/objects/pack"], ""),
     join([git, "/objects/info"], ""), join([git, "/refs"], ""), join([git, "/refs/heads"], ""),
@@ -248,6 +267,32 @@ fn wet_plant_repository(git: String, uid: Int, gid: Int) -> Bool {
       map(
         xs: directories,
         f: d => chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0755" as NonEmptyStr, path: d),
+      ),
+    )
+    // THE THREE GRANTED TOPS, RESTATED AS THE ROUTE RESTATES THEM -- LAST, because everything above this
+    // line is the state BEFORE the deploy touched the repository (0755 everywhere, which the chmod sweep
+    // guarantees even over the mkdir'd tops), and what follows is the one fact the deploy owns. The
+    // owned-directory provider does not `chmod` these three; it installs each with `install -d -o -g -m`,
+    // which restates mode, owner and group ABSOLUTELY, at the mode
+    // dashboard_git_worker_subtree_declared_directory_mode declares for that child (objects/ the sticky
+    // arm, refs/ and logs/ the plain setgid arm) and the writable owner's account. A fixture that left
+    // these three to the migration's ADDITIVE sweep is not the composition the route performs: from 0755
+    // an additive sweep can only set bits, so a top whose declared arm clears the other-triple lands wrong
+    // and the readback's exact top leg refuses the route's own output -- which is exactly how this witness
+    // went red at the consolidation commit (the round-3 defect, and the reason a top's mode has ONE home:
+    // the same DeclaredDirectoryMode renders the install's -m, the fold's top expectation, and this line).
+    && wet_all(
+      map(
+        xs: dashboard_git_worker_directory_children,
+        f: child => install_directory_owned_argv_command(
+          mode: declared_directory_mode(m: dashboard_git_worker_subtree_declared_directory_mode(child: child)),
+          owner: to_string(uid) as NonEmptyStr,
+          group: to_string(gid) as NonEmptyStr,
+          // THE PATH FROM THE ROUTE'S OWN BUILDER: the child rows are repo-root-relative (.git/objects),
+          // so re-joining them onto the .git path this fixture was handed would double the prefix, and the
+          // wet layer is excluded on the uid-0 runner -- an error only srv1 would see.
+          path: dashboard_git_worker_subtree_path(instance: instance, child: child),
+        ),
       ),
     )
 }
@@ -409,7 +454,7 @@ test fn the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_post
     let config = join([repo, "/.git/config"], "")
     let instance = wet_lab_local_instance(root: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: join([repo, "/.git"], ""), uid: uid, gid: gid)
+      && wet_plant_repository(git: join([repo, "/.git"], ""), uid: uid, gid: gid, instance: instance)
       && wet_ok(command: git_init_quiet_command(repository_dir: repo))
     let before_shared = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_core_shared_repository_config_key))
     let before_gc = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_gc_auto_config_key))
@@ -449,11 +494,14 @@ test fn the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_post
 // THE POSITIVE: after the arm the MODEL'S OWN readback (dashboard_git_worker_subtree_is_granted, which
 // refuses an empty receipt, a line it cannot parse, and a receipt missing the subtree's top) accepts
 // objects/, refs/ and logs/, and the specific facts are read off `find`:
-//   - objects/'s own top is 3775 -- the STICKY bit, which `chmod g+w` cannot produce and which is what keeps
-//     the worker from renaming the tree owner's objects/pack aside and planting a symlink for the
-//     maintenance job to write through
-//     to write packs into;
-//   - the EXISTING fan-out directory objects/f9 is 2775 -- the 0755 that made the worker's first commit fail;
+//   - objects/'s own top is the DECLARED ARM, 3770 -- the STICKY bit, which `chmod g+w` cannot produce and
+//     which is what keeps the worker from renaming the tree owner's objects/pack aside and planting a
+//     symlink for the maintenance job to write through
+//     to write packs into. The top is what the provider's `install -d -o -g -m` restates (and what this
+//     file's fixture now restates the same way); the sweep only preserves it;
+//   - the EXISTING fan-out directory objects/f9 is 3775 -- from the 0755 that made the worker's first
+//     commit fail, walked by the sweep's own `-type d` action (g+w, g+s, and the sticky term this subtree's
+//     walk adds);
 //   - the pre-existing reflog is 0664, the one file-level grant the model makes;
 //   - a fan-out directory created AFTER the grant comes up 2775, the other accepted interior shape (mkdir
 //     inherits S_ISGID and not S_ISVTX), so the readback does not demand a mode git can never produce.
@@ -475,7 +523,7 @@ test fn the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not() -> B
     let logs = join([git, "/logs"], "")
     let instance = wet_lab_local_instance(root: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: git, uid: uid, gid: gid)
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
     // THE CONTROL, AND WHY IT IS THIS STATE. "Require the migration to refuse a plain ungranted tree" LOOKS
     // like the discriminating arm and is not one: the step GRANTS FIRST AND READS BACK AFTERWARDS, and every
     // action in the walk only ADDS bits, so a 0755 tree simply becomes granted and an assertion that it
@@ -557,7 +605,16 @@ test fn the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not() -> B
       && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
       && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_refs_child, group: group as NonEmptyStr, receipt: refs_after)
       && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_logs_child, group: group as NonEmptyStr, receipt: logs_after)
-      && wet_receipt_line_is(receipt: objects_after, kind: "d", mode: "3775", group: group, path: "")
+      // THE TOP, DERIVED -- not a figure transcribed from a measurement. This line exists because the fold
+      // owns the DECISION and a leg owns the OBSERVATION: if the fold's verdict and this line ever disagree
+      // about what the top should be, one of them is wrong, and the only way to know which is for both to
+      // read the same arm. (Before this correction the line said "3775", copied from the interior shape,
+      // while the install and the fold said 3770 -- and a top that failed to be installed still refused.)
+      && wet_receipt_line_is(
+        receipt: objects_after, kind: "d",
+        mode: dashboard_git_worker_subtree_granted_directory_mode_octal(child: dashboard_git_worker_objects_child),
+        group: group, path: "",
+      )
       // AN EXISTING FAN-OUT DIRECTORY READS 3775 AFTER THE APPLY'S OWN MIGRATION, not 2775: the model's
       // objects/ walk applies `a+t` to every directory it walks, and this claim runs THAT argv (the same
       // builder the builder witness exercises), so f9 gets the sticky bit beside the setgid one. The 2775
@@ -610,7 +667,7 @@ test fn the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_onl
     let object_path = "f9/0123456789abcdef0123456789abcdef01234567"
     let instance = wet_lab_local_instance(root: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: git, uid: uid, gid: gid)
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       // git's OWN mode for a loose object, where one lives.
       && wet_ok(
         command: chmod_set_mode_command(
@@ -642,7 +699,14 @@ test fn the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_onl
       group: group as NonEmptyStr,
       receipt: join(
         [
-          join(["d 2775 ", group, " "], ""),
+          // THE TOP AT THE ARM THE FOLD DEMANDS, THE INTERIORS AT AN ACCEPTED INTERIOR SHAPE: with every
+          // other line correct, the ONLY thing this receipt can fail on is the 0444 reflog -- which is what
+          // makes it evidence about the reflog's mode. A top spelled at 2775 here would refuse for the wrong
+          // reason and the claim would pass without ever having tested the 444.
+          join([
+            "d ", dashboard_git_worker_subtree_granted_directory_mode_octal(child: dashboard_git_worker_logs_child),
+            " ", group, " ",
+          ], ""),
           join(["d 2775 ", group, " refs"], ""),
           join(["d 2775 ", group, " refs/heads"], ""),
           join(["f 444 ", group, " refs/heads/main"], ""),
@@ -675,7 +739,7 @@ fn wet_basename(path: String) -> String {
 
 // THE PRUNE SET OF A CONFINED WALK, AS A FUNCTION OF THE DIRECTORY BEING WALKED. Walking .git itself has
 // to PRUNE the children the migration exists to grant -- otherwise the walk compares 0755 against the
-// migrated 3775 and refuses a correct grant (that is what the first cut of the claim below did on the
+// granted top and refuses a correct grant (that is what the first cut of the claim below did on the
 // runner: ap=true, unmoved=false). Every other confined path is walked whole.
 fn confined_pruned(child: String, git_dir: String, granted: List<String>) -> List<String> {
   if child == git_dir {
@@ -699,7 +763,7 @@ test fn the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it()
     // THE CONFINED SET IS EXACTLY THE SET THE MODEL DECLARES CONFINED
     // (gunbc.roadmap.roadmap_dashboard_instance dashboard_git_worker_subtree_confined_children, plus the
     // .git directory itself and its two other confined children). objects/ TOP IS NOT IN IT AND MUST NOT
-    // BE: it is the migration's own grant target, and it legitimately goes 0755 -> 3775 (the leg that
+    // BE: it is the migration's own grant target, and it legitimately goes 0755 -> the declared arm (the leg that
     // OBSERVES that change, rather than forbidding it, is the migration claim). Listing it here would make
     // the claim refuse the very grant the PR exists to make -- the failure mode is the mirror of the one
     // where a confined path is left OUT of this list.
@@ -714,10 +778,10 @@ test fn the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it()
     ]
     let instance = wet_lab_local_instance(root: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: git, uid: uid, gid: gid)
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
     // THE PRUNES ARE THE CLAIM. .git ITSELF is confined and must not move, but it CONTAINS the three
     // subtrees the migration exists to grant -- so a walk of .git that descends into them would compare
-    // 0755 against 3775, conclude the confined interior moved, and REFUSE A CORRECT GRANT. An instrumented
+    // 0755 against the granted top, conclude the confined interior moved, and REFUSE A CORRECT GRANT. An
     // run on the runner said exactly this (ap=true, unmoved=false), which is why the walk is bounded by the
     // prunes rather than by depth. WHAT IS PRUNED IS NOT INVENTED HERE: it is the very children the model
     // declares as the migration's targets (dashboard_git_worker_directory_children), each reduced to the
@@ -755,7 +819,7 @@ test fn the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it()
       // must show NONE of the granted subtrees' content: "logs/" below is .git/logs/'s own interior,
       // reachable only by descending into a granted child -- which is exactly what the leg that made this
       // claim first FAIL on the runner caught (it walked .git unpruned and compared 0755 against the
-      // migrated 3775, refusing a correct grant).
+      // granted top, refusing a correct grant)
       && any(xs: before_directories, predicate: r => string_contains(s: r, pattern: "hooks/pre-commit"))
       && !any(xs: before_directories, predicate: r => string_contains(s: r, pattern: "logs/"))
     let clean = wet_ok(command: rm_recursive_force_command(path: root))
@@ -781,7 +845,9 @@ fn wet_receipts_unchanged(before: List<String>, after: List<String>) -> Bool {
 //     launched a worker whose first commit dies on the reflog;
 //   - the gate also REFUSES a walk over an entry that is not there -- the case where a silently-failing find
 //     produces an EMPTY receipt, and a predicate over the lines of an empty walk is vacuously true;
-//   - AFTER the grant it PASSES, and the entry is 2775 with its own reflog 0664, read off the tree.
+//   - AFTER the grant it PASSES, and the entry reads the declared arm -- the rendering the gate compares,
+//     dashboard_git_worker_directory_mode_octal over dashboard_git_worker_granted_directory_mode -- with
+//     its own reflog 0664, read off the tree
 //
 // THE ARGV IS THE PRODUCTION ARGV, NOT A RE-SPELLING (the constraint bright-moth-475 set for this claim).
 // DispatchSpawnCommands' worker_git_entry_readback field is minted at
@@ -847,7 +913,15 @@ test fn the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without
     let entry_receipt = wet_receipt(target: entry, pruned: [])
     let clean = wet_ok(command: rm_recursive_force_command(path: root))
     seeded && before_refused && absent_refused && granted
-      && wet_receipt_line_is(receipt: entry_receipt, kind: "d", mode: "2775", group: group, path: "")
+      // THE ENTRY'S TOP, DERIVED FROM THE GATE'S OWN ARM. The gate decides on
+      // dashboard_git_worker_granted_directory_mode (the plain setgid arm -- no sticky bit on an entry, for
+      // the reason at dispatch_attempt_worker_git_entry_migration), and this line has to name that same
+      // arm; the entry migration installs the top with that arm too, so install, gate and leg are one fact.
+      && wet_receipt_line_is(
+        receipt: entry_receipt, kind: "d",
+        mode: dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
+        group: group, path: "",
+      )
       && wet_receipt_line_is(receipt: entry_receipt, kind: "f", mode: "664", group: group, path: "logs/HEAD")
       && clean
   }
@@ -881,7 +955,7 @@ test fn a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confin
     let worktree = join([root, "/attempt"], "")
     let instance = wet_lab_local_instance(root: repo)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: git, uid: uid, gid: gid)
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       && wet_repo_with_a_commit(repo: repo)
     let posture = dashboard_apply_provision_op(
       instance: instance,
@@ -995,7 +1069,7 @@ test fn the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit() -> 
     let granted_worktree = join([root, "/attempt-granted"], "")
     let instance = wet_lab_local_instance(root: repo)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
-      && wet_plant_repository(git: git, uid: uid, gid: gid)
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       && wet_repo_with_a_commit(repo: repo)
     // THE UNGRANTED STATE, AS THE MODEL SEES IT: not "the commit failed" (a single principal cannot decide
     // that, see above) but "the model refuses this tree", subtree by subtree, and says why.

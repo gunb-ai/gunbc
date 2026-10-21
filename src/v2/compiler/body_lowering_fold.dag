@@ -11668,15 +11668,52 @@ fn body_lower_status_entry_shells(block: Node) -> List<Node> {
       fold(body_lower_service_member_shells(root: captured), init: Empty, f: fn(acc, shell) {
         match parse_production_emitted_identity_optional(node: shell) {
           Present { value: id } =>
-            if (id == ^dag_surface_status_type_entry) || (id == ^dag_surface_status_expr_entry) { list_snoc_item(xs: acc, item: shell) } else { acc }
+            if (id == ^dag_surface_status_type_entry) || (id == ^dag_surface_status_expr_entry) || (id == ^dag_surface_mock_reading_entry) { list_snoc_item(xs: acc, item: shell) } else { acc }
           Absent => acc
         }
       })
   }
 }
 
-// An entry's captured is seq(status_pattern, seq(`=>`, seq(payload, opt(doc string)))).
+// An entry's captured is seq(status_pattern, seq(`=>`, seq(payload, opt(doc string)))); a mock reading
+// (the file transport's, which observes no status) is seq(`=>`, seq(payload, opt(doc string))) and lowers
+// to an arm with no <arm-pattern>.
 fn body_lower_status_arm(entry: Node, mock: Bool) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: entry) {
+    Present { value: id } =>
+      if id == ^dag_surface_mock_reading_entry { body_lower_mock_reading_arm(entry: entry) } else { body_lower_keyed_status_arm(entry: entry, mock: mock) }
+    Absent => body_lower_keyed_status_arm(entry: entry, mock: mock)
+  }
+}
+
+fn body_lower_mock_reading_arm(entry: Node) -> Outcome<Node> {
+  let refuse = outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_arm_unlowered, n: entry))
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: p1 } =>
+          match sugar_sequence_pair_optional(node: p1.right) {
+            Absent => refuse
+            Present { value: p2 } =>
+              bind_outcome(o: body_lower_arm_payload(payload: p2.left, mock: true), f: fn(payload) {
+                outcome_accepted(value: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_reading_arm_children(payload: payload, doc: body_lower_first_string_literal_optional(root: p2.right))))
+              })
+          }
+      }
+  }
+}
+
+fn body_lower_reading_arm_children(payload: Node, doc: Optional<Node>) -> List<Edge> {
+  let core = [Edge { label: Authored { name: realization_arm_payload_label() }, target: payload }]
+  match doc {
+    Present { value: d } => list_snoc_item(xs: core, item: Edge { label: Authored { name: realization_arm_doc_label() }, target: d })
+    Absent => core
+  }
+}
+
+fn body_lower_keyed_status_arm(entry: Node, mock: Bool) -> Outcome<Node> {
   let refuse = outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_arm_unlowered, n: entry))
   match parse_production_captured_child_optional(node: entry) {
     Absent => refuse

@@ -2018,9 +2018,12 @@ fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstanc
 //   FOUR, setgid on DIRECTORIES ONLY (find -type d), which is what makes a fan-out directory git
 //   creates later inherit the attempt group instead of the creator's primary group.
 //
-// The directory mode ends 2775 and the file mode 0664 -- exactly what core.sharedRepository=group
-// makes git ask for, so the migrated contents and the contents git creates later are one shape and
-// neither route can leave a file the other cannot write.
+// The directory mode a WALKED interior ends at is 2775 (3775 under the sticky arm) and the file mode 0664
+// -- exactly what core.sharedRepository=group makes git ask for, so the migrated contents and the contents
+// git creates later are one shape and neither route can leave a file the other cannot write. The TOP of each
+// subtree is NOT the sweep's to make: the owned-directory provider installs it at the declared arm
+// (02770/03770, file_mode_octal of dashboard_git_worker_subtree_granted_directory_mode) and the additive
+// sweep preserves those bits -- which is why the wet fixture installs its tops the same way.
 // THE MIGRATION STEPS. The group is the SAME value the declared demands carry
 // (dashboard_instance_worker_writable_owner), so the migration cannot drift from the model it is
 // preparing the ground for. THE PRUNES COME BEFORE THE WALK and restate the confinement: a granted
@@ -2532,16 +2535,38 @@ fn dashboard_git_worker_file_modes_are_equal(a: FileMode, b: FileMode) -> Bool {
   file_mode_octal(mode: a) == file_mode_octal(mode: b)
 }
 
-// THE GRANTED DIRECTORY MODE FOR ONE SUBTREE: 03775 where entries owned by someone other than the
-// worker live beneath it, 02775 where none does. PER SUBTREE, not one global answer -- a single "is it 02775" predicate would make
-// the sticky fix invisible to the model, because the readback would refuse the tree that is actually
-// correct.
+// THE GRANTED DIRECTORY MODE FOR ONE SUBTREE, rendered from the arm
+// dashboard_git_worker_subtree_declared_directory_mode picks: 03770 where entries owned by someone other
+// than the worker live beneath it, 02770 where none does. PER SUBTREE, not one global answer -- a single
+// "is it 02770" predicate would make the sticky fix invisible to the model, because the readback would
+// refuse the tree that is actually correct. This is the ONE rendering shared by the provider's `install -d
+// -m`, the fold's exact top leg, and (through the octal text below) any witness that has to name a top's
+// mode in a receipt line.
 fn dashboard_git_worker_subtree_granted_directory_mode(child: NonEmptyStr) -> FileMode {
   if dashboard_git_worker_subtree_needs_sticky(child: child) {
     dashboard_git_worker_granted_shared_directory_mode
   } else {
     dashboard_git_worker_granted_directory_mode
   }
+}
+
+// A GRANTED TOP ARM, AS THE TEXT `find` PRINTS. The readback fold parses a receipt's mode column with
+// file_mode_of_octal_text and compares it against an arm; anything OUTSIDE the fold that has to NAME a
+// top's mode in text -- the wet witness's receipt legs, which observe one line each while the fold owns
+// the decision -- has to render THAT arm, never re-spell a figure. The round-3 defect this correction
+// exists for is exactly a witness whose hand-typed "3775"/"2775" outlived the arm it was transcribed
+// from, so that the tree the route produced and the line the witness expected no longer named the same
+// mode. Four digits always -- file_mode_octal renders the special digit too -- which is the shape
+// find(1)'s %m prints when a special bit is set.
+fn dashboard_git_worker_directory_mode_octal(mode: FileMode) -> String {
+  file_mode_octal(mode: mode)
+}
+
+// THE TOP LEG'S EXPECTATION FOR ONE REPOSITORY SUBTREE, in the text above.
+fn dashboard_git_worker_subtree_granted_directory_mode_octal(child: NonEmptyStr) -> String {
+  dashboard_git_worker_directory_mode_octal(
+    mode: dashboard_git_worker_subtree_granted_directory_mode(child: child),
+  )
 }
 
 // THE PLAIN GRANT, and it REFUSES the sticky shape -- deliberately, and a claim leg pins it: the sticky
@@ -2754,7 +2779,7 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
 //    directory_ownership_assertion_stops_at_the_top_level).
 // THE SAME DECISION OVER AN ARBITRARY TOP MODE. The repository subtrees take their exact top mode from
 // dashboard_git_worker_subtree_granted_directory_mode; the per-attempt worktree entry -- whose
-// subtree top is granted 02775 and which carries NO sticky bit anywhere, see
+// subtree top is granted 02770 and which carries NO sticky bit anywhere, see
 // dispatch_attempt_worker_git_entry_migration -- is decided under dashboard_git_worker_granted_directory_mode.
 // One fold, both callers, so the apply, the spawn and the claims cannot disagree about "granted".
 // THE PER-SUBTREE READING OF THE FOLD: the caller says WHICH SUBTREE, and the top mode and the

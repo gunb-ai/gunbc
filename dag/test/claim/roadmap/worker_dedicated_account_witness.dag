@@ -27,7 +27,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
-  dashboard_git_worker_subtree_granted_directory_mode, dashboard_git_worker_subtree_needs_sticky,
+  dashboard_git_worker_subtree_granted_directory_mode,
+  dashboard_git_worker_subtree_granted_directory_mode_octal, dashboard_git_worker_subtree_needs_sticky,
   dashboard_git_worker_commit_write_set, dashboard_instance_worker_git_unwritable_paths,
   dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
   dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
@@ -822,16 +823,25 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     AND THE FOLD ITSELF, over receipts this claim writes: the granted shape is accepted for the
     //     sticky subtree and the plain one alike, and each ungranted shape above REFUSES -- including
     //     a setgid regular file, which an execute-bit classifier would let through.
-    && readback_grants_the_declared_state(child: objects_child, top: "3770")
-    && readback_grants_the_declared_state(child: refs_child, top: "2770")
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child, top: "3770", holds_reflog: false)
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child, top: "2770", holds_reflog: false)
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child, top: "2770", holds_reflog: true)
+    && readback_grants_the_declared_state(child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child))
+    && readback_grants_the_declared_state(child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child))
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child), holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child), holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: logs_child), holds_reflog: true)
     && readback_refuses_the_ungranted_states(
-      child: objects_child, top: "3770", foreign_top: "2770",
+      child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child),
+      foreign_top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child),
     )
     && readback_refuses_the_ungranted_states(
-      child: refs_child, top: "2770", foreign_top: "3770",
+      child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child),
+      foreign_top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child),
     )
     && !dashboard_git_worker_file_mode_is_granted(mode: world_writable_file_mode)
     // a loose object is 0444 (292 = 256+32+4), read-only to everyone including its owner: git does

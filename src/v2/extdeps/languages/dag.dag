@@ -3023,6 +3023,19 @@ fn dag_grammar_response_block_expr() -> GrammarExpr {
   )
 }
 
+// A MOCK ENTRY IS KEYED BY ITS TRANSPORT'S OWN RESPONSE DISCRIMINATOR. Shell and rest key by a status
+// (the status-keyed entry); the file transport observes none, so its entry opens at `=>` and carries the
+// bare reading. The two start at different tokens (a status pattern is an int or a name, never `=>`).
+fn dag_grammar_mock_reading_entry_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_string_literal))
+    )
+  )
+}
+
 fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^mock_response),
@@ -3030,7 +3043,10 @@ fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
       right: dag_grammar_sequence(
         left: dag_grammar_repeat(
-          element: dag_grammar_nonterminal(production: ^dag_production_status_expr_entry)
+          element: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_status_expr_entry),
+            right: dag_grammar_nonterminal(production: ^dag_production_mock_reading_entry)
+          )
         ),
         right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
       )
@@ -3769,6 +3785,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_status_expr_entry_expr(),
     emitted: ^dag_surface_status_expr_entry
   )
+  let mock_reading_entry = dag_grammar_production(
+    name: ^dag_production_mock_reading_entry,
+    expression: dag_grammar_mock_reading_entry_expr(),
+    emitted: ^dag_surface_mock_reading_entry
+  )
   let qualified_name = dag_grammar_production(
     name: ^dag_production_qualified_name,
     expression: dag_grammar_qualified_name_expr(),
@@ -4036,6 +4057,7 @@ fn dag_grammar_root() -> GrammarRoot {
       transport_kind_local,
       status_type_entry,
       status_expr_entry,
+      mock_reading_entry,
       qualified_name,
       generic_params,
       param_list,
