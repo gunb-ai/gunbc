@@ -1,4 +1,0 @@
-module v2.test.fixture.alias_cycle.param
-
-type CycPA<T> = CycPB<T>
-type CycPB<T> = CycPA<T>

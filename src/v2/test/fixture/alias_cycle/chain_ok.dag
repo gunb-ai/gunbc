@@ -1,7 +1,0 @@
-module v2.test.fixture.alias_cycle.chain_ok
-
-type OkA = OkB
-type OkB = Int
-
-fn take_ok(x: OkA) -> Int { 1 }
-fn probe_ok(y: OkB) -> Int { take_ok(x: y) }

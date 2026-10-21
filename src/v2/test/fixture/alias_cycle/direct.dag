@@ -1,7 +1,0 @@
-module v2.test.fixture.alias_cycle.direct
-
-type CycA = CycB
-type CycB = CycA
-
-fn take_cyc(x: CycA) -> Int { 1 }
-fn probe_cyc(y: CycB) -> Int { take_cyc(x: y) }

@@ -1,3 +1,0 @@
-module v2.test.fixture.alias_cycle.selfalias
-
-type CycSelf = CycSelf
