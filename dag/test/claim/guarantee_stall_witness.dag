@@ -28,22 +28,22 @@ data control_stall: GuaranteeStall = GuaranteeStall {
   subject: "control.stall.subject",
   current: StructurallyGuaranteed,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt,
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
   population: BoundedPopulation { members: ["control.stall.member"] },
   next_rung_trigger: climbs_when(capability: "control stall trigger")
 }
 
 // THE BLOCKER FOLD READS THE ARM, in both directions. A stall is below its ceiling by definition, so
 // "cannot climb further" is not an arm here (gunbc.rung_climb ClimbBlocker): the control is the
-// unbuilt arm and the live row the grounding arm, and a fold stuck at either constant is a
+// grounding arm and the live row the unbuilt arm, and a fold stuck at either constant is a
 // different defect, so one assertion sees only one of them.
 test fn stall_blocker_fold_follows_the_arm() -> Bool {
   match control_stall.blocker {
-    ClimbableButUnbuilt => true
-    AwaitsOneGrounding { grounding: _ } => false
-  } && match next_rung_trigger_enforcement_stall.blocker {
     ClimbableButUnbuilt => false
     AwaitsOneGrounding { grounding: _ } => true
+  } && match next_rung_trigger_enforcement_stall.blocker {
+    ClimbableButUnbuilt => true
+    AwaitsOneGrounding { grounding: _ } => false
   }
 }
 
