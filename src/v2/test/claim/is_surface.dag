@@ -25,8 +25,11 @@ import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Tran
 import std.optional { Absent, Optional, Present }
 import v2.compiler.inferred_tree { InferredTree }
 import std.types { List }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.body_lowering_fold { DeclaredTypeModifiers, type_decl_modifiers_include_sole_constructor }
+import v2.test.claim.parse.parse_test_type_decl_modifier_carrier { tdm_normalized_rows }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // SUBJECT: `x is V` is carried as Transform[kw_is, x, V] through lowering and resolve; V stays the arm's
 // source spelling, resolved against x's type by infer (R1). BOUNDARY: source text in via tpb_assemble.
@@ -287,4 +290,27 @@ test fn is_consumed_arm_parameter_is_admitted() -> Bool {
         Rejected { diagnostics: _ } => false
       }
   }
+}
+
+// THE REAL DECLARATION IS SEALED, read by parse + normalize (no imports, no assembly): the stand-in
+// claims prove the wall refuses a sealed type, and this binds that to ResolvedArm itself. The row is
+// the one normalize captures from the parse (the channel infer's wall reads is built from it), so a
+// dropped sole_constructor reads here as a failed claim whatever the stand-in does.
+fn is_rows_seal_named(rows: List<DeclaredTypeModifiers>, name: Symbol) -> Bool {
+  fold_list(xs: rows, empty: false, cons: fn(found, row) {
+    found || (row.name == name && type_decl_modifiers_include_sole_constructor(modifiers: row.modifiers))
+  })
+}
+
+test fn is_real_resolved_arm_declaration_is_sole_constructor() -> Bool {
+  is_rows_seal_named(rows: tdm_normalized_rows(src: filesystem_read(path: "src/v2/compiler/arm_resolution.dag").content), name: ^ResolvedArm)
+}
+
+// RED FIXTURE: the same shape of declaration without the seal reads false; positive control: with it, true.
+test fn is_unsealed_declaration_is_not_sole_constructor() -> Bool {
+  is_rows_seal_named(rows: tdm_normalized_rows(src: "module m\n\ntype ResolvedArm { owner: Int }\n"), name: ^ResolvedArm) == false
+}
+
+test fn is_sealed_fixture_declaration_is_sole_constructor() -> Bool {
+  is_rows_seal_named(rows: tdm_normalized_rows(src: "module m\n\ntype ResolvedArm sole_constructor { owner: Int }\n"), name: ^ResolvedArm)
 }
