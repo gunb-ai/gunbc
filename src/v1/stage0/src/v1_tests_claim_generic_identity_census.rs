@@ -7,10 +7,10 @@ use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration
 pub use crate::std_decl_ref::{declaration_ref_display_key, DeclField, DeclarationRef};
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
-pub use crate::v1_compiler_infer::{
-    param_is_generic_decl, substitute_generics_apply, type_node_label, unify_generics,
+pub use crate::v1_compiler_infer::{param_is_generic_decl, unify_generics};
+pub use crate::v1_compiler_infer_env::{
+    node_with_children, substitute_generics_apply, type_node_label,
 };
-pub use crate::v1_compiler_infer_env::node_with_children;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
@@ -170,7 +170,7 @@ pub fn gi_type_spells_unmarked(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if gi_is_bare(n.clone()) {
             (!gi_declaration_is_type_parameter(n.declaration.clone())
-                && (crate::v1_compiler_infer::type_node_label(n.clone(), si.clone())
+                && (crate::v1_compiler_infer_env::type_node_label(n.clone(), si.clone())
                     == name.clone()))
         } else {
             {
@@ -323,7 +323,7 @@ pub fn gi_carries_type_variable(n: Rc<Node>) -> bool {
 pub fn gi_resolved_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone())
+            crate::v1_compiler_infer_env::type_node_label(rt.clone(), si.clone())
         }
         _ => "".to_string(),
     }
@@ -337,7 +337,7 @@ pub fn gi_node_rows(
     n: Rc<Node>,
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
     {
-        let spelled = crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
+        let spelled = crate::v1_compiler_infer_env::type_node_label(n.clone(), ctx.si.clone());
         let in_scope = {
             let mut __found = false;
             for g in ctx.generic_names.clone().iter().cloned() {
@@ -397,7 +397,7 @@ pub fn gi_type_rows(
         } else {
             {
                 let own_label =
-                    crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
+                    crate::v1_compiler_infer_env::type_node_label(n.clone(), ctx.si.clone());
                 let is_arrow = match n.connective.clone() {
                     Connective::Arrow => true,
                     _ => false,
@@ -627,7 +627,7 @@ pub fn gi_expr_rows(
             Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
                 ctx.clone(),
                 "body_expression_type".to_string(),
-                crate::v1_compiler_infer::type_node_label(e.clone(), ctx.si.clone()),
+                crate::v1_compiler_infer_env::type_node_label(e.clone(), ctx.si.clone()),
                 "".to_string(),
                 rt.clone(),
             ),
@@ -1003,7 +1003,7 @@ pub fn gi_supplied_node_reading_lines(
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
         };
-        let substituted = crate::v1_compiler_infer::substitute_generics_apply(
+        let substituted = crate::v1_compiler_infer_env::substitute_generics_apply(
             xs.declared_type.clone(),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -1014,14 +1014,14 @@ pub fn gi_supplied_node_reading_lines(
         );
         let substituted_child = gi_first_child(substituted.clone());
         let substituted_child_label = match substituted_child.clone() {
-            Some(c) => crate::v1_compiler_infer::type_node_label(c.clone(), si.clone()),
+            Some(c) => crate::v1_compiler_infer_env::type_node_label(c.clone(), si.clone()),
             std::option::Option::None => "no child".to_string(),
         };
         let substituted_child_declaration = match substituted_child.clone() {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
         };
-        let copied = crate::v1_compiler_infer::substitute_generics_apply(
+        let copied = crate::v1_compiler_infer_env::substitute_generics_apply(
             xs.declared_type.clone(),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -1101,7 +1101,7 @@ pub fn gi_supplied_node_reading_lines(
                 match v1_rt::map_get(&bound_from_basis, "T".to_string()) {
                     Some(b) => v1_rt::concat(
                         "T := ".to_string(),
-                        crate::v1_compiler_infer::type_node_label(b.clone(), si.clone()),
+                        crate::v1_compiler_infer_env::type_node_label(b.clone(), si.clone()),
                     ),
                     std::option::Option::None => "T unbound".to_string(),
                 },
@@ -1115,7 +1115,7 @@ pub fn gi_supplied_node_reading_lines(
                 match v1_rt::map_get(&bound_by_name_alone, "M".to_string()) {
                     Some(b) => v1_rt::concat(
                         "M := ".to_string(),
-                        crate::v1_compiler_infer::type_node_label(b.clone(), si.clone()),
+                        crate::v1_compiler_infer_env::type_node_label(b.clone(), si.clone()),
                     ),
                     std::option::Option::None => "M unbound".to_string(),
                 },
@@ -1398,7 +1398,7 @@ pub fn gi_result_carrier_observation(
                             sigs: sigs.clone(),
                         });
                         Rc::new(ResultCarrierObservation::ResultCarrierObserved {
-                            type_label: crate::v1_compiler_infer::type_node_label(
+                            type_label: crate::v1_compiler_infer_env::type_node_label(
                                 rt.clone(),
                                 si.clone(),
                             ),
