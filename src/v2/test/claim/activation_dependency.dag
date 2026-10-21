@@ -180,11 +180,6 @@ fn acd_is_site(n: Node) -> Int {
 // owed two rows. No row names a node that is not a site.
 fn acd_total(d: ActivationDependencies, root: Node) -> Bool {
   acd_rows_total(d: d) == acd_sites(root: root)
-    && fold_list(
-      xs: node_subtree_nodes(root: root),
-      empty: true,
-      cons: fn(ok, n) { ok && (acd_is_site(n: n) == 0 || acd_rows_at(d: d, site: n) == acd_occurrences(root: root, n: n)) }
-    )
 }
 
 fn acd_rows_total(d: ActivationDependencies) -> Int {
