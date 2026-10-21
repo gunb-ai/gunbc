@@ -27,7 +27,7 @@ fn emit(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
-  match arm_test_realization_refusal(root: tree.root, lookup: tree.arm_resolutions.lookup) {
+  match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, lookup: tree.arm_resolutions.decided.lookup) {
     Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Absent =>
       bind_outcome(

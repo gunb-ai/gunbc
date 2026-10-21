@@ -15,6 +15,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_subtree_nodes }
 import std.optional { Absent, Optional, Present }
+import v2.compiler.inferred_tree { InferredTree }
 import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -77,7 +78,7 @@ fn is_arm_realizations(o: Outcome<ResolvedTree>) -> List<Bool> {
         Rejected { diagnostics: _ } => []
         Accepted { value: t, diagnostics: _ } =>
           fold(node_subtree_nodes(root: root.root), init: [], f: fn(acc, x) {
-            match t.arm_resolutions.lookup(x) {
+            match t.arm_resolutions.decided.lookup(x) {
               Present { value: r } =>
                 match r.realization {
                   UnitArmSameArm => [true]
@@ -151,23 +152,39 @@ test fn is_payload_arm_eval_refuses_awaiting_realization() -> Bool {
 // The shared table: a test with no ResolvedArm entry refuses with its own cause, and a program with no `is`
 // is not refused (positive control that the gate does not widen).
 test fn is_test_without_fact_entry_refuses() -> Bool {
-  match is_src(decls: "type Color = Red | Green\n", body: "c is Red") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match arm_test_realization_refusal(root: root.root, lookup: fn(k) { Absent }) {
+  match is_inferred_tree(decls: "type Color = Red | Green\n", body: "c is Red") {
+    Present { value: t } =>
+      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, lookup: fn(k) { Absent }) {
         Present { value: d } => d.reason == ^arm_test_without_resolved_arm
         Absent => false
       }
+    Absent => false
   }
 }
 
+// A real program with no `is` carries no arm test, so nothing is refused.
 test fn no_is_node_is_not_refused() -> Bool {
-  match is_src(decls: "type Color = Red | Green\n", body: "true") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match arm_test_realization_refusal(root: root.root, lookup: fn(k) { Absent }) {
+  match is_inferred_tree(decls: "type Color = Red | Green\n", body: "true") {
+    Present { value: t } =>
+      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, lookup: t.arm_resolutions.decided.lookup) {
         Present { value: _ } => false
         Absent => true
+      }
+    Absent => false
+  }
+}
+
+fn is_inferred_tree(decls: String, body: String) -> Optional<InferredTree> {
+  match is_src(decls: decls, body: body) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: ot, diagnostics: _ } =>
+          match discharge_refinement_obligations(t: ot) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: t, diagnostics: _ } => Present { value: t }
+          }
       }
   }
 }

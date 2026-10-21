@@ -103,14 +103,22 @@ type InferredFacts {
 // supplied test fixture. A production path that holds a source program passes the lookup infer produced
 // or the one it received (v2.compiler.refinement_discharge, program_partition, compile); it never calls
 // this, because an empty answer for a program that could carry `x is V` would be a fabricated default.
-fn constructed_root_arm_resolutions() -> PartialFunction<Node, ResolvedArm> {
-  PartialFunction { lookup: fn(_key) { Absent } }
+fn constructed_root_arm_resolutions() -> ArmResolutions {
+  ArmResolutions { tests: [], decided: PartialFunction { lookup: fn(_key) { Absent } } }
+}
+
+// WHAT INFER DECIDED ABOUT THE ARM TESTS OF A ROOT, carried so no realizer re-finds them: `tests` is every
+// arm test infer met (the one tree walk that found them), `decided` the ResolvedArm of those whose operand
+// type is derived. A test in `tests` with no `decided` entry is still on the counted frontier.
+type ArmResolutions {
+  tests: List<Node>
+  decided: PartialFunction<Node, ResolvedArm>
 }
 
 type InferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
-  arm_resolutions: PartialFunction<Node, ResolvedArm>
+  arm_resolutions: ArmResolutions
 }
 
 type InferredFactsEntry {
@@ -138,7 +146,7 @@ type RefinementObligation {
 type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
-  arm_resolutions: PartialFunction<Node, ResolvedArm>
+  arm_resolutions: ArmResolutions
   obligations: List<RefinementObligation>
 }
 

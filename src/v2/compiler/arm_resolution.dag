@@ -2,8 +2,9 @@ module v2.compiler.arm_resolution
 
 import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.algebra { is_empty }
-import v2.std.node { Authored, Node, Positional, StructuralLabel, Symbol, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import std.types { List }
+import std.algebra { is_empty, list_at_optional }
+import v2.std.node { Authored, Node, Positional, StructuralLabel, Symbol, positional_child_target_nodes, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, node_locus, outcome_accepted, outcome_rejected }
@@ -108,12 +109,14 @@ fn infer_match_variant_payload(variants: Node, tag: Symbol) -> Optional<Node> {
 
 // THE ARM TEST OPERATOR: Transform[kw_is, x, V] (v2.compiler.body_lowering_fold body_lower_is_node).
 fn node_is_arm_test(node: Node) -> Bool {
-  fold(positional_child_target_nodes(node: node), init: false, f: fn(acc, t) {
-    acc || match node_atom_identity_optional(node: t) {
-      Present { value: id } => id == ^dag_token_kw_is
-      Absent => false
-    }
-  })
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+    Present { value: op } =>
+      match node_atom_identity_optional(node: op) {
+        Present { value: id } => id == ^dag_token_kw_is
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // WHERE `x is V` EXECUTES: nowhere yet. The decided fact would realize as same_arm(tag: tag_of(v: V), v: x)
@@ -121,18 +124,14 @@ fn node_is_arm_test(node: Node) -> Bool {
 // both realizers read answers a typed refusal naming that missing capability, located at the test. A test
 // carrying no ResolvedArm entry refuses with its own cause: nothing decided what it means. Dissolves when
 // the v2 realization of tag_of/same_arm lands and eval and emit map UnitArmSameArm to it.
-fn arm_test_realization_refusal(root: Node, lookup: fn(Node) -> Optional<ResolvedArm>) -> Optional<Diagnostic> {
-  fold(node_subtree_nodes(root: root), init: Absent, f: fn(acc, n) {
+fn arm_test_realization_refusal(tests: List<Node>, lookup: fn(Node) -> Optional<ResolvedArm>) -> Optional<Diagnostic> {
+  fold(tests, init: Absent, f: fn(acc, n) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if node_is_arm_test(node: n) {
-          match lookup(n) {
-            Present { value: _ } => optional_present(value: arm_test_realization_awaited_diagnostic(test: n))
-            Absent => optional_present(value: arm_test_without_resolution_diagnostic(test: n))
-          }
-        } else {
-          Absent
+        match lookup(n) {
+          Present { value: _ } => optional_present(value: arm_test_realization_awaited_diagnostic(test: n))
+          Absent => optional_present(value: arm_test_without_resolution_diagnostic(test: n))
         }
     }
   })
