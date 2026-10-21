@@ -5,7 +5,6 @@ import std.algebra { fold_list }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_rung_index }
 import gunbc.rung_climb {
   ClimbBlocker,
-  CannotClimbFurther,
   AwaitsOneGrounding,
   ClimbableButUnbuilt,
   climb_blocker_label,

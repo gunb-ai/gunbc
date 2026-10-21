@@ -13,18 +13,20 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashb
 // them with `awaiting` -- the types are re-used, never mirrored. The rung itself is
 // gunbc.guarantee_rung.
 
-// THE THREE-WAY DISTINCTION section 4b(2) NAMES, modeled as a closed coproduct because that is
-// what makes "only the first is permanent" a fold rather than a reading. AwaitsOneGrounding
-// carries the authority it waits on: a stall that cannot name what it is waiting for is not
-// waiting, it is unbuilt, and the two rank differently for work.
+// WHY A CLASS IS BELOW ITS CEILING, section 4b(2): the two cases that can still climb. The third
+// case section 4b(2) names, "cannot climb further", has NO CONSTRUCTOR HERE ON PURPOSE: the ceiling
+// is the attainable one (DESIGN section 4b), so a class that cannot climb stands AT its ceiling and
+// says why in AtCeiling.ceiling_reason (gunbc.recurring_failure_mode RungStanding). Every carrier
+// that takes this type is therefore below its ceiling by construction and cannot be handed the
+// contradiction; test.claim.rung_climb_witness enrols that as a RED the compiler must refuse.
+// AwaitsOneGrounding carries the authority it waits on: a stall that cannot name what it is
+// waiting for is not waiting, it is unbuilt, and the two rank differently for work.
 type ClimbBlocker
-  = CannotClimbFurther { why: String }
-  | AwaitsOneGrounding { grounding: String }
+  = AwaitsOneGrounding { grounding: String }
   | ClimbableButUnbuilt
 
 fn climb_blocker_label(b: ClimbBlocker) -> String {
   match b {
-    CannotClimbFurther { why: w } => concat("cannot climb further: ", w)
     AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", g)
     ClimbableButUnbuilt => "climbable now but unbuilt"
   }
