@@ -72,6 +72,10 @@ data local_recursive_coproduct_eq_green_source: String = "module eq_probe_local_
 
 data structural_record_eq_green_source: String = "module eq_probe_structural_record\nimport std.types { String, List, Map }\ntype Point {\n  x: Int\n  label: String\n  tags: List<String>\n  attrs: Map<String, Int>\n}\nfn same(a: Point, b: Point) -> Bool { a == b }\n"
 
+data edge_eq_red_source: String = "module eq_probe_edge\nimport v2.std.node { Edge }\nfn same(a: Edge, b: Edge) -> Bool { a == b }\n"
+
+data edge_in_record_eq_red_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
@@ -104,6 +108,16 @@ test fn local_recursive_coproduct_equality_stays_admitted() -> Bool {
 
 test fn structural_record_equality_stays_admitted() -> Bool {
   eq_admitted(source: structural_record_eq_green_source)
+}
+
+// An Edge carries provenance (Edge.declaration) that derived == compares and the erasure routes do not:
+// declared equality-inadmissible. The positive control is structural_record_equality_stays_admitted.
+test fn edge_equality_refuses_blocking() -> Bool {
+  eq_blocking_count(source: edge_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+}
+
+test fn edge_reached_through_a_record_refuses_blocking() -> Bool {
+  eq_blocking_count(source: edge_in_record_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
 }
 
 test fn presence_test_stays_admitted() -> Bool {
