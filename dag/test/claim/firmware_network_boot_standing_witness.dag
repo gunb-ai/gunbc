@@ -2238,10 +2238,15 @@ fn sole_ctor_count(source: String) -> Int {
     // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. Measured
     // on #14590: misspelling one import in verdict_probe_hdr left this witness green, lawful checks
     // included. The hostile >= 1 checks DO catch it (a forge that cannot compile emits no violation);
-// nothing on the lawful side can, because no count says WHERE a name resolved from. The textual
-// module-and-symbol pin in the argument-spine test below narrows that: it catches a typo, a deletion, or
-// a retarget to a module that does not even declare the name. It is LEXICAL, so it does NOT establish
-// resolved provenance -- see the counterexample witness and the frontier row further down.
+    // nothing on the lawful side can, because no count says WHERE a name resolved from. The textual
+    // module-and-symbol pin in the argument-spine test below narrows that: it catches a typo, a
+    // deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
+    // does NOT establish resolved provenance; the frontier row
+    // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
+    // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
+    // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
+    // still passes the substring' witness would only restate the substring semantics over hand-written
+    // literals. The honest form of that limit is the frontier row, not a tautological witness.
     Present { value: n } => n
     Absent => 0 - 1
   }
@@ -2254,8 +2259,8 @@ fn sole_ctor_count(source: String) -> Int {
 // side, whose >= 1 needs a violation an import error cannot emit, and from the textual drift guard on
 // the shared header in the argument-spine test -- which is a substring check, NOT a resolution check: it
 // narrows how the header can drift silently and does not prove where the name resolves to (the frontier
-// firmware_network_boot_probe_resolution_frontier records that residual gap; see option B).
-// deleting an import name from a probe source changed no count). OWNERSHIP OF MUTATIONS,, stated so no claim here is broader than the
+// firmware_network_boot_probe_resolution_frontier records that residual gap.
+// OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
 // zero. It is NOT the row that owns the conclusion seal: `forge_ready_source` would still be refused for
@@ -2475,14 +2480,13 @@ test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Boo
     && string_contains(verdict_probe_hdr, "available_network_options,")
     && string_contains(verdict_probe_hdr, "network_option_existence,")
     && string_contains(verdict_probe_hdr, "admissible_readiness_for,")
-// TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins the
-// exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that never declares
-// the name reddens this test -- the drift modes a census cannot see at all (row R2G2: deleting an import
-// name changed no count). It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a
-// substring check: a header carrying the pinned text only inside a // comment plus a real import from
-// a look-alike module still satisfies it. That residual limit is tracked as the typed
-// frontier firmware_network_boot_probe_resolution_frontier, not claimed closed here.
-// frontier firmware_network_boot_probe_resolution_frontier, not claimed closed here.
+    // TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins the
+    // exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that never declares
+    // the name reddens this test -- the drift modes a census cannot see at all (row R2G2: deleting an import
+    // name changed no count). It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a
+    // substring check: a header carrying the pinned text only inside a // comment plus a real import from
+    // a look-alike module still satisfies it. That residual limit is tracked as the typed
+    // frontier firmware_network_boot_probe_resolution_frontier, not claimed closed here.
     && string_contains(
       verdict_probe_hdr,
       "import gunbc.secure_boot_observation { SecureBootUnobserved }",
@@ -3799,16 +3803,28 @@ test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status(
 // seam's own consumer frontier). unbound_dissolution reports DissolutionUnbound: no
 // declaration discharges this yet, stated plainly rather than dressed as a pending trigger.
 data firmware_network_boot_probe_resolution_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, replace the textual substring guard in the_probe_and_its_control_still_exercise_every_argument_builder with an assertion that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation (canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED), (the drift modes a substring cannot distinguish: a comment-only canonical import plus a real look-alike import still satisfy the guard). Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
+  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, replace the textual substring guard in the_probe_and_its_control_still_exercise_every_argument_builder with an assertion that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation -- the drift modes a substring cannot distinguish, where a comment-only canonical import plus a real look-alike import still satisfy the guard. Acceptance for the replacement: canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED. Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
 )
 
 // THE GAP IS OPEN AND STAYS OPEN UNTIL A REAL READBACK LANDS -- not silently Pending,
-// not falsely Fired. DissolutionUnbound is distinct from both: it says no declaration
-// named here can discharge it, which is the honest state while the capability is unwritten.
+// not falsely Fired. WHAT THIS ROW CATCHES, stated to the rung it establishes: this
+// assertion discriminates THIS ROW'S ARM. A row secretly bound to a trigger reports
+// DissolutionPending (empty corpus) or DissolutionFired (a corpus naming the trigger)
+// -- never DissolutionUnbound -- so dressing the gap as a satisfiable-looking trigger
+// reddens it; the M2 mutation row in the PR evidence executes exactly that. WHAT IT
+// CANNOT CATCH: the semantics of unbound_dissolution itself -- the constructor returns
+// DissolutionUnbound for any non-empty description, so this test is an arm check on the
+// row, not a test of the std constructor. That is the honest denominator for a row whose
+// whole job is to say 'nothing here discharges this yet'.
 test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
   frontier_status(
     condition: firmware_network_boot_probe_resolution_frontier,
     present_decls: [],
   )
+    == DissolutionUnbound
+    && frontier_status(
+      condition: firmware_network_boot_probe_resolution_frontier,
+      present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
+    )
     == DissolutionUnbound
 }
