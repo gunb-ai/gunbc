@@ -39,7 +39,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 // CONTAINMENT -- a claim every row must return, not a promise in a comment (review 82796: an
 // earlier revision compared the WHOLE /tmp listing before and after, which made an unrelated
 // process's /tmp traffic able to fail the run).
-// Everything this file creates lives under ONE shell.Mktemp.Dir root, reached through the
+// Everything this file creates lives under ONE shell.Mktemp.DirWithTemplate root, reached through the
 // INSTANCE's own roots, so what stays contained is production's path derivation rather than mine:
 // instance_root (hence compute_root, hence layout.checkout / work_dir / target_dir) and the
 // materialization store are both under the root, and the store is WitnessScratchRoot, so

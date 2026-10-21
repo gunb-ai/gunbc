@@ -3347,9 +3347,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // but not scheduled is a declaration no consumer runs -- DESIGN 3c's dangling row, and the
     // exact incomplete triple chunk_06's header says nothing will refuse. Each row EXECUTES
     // production's compute_return_outputs wet against a real temp checkout and the real
-    // /usr/bin/git, so the effects are shell.Mktemp.Dir, shell.Remove.RecursiveForce, the Filesystem
+    // /usr/bin/git, so the effects are shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, the Filesystem
     // list/read/write verbs, and -- through production's own compute_exec --
-    // extdeps.git.WitnessBin.Run. Triple enrollment as for host_capacity_wet_witness: these rows,
+    // gunbc.WitnessBin.Run. Triple enrollment as for host_capacity_wet_witness: these rows,
     // the gunbc.ci.ci_layer_roots row for output_capture_absence_wet_witness.dag, and the
     // v2.workflow.floor_route_gap rows.
     WetScheduledClaim {
