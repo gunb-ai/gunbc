@@ -830,3 +830,10 @@ from dispatch N, so risk is nil, but the slip is recorded rather than papered ov
    (dispatch R pattern, /tmp/dispatchR.txt). Question: do the Map(Primitive(K),Primitive(V)) identities
    (59/76, 34 at map_insert) clear on the merge vs Acc-head-alone? Acc-head-alone baseline: 76/67
    distinct/occurrences, 17/18 ids (strip-vs-head diffs in /tmp/report_strip.md).
+
+## PRED-V (2026-10-21, local merge pr2-fbp: Acc-head 97e47f8e562b x C1.2c head 2af7eb0e1d4f; then remote gate + census, HEAD=merge BASE=main)
+Pre-registered BEFORE merge/dispatch. Baselines: Acc-head-alone census 76 distinct/67 occ, 17/18 ids (/tmp/report_strip.md); gate_strip_vs_acc showed 43 identities at HEAD main lacks. Gate R: Map class 0/0 on main-vs-C1.2c (instrument scope).
+- P-V1: merge builds self-host rc=0 both arms — unify_generics edits are disjoint-in-same-fn (their arity-N child-pair loop; PR-2's Acc fold + text/module_name params). A resolve/parse error here means my 04_infer resolution merged the edits incorrectly — fix resolution, never drop an edit.
+- P-V2: Map(Primitive(K),Primitive(V))-class identities at merge <= Acc-head-alone (59/76, 34 map_insert). C1.2c's arity-N descent refines applied-vs-applied mismatches into structural child pairs; it cannot CREATE head-level Map identities that Acc-head alone lacks. Any ADDED Map identity = mechanism interaction, investigate before reporting.
+- P-V3: any identity present at merge but absent at Acc-head is either (a) in main's census already, or (b) a CHILD-level identity (formal/actual proper subterms of an Acc-head identity's) produced by descent. Anything else = unexplained, do not report until explained.
+- P-V4: stage0 mirrors must be regenerated from merged .dag (emitter output only); self-host emit diff must be 0 (installed=0) or the merge resolution left stale .rs.
