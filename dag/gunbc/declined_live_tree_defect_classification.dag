@@ -1,9 +1,9 @@
 module gunbc.declined_live_tree_defect_classification
 
-import std.types { String, List, CommitSha, NonEmptyStr, commit_sha_text_holds }
+import std.types { String, List, CommitSha, NonEmptyStr }
 import v2.std.integer { Int }
 import std.execution_mode { ExecutionMode }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Optional, Present, Absent }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
