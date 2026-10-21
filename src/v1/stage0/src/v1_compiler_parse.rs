@@ -13504,9 +13504,9 @@ pub fn parse_data_after_kw(
             });
         }
         let r = if ctx.heads_only.clone() {
-            parse_data_value_heads_only(r.tokens.clone(), ctx.clone())
+            parse_data_value_heads_only(skip_newlines(r.tokens.clone()), ctx.clone())
         } else {
-            parse_expr(r.tokens.clone(), ctx.clone())
+            parse_expr(skip_newlines(r.tokens.clone()), ctx.clone())
         };
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
