@@ -75,6 +75,20 @@ data acd_artifact: Artifact = Artifact {
 }
 
 fn acd_assemble(src: String) -> Optional<ResolvedTree> {
+  acd_assemble_with(src: src, peers: Empty)
+}
+
+// A peer module the source imports (std.error_primitives for Never), ingested beside the source.
+fn acd_never_peer() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.error_primitives\n\ntype Never\n", fidelity: Lossless },
+    artifact: acd_artifact,
+    compilation_unit: ^acd_cu,
+    source_root: V2Tree
+  }
+}
+
+fn acd_assemble_with(src: String, peers: List<DagSourceReadWitness>) -> Optional<ResolvedTree> {
   match assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
@@ -83,7 +97,7 @@ fn acd_assemble(src: String) -> Optional<ResolvedTree> {
         compilation_unit: ^acd_cu,
         source_root: V2Tree
       },
-      tail: Empty
+      tail: peers
     },
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^acd, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
@@ -721,7 +735,7 @@ test fn acd_o_scrutinee_only_match_is_its_own_case_and_validity_is_inferences_ho
 }
 
 fn acd_zero_alternatives_then_infers(src: String, accepted: Bool) -> Bool {
-  match acd_assemble(src: src) {
+  match acd_assemble_with(src: src, peers: Cons { head: acd_never_peer(), tail: Empty }) {
     Absent => false
     Present { value: tree } =>
       match activation_dispositions(tree: tree) {
@@ -740,9 +754,9 @@ fn acd_zero_alternatives_then_infers(src: String, accepted: Bool) -> Bool {
   }
 }
 
-// infer judges Never by declaration identity (module path + name), and a fixture is its own one-module
-// tree, so the source is std.error_primitives itself declaring Never.
-data acd_never_source: String = "module std.error_primitives\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+// infer judges Never by declaration identity (module path + name) from the written path, so the fixture
+// spells the qualified path against a peer std.error_primitives module.
+data acd_never_source: String = "module acd\n\nfn f(n: std.error_primitives.Never) -> Int {\n  match (n) {\n  }\n}\n"
 data acd_inhabited_empty_source: String = "module acd\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
 // (h) A MALFORMED SITE IS A TYPED ROW, NEVER A DEMAND OR A SKIP: a two-child Branch, a Match with no arms, a
@@ -805,11 +819,8 @@ fn acd_total_for(src: String) -> Bool {
 }
 
 test fn zz1() -> Bool {
-  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: _ } => true }
-}
-test fn zz2() -> Bool {
-  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: t } => length(xs: activation_dispositions(tree: t).zero_alternatives) == 1 && acd_total(d: activation_dispositions(tree: t), root: t.root) }
+  match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) { Absent => false  Present { value: _ } => true }
 }
 test fn zz3() -> Bool {
-  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: t } => acd_inference_accepts(tree: t) }
+  match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) { Absent => false  Present { value: t } => acd_inference_accepts(tree: t) }
 }
