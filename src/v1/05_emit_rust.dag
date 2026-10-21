@@ -3640,11 +3640,25 @@ fn rust_spread_clone_by_layer(answer: SharedLayerAnswer, base_str: String) -> St
   }
 }
 
-fn shared_layer_refuse_text(answer: SharedLayerAnswer) -> String {
+// A refusal carried through analysis stays typed (leaf + cause) until the one emission site renders it.
+type LayerRefusal { leaf: String, cause: String }
+
+fn shared_layer_refusal_of(answer: SharedLayerAnswer) -> LayerRefusal? {
   match answer {
-    SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
-    _ => ""
+    SharedLayerRefuse { leaf: leaf, cause: cause } => Present { value: LayerRefusal { leaf: leaf, cause: cause } }
+    _ => none
   }
+}
+
+fn layer_refusal_present(refusal: LayerRefusal?) -> Bool {
+  match refusal {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn layer_refusal_expr(refusal: LayerRefusal) -> String {
+  shared_layer_refuse_expr(leaf: refusal.leaf, cause: refusal.cause)
 }
 
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
@@ -11476,14 +11490,14 @@ type RcPatternAnalysis {
   matches_option_rc_variant: Bool
   needs_rc_pattern: Bool
   ref_bound_fields: List<String>
-  layer_refuse: String
+  layer_refuse: LayerRefusal?
 }
 
 type RcMatchAnalysis {
   needs_option_deref: Bool
   needs_deref: Bool
   needs_rc_option_ref: Bool
-  layer_refuse: String
+  layer_refuse: LayerRefusal?
 }
 
 fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
@@ -11492,7 +11506,7 @@ fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
     matches_option_rc_variant: false,
     needs_rc_pattern: false,
     ref_bound_fields: [],
-    layer_refuse: ""
+    layer_refuse: none
   }
 }
 
@@ -11548,14 +11562,18 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
           matches_option_rc_variant: false,
           needs_rc_pattern: ref_bound_fields |> count > 0,
           ref_bound_fields: ref_bound_fields,
-          layer_refuse: shared_layer_refuse_text(answer: parent_layer)
+          layer_refuse: shared_layer_refusal_of(answer: parent_layer)
         }
       }
     _ => empty_rc_pattern_analysis()
   }
 }
 
-fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
+type BoxBoundField
+  = BoxFieldBound { name: String }
+  | BoxFieldRefused { refusal: LayerRefusal }
+
+fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> List<BoxBoundField> {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
@@ -11572,9 +11590,9 @@ fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>
               Wildcard => []
               _ =>
                 match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
-                  NeedsBox => [fb_name]
+                  NeedsBox => [BoxFieldBound { name: fb_name }]
                   NeedsNoBox => []
-                  NeedsBoxRefuse { leaf: leaf, cause: cause } => [shared_layer_refuse_expr(leaf: leaf, cause: cause)]
+                  NeedsBoxRefuse { leaf: leaf, cause: cause } => [BoxFieldRefused { refusal: LayerRefusal { leaf: leaf, cause: cause } }]
                 }
             }
           }
@@ -11586,13 +11604,13 @@ fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>
 
 fn rc_pattern_analysis_with_box_fields(rc_analysis: RcPatternAnalysis, arm_pat: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> RcPatternAnalysis {
   let box_fields = box_bound_fields_for_pattern(pattern: arm_pat, shared_types: shared_types, emit_info: emit_info, scope: scope)
-  let refuse_fields = box_fields |> filter(n => starts_with(s: n, prefix: "compile_error!"))
-  let clean_fields = box_fields |> filter(n => !starts_with(s: n, prefix: "compile_error!"))
-  let refuse = match refuse_fields |> first {
-    Present { value: r } => r
+  let refusals = box_fields |> flat_map(f => match f { BoxFieldRefused { refusal: r } => [r]  _ => [] })
+  let clean_fields = box_fields |> flat_map(f => match f { BoxFieldBound { name: nm } => [nm]  _ => [] })
+  let refuse = match refusals |> first {
+    Present { value: r } => Present { value: r }
     Absent => rc_analysis.layer_refuse
   }
-  if (clean_fields |> count) == 0 && refuse == "" {
+  if (clean_fields |> count) == 0 && !layer_refusal_present(refusal: refuse) {
     rc_analysis
   } else {
     RcPatternAnalysis {
@@ -11629,9 +11647,9 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     _ => SharedLayerAtValue
   }
   let scrutinee_is_rc_modeled_optional = match modeled_optional_layer { SharedLayerAtShared => true  _ => false }
-  let match_refuse = if shared_layer_refuse_text(answer: scrut_layer) != "" {
-    shared_layer_refuse_text(answer: scrut_layer)
-  } else { shared_layer_refuse_text(answer: modeled_optional_layer) }
+  let match_refuse = if layer_refusal_present(refusal: shared_layer_refusal_of(answer: scrut_layer)) {
+    shared_layer_refusal_of(answer: scrut_layer)
+  } else { shared_layer_refusal_of(answer: modeled_optional_layer) }
 
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
@@ -11642,8 +11660,9 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
 }
 
 fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  if rc_analysis.layer_refuse != "" {
-    return rc_analysis.layer_refuse
+  let _layer_clear = match rc_analysis.layer_refuse {
+    Present { value: refusal } => return layer_refusal_expr(refusal: refusal)
+    Absent => ""
   }
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
@@ -14502,8 +14521,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let structural_unwrap = fold_proof.eligible && fold_proof.body_constructs_acc && fold_proof.safe_field_moves
   let structural_move = fold_proof.eligible && fold_proof.whole_acc_single_use
   let acc_layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: acc_type_node, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names)
-  if shared_layer_refuse_text(answer: acc_layer) != "" {
-    return shared_layer_refuse_text(answer: acc_layer)
+  let _layer_clear = match shared_layer_refusal_of(answer: acc_layer) {
+    Present { value: refusal } => return layer_refusal_expr(refusal: refusal)
+    Absent => ""
   }
   let acc_unwrap = structural_unwrap && match acc_layer { SharedLayerAtShared => true  _ => false }
   let fold_emit_info = if acc_unwrap {
@@ -15850,8 +15870,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     return emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
-  if rc_match.layer_refuse != "" {
-    return rc_match.layer_refuse
+  let _layer_clear = match rc_match.layer_refuse {
+    Present { value: refusal } => return layer_refusal_expr(refusal: refusal)
+    Absent => ""
   }
   let match_result_type = match arms |> first {
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
@@ -17869,8 +17890,8 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, cursor: if on_cursor { tco_cursor_name(param: cursor_of_scrutinee) } else { "" }, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
-      if rc_match.layer_refuse != "" {
-        rc_match.layer_refuse
+      if layer_refusal_present(refusal: rc_match.layer_refuse) {
+        match rc_match.layer_refuse { Present { value: refusal } => layer_refusal_expr(refusal: refusal)  Absent => "" }
       } else {
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
       let has_irrefutable = arm_list |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
@@ -19557,8 +19578,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let data_layer = rust_carrier_shared_layer(n: type_node, source_indices: scope.type_env.source_indices, shared_types: shared_types, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
-  if shared_layer_refuse_text(answer: data_layer) != "" {
-    return shared_layer_refuse_text(answer: data_layer)
+  let _layer_clear = match shared_layer_refusal_of(answer: data_layer) {
+    Present { value: refusal } => return layer_refusal_expr(refusal: refusal)
+    Absent => ""
   }
   // A container initializer (List<Int> = fold(..)) is emitted already Rc-wrapped by the expression
   // emitter; only a bare declared shared type's constructor value still needs the data row's wrap.
