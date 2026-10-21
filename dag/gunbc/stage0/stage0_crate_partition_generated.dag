@@ -48,6 +48,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_dissolution",
         "std_disposition",
         "std_error_primitives",
+        "std_float",
         "std_emit_model",
         "std_measure",
         "std_decimal",
