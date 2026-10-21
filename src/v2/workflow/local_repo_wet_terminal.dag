@@ -327,8 +327,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // state, so it is stated here as a distinct effect rather than folded into the sentences above: a
 // member whose verdict depends on target/release/claim_batch existing reaches no verdict where the
 // binary is absent, which is the reachability risk every member carries. The refusal row passes only
-// the planted root (7ms); the control must also walk the dag root so gunbc.output_policy resolves
-// (about 62s on a remote runner), and that cost is irreducible while a verdict needs that module.
+// the planted root; the control must also walk the dag root so gunbc.output_policy resolves, which
+// is irreducible while a verdict needs that module and puts the control over the per-row wall budget
+// that nothing on this lane arms (gunbc.rung_drop local_repo_wet_lane_per_row_wall_budget_unarmed).
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {

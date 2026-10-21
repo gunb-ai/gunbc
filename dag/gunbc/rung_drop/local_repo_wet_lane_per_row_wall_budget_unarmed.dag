@@ -1,0 +1,47 @@
+module gunbc.rung_drop.local_repo_wet_lane_per_row_wall_budget_unarmed
+
+import std.types { NonEmptyStr, List, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for a wet row that runs longer than the per-row wall budget on the lane
+// that selects it (DESIGN 4b(3), review 83766). `bin_witness_wet_per_row_wall_budget_seconds` is a
+// POLICY datum: rows measured over it were re-homed off the per-PR wet batch
+// (`gunbc.roster_registry`). On `local_repo_wet_schedule` nothing arms it: `--eval-budget-ms` arms
+// the CPU/eval budget (`set_witness_eval_budget` -> `arm_eval_deadline`), not wall time; the only
+// production `set_witness_wall_budget` call is in `reach_base_standings`, which has zero callers;
+// the only live wall arming is the serve path. So a member over the budget is not refused
+// `BudgetRefusedBeforeVerdict`; it runs to its verdict, and its wall is read, never enforced.
+//
+// THE MEMBER THAT PRICED THIS IN: the control of `test.claim.claim_batch_parse_gate_witness`
+// (a_parseable_imported_module_reaches_a_real_pass_verdict). A verdict needs `gunbc.output_policy`,
+// which resolves only from the `dag` root, so the child walks the whole tree. Its wall is
+// re-derived by running that function through `claim_batch --wet` and reading the child's
+// `[pre-entry] phase=` lines; no figure is copied here. FalsifierCadenceJob, the declared re-home,
+// is not a live executor, so re-homing would dispatch the row nowhere.
+//
+// WHAT WAS THE RUNG. A budget declared on the lane is a limit a row can be refused against:
+// mechanically preventable. WHAT IT IS NOW. A limit nothing arms, so an over-budget row is
+// admitted on this declaration and located by it: mitigatable.
+
+data local_repo_wet_lane_per_row_wall_budget_unarmed_population: List<String> = [
+  "claim_batch_parse_gate_witness.dag",
+]
+
+data local_repo_wet_lane_per_row_wall_budget_unarmed: RungDrop = RungDrop {
+  identity: "local_repo_wet_lane_per_row_wall_budget_unarmed" as NonEmptyStr,
+
+  subject: "a local_repo_wet_schedule member whose wall exceeds bin_witness_wet_per_row_wall_budget_seconds: no path that runs the lane arms a wall budget, so the row runs to its verdict instead of being refused BudgetRefusedBeforeVerdict",
+
+  declared: "2026-10-21",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the per-PR bin-witness wet batch and falsifier.yml, the only runners that armed the per-row wall budget, both deleted (see gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci)" },
+    population: local_repo_wet_lane_per_row_wall_budget_unarmed_population,
+    restoration_trigger: "a wall budget is armed on the executor that runs local_repo_wet_schedule, so a member over bin_witness_wet_per_row_wall_budget_seconds reaches BudgetRefusedBeforeVerdict instead of a verdict; sufficient for deleting this row and the over-budget admission in excl_claim_batch_parse_gate_reason together",
+  }
+}
