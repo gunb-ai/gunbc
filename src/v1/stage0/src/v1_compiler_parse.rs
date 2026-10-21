@@ -47,6 +47,7 @@ use crate::std_syntax::BodyKind::{
 use crate::std_syntax::ItemFormKind::OtherForm;
 use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
+pub use crate::std_syntax::PrefixOperatorSpec;
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
     SyntaxSpec,
@@ -2785,6 +2786,37 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
                     right: op.right_bp.clone(),
                 })
             }
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn find_prefix_binding_power(
+    ops: Rc<Vec<Rc<PrefixOperatorSpec>>>,
+    symbol: String,
+) -> Option<i64> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            Some(
+                matching
+                    .clone()
+                    .first()
+                    .cloned()
+                    .clone()
+                    .unwrap()
+                    .binding_power
+                    .clone(),
+            )
         } else {
             std::option::Option::None
         }
@@ -15071,51 +15103,75 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
             std::option::Option::None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
+        let text = match tok.clone() {
+            Some(t) => t.text.clone(),
+            std::option::Option::None => "".to_string(),
+        };
         match sh.clone() {
-            Some(TokenShape::ShBang) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+            Some(TokenShape::ShBang) => match find_prefix_binding_power(
+                ctx.env.syntax_spec.prefix_operators.clone(),
+                text.clone(),
+            ) {
+                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                Some(bp) => {
+                    let r = parse_expr_bp(
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        bp.clone(),
+                    );
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity.clone(),
+                            Rc::new(ExprData::ExprUnaryOp {
+                                op: UnaryOpKind::Not,
+                            }),
+                            Rc::new(vec![r.expr.clone()]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    })
                 }
-                parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity.clone(),
-                        Rc::new(ExprData::ExprUnaryOp {
-                            op: UnaryOpKind::Not,
-                        }),
-                        Rc::new(vec![r.expr.clone()]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                })
-            }
-            Some(TokenShape::ShMinus) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+            },
+            Some(TokenShape::ShMinus) => match find_prefix_binding_power(
+                ctx.env.syntax_spec.prefix_operators.clone(),
+                text.clone(),
+            ) {
+                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                Some(bp) => {
+                    let r = parse_expr_bp(
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        bp.clone(),
+                    );
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity.clone(),
+                            Rc::new(ExprData::ExprUnaryOp {
+                                op: UnaryOpKind::Neg,
+                            }),
+                            Rc::new(vec![r.expr.clone()]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    })
                 }
-                parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity.clone(),
-                        Rc::new(ExprData::ExprUnaryOp {
-                            op: UnaryOpKind::Neg,
-                        }),
-                        Rc::new(vec![r.expr.clone()]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                })
-            }
+            },
             _ => parse_primary(tokens.clone(), ctx.clone()),
         }
     }
