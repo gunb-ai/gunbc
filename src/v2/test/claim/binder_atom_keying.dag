@@ -165,3 +165,24 @@ test fn type_name_atom_is_keyed_declaration() -> ProcessExit {
 test fn data_name_atom_is_keyed_declaration() -> ProcessExit {
   expect_binder_declaration(kind: "data name", row: probe_norm(content: "module v2.test.subject\ndata alpha: Int = 1\n", spelling: "alpha"))
 }
+
+fn dump_edges(acc: List<String>, node: Node, depth: Int) -> List<String> {
+  fold(node.children, init: acc, f: fn(inner, edge) {
+    let tag = match edge.declaration {
+      NotADeclaration => "N"
+      DeclaresAt { occurrence: _ } => "D"
+    }
+    dump_edges(acc: list_snoc_item(xs: inner, item: int_to_decimal_string(value: depth) + edge_text(edge: edge) + "/" + tag), node: edge.target, depth: depth + 1)
+  })
+}
+
+test fn zz_dump_fn_edges() -> ProcessExit {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "grammar" }
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: probe_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: "module v2.test.subject\nfn alpha() -> Int { 1 }\n") {
+        Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "front" }
+        Accepted { value: front, diagnostics: _ } => ExitFailure { code: 1, reason: "DUMP" + joined(xs: dump_edges(acc: [], node: front.tree.root, depth: 0)) }
+      }
+  }
+}
