@@ -1,0 +1,619 @@
+module v2.test.claim.outside_discovery_roots_census_witness
+
+// THE WITNESS for the outside-discovery-roots census: every standing the census can produce, on listings
+// the claim injects, plus the one claim that asks the index for the real thing.
+//
+// WHAT IS INJECTED AND WHAT IS NOT. A fixture here is an INJECTED LISTING -- the same thing the live entry
+// hands the pure census from git -- so the census's decisions are tested without a filesystem and without
+// letting the census read the tree it reports on. Nothing in the census module is transcribed: the
+// population it reports is computed per path from `v2.cli.repository_layout`, and the fixture lists below
+// are the population the note DECLARES (v1_claim_scoped_witness_batch_deleted_note in
+// gunbc.ci.ci_layer_roots), used as the expectation the live capture is compared against. If a file enters
+// or leaves that tree without the note being amended, `the_index_lists_exactly_the_population_the_note_declares`
+// fails loudly -- which is the point: the note and the tree are held together by this claim, not by
+// agreement.
+//
+// NO COUNT LITERALS (§5/§6). Equality of populations here is stated as containment both ways over derived
+// sets, never as a number copied from an instrument run.
+
+import std.types { String, Bool, List }
+import std.optional { Optional, Absent, Present }
+import std.algebra { Cons, Empty, is_empty }
+
+import v2.workflow.outside_discovery_roots_census {
+  OutsideRootsStanding,
+  InsideGovernedTree,
+  OutsideDiscoveryRoots,
+  NotAClaimFile,
+  ListingUnread,
+  census_rows,
+  outside_roots_row,
+  outside_roots_findings,
+  findings_under_note_subject,
+  findings_outside_note_subject,
+  listing_unread_row,
+  listing_is_unread,
+  outside_roots_receipt_lines,
+  outside_roots_header_lines,
+  path_is_claim_file,
+  path_is_under_note_subject,
+  v1_claim_note_identity,
+  v1_claim_note_location,
+  note_declared_paths,
+  subject_helpers_declare_nothing,
+  prose_mentioning_paths,
+  scan_dir_gap_population,
+  scan_dir_gap_receipt_lines,
+  scan_dir_gap_header_lines,
+  is_census_visible,
+  scan_dir_authority_identity
+}
+import v2.workflow.outside_discovery_roots_census_live {
+  TrackedListing,
+  ListingRead,
+  ListingRefused,
+  ClaimBearerRead,
+  BearersRead,
+  BearersRefused,
+  listing_from_captured_text,
+  bearers_from_captured_text,
+  listing_paths,
+  claim_declaration_pattern,
+  outside_roots_census,
+  head_stamp_line
+}
+import v2.cli.repository_layout { repository_module_file_of_path }
+import std.types { Int }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.tokenize { prepare_lex_rules, tokenize_prepared }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.test_marker_capture { test_marker_content }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.algebra { length, list_map }
+
+// ---------------------------------------------------------------------------
+// A listing with a governed path in it, so a census that reported governed files as findings would go red
+// on a fixture rather than only on the real tree.
+data governed_listing_rows: List<String> = [
+  "src/v2/workflow/outside_discovery_roots_census.dag",
+  "dag/gunbc/claim_coverage_census.dag"
+]
+
+// A path outside the governed trees that is NOT a claim file: the census must say NotAClaimFile, not stay
+// silent and not call it a finding.
+data non_claim_outside_path: String = "src/v1/tests/claim/README.dag-free"
+
+// ---------------------------------------------------------------------------
+// THE STANDING ITSELF.
+// ---------------------------------------------------------------------------
+
+// A governed path is never a finding: the layout owns it, so some governed reader can acquire it.
+test fn a_governed_path_is_never_a_finding() -> Bool {
+  all(xs: governed_listing_rows, predicate: fn(path) {
+    match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+      InsideGovernedTree { path: reported, tree_directory: dir } => reported == path && dir != ""
+      OutsideDiscoveryRoots { path: _, cause: _ } => false
+      NotAClaimFile { path: _ } => false
+      ListingUnread { cause: _ } => false
+    }
+  })
+}
+
+// A path under no governed tree, ending .dag, is THE finding -- and it carries the cause that says why:
+// the layout, not a name-match.
+test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Bool {
+  match outside_roots_row(
+    path: "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
+    claim_bearers: note_declared_paths
+  ) {
+    OutsideDiscoveryRoots { path: reported, cause: cause } =>
+      reported == "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
+        && string_contains(s: cause, pattern: "v2.cli.repository_layout")
+    InsideGovernedTree { path: _, tree_directory: _ } => false
+    NotAClaimFile { path: _ } => false
+    ListingUnread { cause: _ } => false
+  }
+}
+
+// The census reports one row per path it was handed -- nothing skipped, nothing invented. This is the
+// anti-widening control: a census that dropped a row, or added one, breaks here.
+test fn the_census_reports_exactly_one_row_per_listed_path() -> Bool {
+  let listing = concat(governed_listing_rows, concat(note_declared_paths, [non_claim_outside_path]))
+  let rows = census_rows(listing: listing, claim_bearers: note_declared_paths)
+  length(xs: rows) == length(xs: listing)
+    && all(xs: listing, predicate: fn(path) {
+         length(xs: filter(xs: rows, predicate: fn(row) { row_path(row: row) == path })) == 1
+       })
+}
+
+// The path a row is about, for the one-row-per-path control.
+fn row_path(row: OutsideRootsStanding) -> String {
+  match row {
+    InsideGovernedTree { path: path, tree_directory: _ } => path
+    OutsideDiscoveryRoots { path: path, cause: _ } => path
+    NotAClaimFile { path: path } => path
+    ListingUnread { cause: _ } => ""
+  }
+}
+
+// Outside the trees but not a claim file: its own standing, so it cannot be counted as a finding and
+// cannot be silently skipped either.
+test fn a_non_claim_file_outside_the_trees_gets_its_own_standing() -> Bool {
+  match outside_roots_row(path: non_claim_outside_path, claim_bearers: note_declared_paths) {
+    NotAClaimFile { path: reported } => reported == non_claim_outside_path
+    InsideGovernedTree { path: _, tree_directory: _ } => false
+    OutsideDiscoveryRoots { path: _, cause: _ } => false
+    ListingUnread { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE RED THE MANAGER RULED: THE LISTED PATHS. Dropping one path from the listing makes the census stop
+// reporting exactly that one and leaves every other finding standing -- so the finding is produced by the
+// listing, not by a table the census agrees with.
+// ---------------------------------------------------------------------------
+
+test fn removing_a_listed_path_from_the_listing_makes_the_census_stop_naming_it() -> Bool {
+  let full = outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths))
+  let dropped = "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag"
+  let without = filter(xs: note_declared_paths, predicate: fn(path) { path != dropped })
+  let shrunk = outside_roots_findings(rows: census_rows(listing: without, claim_bearers: note_declared_paths))
+  !(is_in(listing: shrunk, path: dropped))
+    && is_in(listing: full, path: dropped)
+    && all(xs: note_declared_paths, predicate: fn(path) {
+         if path == dropped {
+           true
+         } else {
+           is_in(listing: shrunk, path: path)
+         }
+       })
+}
+
+fn is_in(listing: List<String>, path: String) -> Bool {
+  any(xs: listing, predicate: fn(candidate) { candidate == path })
+}
+
+// The census names the whole declared population when the listing carries it -- computed containment, no
+// count literal.
+test fn the_census_names_every_declared_path_when_the_listing_carries_them() -> Bool {
+  let findings = outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths))
+  all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: findings, path: path) })
+}
+
+// Governed paths in the same listing are not findings, so the census's finding set is exactly the
+// population under no tree, not "everything outside the scan dirs".
+test fn governed_paths_share_a_listing_without_becoming_findings() -> Bool {
+  let listing = concat(governed_listing_rows, note_declared_paths)
+  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: note_declared_paths))
+  all(xs: findings, predicate: fn(path) { !(path_is_governed(path: path)) })
+    && all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: findings, path: path) })
+}
+
+fn path_is_governed(path: String) -> Bool {
+  match repository_module_file_of_path(path: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE NOTE HOLDS ONLY ITS OWN SUBJECT. A finding outside the note's declared prefix is NOT absorbed under
+// the note's authority: it is reported separately so a new population cannot quietly become "already
+// declared" the way a widening would.
+// ---------------------------------------------------------------------------
+
+test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> Bool {
+  let listing = concat(note_declared_paths, ["src/v2/lens/not_a_governed_tree_at_all.dag"])
+  let findings = outside_roots_findings(rows: census_rows(listing: listing, claim_bearers: note_declared_paths))
+  let vouched = findings_under_note_subject(findings: findings)
+  let undeclared = findings_outside_note_subject(findings: findings)
+  all(xs: vouched, predicate: fn(path) { path_is_under_note_subject(path: path) })
+    && all(xs: undeclared, predicate: fn(path) { !(path_is_under_note_subject(path: path)) })
+}
+
+// The receipt names the note at identity, so a reader is sent to the authority instead of to a number.
+test fn the_receipt_names_the_note_at_identity_rather_than_a_count() -> Bool {
+  let lines = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  any(xs: lines, predicate: fn(line) {
+    string_contains(s: line, pattern: v1_claim_note_identity)
+      && string_contains(s: line, pattern: v1_claim_note_location)
+      && string_contains(s: line, pattern: "OUTSIDE-DISCOVERY-ROOTS")
+  })
+}
+
+fn head_path(paths: List<String>) -> String {
+  match paths {
+    Cons { head: first, tail: _ } => first
+    Empty {} => ""
+  }
+}
+
+// The header cites the layout authority, so the standing's reason is locatable from the receipt alone.
+test fn the_header_cites_the_layout_authority() -> Bool {
+  let lines = outside_roots_header_lines()
+  any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "repository_module_file_of_path") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: v1_claim_note_identity) })
+}
+
+// ---------------------------------------------------------------------------
+// THE REFUSAL. "Could not look" is not "nothing to report": the census keeps them apart, and the refusal
+// outranks a clean census over an empty population.
+// ---------------------------------------------------------------------------
+
+test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
+  let refused = outside_roots_census(
+    listing: ListingRefused { cause: "the index could not be asked" },
+    bearers: BearersRead { paths: note_declared_paths }
+  )
+  refused.unread
+    && is_empty(refused.findings)
+    && any(xs: refused.lines, predicate: fn(line) { string_contains(s: line, pattern: "UNREAD") })
+}
+
+test fn a_read_listing_of_nothing_is_a_clean_census_not_a_refusal() -> Bool {
+  let read = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: note_declared_paths })
+  !(read.unread) && is_empty(read.findings)
+}
+
+// The unread standing outranks a finding: when both are present the census still reports itself unread.
+test fn the_unread_standing_outranks_a_populated_census() -> Bool {
+  let rows = concat(census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths), [listing_unread_row()])
+  listing_is_unread(rows: rows)
+}
+
+// ---------------------------------------------------------------------------
+// THE LOCATOR IS NOT AN INPUT (the census output is a pure function of the listing; the head is stamped
+// beside it). A stamp cannot invent a revision.
+// ---------------------------------------------------------------------------
+
+test fn the_head_is_stamped_beside_the_output_and_never_invented() -> Bool {
+  head_stamp_line(revision: "") == "OUTSIDE-DISCOVERY-ROOTS head: no revision supplied"
+    && string_contains(s: head_stamp_line(revision: "abc1234"), pattern: "abc1234")
+}
+
+// ---------------------------------------------------------------------------
+// THE LIVE MODULE IS INSIDE THE WITNESS'S RESOLVING. This claim imports the live module and calls one of
+// its pure functions, so a type error anywhere in it cannot be invisible to the corpus (the blocker
+// bold-badger-676 caught once in the S1 census: 20 claims passed while the live module refused to resolve).
+// ---------------------------------------------------------------------------
+
+test fn a_live_function_resolves_and_reports_no_finding_for_an_empty_listing() -> Bool {
+  let out = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: note_declared_paths })
+  is_empty(out.findings) && !(out.unread)
+}
+
+// The capture's decision on an EMPTY answer, exercised directly: it is a refusal with a cause, never an
+// empty population standing in for success. The decision is a pure function of the captured text precisely
+// so this can be put in its hand -- the capture itself only runs on the real route.
+test fn an_empty_answer_from_the_index_is_a_typed_refusal_not_an_empty_population() -> Bool {
+  match listing_from_captured_text(text: "   \n ") {
+    ListingRefused { cause: cause } => string_contains(s: cause, pattern: "no listing")
+    ListingRead { paths: paths } => false
+  }
+}
+
+// ...while a real listing of one path is read as one path, and the trailing newline is not a second one.
+test fn a_captured_listing_splits_on_newlines_and_drops_the_trailing_one() -> Bool {
+  match listing_from_captured_text(text: "src/v1/tests/claim/escape_json_string_differential.dag\n") {
+    ListingRead { paths: paths } =>
+      length(xs: paths) == 1
+        && any(xs: paths, predicate: fn(p) { p == "src/v1/tests/claim/escape_json_string_differential.dag" })
+    ListingRefused { cause: _ } => false
+  }
+}
+
+// The phrase a naive reader would hand the marker read. Kept here, beside the claim that rejects it, so the
+// claim says what the wrong answer is instead of only that the right one is right.
+data bare_marker_phrase: String = "test fn"
+
+// ---------------------------------------------------------------------------
+// THE TWO READS ARE NOT ONE READ. The census refuses when the marker answer is refused even though the
+// listing came back full: a missing marker read would otherwise print every path as NotAClaimFile, which is
+// a clean bill of health produced by a broken observation.
+// ---------------------------------------------------------------------------
+
+test fn a_refused_marker_read_is_a_refusal_even_when_the_listing_read_fine() -> Bool {
+  let out = outside_roots_census(
+    listing: ListingRead { paths: note_declared_paths },
+    bearers: BearersRefused { cause: "the marker read was never answered" }
+  )
+  out.unread
+    && is_empty(out.findings)
+    && any(xs: out.lines, predicate: fn(line) { string_contains(s: line, pattern: "marker") })
+}
+
+// An empty marker answer is NOT a refusal: if nothing tracked declares a claim, every path really is
+// NotAClaimFile. Refusing here would turn "nothing declares a claim" into "we could not tell", which is the
+// direction that hides a finding.
+test fn an_empty_marker_answer_reports_every_path_as_not_a_claim_file() -> Bool {
+  let out = outside_roots_census(
+    listing: ListingRead { paths: note_declared_paths },
+    bearers: BearersRead { paths: [] }
+  )
+  !(out.unread) && is_empty(out.findings)
+}
+
+// THE FABRICATED-FINDING RED, on the files themselves. Tracked `.dag` under the very subject the note names,
+// which declare no test fn: they were reported as uncovered claims by an extension-only rule. Handed to the
+// census WITHOUT the marker answer, they must come back NotAClaimFile -- and the same census, handed the
+// paths that do declare claims, still reports those. One claim, both directions, so the marker test cannot
+// be satisfied by simply reporting nothing.
+test fn a_tracked_dag_that_declares_no_claim_is_never_reported_as_one() -> Bool {
+  let rows = census_rows(listing: subject_helpers_declare_nothing, claim_bearers: note_declared_paths)
+  let findings = outside_roots_findings(rows: rows)
+  is_empty(findings)
+    && all(xs: subject_helpers_declare_nothing, predicate: fn(path) {
+         match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+           NotAClaimFile { path: reported } => reported == path
+           InsideGovernedTree { path: _, tree_directory: _ } => false
+           OutsideDiscoveryRoots { path: _, cause: _ } => false
+           ListingUnread { cause: _ } => false
+         }
+       })
+    && all(xs: note_declared_paths, predicate: fn(path) {
+         is_in(listing: outside_roots_findings(rows: census_rows(listing: note_declared_paths, claim_bearers: note_declared_paths)), path: path)
+       })
+}
+
+// The same shape for the files outside the subject whose text only MENTIONS the phrase in prose: no marker
+// answer for them means no finding for them.
+test fn prose_that_only_mentions_the_marker_is_not_a_claim_file() -> Bool {
+  all(xs: prose_mentioning_paths, predicate: fn(path) {
+    match outside_roots_row(path: path, claim_bearers: note_declared_paths) {
+      NotAClaimFile { path: reported } => reported == path
+      InsideGovernedTree { path: _, tree_directory: _ } => false
+      OutsideDiscoveryRoots { path: _, cause: _ } => false
+      ListingUnread { cause: _ } => false
+    }
+  })
+}
+
+// THE ATTRIBUTION IS PER LINE. The note vouches for paths under its declared subject and for nothing else;
+// a line printed for a path outside that subject says so in terms, so a new population cannot be absorbed
+// under the note's authority by the shape of the receipt.
+test fn the_receipt_says_which_findings_the_note_vouches_for_and_which_it_does_not() -> Bool {
+  let vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  let not_vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: prose_mentioning_paths)],
+    vouched_by_note: false
+  )
+  any(xs: vouched, predicate: fn(line) {
+    string_contains(s: line, pattern: "declared by") && !(string_contains(s: line, pattern: "NOT declared by"))
+  })
+    && any(xs: not_vouched, predicate: fn(line) { string_contains(s: line, pattern: "NOT declared by") })
+}
+
+// THE GRAIN OF THE MARKER READ IS ON EVERY LINE, in both attributions. `acquisition_test_markers` is the
+// authority on "declares a test fn" and it PARSES; the census was handed a regex over text. A line that
+// named the note and the path while staying silent about which of those two spoke would read as the
+// parser's verdict -- and this pattern already proved twice over that it is not one (prose `test fn` and
+// fixture text both matched it). So the qualification is not a comment, it is printed, and this claim is
+// what keeps it printed.
+test fn every_receipt_line_says_the_marker_answer_is_a_pattern_match_not_the_marker_authority() -> Bool {
+  let vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  let not_vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: prose_mentioning_paths)],
+    vouched_by_note: false
+  )
+  all(xs: vouched, predicate: fn(line) {
+    string_contains(s: line, pattern: "not acquisition_test_markers")
+  })
+    && all(xs: not_vouched, predicate: fn(line) {
+         string_contains(s: line, pattern: "not acquisition_test_markers")
+       })
+}
+
+// THE MARKER PATTERN IS THE DECLARATION SHAPE, not the bare phrase -- claimed on the data the live entry
+// reads with, because at this head the two differ in the population they report (17 tracked `.dag` outside
+// the governed trees contain the phrase `test fn` somewhere in their text; 13 declare one). A naive reader
+// who passed the bare phrase would silently promote four prose files to findings, so "it contains the
+// phrase" is not enough: the pattern must be anchored and must name a declaration.
+test fn the_marker_pattern_asks_for_a_declaration_and_not_a_mention() -> Bool {
+  !(claim_declaration_pattern == bare_marker_phrase)
+    && claim_declaration_pattern.starts_with(prefix: "^")
+    && string_contains(s: claim_declaration_pattern, pattern: bare_marker_phrase)
+    && string_contains(s: claim_declaration_pattern, pattern: "[A-Za-z_]")
+}
+
+// The pure decision on an empty marker answer, in the same shape the listing capture has: no text at all is
+// "the transport never answered", which is a refusal, not an empty population.
+test fn no_text_at_all_from_the_marker_read_is_a_refusal() -> Bool {
+  match bearers_from_captured_text(text: " \n ") {
+    BearersRefused { cause: cause } => string_contains(s: cause, pattern: "marker")
+    BearersRead { paths: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PARSE-BACKED ROUTE, PROBED RATHER THAN ARGUED (manager ask).
+//
+// The question was whether the seed parser can answer "declares a test fn" for a src/v1 file, which would
+// let the census use the authority instead of a pattern. It CAN, and the probe is here rather than in a
+// comment: `v2.compiler.test_marker_capture test_marker_content` walks a PARSE TREE and yields one
+// TestMarkedContent {name, content} per `dag_surface_test_fn_decl` -- the same production
+// v2.compiler.body_lowering_fold body_lower_test_fn_decl_to_member lowers -- over text read through the
+// read-only Filesystem.Read service operation, the way
+// src/v2/test/claim/text_string_importer_census.dag reads its own subjects. Note what this route does NOT
+// need: acquisition_test_markers takes a ModuleFileRef, which v2.cli.repository_layout refuses to bind for a
+// src/v1 path (its root matcher answers only [V2Tree, DagTree]), so the ACQUISITION route is closed for these
+// files while the PARSE route, which takes text, is open. That distinction is the whole answer.
+// ---------------------------------------------------------------------------
+
+// THE SAME DISCRIMINATOR THE PATTERN READ FAILED, at the authority's grain. The three files the pattern read
+// once reported as findings contain the phrase `test fn` in PROSE (in modules implementing other things). The
+// parser gives them no shells: a comment is not a declaration node. This claim is the census's reason for
+// trusting the declaration shape over the phrase -- the parser and the anchored pattern agree, and the
+// parser is why the anchor is the right shape rather than a guess that happened to work.
+test fn the_parse_route_declines_the_prose_files_the_pattern_read_once_matched() -> Bool {
+  let read = Filesystem.Read(path: "src/v1/compile.dag")
+  match parse_marker_names(text: read.content, path: "src/v1/compile.dag") {
+    ParseMarkersRefused { cause: _ } => false
+    ParseMarkersRead { names: names } => (length(xs: names) == 0) && read.success
+  }
+}
+
+// AND THE SAME ROUTE FINDS THE DECLARATIONS WHERE THE SUBJECT HAS THEM, so the claim above cannot be green
+// simply because parsing always answers empty. The file declares three test fns; the parse route names them,
+// and its answer is compared to those names at identity -- not to a count, which a stub could match.
+test fn the_parse_route_names_the_declared_test_fns_of_a_src_v1_file() -> Bool {
+  let read = Filesystem.Read(path: probe_subject_path)
+  match parse_marker_names(text: read.content, path: probe_subject_path) {
+    ParseMarkersRefused { cause: _ } => false
+    ParseMarkersRead { names: names } =>
+      read.success
+        && all(xs: probe_subject_expected_names, predicate: fn(name) {
+             any(xs: names, predicate: fn(found) { found == name })
+           })
+  }
+}
+
+// THE PARSE ROUTE IS NOT THE CENSUS'S MARKER, AND THE CENSUS SAYS SO ON EVERY LINE. This claim pins the
+// receipt token rather than trusting a comment: if the token were dropped, a pattern match over text would
+// read as the marker authority's verdict, which is the transcribed standing DESIGN §6 forbids.
+test fn the_census_receipt_never_borrows_the_marker_authoritys_name() -> Bool {
+  let lines = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  all(xs: lines, predicate: fn(line) {
+    string_contains(s: line, pattern: "pattern-grain")
+      && string_contains(s: line, pattern: "not acquisition_test_markers")
+  })
+}
+
+// ---------------------------------------------------------------------------
+// The parse probe's plumbing. A refusal is a distinct standing, not an empty answer: a claim that read
+// "no names" from a refused parse would look exactly like the prose files, which is the fail-open shape.
+// ---------------------------------------------------------------------------
+
+data probe_subject_path: String = "src/v1/tests/claim/escape_json_string_differential.dag"
+
+// THE NAMES THAT FILE DECLARES, read from its text by a person and pinned here as the thing the parse route
+// is held to. Names, not a count: "three" is satisfiable by any three tokens, these are not.
+// Read out of the file with `grep -n '^test fn' src/v1/tests/claim/escape_json_string_differential.dag`
+// at this commit, and transcribed EXACTLY -- including the third name's `RED_` prefix, which is part of
+// the identifier, not a standing. The first version of this list invented three plausible
+// escape_json_string_* names that do not exist anywhere in the repo; the claim below FAILED on them,
+// which is precisely what holding the parse route to names rather than a count is for.
+data probe_subject_expected_names: List<String> = [
+  "the_seed_copy_spells_every_control_code_point_per_rfc_8259",
+  "the_seed_copy_leaves_quote_backslash_non_ascii_and_a_plain_word_per_rfc_8259",
+  "RED_the_seed_copy_escapes_nul_and_backspace"
+]
+
+type ParseMarkers
+  = ParseMarkersRead { names: List<String> }
+  | ParseMarkersRefused { cause: String }
+
+fn parse_marker_names(text: String, path: String) -> ParseMarkers {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("grammar unprepared for ", path) }
+    Accepted { value: prepared, diagnostics: _ } => match tokenize_prepared(
+      text: text,
+      file: symbol_intern_lexeme(lexeme: path),
+      prepared: prepare_lex_rules(rules: dag_language_model().lex)
+    ) {
+      Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("tokenize refused for ", path) }
+      Accepted { value: tokens, diagnostics: _ } => match parse_module_prepared(tokens: tokens, prepared: prepared) {
+        Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("parse refused for ", path) }
+        Accepted { value: artifact, diagnostics: _ } => match test_marker_content(tree: artifact.tree) {
+          Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("marker read refused for ", path) }
+          Accepted { value: rows, diagnostics: _ } =>
+            ParseMarkersRead { names: list_map(xs: rows, f: fn(row) { symbol_lexeme(sym: row.name) }) }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE SCAN-DIR GAP: A POPULATION, NOT A STANDING.
+//
+// Five claims, each a refusal of a specific shortcut:
+//  (1) a path inside one of the authority's three lanes never enters the population. The lazy implementation
+//      -- "gap = anything under src/v2/test/claim" or "gap = anything not scanned that I know about" -- passes
+//      this one while lying about scanned files, so the lane test is exercised against real lane paths.
+//  (2) the ruled population and this standing-less population are DISJOINT, which is what one predicate read
+//      in two directions buys: the layout refuses the note's paths (so they are ruled findings) and accepts
+//      everything in the gap. Appearing twice under two judgments would be a double-count a reader cannot see.
+//  (3) census visibility is decided by the layout authority, in one direction for each population.
+//  (4) a path the marker read never answered cannot enter the population: it is a join over the answer, so it
+//      is computed and not a hand-listed set someone remembered.
+//  (5) the receipt says it rules no standing and names the lane authority, so the absence of a standing can
+//      never be read as a judgment of "fine".
+// ---------------------------------------------------------------------------
+
+data note_declared_first_path: String = "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
+
+// Real paths from the authority's own three lanes, taken as tracked by `git ls-files` at this commit.
+data scan_lane_fixture_paths: List<String> = [
+  "dag/test/claim/a_payload_surplus_variant_wall.dag",
+  "src/v2/test/claim/manual/add_body_emit_python.dag",
+  "src/v2/test/claim/emit/arrow_scope_atom_refuses_unresolved.dag"
+]
+
+test fn a_path_in_a_scan_lane_never_enters_the_gap_population() -> Bool {
+  all(xs: scan_lane_fixture_paths, predicate: fn(path) {
+    !(any(xs: scan_dir_gap_population(claim_bearers: [path]), predicate: fn(gap) { gap == path }))
+  })
+}
+
+// THE MUTUAL-EXCLUSION CLAIM. The two populations are decided by ONE predicate -- `repository_module_file_of_path`
+// -- read in opposite directions, so a path can be in at most one of them. Asserted over the full subject
+// list, where it is the property a reader actually needs: the 13 note paths carry a ruled standing and must
+// not also appear in a standing-less population. It is exercised over the whole list rather than one path,
+// because a partial list would let a prefix-typo exclusion look correct.
+test fn the_ruled_population_and_the_gap_population_are_disjoint() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: note_declared_paths)
+  all(xs: note_declared_paths, predicate: fn(path) {
+    !(any(xs: gap, predicate: fn(g) { g == path }))
+  })
+}
+
+// The census-visible test is what keeps the two populations apart: `OutsideDiscoveryRoots` is refused BY the
+// layout, this one is owned by the layout and skipped by the lanes. A path can be in at most one, and the
+// src/v1 population must stay in its own standing.
+test fn census_visibility_decides_which_population_a_path_is_in() -> Bool {
+  all(xs: governed_listing_rows, predicate: fn(path) {
+    is_census_visible(path: path)
+  }) && all(xs: note_declared_paths, predicate: fn(path) {
+    !(is_census_visible(path: path)) && path_is_under_note_subject(path: path)
+  })
+}
+
+// The population is a JOIN over the marker answer: a path the read never answered cannot appear, no matter how
+// un-scanned it is. A hand-listed population would pass every other claim here and still be fiction.
+// POSITIVE MEMBERSHIP, on a real path. Every other claim here can be satisfied by a population that is
+// always EMPTY -- which is exactly what "the census reports nothing and looks clean" means. This path is a
+// tracked `.dag` that declares five test fns, sits under the layout's `src` root (so census-visible), and
+// falls under none of the authority's three lanes. If the lane predicate stops excluding, this is the claim
+// that says so; if the population silently empties, this is the claim that says so too.
+data gap_member_fixture_path: String = "src/v2/test/claim/affected_set_universe.dag"
+
+test fn a_real_census_visible_path_outside_every_lane_is_in_the_gap() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: [gap_member_fixture_path])
+  any(xs: gap, predicate: fn(g) { g == gap_member_fixture_path })
+}
+
+test fn a_path_the_marker_read_never_answered_cannot_enter_the_gap() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: [note_declared_first_path])
+  !(any(xs: gap, predicate: fn(g) { string_contains(s: g, pattern: "add_body_emit_python") }))
+}
+
+test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority() -> Bool {
+  let lines = concat(scan_dir_gap_header_lines(), scan_dir_gap_receipt_lines(paths: [note_declared_first_path]))
+  all(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE-SCAN-DIRS") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "no standing is ruled") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: scan_dir_authority_identity) })
+}

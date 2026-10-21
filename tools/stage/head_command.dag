@@ -1,0 +1,552 @@
+module extdeps.exec.command
+import std.optional { Absent, Optional, Present }
+
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_program }
+
+import std.types { NonEmptyStr, String, List }
+import std.algebra { Cons, Empty }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  OperationInputBinding,
+  operation_argv_cause_label,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import std.env_binding { EnvBinding }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_absolute_program, env_ignore_environment_flag, env_chdir_flag }
+import gunbc.remote_shell_command {
+  RemoteExecCommandInterpretation,
+  RemoteExecCommandOutcome,
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  RemoteExecCommandRefusalCause,
+  remote_exec_command_rendered,
+  remote_exec_command_string,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/ssh.1.html"
+  }
+}
+
+// THE ARGV CONSTRUCTION WALL. ArgvCommand was a plain record, so every module could write
+// `ArgvCommand { argv: ["curl", "-fsL", "-o", dest, url] }` at the call site and the flags of a tool
+// this repository does not own lived wherever someone happened to need them. That is the anemic
+// modeling DESIGN §2 names -- a String leaf hiding named parts -- and it is what made the omitted
+// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution, Lane B).
+//
+// It is now sole_constructor: only this module may build one, and `argv_command` below is the single
+// admitted route in, caller-sealed BY NAME to the typed builders that derive an argv from a cited
+// authority. A hand-spelled word list has no route to a process that does not pass through one of
+// them, so "which flags does this tool take" is answered in the tool's own extdeps module and
+// nowhere else. Adding a command is an edit to the admit list in this file -- a conspicuous, counted
+// review event -- rather than an import a caller can write in their own.
+//
+// THE PROGRAM IS NOT AN ARGUMENT. execve takes the executable and the argument vector as distinct
+// parameters, and this carrier now does the same, for the reason already recorded at
+// extdeps.shell.exec RunArgv: conflating them is a state-space collapse. It also makes the EMPTY
+// argv -- a command naming no program to execute -- unrepresentable rather than refused after the
+// fact (DESIGN §4b: structurally impossible beats mechanically preventable). The two
+// `Absent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
+// always a program, so there is nothing left to refuse.
+//
+// The program is a ProgramIdentity (extdeps.exec.program), not a string: which program a command
+// runs is minted once, by a sealed row whose admission IS the census of what gunbc executes, so a
+// builder cannot name a program the census does not already count.
+type ArgvCommand sole_constructor {
+  program: ProgramIdentity
+  arguments: List<String>
+}
+
+// THE ONE MINT. It takes the program and its operands, and gates WHO may call it. Every admitted
+// caller is a named builder for ONE operation of ONE tool, homed in that tool's own extdeps module
+// beside its cited upstream authority -- never here: a generic hub may define the agnostic shape but
+// may not enumerate concrete products (DESIGN §3, external upstream decomposition). That is why the
+// six builders this module used to carry (curl_download_command, mkdir_p_command,
+// tar_extract_command, make_command, sed_in_place_command, cp_command) are GONE from this file and
+// live in extdeps.tools.{curl,mkdir,tar,make,sed,gnu_coreutils}: sealing the record while keeping
+// the product rows in the hub would have made this module the one place every tool's flags collect.
+//
+// TWO CONCRETE PRODUCTS DO STILL LIVE IN THIS FILE -- sshpass and OpenSSH's ssh/scp -- and that is a
+// stated exception rather than an oversight in the rule above. They are not here as tools a caller
+// picks; they are the REALIZATION of the CommandTransport coproduct this module declares, so
+// command_over_transport cannot compose an SshExec without naming them. Moving them out would leave
+// the transport unable to build its own outer invocation, or force an import cycle to get it back.
+// If a second ssh realization ever lands, that is the moment this becomes a real product
+// enumeration and the pair moves to extdeps.ssh.keys with the transport dispatching over them.
+//
+// No test declaration is admitted. A witness obtains an ArgvCommand through a production builder,
+// the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
+fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
+  admit_callers: [
+    decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command_in"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_receipt_object_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_sandbox_preflight_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_key_probe_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_environment_authenticated_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_create_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_start_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_stop_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_exec_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_pull_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_container_inspect_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_ps_running_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_ps_running_all_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_spec_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_digest_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_save_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_load_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_inspect_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_info_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_ephemeral_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_remove_force_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_rename_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_reproducible_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_two_lists_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_sizes_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_listed_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_create_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_snapshot_read_only_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_delete_command"),
+    decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_repository_create_filesystem_command"),
+    decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_snapshot_create_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_files_sha256_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owner_executable_files_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_file_size_mtime_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_in_place_command"),
+    decl_ref(module_path: "extdeps.tools.unzip", decl_name: "unzip_extract_command"),
+    decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
+    decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_extract_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_run_file_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_version_command"),
+    decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
+    decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_extract_command"),
+    decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_populate_command"),
+    decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_format_command"),
+    decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "dumpe2fs_superblock_command"),
+    decl_ref(module_path: "extdeps.nftables.ruleset", decl_name: "nft_list_table_command"),
+    decl_ref(module_path: "extdeps.tools.conntrack", decl_name: "conntrack_delete_command"),
+    decl_ref(module_path: "extdeps.tools.conntrack", decl_name: "conntrack_list_command"),
+    decl_ref(module_path: "extdeps.tools.conntrack", decl_name: "conntrack_list_expectations_command"),
+    decl_ref(module_path: "extdeps.iproute2.ip_neigh", decl_name: "ip_neigh_flush_command"),
+    decl_ref(module_path: "extdeps.iproute2.ip_neigh", decl_name: "ip_neigh_show_command"),
+    decl_ref(module_path: "extdeps.iproute2.ip_show", decl_name: "ip_addr_show_command"),
+    decl_ref(module_path: "extdeps.iproute2.ip_show", decl_name: "ip_route_show_command"),
+    decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_release_command"),
+    decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_machine_command"),
+    decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_nodename_command"),
+    decl_ref(module_path: "extdeps.linux.ethtool_ioctl", decl_name: "linux_ethtool_channels_command"),
+    decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
+    decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_command_of"),
+    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_install_pinned_command"),
+    decl_ref(module_path: "extdeps.package_managers.conda_forge", decl_name: "micromamba_create_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
+    decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
+    decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_get_install_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_build_release_bin_offline_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_vendor_command_from"),
+    decl_ref(module_path: "extdeps.rust.standalone_installer", decl_name: "rust_standalone_install_command"),
+    decl_ref(module_path: "extdeps.rust.rustc", decl_name: "rustc_version_command"),
+    decl_ref(module_path: "extdeps.gnupg.gpgv", decl_name: "gpgv_verify_cleartext_command"),
+    decl_ref(module_path: "extdeps.tools.xz", decl_name: "xz_decompress_keep_command"),
+    decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_root_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_preserve_if_absent_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_hash_object_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_run_release_manifest_offline_command"),
+    decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_control_fields_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
+    decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_tree_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_replay_build_pinned_dates_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_list_long_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_directory_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_overwrite_path_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_with_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_hard_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_span_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_symbolic_force_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "true_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
+    decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
+    decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
+    decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
+    decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_dd_sparse_image_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_ftps_upload_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_upload_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_download_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_delete_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_sigv4_s3_parallel_upload_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_version_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bmcweb_session_login_command"),
+    decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_readonly_file_serve_command"),
+    decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_nbd_proxy_bridge_command"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_publish_command"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_pub_help_command"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_sub", decl_name: "mosquitto_report_command"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_rr", decl_name: "mosquitto_snapshot_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_max_rss_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_version_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_manager_probe_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_list_all_service_units_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_daemon_reload_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_start_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_script_command"),
+    decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
+    decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
+    decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_version_command"),
+    decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
+    decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_list_identities_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_download_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_upload_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_clone_shallow_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_ls_files_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_grep_files_with_matches_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_init_quiet_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_archive_tar_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_show_file_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_add_all_force_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_commit_snapshot_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_diff_tree_equal_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_status_porcelain_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_apply_check_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_apply_reverse_check_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_apply_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_diff_binary_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_reset_hard_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_add_detached_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_remove_force_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_worktree_prune_command"),
+    decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_list_command_as"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_version_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
+    decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_check_command"),
+    decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_policy_check_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mtime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_ctime_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_birth_epoch_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_identity_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_properties_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_environment_command"),
+    decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_clock_ticks_command"),
+    decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_online_processors_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_of_command"),
+    decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
+    decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
+    decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_dereferenced_inode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_uid_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_empty_file_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command"),
+    decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
+    decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_symbolic_force_into_directory_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
+    decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
+    decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
+  ]
+  = ArgvCommand { program: program, arguments: arguments }
+
+// AN OPERATION ROW, MATERIALIZED INTO A SEALED COMMAND -- the ONE repartition. A service declares an
+// operation with `transport shell { argv: [...] }` in ITS OWN extdeps module (that row is the single
+// authority for the words); the argv transports here take a sealed ArgvCommand -- a ProgramIdentity
+// beside its operand tail. Turning materialized row argv into that carrier is ONE concept, so it is
+// modeled once, here, beside the wall whose single mint it passes through (DESIGN §2: model a concept
+// once and derive every use; a per-tool copy of this match would re-mint the concept per row, and the
+// next row that needs it would make a third copy).
+//
+// THE HEAD IS THE PROGRAM, NOT A CHECKED LITERAL: the row's executable token becomes the sealed
+// command's ProgramIdentity directly, so a row that changes which binary it names changes every
+// command built from it -- a literal program word checked beside the row would be a second authority
+// for "which program runs" and would refuse on drift instead of following the row. WHAT IS refused is
+// what cannot be a command at all: an argv that materialized nothing, an empty executable token, and
+// any materialization refusal from the kernel -- each a typed Refused naming its cause, so a caller
+// that cannot tell refuses before its leg runs rather than execing a plausible-looking command
+// (DESIGN §5: every path succeeds fully or fails with a typed, located diagnostic; refuse, never
+// widen). Callers keep their own row coordinates and their own domain-flavoured refusal type by
+// naming this one's cause; none may re-spell the words.
+type OperationRowArgvCommand
+  = OperationRowArgvCommandReady { command: ArgvCommand }
+  | OperationRowArgvCommandRefused { cause: String }
+
+fn operation_row_argv_command(
+  path: String,
+  service: String,
+  operation: String,
+  binds: List<OperationInputBinding>,
+) -> OperationRowArgvCommand {
+  match shell_materialize_operation_argv(path, service, operation, binds) {
+    ArgvMaterialized { argv: materialized } =>
+      match materialized {
+        Cons { head: head, tail: tail } =>
+          if head == "" {
+            OperationRowArgvCommandRefused {
+              cause: concat("operation row ", service, " ", operation, " materialized an empty token in its executable position"),
+            }
+          } else {
+            OperationRowArgvCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: head as NonEmptyStr),
+                arguments: tail,
+              ),
+            }
+          }
+        Empty =>
+          OperationRowArgvCommandRefused {
+            cause: concat("operation row ", service, " ", operation, " materialized an empty argv"),
+          }
+      }
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      OperationRowArgvCommandRefused {
+        cause: concat("operation row ", service, " ", operation, " refused materialization: ", operation_argv_cause_label(cause: c)),
+      }
+  }
+}
+
+// The words a process would receive, program first. Renderers and transports that need one flat
+// vector derive it here rather than each re-deciding that argv[0] is the program.
+fn argv_words(command: ArgvCommand) -> List<String> {
+  append([command.program.invocation as String], items: command.arguments)
+}
+
+// SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred
+// fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command
+// string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command
+// remote_exec_command_interpretation_note), so the caller who knows which deployment it is
+// targeting must declare it rather than command_over_transport guessing from the target string. A
+// target this module cannot classify names Unknown explicitly; command_over_transport then refuses
+// rather than picking a default (operator directive, 2026-08-19).
+
+type CommandTransport
+  = LocalExec
+  | SshExec { ssh_target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
+
+data sshpass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sourceforge.net/projects/sshpass/"
+  }
+}
+
+// 🟡 dissolve-on: ssh_host_key_override_opts — DECLARED SECURITY POSTURE, not an accident of argv
+// building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key
+// verification for these fleet/BMC transports, so a LAN-position MITM would not be detected;
+// accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are
+// not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e
+// (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on
+// gunbc.fleet.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides
+// in favor of a pinned UserKnownHostsFile.
+
+// The transport's own program, split from its flags for the same reason ArgvCommand splits them:
+// sshpass is what gets executed, `-e` is what it is told.
+fn sshpass_program() -> ProgramIdentity = cataloged_program(invocation: "sshpass")
+
+fn ssh_host_key_override_opts() -> List<String> {
+  ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
+}
+
+fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: sshpass_program(),
+    arguments: append(
+      append(
+        append(["-e", "scp"], items: ssh_host_key_override_opts()),
+        items: [local_path as String],
+      ),
+      items: [remote_target as String],
+    ),
+  )
+}
+
+data command_over_transport_composition_note: String = "The SshExec arm no longer does append(ssh_exec_prefix, command.argv) (that prefix helper is itself gone now that the outer invocation is minted through argv_command with sshpass as its program): that concatenated an outer local ssh/sshpass argv with an inner remote-shell argv as if they were one target's words, which is wrong in KIND (gunbc.remote_shell_command remote_exec_command_string_note) -- RFC 4254 section 6.5 carries the remote program as ONE command string, not a suffixed argv. The inner ArgvCommand is now folded through remote_exec_command_string into that one NonEmptyStr, cited to IEEE 1003.1-2017 section 2.2.2, and carried as the SINGLE final element of the outer ssh argv -- a composition of two targets, never a flattening of one into the other. Quoting stays a property of the interpretation arm named on SshExec, never of the transport itself: LocalExec never quotes anything, and an Unknown interpretation refuses here exactly as it refuses inside remote_exec_command_string, rather than this function inventing its own default."
+
+type CommandOverTransportOutcome
+  = CommandOverTransportBuilt { command: ArgvCommand }
+  | CommandOverTransportRefused { cause: RemoteExecCommandRefusalCause }
+
+fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> CommandOverTransportOutcome {
+  match transport {
+    LocalExec => CommandOverTransportBuilt { command: command }
+    SshExec { ssh_target: t, interpretation: interp } =>
+      match remote_exec_command_string(argv: map(argv_words(command: command), a => a as NonEmptyStr), interpretation: interp) {
+        RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
+        RemoteExecCommandBuilt { command: sealed } =>
+          let s = remote_exec_command_rendered(command: sealed)
+          CommandOverTransportBuilt {
+            command: argv_command(
+              program: sshpass_program(),
+              arguments: append(
+                append(["-e", "ssh"], items: ssh_host_key_override_opts()),
+                items: [t as String, s as String],
+              ),
+            )
+          }
+      }
+  }
+}
+
+// shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator
+// finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote
+// wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX
+// authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: "'")
+// then join with "'\''" is the same operation as replace(s, "'", "'\''"), so this is a pure
+// internal-implementation swap: byte-identical output, unchanged signature, no diff for any of
+// shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority.
+
+fn shell_quote(arg: String) -> String {
+  posix_single_quote(spelling: arg)
+}
+
+fn shell_command_render(command: ArgvCommand) -> String {
+  join(map(argv_words(command: command), a => shell_quote(arg: a)), " ")
+}
+
+data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
+
+// Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags
+// (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A
+// caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the
+// derived realization, not a magic string the caller must remember. THE BUILDERS THEMSELVES ARE NOT
+// HERE: each is homed in its tool's own extdeps module beside that tool's cited upstream authority,
+// and admitted by name on argv_command above, because a generic hub may not enumerate concrete
+// products (DESIGN §3). This module owns the SHAPE and the seal; the products own their flags.
+
+// THE ENV-PREFIXED INVOCATION LIVES HERE, IN THE CARRIER'S OWN MODULE, AND THE DEPENDENCY RUNS ONE
+// WAY ONLY. env(1) is modeled at extdeps.tools.env -- its binary path, its NAME=VALUE and -u
+// spellings, and the fact that an unset is TWO argv elements rather than one -- and this builder
+// consumes that authority to mint an ArgvCommand. It is not in the env module because the env
+// authority must know nothing about this seal: a dependency that imported its consumer's carrier
+// would invert the direction the whole extdeps layering runs in.
+//
+// THE INNER COMMAND IS AN ArgvCommand, not a word list, which is the point: `env A=1 prog --flag`
+// is a composition of two invocations, and if the inner one arrived as List<String> this builder
+// would be the laundering seam the seal exists to remove. The env prefix is a wrapper around a
+// command that already came from a builder.
+// IT NAMES env BY THE PATH-RESOLVED SPELLING, DELIBERATELY. extdeps.tools.env carries both
+// env_absolute_program and env_path_resolved_program because an absolute path is a claim about an
+// observed filesystem, and both of this builder's call sites target hosts this repository has never
+// read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
+// vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
+// observed wants the absolute row, and that is a different builder when one is needed, not a flag.
+// THE COMMAND UNDER AN EMPTY ENVIRONMENT, by the ABSOLUTE env: its callers run it on a host whose
+// layout this repository declares (the approval host's /usr/bin), and the point of the wrapper is
+// that nothing ambient reaches the command -- so its program is not left to PATH either.
+fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
+  argv_command(program: env_absolute_program(), arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+}
+
+// THE COMMAND UNDER ONLY THESE BINDINGS (env -i, by the absolute env), STARTED IN A NAMED DIRECTORY
+// (env -C): nothing of the caller's environment survives, so a consumer that must not inherit a
+// startup input (NODE_OPTIONS, LD_PRELOAD) names the complete set it admits.
+fn env_cleared_command_in(directory: String, bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_absolute_program(),
+    arguments: concat([env_ignore_environment_flag as String, env_chdir_flag as String, directory], env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command))),
+  )
+}
+
+// THE COMMAND UNDER THESE BINDINGS, STARTED IN A NAMED DIRECTORY (env -C).
+fn env_prefixed_command_in(directory: String, bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_path_resolved_program(),
+    arguments: concat([env_chdir_flag as String, directory], env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command))),
+  )
+}
+
+fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_path_resolved_program(),
+    arguments: env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command)),
+  )
+}
