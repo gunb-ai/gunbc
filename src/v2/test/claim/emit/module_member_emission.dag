@@ -326,11 +326,3 @@ test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
     MemberClosureRefused { reason: _ } => false
   }
 }
-
-fn zz_float_probe() -> String {
-  match member_emission_float_verdict_on(target: rust_target_model()) {
-    MemberEmitted { text: t } => concat("EMITTED ", t, "")
-    MemberRefused { reason: r } => concat("REFUSED ", symbol_lexeme(sym: r), "")
-    MemberClosureRefused { reason: r } => concat("CLOSURE ", symbol_lexeme(sym: r), "")
-  }
-}

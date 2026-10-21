@@ -48,7 +48,7 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_b
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
-import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, dag_authored_name_is_parse_production_projection }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import v2.std.text { String, string_join }
@@ -331,7 +331,7 @@ fn emit_opaque_declaration(name: Symbol, module: List<Symbol>, opaque: Node, tar
             source: Present { value: decl_ref(module_path: unicode_scalar_fold(xs: string_join(fields: fold_list(xs: module, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: s)) }), separator: ".")), decl_name: unicode_scalar_fold(xs: symbol_lexeme(sym: name))) },
             rows: rows
           ) {
-            ExactBindingAbsent => emit_module_member_refused(reason: symbol_intern_lexeme(lexeme: concat(string_join(fields: fold_list(xs: module, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: s)) }), separator: "."), "|", symbol_lexeme(sym: name))), at: opaque)
+            ExactBindingAbsent => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_absent, at: opaque)
             ExactBindingAmbiguous { candidate_count: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_ambiguous, at: opaque)
             ExactSourceIdentityUnavailable { cause: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_identity_unavailable, at: opaque)
             ResolvedExactBinding { binding: b } =>
@@ -480,7 +480,8 @@ fn module_bodies_in_tree(node: Node, path: List<Symbol>, acc: List<ModuleBodyAt>
       module_bodies_in_tree(
         node: e.target,
         path: match e.label {
-          Authored { name: n } => list_snoc_item(xs: path, item: n)
+          Authored { name: n } =>
+            if dag_authored_name_is_parse_production_projection(name: n) { path } else { list_snoc_item(xs: path, item: n) }
           _ => path
         },
         acc: a
