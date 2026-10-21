@@ -1499,6 +1499,8 @@ fn multi_entry_index_shell_body(
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
+        provider_layout: RefCell::new(None),
+        providers_outside_index: RefCell::new(Vec::new()),
         module_graph_facts: acquired_facts
             .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
@@ -2115,7 +2117,14 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // The entry index carries each pooled module's source text in memory (read when the index was
     // built, which refuses an unreadable or doubly-declared module), so its answer is Holds or Lacks.
     let pool = |m: &str| {
-        if index.source_files.contains_key(m) {
+        let in_layout = || {
+            index
+                .provider_layout
+                .borrow()
+                .as_ref()
+                .map_or(false, |held| held(m))
+        };
+        if index.source_files.contains_key(m) || in_layout() {
             super::provider_acquire::PoolAnswer::Holds
         } else {
             super::provider_acquire::PoolAnswer::Lacks
@@ -2144,7 +2153,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                         .source_files
                         .get(module)
                         .cloned()
-                        .ok_or(super::provider_acquire::ClosureOfError::Unreadable)?;
+                        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
                     let walked = resolve_transitively(
                         vec![provider],
                         &index.source_files,
@@ -2176,6 +2185,18 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 }
                 super::provider_acquire::Extension::Stalled => {
                     super::provider_acquire::stalled(&provider_demands, &modules)
+                }
+                super::provider_acquire::Extension::OutsideIndex(outside) => {
+                    // The layout holds these providers and this acquired closure does not: record
+                    // them for the demand-acquired loop, which rebuilds its closure with them.
+                    index
+                        .providers_outside_index
+                        .borrow_mut()
+                        .extend(outside.iter().cloned());
+                    return Err(format!(
+                        "generated providers {outside:?} are outside this demand-acquired closure; \
+                         the closure is rebuilt with them"
+                    ));
                 }
                 super::provider_acquire::Extension::Unreadable(failed) => {
                     super::provider_acquire::unreadable(

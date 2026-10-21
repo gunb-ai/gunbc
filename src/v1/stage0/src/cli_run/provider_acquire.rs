@@ -169,6 +169,13 @@ pub(crate) fn compile_to_provider_fixed_point(
                             continue;
                         }
                         Extension::Stalled => stalled(&resolved.provider_demands, &modules),
+                        // Emit-check and the hermetic fixture hold their whole pool, so their closure
+                        // step never reports a provider outside their index.
+                        Extension::OutsideIndex(outside) => {
+                            return Err(format!(
+                                "generated providers {outside:?} are outside a pool this builder holds whole"
+                            ))
+                        }
                         Extension::Unreadable(failed) => unreadable(
                             &resolved.provider_demands,
                             graph.modules.clone(),
@@ -190,8 +197,12 @@ pub(crate) fn compile_to_provider_fixed_point(
 /// WHY A PROVIDER'S CLOSURE COULD NOT JOIN. A read failure is the model's ModuleUnreadable, decided by
 /// re-judging the closure with that module answered Unreadable; anything else is an ordinary closure
 /// failure (the provider's own imports did not resolve), loud and located like any other.
+#[derive(Debug)]
 pub(crate) enum ClosureOfError {
     Unreadable,
+    /// The pool holds the module but this index's acquired closure does not (the demand-acquired
+    /// path): the builder rebuilds its closure with it rather than reading it here.
+    OutsideIndex,
     Closure(String),
 }
 
@@ -202,6 +213,8 @@ pub(crate) enum Extension {
     Stalled,
     /// This module's source could not be read: the model's ModuleUnreadable ([`unreadable`]).
     Unreadable(String),
+    /// These modules are in the pool but outside the builder's index; the builder rebuilds.
+    OutsideIndex(Vec<String>),
 }
 
 /// ONE ACQUISITION STEP FOR EVERY BUILDER: each acquired module's own closure joins the sources,
@@ -217,10 +230,15 @@ pub(crate) fn extend_with_acquired(
 ) -> Result<Extension, String> {
     let mut sources = sources;
     let before = sources.len();
+    let mut outside: Vec<String> = Vec::new();
     for module in modules {
         let closure = match closure_of(module) {
             Ok(closure) => closure,
             Err(ClosureOfError::Unreadable) => return Ok(Extension::Unreadable(module.clone())),
+            Err(ClosureOfError::OutsideIndex) => {
+                outside.push(module.clone());
+                continue;
+            }
             Err(ClosureOfError::Closure(cause)) => return Err(cause),
         };
         for s in closure {
@@ -228,6 +246,9 @@ pub(crate) fn extend_with_acquired(
                 sources.push(s);
             }
         }
+    }
+    if !outside.is_empty() {
+        return Ok(Extension::OutsideIndex(outside));
     }
     Ok(if sources.len() == before {
         Extension::Stalled
@@ -292,6 +313,7 @@ mod tests {
             Extension::Extended(sources) => sources,
             Extension::Stalled => panic!("expected an extension, got Stalled"),
             Extension::Unreadable(m) => panic!("expected an extension, got Unreadable({m})"),
+            Extension::OutsideIndex(m) => panic!("expected an extension, got OutsideIndex({m:?})"),
         }
     }
 
@@ -740,6 +762,7 @@ mod tests {
             Extension::Unreadable(failed) => failed,
             Extension::Extended(_) => panic!("the corrupted provider joined the closure"),
             Extension::Stalled => panic!("expected Unreadable, got Stalled"),
+            Extension::OutsideIndex(m) => panic!("expected Unreadable, got OutsideIndex({m:?})"),
         };
         assert_eq!(failed, "test.fixture.read_probe_provider");
         let step = unreadable(
