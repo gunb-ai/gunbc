@@ -1,8 +1,8 @@
-module v2.std.operation_argv
+module std.operation_argv
 
 import std.types { brand, String, List, Bool }
 import std.algebra { list_map, collection_concat_shape, collection_join_shape }
-import v2.std.template { Template }
+import std.template { Template }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
 // name, from the declaration. The seed's prior materializer carried a fixed five-name vocabulary

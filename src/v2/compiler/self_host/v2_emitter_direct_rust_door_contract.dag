@@ -32,7 +32,7 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex,
 }
 import std.algebra { empty_map }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
@@ -80,6 +80,7 @@ data direct_rust_door_missing_rules_bundle: Node = Node {
 }
 
 data direct_rust_door_missing_rules_target: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: direct_rust_door_missing_rules_bundle,
   lex: rust_fn_add_lex(),
