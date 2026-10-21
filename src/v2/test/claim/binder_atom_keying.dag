@@ -159,7 +159,7 @@ test fn generic_binder_atom_is_keyed_declaration() -> ProcessExit {
 }
 
 test fn fn_name_atom_is_keyed_declaration() -> ProcessExit {
-  expect_binder_declaration(kind: "fn name", row: probe_norm(content: "module v2.test.subject\nfn alpha() -> Int { 1 }\n", spelling: "alpha"))
+  expect_binder_declaration(kind: "fn name", row: probe_norm(content: "module v2.test.subject\nfn f(alpha: Int) -> Int { 1 }\n", spelling: "alpha"))
 }
 
 test fn typed_param_atom_is_keyed_declaration() -> ProcessExit {
@@ -188,7 +188,7 @@ test fn zz_dump_fn_edges() -> ProcessExit {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "grammar" }
     Accepted { value: prepared, diagnostics: _ } =>
-      match acquisition_front_end(env: probe_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: "module v2.test.subject\nfn alpha() -> Int { 1 }\n") {
+      match acquisition_front_end(env: probe_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: "module v2.test.subject\nfn f(alpha: Int) -> Int { 1 }\n") {
         Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "front" }
         Accepted { value: front, diagnostics: _ } => ExitFailure { code: 1, reason: "DUMP" + joined(xs: dump_edges(acc: [], node: front.tree.root, depth: 0)) }
       }
