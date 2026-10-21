@@ -162,7 +162,7 @@ mod tests {
 
     fn supplied(module_path: &str, decl_name: &str) -> ProviderDemands {
         let site = Rc::new(GeneratedProviderSite {
-            cause: Rc::new(GeneratedProviderCause::GeneratedConversionRoute),
+            cause: GeneratedProviderCause::GeneratedConversionRoute,
             at: crate::v1_std_core::no_span(),
             occurrence: None,
         });
