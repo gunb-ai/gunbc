@@ -292,3 +292,14 @@ test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
     MemberClosureRefused { reason: _ } => false
   }
 }
+
+// THE WALKER AND INFER DECLINE THE SAME WHERE-PREDICATE SET (v2.std.type_binder where_predicate_set_edge): a where-refinement
+// module is never refused at the partition closure for facts infer was not asked to derive. The claim above is
+// still judged by the member classifier; this one isolates the partition boundary so its RED is not masked by it.
+test fn a_where_refinement_is_not_refused_for_missing_facts_holds() -> Bool {
+  match member_emission_refinement_verdict() {
+    MemberEmitted { text: _ } => true
+    MemberRefused { reason: r } => r != ^partition_facts_miss
+    MemberClosureRefused { reason: r } => r != ^partition_facts_miss
+  }
+}
