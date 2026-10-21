@@ -2,7 +2,7 @@ module gunbc.wall_clock_model
 
 import std.types { EpochSecs, Int, List, String }
 import std.measure { Second, second, second_count, SecondDisplacement, second_displacement_count }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, ShellObserved,
 }
