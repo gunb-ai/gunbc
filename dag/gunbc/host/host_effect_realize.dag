@@ -5487,6 +5487,21 @@ fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: Strin
   match dark_run_legs(legs: dark_sidecar_legs(spec: i.spec, revision: i.revision, digest: deployed), transport: i.transport) {
     DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
     DarkOk =>
+      match i.transport {
+        LocalShell => dark_stage_sidecar_readback(i: i, tree_digest: tree_digest, deployed: deployed)
+        SshShell { ssh_host: _ } => dark_sidecar_readback_not_local()
+        FleetSsh { target: _, context: _ } => dark_sidecar_readback_not_local()
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => dark_sidecar_readback_not_local()
+      }
+  }
+}
+
+// THE READBACK PROBES THE EVALUATOR'S LOOPBACK (approval_device_crypto_sidecar_endpoint): over any transport that is not the host itself it would read a different sidecar, so it refuses.
+fn dark_sidecar_readback_not_local() -> DarkInstallVerdict {
+  DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the sidecar readback reaches the evaluator's loopback, not the install target; it runs only over LocalShell, so the broker is not swapped" }
+}
+
+fn dark_stage_sidecar_readback(i: DarkInstallInputs, tree_digest: String, deployed: String) -> DarkInstallVerdict {
       match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: deployed as NonEmptyStr) {
         Absent => DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the broker's own device-crypto realization is not bound, so it would answer 503 on every device route" }
         Present { value: expectation } =>
@@ -5496,7 +5511,6 @@ fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: Strin
               DarkInstallRefused { step: DarkStepSidecarReadback, reason: join(["the running sidecar does not join the installed binary: ", c as String], "") }
           }
       }
-  }
 }
 
 fn dark_stage_broker_unit(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {

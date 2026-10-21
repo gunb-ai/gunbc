@@ -35,7 +35,7 @@ import gunbc.host.host_effect_realize {
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
   DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
-  DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, DarkInstallInputs,
+  DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, dark_sidecar_readback_not_local, DarkInstallInputs,
 }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
@@ -254,6 +254,15 @@ test fn a_locus_missing_the_sidecar_binary_refuses_before_any_leg() -> Bool {
 test fn a_present_sidecar_binary_reaches_the_first_sidecar_leg() -> Bool {
   match dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d") {
     DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarEnv
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// RED: the readback probes the evaluator's loopback, so a transport that is not LocalShell refuses at the readback step with no broker leg run.
+// (The legs run first over the transport; this stage is reached with them done, hence the direct stage call.)
+test fn a_non_local_transport_refuses_the_sidecar_readback() -> Bool {
+  match dark_sidecar_readback_not_local() {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarReadback
     DarkInstallConverged { broker_tree_digest: _ } => false
   }
 }
