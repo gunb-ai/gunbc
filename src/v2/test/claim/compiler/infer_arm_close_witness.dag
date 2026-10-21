@@ -220,3 +220,17 @@ fn rb_m3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? 
 test fn rb_m1_bool_match_present_then_absent_accepts() -> Bool { ers_infer_accepted(o: rb_m1()) }
 test fn rb_m2_bool_match_absent_then_present_accepts() -> Bool { ers_infer_accepted(o: rb_m2()) }
 test fn rb_m3_all_absent_bool_match_refuses_no_arm_declares() -> Bool { ers_has(o: rb_m3(), reason: ^infer_no_arm_declares_a_type) }
+
+// B3 THROUGH A NESTED Bool MATCH, both orders (manager 1 condition): order changes only whether a program is accepted, never its type or layer.
+fn rb_mn_a() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { Present { value: 1 } } else { match b {\n      true => Absent\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_b() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { match b {\n      true => Absent\n      false => Absent\n    } } else { Present { value: 1 } }\n  x\n}\n") }
+fn rb_mn_c() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { Absent } else { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_c2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Optional<Int?> {\n  let x = if c { Absent } else { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_d() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } } else { Absent }\n  x\n}\n") }
+fn rb_mn_d2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Optional<Int?> {\n  let x = if c { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } } else { Absent }\n  x\n}\n") }
+test fn rb_mn_a_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_has(o: rb_mn_a(), reason: ^infer_no_arm_declares_a_type) }
+test fn rb_mn_b_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_has(o: rb_mn_b(), reason: ^infer_no_arm_declares_a_type) }
+test fn rb_mn_c_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_c()) }
+test fn rb_mn_c2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_c2()) }
+test fn rb_mn_d_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_d()) }
+test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_d2()) }
