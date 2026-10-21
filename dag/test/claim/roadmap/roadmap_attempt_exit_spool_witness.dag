@@ -31,7 +31,7 @@ fn drain_principal() -> PosixOwnerNames {
 test fn exit_hook_is_a_create_only_mkdir_of_the_record_name() -> Bool {
   match attempt_exit_hook(instance_root: "/opt/gunbc-srv2", node_id: "shell-dag-live", attempt_key: "01feb0b65dee1377", role: AttemptWorkerRole, record_owner: drain_principal()) {
     AttemptExitHookRendered { exec_line } =>
-      (exec_line as String) == "+install -d -m 0755 -o svc -g grp -- /opt/gunbc-srv2/attempt-exit-spool/inbox/shell-dag-live+01feb0b65dee1377+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
+      (exec_line as String) == "+install -d -m 00755 -o svc -g grp /opt/gunbc-srv2/attempt-exit-spool/inbox/shell-dag-live+01feb0b65dee1377+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
     AttemptExitHookRefused { reason: _ } => false
   }
 }

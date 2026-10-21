@@ -4,7 +4,8 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal, file_mode_class_bits }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode_octal }
+import gunbc.managed_directory { declared_directory_mode }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
 import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_set_exit_root, dispatch_worker_set_stream_path }
@@ -113,7 +114,7 @@ fn created_path_mode_of_octal(text: String) -> FileMode {
 
 // THE CENSUS of what the manager creates on a worker unit's behalf, from the unit plan:
 //  - the ExecStopPost exit record: created by the hook (root, "+") as record_owner (the drain's
-//    principal) with attempt_exit_record_mode_octal; consumer the belt exit drain, as the service user,
+//    principal) with attempt_exit_record_mode; consumer the belt exit drain, as the service user,
 //    renaming it inbox -> queued;
 //  - the StandardOutput and StandardError append targets: opened by the manager as root, so created
 //    root:root 0644 when absent; consumer the dashboard reading the worker log as the service user. They
@@ -139,7 +140,7 @@ fn dispatch_worker_created_paths(instance: HostDashboardInstance, plan: Dispatch
         path: join([dispatch_worker_set_exit_root(set: set), "/", plan.node_id, "+", plan.attempt_key, "+worker+..."], ""),
         is_directory: true,
         created_owner: instance.directory_owner,
-        created_mode: created_path_mode_of_octal(text: attempt_exit_record_mode_octal as String),
+        created_mode: declared_directory_mode(m: attempt_exit_record_mode),
         consumer: "the belt exit drain",
         consumer_principal: instance.directory_owner,
         operation: ConsumerRenames,

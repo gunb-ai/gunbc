@@ -162,19 +162,6 @@ fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, g
   )
 }
 
-// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual,
-// "install invocation": -d creates the directory and any missing parents, -o and -g set the owner and
-// group, -m the mode). The point is who OWNS what a privileged process creates: a mkdir run as root
-// leaves a root-owned directory that its real consumer cannot rename; this leaves it owned by the
-// named principal. Owner and group are NAMES because install(1) accepts either spelling and the
-// callers hold declared account names, not uids.
-fn install_directory_owned_command(path: String, octal_mode: NonEmptyStr, owner: NonEmptyStr, group: NonEmptyStr) -> ArgvCommand {
-  argv_command(
-    program: install_program(),
-    arguments: ["-d", "-m", octal_mode as String, "-o", owner as String, "-g", group as String, "--", path],
-  )
-}
-
 // -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which
 // is what an unlink-if-present means; it does NOT recurse, so a path that turns out to be a
 // directory refuses instead of destroying its contents. The recursive form is a different operation
@@ -432,6 +419,19 @@ fn coreutils_install_directory_owned_argv(
   concat(
     [coreutils_install_binary_name as String],
     coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
+// THE ARGV COMMAND OVER THE ONE SPELLING OF install -d -m -o -g (coreutils_install_directory_owned_arguments).
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual, "install
+// invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
+// root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
+// either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook, which renders it as the ExecStopPost record creation.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
   )
 }
 
