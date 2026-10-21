@@ -385,7 +385,7 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole, record_owner: inst.directory_owner) {
         AttemptExitHookRefused { reason: _ } => false
         AttemptExitHookRendered { exec_line } =>
           (facts.exit_hook as String) == (exec_line as String)
@@ -655,6 +655,7 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
     node_id: "n",
     attempt_key: "k",
     role: AttemptWorkerRole,
+    record_owner: inst.directory_owner,
   ) {
     AttemptExitHookRefused { reason: _ } => false
     AttemptExitHookRendered { exec_line } =>

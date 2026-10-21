@@ -1,0 +1,276 @@
+module gunbc.roadmap.dispatch_worker_reach
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.algebra { trim }
+import std.filesystem { path_parent_directory }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
+import extdeps.tools.coreutils_stat {
+  coreutils_stat_path_ownership,
+  coreutils_stat_path_mode,
+  PathOwnershipObserved,
+  PathOwnershipUnobservable,
+  PathModeObserved,
+  PathModeUnobservable,
+}
+import extdeps.tools.id
+import gunbc.file_access { path_ancestor_prefixes }
+import gunbc.host.host_layout { attempt_exit_inbox_dir }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_worker_user }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  DispatchWorkerUnitPlan,
+  dispatch_worker_writable_path_list,
+  dispatch_worker_git_pointer_readonly_list,
+}
+
+// A UNIT'S WORKER UID MUST REACH EVERY PATH THE UNIT IS HANDED, AND THAT IS DECIDED BEFORE THE UNIT
+// STARTS. systemd resolves WorkingDirectory=, ExecStart=, ReadWritePaths= and the exit hook as the
+// unit's User=, so a handed path under an ancestor that user cannot traverse fails at runtime as
+// status=200/CHDIR with the worker never having run (srv1 lab, 2026-10-21: .local/share was 0710
+// briansrls:briansrls under a unit running as gunbc-worker). Chain re-derivation (DESIGN 6b) stops at
+// the earliest unjustified boundary: the unit plan hands over paths and nothing had established that
+// the identity it names can enter their ancestors. gunbc.fleet.fleet_posix_accounts established
+// traversal for one directory, attempts/, and never for its ancestors.
+//
+// ADMISSION CONSUMES RECEIPTS AND DOES NOT STAT. dispatch_worker_reach_admit is pure over a stat
+// receipt per ancestor and the worker's observed membership; dispatch_worker_reach_observe is the
+// one function that looks at the host. The climb is judged for EVERY worker identity, including the
+// service user: that arm must pass by observation (the owner traverses its own ancestors), it is not
+// skipped by matching the arm.
+//
+// THE WORKER'S GROUPS ARE OBSERVED, NOT DECLARED. A group the roster declares and the host lacks
+// must never make a traversal pass, so membership comes from id(1) against the account database and
+// an unreadable membership is its own refusal arm (DispatchWorkerReachCouldNotLook) rather than a
+// guess. The root of the filesystem is not stat'd: it is not a boundary this corpus can move.
+//
+// CONSUMER: gunbc.roadmap.roadmap_belt_actuate belt_session_container_create's spawn chain
+// (dispatch_worker_reach_for_plan) before any placement record or enqueue; the only effect is the
+// stat/id observation. Executing route: test.claim.roadmap.dispatch_worker_reach_witness.
+type HandedPath {
+  path: String
+  leaf_is_directory: Bool
+}
+
+type AncestorStat
+  = AncestorStatObserved { path: String, ownership: FileOwnership, mode: FileMode }
+  | AncestorStatUnobserved { path: String, reason: String }
+
+type WorkerMembership
+  = WorkerMembershipObserved { worker: String, uid: Int, gids: List<Int> }
+  | WorkerMembershipUnobserved { worker: String, reason: String }
+
+type DispatchWorkerReach
+  = DispatchWorkerReachAdmitted
+  | DispatchWorkerAncestorNotTraversable {
+      worker: String,
+      handed_path: String,
+      blocking_dir: String,
+      observed_owner: FileOwnership,
+      observed_mode: FileMode,
+    }
+  | DispatchWorkerReachCouldNotLook { worker: String, handed_path: String, subject: String, reason: String }
+
+fn dispatch_worker_handed_chain(handed: HandedPath) -> List<String> {
+  if handed.leaf_is_directory {
+    concat(path_ancestor_prefixes(path: handed.path), [handed.path])
+  } else {
+    path_ancestor_prefixes(path: handed.path)
+  }
+}
+
+// EVERYTHING THE UNIT PLAN HANDS OVER: the working directory and the serve binary, the writable and
+// read-only carve-outs (dispatch_worker_unit_stream_properties), the stream log directory, and the
+// ExecStopPost exit-record root.
+fn dispatch_worker_handed_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<HandedPath> {
+  let scratch = path_parent_directory(path: plan.stdout_path)
+  concat(
+    [
+      HandedPath { path: plan.working_directory, leaf_is_directory: true },
+      HandedPath { path: instance.serve_binary as String, leaf_is_directory: false },
+      HandedPath { path: attempt_exit_inbox_dir(instance_root: instance.instance_root as String), leaf_is_directory: true },
+    ],
+    concat(
+      map(
+        dispatch_worker_writable_path_list(instance: instance, attempt_worktree: plan.attempt_worktree, scratch_directory: scratch),
+        p => HandedPath { path: p, leaf_is_directory: true },
+      ),
+      map(
+        dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: plan.attempt_worktree),
+        p => HandedPath { path: p, leaf_is_directory: false },
+      ),
+    ),
+  )
+}
+
+fn dispatch_worker_chain_paths(handed: List<HandedPath>) -> List<String> {
+  fold(handed, init: [], f: (acc, h) =>
+    fold(dispatch_worker_handed_chain(handed: h), init: acc, f: (inner, p) =>
+      if any(inner, q => q == p) { inner } else { concat(inner, [p]) }))
+}
+
+fn ancestor_stat_of(stats: List<AncestorStat>, path: String) -> AncestorStat {
+  fold(stats, init: AncestorStatUnobserved { path: path, reason: "no stat receipt was supplied for this ancestor" }, f: (acc, s) =>
+    match s {
+      AncestorStatObserved { path: p, ownership: _, mode: _ } => if p == path { s } else { acc }
+      AncestorStatUnobserved { path: p, reason: _ } => if p == path { s } else { acc }
+    })
+}
+
+// A DIRECTORY'S EXECUTE BIT ON THE LEG THE WORKER FALLS IN: owner when the uid matches, otherwise
+// group when any observed gid matches, otherwise other. uid 0 passes, as the kernel does.
+fn worker_may_traverse(uid: Int, gids: List<Int>, ownership: FileOwnership, mode: FileMode) -> Bool {
+  if uid == 0 {
+    true
+  } else if ownership.uid == uid {
+    mode.owner.execute
+  } else if any(gids, g => g == ownership.gid) {
+    mode.group.execute
+  } else {
+    mode.other.execute
+  }
+}
+
+fn dispatch_worker_reach_first_blocking(
+  membership: WorkerMembership,
+  handed: HandedPath,
+  stats: List<AncestorStat>,
+) -> DispatchWorkerReach {
+  match membership {
+    WorkerMembershipUnobserved { worker, reason } =>
+      DispatchWorkerReachCouldNotLook { worker: worker, handed_path: handed.path, subject: "the worker's group membership", reason: reason }
+    WorkerMembershipObserved { worker, uid, gids } =>
+      fold(dispatch_worker_handed_chain(handed: handed), init: DispatchWorkerReachAdmitted, f: (acc, dir) =>
+        match acc {
+          DispatchWorkerReachAdmitted =>
+            match ancestor_stat_of(stats: stats, path: dir) {
+              AncestorStatUnobserved { path: p, reason } =>
+                DispatchWorkerReachCouldNotLook { worker: worker, handed_path: handed.path, subject: p, reason: reason }
+              AncestorStatObserved { path: _, ownership, mode } =>
+                if worker_may_traverse(uid: uid, gids: gids, ownership: ownership, mode: mode) {
+                  DispatchWorkerReachAdmitted
+                } else {
+                  DispatchWorkerAncestorNotTraversable {
+                    worker: worker,
+                    handed_path: handed.path,
+                    blocking_dir: dir,
+                    observed_owner: ownership,
+                    observed_mode: mode,
+                  }
+                }
+            }
+          _ => acc
+        })
+  }
+}
+
+fn dispatch_worker_reach_admit(
+  handed: List<HandedPath>,
+  stats: List<AncestorStat>,
+  membership: WorkerMembership,
+) -> DispatchWorkerReach {
+  fold(handed, init: DispatchWorkerReachAdmitted, f: (acc, h) =>
+    match acc {
+      DispatchWorkerReachAdmitted => dispatch_worker_reach_first_blocking(membership: membership, handed: h, stats: stats)
+      _ => acc
+    })
+}
+
+fn dispatch_worker_reach_wire(reach: DispatchWorkerReach) -> String {
+  match reach {
+    DispatchWorkerReachAdmitted => "every path the unit is handed is reachable by its worker"
+    DispatchWorkerAncestorNotTraversable { worker, handed_path, blocking_dir, observed_owner, observed_mode } =>
+      join([
+        "the unit runs as ", worker, " and is handed ", handed_path, ", but its ancestor ", blocking_dir,
+        " is owned ", to_string(observed_owner.uid), ":", to_string(observed_owner.gid),
+        " with mode ", file_mode_octal(mode: observed_mode),
+        ", which gives that worker no execute bit, so systemd would fail the unit at start (status=200/CHDIR) and the worker would never run",
+      ], "")
+    DispatchWorkerReachCouldNotLook { worker, handed_path, subject, reason } =>
+      join([
+        "the unit runs as ", worker, " and is handed ", handed_path, ", but ", subject,
+        " could not be observed (", reason, "), so traversal is refused rather than assumed",
+      ], "")
+  }
+}
+
+fn id_numbered_names(segment: String) -> Int? {
+  match get(xs: split(s: segment, delimiter: "("), index: 0) {
+    Absent => none
+    Present { value: head } => parse_int(s: head)
+  }
+}
+
+// id(1) WITH AN OPERAND prints `uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)`;
+// the numeric ids come off the front of each `N(name)` entry. A line that does not carry both a
+// uid and a groups list is unobserved, never an empty membership.
+fn worker_membership_of_id_line(worker: String, line: String) -> WorkerMembership {
+  let fields = split(s: trim(s: line), delimiter: " ")
+  let uid_field = get(xs: filter(fields, f => starts_with(s: f, prefix: "uid=")), index: 0)
+  let groups_field = get(xs: filter(fields, f => starts_with(s: f, prefix: "groups=")), index: 0)
+  match uid_field {
+    Absent => WorkerMembershipUnobserved { worker: worker, reason: "id printed no uid field" }
+    Present { value: u } =>
+      match groups_field {
+        Absent => WorkerMembershipUnobserved { worker: worker, reason: "id printed no groups field" }
+        Present { value: g } => {
+          let uid = id_numbered_names(segment: substring(s: u, start: 4, end: string_length(s: u)))
+          let segments = split(s: substring(s: g, start: 7, end: string_length(s: g)), delimiter: ",")
+          let gids = flat_map(segments, seg => match id_numbered_names(segment: seg) { Present { value: n } => [n]  Absent => [] })
+          match uid {
+            Absent => WorkerMembershipUnobserved { worker: worker, reason: "id printed a uid that is not a number" }
+            Present { value: n } =>
+              if gids.count() != segments.count() {
+                WorkerMembershipUnobserved { worker: worker, reason: "id printed a group that is not a number" }
+              } else {
+                WorkerMembershipObserved { worker: worker, uid: n, gids: gids }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn dispatch_worker_membership_observe(worker: NonEmptyStr) -> WorkerMembership {
+  let r = os.Id.Lookup(user: worker)
+  if r.success && trim(s: r.stdout) != "" {
+    worker_membership_of_id_line(worker: worker as String, line: r.stdout)
+  } else {
+    WorkerMembershipUnobserved { worker: worker as String, reason: "id could not look the account up" }
+  }
+}
+
+fn dispatch_worker_ancestor_observe(path: String) -> AncestorStat {
+  match coreutils_stat_path_ownership(path: path as NonEmptyStr) {
+    PathOwnershipUnobservable { path: _, reason } => AncestorStatUnobserved { path: path, reason: reason }
+    PathOwnershipObserved { path: _, ownership, owner_name: _, group_name: _ } =>
+      match coreutils_stat_path_mode(path: path as NonEmptyStr) {
+        PathModeUnobservable { path: _, reason } => AncestorStatUnobserved { path: path, reason: reason }
+        PathModeObserved { path: _, mode } => AncestorStatObserved { path: path, ownership: ownership, mode: mode }
+      }
+  }
+}
+
+// THE OBSERVER AND THE JUDGE, COMPOSED. This is the only function in this module that looks at the
+// host; the belt calls it before any placement record is written or request enqueued.
+fn dispatch_worker_reach_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> DispatchWorkerReach {
+  let handed = dispatch_worker_handed_paths(instance: instance, plan: plan)
+  dispatch_worker_reach_admit(
+    handed: handed,
+    stats: map(dispatch_worker_chain_paths(handed: handed), p => dispatch_worker_ancestor_observe(path: p)),
+    membership: dispatch_worker_membership_observe(worker: dashboard_instance_worker_user(instance: instance)),
+  )
+}
+
+// THE ANCESTORS DISPATCH DOES NOT CREATE, JUDGED BEFORE DISPATCH CREATES ANYTHING. The attempt worktree,
+// its state directory and its git entries do not exist until the spawn's steps run, so the full chain
+// of dispatch_worker_reach_for_plan cannot be stat'd earlier. Every one of those paths sits under the
+// instance root, and the root with everything above it exists from the deploy: that prefix is where the
+// srv1 lab (2026-10-21) blocked, and judging it first means a refusal leaves no added worktree behind
+// to release. The full per-plan chain is still judged after the add.
+fn dispatch_worker_reach_for_instance_root(instance: HostDashboardInstance) -> DispatchWorkerReach {
+  let handed = [HandedPath { path: instance.instance_root as String, leaf_is_directory: true }]
+  dispatch_worker_reach_admit(
+    handed: handed,
+    stats: map(dispatch_worker_chain_paths(handed: handed), p => dispatch_worker_ancestor_observe(path: p)),
+    membership: dispatch_worker_membership_observe(worker: dashboard_instance_worker_user(instance: instance)),
+  )
+}

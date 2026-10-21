@@ -146,6 +146,8 @@ import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
   DirectoryRoot, OidcConfigFile, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_writes_oidc_config, plan_reloads_manager, plan_restarts_process,
+  // WORKER-ROOT-EQUIVALENT-3 members and their two mutations, keyed by plan_mutation_is below.
+  GitWorkerSubtree, RepositorySharedPosture, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, plan_mutation_is,
 }
 import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program, sha256_digest }
 import extdeps.virtualization.firecracker {
@@ -194,7 +196,19 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_dispatch_worktree_member, dashboard_attempt_state_member,
   dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
   HostDashboardInstance,
+  // WORKER-ROOT-EQUIVALENT-3: the apply side of the two new members reuses the SAME builders the
+  // observer and the claims use -- one authority for what a re-group and what the posture are.
+  dashboard_git_worker_directory_children, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_subtree_confined_children,
+  dashboard_git_worker_subtree_chgrp_command, dashboard_git_worker_subtree_chmod_command,
+  dashboard_git_worker_subtree_needs_sticky, dashboard_git_worker_subtree_writes_files_in_place,
+  dashboard_git_worker_subtree_child_migration,
+  dashboard_ensure_git_shared_repository_posture,
+  dashboard_git_maintenance_service_unit_file, dashboard_git_maintenance_timer_unit_file,
+  dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
+  dashboard_git_maintenance_service_unit_path, dashboard_git_maintenance_timer_unit_path,
 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launch_gunbc_argv_at,
   AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
@@ -1854,6 +1868,11 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
     Absent => false
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => false
+      // WORKER-ROOT-EQUIVALENT-3: the two git-subtree members are NOT DeploymentSteps -- they ride the
+      // roster and emit their own apply through the dedicated fragment functions below, so a step never
+      // carries them. False here is total-and-unreached, not a behaviour.
+      GitWorkerSubtree { path: _, child: _ } => false
+      RepositorySharedPosture { path: _ } => false
       TreePublication => true
       Executable => true
       UnitFile => true
@@ -2561,8 +2580,121 @@ fn owned_directory_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> L
     })
 }
 
+// WORKER-ROOT-EQUIVALENT-3 -- THE APPLY SIDE OF THE TWO GIT-SUBTREE MEMBERS.
+//
+// Both functions share the shape of owned_directory_fragments: iterate the DECLARED roster (which is
+// already gated on WorkerDedicatedAccount, so a srv1_live-style WorkerIsServiceUser deployment emits
+// nothing -- prod untouched, and that gate is a CLAIM, not a hope), keep the members the plan chose to
+// MUTATE, and emit each as its own fragment. The roster member and the emitted fragment are keyed by the
+// SAME member (path + child / path), so the read-back leg of the reconcile observes exactly what was
+// written and nothing else.
+//
+// WHO RUNS WHAT. Both the re-group and the config writes are UNPRIVILEGED: the deploy principal on the
+// lab is the instance owner briansrls, who is a member of the gunbc-attempt group and owns the .git
+// subtree -- chgrp to a group you belong to needs no privilege, and git config writes the repo's own
+// .git/config, which the owner owns. Only the systemd unit install needs the privileged route. So the
+// subtree fragment runs the argv with shell_command_text_of_argv (unprefixed), NOT the privileged form;
+// the belt precedent's privileged install is used only for the unit steps.
+fn git_worker_subtree_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    // An unknown instance id declares no members either, so the plan cannot ask for one; the roster and
+    // this apply see the id through the SAME single authority, so they cannot disagree.
+    DashboardInstanceIdUnknown { instance_id: _ } => []
+    DashboardInstanceForId { instance: instance } =>
+      flat_map(
+        dashboard_git_worker_directory_children,
+        child => {
+          let member = GitWorkerSubtree {
+            path: dashboard_git_worker_subtree_path(instance: instance, child: child) as NonEmptyStr,
+            child: child,
+          }
+          if !(plan_mutation_is(plan: plan, member: member, expected: RegroupGitWorkerSubtree)) {
+            []
+          } else {
+            host_script_member_proceed(
+              member: "git-worker-subtree" as NonEmptyStr,
+              mutate_steps: map(
+                dashboard_git_worker_subtree_child_migration(
+                  instance: instance,
+                  child: child,
+                  group: fleet_posix_worker_shared_group_name,
+                ),
+                c => deploy_raw(command: shell_command_text_of_argv(argv: argv_words(command: c))),
+              ),
+            )
+          }
+        },
+      )
+  }
+}
+
+// THE SHARED-REPOSITORY POSTURE AND ITS MAINTENANCE UNIT: ONE member, ONE fragment, the manager's
+// binding amendment 1 -- the two gc keys switch off the ONLY repack the lab repo would otherwise get,
+// and the unit is who does it; the keys and the unit are one fact and land or refuse together. The
+// config writes run UNPRIVILEGED (the repo owner writes its own config; git refuses to write a config it
+// does not own, which is exactly why a root deploy could not do this as the worker before). The unit and
+// timer are staged and installed through the same belt precedent (apply_belt_unit_file_write_step /
+// _install_step), then daemon-reload + enable --now effects.
+fn repository_shared_posture_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: _ } => []
+    DashboardInstanceForId { instance: instance } => {
+      let member = RepositorySharedPosture { path: instance.repo_root as NonEmptyStr }
+      if !(plan_mutation_is(plan: plan, member: member, expected: AssertRepositorySharedPosture)) {
+        []
+      } else {
+        let config_steps = map(
+          dashboard_ensure_git_shared_repository_posture(instance: instance),
+          c => deploy_raw(command: shell_command_text_of_argv(argv: argv_words(command: c))),
+        )
+        let unit_steps = [
+          apply_belt_unit_file_write_step(
+            stage_name: dashboard_git_maintenance_service_unit_name(instance: instance),
+            file: dashboard_git_maintenance_service_unit_file(instance: instance),
+          ),
+          apply_belt_unit_file_write_step(
+            stage_name: dashboard_git_maintenance_timer_unit_name(instance: instance),
+            file: dashboard_git_maintenance_timer_unit_file(instance: instance),
+          ),
+          apply_belt_unit_file_install_step(
+            stage_name: dashboard_git_maintenance_service_unit_name(instance: instance),
+            dest: dashboard_git_maintenance_service_unit_path(instance: instance),
+          ),
+          apply_belt_unit_file_install_step(
+            stage_name: dashboard_git_maintenance_timer_unit_name(instance: instance),
+            dest: dashboard_git_maintenance_timer_unit_path(instance: instance),
+          ),
+          deploy_effect(inv: systemctl_daemon_reload_effect()),
+          deploy_effect(inv: systemctl_enable_effect(unit: dashboard_git_maintenance_timer_unit_name(instance: instance))),
+        ]
+        host_script_member_proceed(member: "repository-shared-posture" as NonEmptyStr, mutate_steps: concat(config_steps, unit_steps))
+      }
+    }
+  }
+}
+
 fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
   let fragments = owned_directory_fragments(spec: spec, plan: plan)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
+  }
+}
+
+// THE APPLY STEPS FOR THE TWO GIT-SUBTREE MEMBERS, exposed so a claim can run the SAME projection the
+// apply uses (host_script_mutate_projection) rather than re-deriving it -- the same reason
+// owned_directory_apply_steps is public. An admitted regroup/posture renders its argv; a plan that makes
+// no claim about the member renders nothing.
+fn git_worker_subtree_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  let fragments = git_worker_subtree_fragments(spec: spec, plan: plan)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
+  }
+}
+
+fn repository_shared_posture_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  let fragments = repository_shared_posture_fragments(spec: spec, plan: plan)
   match host_script_mutate_projection(fragments: fragments) {
     MutateStepsAdmitted { steps } => steps
     MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
@@ -3790,6 +3922,11 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     UnitManager => []
     ServiceProcess => []
     DirectoryRoot { path: _ } => []
+    // WORKER-ROOT-EQUIVALENT-3: roster-only members; never carried by a DeploymentStep, so [] is
+    // total-and-unreached (their apply comes from git_worker_subtree_fragments /
+    // repository_shared_posture_fragments, keyed directly by plan_mutation_is).
+    GitWorkerSubtree { path: _, child: _ } => []
+    RepositorySharedPosture { path: _ } => []
     OidcConfigFile => match oidc_now {
       Absent => []
       Present { value: now } => apply_oidc_config_steps_at(
@@ -4204,6 +4341,10 @@ fn apply_step_effects(
   match identity_member_of_step(step: step) {
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => []
+      // WORKER-ROOT-EQUIVALENT-3: roster-only members, never reached through a step (see the note on
+      // the sibling match above).
+      GitWorkerSubtree { path: _, child: _ } => []
+      RepositorySharedPosture { path: _ } => []
       TreePublication => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
       Executable => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
       UnitFile => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
@@ -4819,6 +4960,13 @@ fn apply_intent_fragments(
       ),
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
+        // WORKER-ROOT-EQUIVALENT-3: AFTER the owned-directory assert (which installs each .git top
+        // at its declared mode), the per-subtree re-group sweep runs on the members the plan chose to
+        // mutate, then the shared-repository posture + maintenance unit. The ORDER here is the
+        // composition the claim dashboard_git_worker_subtree_composition_... asserts: assert, sweep,
+        // read-back (the read-back is the next reconcile's observation of exactly these members).
+        git_worker_subtree_fragments(spec: spec, plan: plan),
+        repository_shared_posture_fragments(spec: spec, plan: plan),
         concat(
           deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
           apply_slice_control_converge_fragments(spec: spec),

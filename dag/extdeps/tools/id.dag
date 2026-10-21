@@ -14,19 +14,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE ABSOLUTE PATH IS LOAD-BEARING, NOT PEDANTRY. The argv rows above name `id` bare and resolve
-// through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the command
-// PATH, so a privileged invocation that names the binary bare is a different subject from the one
-// the grant authorizes -- and gunbc.host.host_effect_realize needs both spellings for the same tool.
+// THE ABSOLUTE PATH IS LOAD-BEARING, NOT PEDANTRY. The builders in this module name `id` bare and
+// resolve through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the
+// command PATH, so a privileged invocation that names the binary bare is a different subject from the
+// one the grant authorizes -- and gunbc.host.host_effect_realize needs both spellings for the same
+// tool (its own *_absolute rows spell the binary through this path).
 data id_binary_path: NonEmptyStr = "/usr/bin/id"
 
-// THE PATH-RESOLVED SPELLING, DECLARED ONCE. The argv rows below and the command builder all name
-// the same program, and spelling it three times would be three places one word could drift.
+// THE PATH-RESOLVED SPELLING, DECLARED ONCE. Every argv row and command builder in this module names
+// the same program through this identity, and spelling the word again per builder would be another
+// place one word could drift. The numeric flag pairs exist ONCE, as the sealed builders below
+// (id_uid_command, id_gid_command) -- the module's own header rule applied to the flags themselves.
 fn id_program() -> ProgramIdentity = uncataloged_program(invocation: "id")
-
-fn id_uid_argv() -> List<String> {
-  [id_program().invocation as String, "-u"]
-}
 
 // NO OPERAND, DELIBERATELY: id(1) with no operand answers from the CALLING PROCESS's own
 // credentials, established at its exec and never changing afterwards. The reach probe asks "which
@@ -39,10 +38,6 @@ fn id_uid_argv() -> List<String> {
 // for the name, one for the field; the probe trims the newline the remote shell leaves on stdout.
 fn id_user_name_argv() -> List<String> {
   [id_program().invocation as String, "-un"]
-}
-
-fn id_gid_argv() -> List<String> {
-  [id_program().invocation as String, "-g"]
 }
 
 // -gn WITH NO OPERAND: the PRIMARY GROUP NAME of THE CALLING PROCESS. -n selects NAMES over numeric gids

@@ -34,6 +34,14 @@ fn worktree_claim_slots_directory(instance: HostDashboardInstance) -> OwnedDirec
     path: worktree_claim_slots_root_of(instance: instance) as String as FilePath,
     owner: instance.directory_owner,
     mode: DirectoryOwnerOnly,
+    // DERIVED, not copied from neighbours. The SameUserRegroupToDeclaredGroup posture is authorized
+    // ONLY where a discriminator declares a group the worker's writes need (the six worker-writable
+    // directories of a dedicated-worker instance, dashboard_instance_worker_writable_group_adoption).
+    // This root has no such discriminator: it is owner-only mode (the group bits are all false, so a
+    // regroup hands the target's group NOTHING), its consumers are the belt alone
+    // (belt_worktree_claim_before_add, the settlement pass -- the worker never writes it), and a claim
+    // says which attempt owns which tree, so a tree a third party left must be refused outright
+    // (ownership is never adopted), not re-grouped into our name. The historical posture, derived.
     group_adoption: ForeignOwnershipRefuses,
   }
 }
