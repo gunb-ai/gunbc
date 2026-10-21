@@ -279,3 +279,15 @@ test fn a_demand_inside_the_measured_host_and_outside_the_slot_is_refused_by_the
   (32212254720 < srv2_usable_ram_bytes())
     && !instrument_dispatch_memory_demands_fit(demands: [row], budget: gunbc_ci_runner_slot_ram_speed_ceiling())
 }
+
+// THE ENVELOPE IS OBSERVED BEFORE IT IS ENFORCED. Parallel dispatch makes the memory envelope
+// load-bearing in a new way: with the fleet's declared slot shape (memory_swap_max = 0) an overrun is
+// an OOM refusal, but a drifted drop-in that permits swap turns the same overrun into memory.high
+// throttling inside a run that still reports green -- the exact class this charter exists to make loud.
+// The guard therefore OBSERVES the job's own memory.swap.max and prints it with the bounds it already
+// prints, so the refusal leg can be armed against what the fleet actually runs rather than against the
+// declared value. The row refuses a guard that never looks at the file at all.
+test fn the_memory_guard_observes_and_prints_the_swap_bound_holds() -> Bool {
+  let t = generated_text()
+  contains(t, "/memory.swap.max'") && contains(t, "memory.swap.max=")
+}

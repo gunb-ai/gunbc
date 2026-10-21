@@ -250,9 +250,16 @@ fn instrument_dispatch_memory_demands_are_dispatchable() -> Bool {
 // THE GUARD IS ONE SCRIPT, EMITTED THROUGH v2.workflow.bash_emit LIKE ITS SIBLINGS; each declared row
 // binds it to a label and hands it the row's byte count through the step environment, so the number has
 // one home (the row) and the script one emission. It refuses when the machine's memory (free -b) or a
-// numeric memory.high / memory.max on the job's own cgroup is below the requirement. A bound set only on
-// an ANCESTOR cgroup of the step is not read: bash_emit carries no loop to walk the path, and the
-// runner's bound sits on the runner unit's own cgroup, which its steps inherit.
+// numeric memory.high / memory.max on the job's own cgroup is below the requirement, and it PRINTS the
+// job's memory.swap.max next to the bounds it already prints. The swap bound is printed before the
+// refusal leg that will use it is armed, because the leg changes what every dispatch does and must be
+// written against the live slot, not against the declared one: with the fleet's declared shape
+// memory_swap_max = 0 (gunbc.runner.runner_slot_desired, realized as MemorySwapMax=0 by
+// gunbc.runner.runner_revision_job_launch) an overrun is an OOM refusal, while a drifted drop-in that
+// permits swap turns the same overrun into silent memory.high throttling inside a green run -- the
+// failure class the envelope exists to make loud. A bound set only on an ANCESTOR cgroup of the step
+// is not read: bash_emit carries no loop to walk the path, and the runner's bound sits on the runner
+// unit's own cgroup, which its steps inherit.
 fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
   [
     bash_build_with_redir(
@@ -317,6 +324,7 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
     ))),
     bash_build_assign(name: "memory_high", value: instrument_dispatch_cgroup_read(file: "memory.high")),
     bash_build_assign(name: "memory_max", value: instrument_dispatch_cgroup_read(file: "memory.max")),
+    bash_build_assign(name: "memory_swap_max", value: instrument_dispatch_cgroup_read(file: "memory.swap.max")),
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "echo"),
       bash_build_word_concat_from_nodes(parts: [
@@ -328,6 +336,8 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
         bash_build_word_var(name: "memory_high"),
         bash_build_word_lit(text: " memory.max="),
         bash_build_word_var(name: "memory_max"),
+        bash_build_word_lit(text: " memory.swap.max="),
+        bash_build_word_var(name: "memory_swap_max"),
         bash_build_word_lit(text: " required="),
         bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
       ]),
