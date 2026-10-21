@@ -7359,7 +7359,34 @@ fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmp
   )
 }
 
+// THE BRANCH'S OWN ADMISSION BEFORE ITS TYPE IS PUBLISHED: three positional children and a Bool condition. A hand-up
+// (infer_gather_branch_hand_up) publishes its first held arm's type without the arm agreement of infer_branch_bool_if_else, but
+// never without this judgment, so a non-Bool condition cannot be admitted because an enclosing join closes the arms.
+fn infer_branch_condition_refusal(node: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Diagnostic> {
+  let positional_targets = positional_child_target_nodes(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    Present { value: infer_branch_shape_invalid_diagnostic(node: node) }
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => Present { value: infer_branch_shape_invalid_diagnostic(node: node) }
+      Present { value: cond_target } =>
+        match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
+          Absent => Present { value: infer_facts_lookup_miss_diagnostic(key: cond_target) }
+          Present { value: cond_facts } =>
+            if infer_branch_cond_type_is_bool(cond_target: cond_target, cond_facts: cond_facts) { Absent } else { Present { value: infer_branch_cond_not_bool_diagnostic(node: node) } }
+        }
+    }
+  }
+}
+
 fn infer_gather_branch_hand_up(acc: InferGatherFoldAcc, start: InferHoldResolution) -> InferGatherFoldAcc {
+  match infer_branch_condition_refusal(node: acc.node, entries: start.entries) {
+    Present { value: d } => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: d))
+    Absent => infer_gather_branch_hand_up_admitted(acc: acc, start: start)
+  }
+}
+
+fn infer_gather_branch_hand_up_admitted(acc: InferGatherFoldAcc, start: InferHoldResolution) -> InferGatherFoldAcc {
   match list_at_optional(xs: acc.branch_hold.held, index: 0) {
     Absent => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: acc.node)))
     Present { value: first } =>
