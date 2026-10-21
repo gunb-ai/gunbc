@@ -25,8 +25,8 @@ import std.literal_elaboration {
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
+import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -259,7 +259,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_
 import std.generated_provider {
   GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
   ModuleInClosure, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
-  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation,
+  generated_provider_demand, GeneratedProviderSite, GeneratedConversionRoute
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -8158,25 +8159,95 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 // judges (expression_value_type through expand_nominal_alias_rhs), so a qualified
 // v2.std.text.String value whose raw resolved node still reads as the spelling String is not
 // mistaken for host text and unfolded twice.
-fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
+//
+// THE NODE IS A CALL TO THE DECLARATION THE PLAN NAMES, NEVER A SPELLING. The plan is selected by the
+// crossing's two endpoints (std.coercion select_text_crossing_plan) and judged by its own route through
+// judge_conversion_plan, the judgment an authored route call receives. The generated call carries that
+// route as a SourceDeclarationCall, spelled by its qualified identity, so no authored import is
+// consulted and no same-spelled `chars` in scope can capture it. The call demands its provider
+// (std.generated_provider, cause GeneratedConversionRoute, at the crossed value's authored span): when
+// the route is outside this closure the crossing is "needs acquisition", the value is left as it was,
+// and the acquisition loop acquires the route's module and checks the closure again; only a provider the
+// loop cannot supply refuses (GeneratedProviderUnavailable). A plan that is absent, ambiguous, or does
+// not run between these endpoints refuses here with its own reason and demands nothing.
+fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
   match value.inferred {
     Present { value: Resolved { node: _ } } =>
       match argument_text_representation(value: value, type_env: scope.type_env) {
         HostText =>
           if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
-            make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
-              name: "chars", expr_data: ExprMethodCall { method_semantics: Present { value: PlainMethodSemantics } },
-              children: [value],
-              inferred: Present { value: Resolved { node: destination_type } },
-              span: value.span,
-              name_span: elaborated_span(name: "chars")
-            )
-          } else { value }
-        CodePointSequence => value
-        NotText => value
-        TextRepresentationUnidentified => value
+            host_text_crossing_call(value: value, destination_type: destination_type, scope: scope)
+          } else { ok_infer(texpr: value) }
+        CodePointSequence => ok_infer(texpr: value)
+        NotText => ok_infer(texpr: value)
+        TextRepresentationUnidentified => ok_infer(texpr: value)
       }
-    _ => value
+    _ => ok_infer(texpr: value)
+  }
+}
+
+fn host_text_crossing_refused(value: Node, message: String, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: value,
+    emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: concat("host-text crossing: ", message), span: value.span, module_name: scope.module_name)])
+  }
+}
+
+fn host_text_crossing_demand(route: DeclarationRef, value: Node) -> GeneratedProviderDemand {
+  generated_provider_demand(declaration: route, site: GeneratedProviderSite {
+    cause: GeneratedConversionRoute,
+    at: value.span,
+    occurrence: match value.occurrence_identity {
+      OccurrenceSynthetic => Absent
+      _ => Present { value: value.occurrence_identity }
+    }
+  })
+}
+
+fn host_text_crossing_call(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  match select_text_crossing_plan(rows: conversion_plan_rows, source: HostText, target: CodePointSequence) {
+    CrossingPlanNone => host_text_crossing_refused(value: value, message: "no conversion plan in gunbc.structural_realization_bindings conversion_plan_rows runs from host text to a code-point sequence", scope: scope)
+    CrossingPlanSeveral { routes: rs } => host_text_crossing_refused(value: value, message: concat(to_string(rs |> count), " conversion plans run from host text to a code-point sequence; the roster must name one"), scope: scope)
+    CrossingPlanJudged { judgment: j } =>
+      match j {
+        ConversionPlanAdmitted { plan: plan } => host_text_crossing_admitted(route: plan.route, value: value, destination_type: destination_type, scope: scope)
+        ConversionPlanAbsent { route: r } => host_text_crossing_refused(value: value, message: concat("no conversion plan names ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanAmbiguous { route: r, row_count: n } => host_text_crossing_refused(value: value, message: concat(to_string(n), " conversion plans name ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanEndpointMismatch { plan: p } => host_text_crossing_refused(value: value, message: concat("the plan ", p.route.module_path, ".", p.route.decl_name, " does not run from host text to a code-point sequence"), scope: scope)
+        ConversionPlanEndpointNotText { source: _, target: _ } => host_text_crossing_refused(value: value, message: "one side of the crossing is not identified text", scope: scope)
+      }
+  }
+}
+
+fn host_text_crossing_admitted(route: DeclarationRef, value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  let demand = infer_emissions_of_provider_demand(demand: host_text_crossing_demand(route: route, value: value))
+  let identity = DeclaredCallableIdentity { owner_module_path: route.module_path as String, decl_name: route.decl_name as String }
+  let qualified = callable_identity(id: identity)
+  match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: qualified) {
+    FuncSigResolved { sig: sig, declared: declared } =>
+      if declared.owner_module_path != identity.owner_module_path || declared.decl_name != identity.decl_name {
+        InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolved to ", callable_identity(id: declared), ", not to itself"), scope: scope).emissions) }
+      } else {
+        match sig.params |> first {
+          Absent => InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " declares no parameter to take the host text"), scope: scope).emissions) }
+          Present { value: param } =>
+            let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+            InferResult {
+              typed: make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
+                name: qualified,
+                expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name } } }, descent_evidence: none },
+                children: [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_name }, value: value, span: value.span, name_span: elaborated_span(name: param_name))],
+                inferred: Present { value: Resolved { node: destination_type } },
+                span: value.span,
+                name_span: elaborated_span(name: qualified)
+              ),
+              emissions: demand
+            }
+        }
+      }
+    FuncSigUnresolved => InferResult { typed: value, emissions: demand }
+    FuncSigAmbiguous { candidates: _ } =>
+      InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolves ambiguously in this closure"), scope: scope).emissions) }
   }
 }
 
@@ -8255,7 +8326,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let ar = if formal_is_code_point_sequence {
-      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), emissions: ar_inferred.emissions }
+      let crossed = host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope)
+      InferResult { typed: crossed.typed, emissions: infer_emissions_concat(left: ar_inferred.emissions, right: crossed.emissions) }
     } else { ar_inferred }
     let unify_step = if !has_formal {
       UnifyGenericsAcc { subst: st.subst, diagnostics: [] }
@@ -8575,7 +8647,7 @@ fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, pa
 // character grain -- the same primitive the tokenizer's SourceRef is built from -- so a non-ASCII
 // literal's element count and values are its scalars, never its UTF-8 bytes.
 fn unfold_scalar_sequence_image(s: String, destination_type: Node, span: SourceSpan) -> Node {
-  let scalar_nodes = chars(s) |> map(cp =>
+  let scalar_nodes = unicode_scalar_unfold(s: s) |> map(cp =>
     make_expr_node(
       occurrence_identity: OccurrenceSynthetic,
       expr_data: ExprLiteral { value: LitInt { value: cp } },
