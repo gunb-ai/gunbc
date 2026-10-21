@@ -12267,7 +12267,7 @@ pub fn parse_mock_entry_discriminator(
             Some(t) => is_fat_arrow_shape(t.shape.clone()),
             std::option::Option::None => false,
         };
-        if bare {
+        if bare.clone() {
             parsed_expr_result(tokens.clone(), tokens.clone(), ctx.clone(), |identity| {
                 crate::v1_std_core::make_expr_node(
                     identity.clone(),
