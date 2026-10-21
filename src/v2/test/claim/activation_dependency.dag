@@ -1,6 +1,6 @@
 module v2.test.claim.activation_dependency
 
-import std.algebra { Cons, Empty, FreeSemigroup, fold_list, length }
+import std.algebra { Cons, Empty, FreeSemigroup, fold_list, length, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -18,6 +18,7 @@ import v2.compiler.activation_dependency {
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
@@ -431,13 +432,14 @@ fn acd_arm(pattern: Node, body: Node) -> Node {
   }
 }
 
-// (f) SHARED NODE, BRANCH: the condition IS the then arm (one node, equal edges). The head alternative is the
-// THEN slot and its root is the shared node; the selector is that same node; the else root differs.
+// (f) SHARED NODE, BRANCH: the condition IS the else arm (one node, equal edges), and the then arm differs. The
+// selector is the shared node, the THEN root is the other node and the ELSE root is the shared node, so a
+// derivation that read the condition through the then slot, or an arm by edge equality, goes red.
 test fn acd_f_branch_condition_equal_to_arm_resolves_by_slot_holds() -> Bool {
   match activation_dispositions_of_root(root: acd_branch_of(children: [
     acd_positional(target: acd_atom(s: ^acd_shared)),
-    acd_positional(target: acd_atom(s: ^acd_shared)),
-    acd_positional(target: acd_atom(s: ^acd_else))
+    acd_positional(target: acd_atom(s: ^acd_then)),
+    acd_positional(target: acd_atom(s: ^acd_shared))
   ])) {
     d =>
       match acd_first_demand(d: d) {
@@ -445,8 +447,8 @@ test fn acd_f_branch_condition_equal_to_arm_resolves_by_slot_holds() -> Bool {
         Present { value: demand } =>
           acd_branch_slots_are_then_else(demand: demand)
             && demand.selector == acd_atom(s: ^acd_shared)
-            && demand.alternatives.head.root == acd_atom(s: ^acd_shared)
-            && acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) == optional_present(value: acd_atom(s: ^acd_else))
+            && demand.alternatives.head.root == acd_atom(s: ^acd_then)
+            && acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) == optional_present(value: acd_atom(s: ^acd_shared))
       }
   }
 }
@@ -470,6 +472,60 @@ test fn acd_g_match_scrutinee_equal_to_arm_body_resolves_by_slot_holds() -> Bool
       }
   }
 }
+
+// (k) ARM ORDER IS SELECTION PRIORITY: the same two overlapping arms (a specific pattern and a wildcard) in
+// both orders. The head alternative -- the one tried first -- is the specific arm in one tree and the wildcard
+// in the other, so reordering changes which arm is selected and the derivation reports that change, and it
+// does so without relating the arms.
+test fn acd_k_match_arm_order_is_selection_priority_holds() -> Bool {
+  acd_head_pattern_of(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1)),
+    acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2))
+  ]) == optional_present(value: acd_atom(s: ^acd_specific))
+    && acd_head_pattern_of(arms: [
+      acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2)),
+      acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1))
+    ]) == optional_present(value: acd_atom(s: ^acd_wild))
+}
+
+fn acd_head_pattern_of(arms: List<Node>) -> Optional<Node> {
+  match activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: arms))) {
+    d =>
+      match acd_first_demand(d: d) {
+        Absent => optional_absent()
+        Present { value: demand } =>
+          match demand.alternatives.head.selected_by {
+            SelectedByPattern { ordinal: _, pattern: p } => optional_present(value: p)
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+fn acd_scrutinee_then(arms: List<Node>) -> List<Edge> {
+  Cons { head: acd_positional(target: acd_atom(s: ^acd_scrut)), tail: fold_list(xs: arms, empty: Empty, cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_positional(target: a)) }) }
+}
+
+// (l) AN ILL-TYPED UNTAKEN ARM STILL REFUSES AT COMPILE TIME: activation is a runtime demand fact, so
+// inference judges every arm. The else arm adds a Bool to an Int; the tree resolves and still fails to infer,
+// and the same function with a well-typed else arm infers.
+test fn acd_l_ill_typed_untaken_arm_still_refuses_at_compile_time_holds() -> Bool {
+  acd_infers(src: acd_well_typed_source) && !acd_infers(src: acd_ill_typed_source)
+}
+
+fn acd_infers(src: String) -> Bool {
+  match acd_assemble(src: src) {
+    Absent => false
+    Present { value: tree } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+data acd_well_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { a } else { a + 1 }\n}\n"
+data acd_ill_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { a } else { a + c }\n}\n"
 
 // (h) A MALFORMED SITE IS A TYPED ROW, NEVER A DEMAND OR A SKIP: a two-child Branch, a Match with no arms, a
 // Match with no children at all, and a Match whose arm is not (pattern, body).

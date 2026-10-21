@@ -24,6 +24,22 @@ module v2.compiler.activation_dependency
 // arity, a Match with no scrutinee or no arms, or an arm that is not (pattern, body) is returned as
 // ActivationNotDerived. Every Branch and Match of the tree is in exactly one of the two populations.
 //
+// ONLY A COMPLETE POPULATION SUPPORTS AN INDEPENDENCE CONCLUSION. ActivationDependencies is demands PLUS
+// not_derived, as A1's ValueUseDependencies is relations plus not_derived: a consumer that reads only the
+// demands and drops not_derived would read a missing relation as independence. A4 refuses when not_derived
+// is non-empty for the population it schedules.
+//
+// ACTIVATION IS A RUNTIME DEMAND FACT ONLY. An untaken alternative contributes no runtime read, refusal or
+// effect, but inference and typing still judge every arm: nothing here suppresses compile-time checking.
+//
+// ARM ORDER IS SELECTION PRIORITY, NOT A PREREQUISITE. A Match's first matching pattern wins, so the order of
+// the alternatives (and the ordinal in SelectedByPattern) is data for the selector; no relation between arms
+// is ever emitted. Reordering overlapping arms changes which alternative the head is.
+//
+// THE DEMAND KEY IS NOT THE NODE. ActivationDemand<Subject> is a judgment over structure AND context; this
+// module instantiates Subject at Node because resolve's record is per-node, and joins nothing on Node
+// equality, so a consumer that instantiates the template under a context is not merged by this module.
+//
 // NOT DERIVED HERE: a name bound by an arm pattern is a use of the scrutinee's component, which is data
 // flow. A1 does not derive it (resolve records a pattern binder as LexicalOwedFormal, which
 // value_use_dependency returns as NotDerivedStanding); that is the declared frontier, to land with the change
