@@ -2237,10 +2237,13 @@ fn sole_ctor_count(source: String) -> Int {
     // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
     // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. Measured
     // on #14590: misspelling one import in verdict_probe_hdr left this witness green, lawful checks
-    // included. The hostile >= 1 checks DO catch it (a forge that cannot compile emits no violation);
-    // nothing on the lawful side can, because no count says WHERE a name resolved from. The textual
-    // module-and-symbol pin in the argument-spine test below narrows that: it catches a typo, a
-    // deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
+    // included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: zero rows is what a
+    // non-compiling source emits, so the lawful `== 0` can be satisfied by the failure itself -- and a
+    // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
+    // because violations are collected per source and an import error does not suppress them. Neither
+    // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
+    // module-and-symbol pin in the argument-spine test below -- drift detection only: it catches a typo,
+    // a deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
     // does NOT establish resolved provenance; the frontier row
     // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
     // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
@@ -2253,13 +2256,17 @@ fn sole_ctor_count(source: String) -> Int {
 }
 
 // WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused, and the lawful pair
-// over the SAME imports must be clean. CAREFUL, measured not argued: the lawful pair ALONE does not
-// separate 'refused correctly' from 'never compiled' -- a source that fails to compile emits ZERO rows
-// of the wanted class, and `== 0` is satisfied by exactly that. The separation comes from the HOSTILE
-// side, whose >= 1 needs a violation an import error cannot emit, and from the textual drift guard on
-// the shared header in the argument-spine test -- which is a substring check, NOT a resolution check: it
-// narrows how the header can drift silently and does not prove where the name resolves to (the frontier
-// row firmware_network_boot_probe_resolution_frontier records that residual gap).
+// over the SAME imports must be clean. CAREFUL, measured not argued: neither side's COUNT proves
+// import resolution. The lawful pair ALONE does not separate 'refused correctly' from 'never
+// compiled' -- a source that fails to compile emits ZERO rows of the wanted class, and `== 0` is
+// satisfied by exactly that. And the hostile side's `>= 1` does not certify the imports either: it
+// requires a violation to be PRESENT, and a real violation coexists with an unrelated import defect
+// (violations are collected per source; an import error does not suppress them), so a hostile source
+// could carry a broken import and still legitimately count 1. What the counts DO establish is the
+// seal verdict under a compilable source; what guards the header against silent drift is the textual
+// substring pin on the shared header in the argument-spine test -- drift detection, NOT a resolution
+// check: it narrows how the header can drift silently and does not prove where the name resolves to
+// (the frontier row firmware_network_boot_probe_resolution_frontier records that residual gap).
 // OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
