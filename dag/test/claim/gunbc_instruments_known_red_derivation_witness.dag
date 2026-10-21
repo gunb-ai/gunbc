@@ -1039,92 +1039,52 @@ fn route_gap_verdict(subject: KnownRedSubject) -> String {
 }
 
 fn route_gap_verdict_ground(subject: KnownRedSubject, ground: String) -> String {
-  concat(
-    "FAIL ",
-    concat(
-      subject.function,
-      concat(
-        known_red_marker_route_gap,
-        concat(
-          "Filesystem.IsFile: ",
-          concat(
-            ground,
-            " — the claim never reached its subject, so this is a route gap and not a verdict)\n"
-          )
-        )
-      )
-    )
-  )
+  let head = concat(known_red_marker_route_gap, concat("Filesystem.IsFile: ", ground))
+  let tail = " — the claim never reached its subject, so this is a route gap and not a verdict)"
+  concat("FAIL ", concat(subject.function, concat(" ", concat(head, concat(tail, "\n")))))
 }
 
 // THE ABORTED ARMS, IN THE TRANSPORT'S OWN SHAPE, each carrying the field the ledger arm is named for. Both
 // were previously built inline with the whole line as the cause; now each is one print, with the field in
 // the position the harness puts it (src/v1/stage0/src/bin/claim_batch.rs:368-372, :917).
+// One space between the function name and the bracket, as the harness's own format string prints it
+// (`FAIL {} (…)`). Omitting it does not fail loudly: the classifier's head test no longer matches, the line
+// decodes as 'not about this claim', and the row falls to the no-line arm -- the very confusion this decoder
+// exists to prevent, which is why the space is written out here rather than inherited from a marker.
 fn not_attempted_verdict(subject: KnownRedSubject, halted_behind: String) -> String {
   concat(
     "FAIL ",
     concat(
       subject.function,
       concat(
-        known_red_marker_not_attempted,
-        concat(halted_behind, concat(known_red_marker_not_attempted_tail, ")\n"))
+        " ",
+        concat(
+          known_red_marker_not_attempted,
+          concat(halted_behind, concat(known_red_marker_not_attempted_tail, ")\n"))
+        )
       )
     )
   )
 }
 
+// Same head shape, and the entry is what the extractor returns: `known_red_entry_of_resolve_failure` reads
+// what sits between the marker and the final ')', so the row's `halted_by` names the entry rather than
+// carrying the print.
 fn entry_resolve_verdict(subject: KnownRedSubject, entry: String) -> String {
   concat(
     "FAIL ",
     concat(
       subject.function,
-      concat(known_red_marker_entry_resolve, concat(entry, ")\n"))
+      concat(" ", concat(known_red_marker_entry_resolve, concat(entry, ")\n")))
     )
   )
 }
 
-// THE TWO BUDGET ARMS. `budget_figure_phrase` renders both from one function and they differ in exactly one
-// thing: which ceiling label fired, and whether a cost was ever taken (`cost=UNMEASURED` for a preempted
-// witness, `cost=<n>ms CEILING` for one that completed over budget). The label is the ONLY discriminator
-// available at the print, so it is what these fixtures carry and what the decoder must read.
-fn budget_interrupted_verdict(subject: KnownRedSubject, label: String) -> String {
-  concat(
-    "FAIL ",
-    concat(
-      subject.function,
-      concat(
-        "(",
-        concat(
-          label,
-          concat(
-            known_red_marker_budget_word,
-            concat("1000ms EXCEEDED; ", known_red_marker_budget_unmeasured, ")\n")
-          )
-        )
-      )
-    )
-  )
-}
-
-fn budget_completed_verdict(subject: KnownRedSubject, label: String) -> String {
-  concat(
-    "FAIL ",
-    concat(
-      subject.function,
-      concat(
-        "(",
-        concat(
-          label,
-          concat(
-            known_red_marker_budget_word,
-            concat("1000ms EXCEEDED; cost=1500ms CEILING)\n")
-          )
-        )
-      )
-    )
-  )
-}
-
+// THE TWO BUDGET ARMS are built by `budget_interrupted_body` / `budget_completed_body` below, which are the
+// shapes the decoder is given: `budget_figure_phrase` renders both from one function and they differ in
+// exactly one thing — which ceiling label fired, and whether a cost was ever taken (`cost=UNMEASURED` for a
+// preempted witness, `cost=<n>ms CEILING` for one that completed over budget). The label is the ONLY
+// discriminator available at the print, so it is what these fixtures carry and what the decoder must read.
 // ONE OF THE ARMS' OWN LABELS, taken from the transport's enum rather than invented: `BudgetKind::label()`
 // prints `cpu` or `wall` (src/v1/stage0/src/cli_run.rs:10641-10644).
 data known_red_budget_cpu_label: String = "cpu"
@@ -1351,11 +1311,25 @@ test fn a_route_gap_line_is_never_a_verdict_in_either_direction() -> Bool {
   // a genuine false on an unenrolled identity IS an unaccounted red...
   known_red_unaccounted_reds(rows: genuine.rows)
     == ["test.claim.examples.known_red_fixture.the_never_reached_gap"]
-    // ...but the same identity's route-gap line is NOT a red in either list
+    // ...but the same identity's route-gap line is NOT a red in either list. Asserted on the DECODED
+    // TERMINAL, not merely on 'not observed': a line that failed to decode at all is also 'not observed', and
+    // an earlier version of this fixture was missing the space after the function name, so its line never
+    // reached the decoder and every one of these count assertions held vacuously.
     && (known_red_unaccounted_reds(rows: gap.rows) |> length) == 0
     && (known_red_held_rows(rows: gap.rows) |> length) == 0
     && (gap.reconciliation.planned_without_terminal |> length) == 1
+    && known_red_row_terminal_is_route_gap(rows: gap.rows)
     && !known_red_is_green(d: gap)
+}
+
+// The row exists, carries NO count, and its terminal is the route-gap arm specifically -- which is only
+// reachable if the line was matched by the classifier and decoded, so this fails when the line stops being a
+// line the decoder recognises.
+fn known_red_row_terminal_is_route_gap(rows: List<KnownRedDerivationRow>) -> Bool {
+  match known_red_first_row(rows: rows).terminal {
+    RouteGap { operation: _, ground: _ } => true
+    _ => false
+  }
 }
 
 // EVERY RECEIPT LINE NAMES THE LANE IT WAS ASKED IN. The fleet reads one printed row per subject; if that
@@ -1741,9 +1715,12 @@ test fn a_budget_ceiling_label_is_read_rather_than_invented() -> Bool {
 // rather than pick one; dropping the message would lose the arity, dropping the cause would lose the class.
 // A line missing either marker refuses.
 test fn a_runtime_error_keeps_its_cause_and_its_message() -> Bool {
+  // `(runtime error [<cause>]: <message>)`, the harness's own arm at claim_batch.rs:377 -- `FAIL {} (runtime
+  // error [{}]: {})`. The `]:` between cause and message is part of the print, not a decoration: drop it and
+  // the two fields cannot be told apart, which is what the Absent arm below asserts.
   let kept =
     known_red_runtime_error_parts(
-      body: concat(known_red_marker_runtime_error, concat("unbound-variable: `x` is not bound", ")"))
+      body: concat(known_red_marker_runtime_error, "unbound-variable]: `x` is not bound)")
     )
   let lost_message =
     known_red_runtime_error_parts(body: concat(known_red_marker_runtime_error, "unbound-variable)"))
