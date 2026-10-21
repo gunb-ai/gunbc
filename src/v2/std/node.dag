@@ -787,6 +787,36 @@ fn match_positional_slot(ordinal: Int) -> MatchSlot {
   }
 }
 
+// THE ARM SEQUENCE OF A Match: its slots the table maps to MatchArmSlot, in stored order. Arms are one role
+// repeated, so a reader of the sequence (an arm count, every arm) takes it here rather than counting
+// positions; a single arm's place among its siblings stays the ChildSlot ordinal.
+fn match_arm_slots(n: Node) -> List<ChildSlot> {
+  match_arm_slots_of(slots: node_child_slots(n: n))
+}
+
+fn match_arm_slots_of(slots: List<ChildSlot>) -> List<ChildSlot> {
+  match slots {
+    Empty => []
+    Cons { head: s, tail: rest } =>
+      if child_slot_is_match_arm(slot: s) {
+        Cons { head: s, tail: match_arm_slots_of(slots: rest) }
+      } else {
+        match_arm_slots_of(slots: rest)
+      }
+  }
+}
+
+fn child_slot_is_match_arm(slot: ChildSlot) -> Bool {
+  match slot.ordinal {
+    PositionalOrdinal { index: i } => match_positional_slot(ordinal: i) == MatchArmSlot
+    LabeledChild => false
+  }
+}
+
+fn child_slot_target(slot: ChildSlot) -> Node {
+  slot.edge.target
+}
+
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
