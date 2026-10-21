@@ -1,7 +1,16 @@
 module gunbc.roadmap.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_absolute_program }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile,
+  SystemdInstallSection, NotInstallable, Installable,
+  SystemdUnitDirective, Description,
+  SystemdServiceDirective, ServiceType, OneshotMode, ExecStart, WorkingDirectory, ServiceUser, ServiceGroup,
+  SystemdTimerDirective, OnCalendar, Persistent,
+  SystemdInstallDirective, WantedBy,
+  serialize_systemd_unit_file,
+}
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command,
   find_subtree_mode_readback_command,
@@ -2155,12 +2164,42 @@ fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: Non
 // dry pairing claim the_production_route_names_the_declared_group_in_every_grant_command keeps the
 // production binding executed and asserted, so the substituted token is never the only route through
 // this code.
+// ONE SUBTREE'S re-group and mode grant, as the two argv that give it. This is the single place the
+// grant is spelled: the whole-repo migration maps the confined children through it, AND the live_deploy
+// apply emits one member per child through it (so the apply and the plan-side migration cannot drift).
+// It carries NO WorkerDedicatedAccount gate -- the caller has already made the dedicated-worker
+// decision; a per-child command is meaningful for whatever child and group it is handed.
+fn dashboard_git_worker_subtree_child_migration(
+  instance: HostDashboardInstance,
+  child: NonEmptyStr,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
+  [
+    dashboard_git_worker_subtree_chgrp_command(
+      target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+      group: group,
+      pruned: dashboard_git_worker_subtree_confined_children(child: child),
+    ),
+    dashboard_git_worker_subtree_chmod_command(
+      target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+      pruned: dashboard_git_worker_subtree_confined_children(child: child),
+      sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
+      files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+    ),
+  ]
+}
+
 fn dashboard_instance_worker_git_subtree_migration(
   instance: HostDashboardInstance,
   group: NonEmptyStr,
 ) -> List<ArgvCommand> {
   match instance.worker {
     WorkerIsServiceUser => []
+    // THE DECLARED WHOLE-REPO ORDER: re-group EVERY subtree first, then grant the modes on every
+    // subtree. That order is itself part of the contract the claims assert (group membership must be
+    // in place before anything is made group-writable, so a step never widens a wrong-group tree). A
+    // per-member apply takes the per-child pair instead -- within one member the chgrp still precedes
+    // its chmod, which is the same rule at member scale.
     WorkerDedicatedAccount => concat(
       map(
         dashboard_git_worker_directory_children,
@@ -2276,6 +2315,130 @@ fn dashboard_git_maintenance_exec_commands(instance: HostDashboardInstance) -> L
 data dashboard_git_maintenance_owned_config_keys: List<NonEmptyStr> = [
   "gc.auto", "maintenance.auto",
 ] as List<NonEmptyStr>
+
+// THE MAINTENANCE UNIT DOCUMENTS, AT THEIR SINGLE HOME (WORKER-ROOT-EQUIVALENT-3, moved onto the
+// live_deploy route by bright-moth-475's ruling msg_32acd088). They live HERE, beside the exec argv
+// they run and the two keys that defer to them, because they are consumed by TWO routes that must not
+// disagree about their bytes: the deploy emitter (gunbc.live_deploy.emit) writes and installs them, and
+// the deploy OBSERVER (gunbc.live_deploy.member_observe) hashes the very same rendering to decide
+// whether the host already holds the repository posture. If the document were spelled in emit, the
+// observer could only re-derive it by copying -- a second authority for one fact. Both modules import
+// THIS one, so the serialization happens once.
+//
+// THE PAIR IS ONE FACT WITH THE TWO DEFERRAL KEYS, not a separate obligation: gc.auto=0 and
+// maintenance.auto=false switch off the only repack the repository otherwise runs, and this unit is the
+// owner that repack needs back (DESIGN 3c: a deferred trigger names an owner, or the cost degrades
+// externally). They are hashed together into one member identity (RepositorySharedPosture) so a deploy
+// can never turn the automatic repack off without installing the scheduled one -- the two halves cannot
+// drift across deploys because there is nothing to drift: one digest covers all five things.
+//
+// AS WHOM: dashboard_git_maintenance_principal -- the instance's OWN directory owner, the account the
+// serve runs as and that already owns every entry in the tree. NOT root, NOT the worker (see the
+// measured frontier above; DESIGN 4d). It is a system timer, installed and enabled like the belt's
+// credential-recovery timer (the precedent for an instance-scoped timer on this route).
+fn dashboard_git_maintenance_service_unit_file(instance: HostDashboardInstance) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc dashboard instance git repository maintenance (owner repack)" as NonEmptyStr },
+    ],
+    service: concat([
+      ServiceType { mode: OneshotMode },
+      ServiceUser { name: dashboard_git_maintenance_principal(instance: instance) },
+      ServiceGroup { name: dashboard_git_maintenance_principal(instance: instance) },
+      WorkingDirectory { path: instance.repo_root },
+    ], map(dashboard_git_maintenance_exec_commands(instance: instance),
+      c => ExecStart { command: join(argv_words(command: c), " ") as NonEmptyStr })),
+    install: NotInstallable,
+  }
+}
+
+fn dashboard_git_maintenance_timer_unit_file(instance: HostDashboardInstance) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [
+      Description { text: "Daily gunbc dashboard instance git repository maintenance" as NonEmptyStr },
+    ],
+    timer: [
+      OnCalendar { expression: dashboard_git_maintenance_timer_on_calendar as NonEmptyStr },
+      Persistent { enabled: false },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
+// THE UNIT FILES' HOME ON THE HOST, spelled like every other unit of this deployment (the /etc/systemd/
+// system directory deployment_systemd_unit_path uses). Named here so the observer reads at exactly the
+// path the emitter installs to; one authority for the destination.
+fn dashboard_git_maintenance_service_unit_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join(["/etc/systemd/system/", dashboard_git_maintenance_service_unit_name(instance: instance)], "") as NonEmptyStr
+}
+
+fn dashboard_git_maintenance_timer_unit_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join(["/etc/systemd/system/", dashboard_git_maintenance_timer_unit_name(instance: instance)], "") as NonEmptyStr
+}
+
+// A (key, value) PAIR as the posture document is built from it -- NOT GitLocalConfigExpectation, which
+// names its second field `expected` and belongs to a WRITE's declaration. The document is hashed on both
+// sides from the SAME rendering: the desired side feeds the declared expectations, the observer side
+// feeds the values git reported. A pair is the neutral carrier both sides can hold.
+type DashboardGitConfigPosturePair {
+  key: NonEmptyStr
+  value: String
+}
+
+// THE REPOSITORY POSTURE AS ONE DOCUMENT (WORKER-ROOT-EQUIVALENT-3). The three local config keys and
+// the two maintenance unit files, rendered into one canonical text and hashed to a single digest. The
+// ORDER is part of the identity: keys in the order extdeps.git's git_shared_repository_posture_readbacks
+// declares them (the same rows that drive the WRITES -- renaming a key moves the document with it), then
+// the service unit, then the timer. Each entry is delimited (a `key=value` line, a `service-unit=` line,
+// a `timer-unit=` line) so a value cannot bleed into the next entry's bytes.
+//
+// THE CALLER FEEDS THE CONTENT; THIS ONLY LAYS IT OUT. The desired side passes the declared pairs and
+// the declared serializations; the OBSERVER side passes the values git actually reported and the unit
+// files it actually read off disk. Hashing the SAME rendering of each side and comparing is what makes
+// the digest an honest standing: if a unit file on the host drifts from what we mean to install, or a key
+// is missing, or an extra key was set, the digest moves and the member re-asserts. The layout is here so
+// the two sides cannot disagree about SEPARATORS while agreeing about content -- one authority for the
+// bytes, two honest feeders.
+//
+// WHY ONE DIGEST OVER FIVE THINGS: these five are one obligation (the deferred repack and its owner),
+// and DESIGN 3 says one concept one authority. Hashing them together is what stops a deploy from
+// half-applying the obligation -- if the units change but the keys do not, or vice versa, the digest
+// moves and the member re-asserts, because the document is the member's whole standing.
+fn dashboard_git_shared_repository_posture_document(
+  pairs: List<DashboardGitConfigPosturePair>,
+  service_unit_document: String,
+  timer_unit_document: String,
+) -> String {
+  let key_section = map(pairs, p => join([p.key as String, "=", p.value], ""))
+  let unit_section = [
+    join(["service-unit=", service_unit_document], ""),
+    join(["timer-unit=", timer_unit_document], ""),
+  ]
+  join(concat(key_section, unit_section), "\n")
+}
+
+// THE DECLARED POSTURE PAIRS: the (key, value) pairs the posture is SUPPOSED to hold, straight off the
+// rows that drive the writes. Renaming a key or changing a value moves this and the write together.
+fn dashboard_git_shared_repository_posture_declared_pairs() -> List<DashboardGitConfigPosturePair> {
+  map(git_shared_repository_posture_readbacks, r =>
+    DashboardGitConfigPosturePair { key: r.key, value: r.expected })
+}
+
+// THE DESIRED POSTURE DOCUMENT: declared pairs + declared unit serializations, laid out once.
+fn dashboard_git_shared_repository_posture_desired_document(instance: HostDashboardInstance) -> String {
+  dashboard_git_shared_repository_posture_document(
+    pairs: dashboard_git_shared_repository_posture_declared_pairs(),
+    service_unit_document: serialize_systemd_unit_file(file: dashboard_git_maintenance_service_unit_file(instance: instance)),
+    timer_unit_document: serialize_systemd_unit_file(file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
+  )
+}
+
+// THE GIT-CONFIG KEY READBACKS the posture member asks git for, in the order that builds the document.
+// Derived from the SAME readback rows, so the member's observation legs are tied to the writes.
+fn dashboard_git_worker_posture_readback_keys() -> List<NonEmptyStr> {
+  map(git_shared_repository_posture_readbacks, r => r.key)
+}
+
 
 // THE MODES A COMMIT REQUIRES, stated as FileMode -- the type extdeps.access.posix already owns for
 // this concept (Open Group sys_stat.h), with file_mode_octal to render it and file_mode_of_octal_text
