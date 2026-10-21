@@ -3369,7 +3369,6 @@ fn infer_match_coproduct(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
