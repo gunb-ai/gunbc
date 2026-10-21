@@ -170,10 +170,10 @@ grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1
 
 echo "=== THE RED/POSITIVE CONTROL: the two dag/std/measure.dag rows ==="
 echo "rows mentioning std/measure.dag (expect NONE after the fix; 2 class-Inhabitants rows at main):"
-grep -a "dag/std/measure.dag" /tmp/kin.txt | grep -av "RAVEN" | head -10 | cut -c1-215
+grep -a "dag/std/measure.dag" /tmp/kin.txt | grep -av "RAVEN" | head -10 | cut -c1-600
 echo "MEASURE_PATH_ROWS=$(grep -ac 'dag/std/measure.dag' /tmp/kin.txt)"
 echo "the two measure_sub offsets 6248 / 6251 (expect absent):"
-grep -a "6248\|6251" /tmp/kin.txt | head -6 | cut -c1-215
+grep -a "|P o=" /tmp/kin.txt | sort -u | head -40 | cut -c1-600
 
 echo "=== WITNESS ROWS: the positive and the three negatives ==="
 for r in a_forwarded_parameter_declaring_the_slots_kind_is_admitted \
@@ -263,10 +263,10 @@ grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1
 
 echo "=== THE RED/POSITIVE CONTROL: the two dag/std/measure.dag rows ==="
 echo "rows mentioning std/measure.dag (expect NONE after the fix; 2 class-Inhabitants rows at main):"
-grep -a "dag/std/measure.dag" /tmp/kin.txt | grep -av "RAVEN" | head -10 | cut -c1-215
+grep -a "dag/std/measure.dag" /tmp/kin.txt | grep -av "RAVEN" | head -10 | cut -c1-600
 echo "MEASURE_PATH_ROWS=$(grep -ac 'dag/std/measure.dag' /tmp/kin.txt)"
 echo "the two measure_sub offsets 6248 / 6251 (expect absent):"
-grep -a "6248\|6251" /tmp/kin.txt | head -6 | cut -c1-215
+grep -a "|P o=" /tmp/kin.txt | sort -u | head -40 | cut -c1-600
 
 echo "=== WITNESS ROWS: the positive and the three negatives ==="
 for r in a_forwarded_parameter_declaring_the_slots_kind_is_admitted \
