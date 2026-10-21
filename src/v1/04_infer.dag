@@ -15118,16 +15118,37 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
-          Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
-        }
-      Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
-    }
+  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+    unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
   } else { UnifyGenericsAcc { subst: acc, diagnostics: [] } }
+}
+
+// A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
+// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
+// answers error_type for anything not Resolved, so reading it through that would drop the very
+// binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
+// unbound). First-wins binding is unchanged.
+fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
+  match formals |> first {
+    Present { value: f } =>
+      match actuals |> first {
+        Present { value: a } =>
+          let step = unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
+          let rest = unify_generic_child_pairs(
+            formals: formals |> skip(1),
+            actuals: actuals |> skip(1),
+            generic_names: generic_names,
+            source_indices: source_indices,
+            acc: step.subst,
+            text: text,
+            module_name: module_name
+          )
+          UnifyGenericsAcc { subst: rest.subst, diagnostics: concat(step.diagnostics, rest.diagnostics) }
+        Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
+      }
+    Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
+  }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so
