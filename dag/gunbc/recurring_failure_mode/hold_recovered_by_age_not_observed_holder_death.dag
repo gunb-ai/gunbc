@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_de
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data hold_recovered_by_age_not_observed_holder_death: RecurringFailureMode = RecurringFailureMode {
   identity: "hold_recovered_by_age_not_observed_holder_death" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a durable exclusive hold is recovered, lapsed, taken over, or treated as holder death because a declared deadline, RuntimeMaxSec, or grant expiry has passed, rather than because an observer bound to that holder reported HolderObservedDead. std.durable_exclusive_hold durable_hold_recovery_assess admits recovery only on HolderObservedDead keyed to the holder and generation; a declared lease deadline is not that observation. HARM: a live holder inside a slow window is treated as gone (seat, spool, collector session, or capacity grant handed to the next arrival), or a dead holder is treated as gone only because a clock fired, so the recovery does not discriminate death from delay. OPERATOR STANDING (bright-moth-475, 2026-10-12, dashboard msg_3d590516): KEEP the four current sites' behavior; declare each as a typed gap on this row rather than changing recovery to require observed death before the named observers exist.",

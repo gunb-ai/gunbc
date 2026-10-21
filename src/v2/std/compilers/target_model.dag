@@ -15,7 +15,7 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
+import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
@@ -969,6 +969,12 @@ fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
 type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
   | BoundToken { token_class: Symbol, binding: Symbol }
+
+// A token spine that keeps the grammar's nesting: an item is one token or a nested block of items with the
+// binding that spells its indent unit. Rendering folds it through target_text_nested.
+type ConcreteSyntaxLayoutItem
+  = LayoutToken { token: ConcreteSyntaxToken }
+  | LayoutNest { unit: Symbol, items: List<ConcreteSyntaxLayoutItem> }
 
 fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
@@ -4499,8 +4505,10 @@ fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outco
   }
 }
 
-// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: nesting
-// is layout, and a token spine carries none.
+// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: this FLAT spine
+// is for a consumer that reads no layout (ingest folds surface syntax BACK to a Node; a scaffold's prefix and
+// suffix are token runs). A consumer that renders text reads concrete_syntax_layout_items_from_node, which
+// keeps the nest and its unit, so the unit is never discarded on the route that prints.
 fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
@@ -4533,6 +4541,57 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
       )
     }
   )
+}
+
+fn concrete_syntax_layout_items_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxLayoutItem>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
+      fold_list(
+        xs: token_nodes,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              match find_named_child(root: token_node, name: ^grammar_nested_block_tokens) {
+                Accepted { value: inner, diagnostics: _ } =>
+                  bind_outcome(
+                    o: find_named_child(root: token_node, name: ^grammar_nested_block_unit),
+                    f: fn(unit_node) {
+                      bind_outcome(
+                        o: concrete_syntax_layout_unit_atom(unit_node: unit_node),
+                        f: fn(unit) {
+                          bind_outcome(
+                            o: concrete_syntax_layout_items_from_node(list_node: inner),
+                            f: fn(items) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutNest { unit: unit, items: items })) }
+                          )
+                        }
+                      )
+                    }
+                  )
+                Rejected { diagnostics: _ } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_from_wire_node(token: token_node),
+                    f: fn(tok) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutToken { token: tok })) }
+                  )
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn concrete_syntax_layout_unit_atom(unit_node: Node) -> Outcome<Symbol> {
+  match unit_node.kind {
+    TypeNode { connective: Atom { identity: unit } } => outcome_accepted(unit)
+    TypeNode { connective: Conj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Disj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Arrow } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Instantiation } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    ComputationNode { behavior: _ } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+  }
 }
 
 fn decode_bodied_arrow_statement_scaffold_bundle(
@@ -5851,39 +5910,8 @@ type TargetValueExprMatchArmSlot {
   body: TargetValueExpression
 }
 
-type TargetValueExprMatchArmEdgeFold {
-  edges: List<Edge>
-  skipped_scrutinee: Bool
-}
-
 fn target_value_expr_positional_child_optional(node: Node, index: Int) -> Optional<Node> {
   list_at_optional(xs: positional_child_target_nodes(node: node), index: index)
-}
-
-fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> List<Edge> {
-  let folded = fold(
-    children,
-    init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
-    f: fn(acc, edge) {
-      match edge.label {
-        StructuralLabel { label: _ } => acc
-        Positional =>
-          if !acc.skipped_scrutinee {
-            TargetValueExprMatchArmEdgeFold {
-              edges: acc.edges,
-              skipped_scrutinee: true
-            }
-          } else {
-            TargetValueExprMatchArmEdgeFold {
-              edges: list_snoc_item(xs: acc.edges, item: edge),
-              skipped_scrutinee: true
-            }
-          }
-        Authored { name: _ } => acc
-      }
-    }
-  )
-  folded.edges
 }
 
 fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
@@ -6683,6 +6711,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
         outcome_accepted(
           TargetValueExpression {
             kind: TargetValueExprBoolLiteral,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_int_literal_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprIntLiteral,
             node: wire
           }
         )
@@ -14851,6 +14886,19 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
   }
 }
 
+fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
+  match bind_slot_target(n: bind, slot: BindBinderSlot) {
+    Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+  }
+}
+
 fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   target_transform_positional_operand_binding(node: node, index: 0)
 }
@@ -15309,17 +15357,13 @@ fn target_value_expr_branch_bool_gate(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  if length(xs: positional_child_target_nodes(node: node)) != 3 {
-    false
-  } else {
-    match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
-      Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(
-          node: cond,
-          source_bool_form: source_bool_form
-        )
-      Absent => false
-    }
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Present { value: cond } =>
+      target_value_expr_is_source_bool_literal_atom(
+        node: cond,
+        source_bool_form: source_bool_form
+      )
+    Absent => false
   }
 }
 
@@ -15361,42 +15405,17 @@ fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional
   }
 }
 
-fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
-  if magnitude == 1 {
-    optional_present(value: ^dag_binding_pick_lit_one)
-  } else if magnitude == 2 {
-    optional_present(value: ^dag_binding_pick_lit_two)
-  } else {
-    optional_absent()
-  }
-}
-
-// 🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps magnitudes 1/2 to legacy
-// pick-lit bindings for existing emit round-trip witnesses; every other magnitude now renders as
-// `TargetValueExprIntLiteral` through the target's declared `int_literal_form`. The two rows stay
-// because C, TypeScript and dag declare `IntLiteralUnwired` and their round-trip witnesses spell 1
-// and 2 through the rows. DISSOLVES WHEN every target that emits an integer literal declares its
-// `int_literal_form`, at which point these rows and this map are deleted and 1 and 2 take the
-// general path.
-
 fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
   match target_value_expr_int_literal_magnitude_node_optional(node: node) {
     Present { value: magnitude_node } =>
       match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
         Accepted { value: magnitude, diagnostics: _ } =>
-          match target_value_expr_int_literal_magnitude_binding(magnitude: magnitude) {
-            Present { value: binding } =>
-              outcome_accepted(
-                target_value_expression_binding_ref(binding: binding)
-              )
-            Absent =>
-              outcome_accepted(
-                target_value_expression_int_literal(
-                  lexeme: int_to_decimal_string(value: magnitude),
-                  source: node
-                )
-              )
-          }
+          outcome_accepted(
+            target_value_expression_int_literal(
+              lexeme: int_to_decimal_string(value: magnitude),
+              source: node
+            )
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     Absent =>
@@ -15409,6 +15428,17 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
   }
 }
 
+// 🟡 REMAINING POPULATION of the pick-table literal bindings (C5-G left it; the int-literal magnitude
+// special case is gone). Source atoms dag_pick_lit_one/two and dag_rec_lit_nine are minted ONLY by
+// fixture constructors (program.dag program_literal_one/two, dag.dag fixtures) and are consumed by
+// the rows held by dag.dag `dag_pick_concrete_tokens`,
+// `dag_language_model_binding_canonical_map`, `dag_binding_spellings`, and by rust_fixtures.dag
+// `rust_pick_concrete_tokens`, `rust_pick_binding_spellings`, `rust_loop_*`, `rust_match_*`,
+// `rust_field_access_binding_spellings`, `rust_variant_construct_binding_spellings`,
+// `rust_literal_emit_binding_spellings`, `rust_bind_literal_golden_tokens`.
+// Ingest and dag_int_literal_fixture_node never mint them. DISSOLVES WHEN those fixtures spell their
+// literals as int_literal atoms and expect int_literal tokens; then these map arms, the rows and
+// this marker are deleted together. Follow-up, not this PR.
 fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
   if id == ^dag_pick_lit_one {
     optional_present(value: ^dag_binding_pick_lit_one)
@@ -15841,13 +15871,13 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
 
 fn target_value_expr_match_project_arms(
   arrow: Node,
-  children: List<Edge>,
+  match_node: Node,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
-    target_value_expr_match_arm_edges_after_scrutinee(children: children),
+    list_map(xs: match_role_slots(n: match_node, role: MatchArmSlot), f: fn(slot) { child_slot_edge(slot: slot) }),
     init: Accepted { value: Empty, diagnostics: None },
     f: fn(acc, arm_edge) {
       match acc {
@@ -15888,7 +15918,7 @@ fn target_project_match(
       )
     )
   } else {
-    match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+    match match_slot_target(n: body, slot: MatchScrutineeSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15909,7 +15939,7 @@ fn target_project_match(
             bind_outcome(
               o: target_value_expr_match_project_arms(
                 arrow: arrow,
-                children: body.children,
+                match_node: body,
                 target: target,
                 source_bool_form: source_bool_form,
                 handle_transform: handle_transform
@@ -15947,7 +15977,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       } else {
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+        match branch_slot_target(n: body, slot: BranchConditionSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15956,7 +15986,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       Present { value: cond } =>
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+        match branch_slot_target(n: body, slot: BranchThenSlot) {
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
@@ -15965,7 +15995,7 @@ fn target_project_branch_bool_if_else(
               )
             )
           Present { value: then_arm } =>
-            match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+            match branch_slot_target(n: body, slot: BranchElseSlot) {
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
@@ -16102,7 +16132,7 @@ fn target_project_bind_let(
         )
       Absent =>
         bind_outcome(
-          o: target_transform_positional_operand_binding(node: body, index: 0),
+          o: target_bind_binder_binding(bind: body),
           f: fn(key_binding) {
             bind_outcome(
               o: target_project_bind_tail(
@@ -16114,7 +16144,7 @@ fn target_project_bind_let(
                 handle_transform: handle_transform
               ),
               f: fn(projected_tail) {
-                match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+                match bind_slot_target(n: body, slot: BindValueSlot) {
                   Absent =>
                     outcome_rejected(
                       target_value_expr_diagnostic(
@@ -16158,7 +16188,7 @@ fn target_project_bind_tail(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2) {
+  match bind_slot_target(n: bind, slot: BindBodySlot) {
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(

@@ -147,7 +147,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -204,6 +205,7 @@ pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod provider_acquire;
 mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
@@ -720,7 +722,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -11554,6 +11558,14 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
+    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
+    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
+    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
+    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
+    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
+    /// reads the provider a second time.
+    provider_snapshots:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
@@ -13538,9 +13550,10 @@ mod module_schedule_batches_tests {
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
+    demand_chunks: Vec<provider_acquire::ProviderDemands>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
@@ -13634,7 +13647,7 @@ fn finish_resolved_graph_assembly(
         diagnostics,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
-    Ok(graph)
+    Ok((graph, provider_acquire::group_pass_demands(&demand_chunks)))
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -13658,7 +13671,7 @@ fn try_reconcile_all_cache_hits(
     cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Option<Rc<ResolvedGraph>>, String> {
+) -> Result<Option<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands)>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -13741,6 +13754,8 @@ fn try_reconcile_all_cache_hits(
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im::Vector::new());
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> =
+        Vec::with_capacity(closure_modules.len());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
         let graph_started = std::time::Instant::now();
@@ -13749,6 +13764,7 @@ fn try_reconcile_all_cache_hits(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -13764,6 +13780,7 @@ fn try_reconcile_all_cache_hits(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -14245,7 +14262,7 @@ fn reconcile_with_typed_cache(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -14497,8 +14514,23 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                let computed =
-                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                // A RESULT COMPUTED WHILE A DEMANDED PROVIDER WAS OUTSIDE THIS CLOSURE IS NOT
+                                // THE MODULE'S ANSWER. Its generated references were left as
+                                // needs-acquisition, and the content key (source hash plus direct-import
+                                // interfaces) cannot see a provider no import names, so caching it would
+                                // serve the unacquired result again after the provider joins. Only a
+                                // result whose every demanded provider is in the closure it was computed
+                                // against is cached; the draft is recomputed on the grown closure.
+                                let providers_held = computed.provider_demands.iter().all(|d| {
+                                    closure_names
+                                        .iter()
+                                        .any(|n| *n == d.declaration.module_path)
+                                });
+                                let computed = if providers_held {
+                                    index_insert_typed(index, typed_key.clone(), computed)?
+                                } else {
+                                    computed
+                                };
                                 Ok(computed)
                             };
 
@@ -14569,6 +14601,7 @@ fn reconcile_with_typed_cache(
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
     let mut modules_vec = im::Vector::new();
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> = Vec::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -14583,6 +14616,7 @@ fn reconcile_with_typed_cache(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -14598,6 +14632,7 @@ fn reconcile_with_typed_cache(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -17750,7 +17785,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -28676,6 +28713,7 @@ mod witness_layer_roots_compile_clean_tests {
         let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
             graph: None,
             diagnostics: Rc::new(im::Vector::new()),
+            provider_demands: Rc::new(im::Vector::new()),
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             complexity: empty_complexity_report(),
             ownership: Rc::new(im::Vector::new()),
@@ -28834,6 +28872,7 @@ mod witness_layer_roots_compile_clean_tests {
             let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
                 graph: compiled.graph.clone(),
                 diagnostics: Rc::new(diagnostics.into()),
+                provider_demands: compiled.provider_demands.clone(),
                 source_indices: compiled.source_indices.clone(),
                 complexity: compiled.complexity.clone(),
                 ownership: compiled.ownership.clone(),
@@ -30164,6 +30203,9 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
+    /// included. Empty means the executable position reads no input.
+    pub executable_input_refs: Vec<String>,
 }
 
 fn collect_argv_input_refs(
@@ -30187,6 +30229,34 @@ fn collect_argv_input_refs(
             }
         }
         _ => {}
+    }
+}
+
+/// Every variable read anywhere under `node` (call arguments, field accesses, interpolations),
+/// in first-seen order. Unlike `collect_argv_input_refs` it descends through every expression
+/// form, because its question is "can an input reach this position", not "which inputs does
+/// this element interpolate".
+fn collect_expression_var_reads(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    if let ExprData::ExprVar { .. } = node.expr_data.as_ref() {
+        let name = expr_var_name_at(node.clone(), source_indices.clone());
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    if let ExprData::ExprStringInterp = node.expr_data.as_ref() {
+        for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+            if let StringPart::Interpolation { expr } = part.as_ref() {
+                collect_expression_var_reads(expr, source_indices, out);
+            }
+        }
+    }
+    for child in node.children.iter() {
+        collect_expression_var_reads(child, source_indices, out);
     }
 }
 
@@ -30264,6 +30334,20 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                 for argv_node in transport.children.iter() {
                     collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
                 }
+                let mut executable_input_refs: Vec<String> = Vec::new();
+                if let Some(executable) = transport.children.iter().next() {
+                    collect_expression_var_reads(
+                        executable,
+                        &source_indices,
+                        &mut executable_input_refs,
+                    );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
+                }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
                     service: item.name.clone(),
@@ -30273,6 +30357,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable_input_refs,
                 });
             }
         }
