@@ -61,11 +61,13 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  CapPhaseObserved,
   runner_host_cap_phase_not_owed,
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
@@ -77,6 +79,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerSlotExpectation,
   runner_slot_expectation,
   SlotReloadNotPending,
+  ReachesLiveCgroup,
   SlotAllocationNotEffective,
   RetiredResidueObservation,
   ResidueAbsent,
@@ -709,7 +712,7 @@ test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> 
 }
 
 fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending }) }
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }) }
 }
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
@@ -776,7 +779,15 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
-            cap_phase: runner_host_cap_phase_not_owed,
+            // The observe arm now has to CONSUME the cap phase (manager ruling, review 5588645431):
+            // production's observe mode can only ever answer CapPhaseObserved since P4, so this
+            // fixture carries the fully-read observed arm for observe (a hand-fabricated NotOwed --
+            // the base's two-valued answer -- would now refuse, and this claim would be lying about
+            // what production produces). Apply still accepts a settled NotOwed phase (unchanged path).
+            cap_phase: match mode {
+              RunnerHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
+              RunnerHostFilesApply => runner_host_cap_phase_not_owed
+            },
           })
       }
   }
