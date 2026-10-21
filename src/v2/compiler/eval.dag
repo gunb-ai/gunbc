@@ -3119,7 +3119,7 @@ fn eval_with_context(
   match eval_ill_formed_input(tree: tree, inputs: inputs) {
     Present { value: bad } => eval_ill_formed_refusal(at: bad)
     Absent =>
-     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, lookup: tree.arm_resolutions.decided.lookup) {
+     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, decided: tree.arm_resolutions.decided) {
       Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       Absent =>
       eval_runtime_node(
@@ -3138,7 +3138,7 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
   match eval_ill_formed_input(tree: tree, inputs: inputs) {
     Present { value: bad } => eval_ill_formed_refusal(at: bad)
     Absent =>
-     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, lookup: tree.arm_resolutions.decided.lookup) {
+     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, decided: tree.arm_resolutions.decided) {
       Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       Absent =>
       eval_runtime_node(

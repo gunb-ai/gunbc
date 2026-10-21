@@ -3,7 +3,7 @@ module v2.compiler.arm_resolution
 import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.types { List }
-import std.algebra { is_empty, list_at_optional }
+import std.algebra { PartialFunction, is_empty, list_at_optional }
 import v2.std.node { Authored, Node, Positional, StructuralLabel, Symbol, positional_child_target_nodes, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
@@ -130,12 +130,12 @@ fn node_is_arm_test(node: Node) -> Bool {
 // both realizers read answers a typed refusal naming that missing capability, located at the test. A test
 // carrying no ResolvedArm entry refuses with its own cause: nothing decided what it means. Dissolves when
 // the v2 realization of tag_of/same_arm lands and eval and emit map UnitArmSameArm to it.
-fn arm_test_realization_refusal(tests: List<Node>, lookup: fn(Node) -> Optional<ResolvedArm>) -> Optional<Diagnostic> {
+fn arm_test_realization_refusal(tests: List<Node>, decided: PartialFunction<Node, ResolvedArm>) -> Optional<Diagnostic> {
   fold(tests, init: Absent, f: fn(acc, n) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match lookup(n) {
+        match decided.lookup(n) {
           Present { value: _ } => optional_present(value: arm_test_realization_awaited_diagnostic(test: n))
           Absent => optional_present(value: arm_test_without_resolution_diagnostic(test: n))
         }

@@ -7,6 +7,7 @@ import v2.compiler.eval { eval, eval_default_interpretation, inputs_root_only }
 import v2.compiler.emit { emit }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
+import std.algebra { PartialFunction }
 import v2.compiler.arm_resolution { arm_test_realization_refusal }
 import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, UnitArmSameArm }
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
@@ -154,7 +155,7 @@ test fn is_payload_arm_eval_refuses_awaiting_realization() -> Bool {
 test fn is_test_without_fact_entry_refuses() -> Bool {
   match is_inferred_tree(decls: "type Color = Red | Green\n", body: "c is Red") {
     Present { value: t } =>
-      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, lookup: fn(k) { Absent }) {
+      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, decided: PartialFunction { lookup: fn(k) { Absent } }) {
         Present { value: d } => d.reason == ^arm_test_without_resolved_arm
         Absent => false
       }
@@ -166,7 +167,7 @@ test fn is_test_without_fact_entry_refuses() -> Bool {
 test fn no_is_node_is_not_refused() -> Bool {
   match is_inferred_tree(decls: "type Color = Red | Green\n", body: "true") {
     Present { value: t } =>
-      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, lookup: t.arm_resolutions.decided.lookup) {
+      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, decided: t.arm_resolutions.decided) {
         Present { value: _ } => false
         Absent => true
       }
