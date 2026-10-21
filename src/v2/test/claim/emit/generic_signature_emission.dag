@@ -61,3 +61,10 @@ test fn an_applied_type_of_the_functions_own_parameter_is_spelled_in_its_signatu
     SignatureRefused { reason: _ } => false
   }
 }
+
+fn zz_probe() -> String {
+  match signature_emission_applied_type_verdict() {
+    SignatureEmitted { text: t } => concat("EMITTED ", t)
+    SignatureRefused { reason: r } => concat("REFUSED ", r)
+  }
+}
