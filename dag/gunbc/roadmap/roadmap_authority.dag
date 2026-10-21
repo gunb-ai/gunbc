@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import std.types { FilePath, NonEmptyStr, Set, Map }
+import gunbc.design_ruling { roadmap_scm_edges_do_not_wait_on_the_fabric }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
@@ -4696,13 +4697,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // bridge cutover. Edging to it would hold an executable row behind an entire unfinished program --
 // the wrong dependency, made machine-readable, which is worse than the prose it replaced. Found by
 // external review after the edge was added on exactly that reasoning.
-// OPERATOR RULING (2026-10-21) AMENDING #13052's "SCM waits on the fabric": the four edges
-// 2-scm-{git,mercurial,pijul}-upstream-model and 2-claim-indexed-evidence -> fabric-bringup are
-// REMOVED. They held four rows behind a program that is ongoing by ruling, while all four already
-// carry acceptance receipts, so the edge asserted an order the history had already contradicted and
-// `witness_accepted_parents_precede_dependents` refused the live graph. The acceptances stand; the
-// SCM rows stay children of `factory` (the daily workspace is their only consumer, revisited after
-// the fabric bring-up) with no dispatch gate on the fabric.
+// The four edges to fabric-bringup are removed by gunbc.design_ruling roadmap_scm_edges_do_not_wait_on_the_fabric (amends #13052).
 // Shell→dag migration batch 1 edges: each node is a child of the completed exemplar
 // shell-typed-invocation; the two same-file pairs (ci-deploy-invoke-prelude/ci-heal-regen-invoke,
 // live-deploy-install-owned/live-deploy-restart-tailscale) carry NO edge between them — they are
