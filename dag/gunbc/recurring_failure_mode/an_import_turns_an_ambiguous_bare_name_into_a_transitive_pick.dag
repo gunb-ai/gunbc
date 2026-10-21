@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick: RecurringFailureMode = RecurringFailureMode {
   identity: "an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: adding one import to a .dag file changes how an UNRELATED bare name in that file resolves. Without imports, a bare name two modules of the file's source tree declare refuses as ambiguous; with any import, the same bare name binds silently to whichever declaring module the import CLOSURE happens to reach -- including through the imported module's own imports -- because an import-bearing file's bare names resolve against its closure-scoped census first (closure wins the intersection) and the loader follows no bare references for it. HARM: silent wrong resolution -- a name the author never imported, and that is ambiguous in their tree, is bound to a transitively reachable homonym, and editing an import anywhere upstream can rebind it.",

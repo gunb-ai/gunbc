@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.extra_source_root_outside_workspace_refuses_annotations_as_unattached
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data extra_source_root_outside_workspace_refuses_annotations_as_unattached: RecurringFailureMode = RecurringFailureMode {
   identity: "extra_source_root_outside_workspace_refuses_annotations_as_unattached" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an extra --source-root outside process_workspace_root refuses every content-carrying annotation as UnattachedAtScopeEnd, so the diagnostic names the file and conceals the invocation** (INVALID STATE: `std.source_annotation` `annotation_attach_resolve` drops a leading `//` whose text is empty when no module-item subject follows, and refuses every text-bearing line as UnattachedAtScopeEnd. That rule is content-shaped. When the extra root is not under the process workspace, the binder reports that class for every text-bearing line in the file even when a module item immediately follows the block.",

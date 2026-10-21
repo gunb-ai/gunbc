@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.disagreement_census_blind_to_agreed_wrong
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data disagreement_census_blind_to_agreed_wrong: RecurringFailureMode = RecurringFailureMode {
   identity: "disagreement_census_blind_to_agreed_wrong" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a two-reader disagreement census is blind to the case where BOTH readers are wrong together** (an instrument whose subject is DISAGREEMENT between two producers of one answer reports AGREEMENT as healthy, so the population where both answer the same WRONG thing is scored green and is invisible to it by construction.",

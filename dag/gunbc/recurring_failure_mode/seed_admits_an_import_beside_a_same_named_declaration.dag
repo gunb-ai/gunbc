@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.seed_admits_an_import_beside_a_same_named_declaration
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data seed_admits_an_import_beside_a_same_named_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "seed_admits_an_import_beside_a_same_named_declaration" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "INVALID STATE: a module imports a name it also declares. v2.std.grammar declares the GrammarExpr variant `Optional { element: GrammarExpr }` and therefore writes std.optional.Optional fully qualified at every use; gunbc#13905 (Cardinality carriers: ListHeadResult/ListTailResult -> Optional) added `Optional` to its `import std.optional { .. }` line, binding a second, unused `Optional` in the same namespace. The v1 seed builds and runs the module; v2 resolve refuses v2.std.grammar.Optional as resolve_ambiguous_at_binding_position. The seed is the lenient side: one name with two candidates is ambiguous, so the native refusal is correct.",
     "HARM: the refusal is whole-module and travels. v2.std.grammar, v2.compiler.parse (which names v2.std.grammar.Optional qualified) and v2.compiler.grammar_reach stop resolving natively, so their declarations leave the native index. PreparedGrammar is declared in v2.compiler.parse, so in native-seven's subject v2.test.claim.parse.expression_bodied_fn_decl_parse the scrutinee `dag_prepared_grammar()` gets no derived type, and the arm `Accepted { value: prepared, .. }` reads Outcome's free formal with no instance: all eight members refused at PREPARE as infer_reason_pattern_payload_formal_uninstantiated, one stage below where they stood at the parent commit. Every seed-interpreted control and the required gate stayed green, because neither asks v2 to resolve the compiler's own modules.",
