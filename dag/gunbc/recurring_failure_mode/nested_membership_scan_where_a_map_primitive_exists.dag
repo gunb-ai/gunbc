@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data nested_membership_scan_where_a_map_primitive_exists: RecurringFailureMode = RecurringFailureMode {
   identity: "nested_membership_scan_where_a_map_primitive_exists" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**the cheap-to-write form of a correct completeness oracle is a nested scan, and nothing makes the map-backed form the default** INVALID STATE: an identity join over two populations is written as `all` over one containing `any` over the other -- quadratic in eval steps -- while `v2.std.collection` `empty_map` / `map_insert` / `map_lookup` are PrimitiveContracts already imported by 78 `dag/` modules. The author is not careless: the nested form is the one the substrate's list vocabulary suggests, and the map primitives live in a folder the author reads as someone else's layer.",

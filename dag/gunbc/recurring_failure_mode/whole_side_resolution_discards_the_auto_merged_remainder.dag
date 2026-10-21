@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.whole_side_resolution_discards_the_auto_merged_remainder
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data whole_side_resolution_discards_the_auto_merged_remainder: RecurringFailureMode = RecurringFailureMode {
   identity: "whole_side_resolution_discards_the_auto_merged_remainder" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a conflicted file is resolved by taking ONE WHOLE SIDE, discarding the hunks in that same file that auto-merged from the OTHER side** (INVALID STATE: `git checkout --ours <file>` / `--theirs <file>` replaces the ENTIRE file, but a conflicted file is normally only PARTLY conflicted -- git has already merged every other hunk cleanly, and those merged hunks come from both parents. Taking one whole side reverts all of them to that side. HARM: the discarded content leaves NO conflict marker, NO diagnostic and NO trace; the file is syntactically fine and the loss is a silent revert of somebody else's landed work, attributed to the resolver's merge commit.)",

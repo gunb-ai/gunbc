@@ -1,14 +1,19 @@
 module test.claim.rung_drop_declaration_witness
 
 import std.types { String, Bool, NonEmptyStr }
+import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable, guarantee_rung_label,
 }
 import gunbc.rung_drop {
-  RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
+  RungDrop, TypedDeclaration, Enumerated, NotYetCounted, NoInstrumentObservesTheZero, DerivedBy, DeletedWithoutReplacement, Standing,
+  rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
   rung_drop_declaration_message, rung_drop_off_ladder_judgment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
+import extdeps.bazel.label { Label, TargetName }
+import gunbc.instrument_targets { instruments_package, compile_clean_diagnostic_census_label }
+import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
 
@@ -24,7 +29,7 @@ data control_rung_drop: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: ["control.population.one"],
+    population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger"
   }
 }
@@ -41,7 +46,7 @@ data control_rung_drop_with_terminated_trigger: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: ["control.population.one"],
+    population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger."
   }
 }
@@ -124,4 +129,61 @@ test fn unterminated_trigger_gains_one_period_and_terminated_trigger_gains_none(
   let terminated = rung_drop_declaration_message(d: control_rung_drop_with_terminated_trigger)
   ends_with(s: unterminated, suffix: "control restoration trigger.")
     && ends_with(s: terminated, suffix: "control restoration trigger.")
+}
+
+// READABILITY: THE RED AND ITS POSITIVE CONTROL. A Standing typed drop whose population is an empty
+// enumeration, or a derivation naming a label the instrument roster does not hold, is refused; a
+// non-empty enumeration and a derivation by a real roster label are accepted. Each control differs
+// from the others only in its population, so the verdict cannot come from another field.
+data unreadable_empty_population: RungDrop = RungDrop {
+  identity: "control.empty" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+data unreadable_unknown_label: RungDrop = RungDrop {
+  identity: "control.unknown_label" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: DerivedBy { label: Label { package: instruments_package() target: TargetName { name: "no-such-instrument" as NonEmptyStr } } },
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+data readable_derived_label: RungDrop = RungDrop {
+  identity: "control.derived" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: DerivedBy { label: compile_clean_diagnostic_census_label() },
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_ones_are_accepted() -> Bool {
+  !rung_drop_is_readable(d: unreadable_empty_population)
+    && !rung_drop_is_readable(d: unreadable_unknown_label)
+    && rung_drop_is_readable(d: control_rung_drop)
+    && rung_drop_is_readable(d: readable_derived_label)
+}
+
+test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() -> Bool {
+  every_unreadable_standing_drop_is_not_yet_counted(ds: rung_drop_roster)
 }
