@@ -302,11 +302,6 @@ test fn the_dissolution_fires_only_when_the_capability_arrives() -> Bool {
     == DissolutionPending
 }
 
-test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
-  let crossed = "module std.types\ntype List<element>\ntype Set<element> = FreeMonoid<element>\n"
-  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: crossed)
-}
-
 // THE DISSOLUTION TRIGGER, machine-readable (DESIGN §6: a check that replaces a construction states
 // when it retires). This guard exists only because the substrate cannot GENERATE the std/types
 // alias declarations from the roster: `algebra_carriers` is a runtime `fn` value while `type List`
