@@ -1,7 +1,12 @@
 module gunbc.declined_live_tree_defect_classification
 
-import std.types { String, List }
+import std.types { String, List, CommitSha, NonEmptyStr, commit_sha_text_holds }
 import v2.std.integer { Int }
+import std.execution_mode { ExecutionMode }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.optional { Optional, Present, Absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
 import std.algebra { list_snoc_item, count_where, length, fold_list }
 
 // WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on
@@ -83,16 +88,65 @@ type WrongWitnessFault =
 // (manager ruling: a 'closed by' string under `RoutedToOwner` would be one name with two meanings,
 // DESIGN §3 nicknaming); `RepairedInThisChange` cannot carry it either — it names no repair and
 // this change does not perform one.
-type ClosureReceipt {
-  closed_by: List<String>
-  re_measured_at: String
+// THE RE-MEASUREMENT, as the parts the prose string packed together: WHICH head, on WHICH calendar day,
+// over WHICH execution routes, with WHICH result, from WHICH instrument.
+// Each part is independently checkable and the witness reads every one of them: the head against
+// `commit_sha_text_holds`, the day against the calendar rule, the route and result against the sums
+// they belong to, and the instrument against the live declaration index. The previous spelling was one
+// String — "2026-10-21 at head a162e67d1af8: declared roots 27, admitted roots 27, claim PASS
+// (executed through the claim_batch host ...)" — which no program could check and which any non-empty
+// text satisfied (review 84071/84083; DESIGN §4c: a receipt belongs in a typed carrier).
+//
+// NO FIGURES FIELD EXISTS, deliberately. A receipt that copies "declared roots 27, admitted roots 27"
+// duplicates what the named instrument computes, so the copy can go stale while the instrument still
+// says otherwise -- review 84083's count-copy. What a carrier may assert is that the named instrument,
+// run on the named head over the named routes, produced the named outcome. Anyone can re-run the
+// instrument; nobody can keep a stale number alive by editing a string.// THE RESULT THE RE-RUN PRODUCED is a ClaimDisposition from the ledger's own sum — the same authority
+// the floor uses to say what a claim did — not a word typed into this file. `Passed` is the only
+// disposition that closes a row, and the witness refuses anything else rather than reading closure off
+// prose.
+type ReMeasurement {
+  head: CommitSha
+  on: Iso8601CivilDate
+  routes: List<ExecutionMode>
+  outcome: ClaimDisposition
+  instrument: DeclarationRef
 }
+
+// WHAT CLOSED THE ROW. TWO WAYS AND NO THIRD, which is what `closed_by: List<String>` could not say:
+// a list of prose satisfied every case including the one where nothing closed the row at all (review
+// 84083's concrete failure: the entry "no attributed fix commit: ... none is reachable from this head"
+// satisfied the arm that requires a closure).
+//  - AttributedToChange: a NAMED change closed it, cited by pull request number or by a name. Neither
+//    citation is checkable from the tree alone (a PR number is a GitHub fact, a name is prose), so BOTH
+//    arms carry `durable_account`: the in-tree declarations that record the event, which the witness
+//    resolves against the live declaration index. An attributed closure whose account is empty is a
+//    reference to a fact nobody can re-check, which is what reviews 84071/84083 refused.
+//  - RestsOnExecutedCheck: no change can be attributed — the history was rewritten, or the row's wall
+//    was never a defect at all — and what closes it instead is the executed re-measurement plus the
+//    durable account of why nothing is attributable. `re_measured.outcome` must still be `Passed`;
+//    this arm is not a place to put an unverified row.
+// `RoutedToOwner` is deliberately NOT reused with a receipt: an owner who has not closed anything is a
+// different fact from a closure that rests on a check (DESIGN §3 — one name, one meaning).
+type ChangeCitation
+  = PullRequest { number: Int }
+  | NamedChange { name: NonEmptyStr }
+
+type Closure
+  = AttributedToChange { change: ChangeCitation, durable_account: List<DeclarationRef>, re_measured: ReMeasurement }
+  | RestsOnExecutedCheck { why_no_change: NonEmptyStr, durable_account: List<DeclarationRef>, re_measured: ReMeasurement }
+
+// THE CLOSURE A CLOSED ROW CARRIES. `ClosedByPriorChange` below and `RetiredExpectedRedRow` in
+// v2.workflow.floor_expected_red read this one sum; the old `ClosureReceipt` record it replaces had
+// two String fields and no readers. A row whose closure is an empty `durable_account` on the
+// RestsOnExecutedCheck arm, or an outcome that is not `Passed`, is refused by
+// test.claim.floor_expected_red_retirement_witness, not accepted as prose.
 
 type ClassificationDisposition =
     RoutedToOwner { owner: String }
   | NeedsOperatorRuling { question: String }
   | RepairedInThisChange
-  | ClosedByPriorChange { receipt: ClosureReceipt }
+  | ClosedByPriorChange { closure: Closure }
 
 // measured_evidence records what was EXECUTED to reach the verdict, never what
 // was read: a classification derived from reading a lens is not a measurement.
@@ -148,32 +202,41 @@ data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
-    // RE-MEASURED, NOT RESTATED, because the census below is a 2026-08-24 snapshot and the thing it
-    // counted has since changed twice. Executed at head a162e67d1af8 (2026-10-21) by the same route
-    // the claim uses -- the claim_batch host over the live gunbc.doc_graph_roots -- the counts are
-    // declared 27 == admitted 27, and the claim itself runs PASS on the schedule that
-    // v2.workflow.local_repo_wet_terminal `local_repo_wet_schedule` now carries it on. The 19 dead
-    // binds the census counted are gone: on 2026-08-25 the three g1-cited-symbol controls were
-    // REHOMED as machine planted controls for the cited-symbol lens (so the permanent evidence
-    // 4b(4) protects was MOVED, not finished -- which is also what retires the ruling question
-    // below), and the 16 dead ProbeDoc binds plus the last emitted plan root were deleted. The
-    // figure that was here ("228 declared roots, 209 admitted") was accurate on 2026-08-24 and
-    // names the population that no longer exists; it is kept in that sentence, not as the
-    // measurement.
-    measured_evidence: "RE-MEASURED 2026-10-21 at a162e67d1af8: declared roots 27, admitted roots 27, claim runs PASS (executed). Historical census, now stale: 228 declared / 209 admitted on 2026-08-24; those 19 unadmitted binds were deleted on 2026-08-25 after the g1 controls were rehomed (account cited in closed_by).",
+    // RE-MEASURED, NOT RESTATED. The census this row replaced was a 2026-08-24 snapshot and the
+    // population it counted has since changed twice, so the numbers live in the typed re-measurement
+    // below (head, day, routes, outcome, instrument) — NOT restated in prose, which is
+    // what let a receipt claim a measurement nobody could check (review 84083: "the receipts copy
+    // measurement output instead of naming the instrument"). What this prose carries is only the NARRATIVE
+    // the typed parts cannot: what the stale population was and why it vanished. On 2026-08-25 the three
+    // g1-cited-symbol controls were REHOMED as machine planted controls for the cited-symbol lens (the
+    // permanent evidence 4b(4) protects was MOVED, not finished), and the 16 dead ProbeDoc binds plus the
+    // last emitted plan root were deleted. The historical figure ("228 declared / 209 admitted") named a
+    // population that no longer exists; it survives only as a dated statement of the superseded census.
+    measured_evidence: "Supersedes the 2026-08-24 census (228 declared / 209 admitted), which counted a population that no longer exists: the 19 unadmitted binds were deleted on 2026-08-25 after the g1 controls were rehomed (durable account in the closure below). The current counts are NOT restated here; read them from the typed re-measurement.",
     disposition: ClosedByPriorChange {
-      receipt: ClosureReceipt {
-        // The commits of 2026-08-25 that rehomed the g1 controls and deleted the dead binds are NOT
-        // CITED BY HASH, because the 2026-10 mega-squash rewrote history and those objects are no
-        // longer reachable from this head -- a hash here would send a reader to a commit they cannot
-        // check out. What is cited instead is main's own durable account of the same events, which
-        // this row's author verified against the live tree before writing the re-measurement below.
-        closed_by: [
-          "2026-08-25, operator ruling: the three g1-cited-symbol discriminating controls were REHOMED as machine planted controls for the cited-symbol lens, and the 16 dead ProbeDoc binds plus the emitted plan root were deleted. Durable account: dag/gunbc/doc_graph_roots.dag header ('They moved to that lens as a typed control carrier on 2026-08-25 (operator ruling)'; 'SIXTEEN PROBE-DOC BINDS WERE DELETED THE SAME DAY, AND THE HOME AXIS DELIBERATELY SURVIVED THEM') and dag/test/claim/doc_graph_reference_partition_witness.dag `cited_symbol_partition_third_bucket_note`",
+      // The commits of 2026-08-25 that rehomed the g1 controls and deleted the dead binds are NOT
+      // CITED BY HASH, because the 2026-10 mega-squash rewrote history and those objects are no
+      // longer reachable from this head -- a hash here would send a reader to a commit they cannot
+      // check out. What closes the row instead is the NAMED change with main's own durable account of
+      // the same events: declaration refs the witness resolves against the live declaration index, so
+      // "the account says so" stops being take-my-word-for-it prose the moment the account is deleted
+      // or renamed.
+      closure: RestsOnExecutedCheck {
+        why_no_change: "the 2026-10 history rewrite (mega-squash) removed the 2026-08-25 commits from this head's ancestry, so no hash is reachable; the change is named and its durable account is cited instead",
+        durable_account: [
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
+          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
         ],
-        re_measured_at: "2026-10-21 at head a162e67d1af8: doc_graph_roots_all() declared 27 == doc_graph_admitted_root_count 27, executed through the claim_batch host; test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted PASS on the same host",
-      }
-    }
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: [Wet],
+          outcome: Passed,
+          instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
+        },
+      },
+    },
   },
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),

@@ -1,12 +1,70 @@
 module test.claim.floor_expected_red_retirement_witness
 
-import std.types { Bool, List }
-// `any` is a free-call primitive (see v2.workflow.witness_admission, which calls it un-imported);
-// the imported helpers are the ones std.algebra actually declares.
-import std.algebra { fold_list, list_append, Empty }
-import gunbc.declined_live_tree_defect_classification { ClosureReceipt }
+// EVERY RETIRED ExpectedRed ROW IS ACCOUNTED FOR, ON PROOF AND NOT ON PROSE.
+//
+// WHAT THIS CHANGED FROM, AND WHY THE OLD SHAPE WAS NOT A GATE. This claim used to check four things
+// about a row whose fields were all `String`: that the list was non-empty, that the identity was not
+// still enrolled, that the schedule held it, and that the receipt's two strings were not `""`. Nothing
+// read `why`, nothing read `standing_before`, and a `closed_by` entry whose text said "there is no
+// closure, none is reachable from this head" satisfied the receipt test as happily as a real citation
+// (reviews 84071/84083). The tuple could be satisfied by editing the declaration while the realization
+// still lay, which is DESIGN §5's tell that validation stood where construction was available.
+//
+// WHAT IT CHECKS NOW, FIELD BY FIELD. The fields themselves are typed (RetiredExpectedRedRow in
+// v2.workflow.floor_expected_red, Closure in gunbc.declined_live_tree_defect_classification), so the
+// questions below are asked of data rather than of sentences:
+//   1. identity  -- not still enrolled in the roster's own chunks (a row cannot be both retired and
+//                   enrolled), and the wet lane's own schedule carries that same qualified name with
+//                   expectation ExpectedToHold (§4b meta-obligation 4: a row that went green when its
+//                   wall landed becomes a permanent regression control).
+//   2. standing_before -- must be ExpectedRed. A row cannot retire from a standing it never held.
+//   3. enrolled_on -- when Present, a real civil date (the calendar module's own round-trip) that does
+//                   not post-date its own re-measurement. When Absent, honest absence: two rows'
+//                   enrolling date was never recorded and this claim does not let one be invented.
+//   4. on_both_routes -- must agree with the closure's own route list, so "passes on both routes"
+//                   cannot stand next to a one-route receipt.
+//   5. closure.durable_account -- EVERY ref resolves against the live declaration index over
+//                   compile_clean_source_roots(), via the same host join
+//                   `v2.std.decl_ref_resolution_host` `cited_declaration_ref_refusal_count_live` the
+//                   long-haul carrier witness uses. An empty account refuses, so an attributed closure
+//                   cannot consist only of a pull-request number nobody can check from the tree.
+//   6. closure.re_measured -- a well-formed head, a real date, a non-empty route list drawn from the
+//                   one execution-mode sum (no third name for the concept), the outcome, and the
+//                   instrument that produced it.
+//   7. instrument -- named as the claim itself: its module_path and decl_name must equal the retired
+//                   row's own identity. A receipt that credits some other, unrelated claim with closing
+//                   a row is exactly the substitution a prose receipt invites, and this makes it a
+//                   field mismatch. The instrument's module must ALSO be a declared module in the live
+//                   module index, so the name cannot point at a file that no longer exists.
+//
+// NO COUNT LITERAL APPEARS IN THIS FILE. Row counts come from the roster, the schedule and the carrier
+// rows themselves; completeness is an identity join, so nothing here collapses to measure() == measure().
+//
+// WHY THE THREE ARM CONTROLS EXIST. A conjunction this wide can go green by losing a conjunct, and a
+// fixture whose BAD arm and GOOD arm both fail proves nothing (the trap
+// `test.claim.duplicate_record_field_refusal_witness` records). Each refusal below is produced by
+// perturbing ONE field of one synthetic row and demanding the whole predicate flip, so an arm that
+// stops refusing can be seen: the arms differ by one field and by nothing else.
+
+import std.types { Bool, List, Int, NonEmptyStr, CommitSha, commit_sha_text_holds, string_non_empty }
+import std.algebra { fold_list, list_append, length, any, all, Empty }
+import std.optional { Optional, Present, Absent }
+import std.execution_mode { ExecutionMode, Wet, Hermetic }
+import std.decl_ref { DeclarationRef }
+import gunbc.declined_live_tree_defect_classification {
+  Closure,
+  ReMeasurement,
+  AttributedToChange,
+  RestsOnExecutedCheck,
+  PullRequest,
+  NamedChange,
+}
+import gunbc.doc_graph_roots { hand_authored_works_resolution_pool_roots }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
+import v2.lens.module_graph { module_declaration_facts_at_live }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil, iso8601_civil_from_days }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
-import v2.workflow.floor_terminal_ledger { ClaimExpectation }
+import v2.workflow.floor_terminal_ledger { ClaimExpectation, ClaimDisposition, Passed, ExpectedRed, ExpectedToHold }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule, WetScheduledClaim }
 import v2.workflow.floor_expected_red {
   RetiredExpectedRedRow,
@@ -14,20 +72,8 @@ import v2.workflow.floor_expected_red {
   floor_expected_red_chunks,
 }
 
-// THE READER OF THE RETIREMENT CARRIER. `v2.workflow.floor_expected_red`
-// `floor_expected_red_retired_rows` records, as DATA, why each row left the ExpectedRed roster and
-// what closed it. A roster nobody reads is a comment in a `.dag` file, so this witness is the fold
-// that makes it a roster: over the live populations only (the roster's own chunks, the wet lane's
-// own schedule, the carrier's own rows — nothing hand-counted here), it refuses when
-//   1. a retired identity is STILL enrolled as ExpectedRed (the carrier and the roster disagree), or
-//   2. a retired identity is not scheduled by `local_repo_wet_schedule()` with `ExpectedToHold`
-//      (the retirement silently became "nothing runs it any more" — the defect DESIGN §4b(4) exists
-//      to prevent: a probe that greens stays enrolled as a permanent regression control), or
-//   3. a row carries an empty closure receipt (a retirement nobody closed).
-// THIS FILE IS ITSELF ON THE WET SCHEDULE, so the join runs on every dispatch of the lane — the
-// same mechanism that gives the four moved controls their tripwire. If a future retirement breaks
-// any of the three, this claim goes red on the lane and the known-red instrument names it.
-
+// THE LIVE POPULATIONS, read rather than copied. Both come from the ledger's own producers, which is
+// what makes this a completeness join and not a count equality.
 fn enrolled_expected_red_identities() -> List<String> {
   fold_list(
     xs: floor_expected_red_chunks(),
@@ -43,58 +89,184 @@ fn expectation_is_expected_to_hold(e: ClaimExpectation) -> Bool {
   }
 }
 
-// THE JOIN, over caller-supplied populations so the same code carries the live claim AND its
-// discriminating controls (a predicate that only ever sees the live tree cannot show it refuses).
+fn expectation_is_expected_red(e: ClaimExpectation) -> Bool {
+  match e {
+    ExpectedRed => true
+    ExpectedToHold => false
+  }
+}
+
+fn outcome_is_passed(d: ClaimDisposition) -> Bool {
+  match d {
+    Passed => true
+    _ => false
+  }
+}
+
+// WHICH ROUTES A RECEIPT CLAIMS, read off the one execution-mode sum by constructor. There is no
+// `is_a_route(m) -> Bool` here on purpose: every arm of `ExecutionMode` is a route, so such a predicate
+// could never be false, and a check that cannot fail is not a check (§5). The content is which arms the
+// receipt lists, so `on_both_routes` cannot assert coverage the receipt does not carry.
+fn route_list_covers_both(routes: List<ExecutionMode>) -> Bool {
+  any(xs: routes, predicate: fn(m) { match m { Wet => true  Hermetic => false Record => false } })
+    && any(xs: routes, predicate: fn(m) { match m { Wet => false Hermetic => true Record => false } })
+}
+
+// A REAL CALENDAR DAY, checked by the calendar module's own round-trip rather than by a shape test
+// written here. A date that cannot survive days -> civil -> days is not a date, and the old
+// `re_measured_at` string accepted any text at all, including the empty string's neighbour " ".
+fn is_a_civil_date(d: Iso8601CivilDate) -> Bool {
+  iso8601_civil_from_days(days: iso8601_days_from_civil(y: d.year, m: d.month, d: d.day)) == d
+}
+
+// THE JOIN. `rows` are the carrier rows, `enrolled` the live roster identities, `schedule` the wet
+// lane's own rows, `pool_roots` the roots the declaration index is read over. Every field of every row
+// is consulted; a field the fold below does not read is dead data by §4c and belongs out of the type.
 fn retired_rows_accounted_for_in(
   rows: List<RetiredExpectedRedRow>,
   enrolled: List<String>,
-  schedule: List<WetScheduledClaim>
+  schedule: List<WetScheduledClaim>,
+  pool_roots: List<String>
 ) -> Bool {
-  // refuse an empty carrier: a retirement record that recorded nothing is how a roster goes missing.
   (length(xs: rows) >= 1)
-    && fold_list(
+    && all(
       xs: rows,
-      empty: true,
-      cons: fn(acc, r) {
-        acc
-          && !(any(xs: enrolled, predicate: fn(id) { id == r.identity }))
+      predicate: fn(r) {
+        let qn = witness_identity_qualified_name(identity: r.identity)
+        let rm = r.closure.re_measured
+        let durable = closure_durable_account(closure: r.closure)
+        // 1. identity: de-enrolled from the roster, and held by the wet lane as a control.
+        !(any(xs: enrolled, predicate: fn(id) { id == qn }))
           && any(
             xs: schedule,
             predicate: fn(s) {
-              (witness_identity_qualified_name(identity: s.identity) == r.identity)
+              (witness_identity_qualified_name(identity: s.identity) == qn)
                 && expectation_is_expected_to_hold(e: s.expectation)
             }
           )
-          && any(xs: r.closure.closed_by, predicate: fn(c) { !(c == "") })
-          && !(r.closure.re_measured_at == "")
+        // 2. standing_before: it retired from the standing retirement is for.
+          && expectation_is_expected_red(e: r.standing_before)
+        // 3. enrolled_on: an honest date, never after its own re-measurement.
+          && (match r.enrolled_on {
+              Absent => true
+              Present { value: d } => is_a_civil_date(d: d) && date_le(a: d, b: rm.on)
+            })
+        // 4. on_both_routes agrees with the receipt's own route list, which is never empty and never
+        //    routes through something outside the execution-mode sum.
+          && (r.on_both_routes == route_list_covers_both(routes: rm.routes))
+        // 5. durable_account: non-empty and every ref resolves against the live index. A PR number with
+        //    no account is unciteable from the tree, which is what review 84071's first finding named.
+          && (length(xs: durable) >= 1)
+          && (cited_declaration_ref_refusal_count_live(refs: durable, pool_roots: pool_roots) == 0)
+        // 6. the re-measurement is well-formed on its own terms.
+          && commit_sha_text_holds(head: rm.head as String)
+          && is_a_civil_date(d: rm.on)
+          && (length(xs: rm.routes) >= 1)
+          && outcome_is_passed(d: rm.outcome)
+        // 6b. trigger: where the row NAMED its own discharge condition, the thing it named must exist.
+        //     Deleting the capability a row was waiting for cannot pacify the row.
+          && (match r.trigger {
+              Absent => true
+              Present { value: t } =>
+                (cited_declaration_ref_refusal_count_live(refs: [t], pool_roots: pool_roots) == 0)
+            })
+        // 7. instrument: the claim ITSELF, and its module is a declared module the index can name.
+          && (rm.instrument.module_path as String == r.identity.module_path as String)
+          && (rm.instrument.decl_name as String == r.identity.function as String)
+          && (length(
+              xs: module_declaration_facts_at_live(
+                pool_roots: pool_roots,
+                module_path: rm.instrument.module_path as String
+              )
+            ) >= 1)
+        // 8. an unattributed closure says WHY in writable terms; a non-empty check is not a truth
+        //    check, so this is paired with the durable account above carrying the checkable half.
+          && (match r.closure {
+              AttributedToChange { change: _, durable_account: _, re_measured: _ } => true
+              RestsOnExecutedCheck { why_no_change: w, durable_account: _, re_measured: _ } =>
+                string_non_empty(value: w as String)
+            })
       }
     )
 }
 
-// THE LIVE JOIN. Every row the carrier records is de-enrolled, scheduled ExpectedToHold, and receipted.
+// THE ONE VIEW BOTH CLOSURE ARMS SHARE. Reaching the fields through a match, rather than through a
+// string, is the point: adding a third arm to `Closure` makes this refuse to compile until this claim
+// says what the new way of closing a row means, instead of passing vacuously the way an `if` on a
+// rendered label would.
+fn closure_durable_account(closure: Closure) -> List<DeclarationRef> {
+  match closure {
+    AttributedToChange { change: _, durable_account: a, re_measured: _ } => a
+    RestsOnExecutedCheck { why_no_change: _, durable_account: a, re_measured: _ } => a
+  }
+}
+
+// CALENDAR ORDER WITHOUT A SECOND CALENDAR. Both dates go through the module's own day number, so the
+// comparison cannot disagree with the arithmetic that defines the type.
+fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  iso8601_days_from_civil(y: a.year, m: a.month, d: a.day)
+    <= iso8601_days_from_civil(y: b.year, m: b.month, d: b.day)
+}
+
 test fn retired_rows_are_accounted_for() -> Bool {
   retired_rows_accounted_for_in(
     rows: floor_expected_red_retired_rows(),
     enrolled: enrolled_expected_red_identities(),
-    schedule: local_repo_wet_schedule()
+    schedule: local_repo_wet_schedule(),
+    pool_roots: hand_authored_works_resolution_pool_roots()
   )
 }
 
-// THE JOIN DISCRIMINATES, in all three of its arms, on synthetic populations — the live populations
-// cannot show refusal, so each control falsifies exactly one arm.
-fn control_row(identity: String) -> RetiredExpectedRedRow {
-  RetiredExpectedRedRow {
-    identity: identity,
-    standing_before: "synthetic",
-    why: "synthetic control row",
-    closure: ClosureReceipt {
-      closed_by: ["synthetic closure receipt"],
-      re_measured_at: "synthetic re-measurement",
+// THE LIVE POPULATION IS THE SUBJECT, AND IT IS NOT EMPTY. The single conjunct above could be satisfied
+// by a roster that lost every row; this refuses the carrier going quietly, and it reads the count off
+// the roster rather than comparing it to a number written into this file.
+test fn the_carrier_is_not_silently_empty() -> Bool {
+  let live = floor_expected_red_retired_rows()
+  (length(xs: live) >= 1)
+    && all(xs: live, predicate: fn(r) {
+      let qn = witness_identity_qualified_name(identity: r.identity)
+      any(xs: local_repo_wet_schedule(), predicate: fn(s) {
+        (witness_identity_qualified_name(identity: s.identity) == qn)
+          && expectation_is_expected_to_hold(e: s.expectation)
+      })
+    })
+}
+
+// ---------------------------------------------------------------------------
+// THE SYNTHETIC FIXTURE. Built here rather than read from a file so the arms below can differ from the
+// control by exactly ONE field; a shared file would let two arms differ in unseen ways.
+// ---------------------------------------------------------------------------
+
+fn control_closure() -> Closure {
+  RestsOnExecutedCheck {
+    why_no_change: "synthetic: no attributed fix commit, the check was executed",
+    durable_account: [
+      decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+    ],
+    re_measured: ReMeasurement {
+      head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+      on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+      routes: [Wet, Hermetic],
+      outcome: Passed,
+      instrument: decl_ref(module_path: "test.claim.synthetic_retirement_fixture", decl_name: "synthetic_retired_control"),
     },
   }
 }
 
-// the shared synthetic population: one carrier row, scheduled ExpectedToHold, not enrolled.
+fn control_row() -> RetiredExpectedRedRow {
+  RetiredExpectedRedRow {
+    identity: WitnessIdentity {
+      module_path: "test.claim.synthetic_retirement_fixture",
+      function: "synthetic_retired_control",
+    },
+    standing_before: ExpectedRed,
+    enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
+    on_both_routes: true,
+    trigger: Absent,
+    closure: control_closure(),
+  }
+}
+
 data control_identity: String = "test.claim.synthetic_retirement_fixture.synthetic_retired_control"
 data control_entry: String = "dag/test/claim/synthetic_retirement_fixture.dag"
 
@@ -109,46 +281,168 @@ fn control_schedule(e: ClaimExpectation) -> List<WetScheduledClaim> {
   ]
 }
 
+fn pool() -> List<String> { hand_authored_works_resolution_pool_roots() }
+
 // CONTROL, arm 1: the SAME row passes when de-enrolled and REFUSES when its identity is enrolled.
 test fn the_enrolment_arm_refuses_a_still_enrolled_identity() -> Bool {
-  let row = control_row(identity: control_identity)
+  let row = control_row()
   let rows = [row]
-  let scheduled = control_schedule(e: ExpectedToHold {})
-  // arm passes on the honest population
-  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: scheduled)
-  // arm refuses when the carrier's identity is still enrolled
-    && !(retired_rows_accounted_for_in(rows: rows, enrolled: [control_identity], schedule: scheduled))
+  let scheduled = control_schedule(e: ExpectedToHold)
+  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: [control_identity], schedule: scheduled, pool_roots: pool()))
 }
 
-// CONTROL, arm 2: the SAME row passes when scheduled ExpectedToHold and REFUSES when it is missing
-// from the schedule, and again when it is scheduled under the wrong expectation.
+// CONTROL, arm 2: the SAME row passes when scheduled ExpectedToHold and REFUSES when it is missing from
+// the schedule, and again when it is scheduled under the wrong expectation.
 test fn the_schedule_arm_refuses_a_missing_or_mis_expectationed_row() -> Bool {
-  let row = control_row(identity: control_identity)
+  let row = control_row()
   let rows = [row]
-  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedToHold {}))
-    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: Empty {}))
-    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedRed {})))
+  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedToHold), pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: Empty {}, pool_roots: pool()))
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedRed), pool_roots: pool()))
 }
 
-// CONTROL, arm 3: the SAME row passes with a receipt and REFUSES with neither closed_by nor
-// re-measurement filled in.
-test fn the_receipt_arm_refuses_an_unreceipted_row() -> Bool {
-  let row = control_row(identity: control_identity)
-  let rows = [row]
-  let scheduled = control_schedule(e: ExpectedToHold {})
-  let no_closed = RetiredExpectedRedRow {
-    identity: row.identity,
-    standing_before: row.standing_before,
-    why: row.why,
-    closure: ClosureReceipt { closed_by: Empty {}, re_measured_at: row.closure.re_measured_at },
+// CONTROL, arm 3: the SAME row passes with an executed-check closure and REFUSES on each single-field
+// falsification of the receipt. Each perturbation changes ONE field, so an arm that stops refusing
+// names itself:
+//   - the durable account emptied,
+//   - the durable account naming a declaration that does not exist,
+//   - the instrument credited to an unrelated module,
+//   - a head that is not a sha,
+//   - the route list collapsed to one arm while `on_both_routes` still claims both.
+test fn the_receipt_arms_refuse_a_falsified_closure() -> Bool {
+  let row = control_row()
+  let scheduled = control_schedule(e: ExpectedToHold)
+  let empty_account = with_closure(c: RestsOnExecutedCheck {
+    why_no_change: "synthetic",
+    durable_account: Empty {},
+    re_measured: control_closure().re_measured,
+  })
+  let phantom_account = with_closure(c: RestsOnExecutedCheck {
+    why_no_change: "synthetic",
+    durable_account: [decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module")],
+    re_measured: control_closure().re_measured,
+  })
+  let borrowed_instrument = with_closure(c: RestsOnExecutedCheck {
+    why_no_change: "synthetic",
+    durable_account: control_closure().durable_account,
+    re_measured: ReMeasurement {
+      head: control_closure().re_measured.head,
+      on: control_closure().re_measured.on,
+      routes: control_closure().re_measured.routes,
+      outcome: control_closure().re_measured.outcome,
+      instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+    },
+  })
+  let bad_head = with_closure(c: RestsOnExecutedCheck {
+    why_no_change: "synthetic",
+    durable_account: control_closure().durable_account,
+    re_measured: ReMeasurement {
+      head: "not-a-sha" as CommitSha,
+      on: control_closure().re_measured.on,
+      routes: control_closure().re_measured.routes,
+      outcome: control_closure().re_measured.outcome,
+      instrument: control_closure().re_measured.instrument,
+    },
+  })
+  let one_route = with_closure(c: RestsOnExecutedCheck {
+    why_no_change: "synthetic",
+    durable_account: control_closure().durable_account,
+    re_measured: ReMeasurement {
+      head: control_closure().re_measured.head,
+      on: control_closure().re_measured.on,
+      routes: [Wet],
+      outcome: control_closure().re_measured.outcome,
+      instrument: control_closure().re_measured.instrument,
+    },
+  })
+  retired_rows_accounted_for_in(rows: [row], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: [empty_account], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+    && !(retired_rows_accounted_for_in(rows: [phantom_account], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+    && !(retired_rows_accounted_for_in(rows: [borrowed_instrument], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+    && !(retired_rows_accounted_for_in(rows: [bad_head], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+    && !(retired_rows_accounted_for_in(rows: [one_route], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+}
+
+// The single-field perturbation device: same row, one closure swapped.
+fn with_closure(c: Closure) -> RetiredExpectedRedRow {
+  let base = control_row()
+  RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: base.standing_before,
+    enrolled_on: base.enrolled_on,
+    on_both_routes: base.on_both_routes,
+    trigger: base.trigger,
+    closure: c,
   }
-  let no_remeasure = RetiredExpectedRedRow {
-    identity: row.identity,
-    standing_before: row.standing_before,
-    why: row.why,
-    closure: ClosureReceipt { closed_by: row.closure.closed_by, re_measured_at: "" },
+}
+
+// CONTROL, arm 4: the standing field is read, not decorative. A row that did not retire from ExpectedRed
+// refuses, and the SAME row with the honest standing passes.
+test fn the_standing_arm_refuses_a_row_that_never_stood_red() -> Bool {
+  let base = control_row()
+  let scheduled = control_schedule(e: ExpectedToHold)
+  let not_red = RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: ExpectedToHold,
+    enrolled_on: base.enrolled_on,
+    on_both_routes: base.on_both_routes,
+    trigger: base.trigger,
+    closure: base.closure,
   }
-  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: scheduled)
-    && !(retired_rows_accounted_for_in(rows: [no_closed], enrolled: Empty {}, schedule: scheduled))
-    && !(retired_rows_accounted_for_in(rows: [no_remeasure], enrolled: Empty {}, schedule: scheduled))
+  retired_rows_accounted_for_in(rows: [base], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: [not_red], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+}
+
+// CONTROL, arm 5: an enrolled date that post-dates its own re-measurement refuses. This is the arm that
+// stops a date being invented to make a story fit, which the prose `standing_before` could always do.
+test fn the_enrolment_date_arm_refuses_a_date_after_its_own_measurement() -> Bool {
+  let base = control_row()
+  let scheduled = control_schedule(e: ExpectedToHold)
+  let later = RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: base.standing_before,
+    enrolled_on: Present { value: Iso8601CivilDate { year: 2027, month: 1, day: 1 } },
+    on_both_routes: base.on_both_routes,
+    trigger: base.trigger,
+    closure: base.closure,
+  }
+  let absent = RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: base.standing_before,
+    enrolled_on: Absent,
+    on_both_routes: base.on_both_routes,
+    trigger: base.trigger,
+    closure: base.closure,
+  }
+  retired_rows_accounted_for_in(rows: [base], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    // an absent date is honest absence and must pass, so absence is not punished as a defect
+    && retired_rows_accounted_for_in(rows: [absent], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: [later], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
+}
+
+// CONTROL, arm 6: the trigger a row named for its own discharge must resolve. Deleting the capability a
+// row was waiting for cannot pacify it -- the row refuses rather than vanishing into a passing void.
+test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool {
+  let base = control_row()
+  let scheduled = control_schedule(e: ExpectedToHold)
+  let real_trigger = RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: base.standing_before,
+    enrolled_on: base.enrolled_on,
+    on_both_routes: base.on_both_routes,
+    trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "algebra_ref_is_grounded") },
+    closure: base.closure,
+  }
+  let phantom_trigger = RetiredExpectedRedRow {
+    identity: base.identity,
+    standing_before: base.standing_before,
+    enrolled_on: base.enrolled_on,
+    on_both_routes: base.on_both_routes,
+    trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "no_such_declaration_in_this_module") },
+    closure: base.closure,
+  }
+  retired_rows_accounted_for_in(rows: [base], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && retired_rows_accounted_for_in(rows: [real_trigger], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
+    && !(retired_rows_accounted_for_in(rows: [phantom_trigger], enrolled: Empty {}, schedule: scheduled, pool_roots: pool()))
 }
