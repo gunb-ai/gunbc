@@ -15,6 +15,14 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // `filesystem_listing_observation`), exactly as it folds the ambient operation's result. A realization
 // that cannot answer a channel does not invent it: `Filesystem.WriteOwnerOnly` declares no `error_kind`,
 // so its answer carries none.
+// DECLARED FRONTIER (DESIGN section 3c). `local_filesystem` is this interface's only value in this change. The
+// named consumer of the seam is the ssh realization `remote_filesystem(target, context) -> FilesystemInterface`,
+// routed through `gunbc.typed_remote_file_write` `typed_remote_file_step` into `ssh.Session.ExecPortableWords`,
+// which the PR2b slot-host durable hold takes. Trigger: this change lands; the store refactor is its own change by
+// operator ruling, and the hold work does not open until the cap-bracket admission change has landed.
+//
+// The answer records restate the `Filesystem` operations' output channels because a service operation declares
+// channels, not a record type, and a function-typed field needs one return type; no upstream record exists to reuse.
 type FilesystemReadAnswer { content: String, success: Bool, error: String, error_kind: String }
 type FilesystemListAnswer { entries: String, success: Bool, error: String, error_kind: String }
 type FilesystemDeleteAnswer { success: Bool, error: String, error_kind: String }
