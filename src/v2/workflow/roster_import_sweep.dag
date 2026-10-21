@@ -12,7 +12,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // route); the head's binding fact is v2.compiler.reference_site_collector's own. This module matches on neither, so it
 // imports no variant name of theirs (review 82610: import what you match, and only that).
 import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites }
-import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_corpus_pool_roots_text }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.extdeps.languages.dag {
@@ -1744,19 +1744,20 @@ fn roster_control_label_pass2_clean(prepared: PreparedGrammar, lex: PreparedLexR
             } else if !string_contains(s: after, pattern: "chars(text: x)") {
               "CONTROL-FAIL label-pass2-clean: the applied file did not rename the call's label to text:\n"
             } else {
-              // The invariants pass 2 must hold: it never RE-PLANS the chars import (that row is done), and it never
-              // REFUSES -- LabelsAmbiguous at pass 2 is exactly the imported annotation head joining the label
-              // candidates, the defect this control exists to catch (the OFF-UNDECIDED flip turns this branch RED).
-              // Anything else -- Clean, or the sweep iterating to its next home -- is the correct fixpoint behavior.
+              // THE FIXPOINT: pass 2 must be EXACTLY Clean (side-chat review v14435, item 1). Any further import or any
+              // non-empty label edit is RED -- pass 1 landed every edit this fixture wants, so a pass-2 sweep that still
+              // PLANS something is re-opening a row the applied file already settled, not converging. It also never
+              // REFUSES: LabelsAmbiguous at pass 2 is exactly the imported annotation head joining the label candidates,
+              // the defect this control exists to catch (the OFF-UNDECIDED flip turns this arm RED). The fixture is the
+              // chars row: pass 1 imports chars and renames the call's label; every other head (the imported `count` at
+              // its declared label `xs`) needs nothing, so RosterClean is the only outcome the sweep's own fixpoint
+              // produces. No isolation of the fixture is needed to reach it -- measured, not assumed.
               match roster_sweep_text(path: "control/disagree.dag", text: after, prepared: prepared, lex: lex) {
                 RosterClean => ""
                 RosterRefused { reason: r } => "CONTROL-FAIL label-pass2-clean: re-sweeping the applied file refused " + roster_refusal_text(reason: r) + " -- the imported annotation head is being counted as a free candidate\n"
-                RosterEdit { start: _, end: _, text: t2, own_line: _ } =>
-                  if string_contains(s: t2, pattern: "std.host_text") { "CONTROL-FAIL label-pass2-clean: re-sweep RE-PLANNED the chars import [" + t2 + "]\n" } else { "" }
-                RosterLabelEdits { edits: e } =>
-                  if length(xs: e) > 0 { "" } else { "CONTROL-FAIL label-pass2-clean: re-sweep planned an empty label pass\n" }
-                RosterEditWithLabels { start: _, end: _, text: t2, own_line: _, labels: l } =>
-                  if string_contains(s: t2, pattern: "std.host_text") { "CONTROL-FAIL label-pass2-clean: re-sweep RE-PLANNED the chars import [" + t2 + "]\n" } else if length(xs: l) > 0 { "" } else { "CONTROL-FAIL label-pass2-clean: re-sweep planned an import and no labels [" + t2 + "]\n" }
+                RosterEdit { start: _, end: _, text: t2, own_line: _ } => "CONTROL-FAIL label-pass2-clean: re-sweeping the applied file planned a FURTHER import [" + t2 + "] -- pass 2 is the fixpoint and must be exactly Clean\n"
+                RosterLabelEdits { edits: e } => "CONTROL-FAIL label-pass2-clean: re-sweeping the applied file planned " + int_to_decimal_string(value: length(xs: e)) + " FURTHER label edits -- pass 2 is the fixpoint and must be exactly Clean\n"
+                RosterEditWithLabels { start: _, end: _, text: t2, own_line: _, labels: l } => "CONTROL-FAIL label-pass2-clean: re-sweeping the applied file planned a FURTHER import [" + t2 + "] with " + int_to_decimal_string(value: length(xs: l)) + " labels -- pass 2 is the fixpoint and must be exactly Clean\n"
               }
             }
         }
