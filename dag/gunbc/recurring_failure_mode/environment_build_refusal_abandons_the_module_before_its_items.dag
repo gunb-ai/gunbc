@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.environment_build_refusal_abandons_the_module_before_its_items
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// AN ERROR IN THE ENVIRONMENT BUILD ABANDONS THE MODULE BEFORE ITS ITEMS, AND THE PASS THAT WOULD
+// JUSTIFY OR RETRACT THE REFUSAL NEVER RUNS. v1.compiler.infer typecheck_module builds the module
+// environment first (build_type_env) and, at env_errors |> count > 0, returns ModuleTypecheckProgress
+// { progress: AbandonedBeforeItems } without calling analyze_item on a single item. The environment
+// build's own refusals (the type-parameter kind judgments and the resolution refusals reached from
+// resolve_item_types while types are being named) are error-severity, so one of them is enough.
+// The pass that would ground such a refusal -- the item analysis, and with it the binder marking
+// that gives a forwarded parameter its declaration identity -- runs only for a module that survives
+// the environment build. So the refusal that abandons the module is never itself examined by the
+// machinery that could justify it: the module is dropped, every declaration it holds disappears from
+// every downstream registry (an abandoned module's callables never reach v2.std.symbol_index
+// symbol_index_insert, so symbol_index_lookup refuses for its members with an unrelated reason), and
+// a reader of the census sees only the downstream reasons. The upstream cause is silent. THAT IS THE
+// SHAPE: an error-severity refusal during the environment build is not merely a refusal, it is a
+// module-wide deletion whose justification pass is scheduled after the deletion.
+data environment_build_refusal_abandons_the_module_before_its_items: RecurringFailureMode = RecurringFailureMode {
+  identity: "environment_build_refusal_abandons_the_module_before_its_items" as NonEmptyStr,
+
+  receipts: [
+    "RUNG FOUND AT: the module is dropped before any item is analyzed -- the refusal is decided by a pass whose inputs the analysis pass would produce. CEILING: attainable -- the environment build's kind judgments read facts (a parameter's binder, its declared kind) that the same module's items can supply once the marking pass runs; when the refusal fires while those facts are not yet produced, the refusal is an artifact of the order, not of the program. Not structurally impossible, so the rung cannot be claimed as reached, and an abandoned module's whole callable population is missing from the registries it would appear in.",
+
+    "COVERAGE HOLE, and the reason a refusal cannot be audited. v1.compiler.infer typecheck_module prints its progress exactly once per module -- ItemsChecked of AbandonedBeforeItems -- and nothing distinguishes an environment refusal that the item analysis would have retracted from one it would have confirmed. A claim that a module's callables are indexed, or that a kind judgment is observed by execution (DESIGN section 4b), silently covers an abandoned module by counting nothing.",
+
+    "THE SPECIMEN, and the stage that refuses. dag/std/measure.dag, module std.measure. The kinded-rung census refuses two type arguments at 'type MeasureDifference<Q, S>' (line 269, the two member positions Measure<Q, ...> and Measure<..., S, Nat>) with reason class 'type argument does not inhabit the declared kind'. The same module's progress line -- printed once per module by typecheck_module -- reads, at the control head b3e92c10f57 (main plus the print-only instrument): 'RAVENMOD|std.measure|enverrors=8|envdiags=8|items=415|progress=AbandonedBeforeItems'. Eight error-severity refusals in the environment build -- among them the two above -- and the module reaches no analyze_item call, though it holds 415 items. MEASURED 2026-10-20/21, session silent-raven-360, runs probe_p4ctrl (progress) and r5c at c005cc3386f6 (the 24-row census population, build_rc=0, round regenerated, carriers asserted).",
+
+    "THE POPULATIONS THIS ROW COVERS, measured at head c005cc3386f6 against its control. 24 kinded-rung rows in 4 cause groups. 20 sit in std.realization_measurement under their own named forwarded-parameter class -- their judged arguments carry the type-parameter binder, which is reachable only from a node the marking pass stamped. The 4 in std.measure and std.realization_schedule sit at the inhabitants arm with no binder, and the probe reading shows why: the occurrence identity of every judged argument there is MINTED (the probe dump prints occ=minted on all 4), where an authored occurrence carries OccurrenceParsed. The marking pass ran for both populations -- it runs for every module before the environment build -- so the module-level abandonment is NOT the mechanism that strips those 4 arguments of identity; a compiler-minted replacement node is. This row's scope is the abandonment class it names; the minted-replacement site is the other defect, traced and repaired on its own receipt, and the two must not be read as one cause.",
+
+    "WHY THIS IS NOT THE WALL. The wall refuses correctly given what it can see, and the abandonment exit at 04_infer.dag:18090 is honest -- it prints what it did. The defect is the DEPENDENCY DIRECTION: a refusal inside the environment build is treated as final while the pass that grounds its inputs is scheduled after the abandonment. Repairing this row is not widening a judgment: it is making the environment build's error-severity refusals auditable -- visible as their own class, and re-examinable once the marking and item passes have run -- so a downstream registry that lost a module cannot be read as a module that was never there."
+
+
+    "NEXT-RUNG TRIGGER, stated as a test so this row is closable by execution and not by argument. The abandonment exit at v1.compiler.infer typecheck_module is reachable today -- std.measure reaches it -- which is what the specimen receipt proves, so section 3c's deletion of an unreachable branch does not apply here. The rung this row is waiting for is an environment build whose refusals are observable and re-examinable: once an environment-build error-severity refusal is (a) surfaced as its own named class in the census output -- not folded into whatever downstream reason the abandoned module's absence later produces -- and (b) re-checked after the marking and item passes have run for that module, the two std.measure rows become adjudicable: the reading either shows the marking pass would have grounded the two arguments (the refusal was an ordering artifact and the module is restored) or shows it would not (the refusal stands, under its own named class, with the module still absent). Until then no census or PR body may read std.measure's absence from the registries as a module with nothing to index."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "typecheck_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "build_type_env", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "analyze_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.resolve", decl_name: "resolve_item_types", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.resolve", decl_name: "binder_marked_module_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_insert", field: WholeDeclaration }
+  ]
+}

@@ -1792,12 +1792,20 @@ fn item_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) 
 // stamps only where `n.declaration == none`, and every rebuild on the resolve path copies
 // `declaration`, so the second visit finds the carrier present and changes nothing. DESIGN.md 3 forbids
 // a second name for one concept; a stamped node is its own evidence that the pass already ran.
-fn binder_marked_module_item(item: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  let owner = decl_ref(module_path: module_name, decl_name: authored_name_at(source_indices: source_indices, node: item))
-  let marked = binder_marked_item(item: item, owner: owner, binders: item_type_param_names(item: item, source_indices: source_indices), source_indices: source_indices)
+fn binder_marked_module_item(item: Node, module_name: String, source_indices: Map<String, NewlineIndex>, inherited_owner: DeclarationRef?, inherited_binders: List<String>?) -> Node {
+  // ONE RULE, applied at every re-entry: the binder scope is the DECLARATION THAT OWNS THE HEADER, and a
+  // variant is not a binder scope. parse already says so -- variant_to_child_node mints each variant with
+  // params: [] (v1.compiler.parse, 02_parse.dag:2880), so a variant declares no parameters of its own and
+  // must be walked under its enclosing declaration's binders and owner. Recomputing the roster from the
+  // child's own params returned [] for a variant (the generic branch maps params: [] and the fn branch
+  // finds no marked header), so no binder reference inside a variant's member types was ever stamped:
+  // measured, all four rows that fall through to the inhabitant-list refusal are exactly those positions.
+  let owner = match inherited_owner { Present { value: o } => o  Absent => decl_ref(module_path: module_name, decl_name: authored_name_at(source_indices: source_indices, node: item)) }
+  let binders = match inherited_binders { Present { value: bs } => bs  Absent => item_type_param_names(item: item, source_indices: source_indices) }
+  let marked = binder_marked_item(item: item, owner: owner, binders: binders, source_indices: source_indices)
   // A coproduct's variants are items in their own right -- resolve_item_types maps them through itself
-  // -- so the hoist gives each what it would get there. A record's children are MEMBERS, which
-  // binder_marked_item already walks, so they are not re-entered.
+  // -- so the hoist re-enters each one, UNDER THE OWNER THAT DECLARES THE HEADERS. A record's children
+  // are MEMBERS, which binder_marked_item already walks, so they are not re-entered.
   // The `&& item.transport == none` conjunct is not a second condition of substance here: bare
   // `if item.connective == Disj {` does not parse, because `Disj {` reads as a data literal. The
   // conjunct is the guard this file already uses for the same test (see the Disj arm of
@@ -1805,7 +1813,7 @@ fn binder_marked_module_item(item: Node, module_name: String, source_indices: Ma
   if item.connective == Disj && item.transport == none {
     node_with_children_params_inferred(
       n: marked,
-      children: map(marked.children, c => binder_marked_module_item(item: c, module_name: module_name, source_indices: source_indices)),
+      children: map(marked.children, c => binder_marked_module_item(item: c, module_name: module_name, source_indices: source_indices, inherited_owner: Present { value: owner }, inherited_binders: Present { value: binders })),
       params: marked.params,
       inferred: marked.inferred
     )
@@ -1814,9 +1822,14 @@ fn binder_marked_module_item(item: Node, module_name: String, source_indices: Ma
   }
 }
 
-fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResolveResult {
-  let tp_names = item_type_param_names(item: item, source_indices: env.source_indices)
-  let owner = decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item))
+fn resolve_item_types(item: Node, env: TypeEnv, module_name: String, inherited_owner: DeclarationRef?, inherited_binders: List<String>?) -> ItemResolveResult {
+  // THE SAME RULE AS THE MARKING PASS, ONE RULE NOT TWO FIXES: binder scope is the declaration that owns
+  // the header, and a variant is not a binder scope (parse mints it with params: []). A nested item that
+  // declares its own header keeps its own scope; one that declares none is walked under the enclosing
+  // declaration's binders and owner.
+  let declares_own_header = inherited_binders == none || (item.params |> count) > 0
+  let tp_names = if declares_own_header { item_type_param_names(item: item, source_indices: env.source_indices) } else { match inherited_binders { Present { value: bs } => bs  Absent => [] } }
+  let owner = match inherited_owner { Present { value: o } => if declares_own_header { decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item)) } else { o }  Absent => decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item)) }
   // ONE MARKING PASS, FIRST, FOR EVERY ITEM KIND THAT DECLARES BINDERS. Measured on the real corpus,
   // the old stamping ran AFTER the nested resolves below (params, inferred, uses, body, annotation,
   // transport, properties, children) and the kind wall fires INSIDE those resolves, so it judged
@@ -1916,7 +1929,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       }
     )
   } else {
-    map(item_marked.children, child => resolve_item_types(item: child, env: env, module_name: module_name))
+    map(item_marked.children, child => resolve_item_types(item: child, env: env, module_name: module_name, inherited_owner: Present { value: owner }, inherited_binders: Present { value: tp_names }))
   }
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
   // The post-hoc binder_marked_member / binder_marked_param / binder_marked_inferred layers this line
