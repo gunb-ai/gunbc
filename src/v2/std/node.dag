@@ -821,25 +821,6 @@ fn match_positional_slot(ordinal: Int) -> MatchSlot {
   }
 }
 
-// EVERY SLOT OF A Match IN ONE ROLE, in stored order, read through match_positional_slot. Arms are one role
-// repeated, so a reader of the arm sequence (an arm count, every arm) takes `match_role_slots(n, MatchArmSlot)`
-// rather than counting positions; a single arm's place among its siblings stays the ChildSlot ordinal.
-fn match_role_slots(n: Node, role: MatchSlot) -> List<ChildSlot> {
-  fold(node_child_slots(n: n), init: [], f: fn(acc, s) { match_role_slots_step(acc: acc, s: s, role: role) })
-}
-
-fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) -> List<ChildSlot> {
-  match s.ordinal {
-    PositionalOrdinal { index: i } =>
-      if match_positional_slot(ordinal: i) == role {
-        list_snoc_item(xs: acc, item: s)
-      } else {
-        acc
-      }
-    LabeledChild => acc
-  }
-}
-
 fn child_slot_edge(slot: ChildSlot) -> Edge { slot.edge }
 
 fn child_slot_target(slot: ChildSlot) -> Node {
