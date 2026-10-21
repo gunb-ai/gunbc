@@ -380,8 +380,8 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
 fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree, declarations: declarations)
-    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target, realization_host: realization_host)
-    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target, realization_host: realization_host)
+    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(header: [], imports: [], members: [], name: n, params: [], node: c, target: target, realization_host: realization_host)
+    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(header: [], imports: [], members: [], name: n, params: [], node: r, target: target, realization_host: realization_host)
     ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
     ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
