@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -18,7 +18,8 @@ import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
 import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
-import gunbc.runner.runner_host_cap_bracket { read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
+import gunbc.runner.runner_host_cap_bracket { cap_write_gate_of, CapWriteGate, CapWriteAdmitted, CapWriteRefused, runner_host_cap_admission_closure, read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
@@ -822,8 +823,8 @@ test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
 // The residual is declared in the refusal text itself: the window between the last reading and the stop.
 test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them() -> Bool {
   let w = listener_restart_residual_wire()
-  !listener_restart_residual.closes && listener_restart_residual.narrowed_by_reread_before_stop
-    && length(listener_reregistration_frontier.triggers) == 2 && listener_reregistration_frontier.requires_all
+  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 3
+    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker)")
     && any(listener_reregistration_frontier.triggers, t => match t { UpstreamAtomicBusyRefusingAdmissionClose => true LongLivedSlotReregistrationRoute => false })
     && string_contains(s: w, pattern: "residual: ") && string_contains(s: w, pattern: "frontier: ")
     && string_contains(s: w, pattern: "an upstream-documented atomic busy-refusing admission close AND a re-registration route for long-lived slots")
@@ -834,4 +835,88 @@ test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them()
 test fn the_cancellation_residual_names_its_bound_and_its_restoration_trigger() -> Bool {
   let w = release_envelope_wire(policy: runner_host_cap_drain_policy)
   string_contains(s: w, pattern: "after 300s") && string_contains(s: w, pattern: "needs 1140s") && string_contains(s: w, pattern: "restoration trigger: the next bracket run reading a durable hold")
+}
+
+
+// ── the gate on the FIRST cap-applying effect ─────────────────────────────────────────────────────────────
+// The production gate (cap_write_gate_of) over the production pass reader, through the same hermetic route.
+// The gate is the only thing between the drain and the first cap write, so a refusal here means the issued
+// ledger holds reads only: no write, no daemon-reload, no stop, no start.
+
+fn gate_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<CapWriteGate> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
+    cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: [u(n: "01")], owned: owned, readings: read_slot_drain_pass_over(target: target, context: context, units: [u(n: "01")]))
+  })
+}
+
+fn gate_admitted(r: BracketRun<CapWriteGate>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapWriteAdmitted => true CapWriteRefused { causes: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn gate_causes(r: BracketRun<CapWriteGate>) -> String { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapWriteAdmitted => "" CapWriteRefused { causes: cs } => join(cs, " | ") } BracketRunEnded { cause: c } => c } }
+fn effects_in(r: BracketRun<CapWriteGate>) -> Int { count_containing(legs: ledger_of(r: r), needle: " stop ") + count_containing(legs: ledger_of(r: r), needle: " start ") + count_containing(legs: ledger_of(r: r), needle: "daemon-reload") + count_containing(legs: ledger_of(r: r), needle: "mv ") + count_containing(legs: ledger_of(r: r), needle: "tee") }
+
+// POSITIVE: an owned admitted listener still admitted at the re-read -> the write may proceed.
+test fn an_owned_listener_still_admitted_lets_the_first_cap_write_proceed() -> Bool {
+  gate_admitted(r: gate_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [u(n: "01")]))
+}
+
+// RED: the roster turned busy -> no write, no reload, no stop/start on the issued ledger.
+test fn a_roster_that_turns_busy_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  !gate_admitted(r: r) && effects_in(r: r) == 0
+}
+
+// RED: a Runner.Worker appeared -> blocked, zero effects.
+test fn a_worker_that_appears_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: worker_legs(n: "01"), roster: admitted_roster(), owned: [u(n: "01")])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "Runner.Worker is live") && effects_in(r: r) == 0
+}
+
+// RED: the mask was lifted -> blocked, zero effects.
+test fn a_mask_lifted_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Listener\n"))], roster: admitted_roster(), owned: [u(n: "01")])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "no longer masked") && effects_in(r: r) == 0
+}
+
+// RED: a live listener masked by someone else (not owned) blocks the write: the reload would cap it unproven.
+test fn a_foreign_masked_live_listener_blocks_the_first_cap_write() -> Bool {
+  let r = gate_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "masked by someone else") && effects_in(r: r) == 0
+}
+
+// a foreign unit that is not running is not a live listener: it does not block the write
+test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bool {
+  gate_admitted(r: gate_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive")], roster: admitted_roster(), owned: []))
+}
+
+
+// ── the full flow: after the drain, through the production phase function ─────────────────────────────────
+// cap_phase_after_drain_over is the whole of run_runner_host_cap_bracket after BracketDrained, so this drives
+// the call-site ORDER: the fresh reading, then (only if it admits) the first cap-applying effect. The drain
+// said admitted; the re-read turns busy (or the unit is a foreign live listener). The issued-argv ledger must
+// hold no cap-file mention, no daemon-reload and no stop. (Release after the refusal does issue its own
+// unmask/start of the units this run owns; that restores service and applies no cap.)
+
+fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
+    cap_phase_after_drain_over(
+      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
+      context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
+      owned: owned, admitted: [u(n: "01")])
+  })
+}
+
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false CapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
+  let legs = ledger_of(r: r)
+  count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
+    + length(filter(legs, c => any(runner_host_cap_files(), f => string_contains(s: c, pattern: f.path as String))))
+}
+
+test fn a_reread_that_turns_busy_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
+}
+
+test fn a_foreign_live_listener_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
 }

@@ -2,6 +2,7 @@ module gunbc.runner.runner_host_cap_bracket
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
+import std.algebra { list_flat_map }
 import std.measure { Second, second, second_count }
 import extdeps.github.actions { cancelled_job_always_step_timeout }
 import std.types { EpochMs }
@@ -95,28 +96,35 @@ type AdmissionClosure
 
 data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskRosterAndNoWorker
 
-// THE RESIDUAL AND ITS FRONTIER ARE TYPED CARRIERS, NOT PROSE: a fold can read which hazard is accepted, what
-// narrows it, and which capabilities would restore the closure, so "has the trigger fired" is a question a
-// reader of the corpus can ask. The wire below renders FROM these rows.
-type ListenerRestartResidual {
-  narrowed_by_reread_before_stop: Bool
-  closes: Bool
-}
-
+// THE RESIDUAL IS THE WINDOW BETWEEN THE LAST READING AND THE STOP (rendered by the wire below), AND ITS
+// FRONTIER IS TYPED: a fold can read which capabilities would restore the closure, and the wire renders
+// FROM these rows. The closure is restored only when ALL listed capabilities have landed.
 // the capabilities whose landing restores the closure; each is a consumed arm of AdmissionClosure when it lands
 type ReregistrationTrigger
   = UpstreamAtomicBusyRefusingAdmissionClose
   | LongLivedSlotReregistrationRoute
 
-type ListenerReregistrationFrontier {
-  residual: ListenerRestartResidual
-  triggers: List<ReregistrationTrigger>
-  requires_all: Bool
+// the readings after the last of which the window opens; the wire renders them, so the residual's population is data
+type ResidualReading
+  = MaskReading
+  | RosterBusyFalseReading
+  | NoRunnerWorkerReading
+
+type ListenerRestartResidual {
+  window_opens_after: List<ResidualReading>
 }
 
-data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { narrowed_by_reread_before_stop: true, closes: false }
+data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading] }
 
-data listener_reregistration_frontier: ListenerReregistrationFrontier = ListenerReregistrationFrontier { residual: listener_restart_residual, triggers: [UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute], requires_all: true }
+fn residual_reading_wire(r: ResidualReading) -> String {
+  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" }
+}
+
+type ListenerReregistrationFrontier {
+  triggers: List<ReregistrationTrigger>
+}
+
+data listener_reregistration_frontier: ListenerReregistrationFrontier = ListenerReregistrationFrontier { triggers: [UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute] }
 
 fn reregistration_trigger_wire(t: ReregistrationTrigger) -> String {
   match t {
@@ -128,8 +136,8 @@ fn reregistration_trigger_wire(t: ReregistrationTrigger) -> String {
 fn listener_restart_residual_wire() -> String {
   let f = listener_reregistration_frontier
   join([
-    "residual: a job GitHub assigns to a still-registered idle listener after the last of the three readings (mask, roster busy=false, no Runner.Worker) and before the stop lands is cancelled by the stop; the readings are re-read immediately before the stop to narrow that window, not to close it; ",
-    "frontier: the closure is restored only when ", join(map(f.triggers, reregistration_trigger_wire), if f.requires_all { " AND " } else { " OR " }), " lands as a consumed arm of AdmissionClosure",
+    "residual: a job GitHub assigns to a still-registered idle listener after the last of the readings (", join(map(listener_restart_residual.window_opens_after, residual_reading_wire), ", "), ") and before the stop lands is cancelled by the stop; the readings are re-read immediately before the stop to narrow that window, not to close it; ",
+    "frontier: the closure is restored only when ", join(map(f.triggers, reregistration_trigger_wire), " AND "), " lands as a consumed arm of AdmissionClosure",
   ], "")
 }
 
@@ -277,7 +285,6 @@ fn slot_drain_class(closure: AdmissionClosure, r: SlotDrainReading) -> SlotDrain
 }
 
 fn drain_class_is_idle_listener(c: SlotDrainClass) -> Bool { match c { ClassIdleListenerOpen { cause: _ } => true _ => false } }
-fn drain_class_listener_cause(c: SlotDrainClass) -> String { match c { ClassIdleListenerOpen { cause: x } => x _ => "" } }
 fn drain_class_is_listener_admitted(c: SlotDrainClass) -> Bool { match c { ClassListenerAdmitted => true _ => false } }
 fn drain_class_is_drained(c: SlotDrainClass) -> Bool { match c { ClassDrained => true ClassListenerAdmitted => true _ => false } }
 fn drain_class_is_busy(c: SlotDrainClass) -> Bool { match c { ClassBusy => true _ => false } }
@@ -298,7 +305,7 @@ fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>
   let classed = map(readings, r => ClassedReading { unit: r.unit, class: slot_drain_class(closure: closure, r: r) })
   let refused = filter(classed, c => drain_class_is_idle_listener(c: c.class))
   if length(refused) > 0 {
-    BracketAdmissionNotClosed { listeners: map(refused, c => c.unit), causes: map(refused, c => concat(c.unit as String, ": ", drain_class_listener_cause(c: c.class))) }
+    BracketAdmissionNotClosed { listeners: map(refused, c => c.unit), causes: list_flat_map(classed, c => match c.class { ClassIdleListenerOpen { cause: x } => [concat(c.unit as String, ": ", x)] _ => [] }) }
   } else if all(classed, c => drain_class_is_drained(c: c.class)) {
     BracketDrained { listeners: map(filter(classed, c => drain_class_is_listener_admitted(c: c.class)), c => c.unit) }
   } else if ticks_left <= 0 || time_up {
@@ -556,14 +563,21 @@ fn listener_stop_cause(c: SlotDrainClass) -> String {
   }
 }
 
-fn restart_decision_of(closure: AdmissionClosure, unit: NonEmptyStr, readings: List<SlotDrainReading>) -> ListenerRestart {
+// What the re-read before the stop DECIDES, kept apart from what the stop DID (ListenerRestart): nothing has been
+// stopped when a stop is only admitted.
+type ListenerStopDecision
+  = ListenerStopAdmitted
+  | ListenerAlreadyNotRunning
+  | ListenerStopDeclined { cause: String }
+
+fn restart_decision_of(closure: AdmissionClosure, unit: NonEmptyStr, readings: List<SlotDrainReading>) -> ListenerStopDecision {
   match first(filter(readings, r => (r.unit as String) == (unit as String))) {
-    Absent => ListenerStopRefused { unit: unit, cause: "the unit was not read immediately before the stop" }
+    Absent => ListenerStopDeclined { cause: "the unit was not read immediately before the stop" }
     Present { value: r } =>
       match slot_drain_class(closure: closure, r: r) {
-        ClassListenerAdmitted => ListenerStopped { unit: unit }
-        ClassDrained => ListenerNoLongerRunning { unit: unit }
-        c => ListenerStopRefused { unit: unit, cause: listener_stop_cause(c: c) }
+        ClassListenerAdmitted => ListenerStopAdmitted
+        ClassDrained => ListenerAlreadyNotRunning
+        c => ListenerStopDeclined { cause: listener_stop_cause(c: c) }
       }
   }
 }
@@ -571,12 +585,13 @@ fn restart_decision_of(closure: AdmissionClosure, unit: NonEmptyStr, readings: L
 fn stop_admitted_listener_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> ListenerRestart
 {
   match restart_decision_of(closure: runner_host_cap_admission_closure, unit: unit, readings: read_slot_drain_pass_over(target: target, context: context, units: [unit])) {
-    ListenerStopped { unit: _ } =>
+    ListenerStopAdmitted =>
       match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
         Present { value: why } => ListenerStopRefused { unit: unit, cause: concat("the stop failed: ", why) }
         Absent => ListenerStopped { unit: unit }
       }
-    other => other
+    ListenerAlreadyNotRunning => ListenerNoLongerRunning { unit: unit }
+    ListenerStopDeclined { cause: c } => ListenerStopRefused { unit: unit, cause: c }
   }
 }
 
@@ -589,6 +604,34 @@ fn listener_restart_refusal(r: ListenerRestart) -> String? {
     ListenerStopRefused { unit: _, cause: c } => Present { value: join(["the listener was not restarted: ", c, "; ", listener_restart_residual_wire()], "") }
     _ => none
   }
+}
+
+// THE GATE ON THE FIRST CAP-APPLYING EFFECT. A cap write and the manager reload after it apply a cap to a
+// RUNNING unit, so the ruling-B reading is taken again for every observed unit immediately before the write.
+// An owned unit must still read as an admitted idle listener or as drained. A unit someone else masked is
+// not ours to stop or start, so a foreign unit that is a live listener is refused: the reload would give it a cap
+// this run can neither restart it under nor prove. A foreign unit that is not running is not refused.
+type CapWriteGate
+  = CapWriteAdmitted
+  | CapWriteRefused { causes: List<String> }
+
+fn cap_write_unit_cause(closure: AdmissionClosure, owned: List<NonEmptyStr>, unit: NonEmptyStr, readings: List<SlotDrainReading>) -> String? {
+  let is_owned = any(owned, o => (o as String) == (unit as String))
+  match first(filter(readings, r => (r.unit as String) == (unit as String))) {
+    Absent => Present { value: join([unit as String, " was not read immediately before the first cap-applying effect"], "") }
+    Present { value: r } =>
+      match slot_drain_class(closure: closure, r: r) {
+        ClassDrained => Absent
+        ClassListenerAdmitted =>
+          if is_owned { Absent } else { Present { value: join([unit as String, " is masked by someone else and is a live listener: it is not stopped or restarted here, so a reload would cap it unproven"], "") } }
+        c => Present { value: join([unit as String, ": ", listener_stop_cause(c: c)], "") }
+      }
+  }
+}
+
+fn cap_write_gate_of(closure: AdmissionClosure, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, readings: List<SlotDrainReading>) -> CapWriteGate {
+  let causes = list_flat_map(observed, u => match cap_write_unit_cause(closure: closure, owned: owned, unit: u, readings: readings) { Present { value: c } => [c] Absent => [] })
+  if length(causes) == 0 { CapWriteAdmitted } else { CapWriteRefused { causes: causes } }
 }
 
 // ── The release obligation ──────────────────────────────────────────────────────────────────────
