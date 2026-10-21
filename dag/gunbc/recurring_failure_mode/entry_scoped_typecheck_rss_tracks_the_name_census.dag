@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.entry_scoped_typecheck_rss_tracks_the_name_census
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data entry_scoped_typecheck_rss_tracks_the_name_census: RecurringFailureMode = RecurringFailureMode {
   identity: "entry_scoped_typecheck_rss_tracks_the_name_census" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an `--entry` typecheck's resident set tracks the name census of every `--source-root`, not the reference-derived closure the CLI reports as the subject** (INVALID STATE: `gunbc compile --entry` prints `resolved N sources (reference-derived closure …), M indexed modules in the name census only` with N much smaller than M, and typecheck still builds `v1_compiler.cli_run` `tree_bare_census_for_root` over the containing root's whole-tree compile closure plus the process-shared index of M modules. The stall diagnostic then names one small module as if that module's import graph were the demand. HARM: a reader sizes a runner, a budget raise, or a hub-import split against N, while RSS is O(M). On srv4 that mis-sizing is MemoryStallRefusedPageThrash at the admitted 16 GiB line.",

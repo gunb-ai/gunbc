@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.emit_bridge_without_runtime_body
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data emit_bridge_without_runtime_body: RecurringFailureMode = RecurringFailureMode {
   identity: "emit_bridge_without_runtime_body" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
   receipts: [
     "INVALID STATE: an extdeps.languages.rust.emit.rt_function_registry row names a bridge for which the emitted runtime contains no function body. Builtin registration, interpreter dispatch and an emission bridge are separate capabilities; none establishes a native body.",
     "HARM: the five-surface std.primitive_identity census can accept a bridge row while the native artifact cannot realize its call. A compiler or runtime failure becomes the first observation of a fact the registry check could have refused.",

@@ -85,6 +85,8 @@ fn power_control(action: NonEmptyStr) -> Bool {
     username: "operator" as NonEmptyStr,
     password_file: "/nonexistent/credential" as NonEmptyStr,
     action: action,
+    deadline: "5s" as NonEmptyStr,
+    kill_after: "1s" as NonEmptyStr,
   ).success
 }
 

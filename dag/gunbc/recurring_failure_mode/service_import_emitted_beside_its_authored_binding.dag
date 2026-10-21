@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.service_import_emitted_beside_its_authored_b
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data service_import_emitted_beside_its_authored_binding: RecurringFailureMode = RecurringFailureMode {
   identity: "service_import_emitted_beside_its_authored_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a service import is emitted beside the authored import that already binds it** (INVALID STATE: an emitted Rust module carries two `use` lines for one item -- `pub use crate::m::\{S\};` rendered from the authored `import m { S }`, and `pub use crate::m::S;` rendered as the per-module service import for a service its functions demand -- and rustc refuses the module with E0252, the name is defined multiple times.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.required_lens_red_control_never_executes_from_its_home
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data required_lens_red_control_never_executes_from_its_home: RecurringFailureMode = RecurringFailureMode {
   identity: "required_lens_red_control_never_executes_from_its_home" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a lens is enrolled as REQUIRED and reports a mechanical rung, while the discriminating RED that would establish that rung lives in a module the floor never plans** (INVALID STATE: the obligation census names a witness as the class's discriminating red; that witness's home is excluded from per-PR discovery -- a long lane, a cost-declined module, an exclusion pattern -- so no required run has ever executed it. The claimed rung is then supported by a control whose verdict nobody has seen, and the lens can be wholly broken while every green run agrees it is enforced.",
