@@ -1,0 +1,7 @@
+module arity_probe_mod
+
+import std.content_hash { ContentHash }
+import std.durable_compare_and_set { CasSlotVersion, CasGeneration }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
+
+fn ap_k(x: Int) -> Int { x }

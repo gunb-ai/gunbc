@@ -1,0 +1,16 @@
+module arity_probe_mod
+
+import std.algebra { FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert }
+import std.optional { Optional }
+
+type ApPair<A, B> { first: A second: B }
+type ApMapBox<K, V> { m: Map<K, V> }
+
+fn ap_int(x: Int) -> Int { x }
+fn ap_str(x: String) -> String { x }
+fn ap_second_of<A, B>(p: ApPair<A, B>) -> B { p.second }
+fn ap_first_of<A, B>(p: ApPair<A, B>) -> A { p.first }
+
+fn ap_f(pr: ApPair<Int, String>) -> Int {
+  ap_int(x: ap_first_of(p: pr))
+}
