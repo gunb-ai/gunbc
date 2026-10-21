@@ -392,6 +392,116 @@ fn world_for_boot_route() -> MtCollins1BootWorld {
 // Every other grant, and the frame identity, are the matrix's own.
 data boot_route_extra_services: List<String> = ["shell.Stat"]
 
+// THE POST-POWER-ON FAN GATE'S READS, CERTIFIED THE WAY A HEALTHY mtcollins1 CONTROLLER ANSWERS.
+// The production boot path gained a chassis-fan gate (main #14263) that runs AFTER power-on and BEFORE
+// the census watch: settle, then observe_fan_round -- ChassisStatus, then sdr type Temperature, then sdr
+// type Fan -- then post_power_fan_verdict decides. The boot realization never bound the fan reads (the
+// gate was written after it was, and it reads through diagnostic.ipmi.Tool.SdrTypeList), so an unbound
+// operation refuses, the round is unreadable, and the gate stops the boot for a fixture reason instead
+// of deciding on the reading. These bindings answer each read the way the committed observation of boot
+// run 39005709187 (the capture mtcollins1_fitted_fan_set stands on) prints it when the chassis is ON and
+// the fans are turning: every fitted header FAN4_0/FAN4_1/FAN5_0/FAN5_1 at non-zero RPM, every other
+// sensor row decodable, the Temperature rows published and recognised, the chassis line reporting power
+// on -- which is the reading post_power_fan_verdict ADMITS. The handler is powerless: it answers the
+// three reads from the world's power state and the fixture rows, and decides nothing; the verdict remains
+// post_power_fan_verdict's alone. A world that is powered off answers the chassis line off, which is the
+// gate's own PostPowerChassisNotOn refusal shape, so the refused arm is executable too.
+// Every row is the committed unit fixture's shape (test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
+// unit_rows, the capture the fitted set stands on): the four fitted headers at non-zero RPM with status ok,
+// the two unfitted headers the same board prints as No Reading.
+data boot_route_fan_rows: List<String> = [
+  "FAN4_0_Speed       | 00h | ok  | 29.1 | 5700 RPM",
+  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
+  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
+  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
+  "FAN0_0_Speed       | 04h | ok  | 29.1 | No Reading",
+  "FAN3_1_Speed       | 05h | ok  | 29.1 | No Reading",
+]
+// The temperature rows carry a published, fully decoded reading (the committed witness's posted shape).
+data boot_route_temperature_rows: List<String> = [
+  "CPU0_Temp          | 01h | ok  |  3.1 | 45 degrees C",
+  "DIMM_Temp          | 02h | ok  |  3.2 | 38 degrees C",
+]
+
+// The refused arm's rows: every row identical to the healthy capture EXCEPT the first fitted header,
+// which prints 0 RPM -- the committed refusal fixture's reading (FittedHeaderZeroRpm).
+data boot_route_fan_rows_first_zero: List<String> = [
+  "FAN4_0_Speed       | 00h | ok  | 29.1 | 0 RPM",
+  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
+  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
+  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
+  "FAN0_0_Speed       | 04h | ns  | 29.1 | No Reading",
+  "FAN3_1_Speed       | 05h | ns  | 29.1 | No Reading",
+]
+
+fn boot_route_sdr_answer(fan_rows: List<String>) -> fn(MtCollins1BootWorld, OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  fn(state, call) {
+    let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
+      Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { fan_rows } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
+      Absent => boot_route_temperature_rows
+    }
+    OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
+      state: state,
+      elapsed: second(count: 1),
+    }
+  }
+}
+
+fn boot_route_sdr_rows(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  boot_route_sdr_answer(fan_rows: boot_route_fan_rows)(state: state, call: call)
+}
+
+fn matrix_boot_route_frame_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let certified = OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: production.bindings, ys: [
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" },
+        handler: boot_route_mux_created,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" },
+        handler: boot_route_mode_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
+        handler: boot_route_owner_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
+        handler: boot_route_sdr_rows_refused,
+      },
+    ]),
+  }
+  let boot_services = concat(xs: matrix_services, ys: boot_route_extra_services)
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
+      grants: concat(map(boot_services, s => matrix_grant(service: s, verb: Read)), map(boot_services, s => matrix_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: certified }
+  }
+}
+
+fn boot_route_sdr_rows_refused(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  boot_route_sdr_answer(fan_rows: boot_route_fan_rows_first_zero)(state: state, call: call)
+}
+
+// EXECUTE THE PRODUCTION BOOT ENTRY IN THE FAN-REFUSED WORLD: same entry, same subject; only the fan
+// rows differ (first fitted header at zero RPM), and the gate's own verdict stops the boot.
+fn run_boot_route_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_boot_route_frame_without_fans(world: world),
+    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+  )
+}
+
 fn matrix_boot_route_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
   let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
   let certified = OperationRealization {
@@ -411,6 +521,10 @@ fn matrix_boot_route_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame
       OperationBinding {
         at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
         handler: boot_route_owner_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
+        handler: boot_route_sdr_rows,
       },
     ]),
   }

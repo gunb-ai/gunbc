@@ -69,7 +69,10 @@ import gunbc.machine_intake.oob_boot_handoff {
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted }
 import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
   one_socket_census_capture, run_attempt, console_of, count_named, world_with_console,
-  run_boot_route, world_for_boot_route,
+  run_boot_route, world_for_boot_route, run_boot_route_without_fans,
+}
+import gunbc.machine_intake.post_power_fan_gate_outcome {
+  PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
@@ -893,6 +896,43 @@ fn executed_boot_route_wrote_the_controller() -> Bool {
 
 test fn w_the_identity_the_executed_route_reported_came_from_writing_the_controller() -> Bool {
   executed_boot_route_consumed_current_release() && executed_boot_route_wrote_the_controller()
+}
+
+// THE FAN GATE IS ON THE EXECUTED ROUTE, IN BOTH DIRECTIONS. The production boot path runs
+// mtcollins1_boot_fan_gate after power-on and before the census watch (main #14263): it reads the chassis
+// and the fan sensors and post_power_fan_verdict decides. The boot route's world answers those reads the
+// way the committed healthy observation prints them (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix),
+// so the gate ADMITS through its own verdict and the boot reaches the census.
+test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> Bool {
+  match run_boot_route(world: world_for_boot_route()) {
+    WitnessReturned { value: a, route: _, state: _ } => match a.fan_gate {
+      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// THE REFUSED DIRECTION: one seeded reading -- the FIRST FITTED HEADER at zero RPM, everything else the
+// committed healthy rows -- must stop THIS run at the gate. The gate sits after power-on by design (its
+// safe stop powers the unit back off), so the stopped shape is: the gate carrier says Refused, the exit
+// names the fan stop, and the census watch never ran (stage remains PoweredOn, not CensusEnded) while the
+// handoff had already been executed above it. Nothing here stubs the gate: the verdict is the production
+// post_power_fan_verdict's own decision on the seeded rows.
+test fn w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate() -> Bool {
+  match run_boot_route_without_fans(world: world_for_boot_route()) {
+    WitnessReturned { value: a, route: _, state: _ } =>
+      (match a.fan_gate {
+        PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } => true
+        _ => false
+      })
+        && (match a.outcome {
+          ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "chassis fan function not established after power-on")
+          ExitSuccess => false
+        })
+        && (match a.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => false _ => true })
+    _ => false
+  }
 }
 
 test fn w_the_handoff_consumes_the_row_the_boot_was_admitted_on() -> Bool {
