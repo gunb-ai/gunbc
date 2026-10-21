@@ -18070,7 +18070,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // is a no-op wherever a carrier is already present (see binder_marked_module_item).
   let marked_module_node = node_with_children_params_inferred(
     n: resolved.module,
-    children: map(module_items(n: resolved.module), item => binder_marked_module_item(item: item, module_name: authored_name_at(source_indices: source_indices, node: resolved.module), source_indices: source_indices)),
+    children: map(module_items(n: resolved.module), item => binder_marked_module_item(item: item, module_name: authored_name_at(source_indices: source_indices, node: resolved.module), source_indices: source_indices, inherited_owner: none, inherited_binders: none)),
     params: resolved.module.params,
     inferred: resolved.module.inferred
   )
