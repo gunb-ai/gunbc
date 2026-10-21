@@ -1,0 +1,14 @@
+module test.fixture.laneg_single_res_provider
+
+// Lane G (v1-interface-cull-audit@63a464edf01 P1.5 steps 1-2) emission evidence, provider side of
+// the SINGLE-FIELD / zero-candidate case for test.claim.record_emission_candidate_set_witness.
+// One record type whose field name the consumer's literal never matches from consumer scope (the
+// consumer imports ONLY the function, so no record type summary is in scope), pinning the changed
+// candidate-set arm's zero-candidate pass-through. Importless so the witness closure stays minimal
+// (witness-cost ruling, as in test.fixture.anonhead_provider).
+
+type LanegSolo { v: Int }
+
+fn takes_solo(s: LanegSolo) -> Int {
+  1
+}
