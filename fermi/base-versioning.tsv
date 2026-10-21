@@ -1,0 +1,68 @@
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	8	declared	extdeps.git.versioning.GitReleaseVersion	85:61
+base_row	binding_partial	extdeps.git.versioning	Equal	1	declared	std.algebra.Ordering.Equal	61:7
+base_row	binding_partial	extdeps.git.versioning	brand	0	declared	std.types.brand	43:53
+base_row	binding_partial	extdeps.git.versioning	ExternalAuthority	0	declared	extdeps.external_authority.ExternalAuthority	11:41
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	3	generated	std.optional.Optional	-
+base_row	binding_unbound	extdeps.git.versioning	concat	48:3
+base_row	binding_unbound	extdeps.git.versioning	concat	50:17
+base_row	binding_partial	extdeps.git.versioning	VersionComparisonRefused	1	declared	extdeps.version.VersionComparison.VersionComparisonRefused	98:19
+base_row	binding_partial	extdeps.git.versioning	git_release_version_from_text	0	declared	extdeps.git.versioning.git_release_version_from_text	39:44
+base_row	binding_partial	extdeps.git.versioning	git_release_version_compare	0	declared	extdeps.git.versioning.git_release_version_compare	99:62
+base_row	binding_partial	extdeps.git.versioning	SemVerNumericField	1	declared	extdeps.version.semver.SemVerNumericField	20:10
+base_row	binding_unbound	extdeps.git.versioning	none	87:15
+base_row	binding_partial	extdeps.git.versioning	Uri	0	declared	extdeps.uri.Uri	12:8
+base_row	binding_unbound	extdeps.git.versioning	other	64:14
+base_row	binding_partial	extdeps.git.versioning	RightOperand	0	declared	extdeps.version.ComparisonSide.RightOperand	98:52
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	5	declared	extdeps.git.versioning.GitReleaseVersion	58:57
+base_row	binding_partial	extdeps.git.versioning	ExternalAuthority	1	declared	extdeps.external_authority.ExternalAuthority	11:61
+base_row	binding_partial	extdeps.git.versioning	git_release_compare_identity	0	declared	extdeps.git.versioning.git_release_compare_identity	105:12
+base_row	binding_partial	extdeps.git.versioning	SemVerNumericField	2	declared	extdeps.version.semver.SemVerNumericField	21:10
+base_row	binding_unbound	extdeps.git.versioning	concat	50:76
+base_row	binding_partial	extdeps.git.versioning	Equal	0	declared	std.algebra.Ordering.Equal	60:5
+base_row	binding_partial	extdeps.git.versioning	VersionComparisonRefused	0	declared	extdeps.version.VersionComparison.VersionComparisonRefused	95:15
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	1	generated	std.optional.Optional	-
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	7	declared	extdeps.git.versioning.GitReleaseVersion	81:24
+base_row	binding_partial	extdeps.git.versioning	String	3	ambient:kernel_type_spelling	kernel:string_node_symbol	95:76
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	9	declared	extdeps.git.versioning.GitReleaseVersion	89:24
+base_row	binding_unbound	extdeps.git.versioning	Absent	95:5
+base_row	binding_unbound	extdeps.git.versioning	Absent	98:9
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	2	generated	std.optional.Optional	-
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	0	declared	extdeps.git.versioning.GitReleaseVersion	29:16
+base_row	binding_partial	extdeps.git.versioning	git_release_identity_parse	1	declared	extdeps.git.versioning.git_release_identity_parse	97:13
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	6	declared	extdeps.git.versioning.GitReleaseVersion	77:56
+base_row	binding_unbound	extdeps.git.versioning	Absent	79:5
+base_row	binding_unbound	extdeps.git.versioning	other	62:7
+base_row	binding_partial	extdeps.git.versioning	NonNegativeInt	0	declared	std.integer.NonNegativeInt	26:32
+base_row	binding_partial	extdeps.git.versioning	String	2	ambient:kernel_type_spelling	kernel:string_node_symbol	86:53
+base_row	binding_partial	extdeps.git.versioning	GitVersionConstraint	0	declared	extdeps.git.versioning.GitVersionConstraint	45:23
+base_row	binding_unbound	extdeps.git.versioning	Absent	87:5
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	4	generated	std.optional.Optional	-
+base_row	binding_unbound	extdeps.git.versioning	none	79:15
+base_row	binding_unbound	extdeps.git.versioning	other	64:5
+base_row	binding_partial	extdeps.git.versioning	NonEmptyStr	0	declared	std.types.NonEmptyStr	41:39
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	1	declared	extdeps.git.versioning.GitReleaseVersion	39:23
+base_row	binding_partial	extdeps.git.versioning	VersionCompared	0	declared	extdeps.version.VersionComparison.VersionCompared	99:34
+base_row	binding_partial	extdeps.git.versioning	String	1	ambient:kernel_type_spelling	kernel:string_node_symbol	78:49
+base_row	binding_unbound	extdeps.git.versioning	concat	50:5
+base_row	binding_partial	extdeps.git.versioning	String	0	ambient:kernel_type_spelling	kernel:string_node_symbol	47:55
+base_row	binding_partial	extdeps.git.versioning	GitVersionPlatformSuffix	0	declared	extdeps.git.versioning.GitVersionPlatformSuffix	30:11
+base_row	binding_unbound_module	extdeps.git.versioning	16	6
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	3	declared	extdeps.git.versioning.GitReleaseVersion	54:39
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	5	generated	std.optional.Optional	-
+base_row	binding_partial	extdeps.git.versioning	VersionComparison	0	declared	extdeps.version.VersionComparison	93:76
+base_row	binding_unbound	extdeps.git.versioning	chars	78:32
+base_row	binding_unbound	extdeps.git.versioning	chars	86:32
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	2	declared	extdeps.git.versioning.GitReleaseVersion	47:33
+base_row	binding_partial	extdeps.git.versioning	NonEmptyStr	1	declared	std.types.NonEmptyStr	77:40
+base_row	binding_partial_module	extdeps.git.versioning	49	0	0
+base_row	binding_partial	extdeps.git.versioning	Https	0	declared	extdeps.uri.UriScheme.Https	13:13
+base_row	binding_partial	extdeps.git.versioning	std.optional.Optional	0	generated	std.optional.Optional	-
+base_row	binding_partial	extdeps.git.versioning	GitReleaseVersion	4	declared	extdeps.git.versioning.GitReleaseVersion	58:35
+base_row	binding_partial	extdeps.git.versioning	String	4	ambient:kernel_type_spelling	kernel:string_node_symbol	98:81
+base_row	binding_partial	extdeps.git.versioning	SemVerNumericField	0	declared	extdeps.version.semver.SemVerNumericField	19:10
+base_row	binding_partial	extdeps.git.versioning	git_release_version_label	0	declared	extdeps.git.versioning.git_release_version_label	55:3
+base_row	binding_unbound	extdeps.git.versioning	other	62:16
+base_row	binding_partial	extdeps.git.versioning	Ordering	0	declared	std.algebra.Ordering	58:79
+base_row	binding_partial	extdeps.git.versioning	git_release_identity_parse	0	declared	extdeps.git.versioning.git_release_identity_parse	94:9
+base_row	binding_partial	extdeps.git.versioning	LeftOperand	0	declared	extdeps.version.ComparisonSide.LeftOperand	95:48
+base_row	binding_unreached	extdeps.git.versioning	resolve
