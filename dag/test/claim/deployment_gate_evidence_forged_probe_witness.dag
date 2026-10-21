@@ -4,7 +4,12 @@ import std.types { String, Bool, Int }
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key,
+  // CLASS-SCOPED COUNTING (a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint): keyed counting
+  // is census_count_at_key's job; the class-only denominator belongs here because a claim that must
+  // count "every row of a class, whatever the host renders the subject as" is not a guess at a key.
+  census_rows_of_class,
+  census_total_count,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -57,6 +62,31 @@ fn control_census() -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(harness_control_source)
 }
 
+// CLASS-SCOPED COUNT OF TYPEMISMATCH ROWS. The keyed form (census_count_at_key) answers "how many
+// refusals name THIS subject"; this answers "how many name any subject of this class". The second is
+// what the cross-axis carrier forgery needs: the census keys a TypeMismatch by the ARGUMENT's own
+// shape as the host renders it, and a reference to a named Int datum is rendered by its authored name,
+// not by the kernel word Int -- so a keyed subject here would encode a guess about the host's
+// rendering rather than the fact under test. The control calls nothing at all, so it contributes no
+// call-argument TypeMismatch by construction; a nonzero probe count against a zero control count can
+// therefore only be a cross-type FORGERY being refused. CensusNotRunnable reads negative: an census
+// that cannot run proves nothing, and a claim must fail rather than silently compare against absence.
+fn type_mismatch_count(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+  }
+}
+
+fn probe_type_mismatch_count() -> Int {
+  type_mismatch_count(c: probe_census())
+}
+
+fn control_type_mismatch_count() -> Int {
+  type_mismatch_count(c: control_census())
+}
+
 fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
   match c {
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -101,12 +131,18 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
 // control -- which names the mint and imports everything the probe attacks but calls nothing -- must read
 // ZERO at the same key, so the row cannot be an artifact of importing the module rather than forging.
 test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint() -> Bool {
-  refusals(c: probe_census(), class: "TypeMismatch", subject: "Primitive(Int)") >= 1
-    && refusals(
-         c: control_census(),
-         class: "TypeMismatch",
-         subject: "Primitive(Int)",
-       ) == 0
+  // CLASS-SCOPED, CONTROL-DISCRIMINATED. A keyed subject was tried first (`Primitive(Int)`) and read
+  // zero: the census keys a TypeMismatch by the ARGUMENT'S OWN shape, and `node_type_shape` renders a
+  // reference to a named Int datum by its authored name, not by the kernel word `Int` -- so pinning a
+  // literal subject string here would encode a guess about the host's rendering rather than the fact
+  // under test. The fact under test is not "some row named Int exists"; it is "the probe's forged call
+  // is refused at the mint for TYPE, and importing the mint alone is not." That is exactly what a
+  // class count read against the control establishes: the control imports the mint and every witness
+  // proxy and CALLS NOTHING, so it contributes no call-argument TypeMismatch. Any such row therefore
+  // belongs to a cross-type FORGERY, and the only cross-type call in the probe is the run id handed to
+  // the rule slot. Delete the carrier and the forged line compiles, the row vanishes, and this goes red
+  // -- which is the whole point of the RED written before the GREEN.
+  probe_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
 }
 
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
