@@ -22,7 +22,7 @@ import v2.std.node {
   ArrowBodyEdge,
   core_edge,
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   TargetValueExpression,
@@ -104,6 +104,7 @@ fn probe_arrow(closure_body: Node) -> Node {
 
 fn probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: node_synthetic(
       kind: TypeNode { connective: Conj },
