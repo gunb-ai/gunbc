@@ -49,15 +49,13 @@ test fn bs_a_table_maps_ordinals_to_roles_holds() -> Bool {
     && branch_positional_slot(ordinal: 2) == optional_present(value: BranchElseSlot)
 }
 
-// A FOURTH POSITIONAL CHILD HAS NO ROLE: ordinal 3 is Absent, and the else slot still reads the third child,
-// never the fourth, so a malformed Branch is not read as having two else arms.
+// A FOURTH POSITIONAL CHILD HAS NO ROLE: ordinal 3 is Absent, and a four-positional Branch yields no slot
+// target at all, so a malformed Branch is refused at the accessor and never read as two else arms.
 test fn bs_c_fourth_positional_has_no_role_holds() -> Bool {
   branch_positional_slot(ordinal: 3) == optional_absent()
     && branch_positional_slot(ordinal: 9) == optional_absent()
-    && match branch_slot_target(n: bs_branch_four(), slot: BranchElseSlot) {
-      Present { value: e } => e == bs_atom(s: ^bs_else)
-      Absent => false
-    }
+    && branch_slot_target(n: bs_branch_four(), slot: BranchElseSlot) == optional_absent()
+    && branch_slot_target(n: bs_branch_four(), slot: BranchConditionSlot) == optional_absent()
 }
 
 fn bs_branch_four() -> Node {

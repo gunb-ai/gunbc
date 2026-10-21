@@ -774,7 +774,18 @@ fn match_arm_slots_step(acc: List<ChildSlot>, s: ChildSlot) -> List<ChildSlot> {
   }
 }
 
+// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a three-positional Branch: a Branch of any
+// other positional arity is malformed and has no roles to read, so the accessor that owns the table refuses
+// rather than returning a plausible child (a fourth positional is not a second else).
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
+  if count(positional_child_target_nodes(node: n)) == 3 {
+    branch_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
   positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == optional_present(value: slot) })
 }
 
@@ -812,8 +823,8 @@ fn match_positional_slot(ordinal: Int) -> MatchSlot {
 // WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
 // (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
 // Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
-// an ordinal of 3 or more has no role: the table answers Absent and the caller refuses the malformed
-// Branch, rather than reading a fourth child as a second else. Match and Branch keep separate tables
+// an ordinal of 3 or more has no role: the table answers Absent, and branch_slot_target answers Absent for
+// any Branch that is not three-positional, so the malformed Branch is refused where the table lives. Match and Branch keep separate tables
 // because the arity differs (total vs. three roles); both are read by the one positional walker
 // positional_target_where, which is where the shared "find the positional child by role" lives.
 type BranchSlot
