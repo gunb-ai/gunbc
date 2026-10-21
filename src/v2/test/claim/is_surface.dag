@@ -20,13 +20,16 @@ import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, Uni
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.body_lowering_fold { TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_subtree_nodes }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.inferred_tree { InferredTree }
 import std.types { List }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // SUBJECT: `x is V` is carried as Transform[kw_is, x, V] through lowering and resolve; V stays the arm's
 // source spelling, resolved against x's type by infer (R1). BOUNDARY: source text in via tpb_assemble.
@@ -285,6 +288,52 @@ test fn is_consumed_arm_parameter_is_admitted() -> Bool {
       match infer(tree: rt) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// THE REAL DECLARATION IS SEALED: the stand-in claims above prove the wall refuses a sealed type, and
+// this one binds that to ResolvedArm itself. The real v2.compiler.arm_resolution source is read from
+// the tree (filesystem_read), assembled, and the type-declaration modifier channel infer's wall reads
+// is asked for ResolvedArm. A second constructor path or a dropped sole_constructor reads here as a
+// failed claim, whatever the stand-in does.
+data is_real_arm_resolution_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^is_real_arm_resolution_artifact,
+  file_path: "src/v2/compiler/arm_resolution.dag"
+}
+
+fn is_real_arm_resolution_assembled() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: filesystem_read(path: "src/v2/compiler/arm_resolution.dag").content, fidelity: Lossless },
+        artifact: is_real_arm_resolution_artifact,
+        compilation_unit: ^is_real_arm_resolution_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.compiler.arm_resolution") },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn is_real_resolved_arm_declaration_is_sole_constructor() -> Bool {
+  match is_real_arm_resolution_assembled() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: rt, diagnostics: _ } =>
+      match type_declaration_modifier_row_at(
+        channel: rt.type_declaration_modifiers,
+        module: qualified_name_from_dotted_string(dotted: "v2.compiler.arm_resolution"),
+        name: ^ResolvedArm
+      ) {
+        TypeDeclModifierRowPresent { modifiers: m } => type_decl_modifiers_include_sole_constructor(modifiers: m)
+        TypeDeclModifierModuleUncovered => false
+        TypeDeclModifierRowAbsent => false
       }
   }
 }
