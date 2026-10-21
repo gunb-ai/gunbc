@@ -60,6 +60,7 @@ data edited_bin_witness_wet_rows_not_executed_by_ci_population: List<String> = [
   "dag_compile_clean_shard_totality_witness.dag",
   "dag_compile_clean_seam_witness.dag",
   "run_verdict_exit_status_witness.dag",
+  "decl_facts_walk_refusal_witness.dag",
   "http_client_get_real_execution.dag",
   "roadmap_belt_actuate_witness.dag",
   "roadmap_closing_contract_execution_witness.dag",

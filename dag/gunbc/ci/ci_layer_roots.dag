@@ -325,6 +325,10 @@ data excl_immutable_pin_no_ci_wet_lane_reason: String = "ioctl-set IMMUTABLE lea
 
 data excl_immutable_pin_no_ci_wet_lane_dissolve: DissolutionCondition = unbound_dissolution(description: "a required wet lane grants CAP_LINUX_IMMUTABLE, or an unlink-refusal construction that needs none; then this file re-enrolls on local_repo_wet_schedule as ExpectedToHold, this exclusion flips to LocalRepoWetLane or deletes, and the pattern leaves edited_bin_witness_wet_rows_not_executed_by_ci_population")
 
+data excl_decl_facts_walk_refusal_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.decl_facts_walk_refusal_witness is the EXIT STATUS and OUTPUT SHAPE of a claim_batch process whose decl_facts walk meets an unparsable pool file, which no in-process assertion can observe (the refusal is a process exit), and mocking Run would pass against a fabricated status -- the vacuous pass excl_run_verdict_exit_status_reason records. Both fns are ALSO enrolled in bin_witness_wet_entries, their executing consumer. Size is derived: two child invocations over a two-file planted pool, the RED differing from the control only in whether the second file parses."
+
+data excl_decl_facts_walk_refusal_dissolve: DissolutionCondition = unbound_dissolution(description: "the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the two roster entries delete together. A mock_response for Run does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than the walker.")
+
 data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found 2026-08-16, PR #8286 CI red, run 31922786399, batch 3 discovery-corpus, 3 of 9782): every fn in this file invokes the compiled `gunbc` seed as a SUBPROCESS and reads the status of that process, so the hermetic envelope refuses them — 'no mock_response for operation Run' and 'for operation IsExecutable', the class excl_install_media_reason names. The refusal is correct and the file cannot be made hermetic: the subject IS the process exit status, which no in-process assertion can observe, and mocking the invocation would let the witness pass against a fabricated status — precisely the defect it exists to detect. The file was authored into dag/test/claim/ and so was swept into unshrunk hermetic discovery by path; the witnesses were right and the enrolment was wrong. Per DESIGN 'witness cost derives from purpose', this row alone would only remove them from hermetic discovery, which is NOT an executing consumer — so all three fns are ALSO enrolled in bin_witness_wet_entries below, which is their real per-PR executing consumer under WitnessHasExecutingConsumer standing. Size is derived, not chosen: three subprocess invocations of a three-constructor fixture, one per arm of the driver's verdict map."
 
 data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
@@ -902,6 +906,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: FalsifierRehomedBinWet,
     reason: excl_expectation_frontier_reason,
     dissolution: excl_expectation_frontier_dissolve},
+  WitnessExclusionRow {
+    pattern: "decl_facts_walk_refusal_witness.dag",
+    classification: BinWitnessWet,
+    reason: excl_decl_facts_walk_refusal_reason,
+    dissolution: excl_decl_facts_walk_refusal_dissolve},
   WitnessExclusionRow {
     pattern: "run_verdict_exit_status_witness.dag",
     classification: BinWitnessWet,
@@ -1694,6 +1703,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness.dag", f: "a_real_regen_stage0_verify_run_reports_zero_divergence"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness.dag", f: "w_RED_an_unrecognized_flag_does_not_report_the_success_marker"),
+  bin_wet(entry: "dag/test/claim/decl_facts_walk_refusal_witness.dag", f: "an_unparsable_pool_file_refuses_the_decl_facts_walk_with_exit_1"),
+  bin_wet(entry: "dag/test/claim/decl_facts_walk_refusal_witness.dag", f: "a_parseable_pool_reaches_a_real_pass_verdict"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_failure_verdict_reaches_nonzero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_success_verdict_reaches_zero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_non_process_exit_return_refuses"),
