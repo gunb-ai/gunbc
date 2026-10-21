@@ -75,10 +75,24 @@ type WrongWitnessFault =
 // rows are owned by a lane that is not this one, and repairing another lane's
 // authority from inside a classification pass is how a second authority gets
 // minted for one fact.
+// A CLOSED ROW IS STILL A ROW. A defect fixed by an earlier change keeps its identity, its
+// classification, and its measured evidence; only its disposition moves, and the disposition must
+// carry WHAT CLOSED IT: the commits that did the closing, and the head at which the claim was
+// RE-EXECUTED (not re-read) to confirm it holds. Prose does not close a row; the tuple here does,
+// because the re-measurement head is checkable against `git log` by anyone. Added for #14545
+// (manager ruling: a 'closed by' string under `RoutedToOwner` would be one name with two meanings,
+// DESIGN §3 nicknaming); `RepairedInThisChange` cannot carry it either — it names no repair and
+// this change does not perform one.
+type ClosureReceipt {
+  closed_by: List<String>
+  re_measured_at: String
+}
+
 type ClassificationDisposition =
     RoutedToOwner { owner: String }
   | NeedsOperatorRuling { question: String }
   | RepairedInThisChange
+  | ClosedByPriorChange { receipt: ClosureReceipt }
 
 // measured_evidence records what was EXECUTED to reach the verdict, never what
 // was read: a classification derived from reading a lens is not a measurement.
@@ -98,27 +112,68 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // secondaries. The 2026-08-24 measurement bankruptcy deleted docs/probes/ whole.
 // It did not update gunbc.doc_graph_roots, whose hand-authored ProbeDoc binds
 // still name 19 of the deleted files, and it did not update the prose that links
-// to them. Measured on main: 228 declared roots, 209 admitted (19 name no file,
-// every one of them under docs/probes/); 16 dangling markdown links, 12 of them
-// into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35 orphan
-// docs once the admitted roots are walked.
+// to them. MEASURED ON 2026-08-24: 228 declared roots, 209 admitted (19 name no
+// file, every one of them under docs/probes/); 16 dangling markdown links, 12 of
+// them into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35
+// orphan docs once the admitted roots are walked. RE-MEASURED 2026-10-21 at head
+// a162e67d1af8: 27 declared, 27 admitted -- the population those counts described
+// was removed by #9181 and #9186, so the 2026-08-24 figures are history, not the
+// measurement, and each row below says which it is.
 //
-// THE PART THAT NEEDS A RULING RATHER THAN A REPAIR. Three of the 19 dead binds
-// are the g1-cited-symbol-control-* rows, which doc_graph_roots declares
-// PlanHasNoRetirement -- permanent discriminating evidence, kept under DESIGN
-// 4b(4) precisely so a climb cannot delete it. The bankruptcy deleted it anyway.
-// Deleting the binds finishes that deletion; restoring the files from history
-// reverses an operator cut. Neither is this session's call to make silently.
+// THE PART THAT NEEDED A RULING RATHER THAN A REPAIR, AND HOW IT CLOSED (kept
+// here because deleting it would hide a violation that had already landed). Three
+// of the 19 dead binds were the g1-cited-symbol-control-* rows, which
+// doc_graph_roots declared PlanHasNoRetirement -- permanent discriminating
+// evidence, kept under DESIGN 4b(4) precisely so a climb could not delete it. The
+// bankruptcy deleted it anyway, by a sweep that took docs/probes/ whole. The two
+// available closures were NOT peers (manager ruling, swift-badger-524,
+// 2026-08-25): deleting the three binds FINISHED a deletion 4b(4) forbids and made
+// it invisible, while restoring the three files from history reversed part of an
+// operator cut -- only the second is reversible by anyone other than the operator,
+// which is why the question was theirs and no lane may have quietly taken the
+// first. #9181 (0df5b4170c51) took a third path that answers it: the three
+// controls were machine discriminators, not documents, so they were REHOMED as
+// `cited_symbol_planted_controls` in v2.lens.cited_symbol_resolution -- the
+// permanent evidence was moved, not finished -- and only then were their orphan
+// binds deleted atomically. The account survives in data too, at
+// dag/test/claim/doc_graph_reference_partition_witness.dag
+// `cited_symbol_partition_third_bucket_note`; it is deliberately not repeated as a
+// String here, because a String whose only purpose is commentary is misplaced data
+// (DESIGN 4c) and this row's only reader was the NeedsOperatorRuling this change
+// replaced. The other sixteen dead binds carried ordinary retirements and needed
+// no ruling.
 // ---------------------------------------------------------------------------
-
-data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. The other sixteen dead binds carry ordinary retirements and need no ruling."
 
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
-    measured_evidence: "228 declared roots, 209 admitted; the 19 unadmitted are exactly the docs/probes/ files the 2026-08-24 bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree",
-    disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question }
+    // RE-MEASURED, NOT RESTATED, because the census below is a 2026-08-24 snapshot and the thing it
+    // counted has since changed twice. Executed at head a162e67d1af8 (2026-10-21) by the same route
+    // the claim uses -- the claim_batch host over the live gunbc.doc_graph_roots -- the counts are
+    // declared 27 == admitted 27, and the claim itself runs PASS on the schedule that
+    // v2.workflow.local_repo_wet_terminal `local_repo_wet_schedule` now carries it on. The 19 dead
+    // binds the census counted are gone: on 2026-08-25 the three g1-cited-symbol controls were
+    // REHOMED as machine planted controls for the cited-symbol lens (so the permanent evidence
+    // 4b(4) protects was MOVED, not finished -- which is also what retires the ruling question
+    // below), and the 16 dead ProbeDoc binds plus the last emitted plan root were deleted. The
+    // figure that was here ("228 declared roots, 209 admitted") was accurate on 2026-08-24 and
+    // names the population that no longer exists; it is kept in that sentence, not as the
+    // measurement.
+    measured_evidence: "RE-MEASURED 2026-10-21 at a162e67d1af8: declared roots 27, admitted roots 27, claim runs PASS (executed). Historical census, now stale: 228 declared / 209 admitted on 2026-08-24; those 19 unadmitted binds were deleted on 2026-08-25 after the g1 controls were rehomed (account cited in closed_by).",
+    disposition: ClosedByPriorChange {
+      receipt: ClosureReceipt {
+        // The commits of 2026-08-25 that rehomed the g1 controls and deleted the dead binds are NOT
+        // CITED BY HASH, because the 2026-10 mega-squash rewrote history and those objects are no
+        // longer reachable from this head -- a hash here would send a reader to a commit they cannot
+        // check out. What is cited instead is main's own durable account of the same events, which
+        // this row's author verified against the live tree before writing the re-measurement below.
+        closed_by: [
+          "2026-08-25, operator ruling: the three g1-cited-symbol discriminating controls were REHOMED as machine planted controls for the cited-symbol lens, and the 16 dead ProbeDoc binds plus the emitted plan root were deleted. Durable account: dag/gunbc/doc_graph_roots.dag header ('They moved to that lens as a typed control carrier on 2026-08-25 (operator ruling)'; 'SIXTEEN PROBE-DOC BINDS WERE DELETED THE SAME DAY, AND THE HOME AXIS DELIBERATELY SURVIVED THEM') and dag/test/claim/doc_graph_reference_partition_witness.dag `cited_symbol_partition_third_bucket_note`",
+        ],
+        re_measured_at: "2026-10-21 at head a162e67d1af8: doc_graph_roots_all() declared 27 == doc_graph_admitted_root_count 27, executed through the claim_batch host; test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted PASS on the same host",
+      }
+    }
   },
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
