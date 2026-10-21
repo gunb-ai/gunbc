@@ -905,3 +905,6 @@ Write the FINAL applied_constructor_type_equals.dag = its 2 existing members + n
 - P-E1: all 3 members print PASS; claim-run rc=0. (2 existing green proven CONTROL_RC=0; c_b3 body proven PASS in PRED-C — this validates the combined FILE text: header/imports/helper unchanged, new member appended.)
 - P-E2: no NoSuchFunction/ResolveError (member name unique; imports unchanged from the committed file).
 If any member FAILS the file is NOT staged; investigate (likely the new source string) before the rebase. Void/build-fail != pass.
+
+### PRED-E RESULTS (dispatch je9e85cff @PR-2 head 97e47f8e562b, BUILD_RC=0)
+CLAIM_RC=0, members: PASS same_applied_box_int_is_accepted, PASS list_int_equals_freemonoid_int, PASS box_int_against_box_bool_is_refused. FINAL claim-home text validated EXACTLY as staged (this dispatch's heredoc = the committed content of prebake_applied_constructor_type_equals.dag in this branch). REBASE NOTE: at the rebase the file may need only import-compat tweaks if the census module moves; if any member changes, RE-RUN this harness before pushing — never push a member that hasn't printed PASS at the head being pushed.
