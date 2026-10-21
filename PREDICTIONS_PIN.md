@@ -765,3 +765,15 @@ Pre-registered BEFORE the run. Claim-run, --source-root dag only.
    absent), [std.types/List] => Pending (present), [std.types/Set] => Fired (exact ref still
    absent; presence keyed on full (module_path, decl_name)).
  - BUILD_RC=0 (the new import gunbc.source_layout lives under the dag root: dag/gunbc/source_layout.dag).
+
+## Dispatch S2 — #14597 at review-83706 fixes (capability trigger + ledger row)
+Pre-registered BEFORE the run. Claim-run --source-root dag.
+ - New member the_dissolution_fires_only_when_the_capability_arrives PASSES: [] => Pending
+   (container_alias_declaration_rows absent on the real corpus), [std.types/container_alias_declaration_rows]
+   => Fired, [std.types/container_template_alias_rows] => Pending (same-module lookalike; presence is
+   exact-ref keyed). Verified facts: container_alias_declaration_rows ABSENT in std/types today;
+   container_template_alias_rows PRESENT (line 83) as the real lookalike.
+ - All other members unchanged vs S1: 13 PASS, kc_local_alias_of_the_carrier_admits_its_constructor
+   FAIL (pre-existing on origin/main).
+ - New ledger row file parses: gunbc run --entry <row file> --source-root dag => NoSuchFunction{main}
+   (parse+resolve OK; ledger rows have no main, that IS the pass signal — established in dispatch N).
