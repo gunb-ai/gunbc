@@ -896,6 +896,16 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
         TextCrossingHasNoImplicitRoute { expected: s(), got: s(), route: s(), span: no_span() },
+        GeneratedProviderUnavailable {
+            declaration: Rc::new(crate::std_decl_ref::DeclarationRef {
+                module_path: s(),
+                decl_name: s(),
+                field: Rc::new(crate::std_decl_ref::DeclField::WholeDeclaration),
+            }),
+            cause:
+                crate::std_generated_provider::GeneratedProviderUnavailableCause::UnavailableModuleAbsent,
+            span: no_span(),
+        },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -1364,6 +1374,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
             "TextCrossingHasNoImplicitRoute"
         }
+        CompilerDiagnostic::GeneratedProviderUnavailable { .. } => "GeneratedProviderUnavailable",
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1475,6 +1486,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             position.clone()
         }
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { declaration, .. } => {
+            format!("{}.{}", declaration.module_path, declaration.decl_name)
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),

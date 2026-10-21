@@ -6241,7 +6241,9 @@ mod compiler_tests {
                     graph,
                     std::rc::Rc::new(source_indices),
                     intern_table_p.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -6441,7 +6443,9 @@ mod compiler_tests {
                     norm.graph.clone(),
                     source_indices.clone(),
                     intern_table_fp.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_elapsed = t.elapsed();
                 let type_errors: usize = typed
                     .diagnostics

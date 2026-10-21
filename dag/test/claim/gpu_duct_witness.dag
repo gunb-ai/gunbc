@@ -49,12 +49,14 @@ test fn w_the_declared_a16_duct_is_admitted() -> Bool {
 }
 
 // THE CONNECTOR CLEARANCE IS CONSTRUCTION: no positive primitive of the printed duct reaches above
-// the window's band-side edge (Y = 0). Bounds are compared doubled to stay in integer micrometres.
+// the window's band-side edge (Y = 0), and none touches it: a face shared with the keep-out is
+// occupied clearance to the CAD check, which refused the flush plenum on 2026-10-21. Bounds are
+// compared doubled to stay in integer micrometres.
 test fn w_no_duct_material_enters_the_power_band() -> Bool {
   match a16_duct {
     GpuDuctAdmitted { parts: parts, interfaces: _, face: _ } =>
       all(filter(parts, p => p.id == "DUCT"), p => all(p.adds, q => match q {
-        Block { size: s, center: c } => 2 * signed_frame_component_count(c: c.y) + micrometer_count(m: s.size_y) <= 0
+        Block { size: s, center: c } => 2 * signed_frame_component_count(c: c.y) + micrometer_count(m: s.size_y) < 0
         RoundPrism { diameter: _, length: _, axis: _, center: _ } => false
       }))
     GpuDuctOutlineRefused { inference: _ } => false

@@ -1,0 +1,114 @@
+module v2.test.claim.callexec.bind_slot_eval
+
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two, dag_type_atom_node }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.std.compilers.body_lowering { lower_bind, lower_match }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
+import v2.std.node { Atom, Conj, MatchArmBodyEdge, MatchArmPatternEdge, Node, TypeNode, core_edge, node_synthetic }
+import v2.std.node { Symbol }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue, runtime_match_unimplemented }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS EVAL OF A BIND AND OF A MATCH, AT ITS OWN INTERFACE. eval reads the binder, value and body of a Bind
+// through the v2.std.node slot table (bind_slot_target); the input is SUPPLIED -- the shape lower_bind
+// builds. The value (1) and the body (2) differ, so a reader that takes the value slot for the body
+// answers 1, and one that takes the body slot for the value binds the wrong value.
+fn bse_bind() -> Node {
+  lower_bind(
+    key_binding: dag_type_atom_node(identity: ^bse_key),
+    value: dag_int_literal_fixture_one(),
+    body_binding: dag_int_literal_fixture_two()
+  )
+}
+
+fn bse_int(o: Outcome<RuntimeValue>) -> Optional<Int> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimePrimitive { value: p } =>
+          match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+            Accepted { value: n, diagnostics: _ } => optional_present(value: n)
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn bse_eval(root: Node) -> Optional<Int> {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: root)) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      bse_int(o: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: root)))
+  }
+}
+
+test fn a_bind_evaluates_to_its_body_not_its_value_holds() -> Bool {
+  match bse_eval(root: bse_bind()) {
+    Present { value: n } => n == 2
+    Absent => false
+  }
+}
+
+// The Match twin: eval reads the scrutinee through match_slot_target. v2_evaluator_interpretation's
+// choose_arm is runtime_reject_match_arm, so a Match can never evaluate to a value; what separates the
+// slots is WHERE it refuses. With the scrutinee `true` read correctly, eval reaches choose_arm and refuses
+// with runtime_match_unimplemented; a reader that took an arm slot for the scrutinee evaluates the arm's
+// Conj node instead and refuses for another reason. Infer admits the supplied Match (the second claim).
+fn bse_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: OccurrenceSynthetic,
+    children: []
+  }
+}
+
+fn bse_arm(pattern: Node, body: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [core_edge(marker: MatchArmPatternEdge, target: pattern), core_edge(marker: MatchArmBodyEdge, target: body)]
+  )
+}
+
+fn bse_match() -> Node {
+  lower_match(
+    scrutinee: bse_atom(s: ^dag_token_kw_true),
+    arms: [
+      bse_arm(pattern: bse_atom(s: ^dag_token_kw_true), body: dag_int_literal_fixture_one()),
+      bse_arm(pattern: bse_atom(s: ^dag_token_kw_false), body: dag_int_literal_fixture_two())
+    ]
+  )
+}
+
+fn bse_first_reason_is_match_unimplemented(o: Outcome<RuntimeValue>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == runtime_match_unimplemented
+  }
+}
+
+test fn a_match_scrutinee_is_evaluated_before_the_arm_is_chosen_holds() -> Bool {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: bse_match())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      bse_first_reason_is_match_unimplemented(
+        o: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: bse_match()))
+      )
+  }
+}
+
+test fn a_supplied_match_is_admitted_by_infer_holds() -> Bool {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: bse_match())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
