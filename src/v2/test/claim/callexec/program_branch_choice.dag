@@ -1,0 +1,41 @@
+module v2.test.claim.callexec.program_branch_choice
+
+import v2.extdeps.languages.dag { dag_type_atom_node }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_empty_environment }
+import v2.program { program_bool_value, program_choose_branch }
+import v2.std.compilers.body_lowering { lower_branch }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node, content_hash }
+
+// THE SUBJECT IS program_choose_branch AT ITS OWN INTERFACE. It chooses a Branch's then or else arm through
+// the v2.std.node slot table (branch_slot_target). The input is SUPPLIED: the shape lower_branch builds, with
+// the else arm EQUAL to the condition, so edge equality cannot tell the else slot from the condition slot
+// and the control is the slot: `true` chooses the then arm, `false` the else arm (the shared node).
+fn pbc_branch() -> Node {
+  lower_branch(
+    condition: dag_type_atom_node(identity: ^pbc_shared),
+    then_arm: dag_type_atom_node(identity: ^pbc_then),
+    else_arm: dag_type_atom_node(identity: ^pbc_shared)
+  )
+}
+
+fn pbc_chose(o: Outcome<Node>, expected: Node) -> Bool {
+  match o {
+    Accepted { value: n, diagnostics: _ } => content_hash(n: n) == content_hash(n: expected)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_true_condition_chooses_the_then_arm_holds() -> Bool {
+  pbc_chose(
+    o: program_choose_branch(node: pbc_branch(), condition: program_bool_value(is_true: true), _env: v2_eval_empty_environment()),
+    expected: dag_type_atom_node(identity: ^pbc_then)
+  )
+}
+
+test fn a_false_condition_chooses_the_else_arm_holds() -> Bool {
+  pbc_chose(
+    o: program_choose_branch(node: pbc_branch(), condition: program_bool_value(is_true: false), _env: v2_eval_empty_environment()),
+    expected: dag_type_atom_node(identity: ^pbc_shared)
+  )
+}
