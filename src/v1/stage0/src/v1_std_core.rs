@@ -2345,10 +2345,6 @@ pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
-    n.span.clone()
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
     pub name: String,
@@ -2421,10 +2417,6 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         }
         __found
     })
-}
-
-pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
 #[derive(
@@ -3584,10 +3576,6 @@ pub fn transport_verb(
     )
 }
 
-pub fn transport_has_argv(t: Rc<Node>) -> bool {
-    ((t.children.clone().len() as i64) > 0)
-}
-
 pub fn is_rest_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4359,24 +4347,6 @@ pub fn service_config_properties(
     }
 }
 
-pub fn has_service_config(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for p in n.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "svc_endpoint".to_string())
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn service_config_endpoint(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4395,17 +4365,6 @@ pub fn service_config_auth(
     find_property(
         n.properties.clone(),
         "svc_auth".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_rate_limit(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_rate_limit".to_string(),
         source_indices.clone(),
     )
 }
@@ -5404,13 +5363,6 @@ pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
         std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
-    match v1_rt::map_get(&table.index.clone(), s.clone()) {
-        Some(id) => id.clone(),
-        std::option::Option::None => 0,
     }
 }
 
