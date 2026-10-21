@@ -26,7 +26,8 @@ data sh_a_source: String = "module sh.a\ntype Box { v: Int }\ntype Choice\n  = L
 data sh_b_source: String = "module sh.b\ntype Box { v: Int }\ntype Choice\n  = Lft { n: Int }\n  | Rgt\n"
 data sh_mk_source: String = "module sh.mk\nimport sh.b { Box, Choice }\nfn make_box() -> Box { Box { v: 1 } }\nfn make_choice() -> Choice { Rgt }\n"
 data sh_a_mk_source: String = "module sh.amk\nimport sh.a { Box, Choice }\nfn make_a_box() -> Box { Box { v: 1 } }\nfn make_a_choice() -> Choice { Right }\n"
-data sh_prelude: String = "module sh.entry\nimport sh.a { Box, Choice }\nimport sh.mk { make_box, make_choice }\nimport sh.amk { make_a_box, make_a_choice }\nfn sh_take_box(x: Box) -> Int { x.v }\nfn sh_take_choice(c: Choice) -> Int { 1 }\n"
+data sh_c_source: String = "module sh.c\ntype Pl { v: Int }\ntype Choice\n  = Wrap { p: Pl }\n  | Nil\nfn c_take(c: Choice) -> Int { 1 }\nfn c_mk_pl() -> Pl { Pl { v: 1 } }\nfn c_mk_choice() -> Choice { Wrap { p: Pl { v: 1 } } }\n"
+data sh_prelude: String = "module sh.entry\nimport sh.a { Box, Choice }\nimport sh.mk { make_box, make_choice }\nimport sh.amk { make_a_box, make_a_choice }\nimport sh.c { c_take, c_mk_pl, c_mk_choice }\nfn sh_take_box(x: Box) -> Int { x.v }\nfn sh_take_choice(c: Choice) -> Int { 1 }\n"
 
 fn sh_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -35,6 +36,7 @@ fn sh_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
       fixture_source("sh/b.dag", sh_b_source),
       fixture_source("sh/mk.dag", sh_mk_source),
       fixture_source("sh/amk.dag", sh_a_mk_source),
+      fixture_source("sh/c.dag", sh_c_source),
       fixture_source("sh/entry.dag", entry_source)
     ],
     entry: "sh/entry.dag"
@@ -112,4 +114,26 @@ test fn sh_same_declaration_at_a_return_type_is_accepted() -> Bool {
 
 test fn sh_same_declaration_at_a_record_field_is_accepted() -> Bool {
   sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "type ShHolder { b: Box }\nfn sh_use() -> ShHolder { ShHolder { b: make_a_box() } }\n")))
+}
+
+// RED: the FORMAL is declared in a module the caller does not import by that spelling. The caller's `Choice` is
+// sh.a's, which has no `Pl` payload; the callee's `Choice` is sh.c's, whose `Wrap` carries one. A `Pl` where the
+// callee's `Choice` is required is a payload where its parent is required, and must be judged against the callee's
+// declaration, not the caller's same-spelled one.
+test fn sh_payload_where_callee_parent_is_required_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { c_take(c: c_mk_pl()) }\n")))
+}
+
+// RED: a coproduct-typed record field whose value is another module's same-named coproduct.
+test fn sh_same_named_coproduct_at_a_record_field_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "type ShHolderC { c: Choice }\nfn sh_use() -> ShHolderC { ShHolderC { c: make_choice() } }\n")))
+}
+
+// Controls: the callee's own coproduct at its own formal, and the same declaration at a coproduct field.
+test fn sh_callee_coproduct_at_its_own_formal_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { c_take(c: c_mk_choice()) }\n")))
+}
+
+test fn sh_same_declaration_at_a_coproduct_field_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "type ShHolderC { c: Choice }\nfn sh_use() -> ShHolderC { ShHolderC { c: make_a_choice() } }\n")))
 }
