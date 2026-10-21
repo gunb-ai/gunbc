@@ -91,7 +91,7 @@ import v2.std.node {
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_any_char_in, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
+import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, map_lookup, collection_concat_shape }
 import std.host_text { chars }
 
 type TargetSemanticDeclDecorationLine {
@@ -2770,14 +2770,15 @@ fn target_semantic_decl_field_doc_key(entry: TargetSemanticDeclFieldDoc, name: S
   }
 }
 
-fn target_semantic_decl_record_has_field(record: Node, field: Symbol) -> Bool {
+// The record's field names, built once: membership is then a lookup, not a walk of the children.
+fn target_semantic_decl_record_field_names(record: Node) -> Map<Symbol, Bool> {
   fold_list(
     xs: record.children,
-    empty: false,
+    empty: empty_map(),
     cons: fn(acc, e) {
-      acc || match declared_field_from_edge(e: e) {
-        Present { value: binder } => binder.name == field
-        Absent => false
+      match declared_field_from_edge(e: e) {
+        Present { value: binder } => map_insert(m: acc, key: binder.name, value: true)
+        Absent => acc
       }
     }
   )
@@ -2790,54 +2791,41 @@ fn target_semantic_decl_documentation_fields_admitted(
   name: Symbol,
   record: Node
 ) -> Outcome<Node> {
-  fold_list(
-    xs: documentation.fields,
-    empty: outcome_accepted(value: record),
-    cons: fn(acc_o, entry) {
-      bind_outcome(
-        o: acc_o,
-        f: fn(_) {
-          match target_semantic_decl_field_doc_key(entry: entry, name: name) {
-            Absent =>
-              outcome_rejected(d: Diagnostic {
-                reason: ^target_semantic_decl_field_doc_unknown_field,
-                at: node_locus(node: record),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              })
-            Present { value: key } =>
-              if !target_semantic_decl_record_has_field(record: record, field: key) {
-                outcome_rejected(d: Diagnostic {
-                  reason: ^target_semantic_decl_field_doc_unknown_field,
-                  at: node_locus(node: record),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                })
-              } else if target_semantic_decl_field_doc_count(entries: documentation.fields, name: name, key: key) > 1 {
-                outcome_rejected(d: Diagnostic {
-                  reason: ^target_semantic_decl_field_doc_duplicate,
-                  at: node_locus(node: record),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                })
-              } else {
-                outcome_accepted(value: record)
-              }
+  let fields = target_semantic_decl_record_field_names(record: record)
+  bind_outcome(
+    o: fold_list(
+      xs: documentation.fields,
+      empty: outcome_accepted(value: empty_map()),
+      cons: fn(acc_o, entry) {
+        bind_outcome(
+          o: acc_o,
+          f: fn(seen) {
+            match target_semantic_decl_field_doc_key(entry: entry, name: name) {
+              Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+              Present { value: key } =>
+                match map_lookup(m: fields, key: key) {
+                  Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+                  Present { value: _ } =>
+                    match map_lookup(m: seen, key: key) {
+                      Present { value: _ } => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_duplicate, record: record)
+                      Absent => outcome_accepted(value: map_insert(m: seen, key: key, value: true))
+                    }
+                }
+            }
           }
-        }
-      )
-    }
+        )
+      }
+    ),
+    f: fn(_) { outcome_accepted(value: record) }
   )
 }
 
-fn target_semantic_decl_field_doc_count(entries: List<TargetSemanticDeclFieldDoc>, name: Symbol, key: Symbol) -> Int {
-  fold_list(
-    xs: entries,
-    empty: 0,
-    cons: fn(acc, e) {
-      match target_semantic_decl_field_doc_key(entry: e, name: name) {
-        Present { value: k } => if k == key { acc + 1 } else { acc }
-        Absent => acc
-      }
-    }
-  )
+fn target_semantic_decl_field_doc_refused(reason: Symbol, record: Node) -> Outcome<Map<Symbol, Bool>> {
+  outcome_rejected(d: Diagnostic {
+    reason: reason,
+    at: node_locus(node: record),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 fn target_semantic_decl_field_doc_lines(edge: Edge, name: Symbol, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
