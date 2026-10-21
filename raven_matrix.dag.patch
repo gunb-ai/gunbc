@@ -1,0 +1,23 @@
+diff --git a/dag/std/realization_measurement.dag b/dag/std/realization_measurement.dag
+index 6ff5fdb..74d6fd3 100644
+--- a/dag/std/realization_measurement.dag
++++ b/dag/std/realization_measurement.dag
+@@ -402,3 +402,18 @@ fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Tim
+     }
+   }
+ }
++
++// RAVEN MATRIX (scratch branch agent/v1-param-binder-probe only; never merged; named so it can be
++// re-run). The wall matrix, hosted in std.realization_measurement because that module is ALREADY
++// AbandonedBeforeItems at main by its 20 correct forwarded-parameter refusals -- mounting here is
++// neutral to the abandonment this probe measures elsewhere. DISTINCT parameter names so no two
++// shapes share a binder. POSITIVES must be admitted; NEGATIVES must refuse under their own class.
++type RavenPosFwd<Qf: Quantity, Sf: Scale> { a: Measure<Qf, Sf, Nat> }
++type RavenPosVariant<Pv: Quantity, Sv: Scale>
++  = RavenVariantOne { value: Measure<Pv, Sv, Nat> }
++  | RavenVariantTwo { value: Measure<Pv, Sv, Nat> }
++fn raven_pos_fn<Pfn: Quantity, Sfn: Scale>(x: Measure<Pfn, Sfn, Nat>) -> Measure<Pfn, Sfn, Nat> { x }
++type RavenNegBad<Qbad: Scale> { a: Measure<Qbad, Nat, Nat> }
++type RavenNegScaleBad<Ssbad: Quantity> { a: Measure<Nat, Ssbad, Nat> }
++type RavenNegUnkinded<Quk> { a: Measure<Quk, Nat, Nat> }
++type RavenNegScaleUnkinded<Qsuk> { a: Measure<Nat, Qsuk, Nat> }
