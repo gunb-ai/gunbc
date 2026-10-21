@@ -262,9 +262,9 @@ fn infer_no_arm_declares_a_type_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+fn infer_arms_declare_conflicting_types_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^infer_branch_arm_type_mismatch,
+    reason: ^infer_arms_declare_conflicting_types,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -2542,7 +2542,7 @@ fn infer_unify_branch_arm_types(
           if infer_branch_type_atoms_equal(a: then_type, b: else_type) {
             Accepted { value: then_type, diagnostics: None }
           } else {
-            outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
+            outcome_rejected(infer_arms_declare_conflicting_types_diagnostic(node: then_node))
           }
       }
   }

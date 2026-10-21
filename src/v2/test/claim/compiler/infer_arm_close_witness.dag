@@ -123,7 +123,7 @@ fn rb_b3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(o: Int?) -> Int? 
 test fn rb_b3_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b3()) }
 
 fn rb_b4() -> Outcome<ResolvedTree> { ers_assemble(body: "type Row {\n  f: Int?\n}\n\ntype Cell {\n  c: Int?\n}\n\nfn t(r: Row, e: Cell) -> Row {\n  let x = if true { r } else { e }\n  r\n}\n") }
-test fn rb_b4_has_branch_arm_type_mismatch() -> Bool { ers_has(o: rb_b4(), reason: ^infer_branch_arm_type_mismatch) }
+test fn rb_b4_has_arms_declare_conflicting_types() -> Bool { ers_has(o: rb_b4(), reason: ^infer_arms_declare_conflicting_types) }
 
 fn rb_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
 test fn rb_planted_count_is_1() -> Bool { ers_error_count(o: rb_planted()) == 1 }
@@ -137,3 +137,28 @@ fn rb_resolved(o: Outcome<ResolvedTree>) -> Bool {
 
 fn rb_b5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { Absent }\n  x\n}\n") }
 test fn rb_b5_refuses_no_arm_declares() -> Bool { ers_has(o: rb_b5(), reason: ^infer_no_arm_declares_a_type) }
+
+// Mixed-state arms: an Int arm beside an Absent arm. Absent is underived, so it is elaborated at the declaring sibling's type (Int),
+// where it is the ordinary literal-at-expected refusal. The Optional control beside it accepts through the same join.
+fn rb_g1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { 1 } else { Absent }\n  x\n}\n") }
+test fn rb_g1_int_beside_absent_refuses() -> Bool { ers_has(o: rb_g1(), reason: ^infer_arms_declare_conflicting_types) }
+test fn rb_g1_the_optional_sibling_control_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
+
+// [] control (RED on the real path, flips with Rule A part 2). Native `[]` mints no type of its own yet, so the arm FAILS grounding
+// (infer_grounding_not_derived) before the join can hold it: neither [1]/[] nor []/[] reaches the declaring-sibling elaboration.
+// Rule A part 2 (the expected return seeds the instantiation: [] mints FreeMonoid of a constructor-use variable) is what makes
+// these accept / refuse infer_no_arm_declares_a_type; these claims then flip and stay enrolled as regression controls.
+fn rb_l1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [1] } else { [] }\n}\n") }
+test fn rb_l1_empty_beside_list_refuses_grounding_until_rule_a_part_2() -> Bool { ers_has(o: rb_l1(), reason: ^infer_grounding_not_derived) }
+fn rb_l2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { [] }\n  x\n}\n") }
+test fn rb_l2_two_empties_refuse_grounding_until_rule_a_part_2() -> Bool { ers_has(o: rb_l2(), reason: ^infer_grounding_not_derived) }
+
+// Cost bound: arm nesting depth 1/2/4/8. The instrument is claim_batch's per-claim eval_steps receipt; the four claims differ only in depth.
+fn rb_d1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { Present { value: 1 } }\n}\n") }
+test fn rb_d1_depth_1_accepts() -> Bool { ers_infer_accepted(o: rb_d1()) }
+fn rb_d2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { Present { value: 1 } } }\n}\n") }
+test fn rb_d2_depth_2_accepts() -> Bool { ers_infer_accepted(o: rb_d2()) }
+fn rb_d4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { Present { value: 1 } } } } }\n}\n") }
+test fn rb_d4_depth_4_accepts() -> Bool { ers_infer_accepted(o: rb_d4()) }
+fn rb_d8() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { Present { value: 1 } } } } } } } } }\n}\n") }
+test fn rb_d8_depth_8_accepts() -> Bool { ers_infer_accepted(o: rb_d8()) }
