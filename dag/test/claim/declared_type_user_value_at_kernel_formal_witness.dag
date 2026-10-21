@@ -173,7 +173,7 @@ test fn ut_user_type_named_t_at_itself_still_compiles() -> Bool {
 // map_get_checked) carries the callee's uninstantiated parameter and is unjudged until pattern bindings carry the
 // instantiated type (C1.2c + C1.2d). These two are the positive controls for the keyed exclusion at the corpus shape.
 fn ut_find_first_binding_source() -> String {
-  "module ut.probe\n\nimport std.algebra { list_find_first }\nimport std.optional { Absent, Optional, Present, optional_absent, optional_present }\n\nfn probe(content: String) -> Optional<String> {\n  match list_find_first(xs: split(s: content, delimiter: \"\\n\"), predicate: fn(line) { starts_with(s: trim(line), prefix: \"module \") }) {\n    Absent => optional_absent()\n    Present { value: line } => optional_present(value: trim(line))\n  }\n}\n"
+  "module ut.probe\n\nimport std.algebra { list_find_first, trim }\nimport std.optional { Absent, Optional, Present, optional_absent, optional_present }\n\nfn probe(content: String) -> Optional<String> {\n  match list_find_first(xs: split(s: content, delimiter: \"\\n\"), predicate: fn(line) { starts_with(s: trim(line), prefix: \"module \") }) {\n    Absent => optional_absent()\n    Present { value: line } => optional_present(value: trim(line))\n  }\n}\n"
 }
 
 test fn ut_find_first_binding_at_string_formal_is_the_admitted_residual() -> Bool {
@@ -181,7 +181,7 @@ test fn ut_find_first_binding_at_string_formal_is_the_admitted_residual() -> Boo
 }
 
 fn ut_map_get_checked_binding_source() -> String {
-  "module ut.probe\n\nimport v2.std.witness { map_get_checked }\nimport std.optional { Present }\nimport v2.std.diagnostic { Accepted }\n\nfn probe(m: Map<String, String>, k: String) -> String {\n  match map_get_checked(m, k) {\n    Accepted { value: Present { value: v }, diagnostics: _ } => trim(v)\n    _ => k\n  }\n}\n"
+  "module ut.probe\n\nimport v2.std.witness { map_get_checked }\nimport std.algebra { trim }\nimport std.types { Map }\nimport std.optional { Present }\nimport v2.std.diagnostic { Accepted }\n\nfn probe(m: Map<String, String>, k: String) -> String {\n  match map_get_checked(m, k) {\n    Accepted { value: Present { value: v }, diagnostics: _ } => trim(v)\n    _ => k\n  }\n}\n"
 }
 
 test fn ut_map_get_checked_binding_at_string_formal_is_the_admitted_residual() -> Bool {
