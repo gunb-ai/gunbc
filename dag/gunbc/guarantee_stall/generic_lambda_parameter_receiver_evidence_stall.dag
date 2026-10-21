@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 // TWO FACTS MAKE THIS A STALL RATHER THAN AN AUTHORING MISTAKE, and neither alone would.
 // A record field declared fn(R) -> R, constructed at a site where R is concretely

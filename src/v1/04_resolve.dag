@@ -1032,16 +1032,6 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   }
 }
 
-fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
-  let value_result = resolve_expr_types(texpr: arg_value(n: arg), env: env, module_name: module_name)
-  let value_expr = value_result.expr
-  let value_diags = value_result.diagnostics
-  NamedArgResolveResult {
-    arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: env.source_indices), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
-    diagnostics: value_diags
-  }
-}
-
 fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> FieldInitResolveResult {
   let value_result = resolve_expr_types(texpr: field_init_node_value(n: field_init), env: env, module_name: module_name)
   let value_expr = value_result.expr
@@ -1049,51 +1039,6 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   FieldInitResolveResult {
     field_init: make_field_init_node(occurrence_identity: field_init.occurrence_identity, name: field_init_node_name_at(n: field_init, source_indices: env.source_indices), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
     diagnostics: value_diags
-  }
-}
-
-fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
-  let arm_g = arm_guard(n: arm)
-  let guard_result = match arm_g {
-    Present { value: guard } => Present { value: resolve_expr_types(texpr: guard, env: env, module_name: module_name) }
-    Absent => none
-  }
-  let guard_diags = match guard_result {
-    Present { value: result } => result.diagnostics
-    Absent => []
-  }
-  let body_result = resolve_expr_types(texpr: arm_body(n: arm), env: env, module_name: module_name)
-  let body_expr = body_result.expr
-  let body_diags = body_result.diagnostics
-  MatchArmResolveResult {
-    arm: make_arm_node(occurrence_identity: arm.occurrence_identity,
-      pattern: arm_pattern(n: arm),
-      guard: match guard_result {
-        Present { value: result } => Present { value: result.expr }
-        Absent => none
-      },
-      body: body_expr,
-      span: arm.span
-    ),
-    diagnostics: concat(guard_diags, body_diags)
-  }
-}
-
-fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> StringPartResolveResult {
-  match part {
-    Text { value: value } =>
-      StringPartResolveResult {
-        part: Text { value: value },
-        diagnostics: []
-      }
-    Interpolation { expr: expr } =>
-      let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
-      let resolved_expr = expr_result.expr
-      let expr_diags = expr_result.diagnostics
-      StringPartResolveResult {
-        part: Interpolation { expr: resolved_expr },
-        diagnostics: expr_diags
-      }
   }
 }
 

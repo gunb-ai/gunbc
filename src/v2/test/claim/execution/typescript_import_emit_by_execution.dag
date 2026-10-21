@@ -94,6 +94,7 @@ fn ts_import_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_import_witness_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),

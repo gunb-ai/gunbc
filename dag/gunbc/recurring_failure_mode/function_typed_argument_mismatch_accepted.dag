@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.function_typed_argument_mismatch_accepted
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data function_typed_argument_mismatch_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "function_typed_argument_mismatch_accepted" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a value that does not inhabit a function type is accepted where one is declared, and a function value is accepted where a nominal type is declared** (the v1 seed's direct-call argument checks and record-field checks in `v1.compiler.infer` use `type_node_is_callable` to EXEMPT callables from nominal brand and declared-type-obligation judgment, and no callable-specific judgment runs in their place.)",

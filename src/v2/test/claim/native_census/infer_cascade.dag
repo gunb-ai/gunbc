@@ -34,7 +34,11 @@ import v2.compiler.source_root_eval {
   native_census_roots_ranked,
   native_census_subject_closure,
   native_lane_file_refusal_index,
-  native_test_context_from_ingest
+  native_test_context_from_ingest,
+  census_occurrence_from_locus,
+  native_census_infer_member,
+  native_census_cause_groups_empty,
+  native_census_position_table_empty
 }
 import v2.compiler.resolve { ClosureProviderRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -43,13 +47,15 @@ import std.algebra { Cons, Empty, fold_list, length, list_map, empty_map, map_in
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, CorrectionNotModeled, DeclarationLocus, Diagnostic, NonEmptyDiagnostics, Rejected, Unavailable }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, DeclarationLocus, Diagnostic, Locus, NonEmptyDiagnostics, Rejected, Textual, Unavailable, WholeFile, node_locus }
 import std.types { List, Map }
-import std.optional { optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceRef }
+import std.content_hash { structural_content_hash }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -294,6 +300,7 @@ fn sv_member(module: String) -> NativeCensusCauseMember {
     module: optional_present(value: qualified_name_from_dotted_string(dotted: module)),
     head_reason: ^sv_head,
     at: FileRefusalAtUnresolvedNode,
+    occurrence: optional_absent(),
     cascade: NativeCensusCascadeNone
   }
 }
@@ -330,4 +337,126 @@ test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Boo
   let subject = native_census_subject_closure(index: index, modules: modules, label: "//v2/sv_s:all")
   sv_membership_is_inside(m: native_census_root_subject_membership(subject: subject, root: sv_member(module: "v2.sv_b")))
     && sv_membership_is_outside(m: native_census_root_subject_membership(subject: subject, root: sv_member(module: "v2.sv_u")))
+}
+
+// ── the occurrence column of a cause-group row (T2.5-B) ──
+//
+// A cause-group row that carries NO node identity cannot be located: the ranking report could name a
+// refusal's reason and path but not the authored occurrence it refuses at. Three controls below
+// close that. THE ROUTE CLAIM (census_infer_member_carries_the_authored_occurrence_b_side_holds)
+// runs the real census-infer route and demands the occurrence be PRESENT on the b-side resolve root
+// the route files (dropping the fatal read at its populate site -- the root member at add_module --
+// reds it). THE SUPPLIED-VALUE CLAIM (census_infer_member_populate_reads_the_fatal_occurrence_holds)
+// runs native_census_infer_member over a chain of its own, so the a-side populate site (the cascade
+// member at add_infer_module) is red-proved there: it fails if that site drops the fatal read or
+// keys the chain's head instead of its fatal. THE KEYING CLAIM
+// (census_occurrence_keying_rule_is_the_authored_one_holds) supplies the four identity arms directly, because which occurrence a node
+// ANSWERS FOR is a decision, not a production: the projected and pending arms must follow the cause,
+// and the older own-id projection (node_occurrence_id_optional) answers 900 where the authored answer
+// is 7 -- supplied values make that disagreement a fact the claim checks rather than a reading.
+
+fn occurrence_is_present(occurrence: Optional<OccurrenceId>) -> Bool {
+  match occurrence {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn occurrence_is_id(occurrence: Optional<OccurrenceId>, id: Int) -> Bool {
+  match occurrence {
+    Present { value: o } => o.value == id
+    Absent => false
+  }
+}
+
+// THE POPULATE SITE ITSELF, SUPPLIED. The route claim above checks the b-side root member only,
+// because the real route's a-side infer member no longer exists on current main: the refusal that
+// used to be filed at infer is now filed at resolve, so no route run produces an a-side infer member
+// to read the column from. That dropped rung is carried, with its next-rung trigger, by the typed row
+// gunbc.recurring_failure_mode.census_row_shape_moved_without_moving_its_consumer (a census row's
+// shape moved and its consumers were left reading the old fact; the three cascade claims that observe
+// the move are named there with their measured cells), not by this comment. So the a-side column is
+// checked at the producer rather than through the drifted fixture, per this file's own rule that every
+// non-route control supplies values to the decision it judges. The chain's LAST diagnostic is a node refusal at a minted node, so
+// the fatal the populate site reads must carry that occurrence; its HEAD is a declaration locus, which
+// the site must NOT key (a head-keyed member would be Absent). RED if the populate site drops the
+// fatal read, keys the head instead of the fatal, or files the column absent.
+fn sv_node_fatal_node(id: Int) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^sv_head } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: id } } }
+}
+
+fn sv_fatal_at(at: Locus, head: Symbol) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics { head: Diagnostic { reason: head, at: DeclarationLocus { declaration: [] }, correction: Unavailable { reason: CorrectionNotModeled } }, tail: [ Diagnostic { reason: ^infer_reason_projection_receiver_declaration_unavailable, at: at, correction: Unavailable { reason: CorrectionNotModeled } } ] }
+}
+
+fn sv_infer_member_occurrence(chain: NonEmptyDiagnostics) -> Optional<OccurrenceId> {
+  let groups = native_census_infer_member(
+    groups: native_census_cause_groups_empty(resolves: false),
+    positions: native_census_position_table_empty(),
+    fatal_reason: ^infer_reason_projection_receiver_declaration_unavailable,
+    entry: NativeCensusModule { module: "v2.sv_a", path: ^sv_a_cu },
+    chain: chain,
+    cascade: NativeCensusCascadeNone
+  )
+  match native_census_cause_group_rows(groups: groups) {
+    Cons { head: g, tail: _ } =>
+      match g.members {
+        Cons { head: m, tail: _ } => m.occurrence
+        Empty => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+test fn census_infer_member_populate_reads_the_fatal_occurrence_holds() -> Bool {
+  occurrence_is_id(
+    occurrence: sv_infer_member_occurrence(chain: sv_fatal_at(at: node_locus(node: sv_node_fatal_node(id: 4109)), head: ^sv_head)),
+    id: 4109
+  )
+    && match sv_infer_member_occurrence(chain: sv_fatal_at(at: Textual { file: ^sv_empty, extent: WholeFile }, head: ^sv_head)) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn census_infer_member_carries_the_authored_occurrence_b_side_holds() -> Bool {
+  match infer_cascade_census() {
+    InferCensusContextRefused => false
+    InferCensusReported { walls: w, a_members: _, roots: roots } =>
+      w == 1
+        && match roots {
+          Cons { head: m, tail: rest } =>
+            length(xs: rest) == 0
+              && m.path == ^census_infer_b_cu
+              && infer_stage_is(stage: m.stage, infer: false)
+              && occurrence_is_present(occurrence: m.occurrence)
+          Empty => false
+        }
+  }
+}
+
+// THE KEYING IS THE AUTHORED OCCURRENCE, NOT THE NODE'S OWN LATEST ID. Minted answers with its id;
+// Projected and Pending answer with the cause's occurrence (the parse-minted one the SpanIndex keys
+// on), NOT the later-stage id the older own-id projection would have answered; Synthetic and every
+// non-node Locus answer Absent. RED if the projected arm answered its own id (the own-id projection
+// returning 900 here), if the pending arm answered Absent (the own-id projection does), or if a
+// synthetic node answered with anything.
+test fn census_occurrence_keying_rule_is_the_authored_one_holds() -> Bool {
+  let scope = structural_content_hash(digest: "0000000000000007")
+  let authored = ScopedOccurrenceRef { scope: scope, occurrence: OccurrenceId { value: 7 } }
+  let minted = Node { kind: TypeNode { connective: Atom { identity: ^sv_head } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 4109 } } }
+  let projected = Node { kind: TypeNode { connective: Atom { identity: ^sv_head } }, children: [], occurrence_id: OccurrenceProjected { id: OccurrenceId { value: 900 }, caused_by: authored } }
+  let pending = Node { kind: TypeNode { connective: Atom { identity: ^sv_head } }, children: [], occurrence_id: OccurrencePending { caused_by: OccurrenceId { value: 7 } } }
+  let synthetic = Node { kind: TypeNode { connective: Atom { identity: ^sv_head } }, children: [], occurrence_id: OccurrenceSynthetic }
+  occurrence_is_id(occurrence: census_occurrence_from_locus(at: node_locus(node: minted)), id: 4109)
+    && occurrence_is_id(occurrence: census_occurrence_from_locus(at: node_locus(node: projected)), id: 7)
+    && occurrence_is_id(occurrence: census_occurrence_from_locus(at: node_locus(node: pending)), id: 7)
+    && match census_occurrence_from_locus(at: node_locus(node: synthetic)) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match census_occurrence_from_locus(at: Textual { file: ^sv_empty, extent: WholeFile }) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }

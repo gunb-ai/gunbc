@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.modifier_accepted_on_a_shape_its_check_cannot_see
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data modifier_accepted_on_a_shape_its_check_cannot_see: RecurringFailureMode = RecurringFailureMode {
   identity: "modifier_accepted_on_a_shape_its_check_cannot_see" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**modifier accepted on a shape its check cannot see** (a declaration-site modifier that names a guarantee parses on a shape the enforcing pass never inspects, so the modifier is present, the source reads as walled, and nothing enforces it.",
