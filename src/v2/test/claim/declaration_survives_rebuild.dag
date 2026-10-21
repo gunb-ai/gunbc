@@ -13,7 +13,7 @@ import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome, outcome_accepted }
 import v2.std.node { Authored, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, symbol_lexeme }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -80,6 +80,17 @@ fn three_declared(base: List<String>) -> Bool {
   all_present(wanted: ["[alpha=", "[beta="], in_text: joined(xs: base))
 }
 
+fn verdict_of(base: List<String>, resolved_root: Node, inferred_root: Node) -> ProcessExit {
+  if three_declared(base: base) {
+    match stage_verdict(stage: "resolve", base: base, root: resolved_root) {
+      ExitSuccess => stage_verdict(stage: "infer", base: base, root: inferred_root)
+      failed => failed
+    }
+  } else {
+    ExitFailure { code: 1, reason: "normalize did not carry alpha and beta declarations: " + joined(xs: base) }
+  }
+}
+
 test fn declaration_survives_resolve_and_infer() -> ProcessExit {
   let lm = dag_language_model()
   match bind_outcome(
@@ -101,14 +112,7 @@ test fn declaration_survives_resolve_and_infer() -> ProcessExit {
                         o: discharge_refinement_obligations(t: obligated),
                         f: fn(inferred) {
                           let base = declaration_rows(acc: [], node: normalized.root)
-                          if three_declared(base: base) {
-                            match stage_verdict(stage: "resolve", base: base, root: resolved.root) {
-                              ExitSuccess => stage_verdict(stage: "infer", base: base, root: inferred.root)
-                              failed => failed
-                            }
-                          } else {
-                            ExitFailure { code: 1, reason: "normalize did not carry alpha and beta declarations: " + joined(xs: base) }
-                          }
+                          outcome_accepted(value: verdict_of(base: base, resolved_root: resolved.root, inferred_root: inferred.root))
                         }
                       )
                     }
