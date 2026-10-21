@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry: RecurringFailureMode = RecurringFailureMode {
   identity: "a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**A CARRIER DECLARED AS AN ALGEBRAIC STRUCTURE THAT LACKS AN OPERATION, WHILE THE OPERATION REMAINS WRITABLE ON IT AND ANSWERS OUTSIDE THE STRUCTURE'S CARRIER SET** (INVALID STATE: std.nat declares `Nat = CommutativeSemiring<Magnitude>`. A semiring is precisely a ring WITHOUT additive inverses -- the absence of subtraction is not an omission from the declaration, it IS the declaration. Yet `a - b` for `b > a` is writable on two Nats, typechecks, and evaluates to a NEGATIVE value which is then carried in Nat-typed positions. HARM: the type name is read by every author as the guarantee it names, so nonnegativity is assumed at exactly the sites that never check it. The value does not trap, does not saturate, and does not refuse -- it flows onward as an ordinary number, so the first observable consequence is arbitrarily far from the subtraction, and a comparison against a lower bound silently answers for a quantity that cannot exist.",

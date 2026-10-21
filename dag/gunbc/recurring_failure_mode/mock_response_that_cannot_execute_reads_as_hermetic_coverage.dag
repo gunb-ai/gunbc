@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.mock_response_that_cannot_execute_reads_as_h
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data mock_response_that_cannot_execute_reads_as_hermetic_coverage: RecurringFailureMode = RecurringFailureMode {
   identity: "mock_response_that_cannot_execute_reads_as_hermetic_coverage" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "**a mock_response that cannot execute refuses before producing its modeled response, so the hermetic route supplies zero evidence while the operation reads as hermetically covered** (INVALID STATE: an operation's mock_response carries a construction the hermetic replay cannot evaluate -- here, an interpolation of the operation's input variable into a canned output string, which the replay evaluates in an environment that binds no inputs -- so every hermetic call refuses with a NoSuchVariable diagnostic and the success arm is never produced. The arm is present, well-formed, and cited, and it has never once run.",
     "SPECIMEN: extdeps.crypto.hash crypto.Sha256Sum.File, whose success arm put the input path in braces as the second column of its canned sha256sum line. It is the only interpolating arm among the mock_response occurrences under dag/extdeps on main at a4b21cb8e47 (a bounded population of one, so no sweep follows from this row). The arm is repaired to a literal on gunbc#10972 by lane lively-ibex-812, and that repair is not this row's.",

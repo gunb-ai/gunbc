@@ -5,16 +5,8 @@ import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable,
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
 }
-import gunbc.guarantee_stall {
-  GuaranteeStall,
-  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
-  BoundedPopulation, UncountedNotEnumerable,
-  stall_is_below_ceiling, stall_report_message,
-  every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
-  NextRungTrigger, climbs_when, climbs_when_awaiting,
-  TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent,
-  stall_trigger_admission, every_stall_trigger_is_admitted,
-}
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling, stall_report_message, every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size, NextRungTrigger, climbs_when, climbs_when_awaiting, stall_trigger_admission, every_stall_trigger_is_admitted }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
@@ -36,22 +28,22 @@ data control_stall: GuaranteeStall = GuaranteeStall {
   subject: "control.stall.subject",
   current: StructurallyGuaranteed,
   ceiling: StructurallyGuaranteed,
-  blocker: CannotClimbFurther { why: "control why" },
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
   population: BoundedPopulation { members: ["control.stall.member"] },
   next_rung_trigger: climbs_when(capability: "control stall trigger")
 }
 
-// THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
-// and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
-test fn stall_permanence_follows_the_blocker() -> Bool {
+// THE BLOCKER FOLD READS THE ARM, in both directions. A stall is below its ceiling by definition, so
+// "cannot climb further" is not an arm here (gunbc.rung_climb ClimbBlocker): the control is the
+// grounding arm and the live row the unbuilt arm, and a fold stuck at either constant is a
+// different defect, so one assertion sees only one of them.
+test fn stall_blocker_fold_follows_the_arm() -> Bool {
   match control_stall.blocker {
-    CannotClimbFurther { why: _ } => true
-    AwaitsOneGrounding { grounding: _ } => false
     ClimbableButUnbuilt => false
-  } && match next_rung_trigger_enforcement_stall.blocker {
-    CannotClimbFurther { why: _ } => false
     AwaitsOneGrounding { grounding: _ } => true
+  } && match next_rung_trigger_enforcement_stall.blocker {
     ClimbableButUnbuilt => true
+    AwaitsOneGrounding { grounding: _ } => false
   }
 }
 

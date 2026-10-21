@@ -33,7 +33,7 @@ import std.witness_admission {
   witness_cadence_has_scheduled_route
 }
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, non_empty_to_list }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception_identities }
 
@@ -909,7 +909,7 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
 
 fn is_transitional_admission_row(entry: String, function: String) -> Bool {
   fold(
-    transitional_admission_exception_identities,
+    non_empty_to_list(xs: transitional_admission_exception_identities),
     init: false,
     f: fn(found, id) {
       found || (id == concat(entry, "::", function))
