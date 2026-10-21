@@ -411,10 +411,6 @@ fn cas_first_generation_absent_over(fs: FilesystemInterface, root: NonEmptyStr, 
   }
 }
 
-fn cas_first_generation_absent(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
-  cas_first_generation_absent_over(fs: local_filesystem, root: root, key: key)
-}
-
 fn cas_absence_unestablished(cause: String) -> CasUnreadableSlot {
   CasUnreadableReadRefused {
     detail: join(["an absent first generation is not an empty slot here: ", cause], "") as NonEmptyStr
@@ -429,10 +425,6 @@ fn cas_observe_slot_over(fs: FilesystemInterface, root: NonEmptyStr, key: NonEmp
     GenerationPresent { content: c } =>
       cas_probe_gallop_over(fs: fs, root: root, key: key, present: first, present_value: c)
   }
-}
-
-fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
-  cas_observe_slot_over(fs: local_filesystem, root: root, key: key)
 }
 
 // SLOT RETENTION IS DECLARED PER SLOT, AND THE DEFAULT IS TODAY'S BEHAVIOUR.
@@ -608,16 +600,6 @@ fn cas_observe_retained_slot_over(fs: FilesystemInterface, root: NonEmptyStr, ke
     KeepAllGenerations => cas_observe_slot_over(fs: fs, root: root, key: key)
     KeepGenerationWindow { window: _ } => cas_observe_window(fs: fs, root: root, key: key)
   }
-}
-
-fn cas_observe_retained_slot(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> CasSlotProbe
-  admit_callers: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_retained"),
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_owner_only_failed_publication"),
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
-  ]
-{
-  cas_observe_retained_slot_over(fs: local_filesystem, root: root, key: key, retention: retention)
 }
 
 fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
@@ -1144,19 +1126,6 @@ fn cas_compare_and_set_outcome_over(
           }
       }
   }
-}
-
-fn cas_compare_and_set_outcome(
-  root: NonEmptyStr,
-  publication: CasGenerationPublication,
-  retention: CasSlotRetention,
-  verified: VerifiedCasAttempt,
-) -> CasOutcome<NonEmptyStr>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
-  ]
-{
-  cas_compare_and_set_outcome_over(fs: local_filesystem, root: root, publication: publication, retention: retention, verified: verified)
 }
 
 // RECLAMATION FOLLOWS THE WRITER'S OWN COMMIT, AND IT CANNOT FAIL THE COMMIT.

@@ -65,7 +65,7 @@ data absent_reads_identically_to_never_looked: RecurringFailureMode = RecurringF
   ],
 
   evidence: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_first_generation_absent"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_first_generation_absent_over"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "an_established_empty_root_reads_the_slot_absent_by_real_execution"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_capture_absence_for_attempt"),
