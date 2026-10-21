@@ -2133,43 +2133,66 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             return Err(format_error_nodes(&diagnostics, &source_indices));
         }
         super::provider_acquire::ClosureProviderStep::Acquire(modules) => {
+            // The acquired provider's closure is built from the source the index already holds -- the
+            // same import walk and reference fixpoint an entry's closure takes -- so no byte is read
+            // from disk here and no read can fail.
             let extended = super::provider_acquire::extend_with_acquired(
                 sources.clone(),
                 &modules,
                 &|module: &str| {
-                    let provider = index.source_files.get(module).cloned().ok_or_else(|| {
-                        format!(
-                            "generated provider acquisition: the pool answered for '{module}' \
-                             and then had no source for it"
-                        )
-                    })?;
-                    // The pool stores workspace-relative paths; name the provider absolutely so
-                    // its closure does not depend on the process's current directory.
-                    let on_disk = super::process_workspace_root().join(&provider.path);
-                    load_sources_for_entry_with_pool(index, &on_disk.to_string_lossy())
+                    let provider = index
+                        .source_files
+                        .get(module)
+                        .cloned()
+                        .ok_or(super::provider_acquire::ClosureOfError::Unreadable)?;
+                    let walked = resolve_transitively(
+                        vec![provider],
+                        &index.source_files,
+                        &index.module_graph_facts,
+                    )
+                    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
+                    extend_sources_to_both_closure_fixpoint(walked, index)
+                        .map_err(super::provider_acquire::ClosureOfError::Closure)
                 },
             )?;
-            let merged = match extended {
-                Some(merged) => merged,
-                None => match super::provider_acquire::stalled(&provider_demands, &modules) {
-                    super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
-                        return Err(format_error_nodes(&diagnostics, &source_indices));
+            let typed_refusal = match extended {
+                super::provider_acquire::Extension::Extended(merged) => {
+                    let acquired = resolved_graph_from_sources_with_index(
+                        index,
+                        merged,
+                        phase_label,
+                        memo_share,
+                    )?;
+                    // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose
+                    // pool is immutable for the index's lifetime, so the post-acquisition graph is the
+                    // answer for this subject in this run. No persisted or cross-process key is minted.
+                    if memo_share == ResolvedGraphMemoShare::Memoize {
+                        index
+                            .resolved_graph_memo
+                            .borrow_mut()
+                            .insert(subject.clone(), acquired.clone());
                     }
-                    _ => unreachable!("a stalled acquisition always refuses"),
-                },
+                    return Ok(acquired);
+                }
+                super::provider_acquire::Extension::Stalled => {
+                    super::provider_acquire::stalled(&provider_demands, &modules)
+                }
+                super::provider_acquire::Extension::Unreadable(failed) => {
+                    super::provider_acquire::unreadable(
+                        &provider_demands,
+                        typed.modules.clone(),
+                        typed.diagnostics.clone(),
+                        source_indices.clone(),
+                        &failed,
+                    )
+                }
             };
-            let acquired =
-                resolved_graph_from_sources_with_index(index, merged, phase_label, memo_share)?;
-            // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose pool is
-            // immutable for the index's lifetime, so the post-acquisition graph is the answer for
-            // this subject in this run. No persisted or cross-process key is minted here.
-            if memo_share == ResolvedGraphMemoShare::Memoize {
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject.clone(), acquired.clone());
+            match typed_refusal {
+                super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
+                    return Err(format_error_nodes(&diagnostics, &source_indices));
+                }
+                _ => unreachable!("a stalled or unreadable acquisition always refuses"),
             }
-            return Ok(acquired);
         }
     }
 

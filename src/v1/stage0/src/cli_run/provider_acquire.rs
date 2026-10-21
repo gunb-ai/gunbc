@@ -131,7 +131,10 @@ fn step_outcome(step: Rc<ProviderAcquisitionStep>) -> ClosureProviderStep {
 pub(crate) fn compile_to_provider_fixed_point(
     sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
     pool: &dyn Fn(&str) -> PoolAnswer,
-    closure_of: &dyn Fn(&str) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String>,
+    closure_of: &dyn Fn(
+        &str,
+    )
+        -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, ClosureOfError>,
 ) -> Result<Rc<crate::v1_compiler_compile::ResolvedPipelineResult>, String> {
     let mut sources = sources;
     loop {
@@ -159,43 +162,94 @@ pub(crate) fn compile_to_provider_fixed_point(
             ClosureProviderStep::Complete => return Ok(resolved),
             ClosureProviderStep::Refused(diagnostics) => return Ok(refused(diagnostics)),
             ClosureProviderStep::Acquire(modules) => {
-                match extend_with_acquired(sources.clone(), &modules, closure_of)? {
-                    Some(extended) => sources = extended,
-                    None => match stalled(&resolved.provider_demands, &modules) {
-                        ClosureProviderStep::Refused(diagnostics) => {
-                            return Ok(refused(diagnostics))
+                let typed_refusal =
+                    match extend_with_acquired(sources.clone(), &modules, closure_of)? {
+                        Extension::Extended(extended) => {
+                            sources = extended;
+                            continue;
                         }
-                        _ => unreachable!("a stalled acquisition always refuses"),
-                    },
+                        Extension::Stalled => stalled(&resolved.provider_demands, &modules),
+                        Extension::Unreadable(failed) => unreadable(
+                            &resolved.provider_demands,
+                            graph.modules.clone(),
+                            resolved.diagnostics.clone(),
+                            resolved.source_indices.clone(),
+                            &failed,
+                        ),
+                    };
+                match typed_refusal {
+                    ClosureProviderStep::Refused(diagnostics) => return Ok(refused(diagnostics)),
+                    _ => unreachable!("a stalled or unreadable acquisition always refuses"),
                 }
             }
         }
     }
 }
 
+/// WHY A PROVIDER'S CLOSURE COULD NOT JOIN. A read failure is the model's ModuleUnreadable, decided by
+/// re-judging the closure with that module answered Unreadable; anything else is an ordinary closure
+/// failure (the provider's own imports did not resolve), loud and located like any other.
+pub(crate) enum ClosureOfError {
+    Unreadable,
+    Closure(String),
+}
+
+/// What one acquisition step produced.
+pub(crate) enum Extension {
+    Extended(Vec<Rc<crate::v1_compiler_compile::SourceFile>>),
+    /// The pools' closures added nothing: the model's AcquisitionMadeNoProgress ([`stalled`]).
+    Stalled,
+    /// This module's source could not be read: the model's ModuleUnreadable ([`unreadable`]).
+    Unreadable(String),
+}
+
 /// ONE ACQUISITION STEP FOR EVERY BUILDER: each acquired module's own closure joins the sources,
-/// deduplicated by path. `None` when the extension added nothing: the model only asks for modules
-/// outside the closure, so an empty extension is a stalled acquisition, which the caller refuses
-/// through [`stalled`] (the model's AcquisitionMadeNoProgress), never by looping. An `Err` is the
-/// provider's own closure failing to load -- an ordinary closure error, loud and located.
+/// deduplicated by path. Neither an empty extension nor a read failure is decided here: both are
+/// returned typed and refused through the model, never looped on and never rendered as prose.
 pub(crate) fn extend_with_acquired(
     sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
     modules: &[String],
-    closure_of: &dyn Fn(&str) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String>,
-) -> Result<Option<Vec<Rc<crate::v1_compiler_compile::SourceFile>>>, String> {
+    closure_of: &dyn Fn(
+        &str,
+    )
+        -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, ClosureOfError>,
+) -> Result<Extension, String> {
     let mut sources = sources;
     let before = sources.len();
     for module in modules {
-        for s in closure_of(module)? {
+        let closure = match closure_of(module) {
+            Ok(closure) => closure,
+            Err(ClosureOfError::Unreadable) => return Ok(Extension::Unreadable(module.clone())),
+            Err(ClosureOfError::Closure(cause)) => return Err(cause),
+        };
+        for s in closure {
             if !sources.iter().any(|x| x.path == s.path) {
                 sources.push(s);
             }
         }
     }
     Ok(if sources.len() == before {
-        None
+        Extension::Stalled
     } else {
-        Some(sources)
+        Extension::Extended(sources)
+    })
+}
+
+/// The model's refusal for a provider whose source the pool named but could not read: the same
+/// closure judged again with that module answered Unreadable.
+pub(crate) fn unreadable(
+    demands: &ProviderDemands,
+    modules: Rc<im::Vector<Rc<TypedModule>>>,
+    diagnostics: Rc<im::Vector<Rc<ErrorNode>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    failed: &str,
+) -> ClosureProviderStep {
+    judge_closure(demands, modules, diagnostics, source_indices, &|m: &str| {
+        if m == failed {
+            PoolAnswer::Unreadable
+        } else {
+            PoolAnswer::Lacks
+        }
     })
 }
 
@@ -227,6 +281,14 @@ mod tests {
             site,
         );
         Rc::new(im::vector![demand])
+    }
+
+    fn extended_sources(e: Extension) -> Vec<Rc<SourceFile>> {
+        match e {
+            Extension::Extended(sources) => sources,
+            Extension::Stalled => panic!("expected an extension, got Stalled"),
+            Extension::Unreadable(m) => panic!("expected an extension, got Unreadable({m})"),
+        }
     }
 
     fn refused_classes(step: &ClosureProviderStep) -> Vec<String> {
@@ -301,9 +363,8 @@ mod tests {
         let extended = extend_with_acquired(sources, &modules, &|m: &str| {
             super::super::emit_host::fixture_pool_closure_of(m, &pool)
         })
-        .expect("the provider's closure loads")
-        .expect("acquisition extends the closure");
-        let again = compile(&extended);
+        .expect("the provider's closure loads");
+        let again = compile(&extended_sources(extended));
         assert!(matches!(
             judge(&demand, &again, &answer),
             ClosureProviderStep::Complete
@@ -429,21 +490,27 @@ mod tests {
         assert_eq!(modules, vec!["std.coercion".to_string()]);
         let closure_of = |m: &str| {
             let provider = index.source_files.get(m).cloned().expect("pool answered");
-            let on_disk = super::super::process_workspace_root().join(&provider.path);
-            super::super::entry_resolve::load_sources_for_entry_with_pool(
-                &index,
-                &on_disk.to_string_lossy(),
+            let walked = super::super::resolve_transitively(
+                vec![provider],
+                &index.source_files,
+                &index.module_graph_facts,
             )
+            .map_err(ClosureOfError::Closure)?;
+            super::super::extend_sources_to_both_closure_fixpoint(walked, &index)
+                .map_err(ClosureOfError::Closure)
         };
-        let extended = extend_with_acquired(sources, &modules, &closure_of)
-            .expect("the provider's closure loads")
-            .expect("acquisition extends the closure");
+        let extended = extended_sources(
+            extend_with_acquired(sources, &modules, &closure_of)
+                .expect("the provider's closure loads"),
+        );
         assert!(extended
             .iter()
             .any(|s| s.path.ends_with("dag/std/coercion.dag")));
-        assert!(extend_with_acquired(extended, &modules, &closure_of)
-            .expect("the provider's closure loads")
-            .is_none());
+        assert!(matches!(
+            extend_with_acquired(extended, &modules, &closure_of)
+                .expect("the provider's closure loads"),
+            Extension::Stalled
+        ));
         assert_eq!(
             refused_classes(&stalled(&demand, &modules)),
             vec!["GeneratedProviderUnavailable/AcquisitionMadeNoProgress".to_string()]
@@ -583,6 +650,38 @@ mod tests {
         );
     }
 
+    /// A provider whose bytes cannot be read DURING acquisition (after the pool answered) is the
+    /// model's ModuleUnreadable, decided by re-judging the closure -- never a prose error.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn a_read_failure_during_acquisition_refuses_as_module_unreadable() {
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let sources = emit_check_sources(
+            "module test.fixture.generated_provider_plain_read\n\nfn one() -> Int { 1 }\n",
+            &pool,
+        );
+        let resolved = compile(&sources);
+        let graph = resolved.graph.clone().expect("the closure compiles");
+        let demand = supplied("std.coercion", "unicode_scalar_unfold");
+        let e = extend_with_acquired(sources, &["std.coercion".to_string()], &|_: &str| {
+            Err(ClosureOfError::Unreadable)
+        })
+        .expect("a read failure is not a closure error");
+        let Extension::Unreadable(failed) = e else {
+            panic!("expected Unreadable")
+        };
+        assert_eq!(
+            refused_classes(&unreadable(
+                &demand,
+                graph.modules.clone(),
+                resolved.diagnostics.clone(),
+                resolved.source_indices.clone(),
+                &failed
+            )),
+            vec!["GeneratedProviderUnavailable/UnavailableModuleUnreadable".to_string()]
+        );
+    }
+
     /// COST RECEIPT, EXACT DEMAND VERSUS CARRIER PRESENCE (option 1b ruling; deferred to PR 2, where a
     /// producer exists). Over the entries listed in GUNBC_COST_ENTRIES (one workspace-relative .dag
     /// path per line), each entry's import closure is compiled through the pipeline and classified:
@@ -689,7 +788,11 @@ mod tests {
         let hermetic = compile_to_provider_fixed_point(
             sources.clone(),
             &|_: &str| PoolAnswer::Lacks,
-            &|m: &str| Err(format!("hermetic: no pool holds '{m}'")),
+            &|m: &str| {
+                Err(ClosureOfError::Closure(format!(
+                    "hermetic: no pool holds '{m}'"
+                )))
+            },
         )
         .expect("hermetic compile runs");
         // The typed refusal names the route. The uncrossed value also trips the text wall and the

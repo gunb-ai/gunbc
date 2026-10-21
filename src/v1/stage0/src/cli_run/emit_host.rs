@@ -453,7 +453,11 @@ pub fn compile_dag_multi_module_fixture(
         let resolved = super::provider_acquire::compile_to_provider_fixed_point(
             files,
             &|_: &str| super::provider_acquire::PoolAnswer::Lacks,
-            &|module: &str| Err(format!("hermetic fixture: no pool holds '{module}'")),
+            &|module: &str| {
+                Err(super::provider_acquire::ClosureOfError::Closure(format!(
+                    "hermetic fixture: no pool holds '{module}'"
+                )))
+            },
         )
         .unwrap_or_else(|cause| unreachable!("an empty pool never asks for acquisition: {cause}"));
         let module_count = match resolved.graph.clone() {
@@ -2087,40 +2091,38 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// The control that the selected bytes equal the full render's is
 /// [`compile_dag_render_selection_agreement`], which runs the full render for real.
 /// The witness-root module index's answer for a demanded module: Lacks when no file declares it,
-/// Unreadable when the index names a file that cannot be read now, Holds otherwise. The index
-/// panics on two files for one module path when it is built, so no answer here is ambiguous.
+/// Unreadable when the index names a file whose bytes cannot be read now, Holds otherwise. The answer
+/// reads the bytes rather than inspecting the path, so Holds means a read succeeded. The index panics
+/// on two files for one module path when it is built, so no answer here is ambiguous.
 pub(crate) fn fixture_pool_answer(
     module: &str,
     pool: &HashMap<String, String>,
 ) -> super::provider_acquire::PoolAnswer {
     match pool.get(module) {
         None => super::provider_acquire::PoolAnswer::Lacks,
-        Some(path) => match std::fs::metadata(process_workspace_root().join(path)) {
-            Ok(meta) if meta.is_file() => super::provider_acquire::PoolAnswer::Holds,
-            _ => super::provider_acquire::PoolAnswer::Unreadable,
+        Some(path) => match std::fs::read_to_string(process_workspace_root().join(path)) {
+            Ok(_) => super::provider_acquire::PoolAnswer::Holds,
+            Err(_) => super::provider_acquire::PoolAnswer::Unreadable,
         },
     }
 }
 
 /// A demanded provider joins an emit-check fixture with its own import closure, read from the
-/// witness-root module index the way the fixture's own imports were.
+/// witness-root module index the way the fixture's own imports were. A read failure is the model's
+/// Unreadable, never a prose error; a failure to close the provider's own imports is a closure error.
 pub(crate) fn fixture_pool_closure_of(
     module: &str,
     pool: &HashMap<String, String>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let path = pool
-        .get(module)
-        .ok_or_else(|| format!("generated provider '{module}' is not in the module index"))?;
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let Some(path) = pool.get(module) else {
+        return Err(super::provider_acquire::ClosureOfError::Unreadable);
+    };
     // Read the way the fixture's own imports are read: the index holds workspace-relative paths,
     // resolved against the process workspace root, never against the current directory.
-    let on_disk = process_workspace_root().join(path);
-    let content = std::fs::read_to_string(&on_disk).map_err(|e| {
-        format!(
-            "generated provider '{module}' at {}: {e}",
-            on_disk.display()
-        )
-    })?;
+    let content = std::fs::read_to_string(process_workspace_root().join(path))
+        .map_err(|_| super::provider_acquire::ClosureOfError::Unreadable)?;
     resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
 }
 
 pub(crate) fn compile_fixture_rendering_only_what_is_read(
