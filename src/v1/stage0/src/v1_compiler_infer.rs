@@ -577,6 +577,12 @@ pub struct BuildTypeEnvResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentModulesResult {
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CycleDetectState {
     pub recursive_names: Rc<HashMap<String, bool>>,
     pub global_visited: Rc<HashMap<String, bool>>,
@@ -10528,13 +10534,6 @@ pub struct UnresolvedMethodFrontierRow {
 
 pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
     Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "v1.compiler.trace".to_string(),
-    method: "map".to_string(),
-    occurrences: 1,
-    receiver_shape: "Product(SpanMapping)".to_string(),
-    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string()),
-}), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
     method: "contains".to_string(),
     occurrences: 1,
@@ -33712,15 +33711,29 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
     }
 }
 
-pub fn missing_parent_env_diagnostics(
+pub fn collect_parent_envs(
     resolved: Rc<ResolvedModule>,
     module_index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+) -> Rc<ParentModulesResult> {
     {
+        let modules = Rc::new({
+            let mut __result = Vec::new();
+            for imp in resolved.resolved_imports.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&module_index, imp.module_path.clone()) {
+                        Some(typed) => Rc::new(vec![typed.clone()]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         let resolved_mod_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
-        Rc::new({
+        let diagnostics = Rc::new({
             let mut __result = Vec::new();
             for imp in resolved.resolved_imports.clone().iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&module_index, imp.module_path.clone()) {
@@ -33732,6 +33745,10 @@ pub fn missing_parent_env_diagnostics(
 }).iter().cloned());
             }
             __result
+        });
+        Rc::new(ParentModulesResult {
+            modules: modules.clone(),
+            diagnostics: diagnostics.clone(),
         })
     }
 }
@@ -34257,7 +34274,7 @@ pub fn realize_module(
                             )
                         },
                     );
-                    let parent_diagnostics = missing_parent_env_diagnostics(
+                    let parent_result = collect_parent_envs(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         source_indices.clone(),
@@ -34299,7 +34316,7 @@ pub fn realize_module(
                             dep_state.diags_by_name.clone(),
                             typed_path.clone(),
                             v1_rt::concat(
-                                parent_diagnostics.clone(),
+                                parent_result.diagnostics.clone(),
                                 tc_result.diagnostics.clone(),
                             ),
                         ),
@@ -34487,10 +34504,20 @@ pub fn compiler_kernel_type_env(
 
 pub fn rewire_type_env_parent_links(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
+        let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
+        let index = modules.iter().cloned().fold(
+            index_seed.clone(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    m.clone(),
+                )
+            },
+        );
         let shared_kernel = match Rc::new({
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
@@ -34597,73 +34624,11 @@ pub fn rewire_type_env_parent_links(
 
 pub fn rewire_func_env_parent_links(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for m in modules.iter().cloned() {
-            __result.push({
-                let parents = merge_func_env_views_by_owner(Rc::new({
-                    let mut __result = Vec::new();
-                    for imp in crate::v1_std_core::module_imports(m.module.clone())
-                        .iter()
-                        .cloned()
-                    {
-                        __result.extend(
-                            (*{
-                                let path =
-                                    import_module_path_at(imp.clone(), source_indices.clone());
-                                match v1_rt::map_get(&index, path.clone()) {
-                                    Some(parent) => func_env_views_for_import(
-                                        parent.func_env.clone(),
-                                        crate::v1_std_core::import_is_all(imp.clone()),
-                                        crate::v1_std_core::import_specific_names_at(
-                                            imp.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    ),
-                                    std::option::Option::None => Rc::new(vec![]),
-                                }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }));
-                Rc::new(TypedModule {
-                    progress: m.progress.clone(),
-                    module: m.module.clone(),
-                    items: m.items.clone(),
-                    type_env: m.type_env.clone(),
-                    type_env_cache: m.type_env_cache.clone(),
-                    interface: m.interface.clone(),
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: m.func_env.name.clone(),
-                        local: m.func_env.local.clone(),
-                        parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(
-                            parents.clone(),
-                        ),
-                    }),
-                    item_registry: m.item_registry.clone(),
-                    occurrence_transport: m.occurrence_transport.clone(),
-                })
-            });
-        }
-        __result
-    })
-}
-
-pub fn reconcile(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
         let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
-        let index = typed.modules.clone().iter().cloned().fold(
+        let index = modules.iter().cloned().fold(
             index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
@@ -34673,13 +34638,71 @@ pub fn reconcile(
                 )
             },
         );
-        let modules = rewire_type_env_parent_links(
-            typed.modules.clone(),
-            index.clone(),
-            source_indices.clone(),
-        );
-        let modules =
-            rewire_func_env_parent_links(modules.clone(), index.clone(), source_indices.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.push({
+                    let parents = merge_func_env_views_by_owner(Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in crate::v1_std_core::module_imports(m.module.clone())
+                            .iter()
+                            .cloned()
+                        {
+                            __result.extend(
+                                (*{
+                                    let path =
+                                        import_module_path_at(imp.clone(), source_indices.clone());
+                                    match v1_rt::map_get(&index, path.clone()) {
+                                        Some(parent) => func_env_views_for_import(
+                                            parent.func_env.clone(),
+                                            crate::v1_std_core::import_is_all(imp.clone()),
+                                            crate::v1_std_core::import_specific_names_at(
+                                                imp.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        ),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }));
+                    Rc::new(TypedModule {
+                        progress: m.progress.clone(),
+                        module: m.module.clone(),
+                        items: m.items.clone(),
+                        type_env: m.type_env.clone(),
+                        type_env_cache: m.type_env_cache.clone(),
+                        interface: m.interface.clone(),
+                        func_env: Rc::new(ResolvedFuncEnv {
+                            name: m.func_env.name.clone(),
+                            local: m.func_env.local.clone(),
+                            parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(
+                                parents.clone(),
+                            ),
+                        }),
+                        item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
+                    })
+                });
+            }
+            __result
+        })
+    }
+}
+
+pub fn reconcile(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ResolvedGraph> {
+    {
+        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
+        let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

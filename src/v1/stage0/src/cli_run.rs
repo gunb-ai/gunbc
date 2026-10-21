@@ -29982,7 +29982,7 @@ pub fn parse_extdeps_module_items(
 /// inputs the operation itself declares (name + optional default expression).
 ///
 /// This is the single authority the generic argv materializer binds against
-/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// (`std.operation_argv`): the binding vocabulary is the operation's own
 /// `input { .. }` block, never a fixed list the seed happens to know.
 pub struct OperationArgvDeclaration {
     pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
@@ -30200,7 +30200,7 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
 /// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
 /// author who causes it -- the same seven operations are already typed and counted debt on
-/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// the MATERIALIZATION side (`std.operation_argv` `ArgvRowExpressionResidue`, pinned in
 /// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
 ///
 /// So the two readings of one corpus disagree and this comment is where that is recorded:
