@@ -22,7 +22,7 @@ import gunbc.auth.privileged_effect_census {
   privileged_effect_census, census_verdicts, undecidable_sites,
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
-  site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  site_verdict, SiteVerdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   mtcollins1_boot_effect, privileged_effect_interlocks, privileged_effect_interlock_hold, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
   runner_lifecycle_scope_ruling, runner_lifecycle_operator_ruling, OperatorScopeRuling, ruling_discharge_for,
@@ -644,3 +644,19 @@ test fn no_api_physical_steps_are_named_and_conform() -> Bool {
   manual_row_conforms_as_a_named_step(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention")
     && manual_row_conforms_as_a_named_step(key: "gunbc.fleet.mtcollins_firmware_converge::mtcollins1_ac_power_cycle_effect")
 }
+
+// PROBE-BEGIN
+fn probe_row(key: String, f: (SiteVerdict) -> Bool) -> Bool {
+  any(map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), f)
+}
+test fn probe_ac_approved() -> Bool { probe_row(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", f: v => selected_approved(s: v.selection)) }
+test fn probe_ac_edge() -> Bool { probe_row(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", f: v => selected_administrator_edge(s: v.selection)) }
+test fn probe_ac_undecidable() -> Bool { probe_row(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", f: v => match v.conformance { SiteNotDecidable { standing: _ } => true _ => false }) }
+test fn probe_ac_divreason() -> Bool { probe_row(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", f: v => match v.conformance { DivergesWithReason { reason: _ } => true _ => false }) }
+test fn probe_ac_conforms() -> Bool { probe_row(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", f: v => match v.conformance { Conforms => true _ => false }) }
+test fn probe_gate_approved() -> Bool { probe_row(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", f: v => selected_approved(s: v.selection)) }
+test fn probe_gate_edge() -> Bool { probe_row(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", f: v => selected_administrator_edge(s: v.selection)) }
+test fn probe_gate_undecidable() -> Bool { probe_row(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", f: v => match v.conformance { SiteNotDecidable { standing: _ } => true _ => false }) }
+test fn probe_gate_divreason() -> Bool { probe_row(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", f: v => match v.conformance { DivergesWithReason { reason: _ } => true _ => false }) }
+test fn probe_gate_conforms() -> Bool { probe_row(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", f: v => match v.conformance { Conforms => true _ => false }) }
+// PROBE-END
