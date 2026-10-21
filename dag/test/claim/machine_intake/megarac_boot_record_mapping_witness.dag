@@ -45,6 +45,7 @@ import gunbc.host.boot_attempt {
   HandoffUnconfirmed, OverrideNotConsumed, PoweredOffWithoutTerminalMarker, CredentialMayRemain,
   PresentationAfterHandoff,
 }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
 import gunbc.machine_intake.megarac_media_attach {
   MegaRacAttachResult, MegaRacPresentationReady, MegaRacPresentationEvidence,
   MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, SessionRelease,
@@ -717,7 +718,8 @@ fn a_full_run() -> MegaRacRunRecord {
     override_after: no_param5(),
     override: OverrideConsumedByAttempt,
     power_after: HostPowerRead { state: PowerOn },
-    timing: boot_phase_timing_not_taken(reason: "fixture: no timing")
+    timing: boot_phase_timing_not_taken(reason: "fixture: no timing"),
+    fan_gate: PostPowerFanGateNotReached { reason: "fixture: the run record fold, not a boot" }
   }
 }
 
@@ -735,7 +737,8 @@ fn a_stopped_run() -> MegaRacRunRecord {
     override_after: no_param5(),
     override: OverrideNotHandedOff { reason: "nothing was handed off" as NonEmptyStr },
     power_after: HostPowerNotTaken { reason: "the actuation refused" as NonEmptyStr },
-    timing: boot_phase_timing_not_taken(reason: "fixture: no timing")
+    timing: boot_phase_timing_not_taken(reason: "fixture: no timing"),
+    fan_gate: PostPowerFanGateNotReached { reason: "fixture: the run record fold, not a boot" }
   }
 }
 
@@ -981,7 +984,7 @@ test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> B
     census_ended: false, end_media: stopped.end_media, handoff_media: stopped.handoff_media, media: stopped.media,
     smpro_power_on: stopped.smpro_power_on, smpro_census: stopped.smpro_census,
     override_before: stopped.override_before, override_after: stopped.override_after,
-    override: stopped.override, power_after: HostPowerRead { state: PowerOff }, timing: stopped.timing,
+    override: stopped.override, power_after: HostPowerRead { state: PowerOff }, timing: stopped.timing, fan_gate: stopped.fan_gate,
   }
   let findings = derived_of(off_without_end)
   count(findings) == 1
@@ -1009,7 +1012,7 @@ test fn a_refused_medium_derives_not_ready() -> Bool {
     },
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: raw.power_after, timing: raw.timing,
+    override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(refused)
   count(findings) == 1
@@ -1032,7 +1035,7 @@ test fn a_session_held_medium_derives_its_own_finding_not_not_ready() -> Bool {
     },
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: raw.power_after, timing: raw.timing,
+    override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(held)
   count(findings) == 1
@@ -1070,7 +1073,7 @@ test fn a_still_served_medium_after_the_handoff_derives_the_finding_once() -> Bo
     },
     media: raw.media, smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: raw.power_after, timing: raw.timing,
+    override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(bad)
   count(findings) == 1
@@ -1089,19 +1092,19 @@ test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: OverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing,
+    override: OverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let off_no_terminal = MegaRacRunRecord {
     census_ended: false, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing,
+    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let off_with_terminal = MegaRacRunRecord {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing,
+    override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   count(derived_of(pending)) == 1
     && any(derived_of(pending), f => match f {
