@@ -715,6 +715,11 @@ import gunbc.roadmap.roadmap_presentation {
 }
 import extdeps.gunbc
 import extdeps.shell
+import gunbc.roadmap.spool_stall {
+  SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
+  SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at,
+  SpoolStallCleared, SpoolStallClearRefused, spool_stall_clear_at,
+}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemEntryAbsent,
@@ -15730,15 +15735,9 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
 // skipped by `ConditionDirectoryNotEmpty=!stalled` until `belt_exit_stall_release_cli` clears it.
 // Entries that arrive while stalled WAIT, unconsumed; the record says so, and the backlog judge
 // (gunbc.roadmap.roadmap_launch_deployment_observe event_backlog_judge) reports them behind the head.
-type BeltExitStallEntry {
-  entry: String
-  step: String
-  cause: String
-}
-
 type BeltExitStallVerdict
   = BeltExitNotStalled
-  | BeltExitStalled { unmovable: List<BeltExitStallEntry> }
+  | BeltExitStalled { unmovable: List<SpoolStallEntry> }
 
 fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
   match d {
@@ -15749,102 +15748,11 @@ fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
         _ => false
       })
       let unmovable = entries |> flat_map(e => match e {
-        BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: cause }]
-        _ => [] as List<BeltExitStallEntry>
+        BeltExitEntryUnmovable { entry, step, cause } => [SpoolStallEntry { entry: entry, step: step, cause: cause }]
+        _ => [] as List<SpoolStallEntry>
       })
       if count(claimed) == 0 && count(unmovable) > 0 { BeltExitStalled { unmovable: unmovable } } else { BeltExitNotStalled }
     }
-  }
-}
-
-data belt_exit_stall_schema: String = "gunbc.belt_exit_stall.v1"
-
-fn belt_exit_stall_entry_json(u: BeltExitStallEntry) -> JsonValue {
-  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
-}
-
-fn belt_exit_stall_record_text(unmovable: List<BeltExitStallEntry>) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: belt_exit_stall_schema)),
-    json_kv(key: "note", value: json_string(s: "entries that arrive while this record exists wait in the spool and are not consumed; release it with belt_exit_stall_release_cli once every entry below can leave")),
-    json_kv(key: "unmovable", value: json_array(elements: unmovable |> map(u => belt_exit_stall_entry_json(u: u)))),
-  ]))
-}
-
-type BeltExitStallRecord
-  = BeltExitStallRecorded
-  | BeltExitStallUnrecorded { reason: String }
-
-// create-only: a record already on disk is the line already stopped, and is kept as the evidence.
-fn belt_exit_stall_record_at(root: String, unmovable: List<BeltExitStallEntry>) -> BeltExitStallRecord {
-  let made = shell.Mkdir.Parents(path: attempt_exit_stalled_dir(instance_root: root) as FilePath)
-  if !made.success {
-    BeltExitStallUnrecorded { reason: "could not create the stalled directory" }
-  } else {
-    let path = attempt_exit_stall_record_path(instance_root: root)
-    let written = Filesystem.WriteCreateNew(path: path, content: belt_exit_stall_record_text(unmovable: unmovable))
-    match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
-      FilesystemCreated { path: _ } => BeltExitStallRecorded
-      FilesystemCreateTargetOccupied { path: _ } => BeltExitStallRecorded
-      FilesystemCreateRefused { path: _, kind: _, error } => BeltExitStallUnrecorded { reason: error }
-      FilesystemCreateKindUnrecognized { path: _, observed: _, error } => BeltExitStallUnrecorded { reason: error }
-    }
-  }
-}
-
-type BeltExitStallRead
-  = BeltExitStallNone
-  | BeltExitStallHeld { entries: List<BeltExitStallEntry> }
-  | BeltExitStallUnreadable { reason: String }
-
-fn belt_exit_stall_entry_of_json(doc: JsonValue) -> BeltExitStallEntry? {
-  match json_required_string_member(doc: doc, key: "entry") {
-    JsonStringMemberRefused { reason: _ } => none
-    JsonStringMemberFound { value: entry } =>
-      match json_required_string_member(doc: doc, key: "step") {
-        JsonStringMemberRefused { reason: _ } => none
-        JsonStringMemberFound { value: step } =>
-          match json_required_string_member(doc: doc, key: "cause") {
-            JsonStringMemberRefused { reason: _ } => none
-            JsonStringMemberFound { value: cause } => Present { value: BeltExitStallEntry { entry: entry, step: step, cause: cause } }
-          }
-      }
-  }
-}
-
-// Fail closed: a record whose schema is another, or any of whose entries does not decode, is Unreadable --
-// never a shorter list of the entries that did.
-fn belt_exit_stall_of_json(doc: JsonValue) -> BeltExitStallRead {
-  match json_required_string_member(doc: doc, key: "schema") {
-    JsonStringMemberRefused { reason } => BeltExitStallUnreadable { reason: reason }
-    JsonStringMemberFound { value: schema } =>
-      if schema != belt_exit_stall_schema {
-        BeltExitStallUnreadable { reason: join(["the stall record has schema ", schema, ", not ", belt_exit_stall_schema], "") }
-      } else {
-        match json_object_unique_member(v: doc, key: "unmovable") {
-          JsonMemberFound { value: JsonArray { elements } } => {
-            let decoded: List<BeltExitStallEntry?> = elements |> map(el => belt_exit_stall_entry_of_json(doc: el))
-            let entries: List<BeltExitStallEntry> = decoded |> flat_map(d => match d { Present { value: u } => [u] Absent => [] as List<BeltExitStallEntry> })
-            if count(entries) == count(decoded) { BeltExitStallHeld { entries: entries } } else { BeltExitStallUnreadable { reason: "a stall record entry lacks its entry, step or cause" } }
-          }
-          _ => BeltExitStallUnreadable { reason: "the stall record has no unmovable array" }
-        }
-      }
-  }
-}
-
-fn belt_exit_stall_read_at(root: String) -> BeltExitStallRead {
-  let path = attempt_exit_stall_record_path(instance_root: root)
-  let read = Filesystem.Read(path: path)
-  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
-    FilesystemExactPathAbsent { path: _ } => BeltExitStallNone
-    FilesystemExactPathUnreadable { path: _, kind: _, error } => BeltExitStallUnreadable { reason: error }
-    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => BeltExitStallUnreadable { reason: error }
-    FilesystemExactPathRead { path: _, content } =>
-      match parse_json_document(s: content) {
-        JsonDocumentParsed { value: doc } => belt_exit_stall_of_json(doc: doc)
-        JsonDocumentUnreadable { gap: g } => BeltExitStallUnreadable { reason: json_document_gap_text(gap: g) }
-      }
   }
 }
 
@@ -15854,9 +15762,9 @@ fn belt_exit_stall_failures(root: String, d: BeltExitDrain) -> List<String> {
   match belt_exit_stall_verdict(d: d) {
     BeltExitNotStalled => [] as List<String>
     BeltExitStalled { unmovable: u } =>
-      match belt_exit_stall_record_at(root: root, unmovable: u) {
-        BeltExitStallRecorded => [join(["exit spool STALLED: ", to_string(value: count(u)), " entries cannot leave the spool; the belt-exit service is held until belt_exit_stall_release_cli (record: ", attempt_exit_stall_record_path(instance_root: root), ")"], "")]
-        BeltExitStallUnrecorded { reason } => [join(["BeltExitStallUnrecorded: the stall record could not be written (", reason, "); the exit drain will re-fire"], "")]
+      match spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: u) {
+        SpoolStallRecorded => [join(["exit spool STALLED: ", to_string(value: count(u)), " entries cannot leave the spool; the belt-exit service is held until belt_exit_stall_release_cli (record: ", attempt_exit_stall_record_path(instance_root: root), ")"], "")]
+        SpoolStallUnrecorded { reason } => [join(["SpoolStallUnrecorded: the stall record could not be written (", reason, "); the exit drain will re-fire"], "")]
       }
   }
 }
@@ -15869,10 +15777,10 @@ fn belt_exit_stall_failures(root: String, d: BeltExitDrain) -> List<String> {
 type BeltExitStallRelease
   = BeltExitStallNotHeld
   | BeltExitStallReleased { reclaimed: Int }
-  | BeltExitStallStillUnmovable { entries: List<BeltExitStallEntry> }
+  | BeltExitStallStillUnmovable { entries: List<SpoolStallEntry> }
   | BeltExitStallReleaseRefused { reason: String }
 
-fn belt_exit_stall_reclaim_entry_at(root: String, e: BeltExitStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+fn belt_exit_stall_reclaim_entry_at(root: String, e: SpoolStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   if any(inbox, n => n == e.entry) && !belt_exit_entry_is_obligation(entry: e.entry) {
     [belt_exit_entry_drain_at(root: root, entry: e.entry, move: move)]
   } else if any(running, n => n == e.entry) {
@@ -15883,10 +15791,10 @@ fn belt_exit_stall_reclaim_entry_at(root: String, e: BeltExitStallEntry, inbox: 
 }
 
 fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitStallRelease {
-  match belt_exit_stall_read_at(root: root) {
-    BeltExitStallNone => BeltExitStallNotHeld
-    BeltExitStallUnreadable { reason } => BeltExitStallReleaseRefused { reason: join(["the stall record is unreadable: ", reason], "") }
-    BeltExitStallHeld { entries: recorded } =>
+  match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallNone => BeltExitStallNotHeld
+    SpoolStallUnreadable { reason } => BeltExitStallReleaseRefused { reason: join(["the stall record is unreadable: ", reason], "") }
+    SpoolStallHeld { entries: recorded } =>
       match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
         AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
         AttemptExitStageNames { names: inbox } =>
@@ -15895,19 +15803,15 @@ fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolSt
             AttemptExitStageNames { names: running } => {
               let attempts = recorded |> flat_map(e => belt_exit_stall_reclaim_entry_at(root: root, e: e, inbox: inbox, running: running, move: move))
               let still = attempts |> flat_map(a => match a {
-                BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: replace(cause, "\n", " ") }]
-                _ => [] as List<BeltExitStallEntry>
+                BeltExitEntryUnmovable { entry, step, cause } => [SpoolStallEntry { entry: entry, step: step, cause: replace(cause, "\n", " ") }]
+                _ => [] as List<SpoolStallEntry>
               })
               if count(still) > 0 {
                 BeltExitStallStillUnmovable { entries: still }
               } else {
-                let path = attempt_exit_stall_record_path(instance_root: root)
-                let removed = Filesystem.Delete(path: path)
-                match filesystem_delete(path: path, success: removed.success, error: removed.error, error_kind: removed.error_kind) {
-                  FilesystemDeleted { path: _ } => BeltExitStallReleased { reclaimed: count(attempts) }
-                  FilesystemDeleteTargetAbsent { path: _ } => BeltExitStallReleased { reclaimed: count(attempts) }
-                  FilesystemDeleteRefused { path: _, kind: _, error } => BeltExitStallReleaseRefused { reason: error }
-                  FilesystemDeleteKindUnrecognized { path: _, observed: _, error } => BeltExitStallReleaseRefused { reason: error }
+                match spool_stall_clear_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+                  SpoolStallCleared => BeltExitStallReleased { reclaimed: count(attempts) }
+                  SpoolStallClearRefused { reason } => BeltExitStallReleaseRefused { reason: reason }
                 }
               }
             }
@@ -15939,10 +15843,10 @@ fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> BeltExitStallOb
 }
 
 fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) -> List<String> {
-  match belt_exit_stall_read_at(root: root) {
-    BeltExitStallNone => ["no stall record: the exit drain is not stalled"]
-    BeltExitStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
-    BeltExitStallHeld { entries } =>
+  match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallNone => ["no stall record: the exit drain is not stalled"]
+    SpoolStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
+    SpoolStallHeld { entries } =>
       entries |> map(e => {
         let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
         match belt_exit_stall_entry_stat_at(root: root, entry: e.entry) {

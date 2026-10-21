@@ -282,7 +282,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -1305,6 +1305,7 @@ fn live_deploy_attempt_unit_drain_service_unit_file(
       Present { value: ServiceUnitFile {
         unit: [
           Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
+          Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_unit_spool_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
         ],
         service: [
           ServiceType { mode: OneshotMode },
@@ -1320,14 +1321,12 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
   PathUnitFile {
     unit: [
       Description { text: "gunbc attempt-unit spool drain: a start request was written" as NonEmptyStr },
-      StartLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
-      StartLimitBurst { count: "2" as NonEmptyStr },
     ],
     path: [
       PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
-      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
-      TriggerLimitBurst { count: "2" as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+      TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }

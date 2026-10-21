@@ -46,6 +46,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_listing_entry_names,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }
 import extdeps.shell
 import extdeps.tools.stat {
@@ -56,7 +57,10 @@ import extdeps.tools.stat {
 import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at, SpoolStallCleared, SpoolStallClearRefused, spool_stall_clear_at }
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
   SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
@@ -537,6 +541,7 @@ type AttemptSystemUnitEnqueue
 type AttemptSystemUnitClaim
   = AttemptSystemUnitClaimed { entry: String, path: String }
   | AttemptSystemUnitAlreadyClaimed { entry: String }
+  | AttemptSystemUnitClaimUnmovable { entry: String, cause: String }
   | AttemptSystemUnitClaimSymlink { entry: String }
   | AttemptSystemUnitClaimRefused { entry: String, reason: String }
 
@@ -668,9 +673,15 @@ fn attempt_system_unit_claimed_kind_is_directory(path: String) -> Bool {
   }
 }
 
+// AN ENTRY LEAVES requests/ ON EVERY OUTCOME OF THE CLAIM BUT TWO, and those two are the stall arms (the
+// `.path` unit is a level on requests/, so an entry the drain leaves there starts it again at once). Moved
+// (symlink, not a directory, directory): the request is out, and what is wrong with it is answered.
+// Rename failed with the source ABSENT: another pass already took it (AlreadyClaimed), also out. Rename failed
+// with the source still PRESENT, or its presence unestablishable: Unmovable, which the drain's verdict counts.
+// The name guard refuses only names a directory listing cannot return, and reports them unmovable too.
 fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> AttemptSystemUnitClaim {
-  if entry == "" || string_contains(s: entry, pattern: "/") || string_contains(s: entry, pattern: "..") {
-    AttemptSystemUnitClaimRefused { entry: entry, reason: "request entry name is not one path segment" }
+  if entry == "" || entry == "." || entry == ".." || string_contains(s: entry, pattern: "/") {
+    AttemptSystemUnitClaimUnmovable { entry: entry, cause: "request entry name is not one path segment" }
   } else {
     let source = attempt_system_unit_request_path(instance_root: instance_root, entry: entry)
     let dest = attempt_system_unit_claimed_path(instance_root: instance_root, entry: entry)
@@ -683,7 +694,15 @@ fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> Atte
         AttemptSystemUnitClaimed { entry: entry, path: dest }
       }
     } else {
-      AttemptSystemUnitAlreadyClaimed { entry: entry }
+      match filesystem_entry_presence_of_path(path: source) {
+        FilesystemEntryAbsent(_) => AttemptSystemUnitAlreadyClaimed { entry: entry }
+        FilesystemEntryListed { directory: _, name: _ } =>
+          AttemptSystemUnitClaimUnmovable { entry: entry, cause: "the request could not be moved to claimed/ and is still in requests/ (claimed/<entry> may already exist)" }
+        FilesystemEntryPresenceIndeterminate { cause: c } =>
+          AttemptSystemUnitClaimUnmovable { entry: entry, cause: join(["the request could not be moved to claimed/ and its presence could not be established: ", c], "") }
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+          AttemptSystemUnitClaimUnmovable { entry: entry, cause: join(["the request could not be moved to claimed/ and its path is not admissible: ", c], "") }
+      }
     }
   }
 }
@@ -924,21 +943,59 @@ fn attempt_system_unit_handle_claimed(
   }
 }
 
-fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
+// THE DRAIN PASS AND ITS LINE STOP (DESIGN section 5; the record is gunbc.roadmap.spool_stall's, shared with the
+// exit spool). A pass that retired nothing from requests/ and left at least one entry it could not move stalls:
+// it writes the stall record into `stalled/`, and the drain service is skipped by
+// `ConditionDirectoryNotEmpty=!stalled` until attempt_unit_stall_release_cli clears it. A pass that retired
+// something and left another behind does not stall; it exits failed, and the next pass (the level re-fires)
+// either retires the rest or stalls on exactly them.
+//
+// NO drain.lock: two passes never overlap because systemd never runs one service unit twice at once (a
+// path-triggered activation while the oneshot is active waits for it). That is the whole exclusion; the
+// claim-by-rename is what makes a repeated pass harmless, not what serialises passes.
+type AttemptUnitDrainPass {
+  exit: ProcessExit
+  retired: Int
+  unmovable: List<SpoolStallEntry>
+}
+
+type AttemptUnitStallVerdict
+  = AttemptUnitNotStalled
+  | AttemptUnitStalled { unmovable: List<SpoolStallEntry> }
+
+fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVerdict {
+  if pass.retired == 0 && count(pass.unmovable) > 0 { AttemptUnitStalled { unmovable: pass.unmovable } } else { AttemptUnitNotStalled }
+}
+
+fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, exit: ProcessExit) -> AttemptUnitDrainPass {
+  AttemptUnitDrainPass { exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit), retired: pass.retired + 1, unmovable: pass.unmovable }
+}
+
+fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: String, cause: String) -> AttemptUnitDrainPass {
+  AttemptUnitDrainPass {
+    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))),
+    retired: pass.retired,
+    unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
+  }
+}
+
+fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
+  let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
-    AttemptSystemUnitRequestListRefused { reason } => exit_failure(reason: reason)
+    AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: "list-requests", cause: reason)
     AttemptSystemUnitRequestNames { names: entries } =>
-      fold(entries, init: ExitSuccess, f: (acc, entry) =>
+      fold(entries, init: empty, f: (acc, entry) =>
         match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
           AttemptSystemUnitAlreadyClaimed { entry: _ } => acc
+          AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: "claim", cause: c)
           AttemptSystemUnitClaimSymlink { entry: e } => {
             let _ = attempt_system_unit_write_answer(
               instance_root: instance_root,
               entry: e,
               answer: AttemptSystemUnitRefusedAnswer { reason: "request entry is a symlink" },
             )
-            attempt_system_unit_keep_first_failure(acc: acc, next: exit_failure(reason: "request entry is a symlink"))
+            attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: "request entry is a symlink"))
           }
           AttemptSystemUnitClaimRefused { entry: e, reason: why } => {
             let _ = attempt_system_unit_write_answer(
@@ -946,12 +1003,12 @@ fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
               entry: e,
               answer: AttemptSystemUnitRefusedAnswer { reason: why },
             )
-            attempt_system_unit_keep_first_failure(acc: acc, next: exit_failure(reason: why))
+            attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: why))
           }
           AttemptSystemUnitClaimed { entry: e, path: p } =>
-            attempt_system_unit_keep_first_failure(
-              acc: acc,
-              next: attempt_system_unit_handle_claimed(
+            attempt_unit_pass_retired(
+              pass: acc,
+              exit: attempt_system_unit_handle_claimed(
                 instance_root: instance_root,
                 instance: instance,
                 entry: e,
@@ -960,5 +1017,36 @@ fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
             )
         }
       )
+  }
+}
+
+// A stall record that cannot be written is its own failure: the line cannot be stopped, so the loop is not
+// contained and the operator must be told.
+fn attempt_unit_stall_failure(instance_root: String, pass: AttemptUnitDrainPass) -> ProcessExit {
+  match attempt_unit_stall_verdict(pass: pass) {
+    AttemptUnitNotStalled => pass.exit
+    AttemptUnitStalled { unmovable: u } =>
+      match spool_stall_record_at(
+        stalled_dir: attempt_unit_spool_stalled_dir(instance_root: instance_root),
+        record_path: attempt_unit_spool_stall_record_path(instance_root: instance_root),
+        unmovable: u,
+      ) {
+        SpoolStallRecorded => attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join(["attempt-unit spool STALLED: ", to_string(value: count(u)), " requests cannot leave requests/; the drain service is held until attempt_unit_stall_release_cli (record: ", attempt_unit_spool_stall_record_path(instance_root: instance_root), ")"], "")))
+        SpoolStallUnrecorded { reason } => exit_failure(reason: join(["SpoolStallUnrecorded: the stall record could not be written (", reason, "); the drain will re-fire"], ""))
+      }
+  }
+}
+
+fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
+  attempt_unit_stall_failure(instance_root: instance_root, pass: attempt_system_unit_drain_pass(instance_root: instance_root))
+}
+
+// RELEASE: clears the stall record so the path unit's level may drive the drain again. It runs as root (the
+// stalled/ directory is root-owned, written by the drain); the operator reaches it through the same
+// system-manager pattern as the drain itself, after fixing what the record names.
+fn attempt_unit_stall_release_cli(instance_root: String) -> ProcessExit {
+  match spool_stall_clear_at(record_path: attempt_unit_spool_stall_record_path(instance_root: instance_root)) {
+    SpoolStallCleared => ExitSuccess
+    SpoolStallClearRefused { reason } => exit_failure(reason: join(["attempt-unit stall record not cleared: ", reason], ""))
   }
 }

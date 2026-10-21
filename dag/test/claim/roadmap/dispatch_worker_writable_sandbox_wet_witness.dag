@@ -42,8 +42,10 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_claim_entry,
-  AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimSymlink,
+  AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimUnmovable, AttemptSystemUnitClaimSymlink,
   AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
+  attempt_system_unit_launch_cli, attempt_system_unit_drain_pass, attempt_unit_stall_verdict, AttemptUnitStalled, AttemptUnitNotStalled, AttemptUnitDrainPass,
+  attempt_system_unit_claimed_path,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   attempt_system_unit_request_body_path, attempt_system_unit_request_path,
@@ -58,8 +60,9 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import gunbc.host.host_layout {
   attempt_exit_inbox_dir,
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
+import gunbc.roadmap.spool_stall { spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
@@ -624,9 +627,11 @@ test fn a_claimed_entry_is_processed_once_across_two_claim_runs() -> Bool {
                 AttemptSystemUnitAlreadyClaimed { entry: again } => again == entry
                 AttemptSystemUnitClaimed { entry: _, path: _ } => false
                 AttemptSystemUnitClaimSymlink { entry: _ } => false
+                AttemptSystemUnitClaimUnmovable { entry: _, cause: _ } => false
                 AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
               }
             AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+            AttemptSystemUnitClaimUnmovable { entry: _, cause: _ } => false
             AttemptSystemUnitClaimSymlink { entry: _ } => false
             AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
           }
@@ -650,6 +655,7 @@ test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
         AttemptSystemUnitClaimSymlink { entry: got } => got == entry
         AttemptSystemUnitClaimed { entry: _, path: _ } => false
         AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+        AttemptSystemUnitClaimUnmovable { entry: _, cause: _ } => false
         AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
       }
   }
@@ -674,6 +680,7 @@ fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -
             AttemptSystemUnitClaimedBodyRead { content: _ } => false
           }
         AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+        AttemptSystemUnitClaimUnmovable { entry: _, cause: _ } => false
         AttemptSystemUnitClaimSymlink { entry: _ } => false
         AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
       }
@@ -814,5 +821,99 @@ test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
         ExecOk { stdout: _ } => false
         ExecFailed { program: _, exit_code: _, stderr: _ } => false
       }
+  }
+}
+
+// THE ATTEMPT-UNIT DRAIN'S LINE STOP. The drain's .path unit is a level on requests/, so every entry a pass
+// leaves there starts the root drain again. RED: a request the claim cannot move (claimed/<entry> already
+// holds content) must be reported Unmovable, stall the pass that retired nothing, and leave a readable record;
+// before the repair the claim reported it AlreadyClaimed and the drain exited with the request in place.
+fn unmovable_request_root(tag: String) -> String? {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    none
+  } else {
+    let root = tmp.path as String
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
+    let occupied = attempt_system_unit_claimed_path(instance_root: root, entry: entry)
+    if attempt_system_unit_spool_prepare(instance_root: root)
+      && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n1", attempt_key: tag, argv_word: "x")) {
+        AttemptSystemUnitEnqueued { entry: _ } => true
+        AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+        AttemptSystemUnitEnqueueRefused { detail: _ } => false
+      }
+      && shell.Mkdir.Parents(path: join([occupied, "/held"], "") as FilePath).success {
+      Present { value: root }
+    } else {
+      none
+    }
+  }
+}
+
+test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -> Bool {
+  match unmovable_request_root(tag: "k1") {
+    Absent => false
+    Present { value: root } => {
+      let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+      let pass = attempt_system_unit_drain_pass(instance_root: root)
+      let claim_is_unmovable = match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
+        AttemptSystemUnitClaimUnmovable { entry: e, cause: _ } => e == entry
+        _ => false
+      }
+      let verdict = match attempt_unit_stall_verdict(pass: pass) {
+        AttemptUnitStalled { unmovable } => count(unmovable) == 1
+        AttemptUnitNotStalled => false
+      }
+      let exited = match attempt_system_unit_launch_cli(instance_root: root) {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "STALLED")
+      }
+      claim_is_unmovable && verdict && exited && pass.retired == 0 && match spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) {
+        SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.step)) == ["claim"]
+        SpoolStallNone => false
+        SpoolStallUnreadable { reason: _ } => false
+      }
+    }
+  }
+}
+
+test fn an_unlistable_request_directory_stalls_the_drain() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let pass = attempt_system_unit_drain_pass(instance_root: root)
+    match attempt_unit_stall_verdict(pass: pass) {
+      AttemptUnitStalled { unmovable } => (unmovable |> map(e => e.step)) == ["list-requests"]
+      AttemptUnitNotStalled => false
+    }
+  }
+}
+
+// POSITIVE CONTROLS: a request the drain retires (here a symlink entry, refused with an answer) is out of
+// requests/, retired > 0, and no record is written; an empty spool is not a stall either.
+test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
+        AttemptUnitNotStalled => true
+        AttemptUnitStalled { unmovable: _ } => false
+      }
+      && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
+      && {
+        let pass = attempt_system_unit_drain_pass(instance_root: root)
+        pass.retired == 1 && match attempt_unit_stall_verdict(pass: pass) {
+          AttemptUnitNotStalled => true
+          AttemptUnitStalled { unmovable: _ } => false
+        }
+      }
+      && spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) == SpoolStallNone
   }
 }
