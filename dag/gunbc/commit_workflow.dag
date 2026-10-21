@@ -1896,7 +1896,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/falsifier_rehomed_rows_unexecuted_witness.dag",
       check_fns: [
-        "falsifier_rehomed_drop_population_covers_every_frontier_row",
+        "falsifier_rehomed_drop_population_is_the_identity_join_of_both_frontiers",
         "falsifier_rehomed_drop_population_names_entry_and_function",
         "falsifier_rehomed_drop_population_excludes_unlisted_RED_control_holds"
       ],

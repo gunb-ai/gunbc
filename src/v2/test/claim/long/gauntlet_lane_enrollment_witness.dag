@@ -1,7 +1,8 @@
 module v2.test.claim.long.gauntlet_lane_enrollment_witness
 
 import std.types { List }
-import gunbc.ci.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows, falsifier_rehomed_roster_entries }
+import gunbc.ci.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
+import gunbc.rung_drop.falsifier_rehomed_rows_unexecuted { falsifier_rehomed_rows_unexecuted_population }
 import gunbc.ci.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
@@ -64,8 +65,8 @@ fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
   }
 }
 
-fn falsifier_entries_contain(entries: List<ScheduleWitnessEntry>, f: String) -> Bool {
-  any(entries, e => e.function == f)
+fn falsifier_entries_contain(entries: List<String>, f: String) -> Bool {
+  any(entries, id => id == f)
 }
 
 // wave1_gate1_d_census_subsumption_witness_holds moved off FalsifierCadenceJob onto
@@ -97,17 +98,17 @@ fn substrate_long_lane_contains(f: String) -> Bool {
 // needs a fresh claim naming the new home, not this one resurrected.
 
 test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
-  let entries = falsifier_rehomed_roster_entries()
+  let entries = falsifier_rehomed_rows_unexecuted_population()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
-    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_executes_holds")
-    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_wrong_value_red_holds")
-    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_executes_holds")
-    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_wrong_value_red_holds")
-    && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_wrong_value_red_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_wrong_value_red_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag::witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 
 test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
-  let cadence = falsifier_rehomed_roster_entries()
+  let cadence = falsifier_rehomed_rows_unexecuted_population()
   !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
 }

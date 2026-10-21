@@ -1910,11 +1910,13 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
 //
 // WHY THESE ROWS LEFT gunbc.commit_workflow commit_gate_roster (falsifier-surface leaf, node
 // adhoc-cea8e60d-505): FalsifierCadenceJob stopped being an executing surface, and a row enrolled
-// only on it is a bare de-enrollment. None of the five functions could be returned to
-// GithubActionsCiJob without re-opening the batch-4 over-budget that re-homed them (batch-4 clamp
+// only on it is a bare de-enrollment. None of the five functions is returned to
+// GithubActionsCiJob here: that would re-open the batch-4 over-budget that re-homed them (batch-4 clamp
 // FLOOR-BATCH-OVER-BUDGET, run 30148859947), so they are carried here, typed, until an executor
-// exists. The per-row wall was never recorded on these rows, so none is claimed here: a number
-// copied from a neighbour would be the fabricated reading falsifier_cadence_surface_note forbade.
+// exists. Walls: witness_row_cost_basis.tsv records 12481ms (wall, run 30550328673, srv_fleet_arm64)
+// for witness_parse_binding_fidelity_distinct_identifiers_holds, over the five-second per-PR
+// budget, which is the measured reason that row stays out of the floor; the bind/loop census rows
+// have no recorded reading there, so none is claimed for them.
 // The two frontier_probe rows that also rode the commit roster were the SAME identities already in
 // falsifier_rehomed_bin_wet_rows (a duplicate enrolment); they stay there and appear once.
 data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
