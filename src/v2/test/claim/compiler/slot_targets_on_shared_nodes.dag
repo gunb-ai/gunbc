@@ -6,10 +6,17 @@ module v2.test.claim.compiler.slot_targets_on_shared_nodes
 // first among the children still resolve each role to its own slot. v2.compiler.eval and v2.compiler.infer
 // read these roles through the tables.
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_at_optional }
 import v2.extdeps.languages.dag { dag_type_atom_node }
-import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated, lower_match }
+import v2.std.compilers.body_lowering { lower_bind, lower_match }
+import v2.std.integer { Int }
+import v2.std.type_binder { type_annotation_edge }
 import v2.std.node {
+  ComputationNode,
+  Bind,
+  Edge,
+  Positional,
+  node_synthetic,
   Symbol,
   BindBinderSlot,
   BindBodySlot,
@@ -61,14 +68,66 @@ test fn sts_match_scrutinee_equal_to_an_arm_keeps_its_slot() -> Bool {
     && sts_is(found: match_slot_target(n: m, slot: MatchArmSlot), expected: other)
 }
 
-test fn sts_an_annotation_edge_does_not_shift_the_bind_roles() -> Bool {
-  let key = sts_atom(identity: ^sts_key)
-  let value = sts_atom(identity: ^sts_value)
-  let body = sts_atom(identity: ^sts_body)
-  let bind = lower_bind_annotated(key_binding: key, value: value, body_binding: body, annotation: value)
+fn sts_edge_is_positional(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    _ => false
+  }
+}
+
+fn sts_child_is_positional_at(n: Node, index: Int) -> Bool {
+  match list_at_optional(xs: n.children, index: index) {
+    Present { value: e } => sts_edge_is_positional(e: e)
+    Absent => false
+  }
+}
+
+fn sts_bind_roles_hold(bind: Node, key: Node, value: Node, body: Node) -> Bool {
   sts_is(found: bind_slot_target(n: bind, slot: BindBinderSlot), expected: key)
     && sts_is(found: bind_slot_target(n: bind, slot: BindValueSlot), expected: value)
     && sts_is(found: bind_slot_target(n: bind, slot: BindBodySlot), expected: body)
+}
+
+// The annotation edge is stored FIRST: children are [annotation, binder, value, body], so a reader that
+// counted children rather than positional ordinals would take the annotation for the binder.
+test fn sts_an_annotation_edge_stored_first_does_not_shift_the_bind_roles() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let annotation = sts_atom(identity: ^sts_annotation)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      type_annotation_edge(annotation: annotation),
+      Edge { label: Positional, target: key },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  )
+  !sts_child_is_positional_at(n: bind, index: 0)
+    && sts_child_is_positional_at(n: bind, index: 1)
+    && sts_bind_roles_hold(bind: bind, key: key, value: value, body: body)
+}
+
+// The annotation edge is stored BETWEEN positionals: [binder, value, annotation, body]. The annotation
+// is the same node as the value, so neither edge equality nor child index tells them apart.
+test fn sts_an_annotation_edge_interleaved_between_positionals_does_not_shift_the_bind_roles() -> Bool {
+  let key = sts_atom(identity: ^sts_key)
+  let value = sts_atom(identity: ^sts_value)
+  let body = sts_atom(identity: ^sts_body)
+  let bind = node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: key },
+      Edge { label: Positional, target: value },
+      type_annotation_edge(annotation: value),
+      Edge { label: Positional, target: body }
+    ]
+  )
+  sts_child_is_positional_at(n: bind, index: 1)
+    && !sts_child_is_positional_at(n: bind, index: 2)
+    && sts_child_is_positional_at(n: bind, index: 3)
+    && sts_bind_roles_hold(bind: bind, key: key, value: value, body: body)
 }
 
 test fn sts_match_role_slots_return_every_arm_in_order() -> Bool {
