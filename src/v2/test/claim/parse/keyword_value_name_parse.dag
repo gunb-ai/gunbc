@@ -416,6 +416,20 @@ test fn kvn_none_tail_loop_block_tail_control_holds() -> Bool {
   }
 }
 
+data kvn_none_lowercase_head_pun_source: String = "module m.t\nfn f(b: Bool) -> Int? {\n  loop b { none }\n}\n"
+
+// Residual, the analog of `b { x }`: a lowercase head followed by a block of one name NOT before `else` reads as
+// a record initializer, so `none` there is a field-ending pun and refuses at the word: bytes 46..50.
+test fn kvn_none_lowercase_head_block_refuses_as_a_pun_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_lowercase_head_pun_source, file: ^probe_kvn_none_lowercase_head_pun),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_lowercase_head_pun,
+    start: 46,
+    end: 50
+  )
+}
+
 data kvn_none_arm_ident_source: String = "module m.t\nfn f(x: Int?) -> Int {\n  match x {\n    none => 1\n    Present { value } => value\n  }\n}\n"
 
 data kvn_none_arm_member_source: String = "module m.t\nfn f(x: R) -> Bool {\n  match x.y {\n    none => false\n    Present { value } => true\n  }\n}\n"
