@@ -261,6 +261,35 @@ test fn kvn_none_value_name_control_holds() -> Bool {
   }
 }
 
+data kvn_none_arm_ident_source: String = "module m.t\nfn f(x: Int?) -> Int {\n  match x {\n    none => 1\n    Present { value } => value\n  }\n}\n"
+
+data kvn_none_arm_member_source: String = "module m.t\nfn f(x: R) -> Bool {\n  match x.y {\n    none => false\n    Present { value } => true\n  }\n}\n"
+
+data kvn_none_arm_data_source: String = "module m.t\ndata d: Int = match b {\n  none => 1\n}\n"
+
+// Control: `none` leading a match body is an arm head, not a binder, a pun or a lambda: the corpus
+// writes the absence arm first, and a binder reservation that refused it refused 10 modules.
+test fn kvn_none_first_arm_ident_scrutinee_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_ident_source, file: ^probe_kvn_none_arm_ident) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn kvn_none_first_arm_member_scrutinee_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_member_source, file: ^probe_kvn_none_arm_member) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn kvn_none_sole_arm_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_data_source, file: ^probe_kvn_none_arm_data) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // THE INPUT IS SUPPLIED AT THE PARSE INTERFACE, AND THE TEXT ROUTE STILL RUNS ONCE. Every claim above
 // except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.claim.parse.supplied_token_stream_support
 // supplied_stream_parse), because its subject is the grammar's binder guard, not the tokenizer: deriving the
