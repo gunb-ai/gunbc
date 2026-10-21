@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -904,7 +904,7 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
   })
 }
 
-fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => falseCapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
 fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
   let legs = ledger_of(r: r)
   count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
