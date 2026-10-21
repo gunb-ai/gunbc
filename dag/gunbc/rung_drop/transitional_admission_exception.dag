@@ -53,7 +53,7 @@ data transitional_admission_exception_identities: FreeSemigroup<String> = FreeSe
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::named_step_fold_refuses_accumulator_unread",
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::report_counters_state_the_domain",
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::declared_named_step_fold_copy_is_caught",
-]
+] }
 
 // CONSTRUCTOR — derives the RungDrop from the single identity list authority.
 // DESIGN §3 single authority: the population field reads from the data above,
