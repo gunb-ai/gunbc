@@ -6,7 +6,7 @@ import gunbc.bash_materialized_transport { bash_materialized_transport }
 import gunbc.output_policy { ExpectFailure }
 import v2.std.effect_plan { Call, Do, EffectPlan, EffectPlanStep, If, Let }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
+import std.operation_argv {
   OperationInputBinding,
   OperationRef,
   operation_argv_bind_text

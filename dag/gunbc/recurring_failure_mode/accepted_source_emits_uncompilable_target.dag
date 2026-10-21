@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data accepted_source_emits_uncompilable_target: RecurringFailureMode = RecurringFailureMode {
   identity: "accepted_source_emits_uncompilable_target" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**accepted source emits uncompilable target** (INVALID STATE: a .dag construction the front end accepts with zero blocking diagnostics, whose emission is a target program the target compiler refuses.",

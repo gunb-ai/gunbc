@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.supervisor_liveness_consumed_as_participation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data supervisor_liveness_consumed_as_participation: RecurringFailureMode = RecurringFailureMode {
   identity: "supervisor_liveness_consumed_as_participation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**supervisor liveness consumed as participation** (a process supervisor reports a unit alive, and a reader takes that as evidence the service is doing its job. The two are different facts whenever the supervisor's readiness signal is weaker than the service's actual obligation, and for a DISTRIBUTED service they are never the same fact: the supervisor watches one process, and the obligation is a property of the group.)",

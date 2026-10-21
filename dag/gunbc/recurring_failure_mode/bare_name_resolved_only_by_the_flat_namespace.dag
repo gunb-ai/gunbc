@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespac
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data bare_name_resolved_only_by_the_flat_namespace: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_name_resolved_only_by_the_flat_namespace" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a bare name resolved only by the flat namespace** (INVALID STATE: a module names a provider or type bare -- `systemd.Journalctl.UnitInvocationLog(...)`, `ConstructionJustification { ... }` -- without importing its declaring module. Every whole-tree compile resolves it, because that compile's single flat namespace already holds the declaring module. An entry compiled ALONE loads only its import closure, the declaring module is not pulled, and the entry refuses (`no field 'Journalctl' on type 'systemd'`, `unresolved type 'ConstructionJustification'`).",
@@ -27,10 +29,24 @@ data bare_name_resolved_only_by_the_flat_namespace: RecurringFailureMode = Recur
     "RECEIPT (gunbc#14155, 2026-10-18, W7 build-cache ensure) — THE SAME CHANNEL, A POPULATION WHERE THE ROW'S OWN REFUSAL NEVER FIRES. gunbc.host.sccache_verified_install `sccache_verified_install_admitted_plan` annotated its return type `VerifiedBinaryInstallPlan` while importing three SIBLING names from gunbc.host.verified_binary_install and NOT that one; review 81885 found it by reading. The strict per-entry closure compile — the very gate this row's DISTINGUISHING FACTS credits with refusing — came back `exit=0 blocking=0 unresolved=0` with the import absent. THE DISCRIMINATOR, run on the runner at head 099210da4a0 in one dispatch (four compiles of the same entry — baseline, arm A, arm B, restored — log sizes 6057/6058/6061/6057 lines, so no verdict rests on a truncated log). BOTH arms delete the `VerifiedBinaryInstallPlan,` import line; they differ in exactly ONE respect, which is what makes the pair decisive. ARM A additionally renames the annotation to `VerifiedBinaryInstallPlanZzzNoSuchType`, a type present nowhere in the tree -> `exit=1`, 2 resolution diagnostics, `unresolved type 'VerifiedBinaryInstallPlanZzzNoSuchType'`. ARM B leaves the annotation as written -> `exit=0`, 0 diagnostics. Had annotations been unchecked, ARM A would have been green exactly like ARM B; it was not, so the annotation position IS resolved and explanation 'a strict closure compile never looks at annotation names' is dead. The two arms together locate the mechanism exactly as this row does — the loader's bare-reference channel binding a name through a module it has already loaded — with one distinguishing fact: in this population the declaring module IS in the closure, pulled by a sibling name in the same import block, so the pull is never declined and NO COMPILE ANYWHERE refuses. This is therefore strictly harder to catch than the row's named population, where the per-entry compile refuses loudly: a missing import survives main indefinitely and is found only by a human reader. RECOGNITION RULE, WIDENED: a bare name binds when ANY import in the file pulls its declaring module, whether or not the name itself is listed; a per-entry compile stays green over the whole gap, so legibility of the dependency edge is the only defense until the channel itself refuses.",
 
     "DISPOSITION, SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority, epoch C2). The debt roster named above, its verdict module and the seed's `unimported_bare_provider_gate` are DELETED: the gate had no executing route since the floor lane was deleted on 2026-10-09 (`gunbc.rung_drop` `v1_required_lanes_withdrawn`), so the roster tracked pairs nothing judged. On a cut-over route the class is now refused where it is used: the acquirer requests only what a module's own text names (an import line, a qualified reference), a bare name is not requestable (R1), and the v2 resolver refuses it unbound with the spelling, the local module and its visible imports named, nothing consulting the repository. The `T?` question above is ruled in the plan's decision table: the sugar's constructors need `import std.optional`. THE POPULATION THAT COVERS is every module a cut-over compile route reaches (R11); outside it the seed still binds a bare name by its ancestor chain and no required step judges that, which `v1_required_lanes_withdrawn` already declares.",
+
+    "POPULATION RECEIPT, 2026-10-21 (decl-ref-census, gunbc#14598): the census label //gunbc/instruments:decl-ref-census is the producer. It counts a DeclarationRef constructor whose head has no import row in its own module as bare_heads, and its first run measured 28 such sites in 12 modules. Each resolved only because name resolution is by global uniqueness, not imports. The 12 modules are the evidence references below, by module identity; each now imports its DeclarationRef head and the census refuses a bare head by name. The harm is this row's: a module compiled alone would refuse where the whole-tree compile stays green. This is a different row from an_unimported_bare_name_binds_differently_per_realization, whose harm is one name binding to two functions across realizations; here the name had one binding and only the declaring import was missing.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "gunbc.runner.runner_microvm_lifecycle_realize", decl_name: "observe_guest_bring_up", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.ci_input_envelope", decl_name: "gunbc_ci_corpus_envelope_ceiling_scaffold", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.cli_run_floor_lens_oracle_scaffold", decl_name: "cli_run_floor_lens_read_refusal_hand_rust_scaffold", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.cli_run_workspace_root_scaffold", decl_name: "cli_run_workspace_root_discovery_scaffold", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.hand_lens_host_bridge_scaffold_index", decl_name: "transport_script_position_host_bridge_dissolution_trigger", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.host_converge_delta", decl_name: "gunbc_converge_target_byte_normalization_marker", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.language_source_scaffold_index", decl_name: "rust_pair_completion_spelling_scaffold_trigger", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_unit_live_read", decl_name: "gunbc_runner_unit_live_read_absent_routing_scaffold", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.tools.card_intake", decl_name: "tcgplayer_money_measure_grounding_disposition", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host.host_phase_status_witness", decl_name: "modeled_phase_fixture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.lens.application_serializer", decl_name: "construction_justification", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.lens.enforcement.vocab", decl_name: "narrowing_reason_same_variant_disposition", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.decl_index", decl_name: "decl_facts", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.host.sccache_verified_install", decl_name: "sccache_verified_install_admitted_plan", field: WholeDeclaration },
   ],
 }

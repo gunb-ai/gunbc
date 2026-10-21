@@ -2,12 +2,13 @@ module test.claim.firmware_network_boot_probe_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, NicsObserved, NicsUnobserved, NicsRefused, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+  FirmwareBootObservation, BootOptionsUnobserved, NicsObserved, NicsUnobserved, NicsRefused,
+  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved,
 }
+import gunbc.secure_boot_observation { AuthenticationRequired, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
-  firmware_boot_axis_reader_frontier_status, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
+  firmware_boot_axis_reader_frontier_status, no_reply_reason, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
 }
 import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
@@ -20,7 +21,7 @@ import gunbc.firmware_network_boot_probe {
   FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
   TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
-  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBiosVersion, BiosVersionAxis,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBeyondDecoder, ReplyBiosVersion, BiosVersionAxis,
   BmcResponded, BmcSilent, ConnectTimedOut, ContactAttempt, AxisReply, ReadRoute,
   SuppliedSilence, DecodedFromSuppliedReplies, ProbeSubject,
   ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
@@ -290,7 +291,7 @@ test fn another_release_row_probes_without_touching_the_instrument() -> Bool {
 }
 
 test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
-  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "produce_probe_input")
+  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
   let pending = match firmware_boot_axis_reader_frontier_status(present_decls: []) {
     DissolutionPending => true
     _ => false
@@ -329,4 +330,38 @@ test fn a_row_listing_an_axis_twice_routes_nothing() -> Bool {
     coverage: [TransportAnswers { axis: BiosVersionAxis }, TransportCannotAnswer { axis: BiosVersionAxis, why: "contradicts the line above" }]
   )
   is_refused(verdict: route_for(row: twice, request: ReadAxisRequest { axis: BiosVersionAxis }))
+}
+
+// A valid answer the decoder cannot read is OUR limit: Unobserved, never a refusal pinned on the BMC (review 83313).
+test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: NicsAxis, why: "paged" }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.nics {
+            NicsUnobserved { reason: _ } => true
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+// A BootOptions collection the decoder does not read is Unobserved with the DECODER's reason, not a BMC refusal.
+test fn a_boot_options_reply_beyond_the_decoder_is_unobserved_with_its_reason() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: BootOptionsAxis, why: "unread" }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.boot_options {
+            BootOptionsUnobserved { reason: r } => r == "unread"
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
 }

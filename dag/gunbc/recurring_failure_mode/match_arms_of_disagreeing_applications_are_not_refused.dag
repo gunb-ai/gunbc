@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.match_arms_of_disagreeing_applications_are_not_refused
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data match_arms_of_disagreeing_applications_are_not_refused: RecurringFailureMode = RecurringFailureMode {
   identity: "match_arms_of_disagreeing_applications_are_not_refused" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**match arms that apply ONE generic declaration at different type arguments are accepted, and the emitted Rust does not compile** (invalid state: `match n { 1 => CtlCons { value: 1 }  _ => CtlCons { value: \"s\" } }` over `type CtlList<T> = CtlNil | CtlCons { value: T }` joins to one arm type with no diagnostic. The same disagreement in the two branches of an `if` is refused, `if branches resolve to incompatible types`, so the match arm-join (v1.compiler.infer match_arm_join_diagnostics) is the weaker twin of the branch join.",
