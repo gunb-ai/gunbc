@@ -7244,12 +7244,20 @@ fn infer_gather_branch_join(
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
   let start = InferHoldResolution { entries: merged_entries, pending: merged_pending, refused: Absent }
-  let r = fold(acc.branch_hold.held, init: start, f: fn(cur, h) {
-    match cur.refused {
-      Present { value: _ } => cur
-      Absent => infer_resolve_held_arm(branch: acc.node, cur: cur, held: h, resolved: resolved)
-    }
-  })
+  let r = match acc.declared_position_expected {
+    Present { value: expected } =>
+      match acc.branch_hold.held {
+        Empty => start
+        Cons { head: _, tail: _ } => infer_judge_branch_arms_at_expected(branch: acc.node, start: start, held: acc.branch_hold.held, expected: expected, resolved: resolved)
+      }
+    Absent =>
+      fold(acc.branch_hold.held, init: start, f: fn(cur, h) {
+        match cur.refused {
+          Present { value: _ } => cur
+          Absent => infer_resolve_held_arm(branch: acc.node, cur: cur, held: h, resolved: resolved)
+        }
+      })
+  }
   match r.refused {
     Present { value: refused } =>
       infer_gather_fold_acc_failed(
@@ -7264,6 +7272,47 @@ fn infer_gather_branch_join(
     Absent =>
       infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials)
   }
+}
+
+// RULE A AT A BRANCH: WITH A DECLARED EXPECTED TYPE, EACH ARM IS JUDGED AGAINST IT, NOT AGAINST ITS SIBLING. The expected type
+// reaches the branch through the frame (infer_gather_child_context keeps it across the then/else slots), and a branch holding an
+// underived arm resolves every arm at that declared position by the one judge every declared position uses
+// (infer_judge_declared_position_closing): a literal arm goes through the ordinary literal-at-expected judgement, a held arm is closed
+// at the expected type, and a bare T at a T? position refuses (no implicit lift). The sibling-declaring join
+// (infer_resolve_held_arm) is the answer only where there is no expected type to read.
+fn infer_judge_branch_arms_at_expected(branch: Node, start: InferHoldResolution, held: List<InferHeldArm>, expected: Node, resolved: ResolvedTree) -> InferHoldResolution {
+  let held_entries = fold(held, init: start, f: fn(cur, h) {
+    InferHoldResolution {
+      entries: concat_inferred_facts_entries(a: cur.entries, b: h.settled.entries),
+      pending: diagnostics_merge(outer: cur.pending, inner: h.settled.pending),
+      refused: Absent
+    }
+  })
+  fold(positional_child_target_nodes(node: branch), init: held_entries, f: fn(cur, arm) {
+    match cur.refused {
+      Present { value: _ } => cur
+      Absent =>
+        if !infer_branch_has_arm(branch: branch, arm: arm) {
+          cur
+        } else {
+          match infer_judge_declared_position_closing(
+            position: position_declared_return(),
+            application: branch,
+            entries: cur.entries,
+            declarations: resolved.resolved_declarations,
+            bindings: resolved.symbol_index,
+            formal: InhabitanceFormal { parameter_identity: ^branch_arm, declared: expected },
+            produced_at: arm,
+            type_params: Empty,
+            instances: infer_no_type_variable_instances()
+          ) {
+            Rejected { diagnostics: r } => InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
+            Accepted { value: next, diagnostics: d } =>
+              InferHoldResolution { entries: next, pending: diagnostics_merge(outer: cur.pending, inner: d), refused: Absent }
+          }
+        }
+    }
+  })
 }
 
 fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
@@ -8611,6 +8660,16 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
   }
 }
 
+// THE EXPECTED TYPE HOPS A BRANCH'S ARMS: the condition is a Bool position of its own and keeps nothing, the then/else slots are in the
+// branch's declared position, so they keep the frame's expected type (a nested branch then reads it at its own join).
+fn infer_branch_arm_child_frame(slot: ChildSlot, frame: InferFrame) -> InferFrame {
+  match slot.ordinal {
+    PositionalOrdinal { index: i } =>
+      if i == 0 { infer_frame_inherited(frame: frame) } else { infer_frame_keep_declared_position_expected(frame: frame) }
+    LabeledChild => infer_frame_inherited(frame: frame)
+  }
+}
+
 fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, slot: ChildSlot, resolved: ResolvedTree) -> InferFrame {
   let edge = slot.edge
   if infer_application_actual_is_callback(application: parent, edge: edge) {
@@ -8637,6 +8696,7 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
                 }
               LabeledChild => infer_frame_inherited(frame: frame)
             }
+          ComputationNode { behavior: Branch } => infer_branch_arm_child_frame(slot: slot, frame: frame)
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
           TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
