@@ -2237,8 +2237,9 @@ fn sole_ctor_count(source: String) -> Int {
     // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
     // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. Measured
     // on #14590: misspelling one import in verdict_probe_hdr left this witness green, lawful checks
-    // included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: zero rows is what a
-    // non-compiling source emits, so the lawful `== 0` can be satisfied by the failure itself -- and a
+    // included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: an observed census can
+    // report zero rows of the wanted class while the source has unrelated errors, so zero does not
+    // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
     // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
     // because violations are collected per source and an import error does not suppress them. Neither
     // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
@@ -2258,8 +2259,9 @@ fn sole_ctor_count(source: String) -> Int {
 // WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused, and the lawful pair
 // over the SAME imports must be clean. CAREFUL, measured not argued: neither side's COUNT proves
 // import resolution. The lawful pair ALONE does not separate 'refused correctly' from 'never
-// compiled' -- a source that fails to compile emits ZERO rows of the wanted class, and `== 0` is
-// satisfied by exactly that. And the hostile side's `>= 1` does not certify the imports either: it
+// compiled' -- an observed census can report zero rows of the wanted class while the source has
+// unrelated errors; zero does not establish successful compilation, and `== 0` is
+// satisfied by exactly such a zero. And the hostile side's `>= 1` does not certify the imports either: it
 // requires a violation to be PRESENT, and a real violation coexists with an unrelated import defect
 // (violations are collected per source; an import error does not suppress them), so a hostile source
 // could carry a broken import and still legitimately count 1. What the counts DO establish is the
