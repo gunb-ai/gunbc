@@ -1,4 +1,4 @@
-module v2.test.fixture.alias_cycle_probe.generic_ok
+module v2.test.fixture.alias_cycle.generic_ok
 
 type Box<T> = List<T>
 type BoxBox<T> = Box<T>

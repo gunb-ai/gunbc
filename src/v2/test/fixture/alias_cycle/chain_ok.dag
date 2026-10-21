@@ -1,4 +1,4 @@
-module v2.test.fixture.alias_cycle_probe.chain_ok
+module v2.test.fixture.alias_cycle.chain_ok
 
 type OkA = OkB
 type OkB = Int

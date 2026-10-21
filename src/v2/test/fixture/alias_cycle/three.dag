@@ -1,4 +1,4 @@
-module v2.test.fixture.alias_cycle_probe.three
+module v2.test.fixture.alias_cycle.three
 
 type Cyc3A = Cyc3B
 type Cyc3B = Cyc3C

@@ -1,4 +1,4 @@
-module v2.test.fixture.alias_cycle_probe.long_chain_ok
+module v2.test.fixture.alias_cycle.long_chain_ok
 
 type LongChain0 = LongChain1
 type LongChain1 = LongChain2

@@ -1,4 +1,4 @@
-module v2.test.fixture.alias_cycle_probe.direct
+module v2.test.fixture.alias_cycle.direct
 
 type CycA = CycB
 type CycB = CycA
