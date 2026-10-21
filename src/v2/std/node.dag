@@ -756,6 +756,24 @@ fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
   positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { match_positional_slot(ordinal: i) == slot })
 }
 
+// THE ARMS OF A Match IN ORDER, as slots: node_child_slots filtered on the positional children the table
+// maps to MatchArmSlot. A labeled child is neither scrutinee nor arm and is not here. Same definition as the
+// A3-prime change (#14636) adds; whichever lands second takes the one on main.
+fn match_arm_slots(n: Node) -> List<ChildSlot> {
+  fold(node_child_slots(n: n), init: [], f: fn(acc, s) { match_arm_slots_step(acc: acc, s: s) })
+}
+
+fn match_arm_slots_step(acc: List<ChildSlot>, s: ChildSlot) -> List<ChildSlot> {
+  match s.ordinal {
+    PositionalOrdinal { index: i } =>
+      match match_positional_slot(ordinal: i) {
+        MatchArmSlot => list_snoc_item(xs: acc, item: s)
+        MatchScrutineeSlot => acc
+      }
+    LabeledChild => acc
+  }
+}
+
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
   positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == slot })
 }
