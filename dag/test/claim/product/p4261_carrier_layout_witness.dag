@@ -75,7 +75,7 @@ import product.electrical.bench_session {
   StatedHedged,
   ReadingOrder,
   BeforeIncidents,
-  AfterIncidents,
+  AfterIncidents, OrderUnrecorded,
   ProbePolarity,
   RedOnFirst,
   RedOnSecond,
@@ -133,6 +133,7 @@ import product.p4261_carrier_layout {
   k1_measured, k1_phases, k1_j68, k1_return, k1_j68_volts_at_40ma, k1_j30, k1_j30_volts_at_40ma,
   k1_transitions, k1_inductor_volts_at_40ma, k1_l_2r2, k1_l_4r7_near, k1_l_4r7_far, inductor_pad_unrecorded, inductor_pad_near_u4, inductor_pad_far_u4,
   e1_inductor_volts, e1_l_2r2, e1_l_4r7_near,
+  e1_inductor_short_incident, e1_after_short_resistances, k1_l_4r7_near_resistance, k1_resistances, e1_u21, e1_u69,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -2505,4 +2506,32 @@ test fn the_k1_powers_one_converter_beside_u4_where_the_e1_powers_them_all() -> 
     && all(back, t => t.from_phase == "k1-s2-as-p1-s1-2-away" && t.to_phase == "k1-s2-as-p1")
     && phase_arm(layout: p4261_k1_layout, key: "k1-after-j30-tap") == phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on")
     && carrier_input_reading(layout: p4261_k1_layout).contains("'k1-all-poles-on' -> 'k1-after-j30-tap' on")
+}
+
+// The second incident on the E1 is a row with its own key, and every reading taken after it carries
+// that key in its order: the nearest 4R7's two pads at zero to the return where the K1's reads about
+// 4 kohm, and the three inductors whole pad to pad. Red when a post-short reading drops the incident
+// from its order, or when the incident leaves the bench record.
+fn after_both_incidents(o: ResistanceObservation) -> Bool {
+  match o.order {
+    AfterIncidents { keys } => any(keys, k => k == e1_inductor_short_incident.key) && any(keys, k => k == e1_bridge_incident.key)
+    BeforeIncidents { keys: _ } => false
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+fn reads_zero_to_return(o: ResistanceObservation) -> Bool {
+  terminal_ref_equal(a: o.second, b: e1_ground_ref) && match o.display { DisplayZeroWithoutBaseline { reported: _ } => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false, DisplayOverRange => false }
+}
+test fn the_inductor_short_is_an_incident_and_its_readings_follow_it() -> Bool {
+  let incidents = filter(e1_measured.bench.incidents, i => i.key == e1_inductor_short_incident.key)
+  let k1_ohms = match k1_l_4r7_near_resistance.display { DisplayValue { ohms, approximate: _ } => ohms, DisplayZeroWithoutBaseline { reported: _ } => 0, DisplayAtProbeBaseline { shown: _, baseline: _ } => 0, DisplayAboveBaseline => 0, DisplayOverRange => 0 }
+  count(e1_measured.bench.incidents) == 2 && count(incidents) == 1
+    && all(incidents, i => count(i.bridged) == 2 && i.observed.contains("CC lit, then 13 mA, then 97 mA"))
+    && count(e1_after_short_resistances) == 5 && all(e1_after_short_resistances, o => after_both_incidents(o: o))
+    && count(filter(e1_after_short_resistances, o => reads_zero_to_return(o: o))) == 2
+    && k1_ohms == 4000
+    && count(k1_measured.bench.resistances) == count(k1_resistances) + 1
+    && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-21 inductor short")
+    && count(component_of(layout: p4261_e1_layout, c: e1_u21)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_u69)) == 1
+    && all(component_of(layout: p4261_e1_layout, c: e1_u21), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
 }
