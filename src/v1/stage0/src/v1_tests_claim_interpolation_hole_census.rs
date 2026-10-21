@@ -7,7 +7,7 @@ use self::HoleTypeReading::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
-pub use crate::v1_compiler_infer::type_node_label;
+pub use crate::v1_compiler_infer_env::type_node_label;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
@@ -295,7 +295,7 @@ pub fn ihc_expr_data_label(e: Rc<Node>) -> String {
 pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HoleTypeReading> {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone());
+            let label = crate::v1_compiler_infer_env::type_node_label(rt.clone(), si.clone());
             if (label.clone() == "String".to_string()) {
                 Rc::new(HoleTypeReading::HoleTypedString)
             } else {
