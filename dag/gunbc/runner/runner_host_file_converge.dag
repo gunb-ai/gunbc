@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
+import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
@@ -53,6 +53,8 @@ import extdeps.needrestart {
   needrestart_conf_d_text,
 }
 import product.host_identity { HostIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -116,6 +118,8 @@ import gunbc.runner.runner_unit_file {
   gunbc_runner_unit_fragment_from_deploy,
   RunnerUnitText,
   RunnerUnitTextRefused,
+  runner_unit_slot_role_dropin_text,
+  runner_unit_slot_role_dropin_path,
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
@@ -291,6 +295,56 @@ fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
   }
 }
 
+// A DEPLOY SLOT'S ROLE DROP-IN IS A FILE OF THE POPULATION, one per deploy slot of the host, delivered
+// by the same converge and read back by the same byte comparison as the template drop-ins. A host
+// with no deploy slot owes none. A refused rendering is WITHHELD with its own cause and never skipped,
+// and what remains is delivered: the slot then keeps whatever drop-in it has, and its tenancy
+// reading (gunbc.ci.deploy_slot_tenancy deploy_slot_observed_tenancy) says what it runs as.
+fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> RunnerHostFileDesired? {
+  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+    Absent => Absent
+    Present { value: RunnerUnitTextRefused { reason: _ } } => Absent
+    Present { value: RunnerUnitText { text: text } } =>
+      Present { value: RunnerHostFileDesired {
+        subject: "runner-slot-role-dropin" as NonEmptyStr,
+        path: runner_unit_slot_role_dropin_path(slot: slot) as FilePath,
+        content: text,
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        validation: NoValidation,
+      } }
+  }
+}
+
+fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
+  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+    Present { value: RunnerUnitTextRefused { reason: r } } =>
+      [RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: r }]
+    _ => []
+  }
+}
+
+fn runner_host_slot_role_files(host: HostIdentity) -> List<RunnerHostFileDesired> {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy: d } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => match runner_host_slot_role_file(deploy: d, slot: s) { Present { value: f } => [f] Absent => [] },
+      )
+    _ => []
+  }
+}
+
+fn runner_host_slot_role_withheld_files(host: HostIdentity) -> List<RunnerHostFileWithheld> {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy: d } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => runner_host_slot_role_withheld(deploy: d, slot: s),
+      )
+    _ => []
+  }
+}
+
 // THE SUDOERS DROP-IN IS THE RENDERED ARTIFACT'S BYTES, FROM THE ONE PRODUCER OF THEM. The content is
 // gunbc.runner.runner_host_grants runner_host_sudoers_body -- the same fold
 // tier_o_artifact_emit consumes, that decides, per host, between runner_host_sudoers_content and the refused-width variant, and the
@@ -365,8 +419,16 @@ fn runner_host_file_desired_population_from_uid_reading(
         SlotCpuRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
         SlotCpuDesired { per_slot: _, file: f } =>
           match runner_host_sudoers_desired(host: host) {
-            SudoersFileDesired { file: sf } => RunnerHostFilesDesired { files: concat(fs, [f, sf]), withheld: ws }
-            SudoersFileWithheld { withheld: sw } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: concat(ws, [sw]) }
+            SudoersFileDesired { file: sf } =>
+              RunnerHostFilesDesired {
+                files: concat(concat(fs, [f, sf]), runner_host_slot_role_files(host: host)),
+                withheld: concat(ws, runner_host_slot_role_withheld_files(host: host)),
+              }
+            SudoersFileWithheld { withheld: sw } =>
+              RunnerHostFilesDesired {
+                files: concat(concat(fs, [f]), runner_host_slot_role_files(host: host)),
+                withheld: concat(concat(ws, [sw]), runner_host_slot_role_withheld_files(host: host)),
+              }
           }
       }
   }
@@ -1228,7 +1290,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<RunnerHostFi
   concat(
     [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }],
     concat(
-      flat_map(files, f => [
+      list_flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
         LegFileModeFind { path: f.path as String, mode: f.mode },
         LegRootOnlyFind { paths: runner_host_path_ancestors(path: f.path as String), kind: "d" },

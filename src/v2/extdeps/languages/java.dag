@@ -44,7 +44,7 @@ import v2.std.compilers.lexing {
   RepeatPattern,
   SequencePattern,
   TokenRule,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 
 import std.optional {
@@ -84,7 +84,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.logic { bool_boolean_algebra }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, fold_list_right, PointwisePower, empty_map, map_insert }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, fold_list_right, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node }
 import v2.std.text { String }
 
@@ -1435,12 +1435,18 @@ fn java_grammar() -> ParseGrammar {
   ModeledGrammar { root: java_grammar_root() }
 }
 
+// The token-class membership map for java_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data java_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: java_lex_rules())
+
 fn java_canonical_symbols() -> PointwisePower<Symbol> {
   PointwisePower {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
-        lex_rule_set_token_class_member(rules: java_lex_rules(), token_class: sym) ||
+        map_contains_key(m: java_lex_token_class_membership, key: sym) ||
         grammar_carries_symbol(grammar: java_grammar(), sym: sym) ||
         sym == ^java_surface_method_item ||
         sym == ^java_production_method_add ||

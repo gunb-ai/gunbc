@@ -2,6 +2,15 @@ module gunbc.stage0_partition_rebuild_scope
 
 import std.types { String, List, Bool, Int }
 import gunbc.source_layout { layout_module_storage_path }
+import gunbc.regen_affected_set {
+  AffectedSetBound,
+  AffectedMirrors,
+  WholePopulation,
+  EditedSetUnlocatable,
+  DependencyEdge,
+  MirrorRow,
+  regen_affected_set
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
@@ -661,6 +670,44 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
   match stage0_partition_authority_storage_path() {
     Absent => false
     Present { value: path } => rebuild_scope_list_has(items: changed_paths, item: path)
+  }
+}
+
+// THE EXPLANATION OF A PARTITION MOVE FROM THE CHANGE'S INPUTS. The authority path above is ONE input
+// of the two partition-generation mirrors: v1_compiler_stage0_crates.rs is rendered by
+// v1.compiler.stage0_crates, whose import closure (emit_rust, runtime_rust, extdeps.rust.*, ...) moves its
+// bytes while the rows stay put. Which mirrors an edit can move is already declared once, by
+// gunbc.regen_affected_set, over the same regen dependency graph the mirrors are emitted from. The host
+// supplies that function's own arguments and this asks it, then eliminates its AffectedSetBound
+// exhaustively, so a new arm there is a compile refusal here rather than a silent false.
+//   WholePopulation      the edit is under a declared generation-input prefix (v1.compiler.*): every
+//                        mirror's producer moved, so the move is explained. This is the bound's own
+//                        width, not narrowed here.
+//   AffectedMirrors      explained iff a partition-generation mirror is a member, or the authority
+//                        path is among the changed paths. A move with neither is drift.
+//   EditedSetUnlocatable REFUSES and does not fall through to the authority path: an edit that could
+//                        not be read explains nothing.
+fn stage0_partition_move_explained_by_affected_inputs(
+  changed_paths: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> Bool {
+  stage0_partition_move_explained_by_bound(
+    changed_paths: changed_paths,
+    bound: regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
+  )
+}
+
+fn stage0_partition_move_explained_by_bound(changed_paths: List<String>, bound: AffectedSetBound) -> Bool {
+  match bound {
+    WholePopulation { edited: _, generation_inputs: _ } => true
+    AffectedMirrors { edited: _, mirrors: m, bootstrap_products: _ } =>
+      count(rebuild_scope_changed_in_roster(changed_mirrors: m, roster: rebuild_scope_partition_generation_mirrors)) > 0
+        || stage0_partition_move_explained_by_changed_paths(changed_paths: changed_paths)
+    EditedSetUnlocatable { unlocatable: _, reason: _ } => false
   }
 }
 

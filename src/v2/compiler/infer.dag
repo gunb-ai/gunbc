@@ -22,7 +22,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   target_model_canonical_operation_member_declared_type,
 }
-import v2.compiler.lexical_scope { bind_binder }
+import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
@@ -58,7 +58,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+import v2.std.node { ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -189,7 +189,7 @@ type InferGatherFoldAcc {
   await_loop_row: Bool
   await_transform_row: Bool
   children_remaining: Int
-  uninhabited_match_expected: Optional<Node>
+  declared_position_expected: Optional<Node>
 }
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
@@ -365,7 +365,6 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
         Conj => true
         Disj => true
         Arrow => true
-        Occupancy => true
         Instantiation => true
       }
     ComputationNode { behavior: _ } => false
@@ -2717,7 +2716,6 @@ fn infer_match_bool_arm_row(
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Disj } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Arrow } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
-    TypeNode { connective: Occupancy } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Instantiation } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     ComputationNode { behavior: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
   }
@@ -2914,7 +2912,7 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
   // THE SCRUTINEE IS READ THROUGH THE ONE DECLARATION-KEYED READER (ruling gunbc.design_ruling
   // optional_sugar_is_declaration_bound): the reader already answers for a bare reference, an applied
   // reference, and the `T?`/`Optional<T>` wrapper (which DENOTES the std.optional.Optional declaration), so
-  // this checker has no arm for any type-node shape and none is wanted -- an Occupancy arm here would be a
+  // this checker has no arm for any type-node shape and none is wanted -- an optional arm here would be a
   // second place the sugar's meaning is stated.
   match declaration_denotation_of_type(t: infer_type_alias_normalized_at(t: scrutinee_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)) {
     Absent => CoproductNotDeclared
@@ -3743,7 +3741,6 @@ fn infer_operator_arrow(operator: Node) -> Optional<Node> {
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -3774,7 +3771,6 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -4171,7 +4167,7 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
 // no second inhabitance relation. A constructor or arity mismatch refuses there, typed and located, with
 // the judge's own application_argument_does_not_inhabit. An argument whose type is not derived stays the
 // counted frontier and binds nothing; a variable inside an Arrow stays the judge's UndecidableGenericFormal.
-// Occupancy wrappers are opened (gunbc#13488): T? against U? peels one layer each and matches the
+// Optional instances are opened (gunbc#13488): T? against U? peels one layer each and matches the
 // bases; a layer-count mismatch is InferFormalShapeMismatch, never a collapsed Optional.
 type InferFormalMatch
   = InferFormalMatched { instances: List<TypeVariableInstance> }
@@ -4220,30 +4216,6 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
               }
             TypeNode { connective: _ } => InferFormalShapeMismatch
             ComputationNode { behavior: _ } => InferFormalShapeMismatch
-          }
-        TypeNode { connective: Occupancy } =>
-          match type_node_occupancy_read(n: formal) {
-            OccupancyWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
-            TypeNodeOccupancy { depth: fdepth, base: fbase } =>
-              match peel_optional_layer(depth: fdepth) {
-                Absent => InferFormalShapeMismatch
-                Present { value: frest } =>
-                  match type_node_occupancy_read(n: produced) {
-                    OccupancyWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
-                    TypeNodeOccupancy { depth: pdepth, base: pbase } =>
-                      match peel_optional_layer(depth: pdepth) {
-                        Absent => InferFormalShapeMismatch
-                        Present { value: prest } =>
-                          infer_match_generic_formal(
-                            formal: wrap_type_node_occupancy(base: fbase, depth: frest),
-                            produced: wrap_type_node_occupancy(base: pbase, depth: prest),
-                            type_params: type_params,
-                            instances: instances,
-                            declarations: declarations
-                          )
-                      }
-                  }
-              }
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }
         ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
@@ -4916,7 +4888,15 @@ fn infer_judge_application_argument_instantiating(
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: declared } =>
       if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_params) {
-        infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: formal, arg: arg, type_params: type_params, instances: instances)
+        let instantiated = infer_type_instantiated(t: declared, instances: instances)
+        if inhabitance_node_mentions_type_variable(n: instantiated, type_variables: type_params) {
+          infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: formal, arg: arg, type_params: type_params, instances: instances)
+        } else {
+          match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instantiated }, produced_at: arg, type_params: type_params, instances: instances) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: closed, diagnostics: d } => Accepted { value: closed, diagnostics: d }
+          }
+        }
       } else {
         match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: formal, produced_at: arg, type_params: type_params, instances: instances) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -4974,7 +4954,8 @@ fn infer_application_argument_inhabitance(
   node: Node,
   entries: Map<Node, List<InferredFacts>>,
   declarations: SymbolIndex,
-  bindings: SymbolIndex
+  bindings: SymbolIndex,
+  expected: Optional<Node>
 ) -> Outcome<List<TypeVariableInstance>> {
   match infer_application_formals(node: node, entries: entries) {
     FormalsUnresolved =>
@@ -5000,7 +4981,8 @@ fn infer_application_argument_inhabitance(
             declarations: declarations,
             bindings: bindings,
             pairs: infer_pairs_callbacks_last(pairs: pairs),
-            type_params: infer_application_type_params(node: node, entries: entries)
+            type_params: infer_application_type_params(node: node, entries: entries),
+            expected: expected
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: instances, diagnostics: d } =>
@@ -5241,6 +5223,45 @@ fn infer_judged_site_node(site: InferJudgedSite, actual: Node) -> Node {
   }
 }
 
+// RULE A: AN APPLICATION AT A DECLARED POSITION IS JUDGED WITH ITS TYPE VARIABLES SEEDED BY THE POSITION'S
+// DECLARED TYPE. At a position whose declared type D is known (a fn's declared return, an annotated let), the
+// callee's declared return R is matched against D by the one generic matcher that judges every argument
+// (infer_match_generic_formal), and the instances it fixes are the call's instantiation BEFORE any argument is
+// read. Each argument then meets its formal instantiated by that seed, as its own declared position, and a
+// later argument must inhabit the seeded instance through the same declared_type_inhabitance fold -- a
+// conflict is the ordinary application_argument_does_not_inhabit at the argument. The seed pre-fills; it
+// never overrides, widens or defaults: a variable the match does not fix stays the counted frontier, and
+// there is no seed without a declared position (expected Absent), for an R with no type variable, or on a
+// shape mismatch (InferFormalShapeMismatch fixes nothing, and the arguments are judged as they always were).
+// The declared position is the frame's declared_position_expected, the one expected type the body of an Arrow
+// already carries.
+fn infer_expected_return_seed(site: InferJudgedSite, entries: Map<Node, List<InferredFacts>>, declarations: SymbolIndex, bindings: SymbolIndex, type_params: List<Symbol>, expected: Optional<Node>) -> List<TypeVariableInstance> {
+  match expected {
+    Absent => infer_no_type_variable_instances()
+    Present { value: declared } =>
+      match site {
+        JudgedAtEachActual => infer_no_type_variable_instances()
+        JudgedAtApplication { application: application } =>
+          match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
+            Absent => infer_no_type_variable_instances()
+            Present { value: arrow } =>
+              match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
+                Absent => infer_no_type_variable_instances()
+                Present { value: returned } =>
+                  if inhabitance_node_mentions_type_variable(n: returned, type_variables: type_params) {
+                    match infer_match_generic_formal(formal: infer_type_alias_normalized_at(t: returned, bodies: declarations, bindings: bindings), produced: infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings), type_params: type_params, instances: infer_no_type_variable_instances(), declarations: declarations) {
+                      InferFormalMatched { instances: seeded } => seeded
+                      InferFormalShapeMismatch => infer_no_type_variable_instances()
+                    }
+                  } else {
+                    infer_no_type_variable_instances()
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
@@ -5248,11 +5269,12 @@ fn infer_judge_formal_args(
   declarations: SymbolIndex,
   bindings: SymbolIndex,
   pairs: List<InhabitanceFormalArg>,
-  type_params: List<Symbol>
+  type_params: List<Symbol>,
+  expected: Optional<Node>
 ) -> Outcome<List<TypeVariableInstance>> {
   fold(
     pairs,
-    init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
+    init: Accepted { value: infer_expected_return_seed(site: site, entries: entries, declarations: declarations, bindings: bindings, type_params: type_params, expected: expected), diagnostics: None },
     f: fn(acc, pair) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -5485,7 +5507,7 @@ fn infer_gather_fold_acc_failed(
     await_loop_row: await_loop_row,
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
-    uninhabited_match_expected: Absent
+    declared_position_expected: Absent
   }
 }
 
@@ -5509,11 +5531,11 @@ fn infer_gather_fold_acc_ok(
     await_loop_row: await_loop_row,
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
-    uninhabited_match_expected: Absent
+    declared_position_expected: Absent
   }
 }
 
-fn infer_gather_stamp_uninhabited_match_expected(acc: InferGatherFoldAcc, expected: Optional<Node>) -> InferGatherFoldAcc {
+fn infer_gather_stamp_declared_position_expected(acc: InferGatherFoldAcc, expected: Optional<Node>) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
     node: acc.node,
     entries: acc.entries,
@@ -5524,7 +5546,7 @@ fn infer_gather_stamp_uninhabited_match_expected(acc: InferGatherFoldAcc, expect
     await_loop_row: acc.await_loop_row,
     await_transform_row: acc.await_transform_row,
     children_remaining: acc.children_remaining,
-    uninhabited_match_expected: expected
+    declared_position_expected: expected
   }
 }
 
@@ -5852,10 +5874,11 @@ fn infer_gather_transform_row_on_entries(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
+  expected: Optional<Node>,
 ) -> InferGatherFoldAcc {
   match list_introduction_elements_optional(node: node) {
     Absent =>
-      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved)
+      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, expected: expected)
     Present { value: elements } =>
     match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, resolved: resolved) {
       Absent =>
@@ -5908,6 +5931,7 @@ fn infer_gather_application_row_on_entries(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
+  expected: Optional<Node>,
 ) -> InferGatherFoldAcc {
   if infer_application_callee_is_primitive_authority(node: node, resolved: resolved) {
     match infer_primitive_without_signature_refusal(node: node) {
@@ -5921,10 +5945,10 @@ fn infer_gather_application_row_on_entries(
           await_transform_row: false,
           children_remaining: 0
         )
-      Accepted { value: _, diagnostics: _ } => infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved)
+      Accepted { value: _, diagnostics: _ } => infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, expected: expected)
     }
   } else {
-    infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved)
+    infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, expected: expected)
   }
 }
 
@@ -5935,8 +5959,9 @@ fn infer_gather_application_row_on_arguments(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
+  expected: Optional<Node>,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index, expected: expected) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -6298,7 +6323,8 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           pending: None,
           partials: partials,
           kinds: kinds,
-          resolved: resolved
+          resolved: resolved,
+          expected: Absent
         )
       } else {
         infer_gather_fold_acc_ok(
@@ -6412,7 +6438,6 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
-    TypeNode { connective: Occupancy } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
     TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
   }
 }
@@ -6494,7 +6519,6 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -6552,7 +6576,6 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
           optional_present(value: integer_decimal_digits_type_node())
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Occupancy } => optional_absent()
         TypeNode { connective: Instantiation } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
@@ -6563,7 +6586,6 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
         TypeNode { connective: Conj } => optional_absent()
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Occupancy } => optional_absent()
         TypeNode { connective: Instantiation } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
@@ -6633,7 +6655,6 @@ fn infer_gather_acc_awaits_product_row(node: Node, entries: Map<Node, List<Infer
         Present { value: _ } => false
       }
     TypeNode { connective: Atom { identity: _ } } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -6965,7 +6986,7 @@ fn infer_gather_fold_step_merged(
       pending: merged_pending,
       partials: partials,
       resolved: resolved,
-      expected: acc.uninhabited_match_expected
+      expected: acc.declared_position_expected
     )
   } else if acc.await_loop_row && children_remaining == 0 {
     infer_gather_loop_row_on_entries(
@@ -6981,12 +7002,13 @@ fn infer_gather_fold_step_merged(
       pending: merged_pending,
       partials: partials,
       kinds: kinds,
-      resolved: resolved
+      resolved: resolved,
+      expected: acc.declared_position_expected
     )
   } else if children_remaining == 0 {
     infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
   } else {
-    infer_gather_stamp_uninhabited_match_expected(
+    infer_gather_stamp_declared_position_expected(
       acc: infer_gather_fold_acc_ok(
         node: acc.node,
         entries: merged_entries,
@@ -6997,7 +7019,7 @@ fn infer_gather_fold_step_merged(
         await_transform_row: acc.await_transform_row,
         children_remaining: children_remaining
       ),
-      expected: acc.uninhabited_match_expected
+      expected: acc.declared_position_expected
     )
   }
 }
@@ -7639,7 +7661,8 @@ fn infer_construct_facts_on_entries(
                     declarations: declarations,
                     bindings: bindings,
                     pairs: pairs,
-                    type_params: type_params
+                    type_params: type_params,
+                    expected: Absent
                   ) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: instances, diagnostics: jd } =>
@@ -8052,7 +8075,7 @@ fn infer_gather_settled_unannotated_row(
             )
         }
       } else {
-        infer_gather_stamp_uninhabited_match_expected(
+        infer_gather_stamp_declared_position_expected(
           acc: infer_gather_fold_acc_ok(
             node: acc.node,
             entries: merged_entries,
@@ -8063,7 +8086,7 @@ fn infer_gather_settled_unannotated_row(
             await_transform_row: acc.await_transform_row,
             children_remaining: 0
           ),
-          expected: acc.uninhabited_match_expected
+          expected: acc.declared_position_expected
         )
       }
 }
@@ -8083,7 +8106,7 @@ type InferFrame {
   instances: List<TypeVariableInstance>
   binder_types: List<InferBinderType>
   entering: InferFrameEntry
-  uninhabited_match_expected: Optional<Node>
+  declared_position_expected: Optional<Node>
 }
 
 // A MATCH-PAYLOAD BINDER'S TYPE, KEYED BY ITS BINDER SITE. Resolve records only that a payload binder is
@@ -8109,15 +8132,15 @@ type InferFrameEntry
   | InferFrameEnteredRefused { refused: NonEmptyDiagnostics }
 
 fn infer_root_frame() -> InferFrame {
-  InferFrame { instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types(), entering: InferFrameEnteredPlain, uninhabited_match_expected: Absent }
+  InferFrame { instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types(), entering: InferFrameEnteredPlain, declared_position_expected: Absent }
 }
 
 fn infer_frame_inherited(frame: InferFrame) -> InferFrame {
-  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, uninhabited_match_expected: Absent }
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Absent }
 }
 
-fn infer_frame_keep_uninhabited_match_expected(frame: InferFrame) -> InferFrame {
-  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, uninhabited_match_expected: frame.uninhabited_match_expected }
+fn infer_frame_keep_declared_position_expected(frame: InferFrame) -> InferFrame {
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: frame.declared_position_expected }
 }
 
 fn infer_nodes_same_occurrence(a: Node, b: Node) -> Bool {
@@ -8135,13 +8158,13 @@ fn infer_arrow_body_child_frame(parent: Node, frame: InferFrame, edge: Edge) -> 
   match parent.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: parent.children) {
-        Found { target: body } =>
-          if infer_nodes_same_occurrence(a: body, b: edge.target) {
+        Found { target: _ } =>
+          if edge_is_core(e: edge, marker: ArrowBodyEdge) {
             InferFrame {
               instances: frame.instances,
               binder_types: frame.binder_types,
               entering: InferFrameEnteredPlain,
-              uninhabited_match_expected: list_at_optional(xs: positional_child_target_nodes(node: parent), index: 1)
+              declared_position_expected: list_at_optional(xs: positional_child_target_nodes(node: parent), index: 1)
             }
           } else {
             infer_frame_inherited(frame: frame)
@@ -8191,7 +8214,7 @@ fn infer_fold_member_advisory(reason: Symbol, at: Node) -> NonEmptyDiagnostics {
 }
 
 fn infer_frame_with_advisory(frame: InferFrame, reason: Symbol, at: Node) -> InferFrame {
-  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredWith { advisory: infer_fold_member_advisory(reason: reason, at: at) }, uninhabited_match_expected: Absent }
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredWith { advisory: infer_fold_member_advisory(reason: reason, at: at) }, declared_position_expected: Absent }
 }
 
 // THE DEPENDENT CHILD'S FRAME: the domain's settled type (already folded into `acc`, because the domain is
@@ -8238,7 +8261,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
           instances: list_snoc_item(xs: frame.instances, item: TypeVariableInstance { binder: variable, instance: member }),
           binder_types: frame.binder_types,
           entering: InferFrameEnteredPlain,
-          uninhabited_match_expected: Absent
+          declared_position_expected: Absent
         }
       } else {
         infer_fold_member_judged_frame(frame: frame, formal: formal, member: member, step: step, resolved: resolved)
@@ -8250,7 +8273,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
   let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   match declared_type_inhabitance(obligation: obligation) {
-    Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, uninhabited_match_expected: Absent }
+    Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Absent }
     InhabitanceUndecidable { reason: _ } =>
       infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_formal_undecided, at: formal.formal.type_node)
     InhabitanceRefused { find_witness_reason: fw_reason } =>
@@ -8260,12 +8283,13 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
         entering: InferFrameEnteredRefused {
           refused: diagnostics_singleton(d: application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: fw_reason))
         },
-        uninhabited_match_expected: Absent
+        declared_position_expected: Absent
       }
   }
 }
 
-fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
+fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, slot: ChildSlot, resolved: ResolvedTree) -> InferFrame {
+  let edge = slot.edge
   if infer_application_actual_is_callback(application: parent, edge: edge) {
     infer_callback_argument_frame(application: parent, frame: infer_frame_inherited(frame: frame), acc: acc, callback: edge.target, resolved: resolved)
   } else {
@@ -8275,12 +8299,21 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
         infer_fold_carrier_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc, loop_node: edge.target, resolved: resolved)
       } else if infer_loop_takes_collection_member(loop_node: parent) {
         infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
-      } else if infer_let_body_edge(parent: parent, edge: edge) {
-        infer_let_body_frame(bind: parent, frame: infer_frame_keep_uninhabited_match_expected(frame: frame), acc: acc)
+      } else if infer_annotated_let_bound_slot(parent: parent, slot: slot) {
+        infer_annotated_let_bound_frame(bind: parent, frame: frame)
+      } else if infer_let_body_slot(parent: parent, slot: slot) {
+        infer_let_body_frame(bind: parent, frame: infer_frame_keep_declared_position_expected(frame: frame), acc: acc)
       } else {
         match parent.kind {
           ComputationNode { behavior: Match } =>
-            infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+            match slot.ordinal {
+              PositionalOrdinal { index: i } =>
+                match match_positional_slot(ordinal: i) {
+                  MatchArmSlot => infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+                  MatchScrutineeSlot => infer_frame_inherited(frame: frame)
+                }
+              LabeledChild => infer_frame_inherited(frame: frame)
+            }
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
           TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
@@ -8438,7 +8471,7 @@ fn infer_callback_formal_frame(frame: InferFrame, expected: Node, callback: Node
         }).instances,
         binder_types: frame.binder_types,
         entering: InferFrameEnteredPlain,
-        uninhabited_match_expected: Absent
+        declared_position_expected: Absent
       }
   }
 }
@@ -8663,33 +8696,28 @@ fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType
 // facts are in. So the arm's frame carries one InferBinderType row per payload binder, and a binder whose
 // field is a free formal the scrutinee's arguments do not instantiate REFUSES the arm (located), never
 // types as the bare formal and never stays untyped to be accepted on the advisory frontier (section 5).
-// A Match's scrutinee: its first positional child, the slot v2.std.compilers.body_lowering lower_match
-// writes ahead of the arms.
+// A Match's scrutinee, read through the slot table (v2.std.node match_slot_target), which stops at it.
 fn infer_match_scrutinee(match_node: Node) -> Optional<Node> {
-  list_at_optional(xs: positional_child_target_nodes(node: match_node), index: 0)
+  match_slot_target(n: match_node, slot: MatchScrutineeSlot)
 }
 
 fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
   match infer_match_scrutinee(match_node: parent) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: scrutinee } =>
-      if scrutinee == edge.target {
-        infer_frame_inherited(frame: frame)
-      } else {
-        match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
-          Absent => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-          Present { value: facts } =>
-            match inferred_facts_resolved_type(facts: facts) {
-              Violates { diagnostic: _ } => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-              Holds { value: scrutinee_type } =>
-                match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
-                  CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                  CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
-                }
-            }
-        }
+      match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
+        Absent => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+            Holds { value: scrutinee_type } =>
+              match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
+                CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
+              }
+          }
       }
   }
 }
@@ -8702,7 +8730,7 @@ fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatc
         instances: frame.instances,
         binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
         entering: InferFrameEnteredPlain,
-        uninhabited_match_expected: Absent
+        declared_position_expected: Absent
       }
   }
 }
@@ -8718,7 +8746,7 @@ fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
     },
-    uninhabited_match_expected: Absent
+    declared_position_expected: Absent
   }
 }
 
@@ -8750,7 +8778,7 @@ fn infer_match_arm_unpaid_frame(frame: InferFrame, arm: Node, resolved: Resolved
                         instances: frame.instances,
                         binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
                         entering: InferFrameEnteredPlain,
-                        uninhabited_match_expected: Absent
+                        declared_position_expected: Absent
                       }
                   }
                 TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
@@ -8842,9 +8870,6 @@ fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
   }
 }
 
-fn infer_bind_value(bind: Node) -> Optional<Node> {
-  list_at_optional(xs: positional_child_target_nodes(node: bind), index: 1)
-}
 
 // AN ORDINARY `let`: a Bind whose binder key v2.compiler.lexical_scope bind_binder reads -- the one reader
 // resolve sites the binder with, so the frame row below is keyed exactly where resolve recorded the
@@ -8858,15 +8883,52 @@ fn infer_is_let_bind(bind: Node) -> Bool {
   }
 }
 
-fn infer_bind_body(bind: Node) -> Optional<Node> {
-  list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2)
+
+// AN ANNOTATED LET'S BOUND VALUE IS A DECLARED POSITION, entered under the annotation as the declared type
+// it is judged at (infer_bind_annotation_check): the same expected type an Arrow's body carries, so an
+// application there is seeded by it (infer_expected_return_seed). An unannotated let has no declared type
+// and its value gets none.
+fn infer_annotated_let_bound_slot(parent: Node, slot: ChildSlot) -> Bool {
+  if infer_is_let_bind(bind: parent) {
+    match type_annotation_optional(n: parent) {
+      Absent => false
+      Present { value: _ } =>
+        match slot.ordinal {
+          PositionalOrdinal { index: i } =>
+            match bind_positional_slot(ordinal: i) {
+              BindValueSlot => true
+              BindBinderSlot => false
+              BindBodySlot => false
+            }
+          LabeledChild => false
+        }
+    }
+  } else {
+    false
+  }
 }
 
-fn infer_let_body_edge(parent: Node, edge: Edge) -> Bool {
+fn infer_annotated_let_bound_frame(bind: Node, frame: InferFrame) -> InferFrame {
+  InferFrame {
+    instances: frame.instances,
+    binder_types: frame.binder_types,
+    entering: InferFrameEnteredPlain,
+    declared_position_expected: type_annotation_optional(n: bind)
+  }
+}
+
+// THE LET BODY CHILD, told by its slot (v2.std.node bind_positional_slot over the slot's positional ordinal): a body whose edge equals the value's
+// is still the body, and the value is never mistaken for it.
+fn infer_let_body_slot(parent: Node, slot: ChildSlot) -> Bool {
   if infer_is_let_bind(bind: parent) {
-    match infer_bind_body(bind: parent) {
-      Present { value: body } => edge.target == body
-      Absent => false
+    match slot.ordinal {
+      PositionalOrdinal { index: i } =>
+        match bind_positional_slot(ordinal: i) {
+          BindBodySlot => true
+          BindBinderSlot => false
+          BindValueSlot => false
+        }
+      LabeledChild => false
     }
   } else {
     false
@@ -8890,7 +8952,7 @@ fn infer_let_body_frame(bind: Node, frame: InferFrame, acc: InferGatherFoldAcc) 
         Present { value: annotation } =>
           infer_frame_with_binder_type(frame: frame, row: InferBinderType { site: b.atom.occurrence_id, derived: infer_frame_instantiated(declared: annotation, instances: frame.instances) })
         Absent =>
-          match infer_bind_value(bind: bind) {
+          match bind_value(n: bind) {
             Absent => frame
             Present { value: value } =>
               match infer_settled_type_at(target: value, entries: acc.entries) {
@@ -8903,7 +8965,7 @@ fn infer_let_body_frame(bind: Node, frame: InferFrame, acc: InferGatherFoldAcc) 
 }
 
 fn infer_frame_with_binder_type(frame: InferFrame, row: InferBinderType) -> InferFrame {
-  InferFrame { instances: frame.instances, binder_types: list_snoc_item(xs: frame.binder_types, item: row), entering: frame.entering, uninhabited_match_expected: frame.uninhabited_match_expected }
+  InferFrame { instances: frame.instances, binder_types: list_snoc_item(xs: frame.binder_types, item: row), entering: frame.entering, declared_position_expected: frame.declared_position_expected }
 }
 
 // THE LET IS ITS BODY: once the body has settled the Bind derives at the body's type -- not the
@@ -8917,7 +8979,7 @@ fn infer_gather_let_result_row(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_bind_body(bind: node) {
+  match bind_slot_target(n: node, slot: BindBodySlot) {
     Absent => infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
     Present { value: body } =>
       match infer_settled_type_at(target: body, entries: entries) {
@@ -8942,7 +9004,7 @@ fn infer_gather_let_result_row(
 // (init) is folded before its body in authored order, so its settled type is in `acc` when the Loop is
 // entered, and the step's actual-0 formal -- read by ROLE -- stands for it throughout the Loop subtree.
 fn infer_fold_carrier_frame(bind: Node, frame: InferFrame, acc: InferGatherFoldAcc, loop_node: Node, resolved: ResolvedTree) -> InferFrame {
-  match infer_bind_value(bind: bind) {
+  match bind_value(n: bind) {
     Absent => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_carrier_type_not_derived, at: bind)
     Present { value: init } =>
       match infer_settled_type_at(target: init, entries: acc.entries) {
@@ -8976,7 +9038,7 @@ fn infer_settled_type_at(target: Node, entries: Map<Node, List<InferredFacts>>) 
 // -- so a declared return can neither hide a body mismatch nor widen past the carrier. A side whose type is
 // not derived is a counted advisory, never a pass.
 fn infer_fold_bind_check(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Bool> {
-  match infer_bind_value(bind: node) {
+  match bind_value(n: node) {
     Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_carrier_type_not_derived, at: node) } }
     Present { value: init } =>
       match infer_settled_type_at(target: init, entries: entries) {
@@ -9053,11 +9115,11 @@ fn infer_gather_fold_bind_row_on_entries(
   }
 }
 
-fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge)
-    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
-    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
-    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+fn infer_gather_schedules_first(parent: Node, slot: ChildSlot) -> Bool {
+  infer_loop_schedules_first(parent: parent, edge: slot.edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: slot.edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, slot: slot)
+    || infer_match_schedules_scrutinee_first(parent: parent, slot: slot)
 }
 
 // A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
@@ -9067,33 +9129,46 @@ fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
 // (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). Which child is
 // the key and which the value is not re-derived here: the key is the binder v2.compiler.lexical_scope
 // bind_binder reads (the reader resolve sites the binder with, and infer_is_let_bind gates on), the value
-// is infer_bind_value, and the body stays in the rest group, where infer_let_body_edge enters it. The
-// first group is taken by SLOT INDEX, so on every conforming Bind it is the stored prefix
-// (v2.std.compilers.body_lowering lower_bind writes key, value, body in that order) and the schedule is
-// stored order, not a permutation of it.
-fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+// is v2.compiler.lexical_scope bind_value, and the body stays in the rest group, where infer_let_body_slot enters it. The
+// predicate classifies the CHILD'S SLOT, not its edge or target (v2.std.node bind_positional_slot over the slot's positional ordinal): the
+// normalized tree may share one node at several positions, so a value and a body -- or an annotation and a
+// value -- can carry equal edges, and only the slot says which role a child plays. For the layouts
+// v2.std.compilers.body_lowering lower_bind and lower_bind_annotated write -- key, value, body, then the
+// annotation -- the first group is the stored prefix and the schedule is stored order; an admitted Bind
+// with its annotation between key and value is reordered to key, value, annotation, body, which still puts
+// the value before the body and changes no fact the body reads.
+fn infer_bind_schedules_key_and_value_first(parent: Node, slot: ChildSlot) -> Bool {
   match bind_binder(n: parent) {
-    Present { value: binder } =>
-      edge.target == binder.atom
-        || match infer_bind_value(bind: parent) {
-          Present { value: value } => edge.target == value
-          Absent => false
-        }
+    Present { value: _ } =>
+      match slot.ordinal {
+        PositionalOrdinal { index: i } =>
+          match bind_positional_slot(ordinal: i) {
+            BindBinderSlot => true
+            BindValueSlot => true
+            BindBodySlot => false
+          }
+        LabeledChild => false
+      }
     Absent => false
   }
 }
 
 // A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. Each arm's frame -- infer_match_arm_child_frame -- reads
 // the scrutinee's settled facts from the parent's accumulator, for the arm's coverage obligation and for
-// the type a pattern binder is typed with, and both this predicate and that frame take the scrutinee from
-// infer_match_scrutinee. Arms stay in the rest group, in stored order. As above the group is taken by slot
-// index, so the schedule is the stored order.
-fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+// the type a pattern binder is typed with; the frame reads the scrutinee through infer_match_scrutinee. The
+// scrutinee is told from an arm by its SLOT (v2.std.node match_positional_slot over the slot's positional
+// ordinal), so an arm whose edge equals the scrutinee's stays an arm. Arms stay in the rest group, in stored order;
+// for the layout v2.std.compilers.body_lowering lower_match writes the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, slot: ChildSlot) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Match } =>
-      match infer_match_scrutinee(match_node: parent) {
-        Present { value: scrutinee } => edge.target == scrutinee
-        Absent => false
+      match slot.ordinal {
+        PositionalOrdinal { index: i } =>
+          match match_positional_slot(ordinal: i) {
+            MatchScrutineeSlot => true
+            MatchArmSlot => false
+          }
+        LabeledChild => false
       }
     ComputationNode { behavior: _ } => false
     TypeNode { connective: _ } => false
@@ -9122,7 +9197,7 @@ fn infer_loop_schedules_first(parent: Node, edge: Edge) -> Bool {
 
 // The frame's entry is charged at the subtree root it opens, after that root's own init.
 fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> InferGatherFoldAcc {
-  let stamped = infer_gather_stamp_uninhabited_match_expected(acc: acc, expected: frame.uninhabited_match_expected)
+  let stamped = infer_gather_stamp_declared_position_expected(acc: acc, expected: frame.declared_position_expected)
   match frame.entering {
     InferFrameEnteredPlain => stamped
     InferFrameEnteredWith { advisory: a } =>
@@ -9136,7 +9211,7 @@ fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> Infer
         await_loop_row: stamped.await_loop_row,
         await_transform_row: stamped.await_transform_row,
         children_remaining: stamped.children_remaining,
-        uninhabited_match_expected: stamped.uninhabited_match_expected
+        declared_position_expected: stamped.declared_position_expected
       }
     InferFrameEnteredRefused { refused: r } =>
       infer_gather_fold_acc_failed(
@@ -9159,9 +9234,9 @@ fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>,
         frame: frame
       )
     },
-    first: fn(parent, e) { infer_gather_schedules_first(parent: parent, edge: e) },
-    child_context: fn(parent, frame, acc, e) {
-      infer_gather_child_context(parent: parent, frame: frame, acc: acc, edge: e, resolved: resolved)
+    first: fn(parent, s) { infer_gather_schedules_first(parent: parent, slot: s) },
+    child_context: fn(parent, frame, acc, s) {
+      infer_gather_child_context(parent: parent, frame: frame, acc: acc, slot: s, resolved: resolved)
     },
     step: fn(acc, e, child) {
       infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, kinds: kinds, resolved: resolved)
@@ -9369,7 +9444,6 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -9425,12 +9499,6 @@ fn infer_admit_spine_entries(spine: Node) -> Outcome<List<Node>> {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
     TypeNode { connective: Arrow } =>
-      outcome_rejected(Diagnostic {
-        reason: ^infer_reason_admit_callers_entries_unreadable,
-        at: node_locus(node: spine),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
-    TypeNode { connective: Occupancy } =>
       outcome_rejected(Diagnostic {
         reason: ^infer_reason_admit_callers_entries_unreadable,
         at: node_locus(node: spine),
@@ -9837,7 +9905,6 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
         TypeNode { connective: Atom { identity: _ } } => ctx
         TypeNode { connective: Conj } => ctx
         TypeNode { connective: Disj } => ctx
-        TypeNode { connective: Occupancy } => ctx
         TypeNode { connective: Instantiation } => ctx
         ComputationNode { behavior: _ } => ctx
       }

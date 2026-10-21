@@ -2,7 +2,7 @@ module gunbc.design.gunb_ai_live_scale
 
 import std.types { String, Int, List, Bool }
 import extdeps.languages.css.values {
-  CssLength, CssLengthUnit, Px, Rem, Ch, Percent, CssDecimalLength, css_px, css_ch,
+  CssLength, CssLengthUnit, Px, Rem, Ch, Em, Vw, Percent, CssDecimalLength, css_px, css_ch,
   CssFontStack, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif, GenericMonospace,
 }
 import std.optional { Optional, Absent, Present }
@@ -61,6 +61,8 @@ fn whole_count_length(thousandths: Int, unit: CssLengthUnit) -> CssLength? {
       Px => Present { value: css_px(n: thousandths / 1000) }
       Ch => Present { value: css_ch(n: thousandths / 1000) }
       Rem => Absent
+      Em => Absent
+      Vw => Absent
       Percent => Absent
     }
   }
@@ -71,6 +73,8 @@ fn live_measure_scale_length(m: LiveMeasure) -> CssLength? {
     Rem => whole_count_length(thousandths: m.length.milli * css_default_root_font_size.milli / 1000, unit: Px)
     Ch => whole_count_length(thousandths: m.length.milli, unit: Ch)
     Px => whole_count_length(thousandths: m.length.milli, unit: Px)
+    Em => Absent
+    Vw => Absent
     Percent => Absent
   }
 }

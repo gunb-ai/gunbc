@@ -21,10 +21,6 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_initial, occurrence_transport_refusal, NodeOccurrenceIdentity,
     OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
-pub use crate::std_source_annotation::{
-    source_annotation_graph_concat, source_annotation_graph_empty, SourceAnnotationGraph,
-    UnboundAnnotationCapture,
-};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
@@ -32,7 +28,6 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_annotation_bind::bind_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
 pub use crate::v1_compiler_artifact::{
@@ -152,7 +147,6 @@ pub struct FrontendResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
-    pub annotations: Rc<SourceAnnotationGraph>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -168,22 +162,11 @@ pub struct FrontendAccum {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
-    pub annotations: Rc<SourceAnnotationGraph>,
-}
-
-pub fn frontend_prepared_authored_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.\n\nThreading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     pub newline_index: Rc<NewlineIndex>,
 }
 
@@ -3237,7 +3220,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone());
                     Rc::new(FrontendPrepared {
                         tokens: artifact.tokens.clone(),
-                        annotations: artifact.annotations.clone(),
                         newline_index: si.clone(),
                     })
                 });
@@ -3258,7 +3240,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: intern_table.clone(),
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-                annotations: crate::std_source_annotation::source_annotation_graph_empty(),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
@@ -3271,11 +3252,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     acc.intern_table.clone(),
                     acc.occurrence_allocator.clone(),
                     dag_parse_environment(),
-                );
-                let bound = crate::v1_compiler_annotation_bind::bind_annotations(
-                    parsed.occurrence_transport.clone(),
-                    parsed.source_extents.clone(),
-                    p.annotations.clone(),
                 );
                 Rc::new(FrontendAccum {
                     parse_results: v1_rt::rc_list_push(
@@ -3298,10 +3274,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
-                    annotations: crate::std_source_annotation::source_annotation_graph_concat(
-                        acc.annotations.clone(),
-                        bound.clone(),
-                    ),
                 })
             },
         );
@@ -3335,7 +3307,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
             occurrence_transport: occurrence_transport.clone(),
-            annotations: parsed.annotations.clone(),
         })
     }
 }
@@ -3435,7 +3406,6 @@ pub fn parse_revision_declarations_with_environment(
                 intern_table: crate::v1_std_core::empty_intern_table(),
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-                annotations: crate::std_source_annotation::source_annotation_graph_empty(),
             }),
             |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
                 let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
@@ -3445,7 +3415,6 @@ pub fn parse_revision_declarations_with_environment(
                 );
                 let p = Rc::new(FrontendPrepared {
                     tokens: artifact.tokens.clone(),
-                    annotations: artifact.annotations.clone(),
                     newline_index: crate::v1_std_core::build_newline_index(
                         s.path.clone(),
                         s.content.clone(),
@@ -3487,7 +3456,6 @@ pub fn parse_revision_declarations_with_environment(
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
-                    annotations: acc.annotations.clone(),
                 })
             },
         );

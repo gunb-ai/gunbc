@@ -1,8 +1,9 @@
 module gunbc.host.verified_binary_install
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { path_segment_is_safe }
 import std.optional { Present, Absent }
-import std.algebra { list_append }
+import std.algebra { Cons, Empty, list_append, string_contains }
 import extdeps.exec.command { ArgvCommand, argv_words, shell_command_render }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
@@ -49,16 +50,22 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold }
 
 type VerifiedBinaryInstallParams {
   // The archive and the member that becomes the installed binary. `archive_member` is the
-  // archive-relative path (`sccache-v0.15.0-aarch64-unknown-linux-musl/sccache`); `staged_root` is
-  // the top-level directory extraction creates, which cleanup removes. Both are facts of the cited
-  // release layout and are supplied, never derived here -- deriving either by string surgery would
-  // put a fact about someone's tarball into the effect.
+  // archive-relative path (`sccache-v0.15.0-aarch64-unknown-linux-musl/sccache`), a fact of the cited
+  // release layout supplied by whoever can cite the archive. THE MEMBER IS THE ONLY AUTHORITY FOR WHERE
+  // THE UNPACKED FILE IS: the staged path the move reads, and the staging directory cleanup deletes, are
+  // both DERIVED from `extract_root` + `archive_member` below rather than accepted as extra parameters.
+  // (There used to be two further fields, `staged_binary_path` and `staged_root`, authored independently
+  // of the member. `archive_member` was then consumed by nothing at all — the effect extracted into
+  // `extract_root` and moved whatever `staged_binary_path` named — so "member A, move path B" was
+  // admissible, contrary to the comment this one replaces, and `staged_root` fed `rm -rf` while nothing
+  // related it to what extraction had created. Both are deleted; see
+  // `control_changing_the_member_moves_exactly_the_member_and_cleans_only_the_extracted_tree`, whose two
+  // specimens differ ONLY in the member and so cannot pass under the deleted two-field shape.)
   url: NonEmptyStr
   digest: Digest
   archive_member: String
-  staged_root: String
-  staged_binary_path: String
-  // The staging layout: where the archive lands and where extraction puts it.
+  // The staging layout: where the archive lands and where extraction puts it. `extract_root` is the
+  // directory handed to `tar -C`; everything under it that this effect touches is named by the member.
   download_path: NonEmptyStr
   extract_root: String
   // Where the binary ends up, and in what mode. `exec_mode` is `+x` (add executable) or an octal
@@ -126,6 +133,73 @@ fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String
 type VerifiedBinaryInstallRefusal =
   | Unverifiable { observed_line: String }
   | DigestMismatch { observed: Digest, expected: Digest }
+  // THE PARAMETER REFUSAL, KEPT APART FROM THE TWO BYTE REFUSALS ON PURPOSE. `Unverifiable` and
+  // `DigestMismatch` are both about bytes that came off the network and are only reachable after a
+  // download was hashed; this arm is about a PARAMETER the caller authored, and it is reachable before
+  // anything is fetched. Collapsing it into a `reason: String` on one of the other two — or into a silent
+  // default like moving `extract_root` itself — would let a caller's malformed member read as a mirror
+  // outage or as a swapped artefact, and DESIGN §5 requires those incidents stay distinguishable.
+  | MemberPathUnsound { member: String, extract_root: String }
+
+// IS THE MEMBER A PATH EXTRACTION CAN ACTUALLY PRODUCE UNDER THE STAGING ROOT? Each `/`-separated
+// segment goes through the corpus's own `path_segment_is_safe` (std.types), the same law every branded
+// directory id uses: it refuses the empty segment, `.`, `..`, and anything carrying `/`, `\`, CR, LF or
+// NUL. That single predicate covers every case this effect needs and mints nothing new: an empty member,
+// a `..` escape out of the staging root, an absolute member (`/etc/passwd` splits to a leading empty
+// segment), and an embedded newline that would smuggle a second argv word. The fold starts `true` and can
+// only ever be turned off, so a member with zero segments (the empty string splits to `[""]`, one unsafe
+// segment) refuses rather than vacuously passing.
+fn verified_binary_install_member_is_well_formed(member: String) -> Bool {
+  fold(split(s: member, delimiter: "/"), init: true, f: (acc, seg) => acc && path_segment_is_safe(raw: seg))
+}
+
+// THE ONE DERIVATION, AND WHY IT IS NOT A PARAMETER. tar was invoked with `-C extract_root` and
+// `--strip-components=0`, so the file it produced is at `extract_root` + `/` + the member path — that is
+// a fact about `tar`, not about anyone's tarball, which is what makes it admissible to derive HERE while
+// the member itself stays a supplied parameter. This is the single authority the move reads, so an
+// inconsistent pair of parameters is no longer expressible.
+fn verified_binary_install_staged_path(p: VerifiedBinaryInstallParams) -> String {
+  join([p.extract_root, "/", p.archive_member], "")
+}
+
+// THE STAGING DIRECTORY CLEANUP DELETES: the top-level directory the member lives in, taken from the SAME
+// member rather than from a separately authored field. Deriving it is what makes the deletion safe — the
+// effect can now only ever delete inside the tree it extracted. A member with no `/` (the build_cache
+// consumer's `sccache`) has its parent inside `extract_root` itself, so the parent join degenerates to
+// `extract_root` rather than to `extract_root` plus a stray `/`.
+fn verified_binary_install_staged_root(p: VerifiedBinaryInstallParams) -> String {
+  match split(s: p.archive_member, delimiter: "/") {
+    Empty => p.extract_root
+    Cons { head: first, tail: rest } =>
+      if length(xs: rest) == 0 {
+        p.extract_root
+      } else {
+        join([p.extract_root, "/", first], "")
+      }
+  }
+}
+
+// THE MEMBER GATE, RUN BEFORE ANYTHING IS FETCHED. Two things must hold, and neither is decorative: the
+// member must be a path extraction can produce (above), and the joined path must contain no `//`, which
+// is how a caller passing `extract_root: "/tmp/"` would otherwise be quietly folded into a path that
+// reads differently from the one the caller named. `extract_root: ""` refuses through the same join check
+// (it yields a leading `//`). Refusing rather than normalising is deliberate: normalising would decide,
+// here, what a caller's staging layout means, and the caller's citation is the authority on that.
+fn verified_binary_install_member_gate(p: VerifiedBinaryInstallParams) -> VerifiedBinaryInstallRefusal? {
+  let derived = verified_binary_install_staged_path(p: p)
+  // The empty root is refused explicitly: `""` + `/` + member yields an ABSOLUTE path with no root at
+  // all, which the `//` scan below cannot see. With any non-empty root, a trailing slash is what the `//`
+  // scan catches.
+  if p.extract_root == "" {
+    Present { value: MemberPathUnsound { member: p.archive_member, extract_root: p.extract_root } }
+  } else if verified_binary_install_member_is_well_formed(member: p.archive_member) == false {
+    Present { value: MemberPathUnsound { member: p.archive_member, extract_root: p.extract_root } }
+  } else if string_contains(s: derived, pattern: "//") {
+    Present { value: MemberPathUnsound { member: p.archive_member, extract_root: p.extract_root } }
+  } else {
+    none
+  }
+}
 
 // THE CHECK'S VERDICT: the refusal sum, plus the one world where an install may proceed. `Verified`
 // carries the digest that was actually read, so an admitted install can be audited against the byte the
@@ -186,6 +260,22 @@ fn verified_binary_install_refusal_message(refusal: VerifiedBinaryInstallRefusal
         ],
         "",
       )
+    MemberPathUnsound { member: m, extract_root: root } =>
+      join(
+        [
+          "verified_binary_install: nothing was installed; the archive member ",
+          m,
+          " is not a safe relative path under the extract root ",
+          root,
+          " (empty, absolute, or containing a '.' or '..' segment), so the file extraction would ",
+          "produce cannot be named -- the move would have read ",
+          root,
+          "/",
+          m,
+          ". refuse the pin, do not join it anyway.",
+        ],
+        "",
+      )
   }
 }
 
@@ -211,7 +301,9 @@ fn verified_binary_install_admission(
 
 // INSTALL-BINARY: the body that runs only after the gate admits it. Extract with the archive's own
 // layout preserved (--strip-components=0: the member path the caller supplied is the path
-// extraction produces, so `staged_binary_path` cannot disagree with the member), move it to the
+// extraction produces, and the move reads exactly `extract_root` + `/` + that member — see
+// `verified_binary_install_staged_path` — so no parameter can name a file the archive never
+// produced), move it to the
 // destination, set the mode, delete the staging files. Cleanup is part of the effect rather than a
 // courtesy: an install that leaves a world-readable copy of its own archive in /tmp has a second,
 // unverified copy of the binary lying around.
@@ -235,7 +327,11 @@ fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List
   // it on the privileged path only is the worst possible split. Taking the argv from the authority
   // makes the split unrepresentable, and `control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo`
   // pins it so a future hand-authored leg cannot creep back.
-  let move_op = mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path as String)
+  let move_op =
+    mv_exact_destination_command(
+      source: verified_binary_install_staged_path(p: p),
+      destination: p.dest_path as String,
+    )
   let mode_op = chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path as String)
   let move =
     if p.elevated { sudo_elevate_command(command: argv_words(command: move_op)) }
@@ -244,7 +340,7 @@ fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List
     if p.elevated { sudo_elevate_command(command: argv_words(command: mode_op)) }
     else { mode_op }
   let cleanup_archive = rm_recursive_force_command(path: p.download_path as String)
-  let cleanup_staging = rm_recursive_force_command(path: p.staged_root)
+  let cleanup_staging = rm_recursive_force_command(path: verified_binary_install_staged_root(p: p))
   [extract, move, mode, cleanup_archive, cleanup_staging]
 }
 
@@ -257,14 +353,26 @@ fn verified_binary_install_admitted_plan(
   p: VerifiedBinaryInstallParams,
   observed_sha256sum_line: String,
 ) -> VerifiedBinaryInstallPlan {
-  match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: observed_sha256sum_line) {
-    Refused { refusal: refusal } =>
+  // THE MEMBER GATE RUNS FIRST, BEFORE ANYTHING IS FETCHED. An unsound member is refused even when the
+  // digest would have matched: the install is refused, but the plan that WOULD have run names a file tar
+  // never produces, and a refusal that hides that fact reads as a mirror outage once the leg is executed.
+  match verified_binary_install_member_gate(p: p) {
+    Present { value: unsound } =>
       RefusedToInstall {
-        refusal: refusal,
+        refusal: unsound,
         dest_path: p.dest_path,
         source_url: p.url,
       }
-    Verified { observed: _ } => Planned { steps: verified_binary_install_install_steps(p: p) }
+    Absent =>
+      match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: observed_sha256sum_line) {
+        Refused { refusal: refusal } =>
+          RefusedToInstall {
+            refusal: refusal,
+            dest_path: p.dest_path,
+            source_url: p.url,
+          }
+        Verified { observed: _ } => Planned { steps: verified_binary_install_install_steps(p: p) }
+      }
   }
 }
 

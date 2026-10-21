@@ -1,0 +1,71 @@
+module gunbc.auth.gcp_iam_bootstrap_federation
+
+import std.types { List, Map, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+
+// ── THE BOOTSTRAP DELTA'S IDENTITY AND THE ONE PATH TO IT ────────────────────────────────────
+// iam-bootstrap binds the bootstrap roster's cells on subjects nobody named when it was provisioned,
+// so its reach is PROJECT-PARENTED (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_delta_role) and
+// cannot be resource-local the way iam-converge's is. Standing reach is justified only because nothing
+// can reach it between taps (ruling relayed by warm-crane-219, 2026-10-18, option A with the
+// environment gate): the regress argument -- a time-boxed grant needs a stronger granter at tap time,
+// which is the operator's token again -- leaves standing reach on a dedicated identity as the only
+// arm that needs no operator credential.
+//
+// THE CREDENTIAL-LAYER GATE. This is its OWN pool, never the converge job's: that pool's principal set
+// is the whole pool and already reaches iam-observe and iam-converge, so a second account trusting it
+// would hand the converge job the bootstrap's reach. The provider's condition pins the repository,
+// the fleet-converge workflow file at reviewed main, a workflow_dispatch on main, and the
+// gcp-iam-bootstrap ENVIRONMENT, so no job can mint this pool's token outside that environment. What
+// the environment requires before its jobs run is the approval gate; until a custom protection rule
+// answered only on a redeemed capability gates it, that requirement is the job's reviewed code
+// (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code).
+data gcp_iam_bootstrap_environment: NonEmptyStr = "gcp-iam-bootstrap"
+
+data iam_bootstrap_service_account_id: NonEmptyStr = "iam-bootstrap"
+
+data iam_bootstrap_service_account: ServiceAccountEmail = "iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com"
+
+data gcp_iam_bootstrap_wif_pool_id: NonEmptyStr = "github-gcp-iam-bootstrap"
+
+// Under the 32-character ceiling createWorkloadIdentityPool enforces.
+data gcp_iam_bootstrap_wif_pool_display_name: NonEmptyStr = "GCP IAM bootstrap delta job"
+
+data gcp_iam_bootstrap_wif_provider_id: NonEmptyStr = "github-gcp-iam-bootstrap-oidc"
+
+fn gcp_iam_bootstrap_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: gcp_iam_bootstrap_environment)
+}
+
+fn gcp_iam_bootstrap_wif_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: gcp_iam_bootstrap_claim_pins())
+}
+
+data gcp_iam_bootstrap_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+data gcp_iam_bootstrap_wif_provider: WifProvider = WifProvider {
+  name: gcp_iam_bootstrap_wif_provider_id
+  pool: gcp_iam_bootstrap_wif_pool_id
+  issuer_uri: github_wif_issuer_uri
+  attribute_mapping: Present { value: gcp_iam_bootstrap_wif_attribute_mapping }
+  attribute_condition: Present { value: gcp_iam_bootstrap_wif_attribute_condition() }
+}
+
+fn gcp_iam_bootstrap_wif_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: gcp_iam_bootstrap_wif_provider)
+}
+
+fn gcp_iam_bootstrap_wif_pool_resource() -> String {
+  wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: gcp_iam_bootstrap_wif_pool_id as String)
+}
+
+fn gcp_iam_bootstrap_wif_principal_set() -> String {
+  join(["principalSet://iam.googleapis.com/", gcp_iam_bootstrap_wif_pool_resource(), "/*"], "")
+}

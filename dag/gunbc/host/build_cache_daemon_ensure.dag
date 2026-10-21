@@ -1017,6 +1017,26 @@ fn build_cache_digest_refusal_detail(op: BuildCacheEnsureOp, refusal: VerifiedBi
         ],
         "",
       )
+    // THE PARAMETER REFUSAL, REPORTED AS THE CALLER'S OWN DEFECT rather than as an infrastructure
+    // failure: nothing came off the network wrong here, the pin itself cannot name a file. The
+    // upstream message carries the member, the root, and the path the move would have read; this arm
+    // adds only which effect refused. Reachability here is real, not hypothetical: the member is built
+    // from the caller's own arch token (sccache_release_archive_dir joins it into the path), so a
+    // hostile arch string -- "amd64/../..", say -- reaches this arm through the release row. A silently
+    // defaulted path there is exactly what the upstream gate exists to refuse.
+    MemberPathUnsound { member: _, extract_root: _ } =>
+      join(
+        [
+          "the build-cache ensure refused to install: ",
+          verified_binary_install_refusal_message(refusal: refusal),
+          "; the install plan was ",
+          shell_command_text_of_argv(argv: argv_words(command: op.argv)),
+          ", and nothing was fetched, extracted, moved into ",
+          sccache_installed_binary_path,
+          ", or made executable",
+        ],
+        "",
+      )
   }
 }
 

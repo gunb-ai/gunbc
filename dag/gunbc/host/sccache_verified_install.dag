@@ -52,9 +52,11 @@ import gunbc.host.verified_binary_install {
 
 // THE STAGING LAYOUT OF THE CITED TARBALL. The release publishes
 // `sccache-v<version>-<arch>-unknown-linux-musl.tar.gz`, and the archive contains that same
-// directory with `sccache` inside it. These are facts of the cited release's layout, and they are
-// the reason the generic effect takes member/staged paths as parameters instead of deriving them:
-// the derivation belongs to whoever can cite the archive.
+// directory with `sccache` inside it. These are facts of the cited release's layout, and they are the
+// reason THIS module supplies `archive_member`: the generic effect cannot know a tarball's layout, so the
+// caller that can cite the release names the member. What the generic effect DOES do with that member is
+// derive every path it touches from it (see `verified_binary_install_staged_path`), which is what keeps
+// this caller from ever being able to name a file the archive does not contain.
 fn sccache_release_archive_dir(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> String {
   join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
 }
@@ -85,8 +87,6 @@ fn sccache_verified_install_params(
     url: sccache_release_archive_url(rel: rel, arch: arch),
     digest: digest,
     archive_member: join([dir, "/sccache"], ""),
-    staged_root: join(["/tmp/", dir], ""),
-    staged_binary_path: join(["/tmp/", dir, "/sccache"], ""),
     download_path: "/tmp/sccache.tar.gz" as NonEmptyStr,
     extract_root: "/tmp",
     dest_path: sccache_installed_binary_path as NonEmptyStr,

@@ -23,7 +23,7 @@ import extdeps.github.actions {
 import extdeps.languages.yaml.types { kv, yaml_string }
 import extdeps.github.expressions {
   ingest_template, context_name, Expression, Interpolation, LiteralText,
-  ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals, NotEquals,
+  ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals, NotEquals, LogicalNot,
 }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
@@ -249,6 +249,7 @@ fn expression_reads_exactly_the_input(expression: Expression, input: DispatchInp
     LogicalAnd { left: _, right: _ } => false
     Equals { left: _, right: _ } => false
     NotEquals { left: _, right: _ } => false
+    LogicalNot { operand: _ } => false
   }
 }
 

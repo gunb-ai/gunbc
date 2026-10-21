@@ -50,7 +50,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 
 import std.optional {
@@ -89,7 +89,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { approximate_field_type_node, commutative_semiring_type_node }
 import v2.std.text { String }
 
@@ -1448,11 +1448,14 @@ fn wasm_grammar() -> ParseGrammar {
   ModeledGrammar { root: wasm_grammar_root() }
 }
 
+// The token-class membership map for wasm_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data wasm_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: wasm_lex_rules())
+
 fn wasm_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: wasm_lex_rules(),
-    token_class: sym
-  )
+  map_contains_key(m: wasm_lex_token_class_membership, key: sym)
 }
 
 fn wasm_integer_catalog_surface_symbol_step(

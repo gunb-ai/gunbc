@@ -1,0 +1,114 @@
+module test.claim.gpu_duct_witness
+
+import std.types { Bool, Int }
+import std.measure { micrometer, micrometer_count }
+import std.affine_space { signed_frame_component_count }
+import extdeps.gpu.nvidia_a100_pcie { a100_pcie_side_outline }
+import product.printed_chassis.assembly_geometry { Block, RoundPrism }
+import product.printed_chassis.gpu_duct {
+  GpuDuctAdmission, GpuDuctAdmitted, GpuDuctOutlineRefused, GpuDuctFacePixelsOutOfOrder, GpuDuctFanMountRefused,
+  GpuDuctWindowTallerThanFan, GpuDuctPlugPassageClosed, EndFacePhotoReading,
+  admit_gpu_duct, a16_duct, a16_card_outline, a16_end_face_photo, a16_duct_design, infer_card_outline,
+}
+
+fn admitted(a: GpuDuctAdmission) -> Bool {
+  match a {
+    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => true
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}
+
+fn photo_with_window(top: Int, bottom: Int) -> EndFacePhotoReading {
+  EndFacePhotoReading {
+    source: "fixture",
+    card_left_px: a16_end_face_photo.card_left_px,
+    card_right_px: a16_end_face_photo.card_right_px,
+    cap_top_px: a16_end_face_photo.cap_top_px,
+    window_left_px: a16_end_face_photo.window_left_px,
+    window_right_px: a16_end_face_photo.window_right_px,
+    window_top_px: top,
+    window_bottom_px: bottom,
+    card_bottom_px: bottom,
+  }
+}
+
+// POSITIVE CONTROL: the declared A16 duct admits and carries duct, fan, card and keep-out.
+test fn w_the_declared_a16_duct_is_admitted() -> Bool {
+  match a16_duct {
+    GpuDuctAdmitted { parts: parts, interfaces: _, face: _ } => length(list: parts) == 4
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}
+
+// THE CONNECTOR CLEARANCE IS CONSTRUCTION: no positive primitive of the printed duct reaches above
+// the window's band-side edge (Y = 0). Bounds are compared doubled to stay in integer micrometres.
+test fn w_no_duct_material_enters_the_power_band() -> Bool {
+  match a16_duct {
+    GpuDuctAdmitted { parts: parts, interfaces: _, face: _ } =>
+      all(filter(parts, p => p.id == "DUCT"), p => all(p.adds, q => match q {
+        Block { size: s, center: c } => 2 * signed_frame_component_count(c: c.y) + micrometer_count(m: s.size_y) <= 0
+        RoundPrism { diameter: _, length: _, axis: _, center: _ } => false
+      }))
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}
+
+// RED: an A16 stated length far from both drawn A100 lengths contradicts the outline inference.
+test fn w_a_contradicted_outline_refuses() -> Bool {
+  match admit_gpu_duct(outline: infer_card_outline(stated_length: micrometer(count: 300000), drawn: a100_pcie_side_outline), photo: a16_end_face_photo, d: a16_duct_design) {
+    GpuDuctOutlineRefused { inference: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}
+
+// RED: a window taller than the 92 mm fan frame cannot open into the plenum.
+test fn w_a_window_taller_than_the_fan_refuses() -> Bool {
+  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 325, bottom: 1500), d: a16_duct_design) {
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}
+
+// RED: a window so shallow that the plug's own walls close the passage.
+test fn w_a_window_too_shallow_for_the_plug_walls_refuses() -> Bool {
+  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 325, bottom: 425), d: a16_duct_design) {
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFacePixelsOutOfOrder => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+  }
+}
+
+// RED: pixel picks out of order (window bottom above its top) refuse rather than scale negatively.
+test fn w_out_of_order_pixels_refuse() -> Bool {
+  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 600, bottom: 400), d: a16_duct_design) {
+    GpuDuctFacePixelsOutOfOrder => true
+    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
+    GpuDuctOutlineRefused { inference: _ } => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+  }
+}

@@ -1,6 +1,9 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified }
+import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
@@ -21,12 +24,13 @@ import v2.extdeps.languages.dag {
   dag_named_arg_name_node_optional,
   parse_production_captured_child_optional,
   import_decl_target_module,
+  qualified_name_from_module_node,
   parse_import_block_idents
 }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import std.types { List, Bool, GitRef }
 import extdeps.git
@@ -131,6 +135,10 @@ type RosterRefusalReason
   | RefusalGrammarUnprepared
   | RefusalLabelSitesAmbiguous
   | RefusalHomeNameLocallyBound
+  | RefusalImportClosesCycle { home: String, module: String }
+  | RefusalHomeClosureUnread { home: String }
+  | RefusalModuleNameUnread
+  | RefusalApplyNeedsOneHome
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -161,7 +169,75 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalGrammarUnprepared => "grammar-unprepared"
     RefusalLabelSitesAmbiguous => "label-sites-ambiguous"
     RefusalHomeNameLocallyBound => "home-name-locally-bound"
+    RefusalImportClosesCycle { home: h, module: m } => "import-closes-cycle home=" + h + " module=" + m
+    RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
+    RefusalModuleNameUnread => "module-name-unread"
+    RefusalApplyNeedsOneHome => "apply-needs-one-home"
   }
+}
+
+// THE HOME'S IMPORT CLOSURE, read once per run through the compiler's own door (v2.compiler.module_acquisition
+// acquire_verified over v2.cli.repository_layout repository_storage_layout). Importing a home into a module that home already
+// reaches closes a cycle, and acyclicity is the import graph's only structural law (DESIGN section 3). A closure the door
+// cannot verify is carried as unread, and every file needing that home refuses rather than guessing it acyclic.
+type RosterHomeClosure
+  = RosterClosureRead { home: String, modules: List<String> }
+  | RosterClosureUnread { home: String }
+
+fn roster_home_closures(root: String, scope: RosterHomeScope) -> List<RosterHomeClosure> {
+  let bindings = roster_repository_bindings(root: root)
+  fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
+    if roster_closure_has_home(closures: acc, home: roster_qn_text(qn: row.home)) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: roster_home_closure_read(home: roster_qn_text(qn: row.home), bindings: bindings))
+    }
+  })
+}
+
+fn roster_repository_bindings(root: String) -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: roster_rooted(root: root, dir: repository_tree_directory(tree: V2Tree)) },
+    SourceRootBinding { tree: DagTree, host_directory: roster_rooted(root: root, dir: repository_tree_directory(tree: DagTree)) }
+  ]
+}
+
+fn roster_rooted(root: String, dir: String) -> String {
+  if root == "" { dir } else { root + "/" + dir }
+}
+
+fn roster_home_closure_read(home: String, bindings: List<SourceRootBinding>) -> RosterHomeClosure {
+  match acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: [home]) {
+    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } => RosterClosureRead { home: home, modules: list_map(xs: modules, f: fn(m) { roster_acquired_name(m: m) }) }
+    AcquisitionNotVerified { reason: _, cause: _ } => RosterClosureUnread { home: home }
+  }
+}
+
+fn roster_acquired_name(m: AcquiredModule) -> String {
+  m.name
+}
+
+fn roster_closure_has_home(closures: List<RosterHomeClosure>, home: String) -> Bool {
+  fold_list(xs: closures, empty: false, cons: fn(f, c) { f || roster_closure_home(c: c) == home })
+}
+
+fn roster_closure_home(c: RosterHomeClosure) -> String {
+  match c {
+    RosterClosureRead { home: h, modules: _ } => h
+    RosterClosureUnread { home: h } => h
+  }
+}
+
+// The cycle verdict for importing `home` into `module`: Absent admits; a refusal names both. A home with no closure entry
+// at all is unread, never assumed acyclic.
+fn roster_cycle_refusal(closures: List<RosterHomeClosure>, home: String, module: String) -> Optional<RosterRefusalReason> {
+  fold_list(xs: closures, empty: Present { value: RefusalHomeClosureUnread { home: home } }, cons: fn(acc, c) {
+    match c {
+      RosterClosureRead { home: h, modules: ms } =>
+        if h != home { acc } else if roster_contains(xs: ms, name: module) { Present { value: RefusalImportClosesCycle { home: home, module: module } } } else { Absent }
+      RosterClosureUnread { home: h } => if h == home { Present { value: RefusalHomeClosureUnread { home: home } } } else { acc }
+    }
+  })
 }
 
 fn roster_refuse_row(path: String, reason: RosterRefusalReason) -> String {
@@ -222,7 +298,7 @@ fn roster_import_sweep_home_exit(paths_csv: String, home: String) -> ProcessExit
 }
 
 fn roster_import_sweep_apply_home_exit(root_dir: String, paths_csv: String, home: String) -> ProcessExit {
-  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
+  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home))
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
@@ -241,17 +317,18 @@ fn roster_import_sweep_for_paths(paths_csv: String) -> String {
 }
 
 fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+  let closures = roster_home_closures(root: "", scope: scope)
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
     empty: "",
-    cons: fn(acc, path) { acc + roster_sweep_path(path: path, prepared: prepared, lex: lex, scope: scope) }
+    cons: fn(acc, path) { acc + roster_sweep_path(path: path, prepared: prepared, lex: lex, scope: scope, closures: closures) }
   )
 }
 
-fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(path: path, text: read.content, prepared: prepared, lex: lex, scope: scope))
+    roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures))
   } else {
     roster_refuse_row(path: path, reason: RefusalUnreadable)
   }
@@ -265,9 +342,13 @@ fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRu
 // the extent required to hold what the parsed decl said it holds, and only then written with
 // Filesystem.Write. Anything else is a REFUSE row and the file is untouched. Success is silent, so the
 // exit reason is exactly the refusals.
+// ONE HOME PER MUTATING RUN, BY CONSTRUCTION (side chat on #14513). The cycle verdict reads each home's closure once, at
+// the start of the run; two homes applied in one run could each be admitted against that snapshot (H1 -> H2 and H2 -> H1)
+// and together close a cycle. The apply path therefore takes exactly one home (roster_apply_for_paths), so a multi-home
+// mutation has no construction, and this home-less entry refuses, typed. A wave is one home; AllHomes stays a read-and-
+// report scope (roster_import_sweep_for_paths), whose rows no route applies.
 fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> ProcessExit {
-  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, scope: AllHomes)
-  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+  exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalApplyNeedsOneHome))
 }
 
 // THE LOCK IDENTITY is derived from the worktree root the caller names (an absolute path with no `.`, `..` or empty
@@ -444,7 +525,8 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
   roster_lock_still_held(held: held) && Filesystem.Delete(path: roster_lock_file(root: held.root)).success
 }
 
-fn roster_apply_for_paths(root_dir: String, paths_csv: String, scope: RosterHomeScope) -> String {
+fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName) -> String {
+  let scope = OneHome { home: home }
   match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
     RosterLockAcquired { held: held } => {
@@ -457,22 +539,24 @@ fn roster_apply_for_paths(root_dir: String, paths_csv: String, scope: RosterHome
 fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHomeScope) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
-    Accepted { value: prepared, diagnostics: _ } =>
+    Accepted { value: prepared, diagnostics: _ } => {
+      let closures = roster_home_closures(root: held.root, scope: scope)
       fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: "",
-        cons: fn(acc, path) { acc + roster_apply_path(held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope) }
+        cons: fn(acc, path) { acc + roster_apply_path(held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures) }
       )
+    }
   }
 }
 
-fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
   if !roster_path_admitted(path: path) {
     roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else {
     let read = Filesystem.Read(path: held.root + "/" + path)
     if read.success {
-      match roster_sweep_text_scoped(path: path, text: read.content, prepared: prepared, lex: lex, scope: scope) {
+      match roster_sweep_text_scoped(path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures) {
         RosterClean => ""
         RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
         RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
@@ -738,10 +822,10 @@ fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
 }
 
 fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
-  roster_sweep_text_scoped(path: path, text: text, prepared: prepared, lex: lex, scope: AllHomes)
+  roster_sweep_text_scoped(path: path, text: text, prepared: prepared, lex: lex, scope: AllHomes, closures: roster_control_closures())
 }
 
-fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> RosterOutcome {
+fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> RosterOutcome {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
         Rejected { diagnostics: _ } => RosterRefused { reason: RefusalTokenizeRefused }
         Accepted { value: stream, diagnostics: _ } =>
@@ -756,7 +840,8 @@ fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGramma
                     spans: artifact.span_index,
                     normalized_root: scoped.tree.root,
                     imported: scoped.tree.import_bindings,
-                    scope: scope
+                    scope: scope,
+                    closures: closures
                   ) {
                     RosterClean => roster_label_outcome(parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, scope: scope)
                     other => other
@@ -1008,7 +1093,8 @@ fn roster_sweep_rows(
   spans: SpanIndex,
   normalized_root: Node,
   imported: List<AliasBindingRow>,
-  scope: RosterHomeScope
+  scope: RosterHomeScope,
+  closures: List<RosterHomeClosure>
 ) -> RosterOutcome {
   let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported, scope: scope)
   if is_empty(xs: needed) {
@@ -1018,7 +1104,7 @@ fn roster_sweep_rows(
   } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
     RosterRefused { reason: RefusalShapeNameBoundElsewhere }
   } else {
-    roster_import_row(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, needed: needed)
+    roster_import_row(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, needed: needed, closures: closures)
   }
 }
 
@@ -1046,19 +1132,32 @@ type ImportDeclFact {
 
 // ONE HOME PER OUTCOME: the needed rows of the FIRST home in table order are rendered; a file that needs a second home
 // still has pending rows after the apply, so the convergence re-run (roster_import_sweep_exit) emits that home's edit next.
-fn roster_import_row(parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, needed: List<RosterHeadRow>) -> RosterOutcome {
+fn roster_import_row(parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, needed: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
   match needed {
     Empty => RosterClean
     Cons { head: first, tail: _ } =>
       let home_rows = fold_list(xs: needed, empty: [], cons: fn(acc, r) { if roster_qn_text(qn: r.home) == roster_qn_text(qn: first.home) { list_snoc_item(xs: acc, item: r) } else { acc } })
-      roster_with_pending_labels(
-        parse_root: parse_root,
-        spans: spans,
-        normalized_root: normalized_root,
-        imported: imported,
-        rows: home_rows,
-        edit: roster_import_row_home(parse_root: parse_root, spans: spans, home: first.home, needed: home_rows)
-      )
+      match roster_module_cycle_refusal(parse_root: parse_root, closures: closures, home: roster_qn_text(qn: first.home)) {
+        Present { value: reason } => RosterRefused { reason: reason }
+        Absent =>
+          roster_with_pending_labels(
+            parse_root: parse_root,
+            spans: spans,
+            normalized_root: normalized_root,
+            imported: imported,
+            rows: home_rows,
+            edit: roster_import_row_home(parse_root: parse_root, spans: spans, home: first.home, needed: home_rows)
+          )
+      }
+  }
+}
+
+// The swept module's own name, read off its parse by the reader acquisition uses (qualified_name_from_module_node), then the
+// cycle verdict for importing `home` into it.
+fn roster_module_cycle_refusal(parse_root: Node, closures: List<RosterHomeClosure>, home: String) -> Optional<RosterRefusalReason> {
+  match qualified_name_from_module_node(root: parse_root) {
+    Rejected { diagnostics: _ } => Present { value: RefusalModuleNameUnread }
+    Accepted { value: qn, diagnostics: _ } => roster_cycle_refusal(closures: closures, home: home, module: roster_qn_text(qn: qn))
   }
 }
 
@@ -1271,6 +1370,16 @@ fn roster_control_edit_splices() -> String {
   }
 }
 
+// THE CONTROLS' CLOSURES ARE SUPPLIED VALUES (DESIGN section 3, a witness discriminates at one interface): each home a
+// control fixture imports, with a closure that holds no c.* fixture module. roster_control_closure_inhabited pins the real
+// producer separately.
+fn roster_control_closures() -> List<RosterHomeClosure> {
+  [
+    RosterClosureRead { home: "std.algebra", modules: ["std.algebra", "std.optional", "std.error_primitives"] },
+    RosterClosureRead { home: "std.host_text", modules: ["std.host_text", "std.types"] }
+  ]
+}
+
 fn roster_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
@@ -1281,6 +1390,9 @@ fn roster_controls_report() -> String {
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_closure_inhabited()
+        + roster_control_apply_needs_one_home()
         + roster_control_label_local_call(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_method_spelling(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_bound_occurrence(prepared: prepared, lex: dag_prepared_lex())
@@ -1450,6 +1562,56 @@ fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
   }
 }
 
+// AN IMPORT THAT WOULD CLOSE A CYCLE IS REFUSED, NAMED, AND NEVER EMITTED. The pair differs only in whether the swept
+// module is in the home's closure: inside it, the refusal names home and module; outside it, the same text gets its import.
+fn roster_control_import_closes_cycle(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let text = "module c.cyc\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }
+  let cyclic = [RosterClosureRead { home: "std.host_text", modules: ["std.host_text", "c.cyc"] }]
+  let inside = match roster_sweep_text_scoped(path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: cyclic) {
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == "import-closes-cycle home=std.host_text module=c.cyc" { "" } else { "CONTROL-FAIL import-closes-cycle: refused for another reason " + roster_refusal_text(reason: r) + "\n" }
+    _ => "CONTROL-FAIL import-closes-cycle: a cycle-closing import was not refused\n"
+  }
+  let outside = match roster_sweep_text_scoped(path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: roster_control_closures()) {
+    RosterEditWithLabels { start: _, end: _, text: _, own_line: _, labels: _ } => ""
+    _ => "CONTROL-FAIL import-closes-cycle: the acyclic twin did not get its import\n"
+  }
+  let unread = match roster_sweep_text_scoped(path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: []) {
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == "home-closure-unread home=std.host_text" { "" } else { "CONTROL-FAIL import-closes-cycle: an unread closure refused for another reason\n" }
+    _ => "CONTROL-FAIL import-closes-cycle: a home with no closure was assumed acyclic\n"
+  }
+  inside + outside + unread
+}
+
+// AN ALL-HOMES MUTATION REFUSES, TYPED, before any lock, read or write: the home-less apply entry has no scope to apply.
+fn roster_control_apply_needs_one_home() -> String {
+  match roster_import_sweep_apply_exit(root_dir: "/nonexistent-roster-control-root", paths_csv: "dag/std/types.dag") {
+    ExitSuccess => "CONTROL-FAIL apply-needs-one-home: an all-homes apply succeeded\n"
+    ExitFailure { code: c, reason: r } =>
+      if roster_exit_reason_is(exit: ExitFailure { code: c, reason: r }, reason: roster_refuse_row(path: "*", reason: RefusalApplyNeedsOneHome)) { "" } else { "CONTROL-FAIL apply-needs-one-home: refused for another reason\n" }
+  }
+}
+
+fn roster_exit_reason_is(exit: ProcessExit, reason: String) -> Bool {
+  match exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => r == reason
+  }
+}
+
+// THE INHABITANCE CLAIM for the supplied closures: the real producer, through the compiler's acquisition door, reads
+// std.types' closure and it holds std.algebra (std.types defines List over std.algebra's FreeMonoid), so importing std.types
+// into std.algebra is refused by the real path.
+fn roster_control_closure_inhabited() -> String {
+  match roster_cycle_refusal(closures: [roster_home_closure_read(home: "std.types", bindings: roster_repository_bindings(root: ""))], home: "std.types", module: "std.algebra") {
+    Present { value: RefusalImportClosesCycle { home: _, module: _ } } => ""
+    Present { value: r } => "CONTROL-FAIL closure-inhabited: the real closure of std.types refused " + roster_refusal_text(reason: r) + "\n"
+    Absent => "CONTROL-FAIL closure-inhabited: the real closure of std.types does not hold std.algebra\n"
+  }
+}
+
 // THE ROW PROTOCOL HOLDS FOR A MULTILINE REPLACEMENT: the outcome's EDIT row is one line and reads back to the edit's own
 // start, end and replacement.
 fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
@@ -1467,12 +1629,12 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.bare\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
   let after = "module c.bare\n\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n"
-  let outcome = roster_sweep_text_scoped(path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })
+  let outcome = roster_sweep_text_scoped(path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures())
   let applied = match roster_applied(before: before, outcome: outcome) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL no-import-anchor: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c1 } =>
       if c1 != after { "CONTROL-FAIL no-import-anchor: pass 1 did not write exactly one import after the module header\n" } else {
-        match roster_sweep_text_scoped(path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }) {
+        match roster_sweep_text_scoped(path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures()) {
           RosterClean => ""
           _ => "CONTROL-FAIL no-import-anchor: pass 2 is not Clean\n"
         }

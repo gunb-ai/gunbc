@@ -45,7 +45,6 @@ import v2.std.node {
   NotFound,
   Arrow,
   Atom,
-  Occupancy,
   Bind,
   Branch,
   ComputationNode,
@@ -183,7 +182,6 @@ fn realization_connective_shape(c: Connective) -> RealizationNodeShape {
     Conj => ShapeConj
     Arrow => ShapeArrow
     Disj => ShapeOther
-    Occupancy => ShapeOther
     Instantiation => ShapeOther
   }
 }

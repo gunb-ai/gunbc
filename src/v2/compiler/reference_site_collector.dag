@@ -9,7 +9,6 @@ import v2.std.integer { Int }
 import v2.std.node {
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -341,13 +340,6 @@ fn reference_sites_in_node(
         TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Occupancy } =>
-          reference_sites_in_children(
-            acc: collection_snoc_site(acc: acc, scope: scope, site: ReferenceSite { position: position, spelling: optional_declaration_identity() }),
-            position: position,
-            scope: scope,
-            node: node
-          )
         TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
       }

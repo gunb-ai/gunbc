@@ -836,6 +836,11 @@ fn build_cache_digest_refusal_names(refusal: VerifiedBinaryInstallRefusal, expec
       string_contains(s: e.hex as String, pattern: expected)
         && string_contains(s: o.hex as String, pattern: observed)
         && string_contains(s: reason_of(refusal: refusal), pattern: "digest")
+    // THE PARAMETER REFUSAL IS NOT A DIGEST REFUSAL. A caller asking "does this refusal name the pinned
+    // and observed digests" must get `false` for an unsound member rather than a match on prose that
+    // happens to contain the word "digest" -- the member refusal carries neither digest, and conflating
+    // the two worlds is how a swapped archive once hid behind a mirror-outage caption.
+    MemberPathUnsound { member: _, extract_root: _ } => false
   }
 }
 
@@ -969,6 +974,10 @@ test fn a_supplied_digest_mismatch_stops_the_fold_before_any_install_leg() -> Bo
                string_contains(s: reason_of(refusal: why), pattern: "digest")
                  && expected.hex as String == sccache_release_0_15_0.digest_x86_64.hex as String
                  && string_contains(s: observed.hex as String, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+             // THE PARAMETER WORLD IS NOT THIS WORLD. This specimen's member comes from the release row and is
+             // a clean relative path, so a MemberPathUnsound here means the gate misread valid input -- which is
+             // a different defect than the one this claim measures, and must not ride through as a pass.
+             MemberPathUnsound { member: _, extract_root: _ } => false
            }
     // EVERY OTHER ARM IS A FAIL-OPEN HERE. EnsureCompleted is the mutation's signature; a transport arm would
     // mean the fold reached for something outside its inputs, which it must never do.
@@ -1404,6 +1413,10 @@ test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> B
                     string_contains(s: reason_of(refusal: why), pattern: "digest")
                       && expected.hex as String == sccache_release_0_15_0.digest_x86_64.hex as String
                       && string_contains(s: observed.hex as String, pattern: "0000000000000000000000000000000000000000000000000000000000000000")
+                  // THE PARAMETER WORLD IS NOT THIS WORLD: this specimen's member is the release row's clean
+                  // relative path, so reaching MemberPathUnsound means the gate misread valid input -- a
+                  // different defect than the one measured here, and it must not pass as a refusal.
+                  MemberPathUnsound { member: _, extract_root: _ } => false
                 }
          // THE DISCRIMINATOR: an admitted mismatch is a silent default, so the positive arm here must not
          // be reachable on a line that disagrees with the pin.

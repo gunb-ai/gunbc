@@ -39,7 +39,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Occupancy, Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
@@ -99,7 +99,6 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
-    TypeNode { connective: Occupancy } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
     ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
@@ -139,7 +138,6 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
         TypeNode { connective: Atom { identity: _ } } => false
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
-        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
