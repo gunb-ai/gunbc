@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and inside derived ==, so a stage that rebuilds an edge with the same label and target but writes
 // NotADeclaration changes nothing the hash or any existing claim reads: the keyed declaration is lost
 // silently. This claim runs the real normalize, resolve and infer (with refinement discharge) over one
-// module that declares a fn name, a typed parameter and a let binder, and requires every DeclaresAt row
+// module that declares a fn name and a typed parameter (a let binder is an atom, not an edge), and requires every DeclaresAt row
 // found after normalize to be present, with the identical declared occurrence, after each later stage.
 // RED: set one same-label rebuild site in any of those stages to NotADeclaration and the row is missing.
 // close_lowered_image runs inside normalize (its image is the one read first). translate's tree
@@ -77,7 +77,7 @@ fn stage_verdict(stage: String, base: List<String>, root: Node) -> ProcessExit {
 }
 
 fn three_declared(base: List<String>) -> Bool {
-  all_present(wanted: ["[alpha=", "[beta=", "[gamma="], in_text: joined(xs: base))
+  all_present(wanted: ["[alpha=", "[beta="], in_text: joined(xs: base))
 }
 
 test fn declaration_survives_resolve_and_infer() -> ProcessExit {
@@ -107,7 +107,7 @@ test fn declaration_survives_resolve_and_infer() -> ProcessExit {
                               failed => failed
                             }
                           } else {
-                            ExitFailure { code: 1, reason: "normalize did not carry alpha, beta and gamma declarations: " + joined(xs: base) }
+                            ExitFailure { code: 1, reason: "normalize did not carry alpha and beta declarations: " + joined(xs: base) }
                           }
                         }
                       )
