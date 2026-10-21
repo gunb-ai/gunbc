@@ -1112,11 +1112,32 @@ fn j24_text(layout: CarrierLayoutObservation) -> String {
         let rs = filter(b.bench.resistances, o => any(x.terminals, t => terminal_ref_equal(a: o.first, b: e1_j24_pin(n: t)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
         let valued = filter(rs, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
         join([
-          "J24 has ", to_string(count(x.terminals)), " positions, one keyed, at ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows by photograph; ",
+          "J24 has ", to_string(count(x.terminals)), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
           to_string(count(rs)), " read to J20's black lead, ", to_string(count(valued)), " with a value (", to_string(nat_min_of(filter(map(valued, o => match valued_ohms(o: o) { Present { value: v } => v, Absent => 0 }), v => v > 0))), " ohm the least), none near zero, so no position is read as the return",
         ], "")
       }
     }
+  }
+}
+
+// J68 BY ITS UNPOWERED SHAPE: which positions read as the return, which are open, and whether two
+// positions of the other row read alike, the facts a JTAG header's layout predicts.
+fn j68_shape_from(all: List<ResistanceObservation>) -> String {
+  let rs = filter(all, o => any(e1_j68_points, n => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
+  let zeros = filter(rs, o => is_reported_zero(o: o))
+  let open = filter(rs, o => match o.display { DisplayOverRange => true, _ => false })
+  let alike = any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: "L3")) && match valued_ohms(o: o) { Present { value: v } => any(rs, p => terminal_ref_equal(a: p.first, b: e1_terminal(c: e1_j68, name: "L5")) && match valued_ohms(o: p) { Present { value: w } => w == v, Absent => false }), Absent => false })
+  join([
+    "J68 unpowered: ", to_string(count(rs)), " positions read to J20's black lead; ", to_string(count(zeros)), " report zero without a baseline (", join(map(zeros, o => terminal_text(t: o.first)), ", "), "), ", to_string(count(open)), " over range (", join(map(open, o => terminal_text(t: o.first)), ", "), ")",
+    "; L3 and L5 ", if alike { "read alike" } else { "do not read alike" },
+    ": the shape of Intel's ten-pin JTAG layout with L as the odd pins and R the even, a candidate the powered re-read decides",
+  ], "")
+}
+
+fn j68_shape_text(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "J68 has no unpowered reading"
+    Present { value: b } => j68_shape_from(all: b.bench.resistances)
   }
 }
 
@@ -1919,10 +1940,10 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
     "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
-    "U4, the heatsinked device below J4, read 2026-10-21 with its heatsink lifted: Intel's Cyclone 10 GX 10CX085YF672E6G (extdeps.electronic_component.intel_10cx085), an SRAM-based FPGA that loads its configuration at every power-up from a serial flash it masters, a host, or JTAG, and whose user pins are weak pull-ups until CONF_DONE goes high. The device that would drive Q300's gate is therefore programmable logic whose configuration source and state are unread: the three Micron-format BGAs beside it (K1 listing) are the configuration-flash candidates and the 2 x 5 header below it the JTAG candidate. A gate node at 0 V with 800 ohm to the return is what an unconfigured FPGA's pin, or a configured one holding it low, both look like from outside",
+    "U4, the heatsinked device below J4, read 2026-10-21 with its heatsink lifted: Intel's Cyclone 10 GX 10CX085YF672E6G (extdeps.electronic_component.intel_10cx085), an SRAM-based FPGA that loads its configuration at every power-up from a serial flash it masters, a host, or JTAG, and whose user pins, before configuration, pull up or float as its nIO_PULLUP strap selects (the row names the strap rather than the pull-up). The device that would drive Q300's gate is therefore programmable logic whose configuration source and state are unread: the three Micron-format BGAs beside it (K1 listing) are the configuration-flash candidates and the 2 x 5 header below it the JTAG candidate. A gate node at 0 V with 800 ohm to the return is what an unconfigured FPGA's pin, or a configured one holding it low, both look like from outside, so the gate's level does not by itself identify the FPGA's state",
     "U5_2, below U4, read 2026-10-21 with the Microchip logo as CEC1736 (extdeps.electronic_component.microchip_cec1736): a platform root of trust with secure boot, the part NVDebug's debug dumps name beside the FPGA as the ERoT. Three Micron-format BGAs sit beside it (U2_2 and U3_2 'RW188', a third 'RW251'). If U4's configuration flash is one of them and U5_2 guards it, a relation the part's capabilities admit but no reading on this board yet establishes, U4 configures only once U5_2 releases it, and a flash image the root of trust declines, or a root of trust not provisioned on an engineering unit, leaves U4 unconfigured with no switch able to change it. The three flashes decode (Micron's FBGA decoder, 2026-10-21) to two MT25QU01G (U3_2 and U2_2, 1 Gbit each, two die) and one MT25QU02G (2 Gbit, four die), all 1.8 V quad-SPI: a pair of 1 Gbit parts fits a primary and a recovery FPGA image (about 92 Mbit each for this device) and a single 2 Gbit part fits a firmware store, but which image each holds is unread. Energized and settled, DS1_2 beside U5_2 blinks on 1.0 s, off 1.5 s and DS6 beside J68 on 1.36 s, off 1.32 s (two videos, measured frame by frame); two different periods are two different sources, and which part drives each is unread",
   ],
-  decided_by: "J24's positions energized in P0, P1 and the settled state against J20's black lead (a position at a steady logic voltage is a supply reference, three that idle high and one that idles low or toggles are the JTAG shape), and unpowered against a baseline to U53, U69 and U21; U4's VCCBAT, read energized at a pad against J20's black lead (its power-on reset holds until it is present); the K1's 4R7 and 2R2 inductor outputs against the E1's in the same states. Which part drives DS1_2 and DS6 (U5_2's or U4's pin, traced unpowered), so that each blink names its source; U5_2's release of U4 (its reset or release output to U4's nCONFIG, traced unpowered, then read energized); and the three BGAs' part numbers from Micron's decoder. Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "J68 energized under the labelled positions: R2 against J20's black lead (1.8 V reads as VCCPGM and the header as U4's JTAG), R1 and R5 (0 V), L1, L3 and L5 (TCK low, TMS and TDI high under the candidate); then, with the USB Blaster's I/O referenced to R2, a read-only chain scan: the IDCODE, CONF_DONE and nSTATUS, never a configuration, erase or nCONFIG pulse. J24's positions energized in P0, P1 and the settled state against J20's black lead (a position at a steady logic voltage is a supply reference, three that idle high and one that idles low or toggles are the JTAG shape), and unpowered against a baseline to U53, U69 and U21; U4's VCCBAT, read energized at a pad against J20's black lead (its power-on reset holds until it is present); the K1's 4R7 and 2R2 inductor outputs against the E1's in the same states. Which part drives DS1_2 and DS6 (U5_2's or U4's pin, traced unpowered), so that each blink names its source; U5_2's release of U4 (its reset or release output to U4's nCONFIG, traced unpowered, then read energized); and the three BGAs' part numbers from Micron's decoder. Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 // THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
@@ -1944,6 +1965,7 @@ data p4261_local_control_hypothesis: InvestigationHypothesis = InvestigationHypo
     "the Q21_P5 / Q22_P5 source-side terminals, P6, Q301's lead b node, Q300's lead b and the resistor's far end are unread in every recorded phase; the readings before the switch event were taken with the vector unrecorded",
     "U4 read 2026-10-21 as Intel's Cyclone 10 GX 10CX085YF672E6G: the local controls, the headers and the shift registers are consistent with inputs an FPGA reads, and the indicator sequence with outputs it drives; a blinking indicator after settling is then a configured device running, which its CONF_DONE confirms or denies",
     "two indicators blink in the settled state with different periods (DS1_2 about 2.5 s, DS6 about 2.7 s, videos of 2026-10-21): if DS1_2 is driven by U5_2, the root of trust is running; if DS6 is driven by U4, U4 is configured and running; which part drives each is unread, and a pattern that is an error code rather than a heartbeat is not excluded",
+    "J68 unpowered to J20's black lead on the 2k range (2026-10-21, under the labelled photograph): R1 '0.00' and R5 'ground', R2 57 ohm, R3, R4 and L4 over range, L1 937 ohm, L2 538, L3 and L5 both 1153. Position by position that is Intel's ten-pin JTAG layout with L as the odd pins (TCK with a pull-down, TDO, TMS and TDI with matching pull-ups, a no-connect at 7) and R the even (ground at 2 and 10, VCC at 4, no connection at 6 and 8): the FPGA's JTAG header, at VCCPGM if R2 reads 1.8 V powered, which the 10-20 map's '1.8v' points suggest under a count that named R1 high and so was oriented differently; a candidate until R2 reads 1.8 V and R1, R5 0 V under the labelled positions",
     "2026-10-21, the K1 carrier (untouched by the probe bridge): 'starts at .013A like the other board, and with all the switches on, it only gets to .040 for some reason, no LEDs turn on'. The E1's P1 draw with nothing lit, reached by the K1 and never left: the K1 does not start the sequence the E1 runs, so the two carriers sit in two different states, neither reaching the bus, and damage on the E1 is not the simplest reading of either. The K1's pole positions, the order they were moved and the source's limit are unrecorded",
   ],
   decided_by: "Unpowered and discharged, each of J68's ten points and J30's three to J20's black lead on a recorded range against the shorted-probe baseline, which alone joins a point to the return. Then, in the settled state, J68's R1 and J30's 3.1 V point each taken low through 1 kohm to a point so joined, reading the point while held and the source's V, A and CV / CC / OCP: the same hold-and-release with the source in CV and the point near 0 V reads as a logic input; the point staying high, or CC or OCP appearing, reads otherwise. In each stable phase, Q21_P5's source-side terminals (ProtectedInputBusInPhase), P6, Q301's lead b node, Q300's lead b and the resistor's far end. Unpowered, Q300's lead b to the exact U51 pin its trace meets, and each S1 / S2 pole, J30's high point and J68's 1.8 V points to U49 / U51 pins. Each S1 pole moved with the output off, then across a cold start. A video holding the board and the source's display through a J30 and a J68 hold and release. Nothing is bridged hard again before the unpowered map, and nothing drives Q300's lead b or pin 7 until a reviewed decision",
@@ -3060,9 +3082,13 @@ data e1_j24_positions: List<NonEmptyStr> = ["A1", "A2", "A3 (keyed; read at the 
 type PhotographicSpan {
   along_row_tenths_mm: Nat
   between_rows_tenths_mm: Nat
+  tolerance_tenths_mm: Nat
   basis: EvidenceRef
 }
-data e1_j24_pitch: PhotographicSpan = PhotographicSpan { along_row_tenths_mm: 13, between_rows_tenths_mm: 25, basis: e1_j24_tape_photo }
+// About 1.3 mm along a row and 2.5 mm between rows, within 0.3 mm either way: the tape lay along the
+// board edge, aligned to neither axis of the connector and nearer the camera, so this is a candidate
+// pitch and never a connector-standard match; a caliper span replaces it.
+data e1_j24_pitch: PhotographicSpan = PhotographicSpan { along_row_tenths_mm: 13, between_rows_tenths_mm: 25, tolerance_tenths_mm: 3, basis: e1_j24_tape_photo }
 data e1_j24_tape_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads 3667d943 (J24 close, the tape along the board edge below it) and 2939aa04 (both carriers side by side, the tape along the gap, J24 near its 6 3/4 inch mark) (not on Drive)")
 data e1_j24_said: NonEmptyStr = "A3 doesn't help much with numbering because, its in the middle and the pin is symettric - so, the pin innermost to the board on the A3 column (row?) is A1 - at 2k range: A1: 428 A2: 420 A3: 405 (plugged though - i'm reading at the base) A4: 405 A5: high B1: 485 B2: 484 B3: 484 B4: 484 B5: high"
 fn e1_j24_pin(n: NonEmptyStr) -> ElectricalTerminalRef { e1_terminal(c: e1_j24, name: n) }
@@ -3096,10 +3122,13 @@ data e1_j24_resistances: List<ResistanceObservation> = [
 // pair. A pad near U5_2 read 200 ohm from the lamp, the pad and the lamp's side unrecorded: a statement.
 data e1_ds1_2: ComponentInstanceIdentity = e1_component(local: "DS1_2")
 data e1_u104: ComponentInstanceIdentity = e1_component(local: "U104")
+// U104's six leads by position: three on the side away from the board edge, three on the edge side,
+// each top to bottom as photographed (upload d0a17790); which is pin 1 is unread.
+data e1_u104_leads: List<NonEmptyStr> = ["inner side, top", "inner side, middle", "inner side, bottom", "edge side, top", "edge side, middle", "edge side, bottom"]
 data e1_ds1_2_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "there are a lot of pads around U5_2 - i saw one near U5_2 (the big chip?) that has .200 on 2k - actually on ohms mode the light itself lights up sometimes when its high I guess - to U104 - the lights one side has a .000 reading to the middle pin on th e side far from the edge of the board" }
 data e1_ds1_2_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
-    asset: p4261_e1_b, first: e1_terminal(c: e1_ds1_2, name: "one side (which of the two unrecorded)"), second: e1_terminal(c: e1_u104, name: "middle pin, inner side (away from the board edge)"),
+    asset: p4261_e1_b, first: e1_terminal(c: e1_ds1_2, name: "one side (which of the two unrecorded)"), second: e1_terminal(c: e1_u104, name: "inner side, middle"),
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayZeroWithoutBaseline { reported: ".000" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
     order: AfterIncidents { keys: [e1_bridge_incident.key] },
@@ -3237,6 +3266,41 @@ data e1_u49: ComponentInstanceIdentity = e1_component(local: "U49")
 data e1_u51: ComponentInstanceIdentity = e1_component(local: "U51")
 data e1_u1_tfp_blinker: ComponentInstanceIdentity = e1_component(local: "indicator blinking near U1_TFP (designator unrecorded)")
 data e1_j68_points: List<NonEmptyStr> = ["L1", "L2", "L3", "L4", "L5", "R1", "R2", "R3", "R4", "R5"]
+// The operator's labelled photographs (2026-10-21) fix the positions: J68's left column L1 to L5 and
+// right column R1 to R5, top to bottom as photographed, labelled 'positions (not pin numbers)'; J30's
+// A, B, C left to right. Every J68 and J30 reading from here on uses these.
+data e1_j68_labelled_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload: J68 with L1 to L5 down the left column and R1 to R5 down the right, captioned 'J68 positions (not pin numbers)'; and J30 with A, B, C marked left to right (not on Drive)")
+data e1_j68_ohms_said: NonEmptyStr = "All at 2k / R1 at 0.00 R2: 0.057 R3: high R4: high R5: ground / L1: .937 L2: .538 L3: 1.153 L4: high L5: 1.153"
+fn e1_j68_read(n: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_j68, name: n), second: e1_ground_ref,
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-21", verbatim: e1_j68_ohms_said }, e1_j68_labelled_photo],
+  }
+}
+// J68's ten positions to J20's black lead on the 2k range, unpowered (2026-10-21), under the labelled
+// photograph: R1 '0.00' and R5 'ground' are zeros without a baseline (they join nothing in the live
+// netlist); R2 57 ohm; R3, R4 and L4 over range; L1 937 ohm; L2 538; L3 and L5 both 1153. The shape is
+// Intel's ten-pin JTAG layout read position by position (grounds at 2 and 10, VCC at 4, no connection
+// at 6, 7 and 8, TCK with a pull-down at 1, TMS and TDI with matching pull-ups at 5 and 9, TDO at 3),
+// with L as the odd pins and R the even: a candidate pinout the hypothesis names and the powered
+// re-read under the same labels decides. The powered map of 2026-10-20 ('R1, L2-5 are all 1.8v') named
+// R1 high, which under this labelling reads as the return, so one of the two counts was oriented
+// differently; the labelled photograph is the authority from here on.
+data e1_j68_resistances: List<ResistanceObservation> = [
+  e1_j68_read(n: "R1", display: DisplayZeroWithoutBaseline { reported: "0.00" }),
+  e1_j68_read(n: "R2", display: DisplayValue { ohms: 57, approximate: false }),
+  e1_j68_read(n: "R3", display: DisplayOverRange),
+  e1_j68_read(n: "R4", display: DisplayOverRange),
+  e1_j68_read(n: "R5", display: DisplayZeroWithoutBaseline { reported: "ground" }),
+  e1_j68_read(n: "L1", display: DisplayValue { ohms: 937, approximate: false }),
+  e1_j68_read(n: "L2", display: DisplayValue { ohms: 538, approximate: false }),
+  e1_j68_read(n: "L3", display: DisplayValue { ohms: 1153, approximate: false }),
+  e1_j68_read(n: "L4", display: DisplayOverRange),
+  e1_j68_read(n: "L5", display: DisplayValue { ohms: 1153, approximate: false }),
+]
 data e1_j68_high_points: List<NonEmptyStr> = ["R1", "L2", "L3", "L4", "L5"]
 data e1_j68_low_points: List<NonEmptyStr> = ["L1", "R2", "R3", "R4", "R5"]
 data e1_j30_points: List<NonEmptyStr> = ["A", "B", "C"]
@@ -3479,7 +3543,7 @@ data e1_bench_record: BenchRecord = BenchRecord {
   attachments: [e1_pin7_attachment, e1_w2_attachment, e1_w4_attachment],
   alterations: [e1_u4_heatsink_alteration],
   voltages: concat(concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])), e1_zv_volts),
-  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances), e1_front_chain_resistances), e1_u55_resistances), e1_site_resistances), e1_j24_resistances), e1_ds1_2_resistances),
+  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances), e1_front_chain_resistances), e1_u55_resistances), e1_site_resistances), e1_j24_resistances), e1_ds1_2_resistances), e1_j68_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -3593,7 +3657,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
     InstalledComponent { component: e1_s1, terminals: names(ns: e1_pole_terminal_names), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, beside J540 and DS3 to DS6", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
     InstalledComponent { component: e1_s2, terminals: names(ns: e1_pole_terminal_names), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, near the large high-density connectors", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
-    InstalledComponent { component: e1_j68, terminals: names(ns: e1_j68_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a 2 x 5 header: its ten points to J20's black lead unpowered on a recorded range against the shorted-probe baseline, which alone joins a point to the return; a 2 x 5 footprint fixes no pinout" } },
+    InstalledComponent { component: e1_j68, terminals: names(ns: e1_j68_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a 2 x 5 header at 0.1 inch, read unpowered 2026-10-21 (e1_j68_resistances) in the shape of Intel's ten-pin JTAG layout, a candidate; its ten points to J20's black lead unpowered on a recorded range against the shorted-probe baseline, which alone joins a point to the return; a 2 x 5 footprint fixes no pinout" } },
     InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
     InstalledComponent { component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
     InstalledComponent { component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
@@ -3618,7 +3682,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_u22, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "P617A / 01.14 / 226", evidence: e1_j30_area_photo } }, discriminator: "an eight-lead part beside U483; the maker's marking table" } },
     InstalledComponent { component: e1_j24, terminals: names(ns: e1_j24_positions), identification: MarkingUnresolved { marking: Absent, discriminator: "J24: a two-row five-position shrouded female receptacle, one position keyed, between J68 and U53 (the K1 listing's 'small shrouded connector below U4'); its pitch is e1_j24_pitch, a photographic measurement. Its pinout is unread: no position reads near the return unpowered, so its ground, if any, is a powered or baselined reading away; it is the debug-port candidate for U4 or U5_2, and a female receptacle takes a male plug, not the USB Blaster's socket" } },
     InstalledComponent { component: e1_ds1_2, terminals: names(ns: ["one side (which of the two unrecorded)", "other side"]), identification: MarkingUnresolved { marking: Absent, discriminator: "the green indicator beside U5_2 that blinks on 1.0 s, off 1.5 s in the settled state; its anode and cathode are unread, and which side the meter lit it from says which" } },
-    InstalledComponent { component: e1_u104, terminals: names(ns: ["middle pin, inner side (away from the board edge)"]), identification: MarkingUnresolved { marking: Absent, discriminator: "a six-lead part between U5_2 and U105 whose inner middle pin reads '.000' to one side of DS1_2: a driver or a series element for the lamp; its marking and the rest of its pins are unread" } },
+    InstalledComponent { component: e1_u104, terminals: names(ns: e1_u104_leads), identification: MarkingUnresolved { marking: Absent, discriminator: "a six-lead part between U5_2 and U105 whose inner middle lead reads '.000' to one side of DS1_2: a driver or a series element for the lamp; its marking and its other five leads are unread" } },
     InstalledComponent { component: e1_u4, terminals: [], identification: IdentifiedByMarking { row: cyclone_10_gx_10cx085yf672e6g, marking: MarkingReading { text: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P CBABF2243A / TAIWAN / S241AK47 / 305PA2U0D / e1 (circled)", evidence: e1_u4_photo } } },
     InstalledComponent { component: e1_u43_chain_via, terminals: names(ns: ["via"]), identification: MarkingUnresolved { marking: Absent, discriminator: "a via the operator reads as a ground point (800 ohm from Q300's lead b on the 2k range); joined to the return only by a baselined reading" } },
   ],
@@ -3947,6 +4011,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", u5_2_root_of_trust_text(layout: layout),
     ". ", island_flash_text(layout: layout),
     ". ", j24_text(layout: layout),
+    ". ", j68_shape_text(layout: layout),
     ". ", alterations_text(layout: layout),
     ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",

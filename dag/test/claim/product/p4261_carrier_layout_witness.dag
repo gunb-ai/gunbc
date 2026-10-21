@@ -129,6 +129,7 @@ import product.p4261_carrier_layout {
   e1_u5_2, e1_rw251_bga, u5_2_root_of_trust_text, e1_settled_indicators,
   e1_u2_2, e1_u3_2, e1_j24, island_flash_text,
   e1_j24_positions, e1_j24_resistances, e1_j24_pitch, e1_j24_pin, j24_text, e1_ds1_2, e1_u104, e1_ds1_2_resistances,
+  e1_j68_resistances, j68_shape_text, j68_shape_from,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -2070,7 +2071,8 @@ fn j68_point(name: NonEmptyStr) -> ElectricalTerminalRef {
 // the domain state and the pole turned off in the settled state each lead back to the same phase. The
 // settled phase carries J68's ten points, five at 1.8 V and five at 0 V, and J30's two as readings at
 // operator-named points, each one of J30's three terminals; none of the 0 V points is one node with
-// J20's return in the live netlist: no unpowered reading joins them. J30 has three terminals and each
+// J20's return in the live netlist: the one unpowered reading of R2 (57 ohm, 2026-10-21) is a value, not a
+// join, and the zeros at R1 and R5 have no baseline. J30 has three terminals and each
 // DIP package four, two per pole.
 // The report carries the phases under their observed names.
 test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() -> Bool {
@@ -2094,7 +2096,8 @@ test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() 
     && all(["R1", "L2", "L3", "L4", "L5"], n => any(at_1v8, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
     && all(["L1", "R2", "R3", "R4", "R5"], n => any(at_0, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
     && !any(["L1", "R2", "R3", "R4", "R5"], n => one_node(net: live, a: j68_point(name: n), b: e1_ground_ref))
-    && !any(e1_measured.bench.resistances, o => reads_pair(o: o, a: j68_point(name: "R2"), b: e1_ground_ref))
+    && any(e1_measured.bench.resistances, o => reads_pair(o: o, a: j68_point(name: "R2"), b: e1_ground_ref) && match valued_ohms(o: o) { Present { value: v } => v == 57, Absent => false })
+    && !one_node(net: live, a: j68_point(name: "R2"), b: e1_ground_ref)
     && carrier_input_reading(layout: p4261_e1_layout).contains("Carrier phases (names of what was observed, not of a function): ")
     && carrier_input_reading(layout: p4261_e1_layout).contains("on J20 power alone with the module absent, the carrier's local controls put it through recorded states")
     && carrier_input_reading(layout: p4261_k1_layout).contains("no carrier phase recorded")
@@ -2379,10 +2382,37 @@ test fn j24_is_named_measured_and_reads_no_return() -> Bool {
     && all(valued, o => match valued_ohms(o: o) { Present { value: v } => v >= 405 && v <= 485, Absent => false })
     && !any(e1_j24_positions, n => one_node(net: live, a: e1_j24_pin(n: n), b: e1_ground_ref))
     && e1_j24_pitch.along_row_tenths_mm == 13 && e1_j24_pitch.between_rows_tenths_mm == 25
-    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed, at 13/10 mm along a row and 25/10 mm between rows by photograph; 10 read to J20's black lead, 8 with a value (405 ohm the least), none near zero, so no position is read as the return")
+    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 read to J20's black lead, 8 with a value (405 ohm the least), none near zero, so no position is read as the return")
+    && e1_j24_pitch.tolerance_tenths_mm == 3
+    && all(component_of(layout: p4261_e1_layout, c: e1_u104), c => count(c.terminals) == 6)
     && j24_text(layout: without).contains("J24 is not a component of this carrier's observation")
     && carrier_input_reading(layout: p4261_e1_layout).contains("no position is read as the return")
     && count(e1_ds1_2_resistances) == 1 && all(e1_ds1_2_resistances, o => is_reported_zero(o: o))
-    && !one_node(net: live, a: terminal_ref(component: e1_ds1_2, terminal: "one side (which of the two unrecorded)" as TerminalIdentity), b: terminal_ref(component: e1_u104, terminal: "middle pin, inner side (away from the board edge)" as TerminalIdentity))
+    && !one_node(net: live, a: terminal_ref(component: e1_ds1_2, terminal: "one side (which of the two unrecorded)" as TerminalIdentity), b: terminal_ref(component: e1_u104, terminal: "inner side, middle" as TerminalIdentity))
     && count(component_of(layout: p4261_e1_layout, c: e1_u104)) == 1
+}
+
+// J68 (2026-10-21, labelled positions): ten readings to the return on the 2k range, polarity
+// unrecorded, no baseline: R1 and R5 zeros that join nothing, R3, R4 and L4 over range, R2 57 ohm,
+// L1 937, L2 538, L3 and L5 both 1153; the report says which positions are zero and open, that L3 and
+// L5 read alike, and names Intel's JTAG layout as the candidate. Supplied: L5's value changed to 1000
+// makes the pair read unalike.
+fn j68_value_at(n: NonEmptyStr) -> Nat {
+  match (filter(e1_j68_resistances, o => terminal_ref_equal(a: o.first, b: j68_point(name: n)))).first() {
+    Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v, Absent => 0 }
+    Absent => 0
+  }
+}
+
+test fn j68_reads_in_the_shape_of_a_jtag_header() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let zeros = filter(e1_j68_resistances, o => is_reported_zero(o: o))
+  let open = filter(e1_j68_resistances, o => match o.display { DisplayOverRange => true, _ => false })
+  count(e1_j68_resistances) == 10 && count(zeros) == 2 && count(open) == 3
+    && all(zeros, o => terminal_ref_equal(a: o.first, b: j68_point(name: "R1")) || terminal_ref_equal(a: o.first, b: j68_point(name: "R5")))
+    && !one_node(net: live, a: j68_point(name: "R1"), b: e1_ground_ref) && !one_node(net: live, a: j68_point(name: "R5"), b: e1_ground_ref)
+    && j68_value_at(n: "L3") == 1153 && j68_value_at(n: "L5") == 1153 && j68_value_at(n: "R2") == 57 && j68_value_at(n: "L1") == 937
+    && j68_shape_text(layout: p4261_e1_layout).contains("J68 unpowered: 10 positions read to J20's black lead; 2 report zero without a baseline (J68 R1, J68 R5), 3 over range (J68 R3, J68 R4, J68 L4); L3 and L5 read alike: the shape of Intel's ten-pin JTAG layout")
+    && j68_shape_from(all: map(e1_j68_resistances, o => if terminal_ref_equal(a: o.first, b: j68_point(name: "L5")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 1000, approximate: false }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })).contains("L3 and L5 do not read alike")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("a candidate the powered re-read decides")
 }
