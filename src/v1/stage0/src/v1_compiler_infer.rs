@@ -25351,13 +25351,31 @@ pub fn unify_record_lit_field_walk(
                             scope.clone(),
                             st.clone(),
                         ),
-                        std::option::Option::None => unify_generics(
-                            field_formal.clone(),
-                            crate::v1_compiler_infer_types::resolved_type(actual_value.clone()),
-                            generic_names.clone(),
-                            scope.type_env.source_indices.clone(),
-                            st.clone(),
-                        ),
+                        std::option::Option::None => {
+                            if is_lambda_expr(actual_value.clone()) {
+                                unify_lambda_solves(
+                                    unify_generics(
+                                        field_formal.clone(),
+                                        lambda_callable_type(actual_value.clone()),
+                                        generic_names.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                    ),
+                                    generic_names.clone(),
+                                    st.clone(),
+                                )
+                            } else {
+                                unify_generics(
+                                    field_formal.clone(),
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        actual_value.clone(),
+                                    ),
+                                    generic_names.clone(),
+                                    scope.type_env.source_indices.clone(),
+                                    st.clone(),
+                                )
+                            }
+                        }
                     }
                 }
                 std::option::Option::None => st.clone(),
