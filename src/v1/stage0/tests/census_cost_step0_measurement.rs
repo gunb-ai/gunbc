@@ -1,6 +1,26 @@
 // STEP 0 of the census cost-shape scoping. It began as measurement only (the numbers went to
 // the manager before any behavior change was proposed, mgr msg_f3513042) and became the
-// REGRESSION GATE for the overlay fix: the assertions below are the ones a regression trips.
+// strongest committed assertion the overlay fix has: the checks below are the ones a regression
+// trips -- WHEN THEY ARE EXECUTED.
+//
+// EXECUTED WHERE, exactly, because "regression gate" was too strong a word for this file to
+// carry (review 84038). This is a cargo integration test in the v1 seed, and NO CI STEP RUNS IT:
+// `cargo test --release -p v1-compiler --lib` and the seed's integration tests left the merge
+// path with gunbc.rung_drop rust_unit_tests_off_the_merge_path (declared 2026-09-04, standing
+// Superseded; its loss holder gunbc.rung_drop v1_required_lanes_withdrawn is what states
+// today's rung, and DESIGN's "Building & checks" says it plainly -- the required path runs no
+// v1 unit tests). So the rung this file holds is LOCAL MEASUREMENT: what a developer, or an
+// instrument run that chooses to execute it, sees. It is NOT a merge-blocking gate, and a green
+// required job is not evidence that the zero-clone, zero-refusal or digest-equality assertions
+// hold -- they hold because someone ran this file.
+//
+// WHAT WOULD ENROL IT, named rather than implied, per §6 ("a lens nothing gates on is itself a
+// lie"): the restoration trigger of gunbc.rung_drop v1_required_lanes_withdrawn -- a binary
+// built from an emission of v2 judging this population on the required path with a discriminating
+// red. The alternative the review offered (a row of gunbc.emitted_subject_build_gate) was
+// declined deliberately: that gate is the SINGLE required lane, and putting a v1 cargo test on it
+// would reverse the 2026-10-09 v1-withdrawal ruling rather than report to it. Reversing an
+// operator ruling is not this PR's authority to spend; stating the rung is.
 //
 // WHAT IT MEASURES, at the seams where a `compile_dag_diagnostic_census` call can pay for the
 // whole corpus:
@@ -171,8 +191,10 @@ fn step0_census_cost_one_and_four_calls() {
     for line in &n4 {
         println!("N=4 {line}");
     }
-    // THE REGRESSION GATE (mgr msg_89cafe3f: the counters land only if a committed consumer
-    // reads them). Bracketed at the reset above, these totals hold the four WARM calls only.
+    // THE COMMITTED CONSUMER (mgr msg_89cafe3f: the counters land only if a committed consumer
+    // reads them; review 84038: "committed" is not the same as "executed by CI" -- see the
+    // execution-locus block at the top of this file). Bracketed at the reset above, these
+    // totals hold the four WARM calls only.
     // Zero corpus-index clones is what the overlay + the module-path borrow promised: a call
     // may not materialize the corpus module-path index out of its memo, because nothing asks
     // it for an owned copy anymore (the resolve borrows the memo entry for entry). REVERT

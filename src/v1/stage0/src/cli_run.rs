@@ -4002,9 +4002,10 @@ pub static CENSUS_COST_DISK_READ_BYTES: std::sync::atomic::AtomicU64 =
 /// "build it yourself". Zero is the expected value for a census call; a nonzero count means either
 /// the pool drifted (the correct refusal, and the census call surfaces it as NotRunnable) or the
 /// proof is wrong about a legitimate scratch (which would be a loud red, not a silent loss of the
-/// fix, because the refusal propagates). `census_cost_step0_measurement` gates it at zero over the
-/// warm series, and cli_run's own `underlay_identity_proof_tests` drives it nonzero on drifted
-/// facts -- which is what keeps the proof from being code that never runs.
+/// fix, because the refusal propagates). `census_cost_step0_measurement` asserts it at zero over
+/// the warm series (a local cargo test, not a required-path gate -- see that file's
+/// execution-locus block), and cli_run's own `underlay_identity_proof_tests` drives it nonzero on
+/// drifted facts -- which is what keeps the proof from being code that never runs.
 pub static CENSUS_COST_IDENTITY_REFUSALS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 

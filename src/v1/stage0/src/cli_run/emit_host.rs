@@ -94,8 +94,10 @@ use serde::Serialize;
 
 // CENSUS COST COUNTERS (census cost-shape fix). One process-wide set of atomic counters at the
 // seams where a census call can pay for the corpus: (1) the module-path index entry (which used
-// to clone the whole corpus index on every cache hit -- gated at zero by
-// tests/census_cost_step0_measurement.rs), (2) the scratch's source-file map clone, and
+// to clone the whole corpus index on every cache hit -- asserted at zero by
+// tests/census_cost_step0_measurement.rs, a LOCAL cargo test: the required path runs no v1 unit
+// tests (gunbc.rung_drop v1_required_lanes_withdrawn), so the assertion holds when that file is
+// executed and is not what a green required job establishes), (2) the scratch's source-file map clone, and
 // (3) every real disk read the census's resolve path performs. Exposed as a pub fn read by an
 // in-process observer, so a receipt is process-differential (deltas around calls in one
 // process), never a claim about another process.
@@ -162,7 +164,8 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
 /// cached, it is DELETED at its two sources, which is the same defect class the memo was
 /// invented for and is strictly cheaper than the memo ever was: a warm census call measured
 /// 12.9 s before this change and 0.34 s after it (Step 0 series, `census_cost_step0_measurement`,
-/// which now gates the corpus-index clone count at zero). Where the memo made the repeat call
+/// which asserts the corpus-index clone count at zero -- executed locally, not on the required
+/// path; see that file's execution-locus block). Where the memo made the repeat call
 /// free by asserting its key was complete, these make the repeat call cheap by not doing the work.
 /// The `hits/misses` atomics and the memo cell went with it; nothing ever branched on them.
 ///
