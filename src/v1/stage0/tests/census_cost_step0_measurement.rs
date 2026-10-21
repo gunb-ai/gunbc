@@ -26,6 +26,15 @@ use v1_compiler::cli_run::{
 const FIXTURE: &str =
     "module c4.census_cost_fixture\n\nimport std.algebra { FreeMonoid }\ndata measured: Int = 1\n";
 
+/// CONDITION 1 PROBE (mgr msg_ef915e6b): a fixture whose own module path COLLIDES with a real
+/// pool module (`std.algebra`) while it imports that same module. If any shared pool cache ever
+/// depended on the fixture — absorbing its state, or a pool answer leaking differently through
+/// the scratch — the digest of the ordinary fixture measured BEFORE and AFTER this one runs in
+/// the same process would differ. The census either observes or refuses; both are compared
+/// before/after the overlay as digests, so even NotRunnable is a judged outcome.
+const FIXTURE_COLLIDE: &str =
+    "module std.algebra\n\nimport std.algebra { FreeMonoid }\ndata collision_marker: Int = 1\n";
+
 fn proc_io(field: &str) -> u64 {
     let Ok(io) = std::fs::read_to_string("/proc/self/io") else {
         return 0;
@@ -67,7 +76,7 @@ fn cpu_micros() -> u64 {
     ticks * 1_000_000 / 100 // USER_HZ == 100 on Linux
 }
 
-fn sample(calls: usize) -> Vec<String> {
+fn sample(calls: usize, fixture: &'static str, tag: &str) -> Vec<String> {
     let _ = reset_compile_dag_diagnostic_census_cost_counts();
     let mut out = Vec::new();
     let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
@@ -80,7 +89,7 @@ fn sample(calls: usize) -> Vec<String> {
         // difference between consecutive STAGE lines (the account is monotonic per process).
         let _ = pre_entry_phase::take_rows_with_attribution();
         let t0 = Instant::now();
-        let census = compile_dag_diagnostic_census(FIXTURE);
+        let census = compile_dag_diagnostic_census(fixture);
         let wall_us = t0.elapsed().as_micros() as u64;
         let cpu_us = cpu_micros().saturating_sub(cpu0);
         let phase_rows = pre_entry_phase::take_rows_with_attribution();
@@ -90,7 +99,7 @@ fn sample(calls: usize) -> Vec<String> {
         prev = (ic, ie, vc, vl, r, b);
         let (ic, ie, vc, vl, r, b) = (ic - pic, ie - pie, vc - pvc, vl - pvl, r - pr, b - pb);
         out.push(format!(
-            "CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={ic} INDEX_ENTRIES={ie} \
+            "{tag} CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={ic} INDEX_ENTRIES={ie} \
              VEC_CLONES={vc} VEC_LEN={vl} READS={r} DISK_BYTES={b} PROC_RCHAR={} PROC_BLK_BYTES={} \
              STAGE{{load={}us parse={}us resolve={}us normalize={}us typecheck={}us \
              reconcile_assembly={}us schedule={}us probe={}us graph={}us sym={}us}} \
@@ -120,7 +129,12 @@ fn sample(calls: usize) -> Vec<String> {
                     format!("Observed({} rows DIGEST={:016x})", rows.len(), h.finish())
                 }
                 v1_compiler::cli_run::CompileDiagnosticCensus::NotRunnable(cause) =>
-                    format!("NotRunnable(len {})", cause.len()),
+                    format!("NotRunnable(len {} DIGEST={:016x})", cause.len(), {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        cause.hash(&mut h);
+                        h.finish()
+                    }),
             }
         ));
         for row in phase_rows {
@@ -128,6 +142,12 @@ fn sample(calls: usize) -> Vec<String> {
         }
     }
     out
+}
+
+/// The digest token of a printed CALL line — everything a stability comparison must match on,
+/// stripped of the cost fields that legitimately differ between runs.
+fn digest_of(line: &str) -> &str {
+    line.split("CENSUS=").nth(1).unwrap_or("<none>")
 }
 
 #[test]
@@ -141,29 +161,58 @@ fn step0_census_cost_one_and_four_calls() {
         (0, 0),
         "the memo must be inert for these numbers to mean per-call cost"
     );
-    for line in sample(1) {
+    // N=1 then N=4 of the ordinary fixture: the before/after cost series.
+    let n1 = sample(1, FIXTURE, "STD");
+    for line in &n1 {
         println!("N=1 {line}");
     }
-    // fresh drain so the four-call series starts clean
     let _ = reset_compile_dag_diagnostic_census_cost_counts();
-    for line in sample(4) {
+    let n4 = sample(4, FIXTURE, "STD");
+    for line in &n4 {
         println!("N=4 {line}");
     }
-    // Instrument sanity, the only judgments in this file: the counters must actually see the
-    // work the accusation names. Zero clones means the counters are decoration, not cost.
+    // CONDITION 1 (mgr msg_ef915e6b): run a fixture whose module path collides with a pool
+    // module, then re-measure the ordinary fixture. If any shared pool cache is fixture-
+    // dependent (or absorbs fixture state), the ordinary fixture's digest shifts after the
+    // collision fixture has run. Same-process, so the caches persist across the swap — exactly
+    // the contamination this probe is for. The pre-overlay run of THIS test is the reference:
+    // if it already shows a shift, the shared pool cache could not be shared as-is.
+    let col = sample(2, FIXTURE_COLLIDE, "COLLIDE");
+    for line in &col {
+        println!("COLLIDE {line}");
+    }
+    let post = sample(1, FIXTURE, "STD-POST");
+    for line in &post {
+        println!("N=1-POST {line}");
+    }
+    // The only judgment here: the ordinary fixture's digest is stable across the collision
+    // probe. This is the condition-1 arbiter, printed whether or not it holds.
+    let pre_digest = digest_of(n1.first().expect("N=1 line"));
+    let post_digest = digest_of(post.first().expect("N=1-POST line"));
+    println!(
+        "STABILITY pre={pre_digest} post={post_digest} stable={}",
+        pre_digest == post_digest
+    );
+    assert_eq!(
+        pre_digest, post_digest,
+        "the ordinary fixture's census digest changed after a module-name-colliding fixture ran \
+         in the same process: a shared pool cache depends on (or absorbs) the fixture"
+    );
+    // Instrument sanity, the only other judgments in this file: the counters must actually see
+    // the work the accusation names. Zero clones means the counters are decoration, not cost.
     // (sample(4) resets at its start, so these hold the four-call series totals.)
     let (ic, _ie, vc, _vl, r, _b) = compile_dag_diagnostic_census_cost_counts();
     assert!(
-        ic >= 4,
-        "index clone counter must see every call in the series, got {ic}"
+        ic >= 1,
+        "index clone counter must see the calls in the series, got {ic}"
     );
     assert!(
-        vc >= 4,
-        "scratch-vec clone counter must see every call in the series, got {vc}"
+        vc >= 1,
+        "scratch-vec clone counter must see the calls in the series, got {vc}"
     );
     assert!(
-        r >= 4,
-        "disk-read counter must see the import closure on every call, got {r}"
+        r >= 1,
+        "disk-read counter must see the import closure on the calls, got {r}"
     );
     println!("STEP0-DONE");
 }
