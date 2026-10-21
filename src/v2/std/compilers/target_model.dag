@@ -13984,6 +13984,19 @@ fn target_model_with_produced_scaffold(
   }
 }
 
+fn target_model_with_binding_spellings(target: TargetModel, spellings: Map<Symbol, String>) -> TargetModel {
+  TargetModel {
+    primitive_realizations: target.primitive_realizations,
+    produced_decl_support: target.produced_decl_support,
+    bundle: target.bundle,
+    lex: target.lex,
+    binding_spellings: spellings,
+    token_class_emit_transforms: target.token_class_emit_transforms,
+    authority_source_text: target.authority_source_text,
+    runtime_row: target.runtime_row
+  }
+}
+
 fn target_model_augment_use_site_ownership_catalog(
   target: TargetModel,
   derived_rows: List<TargetUseSiteOwnershipRealization>
