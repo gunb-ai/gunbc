@@ -61,12 +61,10 @@ pub use crate::std_dissolution::{
 use crate::std_generated_provider::ProviderAcquisitionStep::{
     AcquireModules, AcquisitionComplete, ProviderAcquisitionRefused,
 };
-use crate::std_generated_provider::ProviderModuleFact::{
-    ModuleInClosure, ModuleInPool, ModuleNotInPool,
-};
+use crate::std_generated_provider::ProviderModuleFact::{ModuleInClosure, ModuleNotInPool};
 pub use crate::std_generated_provider::{
     group_provider_demands, observe_provider_demand, provider_acquisition_step,
-    GeneratedProviderDemand, ProviderAcquisitionStep, ProviderModuleFact,
+    GeneratedProviderDemand, ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -34344,11 +34342,71 @@ pub struct RealizeState {
     pub demands_by_name: Rc<HashMap<String, Rc<Vec<Rc<GeneratedProviderDemand>>>>>,
 }
 
+pub fn span_contains(outer: Rc<SourceSpan>, inner: Rc<SourceSpan>) -> bool {
+    (((outer.file.clone() == inner.file.clone()) && (inner.start.clone() >= outer.start.clone()))
+        && (inner.end.clone() <= outer.end.clone()))
+}
+
+pub fn declaration_refused_in_closure(item: Rc<Node>, diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> bool {
+    {
+        let mut __found = false;
+        for d in diagnostics.iter().cloned() {
+            if (crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+                && span_contains(
+                    item.span.clone(),
+                    crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone()),
+                ))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn item_declared_names(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in Rc::new({
+            let mut __result = Vec::new();
+            for n in Rc::new({
+                let mut __result = Vec::new();
+                for i in items.iter().cloned() {
+                    __result.push(crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        i.clone(),
+                    ));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (n.clone() != "".to_string()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(n.clone());
+        }
+        __result
+    })
+}
+
 pub fn closure_provider_module_fact(
     module_path: String,
     modules: Rc<Vec<Rc<TypedModule>>>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pool_modules: Rc<Vec<String>>,
+    pool: Rc<Vec<Rc<ProviderPoolObservation>>>,
 ) -> Rc<ProviderModuleFact> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -34365,62 +34423,44 @@ pub fn closure_provider_module_fact(
     .cloned()
     {
         Some(m) => Rc::new(ProviderModuleFact::ModuleInClosure {
-            declarations: Rc::new({
-                let mut __result = Vec::new();
-                for n in Rc::new({
+            declarations: item_declared_names(m.items.clone(), source_indices.clone()),
+            refused: item_declared_names(
+                Rc::new({
                     let mut __result = Vec::new();
-                    for n in Rc::new({
-                        let mut __result = Vec::new();
-                        for i in m.items.clone().iter().cloned() {
-                            __result.push(crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                i.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        if (n.clone() != "".to_string()) {
-                            __result.push(n);
+                    for i in m.items.clone().iter().cloned() {
+                        if declaration_refused_in_closure(i.clone(), diagnostics.clone()) {
+                            __result.push(i);
                         }
                     }
                     __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(n.clone());
-                }
-                __result
-            }),
-            refused: Rc::new(vec![]),
+                }),
+                source_indices.clone(),
+            ),
         }),
-        std::option::Option::None => {
-            if {
-                let mut __found = false;
-                for p in pool_modules.iter().cloned() {
-                    if (p.clone() == module_path.clone()) {
-                        __found = true;
-                        break;
-                    }
+        std::option::Option::None => match Rc::new({
+            let mut __result = Vec::new();
+            for p in pool.iter().cloned() {
+                if (p.module_path.clone() == module_path.clone()) {
+                    __result.push(p);
                 }
-                __found
-            } {
-                Rc::new(ProviderModuleFact::ModuleInPool)
-            } else {
-                Rc::new(ProviderModuleFact::ModuleNotInPool)
             }
-        }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(p) => p.fact.clone(),
+            std::option::Option::None => Rc::new(ProviderModuleFact::ModuleNotInPool),
+        },
     }
 }
 
 pub fn closure_provider_acquisition_step(
     demands: Rc<Vec<Rc<GeneratedProviderDemand>>>,
     modules: Rc<Vec<Rc<TypedModule>>>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pool_modules: Rc<Vec<String>>,
+    pool: Rc<Vec<Rc<ProviderPoolObservation>>>,
 ) -> Rc<ProviderAcquisitionStep> {
     crate::std_generated_provider::provider_acquisition_step(
         Rc::new({
@@ -34431,8 +34471,9 @@ pub fn closure_provider_acquisition_step(
                     closure_provider_module_fact(
                         d.declaration.module_path.clone(),
                         modules.clone(),
+                        diagnostics.clone(),
                         source_indices.clone(),
-                        pool_modules.clone(),
+                        pool.clone(),
                     ),
                 ));
             }

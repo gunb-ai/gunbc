@@ -463,6 +463,51 @@ pub fn generated_provider_unavailable_message(
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("generated provider unavailable: ".to_string(), declaration.module_path.clone()), ".".to_string()), declaration.decl_name.clone()), " -- ".to_string()), generated_provider_unavailable_cause_label(cause.clone())), "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderPoolObservation {
+    pub module_path: String,
+    pub fact: Rc<ProviderModuleFact>,
+}
+
+pub fn stalled_acquisition_step(
+    demands: Rc<Vec<Rc<GeneratedProviderDemand>>>,
+    stalled_modules: Rc<Vec<String>>,
+) -> Rc<ProviderAcquisitionStep> {
+    provider_acquisition_step(
+        Rc::new({
+            let mut __result = Vec::new();
+            for d in Rc::new({
+                let mut __result = Vec::new();
+                for d in demands.iter().cloned() {
+                    if {
+                        let mut __found = false;
+                        for m in stalled_modules.iter().cloned() {
+                            if (m.clone() == d.declaration.module_path.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        __result.push(d);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(Rc::new(ObservedProviderDemand {
+                    demand: d.clone(),
+                    observation: GeneratedProviderObservation::ProviderModuleAvailable,
+                }));
+            }
+            __result
+        }),
+        stalled_modules.clone(),
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GeneratedConversionRoute;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
