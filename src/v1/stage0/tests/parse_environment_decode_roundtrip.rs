@@ -452,17 +452,40 @@ fn drop_data_block(source: &str, marker: &str) -> String {
     let bytes = source.as_bytes();
     let mut end = start + open;
     let mut closed = false;
+    // Balance STRUCTURAL brackets only: the row lists in this file include `symbol: "["` - a
+    // bracket inside a string literal - which a naive count carries past zero and reports as an
+    // unbalanced initializer. Skip string bodies (with backslash escapes) and line comments.
+    let mut in_string = false;
+    let mut escaped = false;
     while end < bytes.len() {
-        match bytes[end] {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    closed = true;
-                    break;
-                }
+        let byte = bytes[end];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
             }
-            _ => {}
+        } else {
+            match byte {
+                b'"' => in_string = true,
+                b'/' if bytes.get(end + 1) == Some(&b'/') => {
+                    while end < bytes.len() && bytes[end] != b'\n' {
+                        end += 1;
+                    }
+                    continue;
+                }
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        closed = true;
+                        break;
+                    }
+                }
+                _ => {}
+            }
         }
         end += 1;
     }
