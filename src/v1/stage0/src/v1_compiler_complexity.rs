@@ -186,13 +186,22 @@ pub fn cache_summary(
     func_name: String,
     summary: Rc<ComplexitySummary>,
 ) -> Rc<CostInternTable> {
-    Rc::new(CostInternTable {
-        summaries: v1_rt::rc_map_insert(
-            table.summaries.clone(),
-            func_name.clone(),
-            summary.clone(),
-        ),
-    })
+    {
+        let __rb_0_0 =
+            v1_rt::rc_map_insert(table.summaries.clone(), func_name.clone(), summary.clone());
+        let mut __rb_h = table;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.summaries = __rb_0_0;
+            }
+            None => {
+                __rb_h = Rc::new(CostInternTable {
+                    summaries: __rb_0_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn lookup_summary(
@@ -8313,16 +8322,30 @@ pub fn resolve_callback_cost(
                 si.clone(),
             ),
         },
-        std::option::Option::None => Rc::new(SummaryResult {
-            summary: Rc::new(ComplexitySummary {
+        std::option::Option::None => {
+            let __rb_0_0 = Rc::new(ComplexitySummary {
                 work: Rc::new(CostExpr::CostConst { value: 1 }),
                 span: Rc::new(CostExpr::CostConst { value: 1 }),
                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: Certainty::Conservative,
                 peak_space: None,
-            }),
-            table: recv_r.table.clone(),
-        }),
+            });
+            let __rb_1_0 = recv_r.table.clone();
+            let mut __rb_h = recv_r;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.summary = __rb_0_0;
+                    __rb_r.table = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(SummaryResult {
+                        summary: __rb_0_0,
+                        table: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

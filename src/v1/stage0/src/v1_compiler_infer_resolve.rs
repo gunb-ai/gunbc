@@ -395,33 +395,87 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: structural.name.clone(),
-        ident: structural.ident.clone(),
-        span: structural.span.clone(),
-        ident_span: identity.ident_span.clone(),
-        children: structural.children.clone(),
-        connective: structural.connective.clone(),
-        params: structural.params.clone(),
-        inferred: structural.inferred.clone(),
-        return_cardinality: crate::v1_std_core::join_optional_cardinality(
+    {
+        let __rb_0_0 = Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic);
+        let __rb_1_0 = structural.name.clone();
+        let __rb_2_0 = structural.ident.clone();
+        let __rb_3_0 = structural.span.clone();
+        let __rb_4_0 = identity.ident_span.clone();
+        let __rb_5_0 = structural.children.clone();
+        let __rb_6_0 = structural.connective.clone();
+        let __rb_7_0 = structural.params.clone();
+        let __rb_8_0 = structural.inferred.clone();
+        let __rb_9_0 = crate::v1_std_core::join_optional_cardinality(
             identity.return_cardinality.clone(),
             structural.return_cardinality.clone(),
-        ),
-        uses: structural.uses.clone(),
-        body: structural.body.clone(),
-        transport: structural.transport.clone(),
-        properties: structural.properties.clone(),
-        type_annotation: structural.type_annotation.clone(),
-        is_self_recursive: structural.is_self_recursive.clone(),
-        has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
-        match_pattern: structural.match_pattern.clone(),
-        module_item_kind: structural.module_item_kind.clone(),
-        declaration_marker: structural.declaration_marker.clone(),
-        declaration: structural.declaration.clone(),
-        expr_data: structural.expr_data.clone(),
-    })
+        );
+        let __rb_10_0 = structural.uses.clone();
+        let __rb_11_0 = structural.body.clone();
+        let __rb_12_0 = structural.transport.clone();
+        let __rb_13_0 = structural.properties.clone();
+        let __rb_14_0 = structural.type_annotation.clone();
+        let __rb_15_0 = structural.is_self_recursive.clone();
+        let __rb_16_0 = structural.has_non_tail_self_call.clone();
+        let __rb_17_0 = structural.match_pattern.clone();
+        let __rb_18_0 = structural.module_item_kind.clone();
+        let __rb_19_0 = structural.declaration_marker.clone();
+        let __rb_20_0 = structural.declaration.clone();
+        let __rb_21_0 = structural.expr_data.clone();
+        let mut __rb_h = structural;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.occurrence_identity = __rb_0_0;
+                __rb_r.name = __rb_1_0;
+                __rb_r.ident = __rb_2_0;
+                __rb_r.span = __rb_3_0;
+                __rb_r.ident_span = __rb_4_0;
+                __rb_r.children = __rb_5_0;
+                __rb_r.connective = __rb_6_0;
+                __rb_r.params = __rb_7_0;
+                __rb_r.inferred = __rb_8_0;
+                __rb_r.return_cardinality = __rb_9_0;
+                __rb_r.uses = __rb_10_0;
+                __rb_r.body = __rb_11_0;
+                __rb_r.transport = __rb_12_0;
+                __rb_r.properties = __rb_13_0;
+                __rb_r.type_annotation = __rb_14_0;
+                __rb_r.is_self_recursive = __rb_15_0;
+                __rb_r.has_non_tail_self_call = __rb_16_0;
+                __rb_r.match_pattern = __rb_17_0;
+                __rb_r.module_item_kind = __rb_18_0;
+                __rb_r.declaration_marker = __rb_19_0;
+                __rb_r.declaration = __rb_20_0;
+                __rb_r.expr_data = __rb_21_0;
+            }
+            None => {
+                __rb_h = Rc::new(Node {
+                    occurrence_identity: __rb_0_0,
+                    name: __rb_1_0,
+                    ident: __rb_2_0,
+                    span: __rb_3_0,
+                    ident_span: __rb_4_0,
+                    children: __rb_5_0,
+                    connective: __rb_6_0,
+                    params: __rb_7_0,
+                    inferred: __rb_8_0,
+                    return_cardinality: __rb_9_0,
+                    uses: __rb_10_0,
+                    body: __rb_11_0,
+                    transport: __rb_12_0,
+                    properties: __rb_13_0,
+                    type_annotation: __rb_14_0,
+                    is_self_recursive: __rb_15_0,
+                    has_non_tail_self_call: __rb_16_0,
+                    match_pattern: __rb_17_0,
+                    module_item_kind: __rb_18_0,
+                    declaration_marker: __rb_19_0,
+                    declaration: __rb_20_0,
+                    expr_data: __rb_21_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn is_transparent_primitive_alias_rhs(
