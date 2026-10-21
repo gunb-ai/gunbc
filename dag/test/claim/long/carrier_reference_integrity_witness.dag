@@ -35,7 +35,7 @@ import v2.lens.roster_registry {
   roster_registry_declaration_refs,
   roster_registry_declaration_refs_from,
 }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   cited_declaration_ref_refusal_count_live,
   declaration_ref_resolution_census_live,
   DeclarationRefResolutionCensus,

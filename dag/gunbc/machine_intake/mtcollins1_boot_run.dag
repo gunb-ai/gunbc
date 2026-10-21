@@ -75,6 +75,8 @@ import extdeps.bootloader.grub {
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import std.optional { Present }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_allowance }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -223,6 +225,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + 3 * second_count(s: megarac_presentation_look_allowance())
     + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
+    + second_count(s: mtcollins1_boot_fan_gate_allowance())
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
@@ -1999,6 +2002,7 @@ type MtCollins1BootActuation {
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
+  fan_gate: PostPowerFanGateReading
 }
 
 fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
@@ -2014,6 +2018,7 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     screen: kvm_observer_record_not_started(attempt: "", reason: reason),
     timing: boot_phase_timing_not_taken(reason: reason),
     runner_host: none,
+    fan_gate: PostPowerFanGateNotReached { reason: reason },
   }
 }
 
@@ -2064,6 +2069,7 @@ type ActuationWatch {
   smpro_step: BootPhaseStep
   terminal_step: BootPhaseStep
   runner_host: RunnerHostUp?
+  fan_gate: PostPowerFanGateReading
 }
 
 // THE ACTUATION AFTER THE WATCH, PURE: the watch's stage and its one accepted runner-host reading are
@@ -2093,6 +2099,7 @@ fn actuation_after_watch(
     timing: timing,
     screen: screen,
     runner_host: observed.runner_host,
+    fan_gate: observed.fan_gate,
   }
 }
 
@@ -2110,13 +2117,14 @@ fn actuation_with_outcome(act: MtCollins1BootActuation, outcome: ProcessExit) ->
     timing: act.timing,
     screen: act.screen,
     runner_host: act.runner_host,
+    fan_gate: act.fan_gate,
   }
 }
 
 // THE WATCH'S RESULT AS THE ACTUATION SEES IT, PURE: the terminal watch's outcome, stage and the one
 // accepted runner-host reading pass through unchanged, so the reading the terminal accepted is the
 // reading the attempt result carries (none on every watch that did not accept a runner host).
-fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead, terminal_read: ProcUptimeRead) -> ActuationWatch {
+fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead, terminal_read: ProcUptimeRead, fan_gate: PostPowerFanGateReading) -> ActuationWatch {
   ActuationWatch {
     outcome: watch.outcome,
     stage: if watch.census_ended {
@@ -2127,6 +2135,7 @@ fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_pow
     smpro_step: PhaseStepRan { result: smpro_phase_result(reading: at_power_on), end: smpro_read },
     terminal_step: PhaseStepRan { result: exit_phase_result(outcome: watch.outcome), end: terminal_read },
     runner_host: watch.runner_host,
+    fan_gate: fan_gate,
   }
 }
 
@@ -2418,6 +2427,7 @@ fn mtcollins1_boot_actuate(
         override_after: refused.override_after,
         power_after: refused.power_after,
         screen: refused.screen,
+        fan_gate: refused.fan_gate,
         timing: boot_phase_timing_of(
           hold: hold_acquired,
           start: BootStartUnobserved { reason: "the SOL lease was not acquired, so nothing was written" },
@@ -2489,6 +2499,13 @@ fn mtcollins1_boot_actuate(
           let _screen_at_power_on = kvm_observer_trigger(start: screen, order: 1, reason: "power-on-verified")
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
           let smpro_read = proc_uptime_read()
+          let fan_gate = match mtcollins1_bmc_username {
+            Present { value: user } => mtcollins1_boot_fan_gate(username: user, password_file: password_file as NonEmptyStr)
+            Absent => PostPowerFanGateNotReached { reason: "no BMC account is modeled, so chassis fan function could not be read after power-on" as NonEmptyStr }
+          }
+          match fan_gate_continuation(reading: fan_gate, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read) {
+            FanGateStopsBoot { watch: stopped } => stopped
+            FanGateAdmitsBoot => {
           let watch = mtcollins1_boot_await_capture_terminal(
             remaining: mtcollins1_boot_terminal_tick_budget(),
             capture_path: sol_capture_path,
@@ -2501,7 +2518,9 @@ fn mtcollins1_boot_actuate(
             screen_reported: [],
           )
           let terminal_read = proc_uptime_read()
-          actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: terminal_read)
+          actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: terminal_read, fan_gate: fan_gate)
+            }
+          }
         }
         other => ActuationWatch {
           outcome: other,
@@ -2509,6 +2528,7 @@ fn mtcollins1_boot_actuate(
           smpro_step: PhaseStepSkipped { reason: "power on was never verified" },
           terminal_step: PhaseStepSkipped { reason: "power on was never verified" },
           runner_host: none,
+          fan_gate: PostPowerFanGateNotReached { reason: "power on was never verified" },
         }
       }
       let screen_record = megarac_kvm_observer_finish(start: screen, attempt: attempt, terminal_order: 3)
@@ -2696,6 +2716,7 @@ type MtCollins1BootAttempt {
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
+  fan_gate: PostPowerFanGateReading
   configuration: AttemptConfigurationReceipt
 }
 
@@ -2722,6 +2743,7 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     timing: act.timing,
     screen: act.screen,
     runner_host: act.runner_host,
+    fan_gate: act.fan_gate,
     configuration: configuration,
   }
 }
@@ -2740,6 +2762,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
     screen: kvm_observer_record_not_started(attempt: "", reason: "the attempt ended before the unit hold"),
     runner_host: none,
+    fan_gate: PostPowerFanGateNotReached { reason: "the attempt ended before the unit hold" },
     configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: "not reached", reason: "the attempt ended before the unit hold, so no attempt receipt was admitted"),
   }
 }
@@ -2781,7 +2804,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing),
+        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
         screen: attempt.screen,
         configuration: attempt.configuration,
       }
@@ -2789,7 +2812,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
   }
 }
 
-fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media: MtCollins1HandoffMedia, end_media: MtCollins1EndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: BootPhaseTiming) -> MtCollins1BootRunRecord {
+fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media: MtCollins1HandoffMedia, end_media: MtCollins1EndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MtCollins1BootRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MtCollins1BootRunRecord {
@@ -2804,6 +2827,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         override: OverrideNotHandedOff { reason: why },
         power_after: power_after,
         timing: timing,
+        fan_gate: fan_gate,
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
@@ -2818,6 +2842,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
         power_after: power_after,
         timing: timing,
+        fan_gate: fan_gate,
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
@@ -2832,6 +2857,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
         power_after: power_after,
         timing: timing,
+        fan_gate: fan_gate,
       }
   }
 }
@@ -2973,3 +2999,32 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "sol_await_establishment_until" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
 
+
+// THE GATE-TO-BOOT DECISION, PURE, so it is executed by a control and not only wired: a refusal and an unreached gate
+// each yield the stopped watch (the failure exit, the census and the terminal watch skipped); only an observed,
+// established reading admits the boot. mtcollins1_boot_actuate branches on this and on nothing else.
+type FanGateContinuation
+  = FanGateStopsBoot { watch: ActuationWatch }
+  | FanGateAdmitsBoot
+
+fn fan_gate_continuation(reading: PostPowerFanGateReading, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead) -> FanGateContinuation {
+  match post_power_fan_gate_exit_of(reading: reading) {
+    ExitFailure { code: c, reason: r } => FanGateStopsBoot { watch: ActuationWatch {
+      outcome: ExitFailure { code: c, reason: r },
+      stage: ActuationPoweredOn { selection: selection, smpro_power_on: at_power_on, smpro_census: SmproNotTaken { reason: "the post-power-on chassis-fan gate stopped the boot before the census was watched" } },
+      smpro_step: PhaseStepRan { result: smpro_phase_result(reading: at_power_on), end: smpro_read },
+      terminal_step: PhaseStepSkipped { reason: "the post-power-on chassis-fan gate stopped the boot" },
+      runner_host: none,
+      fan_gate: reading,
+    } }
+    ExitSuccess => FanGateAdmitsBoot
+  }
+}
+
+// THE GATE READING AS THE WATCH'S EXIT: a refusal stops the boot, an unreached gate stops it, only an observed reading boots.
+fn post_power_fan_gate_exit_of(reading: PostPowerFanGateReading) -> ProcessExit {
+  match reading {
+    PostPowerFanGateNotReached { reason: why } => exit_failure(reason: concat("mtcollins1 boot stopped: the post-power-on chassis-fan gate was not reached: ", why as String))
+    PostPowerFanGateReached { fitted: fitted, outcome: outcome } => post_power_fan_gate_exit(fitted: fitted, outcome: outcome)
+  }
+}

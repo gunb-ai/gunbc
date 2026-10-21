@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_model
 import std.types { String, NonEmptyStr, List, Bool }
 import std.list { distinct_by_key }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name, gcp_service_account_tag_detach_requirement }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
 import gunbc.auth.gcp_iam_converge {
@@ -426,7 +426,7 @@ data iam_bootstrap_denied_permissions: List<String> = [
 // iam_bootstrap_delta_role_withholds_its_boundary is what executes it.
 data iam_bootstrap_withheld_undeniable_permissions: List<String> = [
   "iam.denypolicies.create", "iam.denypolicies.update", "iam.denypolicies.delete",
-  "resourcemanager.tagValueBindings.create", "resourcemanager.tagValueBindings.delete",
+  "resourcemanager.tagValueBindings.create", gcp_service_account_tag_detach_requirement.tag_value_permission,
 ]
 
 // The deny API spells a permission service/resource.verb; the IAM permission spelling drops the
@@ -484,6 +484,35 @@ fn iam_bootstrap_trust_root_tag_value_namespaced() -> NonEmptyStr {
   join([iam_bootstrap_trust_root_tag_key_namespaced() as String, "/", iam_bootstrap_trust_root_tag_value_short as String], "") as NonEmptyStr
 }
 
+// ── THE TRUST-ROOT TAG KEY AND VALUE ARE ADMITTED BY ONE IDENTITY FOLD EACH (side chat at 8cd119d93f) ─
+// The tag stage and the detach probe read the same namespaced endpoints and admit through these folds,
+// never their own derivations: a lookup answering another valid key or value establishes nothing, and
+// only an admitted tagKeys/<id> or tagValues/<id> name reaches a binding, a deny or a permission probe.
+type TrustRootTagAdmission = TrustRootTagAdmitted { name: NonEmptyStr } | TrustRootTagRefused { reason: String }
+
+fn tag_resource_name_admitted(name: String, collection: String) -> Bool {
+  let parts = split(s: name, delimiter: "/")
+  count(parts) == 2 && match parts.first() { Present { value: c } => c == collection  Absent => false }
+    && match parts.skip(n: 1).first() { Present { value: id } => id != ""  Absent => false }
+}
+
+fn trust_root_tag_admission(what: String, collection: String, name: String, parent: String, want_parent: String, short_name: String, want_short: String, namespaced_name: String?, want_namespaced: String) -> TrustRootTagAdmission {
+  let namespaced = match namespaced_name { Present { value: n } => n == want_namespaced  Absent => false }
+  if !tag_resource_name_admitted(name: name, collection: collection) { TrustRootTagRefused { reason: concat(what, " reads without an admitted resource name") } }
+  else if short_name != want_short || parent != want_parent || !namespaced { TrustRootTagRefused { reason: concat(what, " reads under another parent, short name or namespaced name") } }
+  else { TrustRootTagAdmitted { name: name as NonEmptyStr } }
+}
+
+fn trust_root_tag_key_admission(name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent() as String,
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_key_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_key_namespaced() as String)
+}
+
+fn trust_root_tag_value_admission(key_name: String, name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag value", collection: "tagValues", name: name, parent: parent, want_parent: key_name,
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_value_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_value_namespaced() as String)
+}
+
 fn iam_bootstrap_trust_root_tag_condition() -> GcpTagCondition {
   ResourceMatchTag { key_namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced(), value_short_name: iam_bootstrap_trust_root_tag_value_short }
 }
@@ -522,12 +551,24 @@ fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindi
 // ── TAG-DETACH AUTHORITY IS OBSERVED ABSENT (side chat at db00846da5, blocker 3) ────────────────────
 // Detaching a tag from a service account needs resourcemanager.tagValueBindings.delete on the value AND
 // iam.serviceAccounts.deleteTagBinding on the account (docs.cloud.google.com/iam/docs/service-accounts-tags,
-// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and requires its effective
-// answer on each trust root to hold neither permission named here, with the operator's answer holding it
-// as the positive control that the probe discriminates. Absence on the account axis alone already rules
-// detaching out; the tag-value axis is an unmet obligation on gunbc.rung_drop
-// gcp_iam_bootstrap_trust_root_wall_in_code (no tag-value permission probe is modeled).
-data iam_bootstrap_tag_detach_permissions: List<String> = ["iam.serviceAccounts.deleteTagBinding"]
+// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and probes BOTH axes as it:
+// the account axis on each trust root, and the tag-value axis on the trust-root value. Each axis's
+// answer must hold none of its permission, with the operator's answer holding it as the control that
+// the probe discriminates.
+// THE TWO HALVES OF THE UPSTREAM FACT, never a second literal: the account axis probes the service-account
+// half, the tag-value axis the tag-value half (extdeps.cloud.gcp.iam gcp_service_account_tag_detach_requirement).
+data iam_bootstrap_tag_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.service_account_permission]
+data iam_bootstrap_tag_value_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.tag_value_permission]
+
+// ONE VERDICT FOR BOTH AXES: a control lacking any requested permission is a probe that cannot see
+// it, so it establishes nothing; a subject holding any of it refuses.
+type TagDetachProbeVerdict = TagDetachAbsent | TagDetachUndiscriminating | TagDetachHeld
+
+fn tag_detach_probe_verdict(requested: List<String>, control: List<String>, subject: List<String>) -> TagDetachProbeVerdict {
+  if !all(requested, p => any(control, c => c == p)) { TagDetachUndiscriminating }
+  else if any(requested, p => any(subject, s => s == p)) { TagDetachHeld }
+  else { TagDetachAbsent }
+}
 
 // The accounts the temporary probe authority may mint a token for: the two the readback already reads
 // as, and iam-bootstrap, whose own effective authority is what the detach probe observes.
