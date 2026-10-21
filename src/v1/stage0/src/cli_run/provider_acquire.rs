@@ -582,4 +582,70 @@ mod tests {
             "emissions projected outside a named site: {projections:?}"
         );
     }
+
+    /// COST RECEIPT, EXACT DEMAND VERSUS CARRIER PRESENCE (option 1b ruling; deferred to PR 2, where a
+    /// producer exists). Over the entries listed in GUNBC_COST_ENTRIES (one workspace-relative .dag
+    /// path per line), each entry's import closure is compiled through the pipeline and classified:
+    /// whether its pass DEMANDS std.coercion.unicode_scalar_unfold (the exact rule) and whether its
+    /// closure merely CONTAINS std.algebra, the FreeMonoid carrier's declaring module (the rejected
+    /// carrier rule). Printed, never asserted: the numbers are the receipt; the ruling, not the count,
+    /// rejected the carrier rule. Also printed: how many modules std.coercion's own closure adds to a
+    /// closure that lacks it, the per-closure cost the carrier rule would have paid.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn cost_receipt_exact_demand_versus_carrier_presence() {
+        let Ok(list) = std::env::var("GUNBC_COST_ENTRIES") else {
+            eprintln!("cost receipt: GUNBC_COST_ENTRIES unset; no population, no receipt");
+            return;
+        };
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let route_closure = super::super::emit_host::fixture_pool_closure_of("std.coercion", &pool)
+            .expect("std.coercion's closure loads");
+        let mut entries = 0usize;
+        let mut demanding = 0usize;
+        let mut carrier_present = 0usize;
+        let mut carrier_without_demand = 0usize;
+        let mut added_by_carrier_rule = 0usize;
+        for path in std::fs::read_to_string(&list)
+            .expect("entry list")
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+        {
+            let on_disk = super::super::process_workspace_root().join(path.trim());
+            let Ok(content) = std::fs::read_to_string(&on_disk) else {
+                continue;
+            };
+            let Ok(sources) =
+                super::super::resolve_virtual_source_with_imports(path.trim(), &content, &pool)
+            else {
+                continue;
+            };
+            let resolved = compile(&sources);
+            entries += 1;
+            let demands = resolved.provider_demands.iter().any(|d| {
+                d.declaration.module_path == "std.coercion"
+                    && d.declaration.decl_name == "unicode_scalar_unfold"
+            });
+            let has_carrier = sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/algebra.dag"));
+            let has_route = sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/coercion.dag"));
+            demanding += demands as usize;
+            carrier_present += has_carrier as usize;
+            if has_carrier && !demands {
+                carrier_without_demand += 1;
+            }
+            if has_carrier && !has_route {
+                added_by_carrier_rule += route_closure
+                    .iter()
+                    .filter(|r| !sources.iter().any(|s| s.path == r.path))
+                    .count();
+            }
+        }
+        eprintln!(
+            "cost receipt: entries={entries} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
+        );
+    }
 }
