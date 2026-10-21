@@ -12,6 +12,8 @@ import v2.compiler.self_host.closure_emission {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.c { c_target_model }
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -47,6 +49,10 @@ fn member_emission_locus() -> Node {
 }
 
 fn member_emission_of(source: String) -> ClosureEmissionLocated {
+  member_emission_for_target(source: source, target: rust_target_model())
+}
+
+fn member_emission_for_target(source: String, target: TargetModel) -> ClosureEmissionLocated {
   emit_closure_from_ingest_located(
     ingest: [
       DagSourceReadWitness {
@@ -58,7 +64,7 @@ fn member_emission_of(source: String) -> ClosureEmissionLocated {
     ],
     entry: qualified_name_from_dotted_string(dotted: "v2.test.member_emission"),
     entry_locus: member_emission_locus(),
-    target: rust_target_model()
+    target: target
   )
 }
 
@@ -325,5 +331,32 @@ test fn a_kinded_generic_member_still_refuses_under_its_own_reason_holds() -> Bo
     MemberEmitted { text: _ } => false
     MemberRefused { reason: r } => r == ^emit_module_member_generic_not_realized
     MemberClosureRefused { reason: _ } => false
+  }
+}
+
+fn member_emission_unused_param_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+// `enum Tag<T> { A, B }` is rejected by rustc (E0392), so the member refuses under its own reason
+// instead of reaching the target bare.
+test fn a_generic_member_with_an_unused_param_refuses_under_its_own_reason_holds() -> Bool {
+  match member_emission_unused_param_verdict() {
+    MemberEmitted { text: _ } => false
+    MemberRefused { reason: r } => r == ^emit_module_member_generic_param_unused
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// C's grammar has no generic declaration production, so its row is NotApplicable and a generic member
+// refuses for that reason, not as an unused parameter.
+test fn a_generic_member_refuses_as_unsupported_where_the_target_has_no_generic_declaration_holds() -> Bool {
+  match member_emission_for_target(source: "module v2.test.member_emission\n\ntype Box<T> { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n", target: c_target_model()).outcome {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^emit_module_member_generic_unsupported_by_target
+    Accepted { value: ce, diagnostics: _ } =>
+      match first(ce.modules) {
+        Present { value: ClosureMemberRefused { module: _, diagnostics: d } } => diagnostics_fatal_reason(d: d) == ^emit_module_member_generic_unsupported_by_target
+        _ => false
+      }
   }
 }
