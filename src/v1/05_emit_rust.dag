@@ -12260,7 +12260,7 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
       }
     TypeDeclLeafAmbiguous { leaf: l } => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseLeafAmbiguous:", l) }
     TypeDeclKernelSpellingUndecided { leaf: l } => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseKernelSpellingUndecided:", l) }
-    TypeDeclNotDeclared => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseNamesNoDeclaration:", authored_name_at(source_indices: si, node: resolved_type(n: base))) }
+    TypeDeclNotDeclared => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseNamesNoDeclaration:", concat(authored_name_at(source_indices: si, node: resolved_type(n: base)), concat(" type_node=", concat(resolved_type(n: base).name, concat(" base_node=", base.name))))) }
   }
 }
 
