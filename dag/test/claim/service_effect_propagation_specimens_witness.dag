@@ -38,9 +38,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE DECLARED ORDERING RULE the diamond baseline is derived from, independent of any run: an
 // item's merged services are its OWN services in their order, then each callee's services in
 // call-edge order, keeping the FIRST occurrence of each. The literals below were derived from that
-// rule by hand and are not copies of the head's output. The cross-check against the merge-base
-// implementation (the linear `any` scan, origin/main src/v1/04_service.dag) is run by swapping that
-// file in and re-running these tests; its result belongs in the PR, not in this annotation.
+// rule by hand and are not copies of the head's output. The merge-base implementation cannot be re-run against these
+// tests: P2.6 added the `before` parameter, so its loop has a different call shape. The referent is
+// therefore the rule above and the hand derivation in the comment on the diamond test, not any
+// implementation's output.
 //
 // CEILING. Nothing here exercises the three non-resolved edge arms; those are covered by the
 // incompleteness causes, not by propagation.
