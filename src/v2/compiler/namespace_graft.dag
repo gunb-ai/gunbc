@@ -18,6 +18,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node {
+  edge_declared,
   Disj,
   Arrow,
   Instantiation,
@@ -63,7 +64,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
-  dag_surface_kw_then_ident_from_captured,
+  dag_surface_kw_then_ident_declared_name_from_captured,
   dag_surface_kw_then_ident_rest_from_captured,
   qualified_name_from_module_node
 }
@@ -327,19 +328,13 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
   match namespace_graft_unit_captured(unit: unit) {
     Absent => optional_absent()
     Present { value: captured } =>
-      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+      match dag_surface_kw_then_ident_declared_name_from_captured(captured: captured) {
         Absent => optional_absent()
-        Present { value: name } =>
+        Present { value: declared } =>
           match dag_surface_kw_then_ident_rest_from_captured(captured: captured) {
             Absent => optional_absent()
             Present { value: rest } =>
-              optional_present(
-                value: Edge {
-                  label: Authored { name: name },
-                  target: rest,
-                  declaration: NotADeclaration
-                }
-              )
+              optional_present(value: edge_declared(name: declared.name, target: rest, occurrence: declared.occurrence))
           }
       }
   }
@@ -804,7 +799,7 @@ fn namespace_graft_resolve_group(name: Symbol, first: Edge, rest: List<Edge>) ->
         bind_outcome(
           o: namespace_graft_merge_namespace_bodies(edges: namespace_graft_group_members(group: Cons { head: first, tail: rest })),
           f: fn(members) {
-            outcome_accepted(value: Edge { label: Authored { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target), declaration: NotADeclaration })
+            outcome_accepted(value: Edge { label: Authored { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target), declaration: first.declaration })
           }
         )
       } else {
