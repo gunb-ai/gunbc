@@ -3,7 +3,7 @@ module gunbc.live_deploy.lab_host_plan
 import std.types { Int, NonEmptyStr, String, FilePath }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.decl_ref { decl_ref }
-import std.optional { Absent, Present }
+import std.optional { Optional, Absent, Present }
 import std.os.types { OsPackageManager }
 import gunbc.host.host_software_surface {
   HostSoftwareSurface,
@@ -60,17 +60,15 @@ type LabDeployPlan
     }
   | LabPlanRefused { cause: LabDeployPlanRefusal }
 
-// THE ONE READ OF THE PLAN'S WORKER-SANDBOX CHOICE. A deployment carries the attempt-worker slice and
-// the attempt-unit drain (path unit plus its root service) exactly when this answers true; both
-// live_deploy.spec (the roster) and live_deploy.emit (the applying path) read it here, so the
-// selection is one fact in one place and a second choice extends this match, not a call site.
-fn lab_plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
+// THE ONE READ OF THE PLAN'S WORKER-SANDBOX CHOICE. It returns the choice itself, Absent for a refused
+// plan, so each reader (live_deploy.spec roster, live_deploy.emit applying path) matches on
+// WorkerSandboxChoice and a second sandbox choice is a non-exhaustive match at every call site, not
+// a value silently read as true.
+fn lab_plan_worker_sandbox_choice(plan: LabDeployPlan) -> Optional<WorkerSandboxChoice> {
   match plan {
-    LabPlanRefused { cause: _ } => false
+    LabPlanRefused { cause: _ } => Absent
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
-      match choice {
-        SystemManagerLauncherSelected => true
-      }
+      Present { value: choice }
   }
 }
 

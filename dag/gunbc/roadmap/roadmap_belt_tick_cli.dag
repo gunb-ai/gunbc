@@ -573,7 +573,8 @@ fn belt_exit_stall_release_cli() -> ProcessExit {
 // (stalled/ is group-writable by the service principal, like requests/) and re-arms the failed path unit with
 // belt_exit_stall_rearm_at, the same census site as the exit spool's (the effect is identical: reset-failed
 // and start one named system path unit). If a request is still unmovable the drain stalls again at once,
-// writing a fresh record. A refused clear skips the re-arm; a refused re-arm is typed with the exact argv.
+// writing a fresh record: unlike the exit spool's release (belt_exit_stall_release_at refuses while anything is
+// unmovable), the drain's next pass is this verb's verification (see gunbc.roadmap.spool_stall). A refused clear skips the re-arm; a refused re-arm is typed with the exact argv.
 fn attempt_unit_stall_release_cli() -> ProcessExit {
   belt_instance_from_env(entry: "attempt_unit_stall_release_cli", continuation: instance =>
     match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {

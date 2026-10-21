@@ -7,7 +7,7 @@ import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { OsPackageManager }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
@@ -29,7 +29,8 @@ import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
 import gunbc.live_deploy.lab_host_plan {
   LabDeployPlan,
   srv1_lab_deploy_plan,
-  lab_plan_selects_system_manager_launcher,
+  lab_plan_worker_sandbox_choice,
+  SystemManagerLauncherSelected,
 }
 import gunbc.host.host_software_surface {
   srv1_software_surface,
@@ -1185,15 +1186,14 @@ fn deployment_owned_steps(
 // nothing that enqueues on the attempt-unit spool, so a root service there would be a member nothing
 // consumes (DESIGN 3c) and a root surface for nothing. The selector is read once, in lab_host_plan.
 fn deployment_attempt_unit_drain_steps(names: DeploymentNames, lab_plan: LabDeployPlan) -> List<DeploymentArtifactStep> {
-  if lab_plan_selects_system_manager_launcher(plan: lab_plan) {
-    [
+  match lab_plan_worker_sandbox_choice(plan: lab_plan) {
+    Present { value: SystemManagerLauncherSelected } => [
       DeploymentArtifactStep {
         kind: UpsertOwned { kind: AttemptUnitDrainPathUnit },
         path: deployment_attempt_unit_drain_path_unit_path(names: names),
       },
     ]
-  } else {
-    []
+    Absent => []
   }
 }
 

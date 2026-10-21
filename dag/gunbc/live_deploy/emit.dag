@@ -205,7 +205,7 @@ import gunbc.live_deploy.lab_host_plan {
   LabPlanReady,
   LabPlanRefused,
   lab_plan_refused_emit_line,
-  lab_plan_selects_system_manager_launcher,
+  lab_plan_worker_sandbox_choice,
   SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
@@ -1300,15 +1300,19 @@ data attempt_unit_drain_argv_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ 
 // leaves requests/ non-empty, and the path unit starts the service again when it finishes.
 // TimeoutStartSec is the start path's own watchdog (belt_tick_run_bound): a start-wait request holds
 // the activation for one worker's whole lifetime.
+type AttemptUnitDrainServiceFile
+  = AttemptUnitDrainServiceReady { file: SystemdUnitFile }
+  | AttemptUnitDrainServiceRefused { cause: NamedArgumentAdmission }
+
 fn live_deploy_attempt_unit_drain_service_unit_file(
   spec: DeploymentSpec,
   instance: HostDashboardInstance,
   revision: ReleaseRevisionBinding,
-) -> SystemdUnitFile? {
+) -> AttemptUnitDrainServiceFile {
   match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
-    AttemptSystemUnitLaunchArgvRefused { cause: _ } => Absent
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
     AttemptSystemUnitLaunchArgvReady { argv } =>
-      Present { value: ServiceUnitFile {
+      AttemptUnitDrainServiceReady { file: ServiceUnitFile {
         unit: [
           Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
           Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_unit_spool_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
@@ -1342,8 +1346,11 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
 // oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
 // helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
 // idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
-// (DESIGN section 3: the old authority ends in one motion). Removing a drop-in cannot make sudoers invalid, so no
-// visudo check follows. DISSOLUTION: delete this row and its call when no host that applied the sudo route remains.
+// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
+// the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
+data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
+
 fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> List<String> {
   [
     join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], ""),
@@ -1359,15 +1366,22 @@ fn attempt_unit_drain_steps_for_instance(
   path: NonEmptyStr,
 ) -> List<PipelineStep> {
   match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: instance, revision: revision) {
-    Absent => [
-      deploy_raw(command: attempt_unit_drain_argv_refused_poison),
+    AttemptUnitDrainServiceRefused { cause } => [
+      deploy_raw(command: join([
+        attempt_unit_drain_argv_refused_poison,
+        attempt_system_unit_launch_argv_refused_detail(cause: cause),
+        "\n",
+      ], "")),
     ]
-    Present { value: service_file } => {
+    AttemptUnitDrainServiceReady { file: service_file } => {
       let locus = attempt_system_unit_launcher_locus(instance: instance)
       concat(
         apply_attempt_unit_spool_steps(spec: spec),
         concat(
-          [deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: retired_attempt_unit_sudo_route_paths(instance: instance)))],
+          [
+            deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: retired_attempt_unit_sudo_route_paths(instance: instance))),
+            deploy_raw(command: gunbc.live_deploy.operations.sudoers_after_removal_check_command()),
+          ],
           concat(
           root_owned_helper_snapshot_steps(locus: locus, revision: revision),
           [
@@ -1422,10 +1436,9 @@ fn attempt_unit_drain_steps(spec: DeploymentSpec, revision: ReleaseRevisionBindi
 // SystemManagerLauncherSelected, and that identity is the attempt-worker slice plus the attempt-unit
 // drain (the roster member AttemptUnitDrainPathUnit), not a second start path beside them.
 fn apply_selected_worker_sandbox_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  if lab_plan_selects_system_manager_launcher(plan: spec.target.lab_plan) {
-    apply_attempt_worker_slice_install_steps()
-  } else {
-    []
+  match lab_plan_worker_sandbox_choice(plan: spec.target.lab_plan) {
+    Present { value: SystemManagerLauncherSelected } => apply_attempt_worker_slice_install_steps()
+    Absent => []
   }
 }
 

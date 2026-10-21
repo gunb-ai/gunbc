@@ -13,6 +13,11 @@ import extdeps.filesystem.filesystem_io {
   filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
 }
 
+// THE TWO RELEASES DIFFER, AND BOTH ARE HONEST. The exit spool's release (belt_exit_stall_release_at) refuses
+// while anything is still unmovable: the requester side must see the line clear before the trigger re-arms.
+// The attempt-unit release (gunbc.roadmap.roadmap_belt_tick_cli attempt_unit_stall_release_cli) clears the record
+// and re-arms without a pre-check, because the root drain's next pass is the verification: an entry that is
+// still unmovable re-stalls at once, writing a fresh record, loudly.
 // THE SPOOL LINE STOP'S RECORD, ONE HOME FOR EVERY LEVEL-TRIGGERED SPOOL (DESIGN section 5, the factory
 // model; section 3, one authority). A spool drained by a `.path` unit whose condition is a level
 // (DirectoryNotEmpty) is started again at once by any entry its drain leaves in place, so each such drain

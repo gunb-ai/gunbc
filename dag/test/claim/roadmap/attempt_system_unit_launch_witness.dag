@@ -26,7 +26,7 @@ import gunbc.live_deploy.slice_bounds {
 }
 import gunbc.live_deploy.emit {
   attempt_unit_drain_steps_for_instance, retired_attempt_unit_sudo_route_paths, attempt_unit_drain_argv_refused_poison,
-  live_deploy_attempt_unit_drain_service_unit_file, live_deploy_attempt_unit_drain_path_unit_file,
+  live_deploy_attempt_unit_drain_service_unit_file, AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_path_unit_file,
   apply_intent_from_effects,
 }
 import gunbc.live_deploy.spec {
@@ -45,7 +45,7 @@ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
 }
-import gunbc.live_deploy.lab_host_plan { lab_plan_selects_system_manager_launcher, LabPlanRefused, LabOsUnobserved }
+import gunbc.live_deploy.lab_host_plan { lab_plan_worker_sandbox_choice, SystemManagerLauncherSelected, LabPlanRefused, LabOsUnobserved }
 import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
@@ -73,7 +73,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
   attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
   attempt_system_unit_launch_gunbc_argv_at,
-  AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
+  AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused, attempt_system_unit_launch_argv_refused_detail,
 }
 import extdeps.systemd.service_exec { exec_full_privileges_prefix }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -248,11 +248,14 @@ fn apply_installs_the_drain_units(spec: DeploymentSpec, own: HostDashboardInstan
     && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
 }
 
-// The roster gate is the host plan's selector (lab_plan_selects_system_manager_launcher): srv1's plan selects the
+// The roster gate is the host plan's selector (lab_plan_worker_sandbox_choice): srv1's plan selects the
 // system-manager launcher for production and its lab alike, so both apply the drain; a plan that does not select it
 // (refused) installs neither unit.
 test fn the_production_full_install_apply_installs_the_drain_path_and_service() -> Bool {
-  lab_plan_selects_system_manager_launcher(plan: deployment_spec_srv1().target.lab_plan)
+  match lab_plan_worker_sandbox_choice(plan: deployment_spec_srv1().target.lab_plan) {
+    Present { value: SystemManagerLauncherSelected } => true
+    Absent => false
+  }
     && apply_installs_the_drain_units(spec: deployment_spec_srv1(), own: srv1_live_dashboard_instance())
 }
 
@@ -285,8 +288,8 @@ test fn the_drain_service_runs_the_release_launcher_and_the_path_unit_targets_it
   let spec = deployment_spec_srv1()
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: live, revision: rev) {
-    Absent => false
-    Present { value: svc } => {
+    AttemptUnitDrainServiceRefused { cause: _ } => false
+    AttemptUnitDrainServiceReady { file: svc } => {
       let text = serialize_systemd_unit_file(file: svc)
       let path_text = serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec))
       string_contains(s: text, pattern: "Type=oneshot")
@@ -778,7 +781,11 @@ test fn an_instance_root_holding_the_separator_refuses_at_argv_and_drain_install
     path: "/usr/bin:/bin" as NonEmptyStr,
   ))
   launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev))
-    && string_contains(s: steps, pattern: attempt_unit_drain_argv_refused_poison)
+    && string_contains(s: steps, pattern: join([
+      attempt_unit_drain_argv_refused_poison,
+      attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentNameHoldsSeparator { name: "instance_root" }),
+      "\n",
+    ], ""))
 }
 
 test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
