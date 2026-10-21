@@ -49,8 +49,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
-  attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
-  AttemptWorkerRole,
+  attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import gunbc.host.host_layout {
   attempt_exit_inbox_dir,
@@ -332,6 +331,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
       if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
         SandboxTouchUnrunnable
       } else {
+        let before = wet_record_names(instance: instance, unit_key: unit_key)
         match attempt_system_unit_enqueue_start_wait(
           instance_root: instance.instance_root as String,
           request: request,
@@ -340,7 +340,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
           AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueued { entry: entry } =>
             if wet_drain_started(instance_root: instance.instance_root as String, entry: entry) {
-              wet_inner_exit_status(instance: instance, unit_key: unit_key)
+              wet_inner_exit_status(instance: instance, unit_key: unit_key, before: before)
             } else {
               SandboxTouchUnrunnable
             }
@@ -553,33 +553,86 @@ fn wet_drain_started_poll(instance_root: String, entry: String, remaining: Int) 
   }
 }
 
-fn wet_inner_exit_status(instance: HostDashboardInstance, unit_key: String) -> SandboxTouch {
-  wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, remaining: 240)
+// THE RECORD IS BOUND TO THIS START. Probe keys are fixed across runs and done/ is retained (the belt's
+// evidence, never deleted to make room), so an earlier run's record answers a search by (node, key, role)
+// before this run's unit has written anything. The names present before the enqueue are snapshotted and
+// only a record outside the snapshot is this run's; two new ones are ambiguous and Unrunnable.
+type WetRecordNames
+  = WetRecordNamesListed { names: List<String> }
+  | WetRecordNamesUnreadable
+
+fn wet_record_names(instance: HostDashboardInstance, unit_key: String) -> WetRecordNames {
+  let prefix = join([wet_probe_node as String, "+", launcher_probe_key(unit_key: unit_key), "+worker+"], "")
+  fold(
+    attempt_exit_stage_listings(instance_root: instance.instance_root as String),
+    init: WetRecordNamesListed { names: [] },
+    f: (acc, listing) => match acc {
+      WetRecordNamesUnreadable => WetRecordNamesUnreadable
+      WetRecordNamesListed { names: so_far } =>
+        match listing {
+          AttemptExitStageUnreadable { reason: _ } => WetRecordNamesUnreadable
+          AttemptExitStageNames { names: names } =>
+            WetRecordNamesListed { names: concat(so_far, filter(names, n => string_contains(s: n, pattern: prefix))) }
+        }
+    },
+  )
 }
 
-fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String, remaining: Int) -> SandboxTouch {
-  match attempt_exit_record_observe(
-    instance_root: instance.instance_root as String,
-    node_id: wet_probe_node as String,
-    attempt_key: launcher_probe_key(unit_key: unit_key),
-    role: AttemptWorkerRole,
-  ) {
-    AttemptExitRecordFound { record: record } =>
-      match record.end {
-        AttemptProcessExitedWith { status } => SandboxTouchRan { exit_code: status }
-        AttemptProcessSignaled { signal: _ } => SandboxTouchUnrunnable
-      }
-    AttemptExitRecordUnreadable { reason: _ } => SandboxTouchUnrunnable
-    AttemptExitRecordNone =>
-      if remaining <= 0 {
-        SandboxTouchUnrunnable
-      } else {
-        let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-        wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, remaining: remaining - 1)
-      }
+fn wet_fresh_record_names(before: List<String>, after: List<String>) -> List<String> {
+  filter(after, n => !any(before, b => b == n))
+}
+
+fn wet_inner_exit_status(instance: HostDashboardInstance, unit_key: String, before: WetRecordNames) -> SandboxTouch {
+  match before {
+    WetRecordNamesUnreadable => SandboxTouchUnrunnable
+    WetRecordNamesListed { names: seen } => wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, seen: seen, remaining: 240)
   }
 }
 
+fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String, seen: List<String>, remaining: Int) -> SandboxTouch {
+  match wet_record_names(instance: instance, unit_key: unit_key) {
+    WetRecordNamesUnreadable => SandboxTouchUnrunnable
+    WetRecordNamesListed { names: after } => {
+      let fresh = wet_fresh_record_names(before: seen, after: after)
+      match fresh.first() {
+        Absent =>
+          if remaining <= 0 {
+            SandboxTouchUnrunnable
+          } else {
+            let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
+            wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, seen: seen, remaining: remaining - 1)
+          }
+        Present { value: name } =>
+          if length(fresh) != 1 {
+            SandboxTouchUnrunnable
+          } else {
+            match attempt_exit_entry_decode(entry_name: name) {
+              AttemptExitEntryMalformed { entry_name: _, reason: _ } => SandboxTouchUnrunnable
+              AttemptExitEntryDecoded { record } =>
+                match record.end {
+                  AttemptProcessExitedWith { status } => SandboxTouchRan { exit_code: status }
+                  AttemptProcessSignaled { signal: _ } => SandboxTouchUnrunnable
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+// A record planted for the key before the run is in the snapshot and is never read as this run's.
+test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
+  let prior = "writable-probe+wetprobe-bin+worker+x"
+  let mine = "writable-probe+wetprobe-bin+worker+y"
+  wet_fresh_record_names(before: [prior], after: [prior]) == []
+    && wet_fresh_record_names(before: [prior], after: [prior, mine]) == [mine]
+}
+
+// RESIDUAL: a unit that fails in exec setup (EXIT_* range, e.g. 226 NAMESPACE for a missing ReadWritePaths
+// entry) still scores as refused here, since the status is nonzero and the path absent. The same-shape
+// allowed cells catch a shape-wide failure, not a per-cell one. The exit-status classification is modelled
+// for the direct probes in #14655 and is not written a second time here; the launcher cells consume it once
+// both land.
 fn wet_path_exists(path: String) -> Bool {
   shell.Exec.RunArgv(program: "test", arguments: ["-e", path]).exit_code == 0
 }
