@@ -810,3 +810,7 @@ from dispatch N, so risk is nil, but the slip is recorded rather than papered ov
  PREDICT (recorded BEFORE dispatch): U2BUILD_RC=0 (likely cached), row run U2ROW_RC=1 cause
  NoSuchFunction{name:"main"} = ledger parse+resolve pass. A type-mismatch/unresolved-import would
  mean the edited receipt text broke the string literal (e.g. an unescaped quote).
+
+## Dispatch U3 — #14612 row after the §5→§4b meta-obligation citation fix (review 83742's remark,
+## verified true: the four meta-obligations are under the ## 4b header; §5 is Fail-closed).
+ Text-only receipt edit. PREDICT: U3BUILD_RC=0, U3ROW_RC=1 cause NoSuchFunction{name:"main"}.
