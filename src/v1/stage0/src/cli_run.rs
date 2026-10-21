@@ -30043,7 +30043,7 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
-    /// Declared-input names read anywhere inside `argv[0]`, calls and field accesses
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
     /// included. Empty means the executable position reads no input.
     pub executable_input_refs: Vec<String>,
 }
@@ -30181,6 +30181,12 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         &source_indices,
                         &mut executable_input_refs,
                     );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
                 }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
