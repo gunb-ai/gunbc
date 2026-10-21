@@ -537,13 +537,19 @@ fn readback_grants_a_readonly_file_only_where_git_replaces_it(
   top: String,
   holds_reflog: Bool,
 ) -> Bool {
+  // BOTH interiors are the swept 02775, for the same reason readback_grants_the_declared_state carries it:
+  // the declared walk adds g+w AND g+s to every directory it crosses, so a correctly-migrated interior is
+  // group-writable AND setgid. In the holds_reflog branch the interior is deliberately clean so the refusal
+  // isolates the ONE thing that subtree refuses -- a 0444 file where git appends in place -- and not an
+  // incidental un-swept directory; in the granted branch the 0444 file is what git only ever replaces
+  // (loose objects, refs), which the readonly rule accepts.
   if holds_reflog {
     !dashboard_git_subtree_readback_is_granted(
       child: child,
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-        readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "refs/heads"),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "refs/heads"),
         readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "refs/heads/main"),
       ], "\n"),
     )
@@ -553,7 +559,7 @@ fn readback_grants_a_readonly_file_only_where_git_replaces_it(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-        readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
         readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "f9/obj"),
       ], "\n"),
     )
@@ -580,16 +586,18 @@ fn readback_refuses_the_ungranted_states(
     group: fleet_posix_worker_shared_group_name,
     receipt: join([
       readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "2770", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "2770", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
   )
     && !dashboard_git_subtree_readback_is_granted(
       child: child,
       group: fleet_posix_worker_shared_group_name,
+      // (ii) ONLY the top is wrong (0775, never walked); the interior is the swept 2775 so the interior
+      // window is NOT a second refusal source -- this leg isolates the top, exactly as its comment claims.
       receipt: join([
       readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
     )
@@ -625,7 +633,7 @@ fn readback_refuses_the_ungranted_states(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_foreign_group as String, path: ""),
-        readback_line(kind: "d", mode: "775", group: readback_foreign_group as String, path: "f9"),
+        readback_line(kind: "d", mode: "2775", group: readback_foreign_group as String, path: "f9"),
         readback_line(kind: "f", mode: "664", group: readback_foreign_group as String, path: "f9/obj"),
       ], "\n"),
     )
@@ -634,7 +642,7 @@ fn readback_refuses_the_ungranted_states(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
       readback_line(kind: "d", mode: foreign_top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
     )
