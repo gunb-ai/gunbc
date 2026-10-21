@@ -4,7 +4,7 @@ import std.process {ProcessExit,ExitSuccess,exit_failure}
 import extdeps.printing.orca_slicer {orca_ubuntu2404_runtime_packages,with_verified_orca,orca_version_probe_command,orca_slicer_linux_aarch64_appimage_sha256}
 import extdeps.opencascade.ocp {ocp_ubuntu2404_runtime_packages}
 import extdeps.cadquery.cadquery {cadquery_import_probe_command}
-import product.printed_chassis.cad_toolchain {cad_toolchain_python_requirements,python_distribution_name,python_distribution_version}
+import product.printing.cad_runtime_spec {cad_runtime_python_requirements,python_distribution_name,python_distribution_version}
 import extdeps.package_managers.dpkg {DpkgPackageInstalled,DpkgPackageNotInstalled,DpkgPackageUnknown,DpkgQueryUndecidable,dpkg_query_status_command,dpkg_query_status_verdict_of}
 import extdeps.exec.command {LocalExec,env_prefixed_command_in}
 import extdeps.shell
@@ -38,7 +38,7 @@ fn observe_package(package:NonEmptyStr) -> RuntimePackageReading {
 fn cad_versions_match(text:String) -> Bool {
  match parse_json_document(s:text) {
   JsonDocumentUnreadable {gap:_}=>false
-  JsonDocumentParsed {value:v}=>all(cad_toolchain_python_requirements,r=>match json_field_string(obj:v,key:python_distribution_name(r:r) as String) {
+  JsonDocumentParsed {value:v}=>all(cad_runtime_python_requirements,r=>match json_field_string(obj:v,key:python_distribution_name(r:r) as String) {
    FieldRead {value:found}=>found==(python_distribution_version(r:r) as String) FieldAbsent=>false FieldMalformed {cause:_}=>false
   })
  }
@@ -51,7 +51,7 @@ fn check(appimage:String,receipt:String) -> ProcessExit {
  if !Filesystem.WriteCreateNew(path:concat(receipt,".packages.json"),content:evidence).success {return exit_failure(reason:"Cannot preserve runtime package observation")}
  let missing=filter(packages,p=>!p.admitted)
  if count(missing)>0 {return exit_failure(reason:concat("Declared print runtime packages absent or unreadable; use product.printed_chassis.print_workflow.converge_runtime: ",join(map(missing,p=>p.package as String),", ")))}
- let cad=match run_shell_command_capture(command:cadquery_import_probe_command(distributions:map(cad_toolchain_python_requirements,r=>python_distribution_name(r:r) as String)),transport:LocalExec) {
+ let cad=match run_shell_command_capture(command:cadquery_import_probe_command(distributions:map(cad_runtime_python_requirements,r=>python_distribution_name(r:r) as String)),transport:LocalExec) {
   ProcessRefused {exit_code:_,stderr:e}=>return exit_failure(reason:concat("Declared CAD Python dependencies could not import: ",e))
   ProcessOutputAbsent=>return exit_failure(reason:"CAD dependency probe returned no versions")
   ProcessOutputPresent {text:t}=>t
