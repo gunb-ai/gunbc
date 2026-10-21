@@ -137,7 +137,7 @@ type ArgvRowClassification
   = ArgvRowMaterialized
   | ArgvRowExpressionResidue
   | ArgvRowExecutablePositionRefused
-  | ArgvRowExecutableIsCatalogCall
+  | ArgvRowExecutableClosedUnevaluated
   | ArgvRowOtherRefusal
 
 fn operation_argv_classify_cause(cause: ArgvRefusalCause) -> ArgvRowClassification {
@@ -164,16 +164,16 @@ fn operation_argv_classify(m: ArgvMaterialization) -> ArgvRowClassification {
 // The row-grain classification. A refused executable position splits on a fact of the DECLARATION
 // (the row's executable_input_refs), not on the refusal text: argv[0] that reads a declared input is
 // the wall firing correctly (ArgvRowExecutablePositionRefused); argv[0] that reads none is a
-// closed, zero-input expression the materializer does not evaluate -- a catalog call such as
+// closed, zero-input expression the materializer does not evaluate -- observed as a catalog call such as
 // sshpass_program().invocation -- whose program the wall therefore cannot judge
-// (ArgvRowExecutableIsCatalogCall). The two are different obligations and must not share a count.
+// (ArgvRowExecutableClosedUnevaluated). The two are different obligations and must not share a count.
 fn operation_argv_row_classify(row: ShellTransportOperationRow, m: ArgvMaterialization) -> ArgvRowClassification {
   match operation_argv_classify(m: m) {
     ArgvRowMaterialized => ArgvRowMaterialized
     ArgvRowExpressionResidue => ArgvRowExpressionResidue
     ArgvRowExecutablePositionRefused =>
-      if length(xs: row.executable_input_refs) == 0 { ArgvRowExecutableIsCatalogCall } else { ArgvRowExecutablePositionRefused }
-    ArgvRowExecutableIsCatalogCall => ArgvRowExecutableIsCatalogCall
+      if length(xs: row.executable_input_refs) == 0 { ArgvRowExecutableClosedUnevaluated } else { ArgvRowExecutablePositionRefused }
+    ArgvRowExecutableClosedUnevaluated => ArgvRowExecutableClosedUnevaluated
     ArgvRowOtherRefusal => ArgvRowOtherRefusal
   }
 }
