@@ -12257,6 +12257,36 @@ pub fn parse_response_entries_acc(
     }
 }
 
+pub fn parse_mock_entry_discriminator(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    {
+        let tok = token_stream_first(tokens.clone());
+        let bare = match tok.clone() {
+            Some(t) => is_fat_arrow_shape(t.shape.clone()),
+            std::option::Option::None => false,
+        };
+        if bare.clone() {
+            parsed_expr_result(tokens.clone(), tokens.clone(), ctx.clone(), |identity| {
+                crate::v1_std_core::make_expr_node(
+                    identity.clone(),
+                    Rc::new(ExprData::ExprLiteral {
+                        value: Rc::new(LiteralValue::LitStr {
+                            value: "reading".to_string(),
+                        }),
+                    }),
+                    Rc::new(vec![]),
+                    std::option::Option::None,
+                    token_span(tok.clone()),
+                )
+            })
+        } else {
+            parse_status_pattern(tokens.clone(), ctx.clone())
+        }
+    }
+}
+
 pub fn parse_optional_mock_response_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -12352,7 +12382,7 @@ pub fn parse_mock_response_entries_acc(
                 err: std::option::Option::None,
             });
         } else {
-            let r = parse_status_pattern(tokens.clone(), ctx.clone());
+            let r = parse_mock_entry_discriminator(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(MockEntriesResult {
                     entries: Rc::new(vec![]),
