@@ -331,7 +331,7 @@ fn emit_opaque_declaration(name: Symbol, module: List<Symbol>, opaque: Node, tar
             source: Present { value: decl_ref(module_path: unicode_scalar_fold(xs: string_join(fields: fold_list(xs: module, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: s)) }), separator: ".")), decl_name: unicode_scalar_fold(xs: symbol_lexeme(sym: name))) },
             rows: rows
           ) {
-            ExactBindingAbsent => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_absent, at: opaque)
+            ExactBindingAbsent => emit_module_member_refused(reason: symbol_intern_lexeme(lexeme: concat(string_join(fields: fold_list(xs: module, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: s)) }), separator: "."), "|", symbol_lexeme(sym: name))), at: opaque)
             ExactBindingAmbiguous { candidate_count: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_ambiguous, at: opaque)
             ExactSourceIdentityUnavailable { cause: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_identity_unavailable, at: opaque)
             ResolvedExactBinding { binding: b } =>
