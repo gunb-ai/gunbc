@@ -1,0 +1,25 @@
+module v2.test.claim.falsifier_rehomed_rows_unexecuted_witness
+
+import std.types { List, String }
+import std.algebra { length }
+import std.logic { Bool }
+import gunbc.ci.ci_layer_roots { falsifier_rehomed_bin_wet_rows, falsifier_rehomed_roster_rows }
+import gunbc.rung_drop.falsifier_rehomed_rows_unexecuted {
+  falsifier_rehomed_rows_unexecuted_population
+}
+
+// The drop's population is the fold of both typed frontiers: one identity per row, none dropped,
+// none invented. Independent referent: the two row lists' own lengths.
+test fn falsifier_rehomed_drop_population_covers_every_frontier_row() -> Bool {
+  length(falsifier_rehomed_rows_unexecuted_population())
+    == length(falsifier_rehomed_bin_wet_rows) + length(falsifier_rehomed_roster_rows)
+}
+
+test fn falsifier_rehomed_drop_population_names_entry_and_function() -> Bool {
+  any(falsifier_rehomed_rows_unexecuted_population(), id => id == "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_executes_holds")
+}
+
+// RED control: an identity outside both frontiers is not in the population.
+test fn falsifier_rehomed_drop_population_excludes_unlisted_RED_control_holds() -> Bool {
+  !any(falsifier_rehomed_rows_unexecuted_population(), id => id == "src/v2/test/claim/none.dag::none_holds")
+}
