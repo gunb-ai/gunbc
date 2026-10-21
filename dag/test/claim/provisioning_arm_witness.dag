@@ -18,6 +18,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootVerdictRejected,
   site_pxe_edge_chainloader_build_receipt,
 }
+import gunbc.secure_boot_observation { SecureBootDisabled }
 import gunbc.provisioning.provisioning_arm {
   provisioning_arm_consumer_frontier,
   provisioning_arm_consumer_ref,
@@ -68,7 +69,6 @@ import gunbc.firmware_network_boot_standing {
   BootOrderObserved,
   BootOptionsObserved,
   NicsObserved,
-  SecureBootDisabled,
   BiosVersionObserved,
   firmware_boot_observation,
   firmware_network_boot_standing,

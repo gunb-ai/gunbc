@@ -17,9 +17,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootVerdictBooted,
 }
 
-// ── Sibling imports (cut 6): ONE block. Each module is another cut-6 work item's file, present on this
-// branch only through merging that item's branch (S0 swift-wren-451, S3 and S1 the base, S4 deep-ram-338); this
-// PR owns only this module and its witness. ──
+// ── Sibling imports (cut 6): ONE block. Each module is another cut-6 work item's file, now on main (S0 swift-wren-451,
+// S3 and S1 the base, S4 deep-ram-338, Secure Boot observation sleek-wolf-212); this PR owns only this module and its witness. ──
 // S0, gunbc.firmware_network_boot_standing (drafted on session/swift-wren-451): the preparation route and the standing a firmware probe answers.
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootPreparationRoute,
