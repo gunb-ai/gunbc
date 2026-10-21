@@ -16,11 +16,11 @@ import v2.compiler.eval { empty_evaluation_environment, eval_with_context, input
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes, claim_resolved_tree_without_declarations }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two, dag_type_atom_node, dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_binding_spellings, ts_fn_add_lex_rules, ts_source_text_authority }
-import v2.program { program_bool_value, program_choose_branch, program_context_with_effect_io, program_facts_for, program_kw_false, program_kw_true, program_literal_one, program_literal_two }
+import v2.program { program_bool_type, program_bool_value, program_choose_branch, program_i64_type, program_termination_proof, program_context_with_effect_io, program_kw_false, program_kw_true, program_literal_one, program_literal_two }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.compilers.body_lowering { lower_branch }
 import v2.std.compilers.lexing { ModeledLexRules }
@@ -54,6 +54,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query { binder_edge }
+import v2.std.witness { Holds }
 import v2.std.runtime { EvaluationEnvironment, RuntimeValue, RuntimeValuesEqual, runtime_value_equality }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -117,16 +118,34 @@ fn bsr_env() -> EvaluationEnvironment {
 
 // ---- eval_branch_condition: eval reads the condition from its slot, then the interpreter picks ----
 
-fn bsr_facts(node: Node) -> Optional<InferredFacts> {
-  optional_present(value: program_facts_for(node: node))
+fn bsr_facts_int(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: bsr_facts_of(node: node, algebra: program_i64_type()))
 }
 
-fn bsr_eval(root: Node) -> Outcome<RuntimeValue> {
+fn bsr_facts_bool(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: bsr_facts_of(node: node, algebra: program_bool_type()))
+}
+
+fn bsr_facts_of(node: Node, algebra: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(resolved: node, algebra: algebra, descent: Holds { value: program_termination_proof() })
+}
+
+fn bsr_eval_with(root: Node, facts: fn(Node) -> Optional<InferredFacts>) -> Outcome<RuntimeValue> {
   eval_with_context(
-    tree: InferredTree { root: root, facts: PartialFunction { lookup: bsr_facts } },
+    tree: InferredTree { root: root, facts: PartialFunction { lookup: facts } },
     context: program_context_with_effect_io(),
     inputs: inputs_root_only(root: root)
   )
+}
+
+// Int-typed fixtures (the arms are Int literals; the condition is a Bool the facts also type Int, which eval
+// does not read) and Bool-typed fixtures (every node a Bool).
+fn bsr_eval_int(root: Node) -> Outcome<RuntimeValue> {
+  bsr_eval_with(root: root, facts: bsr_facts_int)
+}
+
+fn bsr_eval_bool(root: Node) -> Outcome<RuntimeValue> {
+  bsr_eval_with(root: root, facts: bsr_facts_bool)
 }
 
 fn bsr_same_value(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
@@ -146,27 +165,31 @@ fn bsr_same_value(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
 
 test fn bsr_eval_of_a_true_branch_is_the_then_arm_and_of_a_false_branch_the_else_arm() -> Bool {
   bsr_same_value(
-    a: bsr_eval(root: lower_branch(condition: program_kw_true(), then_arm: program_literal_one(), else_arm: program_literal_two())),
-    b: bsr_eval(root: program_literal_one())
+    a: bsr_eval_int(root: lower_branch(condition: program_kw_true(), then_arm: program_literal_one(), else_arm: program_literal_two())),
+    b: bsr_eval_int(root: program_literal_one())
   )
     && bsr_same_value(
-      a: bsr_eval(root: lower_branch(condition: program_kw_false(), then_arm: program_literal_one(), else_arm: program_literal_two())),
-      b: bsr_eval(root: program_literal_two())
+      a: bsr_eval_int(root: lower_branch(condition: program_kw_false(), then_arm: program_literal_one(), else_arm: program_literal_two())),
+      b: bsr_eval_int(root: program_literal_two())
     )
-    && !bsr_same_value(a: bsr_eval(root: program_literal_one()), b: bsr_eval(root: program_literal_two()))
+    && !bsr_same_value(a: bsr_eval_int(root: program_literal_one()), b: bsr_eval_int(root: program_literal_two()))
 }
 
-// Condition equal to the else arm: a false condition evaluates to the else arm, which is the condition's
-// own node, a bool; a reader taking another slot for the condition evaluates an int arm instead.
+// Shared-node controls over Bool arms that differ (true, false): the condition is the same node as the else
+// arm, then as the then arm.
 test fn bsr_eval_with_the_condition_equal_to_the_else_arm_reads_each_slot_once() -> Bool {
   bsr_same_value(
-    a: bsr_eval(root: lower_branch(condition: program_kw_false(), then_arm: program_literal_one(), else_arm: program_kw_false())),
-    b: bsr_eval(root: program_kw_false())
+    a: bsr_eval_bool(root: lower_branch(condition: program_kw_false(), then_arm: program_kw_true(), else_arm: program_kw_false())),
+    b: bsr_eval_bool(root: program_kw_false())
   )
-    && bsr_same_value(
-      a: bsr_eval(root: lower_branch(condition: program_kw_true(), then_arm: program_kw_true(), else_arm: program_literal_two())),
-      b: bsr_eval(root: program_kw_true())
-    )
+    && !bsr_same_value(a: bsr_eval_bool(root: program_kw_true()), b: bsr_eval_bool(root: program_kw_false()))
+}
+
+test fn bsr_eval_with_the_condition_equal_to_the_then_arm_reads_each_slot_once() -> Bool {
+  bsr_same_value(
+    a: bsr_eval_bool(root: lower_branch(condition: program_kw_true(), then_arm: program_kw_true(), else_arm: program_kw_false())),
+    b: bsr_eval_bool(root: program_kw_true())
+  )
 }
 
 // ---- infer_branch_bool_if_else ----
@@ -281,12 +304,15 @@ fn bsr_field(wire: Node, name: Symbol) -> Optional<Node> {
 fn bsr_field_in(edges: List<Edge>, name: Symbol) -> Optional<Node> {
   match edges {
     Empty => Absent
-    Cons { head: e, tail: rest } =>
-      match e.label {
-        Authored { name: n } =>
-          if n == name { optional_present(value: e.target) } else { bsr_field_in(edges: rest, name: name) }
-        _ => bsr_field_in(edges: rest, name: name)
-      }
+    Cons { head: e, tail: rest } => bsr_field_edge(e: e, rest: rest, name: name)
+  }
+}
+
+fn bsr_field_edge(e: Edge, rest: List<Edge>, name: Symbol) -> Optional<Node> {
+  match e.label {
+    Authored { name: n } =>
+      if n == name { optional_present(value: e.target) } else { bsr_field_in(edges: rest, name: name) }
+    _ => bsr_field_in(edges: rest, name: name)
   }
 }
 
