@@ -205,19 +205,21 @@ fn accept_sole_declaration(
       type_name: type_name,
       sole_qualified_name: sole_qualified_name
     ),
-    f: fn(sole) {
-      if node_is_coproduct(node: sole) {
-        outcome_accepted(value: sole)
-      } else {
-        outcome_rejected(
-          d: scoped_type_reflection_diagnostic(
-            type_name: type_name,
-            invariant: ^type_spelling_is_not_a_closed_coproduct
-          )
-        )
-      }
-    }
+    f: fn(sole) { require_coproduct(type_name: type_name, node: sole) }
   )
+}
+
+fn require_coproduct(type_name: Symbol, node: Node) -> Outcome<Node> {
+  if node_is_coproduct(node: node) {
+    outcome_accepted(value: node)
+  } else {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_spelling_is_not_a_closed_coproduct
+      )
+    )
+  }
 }
 
 // A bare spelling resolves ONLY where the index proves exactly one type declaration answers to
@@ -226,39 +228,10 @@ fn accept_sole_declaration(
 // that may reach the bare host seam, and it may do so precisely because uniqueness has been
 // established BEFORE the call rather than assumed by it.
 fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
-  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
-  let n = length(xs: candidates)
-  if n == 0 {
-    outcome_rejected(
-      d: scoped_type_reflection_diagnostic(
-        type_name: type_name,
-        invariant: ^type_declaration_absent
-      )
-    )
-  } else if n > 1 {
-    outcome_rejected(
-      d: scoped_type_reflection_diagnostic(
-        type_name: type_name,
-        invariant: ^type_spelling_ambiguous_across_modules
-      )
-    )
-  } else {
-    match list_head(xs: candidates) {
-      Absent =>
-        outcome_rejected(
-          d: scoped_type_reflection_diagnostic(
-            type_name: type_name,
-            invariant: ^type_declaration_absent
-          )
-        )
-      Present { value: sole_qualified_name } =>
-        accept_sole_declaration(
-          pool_roots: pool_roots,
-          type_name: type_name,
-          sole_qualified_name: sole_qualified_name
-        )
-    }
-  }
+  bind_outcome(
+    o: resolve_type_declaration_node(pool_roots: pool_roots, type_name: type_name),
+    f: fn(sole) { require_coproduct(type_name: type_name, node: sole) }
+  )
 }
 
 fn coproduct_arm_keys(

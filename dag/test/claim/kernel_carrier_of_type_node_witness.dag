@@ -76,3 +76,20 @@ test fn a_declared_non_alias_type_refuses_as_reaching_no_kernel_atom() -> Bool {
   refusal(spelling: "Diagnostic") == "carrier_chain_reaches_no_kernel_atom"
     && refused_at(spelling: "Diagnostic") == "Diagnostic"
 }
+
+// RED for the walk's termination bound: an alias cycle authored as FIXTURE SOURCE and reached through a
+// pool root of its own (the accepted corpus cannot hold one). Reflection reaches it, so the reader
+// must refuse typed and name the atom the walk revisited rather than recurse.
+fn cycle_pool() -> List<String> { ["src/v2/test/fixture/alias_cycle"] }
+
+test fn an_alias_cycle_in_fixture_source_refuses_naming_the_revisited_atom() -> Bool {
+  match kernel_carrier_of_type_node(pool_roots: cycle_pool(), node: atom(spelling: "CycleHeadAtom")) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      diagnostics_reason_lexemes(diagnostics: ds) == "carrier_chain_cycles"
+        && (match ds.head.at {
+          InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } => symbol_lexeme(sym: port) == "CycleHeadAtom"
+          _ => false
+        })
+  }
+}

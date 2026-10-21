@@ -1,0 +1,6 @@
+module v2.test.fixture.alias_cycle.alias_cycle_source
+
+// FIXTURE SOURCE handed to reflection through its own pool root, never part of the accepted corpus
+// pool: an alias cycle (CycleHeadAtom = CycleTailAtom, CycleTailAtom = CycleHeadAtom).
+type CycleHeadAtom = CycleTailAtom
+type CycleTailAtom = CycleHeadAtom
