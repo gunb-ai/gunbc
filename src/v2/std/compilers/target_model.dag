@@ -6714,6 +6714,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_int_literal_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprIntLiteral,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_conditional_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -15398,42 +15405,17 @@ fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional
   }
 }
 
-fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
-  if magnitude == 1 {
-    optional_present(value: ^dag_binding_pick_lit_one)
-  } else if magnitude == 2 {
-    optional_present(value: ^dag_binding_pick_lit_two)
-  } else {
-    optional_absent()
-  }
-}
-
-// 🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps magnitudes 1/2 to legacy
-// pick-lit bindings for existing emit round-trip witnesses; every other magnitude now renders as
-// `TargetValueExprIntLiteral` through the target's declared `int_literal_form`. The two rows stay
-// because C, TypeScript and dag declare `IntLiteralUnwired` and their round-trip witnesses spell 1
-// and 2 through the rows. DISSOLVES WHEN every target that emits an integer literal declares its
-// `int_literal_form`, at which point these rows and this map are deleted and 1 and 2 take the
-// general path.
-
 fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
   match target_value_expr_int_literal_magnitude_node_optional(node: node) {
     Present { value: magnitude_node } =>
       match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
         Accepted { value: magnitude, diagnostics: _ } =>
-          match target_value_expr_int_literal_magnitude_binding(magnitude: magnitude) {
-            Present { value: binding } =>
-              outcome_accepted(
-                target_value_expression_binding_ref(binding: binding)
-              )
-            Absent =>
-              outcome_accepted(
-                target_value_expression_int_literal(
-                  lexeme: int_to_decimal_string(value: magnitude),
-                  source: node
-                )
-              )
-          }
+          outcome_accepted(
+            target_value_expression_int_literal(
+              lexeme: int_to_decimal_string(value: magnitude),
+              source: node
+            )
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     Absent =>
@@ -15446,6 +15428,17 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
   }
 }
 
+// 🟡 REMAINING POPULATION of the pick-table literal bindings (C5-G left it; the int-literal magnitude
+// special case is gone). Source atoms dag_pick_lit_one/two and dag_rec_lit_nine are minted ONLY by
+// fixture constructors (program.dag program_literal_one/two, dag.dag fixtures) and are consumed by
+// the rows held by dag.dag `dag_pick_concrete_tokens`,
+// `dag_language_model_binding_canonical_map`, `dag_binding_spellings`, and by rust_fixtures.dag
+// `rust_pick_concrete_tokens`, `rust_pick_binding_spellings`, `rust_loop_*`, `rust_match_*`,
+// `rust_field_access_binding_spellings`, `rust_variant_construct_binding_spellings`,
+// `rust_literal_emit_binding_spellings`, `rust_bind_literal_golden_tokens`.
+// Ingest and dag_int_literal_fixture_node never mint them. DISSOLVES WHEN those fixtures spell their
+// literals as int_literal atoms and expect int_literal tokens; then these map arms, the rows and
+// this marker are deleted together. Follow-up, not this PR.
 fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
   if id == ^dag_pick_lit_one {
     optional_present(value: ^dag_binding_pick_lit_one)
