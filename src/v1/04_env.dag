@@ -2402,20 +2402,20 @@ fn alias_next_declaration(current: DeclarationRef, env: TypeEnv) -> DeclarationR
 // The members of the alias cycle `start` is on, in chain order and closed back onto `start` (`A -> B -> A`); empty when the chain
 // from `start` ends or enters a cycle `start` is not on. Terminates because the path grows over a finite declaration set.
 fn alias_cycle_members(start: DeclarationRef, env: TypeEnv) -> List<String> {
-  alias_cycle_walk(start: start, current: start, path: [alias_declaration_label(d: start)], env: env)
+  alias_cycle_walk(start: start, current: start, path: [alias_declaration_label(d: start)], seen: map_insert(empty_map(), alias_declaration_label(d: start), true), env: env)
 }
 
 fn alias_declaration_label(d: DeclarationRef) -> String {
   concat(d.module_path as String, ".", d.decl_name as String)
 }
 
-fn alias_cycle_walk(start: DeclarationRef, current: DeclarationRef, path: List<String>, env: TypeEnv) -> List<String> {
+fn alias_cycle_walk(start: DeclarationRef, current: DeclarationRef, path: List<String>, seen: Map<String, Bool>, env: TypeEnv) -> List<String> {
   match alias_next_declaration(current: current, env: env) {
     Absent => []
     Present { value: next } =>
       let label = alias_declaration_label(d: next)
       if label == alias_declaration_label(d: start) { list_push(path, label) }
-      else if path |> any(seen => seen == label) { [] }
-      else { alias_cycle_walk(start: start, current: next, path: list_push(path, label), env: env) }
+      else if map_has(seen, label) { [] }
+      else { alias_cycle_walk(start: start, current: next, path: list_push(path, label), seen: map_insert(seen, label, true), env: env) }
   }
 }
