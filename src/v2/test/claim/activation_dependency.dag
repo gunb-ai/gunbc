@@ -557,3 +557,11 @@ test fn acd_p4_not_derived_zero_holds() -> Bool {
 test fn acd_p5_children_three_holds() -> Bool {
   match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => match acd_site_of_kind(root: t.root, want_match: false) { Absent => false  Present { value: b } => length(xs: b.children) == 3 } }
 }
+data acd_v1: String = "module acd\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
+data acd_v2: String = "module acd\n\nimport std.types { Bool }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { 1 } else { 2 }\n}\n"
+data acd_v3: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { 1 } else { 2 }\n}\n"
+data acd_v4: String = "module acd\n\nfn f(c: Bool) -> Int {\n  if c {\n    1\n  } else {\n    2\n  }\n}\n"
+test fn acd_q1_holds() -> Bool { match acd_assemble(src: acd_v1) { Absent => false  Present { value: _ } => true } }
+test fn acd_q2_holds() -> Bool { match acd_assemble(src: acd_v2) { Absent => false  Present { value: _ } => true } }
+test fn acd_q3_holds() -> Bool { match acd_assemble(src: acd_v3) { Absent => false  Present { value: _ } => true } }
+test fn acd_q4_holds() -> Bool { match acd_assemble(src: acd_v4) { Absent => false  Present { value: _ } => true } }
