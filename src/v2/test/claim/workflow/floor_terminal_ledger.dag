@@ -6,6 +6,7 @@ import v2.workflow.required_floor { CompletedWithinSafetyLimits, SafetyInterrupt
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
+  EntryMissing,
   RepositorySnapshot,
   UnpublishedWorkingTree,
   ledger_is_candidate_bound,
@@ -34,6 +35,8 @@ import v2.workflow.floor_terminal_ledger {
   ObservedVerdict,
   Passed,
   ObservationUnreadableBeforeVerdict,
+  SubjectUnresolvedBeforeVerdict,
+  SubjectUnresolved,
   Returned,
   claim_disposition,
   ledger_is_complete,
@@ -117,6 +120,21 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
     expectation: ExpectedToHold,
     terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
   }) == ObservationUnreadableBeforeVerdict
+}
+
+// A CLAIM WHOSE FILE DID NOT RESOLVE NEVER RAN, SO IT IS NEITHER A FAILING NOR AN UNREADABLE ONE.
+// `ObservationUnreadableBeforeVerdict` means the claim RAN and returned an unreadable value;
+// reusing it here would fork its meaning (DESIGN section 3). The control is the claim above that
+// a false assertion still projects to `Failed`. THE CAUSE IS A MISSING ENTRY OR ROUTE ONLY: a name
+// or type error inside the claim's closure is a finding (claim_batch prints FAIL, exit 1), so it is
+// never a `SubjectUnresolved` specimen; the ledger join must map it to a failing terminal.
+test fn a_claim_whose_subject_did_not_resolve_is_unresolved_not_failed_nor_unreadable() -> Bool {
+  let d = claim_disposition(row: ClaimTerminalRow {
+    identity: ident(f: "u"),
+    expectation: ExpectedToHold,
+    terminal: SubjectUnresolved { entry: "dag/test/claim/x.dag", cause: EntryMissing {} }
+  })
+  d == SubjectUnresolvedBeforeVerdict && d != Failed && d != ObservationUnreadableBeforeVerdict
 }
 
 // A CLAIM REFUSED BEFORE ANY VERDICT EXISTED IS NOT A FAILING CLAIM EITHER, and this arm is

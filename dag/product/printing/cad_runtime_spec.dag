@@ -5,6 +5,9 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.cadquery.cadquery { cadquery_distribution_name, cadquery_version, cadquery_ocp_distribution }
+import extdeps.package_managers.pip { PythonDistributionRequirement, pinned_requirement_specifier }
+import extdeps.package_managers.conda_forge { CondaPackageRequirement, conda_requirement_spec }
+import extdeps.package_managers.micromamba { MicromambaRelease, micromamba_linux_aarch64_release }
 import extdeps.opencascade.ocp { ocp_distribution_name, ocp_distribution_version, ocp_wheel_python_abi, ocp_wheel_platform_linux_aarch64 }
 
 // WHAT THE PRINT RUNTIME'S CAD INTERPRETER MUST IMPORT, AND AT WHICH VERSION. This is the one roster
@@ -13,14 +16,6 @@ import extdeps.opencascade.ocp { ocp_distribution_name, ocp_distribution_version
 // packages (extdeps.opencascade.ocp ocp_ubuntu2404_runtime_packages, joined in
 // product.printing.runtime_dependencies runtime_packages), so naming a second provider for the same
 // SONAMEs would be two answers to one question.
-type PythonDistributionRequirement sole_constructor {
-  distribution: NonEmptyStr
-  version: NonEmptyStr
-}
-
-fn python_distribution_name(r: PythonDistributionRequirement) -> NonEmptyStr { r.distribution }
-fn python_distribution_version(r: PythonDistributionRequirement) -> NonEmptyStr { r.version }
-
 data cadquery_requirement: PythonDistributionRequirement = PythonDistributionRequirement {
   distribution: cadquery_distribution_name,
   version: cadquery_version,
@@ -46,12 +41,24 @@ data cad_runtime_python_requirements: List<PythonDistributionRequirement> = [
 data cad_runtime_python_tag: NonEmptyStr = ocp_wheel_python_abi
 data cad_runtime_architecture: Architecture = Aarch64
 
+// THE INTERPRETER ITSELF COMES FROM conda-forge, solved by a pinned micromamba. Python is pinned to
+// the patch release and pip to an exact version, so the environment's own installer is part of what
+// it is. Both are published for linux-aarch64 (python) and noarch (pip) on conda-forge.
+data cad_runtime_interpreter_packages: List<CondaPackageRequirement> = [
+  CondaPackageRequirement { package_name: "python", version: "3.11.9" },
+  CondaPackageRequirement { package_name: "pip", version: "25.3" },
+]
+
 // architecture is what the host must report; wheel_platform is the upstream tag that selects the
-// wheel for it, and is what the identity text carries.
+// wheel for it. The identity text carries every input that shapes the environment: the solver
+// release, the interpreter packages, the CPython tag and wheel platform, and the pinned
+// distributions. A key missing one of them would name two different environments alike.
 type CadRuntimeSpec sole_constructor {
   python_tag: NonEmptyStr
   architecture: Architecture
   wheel_platform: NonEmptyStr
+  solver: MicromambaRelease
+  interpreter_packages: List<CondaPackageRequirement>
   requirements: List<PythonDistributionRequirement>
 }
 
@@ -59,6 +66,8 @@ data cad_runtime_spec: CadRuntimeSpec = CadRuntimeSpec {
   python_tag: cad_runtime_python_tag,
   architecture: cad_runtime_architecture,
   wheel_platform: ocp_wheel_platform_linux_aarch64,
+  solver: micromamba_linux_aarch64_release,
+  interpreter_packages: cad_runtime_interpreter_packages,
   requirements: cad_runtime_python_requirements,
 }
 
@@ -67,8 +76,11 @@ data cad_runtime_spec: CadRuntimeSpec = CadRuntimeSpec {
 // different environment instead of mutating the one a previous preparation ran in.
 fn cad_runtime_spec_text(spec: CadRuntimeSpec) -> String {
   join(concat(
-    [concat("python_tag=", spec.python_tag as String), concat("wheel_platform=", spec.wheel_platform as String)],
-    map(spec.requirements, r => join([r.distribution as String, "==", r.version as String], "")),
+    concat(
+      [concat("micromamba=", spec.solver.version as String), concat("micromamba_sha256=", spec.solver.sha256 as String), concat("python_tag=", spec.python_tag as String), concat("wheel_platform=", spec.wheel_platform as String)],
+      map(spec.interpreter_packages, p => concat("conda:", conda_requirement_spec(r: p))),
+    ),
+    map(spec.requirements, r => concat("pip:", pinned_requirement_specifier(r: r))),
   ), "\n")
 }
 
