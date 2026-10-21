@@ -368,6 +368,7 @@ type EventBacklogEntry {
 type EventBacklogFact
   = EventBacklogClear { inbox: Int, queued: Int }
   | StaleBacklog { stage: HostSpoolStage, entry: String, age: Second, bound: Second }
+  | EventSpoolStalled { waiting: Int, head: String }
   | EventBacklogUnobserved { detail: String }
 
 fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
@@ -386,7 +387,19 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // with no bound (done, refused are not a backlog) or an unreadable bound is stale, never silently young.
 // The reading is gunbc.durable_handoff_host host_spool_health_judge; EventBacklogFact is this
 // spool's projection of that one queue-health type.
-fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
+//
+// THE STALL RECORD COMES FIRST. `stalled` is the entries the exit drain recorded as unmovable
+// (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_read_at): while any exist the belt-exit service is
+// held, so ageing says nothing about them and every spooled entry is waiting behind the head. This is the
+// stall record's consumer (DESIGN section 3c).
+fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {
+  match stalled.first() {
+    Present { value: head } => EventSpoolStalled { waiting: count(entries |> filter(e => e.stage == AttemptExitInbox || e.stage == AttemptExitQueued)), head: head }
+    Absent => event_backlog_aged_judge(entries: entries)
+  }
+}
+
+fn event_backlog_aged_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
   match host_spool_health_judge(
     entries: map(entries, e => HostSpoolHealthEntry { stage: e.stage, entry: e.entry, age: e.age }),
     bounds: event_backlog_health_bounds(),
@@ -402,6 +415,7 @@ fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
 fn event_backlog_text(f: EventBacklogFact) -> String {
   match f {
     EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
+    EventSpoolStalled { waiting, head } => join(["exit spool stalled: ", to_string(value: waiting), " entries waiting behind ", head], "")
     StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", host_spool_stage_wire(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
     EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
   }
