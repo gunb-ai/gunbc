@@ -171,6 +171,32 @@ fn step0_census_cost_one_and_four_calls() {
     for line in &n4 {
         println!("N=4 {line}");
     }
+    // THE REGRESSION GATE (mgr msg_89cafe3f: the counters land only if a committed consumer
+    // reads them). Bracketed at the reset above, these totals hold the four WARM calls only.
+    // Zero corpus-index clones is what the overlay + the module-path borrow promised: a call
+    // may not materialize the corpus module-path index out of its memo, because nothing asks
+    // it for an owned copy anymore (the resolve borrows the memo entry for entry). REVERT
+    // EITHER HALF AND THIS GOES RED: the borrow back to `build_module_path_index_from_witness_roots`
+    // lands one 9003-entry clone per call (total 4), and the whole-pool/per-root census
+    // delegations back to per-scratch rebuilds put the ~10 s back into WALL_US/CPU_US, which
+    // print on every line above. VEC_CLONES and READS stay PRINTED, not gated: they are the
+    // observation of what the overlay deliberately still does per call (the scratch's own
+    // source-file map, Rc-bump scale; the fixture's 3-file import closure off disk).
+    let warm = compile_dag_diagnostic_census_cost_counts();
+    assert_eq!(
+        warm.0, 0,
+        "warm census calls materialized the corpus module-path index {} times: the borrow or \
+         the pool-cache overlay regressed (per-call value must be 0)",
+        warm.0
+    );
+    // Instrument sanity against a dead-counter false green: the disk counter must still see
+    // the fixture's import closure on those same calls. If it reads 0 the counters stopped
+    // seeing the work and the zero above would be decoration, not cost.
+    assert!(
+        warm.4 >= 1,
+        "disk-read counter must still see the import closure on the warm series, got {}",
+        warm.4
+    );
     // CONDITION 1 (mgr msg_ef915e6b): run a fixture whose module path collides with a pool
     // module, then re-measure the ordinary fixture. If any shared pool cache is fixture-
     // dependent (or absorbs fixture state), the ordinary fixture's digest shifts after the
@@ -199,20 +225,19 @@ fn step0_census_cost_one_and_four_calls() {
          in the same process: a shared pool cache depends on (or absorbs) the fixture"
     );
     // Instrument sanity, the only other judgments in this file: the counters must actually see
-    // the work the accusation names. Zero clones means the counters are decoration, not cost.
-    // (sample(4) resets at its start, so these hold the four-call series totals.)
-    let (ic, _ie, vc, _vl, r, _b) = compile_dag_diagnostic_census_cost_counts();
-    assert!(
-        ic >= 1,
-        "index clone counter must see the calls in the series, got {ic}"
-    );
+    // the work the accusation names, on the LAST series too (one warm call after the collision
+    // probe). INDEX_CLONES is asserted ZERO above, on the warm series -- that is the regression
+    // gate, not sanity; the two counters here prove the counter mechanism is alive, so the zero
+    // above cannot be a dead counter. (sample(1, STD-POST) resets at its start, so these hold
+    // that one call.)
+    let (_ic, _ie, vc, _vl, r, _b) = compile_dag_diagnostic_census_cost_counts();
     assert!(
         vc >= 1,
-        "scratch-vec clone counter must see the calls in the series, got {vc}"
+        "scratch-map clone counter must see the calls in the post-collision series, got {vc}"
     );
     assert!(
         r >= 1,
-        "disk-read counter must see the import closure on the calls, got {r}"
+        "disk-read counter must see the import closure on the post-collision call, got {r}"
     );
     println!("STEP0-DONE");
 }
