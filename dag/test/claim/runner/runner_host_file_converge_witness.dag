@@ -1,7 +1,8 @@
 module test.claim.runner.runner_host_file_converge_witness
 
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
+import std.list { distinct_by_key }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -221,7 +222,7 @@ fn fixture_unread_job_user_uid() -> RunnerJobUserUidReading {
 
 // THE PER-SLOT ROLE DROP-INS ARE A FOURTH POPULATION THE HOST-WIDE COUNTS DO NOT OWN. Their number is the
 // deploy-slot population of the host, so the host-wide literals above count the files with the role
-// subject removed, and the role population is judged against its own authority.
+// subject removed, and the role population is judged by role_population_agrees against literals.
 fn not_role_files(fs: List<RunnerHostFileDesired>) -> List<RunnerHostFileDesired> {
   filter(fs, f => (f.subject as String) != "runner-slot-role-dropin")
 }
@@ -230,9 +231,27 @@ fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWith
   filter(w, x => (x.subject as String) != "runner-slot-role-dropin")
 }
 
-fn role_population_agrees(files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>, host: HostIdentity) -> Bool {
-  length(filter(files, f => (f.subject as String) == "runner-slot-role-dropin")) == length(runner_host_slot_role_files(host: host))
-    && length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin")) == length(runner_host_slot_role_withheld_files(host: host))
+// The role population is judged against literals written here (systemd.unit(5) drop-in layout), not against
+// the producer's own role lists: srv1 deploys slots, so it carries at least one role drop-in, each under a
+// distinct per-instance drop-in directory of the runner template and each an unmodified [Service] drop-in.
+fn role_population_agrees(files: List<RunnerHostFileDesired>) -> Bool {
+  let roles = filter(files, f => (f.subject as String) == "runner-slot-role-dropin")
+  length(roles) > 0
+    && all(roles, f => starts_with(s: f.path as String, prefix: "/etc/systemd/system/actions-runner@") && string_contains(s: f.path as String, pattern: ".service.d/") && starts_with(s: f.content, prefix: "[Service]\n"))
+    && length(distinct_by_key(roles, f => f.path as String)) == length(roles)
+}
+
+fn role_file_at(path: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+}
+
+// the RED controls of role_population_agrees: an empty, a doubled and a misplaced role population each refuse
+test fn the_role_population_check_refuses_an_empty_a_doubled_and_a_misplaced_population() -> Bool {
+  let ok = role_file_at(path: "/etc/systemd/system/actions-runner@a.service.d/50-role.conf")
+  role_population_agrees(files: [ok])
+    && !role_population_agrees(files: [])
+    && !role_population_agrees(files: [ok, ok])
+    && !role_population_agrees(files: [role_file_at(path: "/etc/elsewhere/50-role.conf")])
 }
 
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
@@ -304,7 +323,7 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
     RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(not_role_files(fs)) == 4
         && length(not_role_withheld(w)) == 2
-        && role_population_agrees(files: fs, withheld: w, host: "srv1" as HostIdentity)
+        && role_population_agrees(files: fs)
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
@@ -324,7 +343,7 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
       length(not_role_files(fs)) == 6
         && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && length(not_role_withheld(w)) == 0
-        && role_population_agrees(files: fs, withheld: w, host: "srv1" as HostIdentity)
+        && role_population_agrees(files: fs)
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
         && starts_with(s: desired_content(subject: "runner-cpu-dropin"), prefix: "[Service]\nCPUQuota=")
