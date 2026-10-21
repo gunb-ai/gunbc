@@ -7498,18 +7498,6 @@ type DeclaredName {
   occurrence: NodeOccurrenceIdentity
 }
 
-fn dag_surface_kw_then_ident_declared_name_from_captured(captured: Node) -> Optional<DeclaredName> {
-  match dag_surface_kw_then_ident_from_captured(captured: captured) {
-    Absent => Absent
-    Present { value: name } =>
-      match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: ident_node, diagnostics: _ } =>
-          Present { value: DeclaredName { name: name, occurrence: ident_node.occurrence_id } }
-      }
-  }
-}
-
 fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
   match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
     Rejected { diagnostics: _ } => Absent
