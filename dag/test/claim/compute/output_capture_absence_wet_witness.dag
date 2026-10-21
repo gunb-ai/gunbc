@@ -55,12 +55,17 @@ module test.claim.compute.output_capture_absence_wet_witness
 //   * root_lists_own_writes -- a recursive find under the root NAMES the file this case wrote. The
 //     positive half, so containment cannot pass by listing nothing.
 //   * the tree is removed and the host then answers not_found for the root.
-// Production's frame scratch is the one write root outside the temp dir that this route could reach --
-// the store frame prefix lives under /tmp, not under the root -- so its sorted population is listed
-// BEFORE and AFTER and carried in the case record as REPORTED evidence, beside the verdict rather
-// than inside it. It is not a verdict input: an unrelated process touching /tmp says nothing about
-// where THIS run wrote, and a claim that could be failed by somebody else's traffic is not a claim
-// about this route. A refused listing is named as a refusal, never read as empty.
+// WRITE ROOTS, ENUMERATED (every write a case performs, none outside the Mktemp root R):
+//   R itself (shell.Mktemp.DirWithTemplate) and its removal; R/checkout (repo_root bootstrap);
+//   the layout trees R/compute/work/<id>/{src,target,out/captured} (compute_ensure_dir and the
+//   Filesystem.Write of the declared output); R/store-staging (compute_ensure_dir, then the
+//   capture's `install -m 0755`). `git hash-object` is run without -w and HashObjectStdinNoWrite
+//   writes nothing. The frame scratch /tmp/gunbc_compute_<frame> enters only through a
+//   FrameJobWorkspace store root, which this fixture never supplies: the instance's roots
+//   (instance_root, store root) are the only inputs production derives its paths from, and both
+//   are children of R. Its sorted population is still listed BEFORE and AFTER and carried in the
+//   case record as REPORTED evidence, not as a verdict input. A refused listing is named as a
+//   refusal, never read as empty.
 //
 // ENROLLMENT, all three rows (the incomplete triple is the failure chunk_21's header documents):
 //   1. v2.workflow.local_repo_wet_terminal local_repo_wet_schedule -- one WetScheduledClaim per
@@ -240,11 +245,19 @@ fn fleet_scratch_listing() -> String {
 // staging tree the capture installs into must NOT be the fleet's frame scratch, so it may not sit
 // under the frame-scratch prefix even though both live under /tmp.
 fn production_paths_stay_inside_root(layout: ComputeLayout, root: String) -> Bool {
-  string_contains(s: layout.checkout, pattern: root)
-    && string_contains(s: layout.work_dir, pattern: root)
-    && string_contains(s: layout.target_dir, pattern: root)
-    && string_contains(s: layout.staging_dir, pattern: root)
-    && !string_contains(s: layout.staging_dir, pattern: materialization_store_frame_root_prefix)
+  let under = join([root, "/"], "")
+  layout.root.starts_with(prefix: under)
+    && layout.work_dir.starts_with(prefix: under)
+    && layout.checkout.starts_with(prefix: under)
+    && layout.out_dir.starts_with(prefix: under)
+    && layout.leases_dir.starts_with(prefix: under)
+    && layout.lease_path.starts_with(prefix: under)
+    && layout.staging_dir.starts_with(prefix: under)
+    && layout.target_dir.starts_with(prefix: under)
+    && layout.log_path.starts_with(prefix: under)
+    && layout.consumption_path.starts_with(prefix: under)
+    && layout.attempts_dir.starts_with(prefix: under)
+    && !layout.staging_dir.starts_with(prefix: materialization_store_frame_root_prefix)
 }
 
 // EVERY PATH UNDER THE ROOT, recursively, as absolute paths -- shell.Find.Files runs
