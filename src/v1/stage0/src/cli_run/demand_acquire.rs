@@ -53,7 +53,7 @@ pub fn resolve_entry_graph_demand_acquired(
     let custom = Rc::new(custom_root_module_census(source_roots)?);
     let mut seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
     loop {
-        let index = build_demand_acquired_index(source_roots, entry_file, &seeds)?;
+        let index = build_demand_acquired_index(source_roots, entry_file, &custom, &seeds)?;
         let roots = source_roots.to_vec();
         let census = custom.clone();
         *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
@@ -78,13 +78,14 @@ pub fn resolve_entry_graph_demand_acquired(
 fn build_demand_acquired_index(
     source_roots: &[String],
     entry_file: &str,
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = super::pre_entry_phase::timed(
         "demand_layout_acquire",
         super::pre_entry_phase::PhaseScale::Closure,
-        || acquire_layout_closure_seeded(source_roots, entry_file, provider_seeds),
+        || acquire_layout_closure_seeded(source_roots, entry_file, custom, provider_seeds),
     )?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
@@ -114,16 +115,19 @@ pub(crate) fn acquire_layout_closure(
     source_roots: &[String],
     entry_file: &str,
 ) -> Result<ModuleSourceIndex, String> {
-    acquire_layout_closure_seeded(source_roots, entry_file, &[])
+    let custom = custom_root_module_census(source_roots)?;
+    acquire_layout_closure_seeded(source_roots, entry_file, &custom, &[])
 }
 
 /// The entry's layout closure, also closing over `provider_seeds` -- providers generated references
 /// demand that no authored reference reaches, each with the exact source the pool answer read. A
 /// seed is inserted from that snapshot, never read again; only its own imports are read, as any
-/// closure's are.
+/// closure's are. `custom` is the caller's custom-root census, taken once: walking it again here
+/// would re-read every seed's file.
 pub(crate) fn acquire_layout_closure_seeded(
     source_roots: &[String],
     entry_file: &str,
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
@@ -140,7 +144,6 @@ pub(crate) fn acquire_layout_closure_seeded(
         ));
     };
     let entry_rel = workspace_relative_repo_path(entry_file);
-    let custom = custom_root_module_census(source_roots)?;
     let mut index: ModuleSourceIndex = HashMap::new();
     index.insert(
         entry_module.clone(),
@@ -759,5 +762,42 @@ mod tests {
             "an unreadable module must be Unreadable, not Lacks"
         );
         assert!(lacks, "an absent module must be Lacks");
+    }
+
+    /// The seeded rebuild under a custom source root uses the retained snapshot: the provider's file
+    /// is corrupted after the layout answered Holds, and acquisition still succeeds with the bytes
+    /// the answer read. A census taken inside the rebuild would read the corrupted file and refuse.
+    #[test]
+    fn seeded_rebuild_under_a_custom_root_uses_the_snapshot_and_reads_nothing_again() {
+        use super::super::entry_resolve::ProviderLayoutAnswer;
+        let dir = fixture_dir();
+        let roots = vec![dir.to_string_lossy().to_string()];
+        let entry = dir.join("entry.dag");
+        std::fs::write(&entry, "module probe_entry\n\nfn main() -> Int { 1 }\n").expect("entry");
+        let provider = dir.join("provider.dag");
+        std::fs::write(
+            &provider,
+            "module probe_provider\n\nfn route() -> Int { 2 }\n",
+        )
+        .expect("provider");
+        let custom = super::custom_root_module_census(&roots).expect("census");
+        let ProviderLayoutAnswer::Holds(snapshot) =
+            super::layout_provider_answer(&roots, &custom, "probe_provider")
+        else {
+            panic!("the custom-root provider must be Holds");
+        };
+        std::fs::write(&provider, [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
+        let rebuilt = super::acquire_layout_closure_seeded(
+            &roots,
+            &entry.to_string_lossy(),
+            &custom,
+            &[("probe_provider".to_string(), snapshot)],
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let index = rebuilt.expect("the seeded rebuild must not read the provider again");
+        assert!(
+            index["probe_provider"].content.contains("fn route"),
+            "the rebuild must hold the snapshot's bytes"
+        );
     }
 }
