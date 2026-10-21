@@ -7148,7 +7148,25 @@ pub enum IndexResidency {
     OwnedByThisCompile,
 }
 
+/// THE COMPILE TRANSACTION, AND ITS RECEIPT (§4 P0.1, §5a amendment A).
+///
+/// This is the outer boundary of ONE compile. The wrapper exists so the receipt is printed
+/// whatever the transaction's disposition — an early admission refusal still gets its rows,
+/// because an operator staring at a SIGKILL or a refusal is exactly who needs the receipt.
+/// `CompileRun.wall_ms` is sampled INSIDE the body before its locals finish dropping, and the
+/// caller materializes output and renders diagnostics after this returns, so the process rows
+/// staged here (printed at exit by `pre_entry_phase`) carry what falls outside even this.
 pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
+    let transaction_started = std::time::Instant::now();
+    let run = compile_emission_over_inner(request, residency);
+    crate::cli_run::pre_entry_phase::print_compile_transaction_receipt(
+        &request.subject.label(),
+        transaction_started,
+    );
+    run
+}
+
+fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8888,6 +8906,84 @@ mod closure_edge_demand_tests {
         reset_bare_reference_admission_completion_for_test();
     }
 
+    /// §5 LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
+    /// shared path lookup instead of rebuilding `path_to_source_lookup` per fixpoint round. What
+    /// must stay UNCHANGED is the closure and its order — this drives a two-round chain (entry
+    /// bare-calls `mid`, which bare-calls `deep`, so the second provider arrives only in round
+    /// two) through both the loader route and the fixpoint authority directly, on ONE index, and
+    /// the two must agree on paths in order. The sharing itself is pinned by pointer identity:
+    /// if a future edit re-mints the map per round (the pre-fix behavior), the `Rc` pointers
+    /// diverge and this goes red.
+    #[test]
+    fn bare_path_lookup_is_shared_across_rounds_with_closure_and_order_unchanged() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module probe_entry\nfn main() -> Int { mid() }\n",
+            ),
+            ("mid.dag", "module probe_mid\nfn mid() -> Int { deep() }\n"),
+            ("deep.dag", "module probe_deep\nfn deep() -> Int { 7 }\n"),
+        ]);
+        let index = fixture.index();
+        let entry_path = fixture.0.join("entry.dag").to_string_lossy().into_owned();
+        // The stage slot is thread-local and can carry residue; per the field's own contract,
+        // subtract a pre-span snapshot.
+        let before_snapshot = entry_resolve::resolve_stage_slot_snapshot();
+
+        let ordered = |sources: &[Rc<v1_compiler_compile::SourceFile>]| -> Vec<String> {
+            sources.iter().map(|s| s.path.clone()).collect()
+        };
+
+        // Route A: the ordinary loader, which closes through the fixpoint authority.
+        let via_loader = load_sources_for_entry_with_pool(&index, &entry_path).unwrap();
+        let via_loader = ordered(&via_loader);
+
+        // Route B: the fixpoint authority directly, seeded with the entry alone. Both routes
+        // share ONE index, so both must serve the SAME lookup; the closure and its order
+        // (paths ascending, the fixpoint's own normalization) must be identical.
+        let content = std::fs::read_to_string(&entry_path).unwrap();
+        // Seed with the workspace-relative path, exactly as the loader normalizes it — otherwise
+        // the seed and the index's copy of the entry survive `dedup_by(path)` as two rows.
+        let seed = Rc::new(v1_compiler_compile::SourceFile {
+            path: workspace_relative_entry_path(&entry_path),
+            content,
+        });
+        let lookup_ptr_before = Rc::as_ptr(&pool_path_lookup(&index));
+        let via_fixpoint = extend_sources_to_both_closure_fixpoint(vec![seed], &index).unwrap();
+        let via_fixpoint = ordered(&via_fixpoint);
+
+        assert!(
+            via_fixpoint.len() >= 3,
+            "the chain must pull BOTH providers across rounds, got {via_fixpoint:?}"
+        );
+        assert_eq!(
+            via_fixpoint, via_loader,
+            "closure and order must be unchanged by the lookup-sharing change"
+        );
+        assert!(
+            via_fixpoint.windows(2).all(|w| w[0] <= w[1]),
+            "the fixpoint's path-order normalization must survive: {via_fixpoint:?}"
+        );
+        // The lookup is the INDEX's memo, stable across the whole fixpoint — a regression that
+        // re-mints the index's own cell per round fails here. The rebuild elimination itself is
+        // what the self-host instrument prices: `load_bare_path_lookup` drops to ~0 ns per call
+        // after the first (the per-round calls keep counting, pinned below, so the instrument
+        // reads real data rather than an absent row).
+        assert_eq!(
+            lookup_ptr_before,
+            Rc::as_ptr(&pool_path_lookup(&index)),
+            "the path lookup must be minted once per index, not rebuilt per fixpoint round"
+        );
+        let after = entry_resolve::resolve_stage_slot_snapshot();
+        let calls = after.load_bare_path_lookup_calls - before_snapshot.load_bare_path_lookup_calls;
+        let rounds = after.load_fixpoint_rounds - before_snapshot.load_fixpoint_rounds;
+        assert!(
+            calls >= rounds && rounds >= 3,
+            "one lookup call per fixpoint round must still be counted (loader + direct \
+             fixpoint = at least 3 rounds), got {calls} calls for {rounds} rounds"
+        );
+    }
+
     /// A `test` row is never a bare provider, and which rows are tests is the parse's
     /// `DeclarationMarker`, read off the census binding. The same shape with the marker removed
     /// is the positive control: the provider is then pulled.
@@ -10125,8 +10221,17 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (§4 P0.6). `path_to_source_lookup` maps
+    // `index.source_files`, which no code path mutates after the index is built (demand-acquired
+    // files arrive through a FRESH index, never into this one) — so the index's
+    // `OnceCell`-memoized `pool_path_lookup` answer is the same map every round would rebuild.
+    // This function runs once per fixpoint round of
+    // `extend_sources_to_both_closure_fixpoint`; before this, every round cloned the whole
+    // path-keyed map (a per-fixpoint-round O(pool) rebuild) to produce an identical lookup.
+    // The receipt keeps counting calls per round; the nanos drop to zero after the first, which
+    // is the point an operator can SEE the sharing rather than trust the claim.
     let lookup_started = std::time::Instant::now();
-    let lookup = path_to_source_lookup(&index.source_files);
+    let lookup = pool_path_lookup(index);
     resolve_stage_slot_add(|s| {
         s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
         s.load_bare_path_lookup_calls += 1;

@@ -1,0 +1,64 @@
+module extdeps.electronic_component.nxp_pca9617a
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.nxp_semiconductors { nxp_semiconductors }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, LevelTranslatorSpec, LevelTranslatorSpecification, MillivoltRange, TranslatorPin,
+  PortA, PortB, OutputEnable, TranslatorGround, SupplyA, SupplyB,
+}
+
+// NXP's PCA9617A, "Level translating Fm+ I2C-bus repeater" (product data sheet, Rev. 1.1, 16 March 2026;
+// read 2026-10-21 through search excerpts of the data sheet and of NXP's product page, a direct read of
+// the pin table owed): a two-channel (SDA and SCL) bidirectional buffer that level-shifts between a low
+// side, VCC(A) 0.8 V to 5.5 V, and a high side, VCC(B) 2.2 V to 5.5 V, isolating the two buses'
+// capacitance; the TSSOP8 orderable PCA9617ADP carries the top marking P617A. The pin numbering below
+// is the PCA9517A-family TSSOP8 order (VCC(A), SCLA, SDAA, GND, SDAB, SCLB, EN, VCC(B)), carried as read
+// from memory of that family until the data sheet's pin table is read directly: a row of this module,
+// not a reading of the board.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nxp.com/products/interfaces/ic-spi-i3c-interface-devices/ic-bus-repeaters-hubs-extenders/level-translating-fm-plus-ic-bus-repeater:PCA9617A"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.nxp_pca9617a",
+      decl_name: "pca9617adp",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ExternalAuthority { uri: Uri { scheme: Https, locator: "www.farnell.com/datasheets/4790018.pdf" } }]
+}
+
+data pca9617adp: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: nxp_semiconductors,
+  ordering_code: "PCA9617ADP",
+  package: "TSSOP8 (SOT505-1)",
+  top_marking: "P617A / <date and lot lines>",
+  specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
+    channels: 2,
+    supply_a: MillivoltRange { minimum: millivolt(count: 800), maximum: millivolt(count: 5500) },
+    supply_b: MillivoltRange { minimum: millivolt(count: 2200), maximum: millivolt(count: 5500) },
+    pins: [
+      TranslatorPin { number: 1, name: "VCC(A)", role: SupplyA },
+      TranslatorPin { number: 2, name: "SCLA", role: PortA { channel: 1 } },
+      TranslatorPin { number: 3, name: "SDAA", role: PortA { channel: 2 } },
+      TranslatorPin { number: 4, name: "GND", role: TranslatorGround },
+      TranslatorPin { number: 5, name: "SDAB", role: PortB { channel: 2 } },
+      TranslatorPin { number: 6, name: "SCLB", role: PortB { channel: 1 } },
+      TranslatorPin { number: 7, name: "EN", role: OutputEnable { three_state_when_high: false } },
+      TranslatorPin { number: 8, name: "VCC(B)", role: SupplyB },
+    ],
+  } },
+  vendor_application_statements: [
+    "Level translating Fm+ I2C-bus repeater: 2-channel bidirectional buffer that isolates capacitance and allows 540 pF on either side of the device at 1 MHz",
+    "level shifting between a low-voltage bus, 0.8 V to 5.5 V, and a higher-voltage bus, 2.2 V to 5.5 V; a footprint and functional replacement for the PCA9517A at Fast-mode speeds",
+  ],
+}

@@ -19,7 +19,11 @@ Attempt identities are unique across the entire fleet request. Keep those identi
 when changing output directories or assigning work to another printer.
 
 The CLI entry takes `plan_file`, `output`, `appimage`, `machine`, `filament`, `process`,
-and `mode`. Paths are explicit tool/artifact inputs, not shell fragments.
+`mode` and `root`. Paths are explicit tool/artifact inputs, not shell fragments. `root` is
+the wire spelling of a `product.printed_chassis.printable_assembly` `PrintedAssemblyRoot`
+(`residential-cassette`, `cassette-rack-review`, `a16-inlet-duct`); an unknown spelling
+refuses. `product.printed_chassis.printable_assembly_selection` `select_printable_assembly`
+is the one place a root becomes parts, keep-outs and assembly membership.
 
 - `mode=prepare` performs all preparation and writes `prepared-queues.json`; it does
   not acquire credentials, file approvals, contact printers, or start anything.
@@ -29,8 +33,9 @@ and `mode`. Paths are explicit tool/artifact inputs, not shell fragments.
 - Use a fresh absolute output directory. Existing realization/script/project outputs refuse;
   preparation does not silently reuse a possibly stale success file.
 
-The CAD/Python environment and pinned Orca artifact must be available on the execution
-host. This change does not provision those tools. The existing short-lived Actions
+The pinned Orca artifact and the three slicer profiles are caller-supplied and verified,
+not acquired. Host packages are converged by `provision_and_run`; the CadQuery Python
+environment is observed but not yet converged (see "Declared runtime dependencies"). The existing short-lived Actions
 single-printer dispatch is not a supervisor for this day-long controller. Deploying a
 supervised fleet entry and migrating that dispatch remain deployment work; do not run
 this controller under that job's 15-minute step timeout.
@@ -39,12 +44,13 @@ this controller under that job's 15-minute step timeout.
 
 1. Decode the entire request, refusing unknown printers, duplicate attempts/placements,
    malformed fields, unsupported rotations, and nonexistent support-free members.
-2. Derive the residential assembly once from the same producer as the review renderer.
-   Execute the existing CadQuery adapter: source checks, valid connected printed solids,
+2. Select the root's assembly once, from the same producer as its review renderer.
+   Execute the CadQuery adapter: source checks, valid connected printed solids,
    STL and STEP round trips, bed fit, and assembled printed-part intersections.
-3. Check the modeled socket hardware keep-outs against printed material. Their proposed
-   10 mm diameter × 6 mm depth allowances consume the socket's hole and placement data;
-   they are no longer coordinates authored only in a preparation script.
+3. Check the root's declared `required_keepouts` against printed material. The
+   residential cassette declares its rear-socket hardware allowances; the A16 duct
+   declares its 8-pin power keep-out. The prepared output binds the root by the
+   manifest digest, read back from one read of `cad/assembly.json`.
 4. Snapshot the three slicer profiles. Read the checked per-part STEPs, verify their
    digests, apply the requested rigid orientations, check the packed solids, and emit a
    3MF with a separate named object for each requested instance.
@@ -264,6 +270,27 @@ arc timing, unavailable feed, and firmware-command reporting.
 The direct-host workflow now checks the Ubuntu 24.04 provider before CAD work. Orca's declared host-package roots include WebKitGTK 4.1 and JavaScriptCoreGTK 4.1, OpenGL, GLU and EGL. The OCP package roots supply GL and X11. Package installation is observed through dpkg's decoded status; CadQuery/OCP imports and exact Python distribution versions are checked; the digest-pinned Orca artifact must actually run its help command. Receipts retain those observations. Installed packages alone are not a runtime-success claim.
 
 `product.printed_chassis.print_workflow.converge_runtime(receipt: ...)` is the explicit provisioner for the modeled printer LAN host. It uses the existing package observe/install/readback mechanism and the same requirement population as preparation. An unsupported OS or unreadable package observation refuses. Print preparation observes these dependencies and does not install packages implicitly.
+
+The print runtime is one observed value. `product.printing.print_runtime`
+`observe_print_runtime` checks the OS, packages, host architecture (`uname -m`), the CAD
+interpreter and the pinned Orca artifact, writes one `runtime.json` receipt, and mints
+`PrintRuntimeReady`. The CAD interpreter is not PATH `python3`: it is
+`/var/lib/gunbc/print-runtime/cad/<spec sha256>/bin/python`, named by
+`product.printing.cad_runtime_spec` (CPython tag, wheel platform, pinned distributions), and
+it must answer the probe from that executable. The CAD check, plate packing and readback are
+launched from that value only, and each plate readback records the runtime receipt's
+sha256. Slicer profiles are snapshotted once per invocation under `<output>/inputs`.
+
+`print_workflow.converge_runtime` (and so `provision_and_run`) converges that environment
+after the host packages (`product.printing.cad_runtime_converge`): it acquires the pinned
+micromamba by digest (`gunbc.url_file_acquisition`), takes an exclusive lock directory,
+solves the pinned Python and pip from conda-forge into the digest-named prefix, installs the
+pinned distributions with that prefix's own `python -m pip`, probes that interpreter, and
+only then writes the ready marker that publishes it. A second run is a no-op. A prefix that
+is unpublished or no longer matches is refused and left untouched; remove it to rebuild.
+The transitive packages below the pins are not locked, so the result is an observed matching
+environment, not a reproducible one. `/var/lib/gunbc/print-runtime` must be writable by the
+workflow's user.
 
 On 2026-10-05 a manual host-package install was mistakenly initiated before this declaration existed. It completed before the operator correction. The original failed preparation records remain under `/home/briansrls/print-run-2026-10-05/fan-recovery/prepared` on srv1. This is recorded as a process error; the later modeled readback does not retroactively make that earlier install modeled. Future provisioning goes through the declaration and convergence entry.
 
