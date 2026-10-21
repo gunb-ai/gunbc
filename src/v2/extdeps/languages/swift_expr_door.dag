@@ -7,7 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Absent, Present }
 import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.swift { swift_operator_realizations_catalog_node, swift_target_model, swift_value_expression_projection }
-import v2.extdeps.languages.swift.syntax { SwiftArgument, SwiftAwaitExpr, SwiftArrayLiteral, SwiftBooleanLiteral, SwiftClosure, SwiftDictionaryLiteral, SwiftExplicitMemberExpr, SwiftExpr, SwiftFunctionCallExpr, SwiftIdentifierExpr, SwiftImplicitMemberExpr, SwiftInfixExpr, SwiftIntegerLiteral, SwiftKeyPathExpr, SwiftNilLiteral, SwiftOptionalChainingExpr, SwiftParenthesizedExpr, SwiftPrefixExpr, SwiftStringLiteral, SwiftSubscriptExpr, SwiftTernaryConditionalExpr, SwiftTryExpr, SwiftTupleExpr, SwiftTypeCastingExpr, SwiftWildcardExpr }
+import v2.extdeps.languages.swift.syntax { SwiftArgument, SwiftAwaitExpr, SwiftArrayLiteral, SwiftBooleanLiteral, SwiftClosure, SwiftDictionaryLiteral, SwiftExplicitMemberExpr, SwiftExpr, SwiftFunctionCallExpr, SwiftIdentifierExpr, SwiftImplicitMemberExpr, SwiftInfixExpr, SwiftIntegerLiteral, SwiftKeyPathExpr, SwiftNilLiteral, SwiftOptionalChainingExpr, SwiftParenthesizedExpr, SwiftPrefixExpr, SwiftStringLiteral, SwiftSubscriptExpr, SwiftTernaryConditionalExpr, SwiftTryExpr, SwiftTupleExpr, SwiftTypeCastingExpr, SwiftWildcardExpr, sw_add, sw_arg, sw_arr, sw_asq, sw_await, sw_calln, sw_callt, sw_chain, sw_cloe, sw_dict, sw_id, sw_keypath, sw_kv, sw_not, sw_pos, sw_raw, sw_str, sw_sub, sw_t, sw_ternary, sw_try }
 import v2.std.compilers.target_model {
   TargetModel,
   TargetValueExprFieldInitSlot,
@@ -32,8 +32,32 @@ import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
 // spelled by the swift.dag productions under the convergence frontier row
 // swift_syntax_forms_outside_value_expression_projection_frontier.
 data swift_syntax_forms_outside_value_expression_projection_frontier: DissolutionCondition = unbound_dissolution(
-  description: "Swift syntax forms outside TargetValueExpressionProjection: labelled call arguments, string, raw-string, array and dictionary literals, infix and prefix operators, ternary, closures, subscript, try and await, key paths, casts, optional chaining, control flow, and a call nested as a call argument (target_value_expression_reify_from_wire has no callable-apply arm). v2.extdeps.languages.swift_expr_door refuses each with swift_expr_door_outside_projection; the rows printer v2.extdeps.languages.swift.rows still spells them and is frozen. CONSUMER: the generator switch that retires rows.dag (statements and member syntax family, next in the sequence). DISSOLVES WHEN the shared TargetValueExpressionProjection gains columns for these forms, SUFFICIENT FOR every SwiftExpr the four approve_ios_swift generators author to print through the projection with no swift.dag production beside it."
+  description: "Swift syntax forms outside TargetValueExpressionProjection: labelled call arguments, string, raw-string, array and dictionary literals, infix and prefix operators, ternary, closures, subscript, try and await, key paths, casts, optional chaining and control flow. (A call nested as a call argument is NOT listed: the projection spells it, pinned by swift_expr_door_byte_identity nested_call_argument_prints_identically_both_ways_holds.) v2.extdeps.languages.swift_expr_door refuses each with swift_expr_door_outside_projection; the rows printer v2.extdeps.languages.swift.rows still spells them and is frozen. CONSUMER: the generator switch that retires rows.dag (statements and member syntax family, next in the sequence). DISSOLVES WHEN the shared TargetValueExpressionProjection gains columns for these forms, SUFFICIENT FOR every SwiftExpr the four approve_ios_swift generators author to print through the projection with no swift.dag production beside it."
 )
+
+// THE TYPED FORM OF THE FRONTIER ROW ABOVE: one specimen SwiftExpr per form the row lists, in the
+// row's order. It is read by v2.test.claim.emit.swift_expr_door_byte_identity, which requires every
+// specimen to refuse on the door path (so no listed form is one the projection can spell) and a
+// specimen the door does spell to fail that same check. The row's prose and this roster are one
+// fact stated twice; the claim is what keeps the prose from claiming a form the door prints.
+data swift_expr_door_outside_specimens: List<SwiftExpr> = [
+  sw_calln(f: "callee", a: [sw_arg(l: "tag", v: sw_id(n: "a")), sw_pos(v: sw_id(n: "b"))]),
+  sw_str(s: "text"),
+  sw_raw(s: "text"),
+  sw_arr(e: [sw_id(n: "a")]),
+  sw_dict(e: [sw_kv(k: sw_id(n: "a"), v: sw_id(n: "b"))]),
+  sw_add(l: sw_id(n: "a"), r: sw_id(n: "b")),
+  sw_not(e: sw_id(n: "a")),
+  sw_ternary(c: sw_id(n: "a"), t: sw_id(n: "b"), e: sw_id(n: "c")),
+  SwiftClosure { closure: sw_cloe(e: sw_id(n: "a")) },
+  sw_callt(f: sw_id(n: "callee"), a: [], c: sw_cloe(e: sw_id(n: "a"))),
+  sw_sub(b: sw_id(n: "a"), a: [sw_pos(v: sw_id(n: "i"))]),
+  sw_try(e: sw_id(n: "a")),
+  sw_await(e: sw_id(n: "a")),
+  sw_keypath(c: ["a"]),
+  sw_asq(e: sw_id(n: "a"), t: sw_t(n: "T")),
+  sw_chain(b: sw_id(n: "a"))
+]
 
 // A SwiftExpr is authored syntax with no source span, so a refusal is located by the form that
 // caused it: the site is an atom named for the SwiftExpr constructor.
