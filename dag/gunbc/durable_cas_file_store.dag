@@ -610,6 +610,16 @@ fn cas_observe_retained_slot_over(fs: FilesystemInterface, root: NonEmptyStr, ke
   }
 }
 
+fn cas_observe_retained_slot(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> CasSlotProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_retained"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_owner_only_failed_publication"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+  ]
+{
+  cas_observe_retained_slot_over(fs: local_filesystem, root: root, key: key, retention: retention)
+}
+
 fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
   CasUnreadableObservationBoundExceeded { bound: attempts }
 }
@@ -1134,6 +1144,19 @@ fn cas_compare_and_set_outcome_over(
           }
       }
   }
+}
+
+fn cas_compare_and_set_outcome(
+  root: NonEmptyStr,
+  publication: CasGenerationPublication,
+  retention: CasSlotRetention,
+  verified: VerifiedCasAttempt,
+) -> CasOutcome<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
+  ]
+{
+  cas_compare_and_set_outcome_over(fs: local_filesystem, root: root, publication: publication, retention: retention, verified: verified)
 }
 
 // RECLAMATION FOLLOWS THE WRITER'S OWN COMMIT, AND IT CANNOT FAIL THE COMMIT.
