@@ -67,7 +67,7 @@ pub fn parse_dag_content(content: &str, filename: &str) -> Option<ParsedDagFile>
 
 /// Why a `.dag` text produced no parsed file: the parser's own diagnostic, or a parse that
 /// reported no error and still produced no module. Typed so a caller can REFUSE with the file
-/// located (`corpus_walk_refusal_line`) instead of receiving the `None` that `parse_dag_content`
+/// located (`ModuleBindingRefusal::rendered`, through `cli_run::refuse_unparseable_corpus_sources`) instead of receiving the `None` that `parse_dag_content`
 /// collapses both into.
 pub enum DagParseFailure {
     Diagnostic(Rc<crate::v1_std_core::CompilerDiagnostic>),
