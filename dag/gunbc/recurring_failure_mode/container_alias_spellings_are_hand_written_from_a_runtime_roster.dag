@@ -1,7 +1,8 @@
 module gunbc.recurring_failure_mode.container_alias_spellings_are_hand_written_from_a_runtime_roster
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
+
 
 // ONE ROW FOR THE CLASS THE SINGLE-AUTHORITY ALIAS GUARD WATCHES (#14597, review 83706). The guard's
 // dissolution trigger is required by DESIGN section 4b meta-obligation 3 to name the CAPABILITY
@@ -10,6 +11,7 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // the capability declared here.
 data container_alias_spellings_are_hand_written_from_a_runtime_roster: RecurringFailureMode = RecurringFailureMode {
     identity: "container_alias_spellings_are_hand_written_from_a_runtime_roster" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
     receipts: [
       "INVALID STATE AND HARM: std/types.dag hand-writes the container alias declarations (type List<element> = FreeMonoid<element>, and the Set and Map rows beside it) while std/algebra.dag carries the carrier roster as runtime data (algebra_carriers, built by a fold, with the alias spellings in carrier_container_alias_rows). Two representations of one fact (DESIGN section 3). If they drift -- a spelling renamed in one place, a carrier repointed in the other -- the two compilers of the same idea disagree and the disagreement is invisible: measured (dispatch I, PREDICTIONS_PIN in the session scratch instrument) that the live resolve/bind path consults the alias HEAD for name binding but never the alias BODY, so repointing the body changes no diagnostic, no acceptance and no type equality.",
       "RUNG FOUND AT -- STATED WITH ITS ENFORCEMENT GAP (review 83706 asked for the rung; review 83725 caught the first wording inflating it; DESIGN section 4b meta-obligation 1: the reported rung equals the rung established by EXECUTED evidence, and rung inflation is worse than sitting low). EXECUTED, IN THIS PR: the claim kernel_container_carrier_identity_witness -- predicate, four controls, the real-file witness and the capability-trigger consumer -- was run on a remote build of this head and its member verdicts are in the PR body. NOT GATE-ENFORCED: nothing on the required path evaluates a witness (DESIGN 'Building & checks'); the required context is the single emit-and-build job per gunbc.rung_drop v1_required_lanes_withdrawn, and the executor that would run this file (claim_batch over the floor roster, fleet-converge) is workflow_dispatch-only. So a PR repointing `type List<element> = ...` in std/types.dag lands GREEN today; this row and this claim do not stop it. The rung this row actually holds is therefore DETECTION-BY-INVOKED-CHECK -- the check exists, discriminates, and runs when invoked (dispatch, and by any author who runs it) -- NOT detection-on-the-required-path. The required-path rung is v1_required_lanes_withdrawn's restoration trigger, not this row's; claiming it here would be the inflation 4b forbids. CEILING (section 5): the aliases are DERIVED from the roster, so there is one authority and the drifted state cannot be written at all -- that makes this whole detection question moot, and it is what the trigger below names.",

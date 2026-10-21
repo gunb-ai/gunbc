@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.record_versus_block_at_a_brace_is_decided_by
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
+
 
 data record_versus_block_at_a_brace_is_decided_by_lookahead: RecurringFailureMode = RecurringFailureMode {
   identity: "record_versus_block_at_a_brace_is_decided_by_lookahead" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**After a lowercase identifier, a brace is a record initializer or a block, and the grammar decides it by speculative parse, not by position** (`match x { none => .. }` probes `x { none` as a record; `if b { x } else` is cut by dag_grammar_block_of_one_name_before_else_expr; `loop b { x }` reads as the record `b { x }`). Consequence measured 2026-10-21 on gunbc#14595: a guard at the pun position that refuses a reserved word whatever follows it refused 521 corpus modules (parse_keyword_as_value_name), attributed (inferred, not isolated) to the probe reaching blocks that open with a statement keyword; a guard keyed on the next token is defeated by an omitted comma (`R { none x }`). The pun refusal therefore lives in body lowering, keyed on the parsed pun field (body_lower_field_init_pun_edge), with the parse admitting the pun.",

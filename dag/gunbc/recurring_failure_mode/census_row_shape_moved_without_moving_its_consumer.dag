@@ -1,7 +1,8 @@
 module gunbc.recurring_failure_mode.census_row_shape_moved_without_moving_its_consumer
 
 import std.types { String, NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, NoRungStated }
+
 
 // REGISTERED BY PR #14574'S REVIEW (review 83899): the PR narrowed a real-route control to the b-side
 // because the a-side member no longer exists on the route, and recorded that fact in `//`. A status in
@@ -11,6 +12,7 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data census_row_shape_moved_without_moving_its_consumer: RecurringFailureMode = RecurringFailureMode {
   identity: "census_row_shape_moved_without_moving_its_consumer" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a census row's shape or stage moved and its consumer was left reading the old fact: the native census classifies each refused module into a cause-group member keyed by (path, reason, stage), attributed to a root by import-reachability. A move to where a refusal is FILED -- which stage owns it, which module heads the chain, whether a module is a root at all -- silently changes what every downstream claim sees, because the claims assert on the SHAPE (which members exist, which stage, what fan-out), not on a contract. Nothing refuses a shape move: no migration, no consumer census, no typed notice. The consumer keeps asserting against a fact that is no longer produced, and reads red. Claiming 'moved' requires an OBSERVED prior green: with one, the move is demonstrated; without one, the state is an unresolved producer-versus-expectation mismatch -- a state this carrier also holds (its specimen below), and it must be recorded as such, never inflated into a demonstrated move.",

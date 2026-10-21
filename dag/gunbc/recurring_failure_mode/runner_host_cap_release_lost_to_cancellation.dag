@@ -1,11 +1,14 @@
 module gunbc.recurring_failure_mode.runner_host_cap_release_lost_to_cancellation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, BelowCeiling, FoundOnRung }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data runner_host_cap_release_lost_to_cancellation: RecurringFailureMode = RecurringFailureMode {
   identity: "runner_host_cap_release_lost_to_cancellation" as NonEmptyStr,
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "either the native-emitted release entry (the self-host frontier covering this closure, a binary that runs without resolving) or a durable store inhabiting std.temporal_effect HeldLease / std.durable_exclusive_hold so the next converge can re-admit a host a dead run drained" } },
 
   receipts: [
     "INVALID STATE: a runner host whose slots the cap bracket masked (gunbc.runner.runner_host_cap_bracket) and whose always() release never ran or was force-cancelled before it re-admitted them. The units stay masked, so the host takes no jobs, and nothing re-admits them: the next converge reads the obligation of another run as untrusted (release_decision_of ObligationStale) and refuses, which is correct but does not unmask anything.",
