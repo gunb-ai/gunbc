@@ -183,7 +183,7 @@ type ReservationJoin<Q, S>
   | MoneyLedgerRefused { refusal: MoneyRefusal }
   | ResourceLedgerRefused { refusal: EncumbranceRefusal<Q, S> }
 
-fn commit_reservations<Q, S>(
+fn commit_reservations<Q: Quantity, S: Scale>(
   account: MoneyAccount,
   money_request: MoneyReservationRequest,
   ledger: EncumbranceLedger<Q, S>,
@@ -399,7 +399,7 @@ type GrantIssue<P, Q, S>
 // issuing Work: a winner bound and ranked for work A must not issue for work B. The offer and route
 // arms of permit_standing cannot fire on a sealed candidate -- bind_candidate already refused those
 // -- and are mapped rather than dropped only because permit_standing is one shared coproduct.
-fn issue_grant<P, Q, S>(
+fn issue_grant<P, Q: Quantity, S: Scale>(
   work: Work<P>,
   attempt: Attempt<P>,
   selected: SelectedOffer<P>,

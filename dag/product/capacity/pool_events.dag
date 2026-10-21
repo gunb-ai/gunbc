@@ -205,7 +205,7 @@ fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>
 // parameters -- minted here from a Measure the pool typed, and re-minted at replay by
 // pool_apply_event into the Pool<Q, S> being folded. A JSON integer carrying a magnitude whose unit
 // the surrounding type fixes is a serialization, not a second model of the unit.
-type SeatRequest<Q, S> {
+type SeatRequest<Q: Quantity, S: Scale> {
   reference: NonEmptyStr
   amount: Measure<Q, S, Nat>
   at: EpochSecs

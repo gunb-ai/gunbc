@@ -116,7 +116,7 @@ fn cell_grant_owner(grant: ExecutionGrant<NonEmptyStr>) -> DurableHoldOwnerRef {
   (grant.id.key as String) as DurableHoldOwnerRef
 }
 
-fn grant_selected_cell<Q, S>(
+fn grant_selected_cell<Q: Quantity, S: Scale>(
   root: NonEmptyStr,
   work: Work<NonEmptyStr>,
   attempt: Attempt<NonEmptyStr>,
@@ -144,7 +144,7 @@ fn grant_selected_cell<Q, S>(
   }
 }
 
-fn grant_selected_cell_under_exclusion<Q, S>(
+fn grant_selected_cell_under_exclusion<Q: Quantity, S: Scale>(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   work: Work<NonEmptyStr>,

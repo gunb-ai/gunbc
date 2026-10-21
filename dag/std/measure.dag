@@ -277,11 +277,11 @@ fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSub
   }
 }
 
-fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
+fn measure_le<Q: Quantity, S: Scale>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
 
-fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
+fn time_measure<S: Scale>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }
 
@@ -1056,7 +1056,7 @@ fn rpm_count(r: RevolutionsPerMinute) -> Nat {
   measure_count(r)
 }
 
-type MoneyAmount<S> = Measure<Currency, S, Nat>
+type MoneyAmount<S: Scale> = Measure<Currency, S, Nat>
 
 type MoneyAmountMicro = MoneyAmount<Micro>
 
