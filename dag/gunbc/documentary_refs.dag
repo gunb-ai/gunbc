@@ -47,13 +47,6 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
-fn ruling_is_cited_in_design(r: DesignRuling) -> Bool {
-  match r.standing {
-    CitedInDesign => true
-    LedgerOnly { reason: _ } => false
-  }
-}
-
 // THE GENERATED DOCUMENT'S REFERENCES ARE THE ROWS IT HAS CLASSIFIED AS CITED, not every ruling: a
 // LedgerOnly row is declared not to be a document reference, so it is not in the population the
 // citation resolver and the render claim hold the document to. Whether the document actually
@@ -61,7 +54,7 @@ fn ruling_is_cited_in_design(r: DesignRuling) -> Bool {
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
   concat(
     [v1_maintenance_standing_ref, required_gate_subjects_ref],
-    map(filter(design_rulings(), r => ruling_is_cited_in_design(r: r)), r => r.reference),
+    map(filter(design_rulings(), r => ruling_standing_agrees_with_citation(standing: r.standing, cited: true)), r => r.reference),
   )
 }
 
