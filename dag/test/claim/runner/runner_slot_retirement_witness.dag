@@ -55,7 +55,7 @@ import gunbc.host.host_operation_exec {
 }
 import gunbc.host.host_effect { LocalShell }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
-import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.runner.runner_slot_retirement {
   CgroupObservedEmpty,
   CgroupObservedPopulated,
