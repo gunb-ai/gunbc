@@ -5,7 +5,8 @@ import std.process { ExitSuccess, ExitFailure }
 import std.optional { Absent, Optional, Present }
 import std.logic { Bool }
 import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { DeclarationRef, decl_ref }
 // `list_member` is the sanctioned custom-equality membership, not `std.algebra.contains`: the seed
 // intercepts `contains` and discards its `eq` argument (declared at `std.list`'s own header, tracked by
 // `gunbc.list_membership_operation_gap`), so `contains(xs:, item:, eq:)` silently falls back to whole-
@@ -992,7 +993,9 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
       known_red_marker_host_tool,
       known_red_marker_probed,
       known_red_marker_route_gap,
-      known_red_marker_entry_resolve,
+      known_red_marker_entry_resolve
+    ],
+    arms: [
       // THE ARMS THAT DECIDE A CLASSIFICATION, tied as word+marker pairs. These are the ones the classifier
       // reads: if a word moves off one of these arms, the row it describes stops being seen, so the pair is
       // what has to be present -- not the bracketed fragment on its own.
@@ -1142,17 +1145,58 @@ fn known_red_print_markers_untied() -> List<String> {
   )
 }
 
-// THE DECLARED GENERALIZATION (DESIGN §6b). This module decodes a human-readable transport, and the root
-// generalization is `claim_batch` emitting a TYPED outcome wire — the shape `gunbc.cli_wire`'s
-// `CliWireResponse` already models for a printed answer — at which point every predicate, cause and field
-// extractor in this section is deleted rather than maintained. That change is in the harness lane
-// (`src/v1/stage0/src/bin/claim_batch.rs`), which this PR does not own, so the second path is DECLARED
-// here with its trigger instead of being silently carried. FOLLOW-UP LANE: the harness owner adds the
-// typed outcome to `claim_batch`'s `--claim-run` output and this instrument switches to parsing it;
-// `known_red_print_authorities` and `known_red_print_markers_untied` are what make the interim safe (a reworded
-// arm refuses, it does not misclassify), so the deferral is bounded by execution, not by good intentions.
-data known_red_transport_decoder_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: this module's per-arm decoder of claim_batch's printed verdict lines — the known_red_marker_* constants, the known_red_body_is_* predicates, known_red_terminal_of_line / known_red_line_body / known_red_terminal_of_body and their field extractors — plus known_red_print_authorities and known_red_print_markers_untied. DISSOLVES WHEN src/v1/stage0/src/bin/claim_batch.rs's --claim-run transport emits a typed outcome through the modeled CLI wire (gunbc.cli_wire CliWireResponse) instead of a human-readable line, and this instrument's fold parses THAT rather than matching prose. Owner: the claim_batch harness lane, not this instrument.")
+// THE DECLARED GENERALIZATION (DESIGN §6b), ADMITTED AS DEBT BY THE OPERATOR.
+//
+// This module decodes a human-readable transport. Review 84069 blocked on that being a second description of
+// the harness's output; the operator then ADMITTED the scaffold on three conditions (relayed 2026-10-21):
+// the approval is recorded outside the diff, the dissolution is bound to the typed outcome the harness lane
+// delivers with that lane's consent on the record, and the trigger names the CAPABILITY rather than an
+// artifact. The fail-closed rewording refusal is kept as the RED, so the interim is bounded by execution: a
+// reworded arm refuses the run, it does not misclassify.
+//
+// THE TRIGGER, as agreed with the harness owner (sunny-bear-433, on the PR): the day `claim_batch`'s
+// --claim-run answers with one `v2.workflow.floor_terminal_ledger` `ClaimAttemptTerminal` per claim on a
+// machine-readable path, this section's marker constants, `known_red_body_is_*` predicates, field extractors
+// and classifier are DELETED rather than maintained -- the fold reads the typed outcome instead of
+// reconstructing it from prose. He names it provisionally and asks that it stay provisional until he says
+// otherwise, so the name below is his current choice, not a settled one.
+data known_red_transport_decoder_target: DeclarationRef = decl_ref(module_path: "v1_compiler.claim_batch", decl_name: "claim_run_outcomes")
 
+data known_red_transport_decoder_dissolution: DissolutionCondition = bound_dissolution(ref: known_red_transport_decoder_target)
+
+// WHAT THE TRIGGER MEANS, in a carrier rather than in prose hanging off a declaration. A BoundDissolution
+// carries nothing but its ref (`dissolution_description` of one returns the ref's display key), so the
+// capability that retires this module has to be stated somewhere a reader is forced to look: as named parts of
+// one typed row, each of which the witness reads. Putting it in a `String` would be commentary wearing a
+// type-name, which §4c refuses.
+type KnownRedDecoderDeferral {
+  trigger: DeclarationRef
+  capability: String
+  owner: String
+  provisional: Bool
+}
+
+// The name is the harness owner's PROVISIONAL choice -- he asked that it stay flagged provisional until he
+// settles it, so `provisional` is a field the witness asserts rather than a note in a comment that rots.
+data known_red_transport_decoder_deferral: KnownRedDecoderDeferral = KnownRedDecoderDeferral {
+  trigger: known_red_transport_decoder_target,
+  capability: "DISSOLVES WHEN claim_batch's --claim-run transport answers each claim with a typed ClaimAttemptTerminal on a machine-readable path, and this fold reads THAT instead of matching prose; the marker constants, the known_red_body_is_* predicates, known_red_line_body / known_red_terminal_of_printed / known_red_terminal_of_body and their field extractors are then DELETED, not maintained.",
+  owner: "the claim_batch harness lane (sunny-bear-433), not this instrument",
+  provisional: true
+}
+
+// THE HONEST LIMIT OF THAT BINDING, stated here and CHECKED in the witness. A bound trigger is only
+// meaningful if something can OBSERVE it, and the observer's population is `gunbc.dissolution_observation`'s
+// `dissolution_census_pool_roots`, whose declaration index walks `.dag` files only. The trigger names a Rust
+// file under `src/v1`, outside that population, so the census reports it as outside the index and
+// `census_ref_is_present` counts that as not-present -- the same report an un-delivered trigger would get.
+// Pending on this row is therefore NOT evidence that the harness lane has not delivered; reading it that way
+// is the quietest possible way to let the debt live forever, which is the failure sunny-bear-433 named when he
+// agreed to the trigger. `the_bound_decoder_trigger_is_unobservable_in_the_census_pool` asserts that condition
+// from the pool's own roots and the real path of the file the trigger lives in, so it FAILS the moment either
+// side changes: the pool widened to reach the Rust lane (this row becomes genuinely observable), or the
+// trigger moved into a path the pool already walks. Widening the pool is the harness lane's call, and not a
+// reason to unbind.
 // `ProcessExit::ExitFailure` STAYS ON THE OBSERVED ARM with `holds: false`, following the seed's own arm
 // which places it beside `Fail` rather than beside `RuntimeError`: a claim that returns a failing
 // ProcessExit has decided, and decided against. The arms this function exists to SEPARATE are the ones

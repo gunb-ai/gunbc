@@ -41,6 +41,7 @@ import gunbc.instruments.known_red_derivation {
   KnownRedPrintedArm, known_red_printed_arm_literal,
   known_red_transport_source_claim_batch, known_red_transport_source_cli_run,
   known_red_print_markers_untied, known_red_transport_decoder_dissolution,
+  known_red_transport_decoder_target, known_red_transport_decoder_deferral,
   known_red_route_gap_ground_of, known_red_route_gap_operation, known_red_host_tool_name,
   known_red_payload, known_red_budget_operation, known_red_runtime_error_parts,
   known_red_marker_exit_failure, known_red_marker_runtime_error, known_red_marker_panicked,
@@ -52,7 +53,9 @@ import gunbc.instruments.known_red_derivation {
   known_red_word_pass, known_red_word_fail, known_red_word_panicked,
   known_red_terminal_of_line
 }
-import std.dissolution { dissolution_description }
+import std.dissolution { dissolution_is_bound }
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.dissolution_observation { dissolution_census_pool_roots }
 
 // THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
 // subjects it owes and what the children printed — and asks the fold what it concluded. Nothing here
@@ -1917,6 +1920,30 @@ test fn a_relabelled_arm_is_reported_although_its_fragment_still_survives() -> B
 // registered would be tied by neither strength -- the same silent hole, moved up one level. The list here is
 // the classifier's own decision surface: each arm `known_red_terminal_of_body` can reach through a bracketed
 // body must appear among the registered pairs.
+// ONE ARM MATCHES THE MARKER IT IS REGISTERED AGAINST, and carries the word that arm's print begins with.
+// Written as a named function rather than a nested lambda because the parser wants a `=>` body to begin on
+// the same line as the arrow, and this predicate reads better as a name anyway.
+fn known_red_arm_matches(marker: String, arm: KnownRedPrintedArm) -> Bool {
+  let word_agrees =
+    if arm.marker != marker {
+      false
+    } else {
+      if marker == known_red_marker_panicked {
+        arm.word == known_red_word_panicked
+      } else {
+        arm.word == known_red_word_fail
+      }
+    }
+  word_agrees
+}
+
+fn known_red_marker_is_registered(marker: String) -> Bool {
+  any(
+    xs: known_red_print_authorities,
+    predicate: fn(a) { any(xs: a.arms, predicate: fn(arm) { known_red_arm_matches(marker: marker, arm: arm) }) }
+  )
+}
+
 test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
   let registered =
     fold(
@@ -1940,24 +1967,19 @@ test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
       known_red_marker_route_gap,
       known_red_marker_entry_resolve
     ]
+  // The count matches, so nothing is registered that the classifier does not decide through...
   (registered |> length) == (decides_on |> length)
-    && !any(
-      xs: decides_on,
-      predicate: fn(m) =>
-        !any(
-          xs: known_red_print_authorities,
-          predicate: fn(a) =>
-            any(
-              xs: a.arms,
-              predicate: fn(arm) =>
-                arm.marker == m
-                  && (
-                    (arm.word == known_red_word_panicked && m == known_red_marker_panicked)
-                      || (arm.word == known_red_word_fail && m != known_red_marker_panicked)
-                  )
-            )
-        )
-    )
+    // ...and every arm the classifier DOES decide through is registered with the right word. An arm added to
+    // the dispatcher without a registered pair would be tied by neither strength: the same silent hole, moved
+    // one level up, where the fragment check cannot see it either.
+    && known_red_marker_is_registered(marker: known_red_marker_exit_failure)
+    && known_red_marker_is_registered(marker: known_red_marker_not_bool)
+    && known_red_marker_is_registered(marker: known_red_marker_runtime_error)
+    && known_red_marker_is_registered(marker: known_red_marker_panicked)
+    && known_red_marker_is_registered(marker: known_red_marker_not_attempted)
+    && known_red_marker_is_registered(marker: known_red_marker_host_tool)
+    && known_red_marker_is_registered(marker: known_red_marker_route_gap)
+    && known_red_marker_is_registered(marker: known_red_marker_entry_resolve)
 }
 
 // THE GENERALIZATION IS DECLARED, WITH ITS TRIGGER (DESIGN 6b). This module matches a human-readable
@@ -1966,11 +1988,50 @@ test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
 // in the repo's own dissolution vocabulary rather than carried silently: the description names the transport,
 // the typed wire it dissolves into, and the owner of the follow-up. A row that only says 'TODO' would let the
 // second path outlive its reason.
-test fn the_decoder_deferral_is_declared_with_its_trigger_and_owner() -> Bool {
-  let described = dissolution_description(condition: known_red_transport_decoder_dissolution)
-  string_contains(s: described, pattern: "claim_batch")
-    && string_contains(s: described, pattern: "cli_wire")
-    && string_contains(s: described, pattern: "DISSOLVES WHEN")
-    && string_contains(s: described, pattern: "typed outcome")
-    && string_contains(s: described, pattern: "Owner:")
+// THE DEBT IS BOUND, NOT DESCRIBED (review 84069, operator admission 2026-10-21). `unbound_dissolution` let a
+// dissolve-on condition be any sentence, which is how a scaffold survives: the condition reads plausibly and
+// nothing ever checks it. This asserts the row is a BoundDissolution whose trigger is a DECLARATION REF naming
+// the harness lane's typed outcome -- so if anyone reverts it to prose, this claim goes red rather than
+// quietly re-legitimising the second path.
+test fn the_decoder_debt_is_bound_to_a_declaration_ref_not_to_prose() -> Bool {
+  dissolution_is_bound(condition: known_red_transport_decoder_dissolution)
+    && declaration_ref_display_key(ref: known_red_transport_decoder_target)
+      == "v1_compiler.claim_batch::claim_run_outcomes"
+}
+
+// THE TRIGGER IS CHECKABLE, AND ITS LIMIT IS STATED WHERE A READER MEETS IT. The capability, the owner and the
+// provisional status are named fields of one carrier, not a paragraph beside a declaration: `capability` says
+// WHAT firing buys, `owner` says who owes it, and `provisional` is the harness owner's own request that the
+// name not be treated as settled until he says so. A carrier nobody reads is still dead data, so this claim is
+// what keeps the fields alive: assert each one, and assert the trigger inside it is THE SAME ref the
+// dissolution binds, so the two cannot drift apart and leave a row that documents a debt nobody owes.
+test fn the_decoder_deferral_carrier_names_the_capability_the_owner_and_the_trigger() -> Bool {
+  let d = known_red_transport_decoder_deferral
+  string_contains(s: d.capability, pattern: "DISSOLVES WHEN")
+    && string_contains(s: d.capability, pattern: "ClaimAttemptTerminal")
+    && string_contains(s: d.capability, pattern: "DELETED")
+    && string_contains(s: d.owner, pattern: "claim_batch")
+    && string_contains(s: d.owner, pattern: "not this instrument")
+    && d.provisional
+    && declaration_ref_display_key(ref: d.trigger)
+      == declaration_ref_display_key(ref: known_red_transport_decoder_target)
+}
+
+// THE HONEST FAILURE MODE OF A BOUND TRIGGER, ASSERTED FROM THE OBSERVER'S OWN ROOTS. A trigger nobody can
+// observe is the same lie as an unbound one, only slower to notice: `dissolution_status` reports Pending both
+// when the declaration has not appeared and when the census cannot see the file it would appear in -- and this
+// trigger names a Rust file under `src/v1`, while `dissolution_census_pool_roots` covers `dag` and `src/v2`
+// and the index walks `.dag` files. So Pending today means NOTHING about whether the harness lane delivered,
+// and the row has to say so rather than look like a tracked commitment. This claim FAILS the moment that
+// changes -- the pool widened to reach the Rust lane (the row becomes genuinely observable, and someone must
+// then actually watch it), or my trigger moved somewhere the pool already walks -- because both sides of the
+// assertion are read from the data that decides the question, not written down twice.
+test fn the_bound_decoder_trigger_is_unobservable_in_the_census_pool() -> Bool {
+  let pool = dissolution_census_pool_roots
+  // The file the trigger names is the file the tie check reads, so both halves agree on where the harness lives.
+  (pool |> length) > 0
+    && !any(
+      xs: pool,
+      predicate: fn(root) { starts_with(s: known_red_transport_source_claim_batch, prefix: root) }
+    )
 }
