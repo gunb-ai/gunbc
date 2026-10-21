@@ -19,6 +19,8 @@ import v2.workflow.floor_route_gap {
 }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
+  EntryMissing,
+  ResolveInfrastructure,
   RepositorySnapshot,
   UnpublishedWorkingTree,
   BudgetRefusedBeforeVerdict,
@@ -306,7 +308,11 @@ fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
     BudgetRefused { safety: s } => render_safety_detail(safety: s)
     HostToolUnresolved { name: n, probed: _ } => n
     RouteGap { operation: o, ground: _ } => o
-    SubjectUnresolved { entry: e, cause: c } => join([e, ": ", c], "")
+    SubjectUnresolved { entry: e, cause: c } =>
+      match c {
+        EntryMissing {} => join([e, ": entry is not a file"], "")
+        ResolveInfrastructure { detail: d } => join([e, ": ", d], "")
+      }
   }
 }
 

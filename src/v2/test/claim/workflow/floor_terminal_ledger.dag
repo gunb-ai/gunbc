@@ -6,6 +6,7 @@ import v2.workflow.required_floor { CompletedWithinSafetyLimits, SafetyInterrupt
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
+  EntryMissing,
   RepositorySnapshot,
   UnpublishedWorkingTree,
   ledger_is_candidate_bound,
@@ -131,7 +132,7 @@ test fn a_claim_whose_subject_did_not_resolve_is_unresolved_not_failed_nor_unrea
   let d = claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "u"),
     expectation: ExpectedToHold,
-    terminal: SubjectUnresolved { entry: "dag/test/claim/x.dag", cause: "entry is not a file: dag/test/claim/x.dag" }
+    terminal: SubjectUnresolved { entry: "dag/test/claim/x.dag", cause: EntryMissing {} }
   })
   d == SubjectUnresolvedBeforeVerdict && d != Failed && d != ObservationUnreadableBeforeVerdict
 }

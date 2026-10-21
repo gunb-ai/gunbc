@@ -188,6 +188,14 @@ type ClaimSafetyOutcome =
       preemption: ClaimPreemptionReachability
     }
 
+// WHY THE SUBJECT DID NOT RESOLVE, split as claim_batch's EntryResolveRefusal splits it: an entry
+// that is not a file never reached its subject; a refusal that is not a corpus diagnostic (host
+// budget unreadable, assembly attribution, unreadable source) names its own detail. A closure
+// diagnostic is a finding and has no arm here.
+type SubjectUnresolvedCause
+  = EntryMissing {}
+  | ResolveInfrastructure { detail: String }
+
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
@@ -196,7 +204,7 @@ type ClaimAttemptTerminal
   | BudgetRefused { safety: ClaimSafetyOutcome }
   | HostToolUnresolved { name: String, probed: List<String> }
   | RouteGap { operation: String, ground: FloorRouteGapGround }
-  | SubjectUnresolved { entry: String, cause: String }
+  | SubjectUnresolved { entry: String, cause: SubjectUnresolvedCause }
 
 // AN ATTEMPT THAT RETURNED STILL MAY NOT HAVE OBSERVED ANYTHING. A claim whose result is not a
 // verdict the floor can read -- the wrapper refusal a run reports when a function returns a bare

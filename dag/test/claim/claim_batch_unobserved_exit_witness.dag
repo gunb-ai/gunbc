@@ -20,8 +20,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE CLOSURE ERROR IS PLANTED, NEVER COMMITTED: a mktemp directory under target/ handed to the
 // child as its only --source-root. The entry imports a name its sibling module does not declare,
-// which is a closure diagnostic and not a host or infrastructure refusal. Neither arm needs the
-// `dag` root, so the child walks only the planted directory.
+// which is a closure diagnostic and not a host or infrastructure refusal. The finding arm also walks
+// `dag`, because a verdict needs `gunbc.output_policy`; the exit-2 arm is refused at the CLI before
+// any walk.
 
 data closure_error_entry_source: String = "module probe.closure_error_entry
 
