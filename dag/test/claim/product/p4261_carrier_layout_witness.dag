@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
@@ -127,6 +127,7 @@ import product.electrical.continuity {
 import product.p4261_carrier_layout {
   e1_u4, u4_configuration_text, alterations_text,
   e1_u5_2, e1_rw251_bga, u5_2_root_of_trust_text, e1_settled_indicators,
+  e1_u2_2, e1_u3_2, e1_j24, island_flash_text,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -2301,7 +2302,7 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
       }
       Absent => false
     })
-    && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups until it is configured, so whether it drives anything is read at CONF_DONE")
+    && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
     && carrier_input_reading(layout: p4261_e1_layout).contains("read at CONF_DONE")
     && count(e1_measured.bench.alterations) == 1
@@ -2337,4 +2338,29 @@ test fn u5_2_is_a_root_of_trust_and_two_indicators_blink_on_measured_periods() -
     && any(e1_settled_indicators, o => match o.basis { TimedInVideo { evidence: _, on_ms, off_ms, cycles: _ } => on_ms == 1360 && off_ms == 1320, _ => false })
     && phase_text_in(layout: p4261_e1_layout, key: "p3-settled").contains("DS6 green blinking timed in a video: on 1360 ms, off 1320 ms, over 5 cycles")
     && phase_text_in(layout: p4261_e1_layout, key: "p3-settled").contains("DS5 red or amber lit throughout a 15 s video")
+}
+
+// The three flashes (2026-10-21): Micron's decoder maps RW188 to MT25QU01G and RW251 to MT25QU02G, so
+// U3_2 and U2_2 are identified 1 Gbit rows and the third BGA a 2 Gbit row, all four-lane; the report
+// lists them by capacity and says which image each holds is unread. J24 is a component. U4's row now
+// names its unconfigured pins' state as the nIO_PULLUP strap's choice, INIT_DONE as user mode's signal
+// and VCCBAT as a reset condition, and the report says so. Supplied: a layout without U2_2 renders the
+// not-a-component text for it alone.
+fn flash_capacity_of(c: ComponentInstanceIdentity) -> Nat {
+  match installed(layout: p4261_e1_layout, c: c) {
+    Present { value: x } => match identified_row(c: x) { Present { value: row } => match row.specification { SerialFlashSpec { flash } => flash.capacity_mbit, _ => 0 }, Absent => 0 }
+    Absent => 0
+  }
+}
+
+test fn the_island_flashes_decode_to_two_1gbit_and_one_2gbit() -> Bool {
+  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_u2_2)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  flash_capacity_of(c: e1_u3_2) == 1024 && flash_capacity_of(c: e1_u2_2) == 1024 && flash_capacity_of(c: e1_rw251_bga) == 2048
+    && island_flash_text(layout: p4261_e1_layout).contains("U3_2 1024 Mbit (4 lanes, signature BB21h); U2_2 1024 Mbit (4 lanes, signature BB21h); BGA marked 2RA17 / RW251 right of U3_2 (designator unread; U39 is the small two-terminal part beside it) 2048 Mbit (4 lanes, signature BB22h); which image each holds is unread")
+    && island_flash_text(layout: without).contains("U2_2 is not a component of this carrier's observation")
+    && island_flash_text(layout: without).contains("U3_2 1024 Mbit")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("which image each holds is unread")
+    && count(component_of(layout: p4261_e1_layout, c: e1_j24)) == 1
+    && u4_configuration_text(layout: p4261_e1_layout).contains("weak pull-ups if its nIO_PULLUP strap enables them, else high impedance")
+    && u4_configuration_text(layout: p4261_e1_layout).contains("holds until VCCBAT is present")
 }

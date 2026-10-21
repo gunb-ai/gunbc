@@ -284,16 +284,41 @@ type ConfigurationSignal {
   role: ConfigurationSignalRole
 }
 
+// What a user pin does before the device is configured: a weak pull-up, high impedance, or one of the
+// two as a strap on the named pin selects.
 type UnconfiguredIoState
   = WeakPullUp
   | HighImpedance
+  | PullUpByStrap { strap: NonEmptyStr }
 
+// por_monitored_supplies names the rails the device's power-on reset watches beyond its core and I/O
+// supplies; a device whose reset holds until every one is present configures nothing while one is
+// missing, however the others read.
 type ProgrammableLogicSpecification {
   logic_elements: Nat
   memory: ConfigurationMemory
   schemes: List<ConfigurationScheme>
   signals: List<ConfigurationSignal>
   io_before_configuration: UnconfiguredIoState
+  por_monitored_supplies: List<NonEmptyStr>
+}
+
+// The signal that reports initialization complete and user mode entered, if the row names one; it is
+// optional on the device and stronger evidence than configuration done.
+fn initialization_done_signal(spec: ProgrammableLogicSpecification) -> ConfigurationSignal? {
+  (filter(spec.signals, s => match s.role { InitializationDone => true, _ => false })).first()
+}
+
+// A SERIAL FLASH, BY WHAT A READER OF IT NEEDS: capacity, supply, how many data lanes, the clock
+// ceiling, the JEDEC signature a bus read returns, and whether it has a reset pin.
+type SerialFlashSpecification {
+  capacity_mbit: Nat
+  supply: MillivoltRange
+  data_lanes: Nat
+  clock_mhz: Nat
+  jedec_signature: NonEmptyStr
+  dies: Nat
+  reset_pin: Bool
 }
 
 // A PLATFORM ROOT OF TRUST, BY WHAT IT PROTECTS. It sits between a processor and the flash that
@@ -400,6 +425,7 @@ type ComponentSpecification
   | LogicGateSpec { gate: LogicGateSpecification }
   | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
   | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
+  | SerialFlashSpec { flash: SerialFlashSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -437,5 +463,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     LogicGateSpec { gate: _ } => Absent
     ProgrammableLogicSpec { logic: _ } => Absent
     RootOfTrustSpec { root_of_trust: _ } => Absent
+    SerialFlashSpec { flash: _ } => Absent
   }
 }
