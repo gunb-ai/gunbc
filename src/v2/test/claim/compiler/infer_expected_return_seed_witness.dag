@@ -60,7 +60,7 @@ fn ers_h() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn h
 fn ers_let_annotated() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn a() -> Int? {\n  let x: Int? = id2(Absent, Absent)\n  x\n}\n")) }
 fn ers_g() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn g() -> Int? {\n  let x = id2(Absent, Absent)\n  x\n}\n")) }
 fn ers_k() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), concat(ers_id2(), "fn keep<T>(a: T, b: T?) -> T? { b }\n\nfn k(c: Cell) -> Row? { keep(c, Absent) }\n"))) }
-fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { 1 }\n") }
+fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { Present { value: 1 } }\n") }
 fn ers_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
 
 fn ers_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {
@@ -112,7 +112,7 @@ test fn ers_planted_error_counts_one_holds() -> Bool { ers_error_count(o: ers_pl
 test fn ers_f_fn_return_accepts_holds() -> Bool { ers_infer_accepted(o: ers_f()) }
 test fn ers_h_bound_variable_accepts_holds() -> Bool { ers_infer_accepted(o: ers_h()) }
 test fn ers_annotated_let_accepts_holds() -> Bool { ers_infer_accepted(o: ers_let_annotated()) }
-test fn ers_g_no_declared_position_refuses_holds() -> Bool { ers_has(o: ers_g(), reason: ^application_argument_does_not_inhabit) }
+test fn ers_g_no_declared_position_refuses_holds() -> Bool { ers_has(o: ers_g(), reason: ^infer_unsolved_constructor_type_variable) }
 test fn ers_k_refuses_at_the_argument_holds() -> Bool { ers_has(o: ers_k(), reason: ^application_argument_does_not_inhabit) }
 
 fn ers_pick() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), "fn pick<T>(a: T) -> T { a }\n\nfn kp(c: Cell) -> Row { pick(c) }\n")) }
