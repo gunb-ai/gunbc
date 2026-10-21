@@ -73,7 +73,7 @@ import extdeps.github.app {
 }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.auth.deployment_gate_operator_steps {
-  deployment_gate_repository,
+
   deployment_gate_environment,
   deployment_gate_app_permissions,
   app_registration_step,
@@ -2517,12 +2517,31 @@ test fn the_witnessed_states_are_githubs_own() -> Bool {
 // 4. The rows name the boundary they protect, and the webhook row says what it sets
 // ---------------------------------------------------------------------------
 
+// CONSUMPTION, NOT COMPARISON (review 84186). The rows no longer spell the boundary, so the check
+// asks that the boundary's OWN symbols arrived in them: the installation and enablement subjects
+// carry boundary_repository_label of the sealed boundary row, and the enablement instruction carries
+// that label AND the environment symbol the boundary row owns. WHAT THIS DOES NOT CATCH: a literal
+// equal to today's value — an author who re-spells "gunb-ai/gunbc" as-is passes every contains()
+// below. Construction is the guard for that, not this check: the rows are assembled by concat from
+// deployment_gate_repository / deployment_gate_owner / deployment_gate_environment, all three of
+// which derive from srv1_deployment_gate_boundary, so the re-spelling is not the route this module
+// makes available. The deleted line `(deployment_gate_repository as String) == "gunb-ai/gunbc"` was
+// a copied string against a copied string — a change detector (§5) that could only catch an edit
+// to the row, never the drift it claimed to guard.
 test fn the_gate_rows_point_at_the_boundary_environment() -> Bool {
   deployment_gate_environment == gate_env
-    && (deployment_gate_repository as String) == "gunb-ai/gunbc"
-    && (rule_enablement_step.subject as String).contains("srv1-production")
+    && (app_installation_step.subject as String).contains(
+         boundary_repository_label(boundary: srv1_deployment_gate_boundary) as String
+       )
+    && (rule_enablement_step.subject as String).contains(
+         boundary_repository_label(boundary: srv1_deployment_gate_boundary) as String
+       )
+    && (rule_enablement_step.instruction as String).contains(
+         boundary_repository_label(boundary: srv1_deployment_gate_boundary) as String
+       )
+    && (rule_enablement_step.instruction as String).contains(srv1_production_environment_name as String)
     && (match ready_act() {
-           Present { value: i } => (i.subject as String).contains("srv1-production")
+           Present { value: i } => (i.subject as String).contains(srv1_production_environment_name as String)
            none => false
          })
 }

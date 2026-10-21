@@ -91,9 +91,19 @@ import gunbc.auth.github_deployment_environment {
   environment_protection_restricts_to_main,
 }
 
-// The repository the App is installed on. Named once, in one row, so the installation subject and
-// the rule-enablement subject cannot drift apart into two different repos.
-data deployment_gate_repository: NonEmptyStr = "gunb-ai/gunbc"
+// The repository the App is installed on — DERIVED from the sealed boundary, never re-spelled. The
+// boundary carries gunbc.repository.gunbc_repository, the ONE typed row this project owns for the
+// repository fact (§3: each fact lives in exactly one place), and boundary_repository_label assembles
+// owner + name the way the receipts and the REST route already carry it. The prior row was a sixth
+// spelling of one entity wearing a no-drift comment: the review (artifact 84186) caught that the
+// comment described the drift it was creating.
+data deployment_gate_repository: NonEmptyStr = boundary_repository_label(boundary: srv1_deployment_gate_boundary)
+
+// THE OWNER HALF OF THE BOUNDARY, read from the same sealed row. Needed because the App
+// registration instruction must name WHO owns the App, and "gunb-ai" as a literal there was another
+// spelling of the boundary's owner (§3). Field access at a row initializer follows
+// gunbc.runner.runner_lifecycle's runner_lifecycle_ci_org.
+data deployment_gate_owner: NonEmptyStr = srv1_deployment_gate_boundary.repository.owner
 
 // The environment whose gate moves. Reused from the row that already owns the srv1 boundary rather
 // than re-spelled as a literal, so a rename there cannot leave these rows pointing at nothing.
@@ -116,8 +126,8 @@ data deployment_gate_app_permissions: List<GitHubAppPermission> = gate_app_permi
 data app_registration_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.app.register" as HumanInterventionIdentity,
   frequency: FleetOnce,
-  subject: "gunb-ai/gunbc custom deployment protection rule App registration",
-  instruction: "In the GitHub Apps UI, create one new GitHub App owned by gunb-ai for the sole purpose of answering a custom deployment protection rule. Set repository permissions to exactly Actions: Read-only and Deployments: Read and write and nothing else, and subscribe to the deployment_protection_rule event. Generate and hand its private key to the broker's host-custody path (the same path as the broker's other secrets), never to a workflow secret. Record the App's numeric app id.",
+  subject: concat(deployment_gate_repository, " custom deployment protection rule App registration") as NonEmptyStr,
+  instruction: concat("In the GitHub Apps UI, create one new GitHub App owned by ", concat(deployment_gate_owner, " for the sole purpose of answering a custom deployment protection rule. Set repository permissions to exactly Actions: Read-only and Deployments: Read and write and nothing else, and subscribe to the deployment_protection_rule event. Generate and hand its private key to the broker's host-custody path (the same path as the broker's other secrets), never to a workflow secret. Record the App's numeric app id.")) as NonEmptyStr,
   completion_evidence: NoDischargeSiteModeled
 }
 
@@ -127,7 +137,7 @@ data app_registration_step: HumanIntervention = HumanIntervention {
 data app_installation_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.app.install" as HumanInterventionIdentity,
   frequency: FleetOnce,
-  subject: "App installation on gunb-ai/gunbc",
+  subject: concat("App installation on ", deployment_gate_repository) as NonEmptyStr,
   instruction: "Install the App on exactly the repository named by deployment_gate_repository, with no repository-access widening. Confirm the installation returns an installation id the broker can mint an installation access token against, and that minting it succeeds for that repository.",
   completion_evidence: NoDischargeSiteModeled
 }
@@ -140,7 +150,7 @@ data webhook_configuration_step: HumanIntervention = HumanIntervention {
   identity: "github.deployment-rule.webhook.configure" as HumanInterventionIdentity,
   frequency: FleetOnce,
   subject: "App webhook configuration",
-  instruction: "Set the App's webhook URL to a DISABLED endpoint (no receiver) and leave the signing secret recorded but unused. The selected route reads NOTHING from a delivery: discovery is an earlier ungated job in the run filing the approval request, and the broker answers GitHub outbound with an installation token. WHAT THAT IMPLIES is stated in the model as an open standing rather than assumed — gunbc.extdeps.github.deployment_protection_rule.rule_delivery_independence carries the inference that GitHub accepts the App's review without having delivered the webhook, with the read obligation that settles it. If that trial comes back refused, THIS ROW CHANGES: it becomes a real (tailnet-relayed) receiver and the fallback route is selected. The broker is reachable only on the tailnet (ntfy on srv1 behind tailscale serve), so a fallback receiver must be tailnet-relayed and NOT a public listener; do NOT open any inbound path to the tailnet-only approval broker to satisfy this row; a public GitHub exposure of the broker is a rejected alternative.",
+  instruction: "Set the App's webhook URL to a DISABLED endpoint (no receiver) and leave the signing secret recorded but unused. The selected route reads NOTHING from a delivery: discovery is an earlier ungated job in the run filing the approval request, and the broker answers GitHub outbound with an installation token. WHAT THAT IMPLIES is stated in the model as an open standing rather than assumed — extdeps.github.deployment_protection_rule.rule_delivery_independence carries the inference that GitHub accepts the App's review without having delivered the webhook, with the read obligation that settles it. If that trial comes back refused, THIS ROW CHANGES: it becomes a real (tailnet-relayed) receiver and the fallback route is selected. The broker is reachable only on the tailnet (ntfy on srv1 behind tailscale serve), so a fallback receiver must be tailnet-relayed and NOT a public listener; do NOT open any inbound path to the tailnet-only approval broker to satisfy this row; a public GitHub exposure of the broker is a rejected alternative.",
   completion_evidence: NoDischargeSiteModeled
 }
 
@@ -148,10 +158,10 @@ data webhook_configuration_step: HumanIntervention = HumanIntervention {
 // policy must still read as one main-only rule afterwards: enabling a rule must not have taken the
 // branch boundary with it.
 data rule_enablement_step: HumanIntervention = HumanIntervention {
-  identity: "github.deployment-rule.enable.srv1-production" as HumanInterventionIdentity,
+  identity: concat("github.deployment-rule.enable.", deployment_gate_environment) as HumanInterventionIdentity,
   frequency: FleetOnce,
-  subject: "custom deployment protection rule enabled on srv1-production",
-  instruction: "On the environment named by deployment_gate_environment, enable the App's custom deployment protection rule. Then read the environment back: GET /repos/gunb-ai/gunbc/environments/srv1-production must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main, and the required_reviewers rule must still be present at this stage. Do not remove any reviewer in this step.",
+  subject: concat("custom deployment protection rule enabled on ", concat(deployment_gate_environment, concat(" of ", deployment_gate_repository))) as NonEmptyStr,
+  instruction: concat("On the environment named by deployment_gate_environment, enable the App's custom deployment protection rule. Then read the environment back: GET /repos/", concat(deployment_gate_repository, concat("/environments/", concat(deployment_gate_environment, " must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main, and the required_reviewers rule must still be present at this stage. Do not remove any reviewer in this step.")))) as NonEmptyStr,
   completion_evidence: NoDischargeSiteModeled
 }
 
