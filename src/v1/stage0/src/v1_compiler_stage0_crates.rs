@@ -1183,13 +1183,6 @@ pub fn partition_facade_wrapper_reexports_outcome(
     )
 }
 
-pub fn stage0_partition_lookups_valid() -> bool {
-    match (*stage0_crate_boundary_emit_outcome()).clone() {
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: _, .. } => true,
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: _, .. } => false,
-    }
-}
-
 pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {
     match spec.kind.clone() {
         Stage0CrateKind::FoundationCrate => {

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.check_subject_shape_cannot_represent_the_state_the_check_detects
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data check_subject_shape_cannot_represent_the_state_the_check_detects: RecurringFailureMode = RecurringFailureMode {
   identity: "check_subject_shape_cannot_represent_the_state_the_check_detects" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a lens is correct and live over a subject shape that cannot represent the state it detects** (a check reaches its subject, executes on every run, and is enrolled as coverage -- and its RED is UNAUTHORABLE there, because the representation the subject is expressed in has no constructor for the state the check matches on. Nothing is skipped, nothing is absorbed, no population is withheld, and the check is not wrong: hand it a value of the shape it expects and it fires correctly. It is the SUBJECT that cannot carry the state, so the check is permanently green over that subject while reading as verified.",

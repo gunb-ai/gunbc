@@ -2305,7 +2305,7 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     }
 }
 
-pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+pub fn all_algebra_profiles() -> Rc<FreeMonoid<AlgebraProfile>> {
     Rc::new(vec![
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::OrderedSemiringProfile,

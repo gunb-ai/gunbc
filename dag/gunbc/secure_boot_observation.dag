@@ -1,0 +1,34 @@
+module gunbc.secure_boot_observation
+
+import std.types { HttpStatus, NonEmptyStr }
+
+// Repo-side observation and refusal carriers, deliberately unsealed: the standing seam and the
+// runner both construct them. Leaf module -- imports std only.
+
+// WHY A REFUSAL IS A UNION AND NOT A STRING. A refusal string cannot be routed to a remedy:
+// VendorCommandRejected means the transport does not speak that command (change the route),
+// ResourceNotFound means the transport speaks it but this unit has no such object (change the
+// question), AuthenticationRequired means someone must establish credentials (a human or a
+// secret store), and ReplyShapeUnrecognized means the reply did not match the schema (a
+// toolchain/version problem, and a fact worth recording because it usually means the BMC
+// firmware drifted), and AuthorizationDenied means credentials were accepted and the account lacks the
+// privilege (HTTP 403; a role grant, not a login). UnexpectedHttpStatus carries any other non-success status verbatim. Six different next actions, so six arms. A family row can be checked
+// against this union; it cannot be checked against prose.
+type FirmwareReadRefusal
+  = VendorCommandRejected { detail: NonEmptyStr }
+  | ResourceNotFound { detail: NonEmptyStr }
+  | AuthenticationRequired { detail: NonEmptyStr }
+  | AuthorizationDenied { detail: NonEmptyStr }
+  | UnexpectedHttpStatus { status: HttpStatus, detail: NonEmptyStr }
+  | ReplyShapeUnrecognized { detail: NonEmptyStr }
+
+// ON, OFF, NEVER ASKED, and ASKED-AND-DENIED are four states, not two states plus a wrapper.
+// Secure Boot decides whether the pinned unsigned iPXE chainloader (S1) ever reaches a shell: a
+// fleet that cannot say which of these four it is in cannot say whether its own pin will boot.
+// The standing is read-only here; enrolling or clearing a key is a change of state, not a
+// reading of one, and belongs to a route with its own readback.
+type SecureBootObservation
+  = SecureBootEnabled
+  | SecureBootDisabled
+  | SecureBootUnobserved { reason: NonEmptyStr }
+  | SecureBootRefused { refusal: FirmwareReadRefusal }

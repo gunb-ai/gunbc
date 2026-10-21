@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.condition_position_unjudged_against_bool
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data condition_position_unjudged_against_bool: RecurringFailureMode = RecurringFailureMode {
   identity: "condition_position_unjudged_against_bool" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed (rung 3), the attainable ceiling the receipt states for the if condition and the match-arm guard." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: an if condition or a match-arm guard whose value is not a Bool. `v1.compiler.infer` inferred both with `expected: none` and built no declared-type obligation for them, so `match n { x if 5 => 1  _ => 2 }` and `if 1 { .. }` were Accepted with zero diagnostics: the grammar declares the position Bool and nothing judged the value against it.",

@@ -1,0 +1,175 @@
+module gunbc.url_file_acquisition
+
+import std.types { NonEmptyStr, Bool, FilePath, String }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import std.filesystem { path_parent_directory }
+import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.http.client
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import gunbc.artifact_acquisition {
+  AcquisitionKey, ContentDigestSha256, UpstreamRevision, AcquisitionSource, AcquisitionSubject, AcquisitionHandler,
+  SourceUrl, SourceArgv,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptUnreachable, AttemptRejected,
+  AcquisitionFetched, AcquisitionRefused, PublishFailed, VerifyMechanismFailed,
+}
+
+// ONE FILE, ONE URL PER SOURCE, ONE SHA-256: the transport binding for gunbc.artifact_acquisition
+// when the artifact is a single file. Download into the subject's staging path, verify the digest
+// there, and publish by rename only after it matches, so the install path never holds bytes that
+// failed their key. Its first subject was the Ubuntu install ISO
+// (extdeps.provisioning.ubuntu_install_media_fetch); the print runtime's pinned micromamba binary
+// is the second, which is when the binding moved here instead of being written twice.
+
+// PRESENCE IS ESTABLISHED BY LISTING, NOT BY `test -f`. `test -f` is false both for a missing path
+// and for a directory, FIFO or other non-regular entry, so reading its false as absent would let an
+// attempt download beside, and move into, an entry nobody established was missing. The parent is
+// listed instead: an entry it does not name is absent; one it names must then be a regular file
+// before its digest is read, and anything else refuses without being touched. A parent that cannot
+// be listed is absent only when its own parent establishes that it is missing (a first run, before
+// ensure_parent has made the directory); an ancestor that exists but cannot be listed refuses.
+type UrlFileEntry = UrlFileEntryAbsent | UrlFileEntryListed | UrlFileEntryUnreadable { reason: NonEmptyStr }
+
+// THE ANCESTOR WALK IS A TAIL CALL. `first_cause` is Absent while the requested path itself is being
+// read, and then carries that path's indeterminacy up, so whatever an ancestor establishes, a
+// refusal names the path that was asked about.
+fn url_file_entry(path: String) -> UrlFileEntry {
+  url_file_entry_from(path: path, first_cause: Absent)
+}
+
+fn url_file_refusal(first_cause: NonEmptyStr?, own: String) -> UrlFileEntry {
+  match first_cause {
+    Absent => UrlFileEntryUnreadable { reason: own as NonEmptyStr }
+    Present { value: c } => UrlFileEntryUnreadable { reason: c }
+  }
+}
+
+fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry {
+  let parent = path_parent_directory(path: path)
+  match listed_entry_presence(directory: parent, name: path_basename(path: path)) {
+    FilesystemEntryAbsent(_) => UrlFileEntryAbsent
+    FilesystemEntryListed { directory: _, name: _ } => match first_cause {
+      Absent => UrlFileEntryListed
+      Present { value: c } => UrlFileEntryUnreadable { reason: c }
+    }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => url_file_refusal(first_cause: first_cause, own: c)
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      if parent == "/" || parent == "." || parent == path {
+        url_file_refusal(first_cause: first_cause, own: c)
+      } else {
+        match first_cause {
+          Absent => url_file_entry_from(path: parent, first_cause: Present { value: c as NonEmptyStr })
+          Present { value: f } => url_file_entry_from(path: parent, first_cause: Present { value: f })
+        }
+      }
+  }
+}
+
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
+
+fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
+  match url_file_entry(path: path as String) {
+    UrlFileEntryAbsent => AcquisitionAbsent
+    UrlFileEntryUnreadable { reason: r } => AcquisitionProbeFailed { reason: r }
+    UrlFileEntryListed => {
+      let regular = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
+      if regular.is_file == false {
+        AcquisitionProbeFailed { reason: join([path as String, " exists but is not a regular file; it is not replaced -- remove it to acquire the artifact"], "") as NonEmptyStr }
+      } else {
+        match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
+          Sha256Matches => AcquisitionVerified
+          Sha256Mismatch => AcquisitionDigestMismatch
+          Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
+        }
+      }
+    }
+  }
+}
+
+// THE PROBE KEEPS ITS PATH-AND-DIGEST SIGNATURE and the handler adapts to it, rather than the other
+// way round. Its three real-execution witnesses drive it with a temp file they wrote themselves, and
+// a probe that could only be called with a whole AcquisitionSubject would have forced those fixtures
+// to build one -- more ceremony around the same two facts. One authority, called by both.
+// A REVISION-KEYED SUBJECT IS REFUSED, NOT VERIFIED AGAINST A STAND-IN. This binding verifies one
+// file against one SHA-256; it has no way to check an upstream revision, so such a subject is a
+// caller defect and both paths say so: the probe reports that it could not establish the identity,
+// and an attempt is rejected with the same reason. Neither reads as wrong bytes at the path.
+data url_file_revision_key_refusal: NonEmptyStr = "the single-file URL acquisition verifies a SHA-256 content digest; a revision-keyed subject cannot be verified by it"
+
+fn observe_url_file_subject(subject: AcquisitionSubject) -> AcquisitionObservation {
+  match subject.key {
+    UpstreamRevision { revision: _ } => AcquisitionProbeFailed { reason: url_file_revision_key_refusal }
+    ContentDigestSha256 { hex: h } => observe_url_file(path: subject.install_path, expected_hash: h)
+  }
+}
+
+fn ensure_url_file_parent(subject: AcquisitionSubject) -> Bool {
+  let made = shell.Mkdir.Parents(path: subject.parent_directory as FilePath)
+  made.success
+}
+
+fn url_file_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.staging_path {
+    Present { value: p } => p
+    Absent => subject.install_path
+  }
+}
+
+fn attempt_url_file_source(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  let part_path = url_file_staging_path(subject: subject)
+  match subject.key {
+    UpstreamRevision { revision: _ } => AttemptRejected { detail: url_file_revision_key_refusal }
+    ContentDigestSha256 { hex: digest } => match origin.locator {
+      SourceArgv { argv: _ } =>
+        AttemptRejected { detail: "this mirror was built with a command-line locator, which the single-file URL transport cannot fetch; it downloads a URL" as NonEmptyStr }
+      SourceUrl { url: u } => attempt_url_file_download(subject: subject, origin: origin, url: u, part_path: part_path, digest: digest)
+    }
+  }
+}
+
+fn attempt_url_file_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr, digest: NonEmptyStr) -> AcquisitionAttempt {
+  let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
+  if downloaded.success == false {
+    AttemptUnreachable
+  } else {
+    match sha256sum_verify_via_shell(path: part_path, expected_digest: digest) {
+      Sha256Matches => url_file_publish(subject: subject, origin: origin, part_path: part_path)
+      Sha256Mismatch => url_file_discard_mismatch(part_path: part_path)
+      Sha256VerifyInfraFailure { reason: r } => url_file_discard_infra_failure(part_path: part_path, subject: subject, origin: origin, reason: r)
+    }
+  }
+}
+
+fn url_file_publish(subject: AcquisitionSubject, origin: AcquisitionSource, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let moved = shell.Move.File(source: part_path as FilePath, destination: subject.install_path as FilePath)
+  if moved.success {
+    AttemptTerminal { outcome: AcquisitionFetched {
+      identity: subject.identity, install_path: subject.install_path, source: origin,
+    } }
+  } else {
+    AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
+      identity: subject.identity, source: origin.identity, install_path: subject.install_path,
+    } } }
+  }
+}
+
+fn url_file_discard_mismatch(part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptFailedKey
+}
+
+fn url_file_discard_infra_failure(part_path: NonEmptyStr, subject: AcquisitionSubject, origin: AcquisitionSource, reason: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+    identity: subject.identity, source: origin.identity, reason: reason,
+  } } }
+}
+
+data url_file_acquisition_handler: AcquisitionHandler = AcquisitionHandler {
+  observe: observe_url_file_subject,
+  ensure_parent: ensure_url_file_parent,
+  attempt: attempt_url_file_source,
+}
