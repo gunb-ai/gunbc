@@ -1995,6 +1995,7 @@ pub(crate) fn resolve_entry_typed(
             entry_file,
             ResolvedGraphMemoShare::Memoize,
         )
+        .map_err(ResolveFailure::into_message)
     });
     resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
     out
@@ -2117,10 +2118,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
 > {
     match resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)? {
         CoreResolve::Resolved(graph, si, diags) => Ok((graph, si, diags)),
-        CoreResolve::NeedsAcquisition(providers) => Err(format!(
+        CoreResolve::NeedsAcquisition(providers) => Err(ResolveFailure::Infrastructure(format!(
             "generated providers {:?} are outside this closure, and this builder does not rebuild",
             providers.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>()
-        )),
+        ))),
     }
 }
 
@@ -2129,7 +2130,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
-) -> Result<CoreResolve, String> {
+) -> Result<CoreResolve, ResolveFailure> {
     let entry_file = phase_label;
     index
         .module_graph_facts
