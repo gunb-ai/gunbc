@@ -11450,13 +11450,14 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
-    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): whether
-    /// the layout holds a module this index's acquired closure does not. Set only by
+    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
+    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
     /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
-    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> bool>>>,
-    /// Providers the model asked to acquire that the layout holds and this index does not. The core
-    /// records them and refuses this pass; the demand-acquired loop rebuilds its closure with them.
-    providers_outside_index: RefCell<Vec<String>>,
+    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
+    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
+    /// reads the provider a second time.
+    provider_snapshots:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import

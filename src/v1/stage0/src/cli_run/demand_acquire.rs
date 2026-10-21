@@ -51,22 +51,27 @@ pub fn resolve_entry_graph_demand_acquired(
     // rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
     // ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
     let custom = Rc::new(custom_root_module_census(source_roots)?);
-    let mut seeds: Vec<String> = Vec::new();
+    let mut seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
     loop {
         let index = build_demand_acquired_index(source_roots, entry_file, &seeds)?;
         let roots = source_roots.to_vec();
         let census = custom.clone();
         *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-            matches!(read_layout_module(&roots, &census, module), Ok(Some(_)))
+            match read_layout_module(&roots, &census, module) {
+                Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
+                Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
+                Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
+            }
         }));
-        match resolve_entry_with_index(&index, entry_file) {
-            Ok(resolved) => return Ok(resolved),
-            Err(refusal) => {
-                let outside = index.providers_outside_index.borrow().clone();
-                let fresh: Vec<String> =
-                    outside.into_iter().filter(|m| !seeds.contains(m)).collect();
+        match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
+            super::entry_resolve::CoreResolve::Resolved(graph, si, _) => return Ok((graph, si)),
+            super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
+                let fresh: Vec<_> = providers
+                    .into_iter()
+                    .filter(|(m, _)| !seeds.iter().any(|(s, _)| s == m))
+                    .collect();
                 if fresh.is_empty() {
-                    return Err(refusal);
+                    return Err("generated provider acquisition made no progress on the demand-acquired path: every provider it asked for is already seeded".to_string());
                 }
                 seeds.extend(fresh);
             }
@@ -77,7 +82,7 @@ pub fn resolve_entry_graph_demand_acquired(
 fn build_demand_acquired_index(
     source_roots: &[String],
     entry_file: &str,
-    provider_seeds: &[String],
+    provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = super::pre_entry_phase::timed(
@@ -101,13 +106,14 @@ pub(crate) fn acquire_layout_closure(
     acquire_layout_closure_seeded(source_roots, entry_file, &[])
 }
 
-/// The entry's layout closure, also closing over `provider_seeds` -- modules generated references
-/// demand that no authored reference reaches. A seed the layout does not hold is skipped here; the
-/// resolve that demanded it refuses it typed (GeneratedProviderUnavailable).
+/// The entry's layout closure, also closing over `provider_seeds` -- providers generated references
+/// demand that no authored reference reaches, each with the exact source the pool answer read. A
+/// seed is inserted from that snapshot, never read again; only its own imports are read, as any
+/// closure's are.
 pub(crate) fn acquire_layout_closure_seeded(
     source_roots: &[String],
     entry_file: &str,
-    provider_seeds: &[String],
+    provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
     if !path.is_file() {
@@ -134,14 +140,12 @@ pub(crate) fn acquire_layout_closure_seeded(
     );
     let mut queue: VecDeque<String> = VecDeque::new();
     queue.push_back(entry_module);
-    for seed in provider_seeds {
+    for (seed, snapshot) in provider_seeds {
         if index.contains_key(seed) {
             continue;
         }
-        if let Some(acquired) = read_layout_module(source_roots, &custom, seed)? {
-            index.insert(seed.clone(), acquired);
-            queue.push_back(seed.clone());
-        }
+        index.insert(seed.clone(), snapshot.clone());
+        queue.push_back(seed.clone());
     }
     let mut known: HashSet<String> = index.keys().cloned().collect();
     while let Some(module) = queue.pop_front() {
