@@ -7,7 +7,8 @@ cd /root/workspace/repo-root 2>/dev/null || true
 #  B base(201fe0bd = PR base): same names, base-built binary -> refusal naming the unresolved import, zero verdicts.
 #  M mutation at head: restore the stale import in EACH file separately -> that file refuses with
 #    the named cause while the OTHER file stays all-PASS (wrong-cause control). Restore byte-exact.
-OID=$(gh pr view 14643 --repo gunb-ai/gunbc --json headRefOid --jq .headRefOid)
+# OID resolved locally via: gh pr view 14643 --repo gunb-ai/gunbc --json headRefOid --jq .headRefOid
+OID=3d8c73df80775c0f688c4ebc35f66115cef72afd
 echo "HEADSHA_from_gh=$OID"
 BASE=201fe0bd10da30ff0eeabaf2eabfc1b42f5e02f1
 FH=dag/test/claim/runner/runner_host_cap_bracket_witness.dag
