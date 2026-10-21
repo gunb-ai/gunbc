@@ -699,7 +699,7 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 115
+    timeout-minutes: 218
     if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure'
     permissions:
       contents: read
@@ -2178,8 +2178,29 @@ jobs:
           cat "$ROOT/target/runner-host-file-converge-receipt.txt"
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RUNNER_HOST_CAP_STEP_BUDGET_SECONDS: "3540"
         if: github.event.inputs.mode == 'runner_host_file_converge'
-        timeout-minutes: 15
+        timeout-minutes: 74
+      - name: "Runner host cap bracket: re-admit this host's slots and read them back (always)"
+        id: runner_host_cap_release
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_host_file_converge.dag --function runner_host_cap_release_ci_wet
+          cat "$ROOT/target/runner-host-cap-release-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: always() && (github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 19
+      - name: Upload runner host cap release receipt
+        id: runner_host_cap_release_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: runner-host-cap-release-receipt
+          path: target/runner-host-cap-release-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 10
       - name: "Password-session tools: ensure every tool password_session_host_cli_requirements enrolls is present on this runner, installing only what is measured absent"
         id: runner_password_session_tool_converge
         run: |-
