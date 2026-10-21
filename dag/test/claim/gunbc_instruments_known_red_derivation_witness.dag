@@ -24,7 +24,9 @@ import gunbc.instruments.known_red_derivation {
   known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
-  known_red_exit_code_of, known_red_exit_code_of_all, KnownRedDerivationRefusal,
+  known_red_disposition_name, known_red_no_line_cause, known_red_row_was_observed,
+  known_red_exit_code_of,
+  known_red_exit_code_of_all, KnownRedDerivationRefusal,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report,
   known_red_dedup, known_red_same_identity, known_red_row_line,
@@ -115,12 +117,77 @@ fn claim_of(subject: KnownRedSubject) -> ClaimRun {
   )
 }
 
+// THE FALSE VERDICT, IN THE ARM THE HARNESS ACTUALLY PRINTS. This used to read
+// `FAIL <f> (assertion returned false)`, a line `claim_batch` HAS NO ARM FOR: `ClaimOutcome::Fail` prints a
+// bare `FAIL {}` (src/v1/stage0/src/bin/claim_batch.rs:327-330), and the parenthesised forms belong to the
+// nine other arms, each with its own wording. The old decoder accepted any `FAIL f (…)` tail, so the invented
+// body passed -- which is the same defect as the instrument crediting a runtime error with a verdict, just
+// seen from the fixture side: the fixture was testing a transcript that cannot occur.
+fn fail_verdict_of(function: String) -> String {
+  concat("FAIL ", concat(function, "\n"))
+}
+
 fn fail_verdict(subject: KnownRedSubject) -> String {
-  concat("FAIL ", concat(subject.function, " (assertion returned false)\n"))
+  fail_verdict_of(function: subject.function)
 }
 
 fn pass_verdict(subject: KnownRedSubject) -> String {
   concat("PASS ", concat(subject.function, "\n"))
+}
+
+// THE NON-VERDICT LINES, IN THE HARNESS'S OWN WORDS. Each string below is copied from the `println!` that
+// produces it in src/v1/stage0/src/bin/claim_batch.rs:324-347, with the claim's own name substituted -- the
+// name the harness echoes is the one it was handed by `--function`, so a fixture that named some other claim
+// would test the fixture rather than the decoder. Nothing here is paraphrased: an arm that reads these lines
+// is asserting what the harness prints, not what this file hopes it prints.
+// `FAIL f (returned ProcessExit::ExitFailure, code {c}: {r})` -- the harness's own arm for a claim that
+// RETURNED a failing ProcessExit. This IS a verdict: the claim ran and answered false.
+fn exit_failure_verdict(subject: KnownRedSubject) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      " (returned ProcessExit::ExitFailure, code 1: boom)\n"
+    )
+  )
+}
+
+// `FAIL f (runtime error [{T}]: {M})` -- the host raised while evaluating. NOT a verdict.
+fn runtime_error_verdict(subject: KnownRedSubject, detail: String) -> String {
+  concat("FAIL ", concat(subject.function, concat(" (runtime error [", concat(detail, ")\n"))))
+}
+
+// ``FAIL f (returned `{G}`, not Bool; --claim-run entries must return Bool)`` -- the entry returned something
+// the harness cannot read as a verdict. NOT a verdict.
+fn not_bool_verdict(subject: KnownRedSubject, returned: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(
+        " (returned `",
+        concat(returned, ", not Bool; --claim-run entries must return Bool)\n")
+      )
+    )
+  )
+}
+
+// `PANICKED f (the host unwound during evaluation: {P})` -- printed with the PANICKED keyword, so it survives
+// the verdict-line filter, and it is NOT a verdict.
+fn panicked_verdict(subject: KnownRedSubject, payload: String) -> String {
+  concat(
+    "PANICKED ",
+    concat(subject.function, concat(" (the host unwound during evaluation: ", concat(payload, ")\n")))
+  )
+}
+
+// A LINE WITH A VERDICT KEYWORD AND A BODY NO ARM OF THE DECODER OWNS: what a `claim_batch` print arm that
+// drifted from this instrument looks like from here.
+fn unknown_arm_verdict(subject: KnownRedSubject) -> String {
+  concat(
+    "FAIL ",
+    concat(subject.function, " (the harness grew an arm this file has never been shown)\n")
+  )
 }
 
 // THE CHILD, BUILT FROM WHAT THE HARNESS PRINTED. `invoked: true` is the fact that a process was spawned
@@ -164,7 +231,7 @@ test fn a_failing_unenrolled_scheduled_claim_is_listed_and_the_same_claim_passin
     children: [
       child(
         claims: [claim_run(function: "the_hollow_fold_passes")],
-        stdout: "FAIL the_hollow_fold_passes (assertion returned false)\n"
+        stdout: fail_verdict_of(function: "the_hollow_fold_passes")
       )
     ]
   )
@@ -231,7 +298,7 @@ test fn an_identity_claimed_enrolled_but_absent_from_the_roster_is_not_treated_a
   let d = known_red_fold(
     head: "0000000000000000000000000000000000000008",
     subjects: [s],
-    children: [child(claims: [claim_run(function: "the_debt_is_paid")], stdout: "FAIL the_debt_is_paid (assertion returned false)\n")]
+    children: [child(claims: [claim_run(function: "the_debt_is_paid")], stdout: fail_verdict_of(function: "the_debt_is_paid"))]
   )
   (known_red_held_rows(rows: d.rows) |> length) == 0
     && known_red_unaccounted_reds(rows: d.rows)
@@ -286,7 +353,7 @@ test fn a_child_that_exited_nonzero_with_no_verdict_lines_refuses_and_is_not_rea
       Invoked {
         claims: [claim_run(function: "the_child_that_died")],
         exit_code: 1,
-        stdout: "FAIL the_child_that_died (assertion returned false)\n",
+        stdout: fail_verdict_of(function: "the_child_that_died"),
         stderr: ""
       }
     ]
@@ -625,7 +692,7 @@ test fn a_shared_verdict_name_across_children_is_attributed_to_each_and_not_refu
     subjects: [a, b],
     children: [
       child(claims: [claim_at(entry: hand, function: "the_shared_witness")], stdout: "PASS the_shared_witness\n"),
-      child(claims: [claim_at(entry: round, function: "the_shared_witness")], stdout: "FAIL the_shared_witness (refused)\n")
+      child(claims: [claim_at(entry: round, function: "the_shared_witness")], stdout: fail_verdict_of(function: "the_shared_witness"))
     ]
   )
   let names = join(map(split.refusals, r => known_red_refusal_name(r: r)), ",")
@@ -721,6 +788,17 @@ fn claim_at(entry: String, function: String) -> ClaimRun {
   ClaimRun { entry: entry, function: function }
 }
 
+// THE HEAD OF AN IDENTITY LIST, LOUDLY. `terminal_without_planned` is a list of identities, and an arm that
+// only counted it could pass on the WRONG stranger; this reads the one identity out so the arm can name it.
+fn known_red_first_identity(identities: List<WitnessIdentity>) -> WitnessIdentity {
+  fold(
+    xs: identities,
+    init: WitnessIdentity { module_path: "no.such.module", function: "no_such_function" },
+    f: (acc, i) =>
+      if acc.function == "no_such_function" { i } else { acc }
+  )
+}
+
 fn known_red_first_row(rows: List<KnownRedDerivationRow>) -> KnownRedDerivationRow {
   match rows {
     Cons { head: h, tail: _ } => h
@@ -735,7 +813,7 @@ fn known_red_no_row() -> KnownRedDerivationRow {
     entry: Underivable { name: "no.row", cause: "no row was produced" },
     origin: WetLane,
     expectation: ExpectedToHold {},
-    observation: Absent,
+    terminal: NotAttempted { halted_by: known_red_no_line_cause },
     disposition: claim_disposition(
       row: ClaimTerminalRow {
         identity: WitnessIdentity { module_path: "no.row", function: "no_row" },
@@ -748,21 +826,28 @@ fn known_red_no_row() -> KnownRedDerivationRow {
 
 // A ROW WAS OBSERVED: its observation is a Present verdict of some kind, not an absent one. Written as a
 // match so an arm cannot be satisfied by a row that merely exists in the list.
+// THE ROW CARRIES A TERMINAL, so an arm asks the terminal directly. This is a read of a decoded sum type, not
+// a second decoder: the decoding happened once in the instrument, and these arms only ask which arm it landed
+// on -- which is what `ClaimAttemptTerminal` exists to make answerable. Both 'no line' and 'a line no arm
+// owns' are `NotAttempted` and are asked of the instrument's own predicate, so the cause strings stay in one
+// place.
 fn known_red_row_observed(r: KnownRedDerivationRow) -> Bool {
-  match r.observation {
-    Present { value: _ } => true
-    Absent => false
-  }
+  known_red_row_was_observed(row: r)
 }
 
 fn known_red_row_holds(r: KnownRedDerivationRow, holds: Bool) -> Bool {
-  match r.observation {
-    // The unrepresentable arm is NOT collapsed into `false` alongside Absent: an observation that exists but
-    // cannot be read is a different fact from no observation at all, and folding them would make the arm
+  match r.terminal {
+    Returned { observation: ObservedVerdict { holds: h } } => h == holds
+    // The unrepresentable arm is NOT collapsed into `false` alongside the rest: an observation that exists
+    // but cannot be read is a different fact from no observation at all, and folding them would make the arm
     // above unable to tell its own rows apart.
-    Present { value: ObservedVerdict { holds: h } } => h == holds
-    Present { value: ObservationUnrepresentable { reason: _ } } => false
-    Absent => false
+    Returned { observation: ObservationUnrepresentable { reason: _ } } => false
+    RuntimeErrored { message: _ } => false
+    Panicked { payload: _ } => false
+    NotAttempted { halted_by: _ } => false
+    BudgetRefused { safety: _ } => false
+    HostToolUnresolved { name: _, probed: _ } => false
+    RouteGap { operation: _, ground: _ } => false
   }
 }
 
@@ -1023,15 +1108,15 @@ fn known_red_join(argvs: List<String>) -> String {
 // fabricate a defect from a routing mistake) and it is not a held known-red. Two subjects, the same line
 // shape: an unenrolled one whose genuine false IS an unaccounted red, but whose route-gap line is not; and
 // an enrolled one whose route-gap line leaves it neither held nor unaccounted but a plan without a terminal.
-// If `known_red_line_is_fail_for` ever stops excluding the never-reached markers, the first half turns the
-// route gap into a fabricated red and this arm fails.
+// If the decoder ever stops routing the never-reached markers to `RouteGap`/`HostToolUnresolved` and lets
+// them fall through to a verdict, the first half turns the route gap into a fabricated red and this arm fails.
 test fn a_route_gap_line_is_never_a_verdict_in_either_direction() -> Bool {
   let gap_name = "the_never_reached_gap"
   let unenrolled = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: gap_name)
   let genuine = known_red_fold(
     head: "0000000000000000000000000000000000000011",
     subjects: [unenrolled],
-    children: [child(claims: [claim_run(function: gap_name)], stdout: "FAIL the_never_reached_gap (assertion returned false)\n")]
+    children: [child(claims: [claim_run(function: gap_name)], stdout: fail_verdict_of(function: "the_never_reached_gap"))]
   )
   let gap = known_red_fold(
     head: "0000000000000000000000000000000000000011",
@@ -1066,4 +1151,249 @@ test fn every_receipt_line_names_the_lane_it_was_asked_in() -> Bool {
   }
   string_contains(s: line, pattern: "lane=RequiredFloor")
     && string_contains(s: known_red_report(d: red), pattern: "lane=")
+}
+
+// ─────────────── the terminal forms: what a line has to SAY to be a verdict ───────────────
+
+// THE SHAPE RATIONALE, ONCE. `claim_batch` prints one of a fixed set of lines, and the set is not
+// "PASS/FAIL plus prose": src/v1/stage0/src/bin/claim_batch.rs:324-347 has separate arms for a runtime
+// error, a non-Bool return, a host panic, a not-attempted behind a host, an unresolved host tool, a hermetic
+// route gap, a budget refusal, and an entry that failed to resolve. Those are NOT verdicts — the claim never
+// answered the question — and the ledger module spells them `RuntimeErrored`, `ObservationUnrepresentable`,
+// `Panicked`, …, which `claim_disposition` projects to `*BeforeVerdict`, never to `KnownRedHeld`.
+//
+// The arms below are written in the harness's OWN words because a fixture in words this file invented would
+// test the fixture, not the harness. Every string here is copied from the `println!` that produces it.
+
+// A RUNTIME ERROR IS NOT A HELD RED. This is the defect the parent asked to be repaired: the old line test
+// accepted any `FAIL f (…)` tail, so a claim that died in the host was recorded as a known-red HOLDING ITS
+// GROUND — a green label over a claim that never ran to a verdict. The string is the harness's own runtime
+// error arm.
+test fn a_runtime_error_line_is_not_counted_as_a_held_red() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000011",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: runtime_error_verdict(subject: s, detail: "arithmetic]: divide by zero")
+      )
+    ]
+  )
+  (known_red_held_rows(rows: d.rows) |> length) == 0
+    && known_red_disposition_name(d: known_red_first_row(rows: d.rows).disposition)
+         == "RuntimeErroredBeforeVerdict"
+}
+
+// A NON-Bool RESULT IS NOT A HELD RED EITHER, AND IS NOT THE SAME FACT AS A RUNTIME ERROR. The harness's
+// own arm says the entry returned something other than Bool; the ledger calls that `ObservationUnrepresentable`
+// and the projection refuses to read a verdict out of it. Asserting the name and not merely 'not Held' is
+// what keeps this arm from passing on the runtime-error case above.
+test fn a_non_bool_result_line_is_not_counted_as_a_held_red() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000012",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: not_bool_verdict(subject: s, returned: "Int")
+      )
+    ]
+  )
+  (known_red_held_rows(rows: d.rows) |> length) == 0
+    && known_red_disposition_name(d: known_red_first_row(rows: d.rows).disposition)
+         == "ObservationUnreadableBeforeVerdict"
+}
+
+// A PANIC IS NOT A HELD RED. `PANICKED` is a verdict LINE the harness prints, so it must survive the line
+// filter — and it must not become a Held. Both halves matter: dropping the line would make the identity look
+// never-printed, and accepting it as Held is the original bug.
+test fn a_panicked_line_is_not_counted_as_a_held_red() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000013",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: panicked_verdict(subject: s, payload: "index out of bounds")
+      )
+    ]
+  )
+  (known_red_held_rows(rows: d.rows) |> length) == 0
+    && known_red_disposition_name(d: known_red_first_row(rows: d.rows).disposition)
+         == "PanickedBeforeVerdict"
+}
+
+// THE CONTROL THE THREE ARMS ABOVE NEED. A BARE `FAIL f` and a `FAIL f (returned ProcessExit::ExitFailure,
+// …)` ARE verdicts: the claim ran, evaluated, and returned false. Those, and only those, are what
+// `KnownRedHeld` may come from. If a repair widens the decoder until Held swallows the arms above, this arm
+// is the one that goes red — it is the reason the three arms above are not simply 'never Held'.
+test fn a_bare_fail_and_an_exit_failure_are_the_only_failures_counted_as_held() -> Bool {
+  let s = enrolled_fixture()
+  let bare = known_red_fold(
+    head: "0000000000000000000000000000000000000014",
+    subjects: [s],
+    children: [child(claims: [claim_of(subject: s)], stdout: fail_verdict(subject: s))]
+  )
+  let exit_failure = known_red_fold(
+    head: "0000000000000000000000000000000000000014",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: exit_failure_verdict(subject: s)
+      )
+    ]
+  )
+  (known_red_held_rows(rows: bare.rows) |> length) == 1
+    && known_red_is_green(d: bare)
+    && (known_red_held_rows(rows: exit_failure.rows) |> length) == 1
+    && known_red_is_green(d: exit_failure)
+}
+
+// ─────────────────────── multiplicity and foreign lines, kept to the join ───────────────────────
+
+// A DUPLICATED VERDICT LINE IS REPORTED, NOT COLLAPSED. The fold used to ask `any(lines, …)`, which made a
+// line printed twice indistinguishable from a line printed once, so nothing anywhere could tell an echo from
+// a single transcript. It is refused under its OWN arm rather than under `LedgerReconciliation.
+// terminal_duplicated`, which means 'two ROWS for one identity' (a roster/packer defect) and is tested by
+// `a_duplicated_identity_is_refused_where_every_count_still_agrees` -- conflating the two would report a
+// harness echo as a roster bug. The same stdout printed ONCE is the control: the only difference between the
+// two runs below is the second copy of one byte-identical line.
+test fn a_duplicated_verdict_line_is_refused_under_its_own_arm() -> Bool {
+  let s = enrolled_fixture()
+  let line = fail_verdict(subject: s)
+  let once = known_red_fold(
+    head: "0000000000000000000000000000000000000021",
+    subjects: [s],
+    children: [child(claims: [claim_of(subject: s)], stdout: line)]
+  )
+  let twice = known_red_fold(
+    head: "0000000000000000000000000000000000000021",
+    subjects: [s],
+    children: [child(claims: [claim_of(subject: s)], stdout: concat(line, line))]
+  )
+  any(
+    xs: twice.refusals,
+    predicate: fn(r) { known_red_refusal_name(r: r) == "PrintedLineDuplicated" }
+  )
+    // the ledger's duplicated leg is about ROWS, and one line printed twice is still one row per identity
+    && (twice.reconciliation.terminal_duplicated |> length) == 0
+    && (once.refusals |> length) == 0
+    // one row per identity, still: the duplicate is REPORTED, the ledger is not doubled.
+    && (twice.rows |> length) == 1
+}
+
+// A LINE THE HARNESS COULD NOT HAVE PRINTED TWICE IS REFUSED BY NAME. Two lines for one claim that decode to
+// DIFFERENT terminals mean one of them is not this harness's: `claim_batch` prints one line per claim. The
+// duplicate arm above covers lines that agree; this is the arm where they do not, and it needs its own name
+// because 'duplicated' sends the reader to the roster while 'contradicted' sends them to the evidence.
+test fn two_lines_with_different_terminals_for_one_claim_are_refused_by_name() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000022",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: concat(pass_verdict(subject: s), fail_verdict(subject: s))
+      )
+    ]
+  )
+  any(
+    xs: d.refusals,
+    predicate: fn(r) {
+      known_red_refusal_name(r: r) == "PrintedLinesContradict" && known_red_exit_code_of(r: r) == 2
+    }
+  ) && !known_red_is_green(d: d)
+}
+
+// A FOREIGN FAIL IS NOT LOST, AND IS NOT ADOPTED. The child was handed one claim and printed a verdict for a
+// DIFFERENT claim. Two things must happen and the old fold did neither: the stranger's failure must survive
+// to the join as a terminal nobody planned, and it must not be credited to the subject that was actually
+// owed (which stays owed). `any()` dropped the stranger in silence; matching on the bare function name — an
+// earlier draft, which read the identity off the line — would have let a stranger in another module adopt it.
+test fn a_fail_line_for_an_unplanned_claim_is_reported_and_not_adopted() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000023",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: fail_verdict_of(function: "the_stranger")
+      )
+    ]
+  )
+  (d.reconciliation.terminal_without_planned |> length) == 1
+    && known_red_first_identity(identities: d.reconciliation.terminal_without_planned).function
+         == "the_stranger"
+    // the owed subject printed nothing, so it stays OWED and is never read as a held red
+    && (d.reconciliation.planned_without_terminal |> length) == 1
+    && (known_red_held_rows(rows: d.rows) |> length) == 0
+    && !known_red_is_green(d: d)
+}
+
+// THE CONTROL FOR THE FOREIGN ARM. The same child, printing for the claim it was actually handed, leaves the
+// foreign leg empty. Without this half, a join that reported EVERY line as foreign would pass the arm above.
+test fn a_line_for_the_claim_that_was_handed_is_not_foreign() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000024",
+    subjects: [s],
+    children: [child(claims: [claim_of(subject: s)], stdout: fail_verdict(subject: s))]
+  )
+  (d.reconciliation.terminal_without_planned |> length) == 0
+    && (d.reconciliation.terminal_duplicated |> length) == 0
+    && (d.reconciliation.planned_without_terminal |> length) == 0
+}
+
+// A LINE NO DECODER ARM OWNS IS REFUSED AS UNDECODABLE, NOT SKIPPED. The line has the transport's keyword, so
+// it survives the verdict-line filter, and a body no arm claims — not a runtime error, not a non-Bool return,
+// not a panic, not a route gap, not a budget. That is what a drifted `claim_batch` print arm looks like from
+// here, and it must say so: silently treating it as 'no line' would put the instrument back to reporting
+// coverage it does not have.
+test fn a_verdict_line_no_arm_owns_is_refused_as_undecodable() -> Bool {
+  let s = enrolled_fixture()
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000025",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: unknown_arm_verdict(subject: s)
+      )
+    ]
+  )
+  any(
+    xs: d.refusals,
+    predicate: fn(r) {
+      known_red_refusal_name(r: r) == "PrintedLineUndecodable" && known_red_exit_code_of(r: r) == 2
+    }
+  ) && (known_red_held_rows(rows: d.rows) |> length) == 0
+}
+
+// TWO CLAIMS SHARING A FUNCTION NAME DO NOT TRADE VERDICTS, AND THE KEEPER OF THAT FACT IS THE ENTRY. Two
+// subjects whose function names are identical live in different module paths; only the one whose PLACED PATH
+// is the child's entry may take the line. This is the arm that fails if attribution ever regresses to
+// matching on the printed name alone — the failure mode the deleted per-subject line collector existed to
+// prevent, and the reason the kept multiset carries an entry rather than only a name.
+test fn a_shared_function_name_is_taken_only_by_the_subject_whose_entry_printed_it() -> Bool {
+  let ours = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_shared_witness")
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000026",
+    subjects: [ours],
+    children: [
+      child(
+        claims: [ClaimRun { entry: "some/other/module.dag", function: "the_shared_witness" }],
+        stdout: "PASS the_shared_witness\n"
+      )
+    ]
+  )
+  // the line came from a child asked under a different entry: ours is owed, and the line is foreign.
+  (d.reconciliation.planned_without_terminal |> length) == 1
+    && (d.reconciliation.terminal_without_planned |> length) == 1
 }

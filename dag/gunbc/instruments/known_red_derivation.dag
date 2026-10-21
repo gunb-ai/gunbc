@@ -38,7 +38,9 @@ import gunbc.instruments.host_prelude {
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_terminal_ledger {
+  BudgetRefused,
   ClaimAttemptTerminal,
+  ClaimSafetyOutcome,
   ClaimDisposition,
   ClaimExpectation,
   ClaimObservation,
@@ -52,19 +54,28 @@ import v2.workflow.floor_terminal_ledger {
   LedgerBinding,
   LedgerFinalized,
   LedgerPublication,
+  CompletedPastSafetyLimit,
   LedgerReconciliation,
+  NoMockResponse,
   NotAttempted,
   NotAttemptedAfterAbort,
+  ObservationUnrepresentable,
+  OpaqueHostCallUnbounded,
   ObservedVerdict,
+  Panicked,
   Passed,
   RepositorySnapshot,
   Returned,
+  RouteGap,
+  RuntimeErrored,
+  SafetyInterrupted,
   TerminalLedger,
   UnpublishedWorkingTree,
   claim_disposition,
   incoherent_ledger_rows,
   ledger_is_complete
 }
+import v2.workflow.floor_route_gap { FilesystemRemoval, FloorRouteGapGround, UnpublishedMockCase }
 import v2.workflow.wet_evidence { WetScheduledClaim }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 // THE NAME→PATH AUTHORITY, IMPORTED RATHER THAN RE-IMPLEMENTED. `module_file` is the rule,
@@ -128,7 +139,7 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 //
 // THE SEAM, AND WHY IT IS WHERE IT IS. `known_red_fold` is PURE: head, subjects, and the verdict lines a
 // child printed go in; the derivation comes out. Nothing in it touches a service or a process.
-// `known_red_collect` is the only arm that spawns. That split is what makes the REDs authorable without
+// `known_red_collect_at` is the only arm that spawns. That split is what makes the REDs authorable without
 // breaking a claim on a branch: a supplied verdict-line set drives the whole real fold, so a controlled
 // enrolled-red identity can be made to fail and then to pass and the two-way claim is executed rather
 // than asserted. The live run stays separate from those arms on purpose — the arms prove the join, the
@@ -169,6 +180,14 @@ fn known_red_pass_prefix() -> String {
 
 fn known_red_fail_prefix() -> String {
   "FAIL "
+}
+
+// `PANICKED ` is a verdict line the way PASS and FAIL are: `claim_batch` prints it from its own arm
+// (`PANICKED {f} (the host unwound during evaluation: {P})`) when the host unwound, and a subject whose only
+// line is this one was ATTEMPTED and lost its way -- which is a different fact from 'printed nothing' and
+// must not collapse into it.
+fn known_red_panicked_prefix() -> String {
+  "PANICKED "
 }
 
 // The cause printed for the floor subject, spelled FROM the withdrawal row rather than invented here: the
@@ -251,18 +270,37 @@ type KnownRedSubjectDefect
   | ClaimArgvRefused { identity: WitnessIdentity, entry: String, function: String }
 
 // ONE PRINTED ROW. `head` is carried IN the row rather than only in a banner because a disposition is
-// attributable to a commit or it is nothing: a known-red list without its SHA is prose. `observation`
-// distinguishes "observed to fail" from "never observed" — the reason `Absent` is not spelled `false` —
-// and `disposition` is what the authority's projection said, not what this file hoped.
+// attributable to a commit or it is nothing: a known-red list without its SHA is prose. `disposition` is
+// what the authority's projection said, not what this file hoped.
+// THE ROW CARRIES THE TERMINAL, NOT 'DID A LINE COME BACK'. The field here used to be
+// `Optional<ClaimObservation>`, which answers one question — was a readable Bool printed — and collapses
+// every arm of `ClaimOutcome` that is not a returned Bool into the SAME `Absent` as 'no line at all'. That
+// collapse is what let a claim which CRASHED before deciding be credited as a known red which FAILED: the
+// fold saw a line, and a line was enough. `ClaimAttemptTerminal` is the ledger module's own union; storing
+// it means `claim_disposition` — which already distinguishes all seven arms — is the only thing that
+// decides a disposition, and 'printed a line' stays separately expressible via `known_red_no_line_cause`.
 type KnownRedDerivationRow {
   identity: WitnessIdentity
   head: String
   entry: KnownRedEntryPlacement
   origin: KnownRedSubjectPopulation
   expectation: ClaimExpectation
-  observation: Optional<ClaimObservation>
+  terminal: ClaimAttemptTerminal
   disposition: ClaimDisposition
 }
+
+// THE ONE PLACE that spells 'no child printed a verdict line for this identity'. Comparing a terminal's
+// `halted_by` against this is how `known_red_row_was_observed` tells a genuine not-attempted apart from a
+// printed terminal, so the cause string has exactly one author.
+data known_red_no_line_cause: String = "no verdict line from any child"
+
+// THE ONE PLACE that spells 'a line came back and no arm of the decoder owns its shape'. It is a DIFFERENT
+// fact from 'no line came back' and must never share a cause string with it: the first says the harness
+// never spoke about this claim, the second says the harness spoke in a way this file does not understand --
+// which is a `claim_batch` print arm that drifted from the decoder, and the thing to fix. Both are
+// `NotAttempted`, because neither is a verdict, and `claim_disposition` therefore refuses to project a
+// Held/Failed/Passed from either.
+data known_red_undecodable_cause: String = "printed line decoded to no claim arm" 
 
 fn known_red_row_qualified(r: KnownRedDerivationRow) -> String {
   witness_identity_qualified_name(identity: r.identity)
@@ -714,18 +752,6 @@ fn known_red_uninvoked_child(claims: List<ClaimRun>, cause: String) -> KnownRedC
   NotStarted { claims: claims, cause: cause }
 }
 
-// THE EXECUTED POPULATION: one serial child per chunk. The gate is asked ONCE and its refusal applied to
-// every chunk, because a binary that cannot be built is not built by trying harder. This call is the
-// line the anti-hollow RED deletes, and the refusal it then produces is the point.
-//
-// It takes SUBJECTS and places them here, in one place: `known_red_dispatchable` is the single gateway, so
-// a caller cannot pass an unplaced subject to the spawner even by accident -- the value the spawner wants
-// does not exist outside this function.
-fn known_red_collect(subjects: List<KnownRedSubject>) -> List<KnownRedChildRun> {
-  let root = git.Inspect.Toplevel()
-  known_red_collect_at(root: root.path, placed: known_red_dispatchable(subjects: subjects))
-}
-
 fn known_red_collect_at(root: String, placed: List<KnownRedPlacedSubject>) -> List<KnownRedChildRun> {
   let chunks = known_red_chunks(placed: placed)
   let readiness = gunbc_claims_readiness()
@@ -785,18 +811,24 @@ fn known_red_refusal_reason_name(reason: WitnessBinRefusalReason) -> String {
 // The lines `claim_batch` prints per claim are `PASS <function>` and `FAIL <function> [cause]`. Matching
 // is on the exact prefix AND the whole first token after it: no substring match, because a claim whose
 // name extends another's must never inherit its verdict.
+// EVERY LINE THE TRANSPORT PRINTED AS A CLAIM OUTCOME, kept WITH ITS DUPLICATES.
+//
+// TWO THINGS THIS DOES THAT 'FILTER THE FAIL LINES' DID NOT. It keeps `PANICKED`: the transport prints that
+// line from its own arm, the filter dropped it, and so a claim that unwound the host was invisible rather
+// than being the distinct terminal the ledger has an arm for. And it does NOT deduplicate — this list is the
+// only witness to how many times a child answered about one claim, and the join is where multiplicity is
+// decided. Collapsing here is what made a child that answered twice indistinguishable from one that answered
+// once (so `terminal_duplicated` could never fire), and made a line printed about a claim nobody enrolled
+// simply absent from the universe of things checked.
 fn known_red_verdict_lines(stdout: String) -> List<String> {
   filter(
     xs: split(s: stdout, delimiter: "\n"),
     predicate: fn(l) {
       starts_with(s: l, prefix: known_red_pass_prefix())
         || starts_with(s: l, prefix: known_red_fail_prefix())
+        || starts_with(s: l, prefix: known_red_panicked_prefix())
     }
   )
-}
-
-fn known_red_line_is_pass_for(line: String, function: String) -> Bool {
-  line == concat(known_red_pass_prefix(), function)
 }
 
 // A `FAIL` FOR THIS CLAIM, WITH ONE EXCLUSION THAT IS THE WHOLE POINT: the harness also prints
@@ -812,45 +844,273 @@ fn known_red_line_is_pass_for(line: String, function: String) -> Bool {
 // (its reason channel is load-bearing for the wet real-execution reds). `UNOBSERVED <fn> (…)` — the form a
 // sibling harness change is adopting for the same outcomes — needs no handling here: it is not a `FAIL`
 // prefix, so it is already not a fail.
-fn known_red_line_is_fail_for(line: String, function: String) -> Bool {
-  let head = concat(known_red_fail_prefix(), function)
-  (line == head || starts_with(s: line, prefix: concat(head, " (")))
-    && !known_red_line_never_reached_subject(line: line)
+// THE VERDICT LINE, DECODED INTO THE LEDGER'S OWN TERMINAL — NOT INTO 'DID IT FAIL'.
+//
+// WHY THIS REPLACED A BOOLEAN. The reader here used to ask whether a line existed for a function and, if
+// one did, whether it said FAIL. `claim_batch` prints one line per claim from a match over NINE
+// `ClaimOutcome` arms (`src/v1/stage0/src/bin/claim_batch.rs`), and only two of them are verdicts. Under
+// the old reader a runtime error, a panic, a non-Bool return, a budget refusal, an unresolved host tool and
+// a not-attempted report each produced a `FAIL <fn> (...)` line, each counted as an observed false, and —
+// for an enrolled identity — each printed as a HELD KNOWN RED. A claim that died before deciding was
+// therefore credited as the known red doing its job. `claim_disposition` already separates those outcomes
+// into `RuntimeErroredBeforeVerdict`, `PanickedBeforeVerdict`, `ObservationUnreadableBeforeVerdict`, … with
+// the same 'no observation' exit contract; the distinction was being destroyed at the first read.
+//
+// THE AUTHORITY FOR EVERY FORM IS THE TRANSPORT ITSELF, and the mapping mirrors `expected_red_arm` in
+// `src/v1/stage0/src/cli_run.rs` — the seed's own interpretation of the same print — so instrument and
+// seed cannot drift on what a line means. The forms, verbatim from the transport:
+//   PASS <f>                                                              Returned { ObservedVerdict true }
+//   FAIL <f>                                                              Returned { ObservedVerdict false }
+//   FAIL <f> (returned ProcessExit::ExitFailure, code C: R)               Returned { ObservedVerdict false }
+//   FAIL <f> (returned `G`, not Bool; --claim-run entries must return Bool)
+//                                                                         Returned { ObservationUnrepresentable }
+//   FAIL <f> (runtime error [T]: M)                                       RuntimeErrored { message }
+//   PANICKED <f> (the host unwound during evaluation: P)                  Panicked { payload }
+//   FAIL <f> (reported as not-attempted behind H, which this path never mints)
+//                                                                         NotAttempted { halted_by }
+//   FAIL <f> (host tool unresolved: "N" (probed: P))                      HostToolUnresolved { name, probed }
+//   FAIL <f> (hermetic route has no arm for OP: L — ... not a verdict)    RouteGap { operation, ground }
+//   FAIL <f> (<k> budget <B>ms EXCEEDED; cost=...)                        BudgetRefused { safety }
+//   FAIL <f> (entry resolve failed: E)                                    NotAttempted { halted_by }
+//
+// `ProcessExit::ExitFailure` STAYS ON THE OBSERVED ARM with `holds: false`, following the seed's own arm
+// which places it beside `Fail` rather than beside `RuntimeError`: a claim that returns a failing
+// ProcessExit has decided, and decided against. The arms this function exists to SEPARATE are the ones
+// where no decision happened.
+//
+// A LINE THAT MATCHES NO FORM IS NEITHER SILENCE NOR A VERDICT: it is returned as `Absent` and kept, so the
+// fold refuses with the line attached instead of calling the claim not-run (hides a finding) or failed
+// (invents one). A new `ClaimOutcome` arm that prints a new shape lands here as `Absent` and is therefore
+// a refusal, not a verdict — the safe direction for a transport change.
+fn known_red_terminal_of_line(line: String, function: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_line_body(line: line, function: function) {
+    Absent => Absent
+    Present { value: "PASS" } =>
+      Present { value: Returned { observation: ObservedVerdict { holds: true } } }
+    Present { value: "" } =>
+      Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+    Present { value: body } => known_red_terminal_of_body(body: body)
+  }
 }
 
-// THE HARNESS'S OWN "NOT A VERDICT" MARKERS, matched on the wording it prints. Each is a halt before the
-// subject ran, so none of them may be read as the subject having answered false:
-//  - `hermetic route has no arm for <op>: … — the claim never reached its subject, so this is a route gap
-//    and not a verdict` (the arm the required floor already models as its route-gap terminal);
-//  - `entry resolve failed: <entry>` — the file named on the command line did not compile/resolve, so no
-//    claim in that group could have run;
-//  - `host tool unresolved: <tool> (probed: …)` — the host effect was never grounded.
-// Matching the reason text rather than merely the presence of a parenthesised tail is deliberate: a claim
-// that ran and refused with its own reason must stay a false.
-fn known_red_line_never_reached_subject(line: String) -> Bool {
-  string_contains(s: line, pattern: "(hermetic route has no arm")
-    || string_contains(s: line, pattern: "route gap and not a verdict")
-    || string_contains(s: line, pattern: "(entry resolve failed")
-    || string_contains(s: line, pattern: "(host tool unresolved")
-}
-
-// A VERDICT IS A LOOKUP IN WHAT THE CHILD PRINTED, and its absence is `Absent`, not `false`. That single
-// distinction is what "evidence that actually runs" means at row level: an identity the child never
-// mentioned was not observed to fail, and no fold may print it as though it were. A line printed BOTH
-// ways is treated as no verdict at all rather than resolved by precedence — a child that contradicts
-// itself about one claim has not established either fact.
-fn known_red_observation_of(lines: List<String>, function: String) -> Optional<ClaimObservation> {
-  let passed = any(xs: lines, predicate: fn(l) { known_red_line_is_pass_for(line: l, function: function) })
-  let failed = any(xs: lines, predicate: fn(l) { known_red_line_is_fail_for(line: l, function: function) })
-  if passed && !failed {
-    Present { value: ObservedVerdict { holds: true } }
+// STRIP THE VERDICT WORD AND THE FUNCTION NAME, or report that this line is not about this claim. The
+// transport prints the BARE FUNCTION NAME with no module path, which is why a line is attributed within one
+// child and never across children — see the identity-ambiguity refusal.
+fn known_red_line_body(line: String, function: String) -> Optional<String> {
+  let pass = concat("PASS ", function)
+  let fail = concat("FAIL ", function)
+  let panic = concat("PANICKED ", function)
+  if line == pass {
+    Present { value: "PASS" }
   } else {
-    if failed && !passed {
-      Present { value: ObservedVerdict { holds: false } }
+    if line == fail {
+      Present { value: "" }
     } else {
-      Absent
+      if starts_with(s: line, prefix: concat(pass, " ")) && trim(s: known_red_after(s: line, n: string_length(s: pass) + 1)) == "" {
+        Present { value: "PASS" }
+      } else {
+        if starts_with(s: line, prefix: concat(fail, " (")) {
+          Present { value: trim(s: known_red_after(s: line, n: string_length(s: fail) + 1)) }
+        } else {
+          if starts_with(s: line, prefix: concat(panic, " (")) {
+            Present { value: trim(s: known_red_after(s: line, n: string_length(s: panic) + 1)) }
+          } else {
+            Absent
+          }
+        }
+      }
     }
   }
+}
+
+// THE ONE DISPATCH ON THE BRACKETED TAIL: which transport arm printed this line.
+fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
+  if known_red_body_is_not_bool(body: body) {
+    Present {
+      value: Returned { observation: ObservationUnrepresentable { reason: "returned-not-a-bool" } }
+    }
+  } else {
+    if known_red_body_is_exit_failure(body: body) {
+      Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+    } else {
+      if known_red_body_is_runtime_error(body: body) {
+        Present {
+          value: RuntimeErrored {
+            message: known_red_between(s: body, open: "runtime error [", close: "]:", fallback: body)
+          }
+        }
+      } else {
+        if known_red_body_is_panicked(body: body) {
+          Present {
+            value: Panicked {
+              payload: known_red_payload(body: body)
+            }
+          }
+        } else {
+          if known_red_body_is_not_attempted(body: body) {
+            Present { value: NotAttempted { halted_by: body } }
+          } else {
+            if known_red_body_is_host_tool(body: body) {
+              Present {
+                value: HostToolUnresolved {
+                  name: known_red_between(s: body, open: "\"", close: "\"", fallback: body),
+                  probed: known_red_probed_list(body: body)
+                }
+              }
+            } else {
+              if known_red_body_is_route_gap(body: body) {
+                Present {
+                  value: RouteGap {
+                    operation: known_red_between(s: body, open: "arm for ", close: ":", fallback: body),
+                    ground: known_red_route_gap_ground_of(body: body)
+                  }
+                }
+              } else {
+                if known_red_body_is_budget(body: body) {
+                  Present { value: BudgetRefused { safety: known_red_safety_of(body: body) } }
+                } else {
+                  if known_red_body_is_entry_resolve(body: body) {
+                    Present { value: NotAttempted { halted_by: body } }
+                  } else {
+                    Absent
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ARM TESTS, one per transport arm, each keyed on the words that arm alone prints. Kept as named
+// predicates rather than an inline chain so a reader can check each against `claim_batch.rs` line by line.
+fn known_red_body_is_exit_failure(body: String) -> Bool {
+  starts_with(s: body, prefix: "(returned ProcessExit::ExitFailure, code ")
+}
+
+fn known_red_body_is_not_bool(body: String) -> Bool {
+  starts_with(s: body, prefix: "(returned `")
+    && string_contains(s: body, pattern: "not Bool; --claim-run entries must return Bool)")
+}
+
+fn known_red_body_is_runtime_error(body: String) -> Bool {
+  starts_with(s: body, prefix: "(runtime error [")
+}
+
+fn known_red_body_is_panicked(body: String) -> Bool {
+  starts_with(s: body, prefix: "(the host unwound during evaluation:")
+}
+
+// THE PANIC PAYLOAD, verbatim. The transport wraps it in one parenthesised clause with no nested
+// parentheses, so the payload is everything between the marker and the closing paren.
+fn known_red_payload(body: String) -> String {
+  let marker = "(the host unwound during evaluation: "
+  known_red_between(s: body, open: marker, close: ")", fallback: body)
+}
+
+fn known_red_body_is_not_attempted(body: String) -> Bool {
+  starts_with(s: body, prefix: "(reported as not-attempted behind ")
+}
+
+fn known_red_body_is_host_tool(body: String) -> Bool {
+  starts_with(s: body, prefix: "(host tool unresolved: ")
+}
+
+fn known_red_body_is_route_gap(body: String) -> Bool {
+  starts_with(s: body, prefix: "(hermetic route has no arm for ")
+}
+
+fn known_red_body_is_budget(body: String) -> Bool {
+  starts_with(s: body, prefix: "(")
+    && string_contains(s: body, pattern: " budget ")
+    && string_contains(s: body, pattern: "ms EXCEEDED; cost=")
+}
+
+fn known_red_body_is_entry_resolve(body: String) -> Bool {
+  starts_with(s: body, prefix: "(entry resolve failed:")
+}
+
+// THE TEXT BETWEEN TWO MARKERS, VERBATIM OR NOT AT ALL. Verbatim matters: the cause a reader acts on has to
+// survive the read, and a decode that restates it invents a second author of the cause (DESIGN §3).
+fn known_red_between(s: String, open: String, close: String, fallback: String) -> String {
+  match known_red_index_of(s: s, needle: open, at: 0, limit: string_length(s: s)) {
+    Absent => fallback
+    Present { value: from } =>
+      let after = from + string_length(s: open)
+      match known_red_index_of(s: s, needle: close, at: after, limit: string_length(s: s)) {
+        Absent => fallback
+        Present { value: to } => substring(s: s, start: after, end: to)
+      }
+  }
+}
+
+fn known_red_index_of(s: String, needle: String, at: Int, limit: Int) -> Optional<Int> {
+  if at + string_length(s: needle) > limit {
+    Absent
+  } else {
+    if substring(s: s, start: at, end: at + string_length(s: needle)) == needle {
+      Present { value: at }
+    } else {
+      known_red_index_of(s: s, needle: needle, at: at + 1, limit: limit)
+    }
+  }
+}
+
+fn known_red_after(s: String, n: Int) -> String {
+  if n >= string_length(s: s) { "" } else { substring(s: s, start: n, end: string_length(s: s)) }
+}
+
+// THE PROBED PATHS, AS THE LIST THE LEDGER ARM OWNS. The transport renders them comma-joined inside
+// `(probed: …)`, so the separator it chose is the separator this splits on.
+fn known_red_probed_list(body: String) -> List<String> {
+  let inner = known_red_between(s: body, open: "(probed: ", close: ")", fallback: "")
+  if inner == "" { [] } else { split(s: inner, delimiter: ", ") }
+}
+
+// THE ROUTE GAP'S GROUND, READ BACK OUT OF THE PRINT. The three sentences are the ones the transport
+// renders through `hermetic_effect_ground_label`; this inverts that render onto the union the ledger arm
+// requires. Anything unmapped falls to `NoMockResponse` — which cannot hide a finding, because the line was
+// already kept and the population it belongs to is reported regardless.
+fn known_red_route_gap_ground_of(body: String) -> FloorRouteGapGround {
+  if string_contains(s: body, pattern: "no published mock case for a corpus-governed service") {
+    UnpublishedMockCase
+  } else {
+    if string_contains(s: body, pattern: "filesystem removal has no mock arm") {
+      FilesystemRemoval
+    } else {
+      NoMockResponse
+    }
+  }
+}
+
+// WHICH BUDGET ARM RAN. The transport renders BOTH budget arms through one function,
+// `budget_figure_phrase` (`src/v1/stage0/src/cli_run.rs`), and the two differ in exactly one field: the
+// interrupted arm prints `cost=UNMEASURED` because the deadline preempted the witness before a cost could
+// be taken, and the completed-over-budget arm prints `cost=<n>ms CEILING` because the witness ran to
+// completion and the figure is a right-censored bound on a cost that WAS taken. That difference is the only
+// discriminator available at the print, so the safety carried here is the one the print supports: the
+// elapsed figures stay 0 because a line never reports them, and the preemption is named as unbounded rather
+// than guessed at.
+fn known_red_safety_of(body: String) -> ClaimSafetyOutcome {
+  if string_contains(s: body, pattern: "cost=UNMEASURED") {
+    SafetyInterrupted {
+      raised_by: known_red_between(s: body, open: "(", close: " budget", fallback: "claim_batch budget guard"),
+      elapsed_cpu_at_least: 0,
+      elapsed_wall_at_least: 0
+    }
+  } else {
+    CompletedPastSafetyLimit {
+      observed_cpu: 0,
+      observed_wall: 0,
+      preemption: OpaqueHostCallUnbounded { operation: known_red_budget_operation(body: body) }
+    }
+  }
+}
+
+fn known_red_budget_operation(body: String) -> String {
+  known_red_between(s: body, open: "(", close: " budget", fallback: "claim_batch budget guard")
 }
 
 // A POPULATION WITH NO VERDICT ANYWHERE is the shape of a deleted spawn, or of a child killed before it
@@ -874,42 +1134,6 @@ fn known_red_child_claims(child: KnownRedChildRun) -> List<ClaimRun> {
     NotStarted { claims: c, cause: _ } => c
   }
 }
-
-// THE LINES A SUBJECT'S VERDICT MAY COME FROM: only the children that were ASKED to run it. This is the
-// identity join the module header promises, applied where it was missing. `claim_batch` prints each verdict
-// as the BARE function name (`src/v1/stage0/src/bin/claim_batch.rs:326-328`), so a name is only unique
-// within one child's run: two claims in different modules that share a function name would otherwise both
-// read the same line, and one PASS plus one FAIL made BOTH rows Absent while two FAILs made each row take
-// the other's failure as its own. Restricting the lookup to the child that carried this subject's claim
-// makes the module unnecessary -- the child identity is what disambiguates -- and is measured live rather
-// than assumed: two rows of the current roster DO share function names (`doc_graph_has_no_dangling_links`
-// and `doc_graph_has_no_orphan_docs`, held by `test.claim.doc_reachability_witness` and by
-// `v2.test.lens_doc_reachability.doc_reachability`), which is why the guard below is a construction and not
-// a refusal on an accident that never happens.
-fn known_red_lines_for_subject(subject: KnownRedSubject, children: List<KnownRedChildRun>) -> List<String> {
-  match subject.entry {
-    Placed { path: p } =>
-      fold(
-        xs: children,
-        init: [],
-        f: (acc, c) =>
-          if known_red_child_carries(child: c, entry: p, function: subject.function) {
-            concat(acc, known_red_child_verdict_lines(child: c))
-          } else {
-            acc
-          }
-      )
-    Underivable { name: _, cause: _ } => []
-  }
-}
-
-fn known_red_child_carries(child: KnownRedChildRun, entry: String, function: String) -> Bool {
-  any(
-    xs: known_red_child_claims(child: child),
-    predicate: fn(c) { c.entry == entry && c.function == function }
-  )
-}
-
 
 // A CHILD MUST NOT CARRY TWO CLAIMS WITH THE SAME VERDICT NAME: within one child the pooled lines cannot be
 // separated, so the packer splits them into different children instead (the cap already forces splits; this
@@ -1076,7 +1300,7 @@ fn known_red_identity_dispatched(identity: WitnessIdentity, dispatched: List<Kno
 // shape; it is not available to this file, because the harness does not print the module. Changing what
 // `claim_batch` prints is a production-Rust change with its own receipt, not a widening slipped into an
 // instrument. So the same guarantee is obtained by construction instead, in two parts:
-//   1. `known_red_lines_for_subject` restricts a subject's lookup to the children that were ASKED to run it
+//   1. `known_red_evidence_is_of` restricts a subject's evidence to the children that were ASKED to run it
 //      (matched on entry AND function, i.e. the identity join), so a name shared across two children can no
 //      longer cross-contaminate; and
 //   2. `known_red_pack_groups` never packs two claims with the same function name into ONE child, because
@@ -1119,6 +1343,19 @@ fn known_red_clashing_names_in_child(child: KnownRedChildRun) -> List<String> {
   )
 }
 
+fn known_red_dedupe_identities(xs: List<WitnessIdentity>) -> List<WitnessIdentity> {
+  fold(
+    xs: xs,
+    init: [],
+    f: (acc, x) =>
+      if any(xs: acc, predicate: fn(a) { known_red_same_identity(a: a, b: x) }) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: x)
+      }
+  )
+}
+
 fn known_red_dedupe_texts(xs: List<String>) -> List<String> {
   fold(
     xs: xs,
@@ -1138,25 +1375,28 @@ fn known_red_fold(
   subjects: List<KnownRedSubject>,
   children: List<KnownRedChildRun>
 ) -> KnownRedDerivation {
-  // THE ROWS READ ONLY THE CHILD THAT WAS ASKED TO RUN THEM -- see `known_red_lines_for_subject`. Pooling
+  // THE ROWS READ ONLY THE CHILD THAT WAS ASKED TO RUN THEM: an item of the multiset carries the ENTRY of
+  // the child that printed it, and a row only accepts evidence whose entry is its own placed path. Pooling
   // every child's stdout and matching on the bare function name is what let two claims in different modules
   // with the same function name trade verdicts.
+  // THE EVIDENCE IS COMPUTED ONCE FOR THE WHOLE JOIN, and both the rows and the reconciliation read the
+  // SAME multiset. Computing it per row would let the row and the reconciliation disagree about what was
+  // printed, which is a second authority for the one fact the instrument exists to report.
+  let evidence = known_red_printed_evidence(children: children)
   let rows = map(
     subjects,
-    s => {
-      let lines = known_red_lines_for_subject(subject: s, children: children)
+    s =>
       KnownRedDerivationRow {
         identity: s.identity,
         head: head,
         entry: s.entry,
         origin: s.origin,
         expectation: known_red_expectation_of(s: s),
-        observation: known_red_observation_of(lines: lines, function: s.function),
-        disposition: known_red_projection(subject: s, lines: lines)
+        terminal: known_red_subject_terminal(subject: s, evidence: evidence),
+        disposition: known_red_projection(subject: s, evidence: evidence)
       }
-    }
   )
-  let report = known_red_reconciliation(subjects: subjects, rows: rows)
+  let report = known_red_reconciliation(subjects: subjects, rows: rows, evidence: evidence)
   let defects = known_red_subject_defects(subjects: subjects)
   // The placed list is derived here, once, from the subjects: it is the only thing the spawn-join and the
   // owed-but-undispatched check are allowed to see, and an unplaced subject is not in it.
@@ -1177,7 +1417,8 @@ fn known_red_fold(
       dispatched: dispatched,
       rows: rows,
       report: report,
-      defects: defects
+      defects: defects,
+      evidence: evidence
     )
   }
 }
@@ -1188,27 +1429,483 @@ fn known_red_fold(
 // only way a row gets one is by the authority's projection of (expectation, terminal). An identity with
 // no verdict reaches `NotAttempted`, which projects to `NotAttemptedAfterAbort` — never a `Failed`, and
 // never a `Passed`.
-fn known_red_projection(subject: KnownRedSubject, lines: List<String>) -> ClaimDisposition {
+fn known_red_projection(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> ClaimDisposition {
   claim_disposition(
     row: ClaimTerminalRow {
       identity: subject.identity,
       expectation: known_red_expectation_of(s: subject),
-      terminal: known_red_attempt_terminal(lines: lines, function: subject.function)
+      terminal: known_red_subject_terminal(subject: subject, evidence: evidence)
     }
   )
 }
 
-fn known_red_attempt_terminal(lines: List<String>, function: String) -> ClaimAttemptTerminal {
-  match known_red_observation_of(lines: lines, function: function) {
-    Present { value: o } => Returned { observation: o }
-    Absent => NotAttempted { halted_by: "no verdict line from any child" }
+// ============================================================ THE PRINTED EVIDENCE, KEPT
+//
+// THE JOIN'S OTHER HALF IS A MULTISET OF PRINTED LINES, not a set of verdicts. One item here is one line as
+// the harness printed it, the name it printed it UNDER, and the terminal it decodes to.
+//
+// WHY A TYPE AND NOT A `List<String>` THAT EACH CALLER RE-PARSES: the fold used to ask
+// `any(lines, l => child_carries(l, subject))` and throw the list away. Two things were lost at that `any`,
+// and both of them were verdicts. A claim whose line a child printed TWICE collapsed into one row, so a
+// duplicated identity went unreported -- and a line printed for something nobody planned was dropped in the
+// direction that hides an error, never the one that raises it. `LedgerReconciliation` already has a
+// `terminal_duplicated` and a `terminal_without_planned` leg (§5, "Completeness is an identity join, not a
+// count equality"); for most of this file's life both were structurally incapable of being non-empty,
+// because everything that could have filled them had been reduced by `any` before the join ever saw it.
+//
+// So the lines are kept AS EVIDENCE, every one, and the fold is the only consumer. Nothing renders them:
+// §4b forbids a second stdout, and the ledger is a value, so this is the join's input and not another report.
+type KnownRedPrintedEvidence {
+  // THE ENTRY THE CHILD WAS ASKED UNDER, taken from that child's own claims -- not from the line, which
+  // carries no path. Empty when no claim of that child explains the line, which is what makes the line
+  // foreign. Keeping the entry (rather than only the name) is what preserves the old per-child attribution:
+  // two claims in different modules may share a function name, and a line can only be matched to a subject
+  // whose PLACED PATH is the entry of the child that printed it.
+  entry: String,
+  // THE NAME THE HARNESS PRINTED, read off the line. `claim_batch` prints `PASS {}`/`FAIL {}`/`PANICKED {}`
+  // with exactly the string it was handed by `--function` (src/v1/stage0/src/bin/claim_batch.rs:324-347), so
+  // this is the claim's `function` field as dispatched, echoed back. Reading it FROM THE LINE is the point:
+  // an identity that was never printed must not be credited with a verdict.
+  printed: String,
+  line: String,
+  terminal: Optional<ClaimAttemptTerminal>
+}
+
+// EVERY VERDICT LINE THE CHILDREN PRINTED, in print order, one item per printed line. NOT deduplicated --
+// deduplication here is the defect this block exists to remove.
+fn known_red_printed_evidence(children: List<KnownRedChildRun>) -> List<KnownRedPrintedEvidence> {
+  fold(
+    xs: children,
+    init: [],
+    f: (acc, c) => concat(xs: acc, ys: known_red_child_evidence(child: c))
+  )
+}
+
+fn known_red_child_evidence(child: KnownRedChildRun) -> List<KnownRedPrintedEvidence> {
+  known_red_evidence_step(
+    rest: known_red_child_verdict_lines(child: child),
+    claims: known_red_child_claims(child: child),
+    out: []
+  )
+}
+
+fn known_red_evidence_step(
+  rest: List<String>,
+  claims: List<ClaimRun>,
+  out: List<KnownRedPrintedEvidence>
+) -> List<KnownRedPrintedEvidence> {
+  match rest {
+    Empty => out
+    Cons { head: h, tail: t } =>
+      known_red_evidence_step(
+        rest: t,
+        claims: claims,
+        out: list_snoc_item(xs: out, item: known_red_claim_evidence(line: h, claims: claims))
+      )
   }
 }
 
-fn known_red_attempt_terminal_of_row(row: KnownRedDerivationRow) -> ClaimAttemptTerminal {
-  match row.observation {
-    Present { value: o } => Returned { observation: o }
-    Absent => NotAttempted { halted_by: "no verdict line from any child" }
+fn known_red_claim_evidence(line: String, claims: List<ClaimRun>) -> KnownRedPrintedEvidence {
+  let printed = known_red_verdict_name_of(line: line)
+  match known_red_claim_explaining(claims: claims, printed: printed) {
+    Present { value: c } =>
+      KnownRedPrintedEvidence {
+        entry: c.entry,
+        printed: printed,
+        line: line,
+        terminal: known_red_terminal_of_line(line: line, function: c.function)
+      }
+    Absent =>
+      KnownRedPrintedEvidence {
+        entry: "",
+        printed: printed,
+        line: line,
+        terminal: known_red_terminal_of_line(line: line, function: printed)
+      }
+  }
+}
+
+// WHICH OF THIS CHILD'S CLAIMS PRINTED THE LINE. Matched on the printed name against `function`, and then
+// against `entry`: the harness echoes whatever `--function` was handed, and a witness that dispatches a whole
+// entry as the function name gets that string back. `function` is tried first because the instrument's own
+// dispatch always puts the bare function there (`known_red_placed_identity_claim`), so the common arm is the
+// first arm.
+fn known_red_claim_explaining(claims: List<ClaimRun>, printed: String) -> Optional<ClaimRun> {
+  match claims {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if h.function == printed || h.entry == printed {
+        Present { value: h }
+      } else {
+        known_red_claim_explaining(claims: t, printed: printed)
+      }
+  }
+}
+
+// THE NAME THE HARNESS PRINTED: from the verdict keyword down to the first separator. The keywords are the
+// transport's own (`known_red_pass_prefix`, `known_red_fail_prefix`, `known_red_panicked_prefix`), so this
+// cannot drift from `known_red_verdict_lines` -- the two read the same three prefixes.
+fn known_red_verdict_name_of(line: String) -> String {
+  known_red_name_cut(s: known_red_strip_verdict_prefix(line: line), i: 0)
+}
+
+fn known_red_strip_verdict_prefix(line: String) -> String {
+  if starts_with(s: line, prefix: known_red_pass_prefix()) {
+    known_red_after(s: line, n: string_length(s: known_red_pass_prefix()))
+  } else {
+    if starts_with(s: line, prefix: known_red_fail_prefix()) {
+      known_red_after(s: line, n: string_length(s: known_red_fail_prefix()))
+    } else {
+      if starts_with(s: line, prefix: known_red_panicked_prefix()) {
+        known_red_after(s: line, n: string_length(s: known_red_panicked_prefix()))
+      } else {
+        trim(s: line)
+      }
+    }
+  }
+}
+
+fn known_red_name_cut(s: String, i: Int) -> String {
+  if i >= string_length(s: s) {
+    trim(s: s)
+  } else {
+    let c = char_at(s: s, pos: i)
+    if c == " " || c == "(" || c == "\t" || c == "\r" {
+      trim(s: substring(s: s, start: 0, end: i))
+    } else {
+      known_red_name_cut(s: s, i: i + 1)
+    }
+  }
+}
+
+// IS THIS EVIDENCE THE SUBJECT'S OWN. Both sides must be known: a placed path, and a printed name equal to
+// the subject's function. This is the same join the deleted `known_red_lines_for_subject` performed
+// (`known_red_child_carries`), stated once as a predicate over the kept multiset instead of once per caller.
+fn known_red_evidence_is_of(
+  evidence: KnownRedPrintedEvidence,
+  subject: KnownRedSubject
+) -> Bool {
+  match subject.entry {
+    Placed { path: p } => evidence.entry == p && evidence.printed == subject.function
+    Underivable { name: _, cause: _ } => false
+  }
+}
+
+fn known_red_evidence_for(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<KnownRedPrintedEvidence> {
+  filter(
+    xs: evidence,
+    predicate: fn(e) { known_red_evidence_is_of(evidence: e, subject: subject) }
+  )
+}
+
+// AN IDENTITY CARRIED BY MORE THAN ONE ROW, which is what `LedgerReconciliation.terminal_duplicated` means
+// (§5: 'a missing witness ... reported as covered' is the failure this leg answers). Rows are one per
+// subject, so this catches the case where two populations planned the SAME identity and the join would
+// otherwise read two rows for one witness as two witnesses.
+fn known_red_duplicated_identities(rows: List<KnownRedDerivationRow>) -> List<WitnessIdentity> {
+  known_red_dup_step(
+    rest: rows,
+    seen: [],
+    out: []
+  )
+}
+
+fn known_red_dup_step(
+  rest: List<KnownRedDerivationRow>,
+  seen: List<WitnessIdentity>,
+  out: List<WitnessIdentity>
+) -> List<WitnessIdentity> {
+  match rest {
+    Empty => out
+    Cons { head: h, tail: t } =>
+      if any(xs: out, predicate: fn(o) { known_red_same_identity(a: o, b: h.identity) }) {
+        known_red_dup_step(rest: t, seen: seen, out: out)
+      } else {
+        if any(xs: seen, predicate: fn(o) { known_red_same_identity(a: o, b: h.identity) }) {
+          known_red_dup_step(
+            rest: t,
+            seen: seen,
+            out: list_snoc_item(xs: out, item: h.identity)
+          )
+        } else {
+          known_red_dup_step(
+            rest: t,
+            seen: list_snoc_item(xs: seen, item: h.identity),
+            out: out
+          )
+        }
+      }
+  }
+}
+
+// HOW MANY TIMES A SUBJECT WAS PRINTED. Asked of the multiset directly, never of a row: a row has already
+// collapsed to one per subject, which is precisely the fact the old `any` destroyed.
+fn known_red_printed_count(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> Int {
+  length(xs: known_red_evidence_for(subject: subject, evidence: evidence))
+}
+
+// THE TERMINAL OF A SUBJECT, from the lines printed for it. Several lines is not 'the first of them' and not
+// 'the strongest of them' -- it is a DUPLICATE, reported as one by `known_red_duplicated_evidence` -- while
+// the FIRST is still taken as the row's terminal so the ledger keeps exactly one row per identity. Refusing
+// to pick at all here would put that arbitration in two places. A line that matched structurally but decoded
+// to nothing is NOT silently 'absent': it is undecodable, its own cause, so it cannot be mistaken for the
+// 'printed nothing' cause and cannot be mistaken for a verdict either.
+fn known_red_subject_terminal(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> ClaimAttemptTerminal {
+  match known_red_evidence_for(subject: subject, evidence: evidence) {
+    Empty => NotAttempted { halted_by: known_red_no_line_cause }
+    Cons { head: h, tail: _ } =>
+      match h.terminal {
+        Present { value: t } => t
+        Absent => NotAttempted { halted_by: known_red_undecodable_cause }
+      }
+  }
+}
+
+// THE FOREIGN LINES: printed evidence that belongs to NO planned subject. Kept until the join so a line about
+// something outside the roster is REPORTED rather than discarded -- the direction the old fold only ever lost
+// in. A foreign line is reported under the function it printed with an EMPTY module path, because the harness
+// never prints a path and inventing one would be a guess about a claim nobody dispatched. The empty path
+// cannot cause a mix-up in either direction: adoption goes through `known_red_evidence_is_of`, which matches
+// a child's ENTRY against a subject's placed path (a foreign item has no entry, and no placed path is empty),
+// so a stranger's line is never credited to a subject -- and the identities reported here are the join's
+// output, not an input to any further match.
+fn known_red_foreign_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  known_red_dedupe_identities(
+    xs: map(
+      filter(
+        xs: evidence,
+        predicate: fn(e) {
+          !any(
+            xs: subjects,
+            predicate: fn(s) { known_red_evidence_is_of(evidence: e, subject: s) }
+          )
+        }
+      ),
+      e => WitnessIdentity { module_path: "", function: e.printed }
+    )
+  )
+}
+
+// AN IDENTITY WHOSE PRINTED LINES DISAGREE. More than one line for one subject is a duplicate (that is
+// `known_red_duplicated_evidence`); more than one line that decodes to DIFFERENT terminals is something
+// else, and the difference is not cosmetic: `claim_batch` cannot print two verdicts for one claim, so one of
+// the two lines did not come from this harness. Taking 'the first' as the row's terminal -- which the ledger
+// needs, since it wants one row per identity -- would otherwise pick silently. Compared by arm rather than
+// by rendered text, so two arms that merely print alike cannot be mistaken for agreeing.
+// AN IDENTITY PRINTED MORE THAN ONCE WITH AGREING TERMINALS. The disagreement case belongs to
+// `known_red_contradicted_evidence`; splitting the two here keeps each arm's leg a single fact.
+fn known_red_repeatedly_printed_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  map(
+    filter(
+      xs: subjects,
+      predicate: fn(s) {
+        known_red_printed_count(subject: s, evidence: evidence) > 1
+          && !known_red_subject_lines_contradict(subject: s, evidence: evidence)
+      }
+    ),
+    s => s.identity
+  )
+}
+
+fn known_red_contradicted_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  map(
+    filter(
+      xs: subjects,
+      predicate: fn(s) { known_red_subject_lines_contradict(subject: s, evidence: evidence) }
+    ),
+    s => s.identity
+  )
+}
+
+fn known_red_subject_lines_contradict(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> Bool {
+  match known_red_evidence_for(subject: subject, evidence: evidence) {
+    Empty => false
+    Cons { head: h, tail: t } => known_red_contradict_step(rest: t, first: h)
+  }
+}
+
+fn known_red_contradict_step(
+  rest: List<KnownRedPrintedEvidence>,
+  first: KnownRedPrintedEvidence
+) -> Bool {
+  match rest {
+    Empty => false
+    Cons { head: h, tail: t } =>
+      !known_red_optional_terminals_equal(a: first.terminal, b: h.terminal)
+        || known_red_contradict_step(rest: t, first: first)
+  }
+}
+
+// THE OPTIONAL, COMPARED WITHOUT COLLAPSING IT. `Absent` here means 'no arm of the decoder owns this line',
+// which is a THIRD possibility beside 'same terminal' and 'different terminal': two undecodable lines agree
+// (they are both reported by `PrintedLineUndecodable`, not by this arm), while an undecodable line beside a
+// decoded one is a genuine disagreement about what the harness said. Treating Absent as any particular
+// terminal would make the two indistinguishable, so it is matched rather than defaulted.
+fn known_red_optional_terminals_equal(
+  a: Optional<ClaimAttemptTerminal>,
+  b: Optional<ClaimAttemptTerminal>
+) -> Bool {
+  match a {
+    Absent => match b { Absent => true Present { value: _ } => false }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => known_red_terminals_equal(a: x, b: y)
+      }
+  }
+}
+
+// THE LINES THAT DECODED TO NOTHING. A verdict line whose shape no arm owns is a `claim_batch` print arm this
+// file has not been shown; reporting it is the point, because skipping it would restore the very silence the
+// decoder was written to end. Counted as distinct printed names, so one broken arm prints once.
+fn known_red_undecodable_lines(evidence: List<KnownRedPrintedEvidence>) -> List<String> {
+  known_red_dedupe_texts(
+    xs: map(
+      filter(
+        xs: evidence,
+        predicate: fn(e) {
+          match e.terminal {
+            Absent => true
+            Present { value: _ } => false
+          }
+        }
+      ),
+      e => e.line
+    )
+  )
+}
+
+// THE ARMS THAT MAY NOT BE CONFUSED. `KnownRedHeld` is projected from Returned{ObservedVerdict{false}} and
+// nothing else, so the only comparison the join needs between two lines of one identity is whether they
+// decoded to the same terminal. Compared BY ARM, never through a rendered string: `Symbol` has no string
+// identity in this language (§4a, a carrier is never a verb), and a hand-rolled rendering of a sum type is
+// exactly how one arm stops being distinguishable from its neighbour.
+fn known_red_terminals_equal(a: ClaimAttemptTerminal, b: ClaimAttemptTerminal) -> Bool {
+  match a {
+    Returned { observation: o } =>
+      match b {
+        Returned { observation: p } => known_red_observations_equal(a: o, b: p)
+        _ => false
+      }
+    RuntimeErrored { message: m } =>
+      match b {
+        RuntimeErrored { message: n } => m == n
+        _ => false
+      }
+    Panicked { payload: p } =>
+      match b {
+        Panicked { payload: q } => p == q
+        _ => false
+      }
+    NotAttempted { halted_by: h } =>
+      match b {
+        NotAttempted { halted_by: k } => h == k
+        _ => false
+      }
+    BudgetRefused { safety: s } =>
+      match b {
+        BudgetRefused { safety: t } => known_red_safety_equal(a: s, b: t)
+        _ => false
+      }
+    HostToolUnresolved { name: n, probed: p } =>
+      match b {
+        HostToolUnresolved { name: m, probed: q } => n == m && known_red_texts_equal(a: p, b: q)
+        _ => false
+      }
+    RouteGap { operation: o, ground: g } =>
+      match b {
+        RouteGap { operation: p, ground: h } => o == p && known_red_ground_equal(a: g, b: h)
+        _ => false
+      }
+  }
+}
+
+fn known_red_observations_equal(a: ClaimObservation, b: ClaimObservation) -> Bool {
+  match a {
+    ObservedVerdict { holds: x } =>
+      match b {
+        ObservedVerdict { holds: y } => x == y
+        ObservationUnrepresentable { reason: _ } => false
+      }
+    ObservationUnrepresentable { reason: _ } =>
+      match b {
+        ObservedVerdict { holds: _ } => false
+        // Compared by arm, not by reason: `Symbol` has no string identity here, so inventing one would be a
+        // second authority for a fact `ClaimObservation` already owns.
+        ObservationUnrepresentable { reason: _ } => true
+      }
+  }
+}
+
+fn known_red_safety_equal(a: ClaimSafetyOutcome, b: ClaimSafetyOutcome) -> Bool {
+  match a {
+    CompletedWithinSafetyLimits => match b { CompletedWithinSafetyLimits => true _ => false }
+    SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: c, elapsed_wall_at_least: w } =>
+      match b {
+        SafetyInterrupted { raised_by: s, elapsed_cpu_at_least: d, elapsed_wall_at_least: v } =>
+          r == s && c == d && w == v
+        _ => false
+      }
+    CompletedPastSafetyLimit { observed_cpu: c, observed_wall: w, preemption: p } =>
+      match b {
+        CompletedPastSafetyLimit { observed_cpu: d, observed_wall: v, preemption: q } =>
+          c == d && w == v && known_red_preemption_equal(a: p, b: q)
+        _ => false
+      }
+  }
+}
+
+fn known_red_preemption_equal(a: ClaimPreemptionReachability, b: ClaimPreemptionReachability) -> Bool {
+  match a {
+    CooperativelyPollable => match b { CooperativelyPollable => true _ => false }
+    OpaqueHostCallUnbounded { operation: o } =>
+      match b {
+        OpaqueHostCallUnbounded { operation: p } => o == p
+        _ => false
+      }
+  }
+}
+
+fn known_red_ground_equal(a: FloorRouteGapGround, b: FloorRouteGapGround) -> Bool {
+  match a {
+    UnpublishedMockCase => match b { UnpublishedMockCase => true _ => false }
+    NoMockResponse => match b { NoMockResponse => true _ => false }
+    FilesystemRemoval => match b { FilesystemRemoval => true _ => false }
+  }
+}
+
+fn known_red_texts_equal(a: List<String>, b: List<String>) -> Bool {
+  match a {
+    Empty => match b { Empty => true Cons { head: _, tail: _ } => false }
+    Cons { head: h, tail: t } =>
+      match b {
+        Empty => false
+        Cons { head: k, tail: m } => h == k && known_red_texts_equal(a: t, b: m)
+      }
   }
 }
 
@@ -1234,16 +1931,6 @@ fn known_red_subject_defects(subjects: List<KnownRedSubject>) -> List<KnownRedSu
 // the checkout each run, or it becomes a roster of known-missing files, which is a list again.
 fn known_red_entry_exists(entry: String) -> Bool {
   shell.Test.IsFile(path: entry, expect: ExpectSuccess).is_file
-}
-
-// THE ARGV THE HARNESS WOULD ACTUALLY SPAWN WITH. Going through the harness's own builder is the point:
-// a row its builder refuses to carry is a row that could never have produced a verdict, and claiming it
-// as 'not run' without saying why is the silent narrowing this instrument exists to refuse.
-fn known_red_argv_of(placed_subject: KnownRedPlacedSubject) -> List<String> {
-  claim_batch_claims_argv(
-    source_roots: witness_layer_roots(),
-    claims: [ClaimRun { entry: placed_subject.path, function: placed_subject.function }]
-  )
 }
 
 // THE SHAPE THE HARNESS REFUSES: its builder carries one --entry and one --function per ClaimRun, so a
@@ -1328,7 +2015,8 @@ fn known_red_defect_of(subject: KnownRedSubject) -> Optional<KnownRedSubjectDefe
 // not both hide), so this instrument cannot report a balanced run.
 fn known_red_reconciliation(
   subjects: List<KnownRedSubject>,
-  rows: List<KnownRedDerivationRow>
+  rows: List<KnownRedDerivationRow>,
+  evidence: List<KnownRedPrintedEvidence>
 ) -> LedgerReconciliation {
   LedgerReconciliation {
     // OWED BUT NEVER VERDICTED. Asking 'is there a row for it' would be vacuous here — rows are built by
@@ -1341,54 +2029,18 @@ fn known_red_reconciliation(
       predicate: fn(s) { !known_red_subject_was_observed(rows: rows, s: s) }
     )
       |> map(s => s.identity),
-    terminal_without_planned: filter(
-      xs: rows,
-      predicate: fn(r) { !known_red_subject_owed(subjects: subjects, r: r) }
-    )
-      |> map(r => r.identity),
+    // PRINTED FOR NOBODY. The one leg that can only be answered from the multiset. A row is always built by
+    // mapping over a planned subject, so 'a terminal nobody planned' is UNEXPRESSIBLE over rows: this leg
+    // used to be a filter over rows and was therefore structurally always empty -- a shape that could never
+    // be filled, which is the decorative completeness check §5 warns about. The other two legs are computed
+    // over rows and were always able to fire; they are left alone.
+    terminal_without_planned: known_red_foreign_evidence(subjects: subjects, evidence: evidence),
+    // THE LEDGER'S OWN LEG: an identity carried by MORE THAN ONE ROW. This is the ledger's meaning -- the
+    // reconciliation joins ROWS against PLANNED identities -- and it is computed over rows, from the rows
+    // that exist. It is NOT 'a line printed twice': that is a fact about the evidence and is reported by
+    // `PrintedLineDuplicated` below, because the two send a reader to different places (a duplicated row is
+    // the roster's or the packer's problem, a duplicated line is the harness's).
     terminal_duplicated: known_red_duplicated_identities(rows: rows)
-  }
-}
-
-fn known_red_subject_owed(subjects: List<KnownRedSubject>, r: KnownRedDerivationRow) -> Bool {
-  contains(
-    xs: map(subjects, s => s.identity),
-    item: r.identity,
-    eq: fn(a, b) { known_red_same_identity(a: a, b: b) }
-  )
-}
-
-// A DUPLICATED IDENTITY IS A RECONCILIATION DEFECT IN ITS OWN RIGHT: two verdict lines for one claim, or
-// one claim scheduled twice, is not a fuller population but a population that cannot be trusted.
-fn known_red_duplicated_identities(rows: List<KnownRedDerivationRow>) -> List<WitnessIdentity> {
-  known_red_dup_step(rest: rows, seen: [], out: [])
-}
-
-fn known_red_dup_step(
-  rest: List<KnownRedDerivationRow>,
-  seen: List<WitnessIdentity>,
-  out: List<WitnessIdentity>
-) -> List<WitnessIdentity> {
-  match rest {
-    Empty => out
-    Cons { head: h, tail: t } =>
-      if contains(xs: out, item: h.identity, eq: fn(a, b) { known_red_same_identity(a: a, b: b) }) {
-        known_red_dup_step(rest: t, seen: seen, out: out)
-      } else {
-        if contains(xs: seen, item: h.identity, eq: fn(a, b) { known_red_same_identity(a: a, b: b) }) {
-          known_red_dup_step(
-            rest: t,
-            seen: seen,
-            out: list_snoc_item(xs: out, item: h.identity)
-          )
-        } else {
-          known_red_dup_step(
-            rest: t,
-            seen: list_snoc_item(xs: seen, item: h.identity),
-            out: out
-          )
-        }
-      }
   }
 }
 
@@ -1399,8 +2051,12 @@ fn known_red_dup_step(
 // be detached from the commit it claims to have run on. `publication` is `LedgerPartial` unless the
 // reconciliation is empty: a fold that has not accounted for every identity says so in the footer rather
 // than claiming a row count it cannot support.
-fn known_red_ledger(subjects: List<KnownRedSubject>, rows: List<KnownRedDerivationRow>) -> TerminalLedger {
-  let report = known_red_reconciliation(subjects: subjects, rows: rows)
+fn known_red_ledger(
+  subjects: List<KnownRedSubject>,
+  rows: List<KnownRedDerivationRow>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> TerminalLedger {
+  let report = known_red_reconciliation(subjects: subjects, rows: rows, evidence: evidence)
   TerminalLedger {
     binding: known_red_ledger_binding(head: known_red_head_of(rows: rows)),
     rows: map(
@@ -1409,7 +2065,7 @@ fn known_red_ledger(subjects: List<KnownRedSubject>, rows: List<KnownRedDerivati
         ClaimTerminalRow {
           identity: r.identity,
           expectation: r.expectation,
-          terminal: known_red_attempt_terminal_of_row(row: r)
+          terminal: r.terminal
         }
     ),
     publication: if known_red_reconciliation_is_empty(r: report) {
@@ -1494,10 +2150,21 @@ fn known_red_subject_was_observed(rows: List<KnownRedDerivationRow>, s: KnownRed
   )
 }
 
+// AN IDENTITY IS OBSERVED WHEN IT RETURNED, not when a line came back. The `*BeforeVerdict` arms of
+// `ClaimAttemptTerminal` -- runtime error, panic, not-attempted, budget refusal, unresolved host tool, route
+// gap -- are the ledger's own way of saying the claim never reached its subject, and an identity in that
+// state is OWED a verdict, never covered: the run happened, the harness spoke about the claim, and there is
+// still no answer. This is why `claim_disposition` gives them `*BeforeVerdict` names rather than
+// Held/Failed/Passed; asking anything else of them would report a claim that never ran as known-red coverage.
 fn known_red_row_was_observed(row: KnownRedDerivationRow) -> Bool {
-  match row.observation {
-    Present { value: _ } => true
-    Absent => false
+  match row.terminal {
+    Returned { observation: _ } => true
+    RuntimeErrored { message: _ } => false
+    Panicked { payload: _ } => false
+    NotAttempted { halted_by: _ } => false
+    BudgetRefused { safety: _ } => false
+    HostToolUnresolved { name: _, probed: _ } => false
+    RouteGap { operation: _, ground: _ } => false
   }
 }
 
@@ -1516,6 +2183,25 @@ type KnownRedDerivationRefusal
   | DispatchedPopulationNotComplete { missing: List<String> }
   | ChildExitedNonzeroWithoutVerdicts { children: List<String> }
   | VerdictIdentityAmbiguous { names: List<String> }
+  // A LINE THE DECODER HAS NO ARM FOR. `claim_batch` printed something whose shape this file does not own,
+  // which is drift between the harness's print arms and this instrument's decoder -- a defect of THIS file,
+  // not of the roster. It needs its own name because `ReconciliationIncomplete` would otherwise be the only
+  // thing it ever looks like, and that name sends the reader to fix the roster when the thing to fix is here.
+  // Its legs (which identity is unaccounted) and this one (which line could not be read) are different facts.
+  | PrintedLineUndecodable { lines: List<String> }
+  // PRINTED TWICE, AND NOT WITH THE SAME VERDICT. Distinct from `terminal_duplicated`, which reports an
+  // identity printed more than once: agreeing duplicates are a harness that spoke twice about one claim,
+  // while disagreeing duplicates mean one of the lines is not this harness's at all. Both refuse, and they
+  // carry different legs because they send the reader to different places -- a duplicate is the roster's
+  // problem, a contradiction is the evidence's.
+  | PrintedLinesContradict { identities: List<WitnessIdentity> }
+  // PRINTED MORE THAN ONCE, ALWAYS WITH THE SAME VERDICT. The counterpart to the arm above: agreeing
+  // duplicates are not a contradiction, but they are not nothing either -- the harness prints one line per
+  // claim, so a second identical line means something between the child and this file was run twice, or a
+  // line was echoed. Kept separate from `LedgerReconciliation.terminal_duplicated` (duplicate ROWS for one
+  // identity, which is a roster/packer defect) because the two facts have different owners and different
+  // legs; collapsing them would report a harness echo as a roster bug.
+  | PrintedLineDuplicated { identities: List<WitnessIdentity> }
 
 fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
   match r {
@@ -1529,6 +2215,9 @@ fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
     DispatchedPopulationNotComplete { missing: _ } => "DispatchedPopulationNotComplete"
     ChildExitedNonzeroWithoutVerdicts { children: _ } => "ChildExitedNonzeroWithoutVerdicts"
     VerdictIdentityAmbiguous { names: _ } => "VerdictIdentityAmbiguous"
+    PrintedLineUndecodable { lines: _ } => "PrintedLineUndecodable"
+    PrintedLinesContradict { identities: _ } => "PrintedLinesContradict"
+    PrintedLineDuplicated { identities: _ } => "PrintedLineDuplicated"
   }
 }
 
@@ -1542,7 +2231,8 @@ fn known_red_refusals(
   dispatched: List<KnownRedPlacedSubject>,
   rows: List<KnownRedDerivationRow>,
   report: LedgerReconciliation,
-  defects: List<KnownRedSubjectDefect>
+  defects: List<KnownRedSubjectDefect>,
+  evidence: List<KnownRedPrintedEvidence>
 ) -> List<KnownRedDerivationRefusal> {
   let scheduled = length(xs: subjects)
   let no_spawn =
@@ -1600,6 +2290,27 @@ fn known_red_refusals(
     } else {
       []
     }
+  let repeated = known_red_repeatedly_printed_evidence(subjects: subjects, evidence: evidence)
+  let printed_repeated =
+    if length(xs: repeated) > 0 {
+      [PrintedLineDuplicated { identities: repeated }]
+    } else {
+      []
+    }
+  let contradicted = known_red_contradicted_evidence(subjects: subjects, evidence: evidence)
+  let printed_contradicted =
+    if length(xs: contradicted) > 0 {
+      [PrintedLinesContradict { identities: contradicted }]
+    } else {
+      []
+    }
+  let undecodable = known_red_undecodable_lines(evidence: evidence)
+  let printed_undecodable =
+    if length(xs: undecodable) > 0 {
+      [PrintedLineUndecodable { lines: undecodable }]
+    } else {
+      []
+    }
   let ambiguous = known_red_ambiguous_verdict_names(children: children)
   let verdict_name_ambiguous =
     if length(xs: ambiguous) > 0 {
@@ -1621,7 +2332,19 @@ fn known_red_refusals(
         } else {
           []
         },
-        concat(under_dispatched, concat(died_without_verdicts, concat(verdict_name_ambiguous, carried)))
+        concat(
+          under_dispatched,
+          concat(
+            died_without_verdicts,
+            concat(
+              verdict_name_ambiguous,
+              concat(
+                printed_undecodable,
+                concat(printed_repeated, concat(printed_contradicted, carried))
+              )
+            )
+          )
+        )
       )
     )
   )
@@ -1871,6 +2594,24 @@ fn known_red_refusal_detail(r: KnownRedDerivationRefusal) -> String {
       concat(": owed and well-formed but handed to no child: ", join(ms, ", "))
     ChildExitedNonzeroWithoutVerdicts { children: ds } =>
       concat(": ", join(ds, " | "))
+    PrintedLineDuplicated { identities: its } =>
+      concat(
+        ": ",
+        concat(
+          join(map(its, i => witness_identity_qualified_name(identity: i)), ", "),
+          " (printed more than once by the children, always with the same terminal)"
+        )
+      )
+    PrintedLinesContradict { identities: its } =>
+      concat(
+        ": ",
+        concat(
+          join(map(its, i => witness_identity_qualified_name(identity: i)), ", "),
+          " (printed more than once with terminals that do not agree)"
+        )
+      )
+    PrintedLineUndecodable { lines: ls } =>
+      concat(": ", concat(join(ls, ", "), " (no claim arm of this instrument's decoder owns the shape)"))
     VerdictIdentityAmbiguous { names: ns } =>
       concat(": claim_batch prints the bare function name, so these verdict names are shared and their verdicts would merge -- ", join(ns, " | "))
   }
@@ -1930,6 +2671,15 @@ fn known_red_exit_code_of(r: KnownRedDerivationRefusal) -> Int {
     DispatchedPopulationNotComplete { missing: _ } => 2
     ChildExitedNonzeroWithoutVerdicts { children: _ } => 2
     VerdictIdentityAmbiguous { names: _ } => 2
+    // No observation (2), not an observed defect (1): the harness spoke, and what it said could not be read
+    // as a verdict, so no claim's disposition can be taken from it. Same class as a child that died without
+    // printing verdicts -- the run happened and produced nothing usable.
+    PrintedLineUndecodable { lines: _ } => 2
+    // No observation (2): where the evidence contradicts itself, no row's disposition is trustworthy.
+    PrintedLinesContradict { identities: _ } => 2
+    // No observation (2): the line said what it said, but the evidence for it is not a single trustworthy
+    // transcript, and 'the same line twice' is not a second observation of the same fact.
+    PrintedLineDuplicated { identities: _ } => 2
     SubjectDefectsCarried { defects: _ } => 2
     // ── observed defect (1): the claims ran, the verdicts were read, and the list is wrong ──
     StaleEnrolmentNowPassing { identities: _ } => 1
