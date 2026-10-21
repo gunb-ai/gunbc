@@ -116,7 +116,7 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
           CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
         CheckedOut { program: child } =>
           CheckoutEdgeAcc {
-            edges: concat([Edge { label: stored.label, target: child, declaration: stored.declaration }], acc.edges),
+            edges: concat([Edge { label: stored.label, target: child, declaration: NotADeclaration }], acc.edges),
             refusal: acc.refusal,
           }
       }
