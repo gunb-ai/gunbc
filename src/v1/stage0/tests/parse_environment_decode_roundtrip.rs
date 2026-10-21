@@ -19,8 +19,9 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_baseline::{
-    blob_id_at, environment_load_refusal_text, evaluate_environment_in, kernel_set_serves_both,
-    load_parse_environment_at, materialize_revision_paths, EnvironmentLoadRefusal,
+    blob_id_at, decode_environment_wire, environment_load_refusal_text, evaluate_environment_in,
+    kernel_set_serves_both, load_parse_environment_at, materialize_revision_paths,
+    EnvironmentLoadRefusal, OperatorRowAuthority,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -488,13 +489,14 @@ fn the_wire_migration_fills_only_absent_row_fields() {
     let wire = serde_json::to_value(&*live.syntax_spec).expect("encode the live SyntaxSpec");
 
     // Present: untouched. Decoding the live object must give the DECLARED powers back.
-    let declared = v1_compiler::cli_run::namespace_baseline::decode_environment_wire(
+    let declared = decode_environment_wire(
         &serde_json::json!({
             "syntax_spec": wire,
             "non_name_keywords": {},
             "non_pattern_binder_keywords": {},
         }),
         "test-present",
+        OperatorRowAuthority::Declared,
     )
     .expect("a current-shaped environment must decode");
     assert_eq!(
@@ -525,13 +527,14 @@ fn the_wire_migration_fills_only_absent_row_fields() {
         .expect("SyntaxSpec encodes as an object");
     obj.remove("prefix_operators");
     obj.remove("postfix_operators");
-    let filled = v1_compiler::cli_run::namespace_baseline::decode_environment_wire(
+    let filled = decode_environment_wire(
         &serde_json::json!({
             "syntax_spec": historical,
             "non_name_keywords": {},
             "non_pattern_binder_keywords": {},
         }),
         "test-absent",
+        OperatorRowAuthority::PredatesDeclaration,
     )
     .expect("a pre-declaration-shaped environment must decode through the migration");
     assert_eq!(
@@ -556,4 +559,37 @@ fn the_wire_migration_fills_only_absent_row_fields() {
     );
     // Everything the document DID carry survives.
     assert_eq!(filled.syntax_spec.operators, live.syntax_spec.operators);
+
+    // THE ESCAPE-HATCH REFUSAL: the SAME field-less document, decoded under the authority a
+    // CURRENT revision gets, must REFUSE. A shape-detected fill would have restored powers 12/13/21
+    // here and made `-1 - 2` mean `-(1 - 2)` again -- the silent-wrongness this migration must never
+    // do. The authority is decided from the revision's own source (see operator_row_authority), so
+    // nothing in the bytes can earn a fill.
+    let refused = decode_environment_wire(
+        &serde_json::json!({
+            "syntax_spec": historical,
+            "non_name_keywords": {},
+            "non_pattern_binder_keywords": {},
+        }),
+        "test-current-revision-encoding-defect",
+        OperatorRowAuthority::Declared,
+    );
+    match refused {
+        Err(EnvironmentLoadRefusal::ValueNotDecodable { revision, cause }) => {
+            assert_eq!(revision, "test-current-revision-encoding-defect");
+            assert!(
+                cause.contains("prefix_operators") || cause.contains("postfix_operators"),
+                "the refusal must name the missing field, not a guess: {cause}"
+            );
+        }
+        Err(other) => panic!(
+            "a declared revision with a field-less wire must refuse with ValueNotDecodable, got {}",
+            environment_load_refusal_text(&other)
+        ),
+        Ok(env) => panic!(
+            "a declared revision's environment silently gained historical powers: prefix {:?} postfix {:?}",
+            env.syntax_spec.prefix_operators.iter().map(|r| r.binding_power).collect::<Vec<_>>(),
+            env.syntax_spec.postfix_operators.iter().map(|r| r.binding_power).collect::<Vec<_>>(),
+        ),
+    }
 }
