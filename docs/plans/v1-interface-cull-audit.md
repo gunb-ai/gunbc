@@ -1184,3 +1184,13 @@ replacing it:
 Do not retry P2.13 as a wet instrument or as a receipt-checker. If v1 census work is ever wanted
 again, the name-keyed count belongs in the v2 tooling that will outlive the seed, reading the tree
 host-side from day one.
+
+## 11. Timing receipt (lane A, landed 7a9928584d8): contract and next map
+
+- **Wire contract.** `take_lines()` emits `[pre-entry]` rows that other code parses: the refusal-reason parse in `native_product_cache.rs`, and `claim_batch` forwarding. Extra trailing fields are safe; a change to the prefix is not.
+- **Semantics.**
+  - Rows are inclusive ms with `parent=` / `depth=` and `attribution=inclusive|recorded`; there is no netting anywhere.
+  - `compile_transaction_unattributed` (attribution=floor) covers only provably disjoint roots.
+  - The process rows carry `boundary=main_entry_to_pre_exit_sampling`; pre-`main` startup and post-sample cleanup are unobserved.
+- **Next performance map.** On the `complexity_accumulator_copy` fixture, about 43 of 45 ms of compile is unattributed, i.e. inside untimed spans. The next performance lane starts by adding spans there (as receipt rows, not ad-hoc timers) before choosing a repair.
+- **Dissolution.** The hand-written attribution dissolves when a `.dag` PerformanceReceipt carrier is projected and consumed by execution.
