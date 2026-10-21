@@ -2,7 +2,7 @@ module gunbc.roadmap.dispatch_worker_traversal
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.algebra { trim }
-import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal, file_mode_class_bits }
 import extdeps.tools.coreutils_stat {
   coreutils_stat_path_ownership,
   coreutils_stat_path_mode,
@@ -123,17 +123,13 @@ fn ancestor_stat_of(stats: List<AncestorStat>, path: String) -> AncestorStat {
     })
 }
 
-// A DIRECTORY'S EXECUTE BIT ON THE LEG THE WORKER FALLS IN: owner when the uid matches, otherwise
-// group when any observed gid matches, otherwise other. uid 0 passes, as the kernel does.
+// A DIRECTORY'S EXECUTE BIT ON THE CLASS THE WORKER FALLS IN (extdeps.access.posix file_mode_class_bits):
+// owner is the numeric uid, group is ANY observed gid. uid 0 passes, as the kernel does.
 fn worker_may_traverse(uid: Int, gids: List<Int>, ownership: FileOwnership, mode: FileMode) -> Bool {
   if uid == 0 {
     true
-  } else if ownership.uid == uid {
-    mode.owner.execute
-  } else if any(gids, g => g == ownership.gid) {
-    mode.group.execute
   } else {
-    mode.other.execute
+    file_mode_class_bits(mode: mode, caller_is_owner: ownership.uid == uid, caller_in_group: any(gids, g => g == ownership.gid)).execute
   }
 }
 

@@ -2,7 +2,7 @@ module gunbc.roadmap.dispatch_unit_created_paths
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal, file_mode_class_bits }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode_octal }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -41,19 +41,17 @@ type DispatchUnitCreatedPathVerdict
   = DispatchUnitCreatedPathConsumable
   | DispatchUnitCreatedPathUnconsumable { created: UnitCreatedPath }
 
-// The class POSIX applies to the principal: owner when the user matches, else group when the primary
-// group matches, else other (path_resolution(7)). Supplementary groups are not consulted: a consumer
-// that relies on one declares it as its group.
+// The class POSIX applies to the principal (extdeps.access.posix file_mode_class_bits). The principal is
+// a DECLARED account name pair, so owner is the user name and group is the declared primary group;
+// supplementary groups are not consulted here, a consumer that relies on one declares it as its group.
+// The traversal judge (gunbc.roadmap.dispatch_worker_traversal) answers the same two questions from
+// observed numeric ids because the worker's membership is observed; the class rule is the one shared.
 fn created_path_class_bits(created: UnitCreatedPath) -> PermissionBits {
-  if created.consumer_principal.user == created.created_owner.user {
-    created.created_mode.owner
-  } else {
-    if created.consumer_principal.group == created.created_owner.group {
-      created.created_mode.group
-    } else {
-      created.created_mode.other
-    }
-  }
+  file_mode_class_bits(
+    mode: created.created_mode,
+    caller_is_owner: created.consumer_principal.user == created.created_owner.user,
+    caller_in_group: created.consumer_principal.group == created.created_owner.group,
+  )
 }
 
 // Renaming a directory into another parent rewrites its ".." entry, so it needs write on the directory
