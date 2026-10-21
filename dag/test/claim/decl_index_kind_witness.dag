@@ -1,0 +1,34 @@
+module test.claim.decl_index_kind_witness
+
+import std.types { Bool, String }
+import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at }
+
+// THE KIND OF A DECLARATION IS THE KIND OF ITS DECLARATION FORM. Each claim reads the live
+// declaration pool, keyed, through decl_facts_at -- the production route the roster rule and the
+// type-declarer seam consume -- so the kind asserted is the kind the census reports, not a planted
+// one. The alias claims are the discriminating RED: v1.compiler.infer_items item_kind once read
+// the kind from the connective, which an alias lacks, and std.types List, Map and Set answered
+// OtherItem.
+
+fn declared_kinds_are_exactly(qualified_name: String, want_type: Bool) -> Bool {
+  let facts = decl_facts_at(pool_roots: ["dag"], qualified_name: qualified_name)
+  length(xs: facts) == 1 && all(facts, f => if want_type { f.kind == TypeItem } else { f.kind == FnItem })
+}
+
+test fn decl_index_record_reads_type_item() -> Bool {
+  declared_kinds_are_exactly(qualified_name: "std.types.SourceSpan", want_type: true)
+}
+
+test fn decl_index_coproduct_reads_type_item() -> Bool {
+  declared_kinds_are_exactly(qualified_name: "std.types.Bool", want_type: true)
+}
+
+test fn decl_index_alias_reads_type_item() -> Bool {
+  declared_kinds_are_exactly(qualified_name: "std.types.List", want_type: true)
+    && declared_kinds_are_exactly(qualified_name: "std.types.Map", want_type: true)
+    && declared_kinds_are_exactly(qualified_name: "std.types.Set", want_type: true)
+}
+
+test fn decl_index_fn_reads_fn_item() -> Bool {
+  declared_kinds_are_exactly(qualified_name: "std.types.is_kernel_type", want_type: false)
+}

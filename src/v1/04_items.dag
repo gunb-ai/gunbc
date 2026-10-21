@@ -23,7 +23,7 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, Disj, NoConnective, ModuleItemTypeDeclaration,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
@@ -293,8 +293,13 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
   }
 }
 
+// THE KIND OF A DECLARATION IS THE KIND OF ITS DECLARATION FORM. The parse constructor stamps
+// module_item_kind, and `type X { .. }` (Conj), `type X = A | B` (Disj) and the alias `type X = Y`
+// (NoConnective) are one kind carrying three structures. Reading the connective instead gave an
+// alias no type kind, so std.types List, Map and Set classified OtherItem and the type-declarer
+// seam, which filters TypeItem, never saw them.
 fn item_kind(item: Node) -> ItemKind {
-  let kind = if item.connective != NoConnective && item.transport == none {
+  let kind = if item.module_item_kind == ModuleItemTypeDeclaration && item.transport == none {
     TypeItem
   } else if item.transport != none {
     ServiceItem

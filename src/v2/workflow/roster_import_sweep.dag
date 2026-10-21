@@ -2044,8 +2044,10 @@ fn roster_kind_specimen_aliased_type() -> String {
   "module c.kind.aliasgap\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"
 }
 
+// A home the census still cannot classify: std.types declares no such name, so the census has no row to read a kind from.
+// (std.types List was this row's home until the census learned aliased type declarations; see roster_control_wave_two_alias_gap.)
 fn roster_kind_unclassified_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
+  RosterHeadRow { call: "List", import_name: "ListUndeclared", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
 }
 
 // The identical row over a census-classified type home: only `home` differs, which is the whole point.
@@ -2192,31 +2194,24 @@ fn roster_control_census_knows_the_homes() -> String {
   if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over " + roster_corpus_pool_roots_text() + ")\n" }
 }
 
-// THE MEASURED GAP, PINNED SO IT CANNOT BE ABSORBED. Wave 2's homes are std.types List/Map/Set, and the census cannot
-// classify them: they are ALIASED type declarations (`type List<element> = FreeMonoid<element>`, dag/std/types.dag:119,
-// and Set/Map at :157/:158), the host's item_kind (v1_compiler_infer_items.rs:274) assigns a type-declaration kind from
-// a connective an alias does not have, and the census's answer is OtherItem -- which v2.workflow.roster_home_kind
-// matches as NEITHER a type nor a value (a located non-match, not a silent default), because nothing downstream can
-// recover the shape (the host marshals an OtherItem fact's node to a unit node, coproduct_reflection.rs:1794, and the
-// type-declarer seam filters on TypeItem, coproduct_reflection.rs:2012). So under the ruled rule these three homes
-// import NOTHING, and this control pins that fact rather than letting the rule guess a kind for them. It goes red the
-// day the census starts classifying an aliased type declaration as a type -- which is the fix, and belongs to
-// v2.std.decl_index's census, not to this PR.
+// WAVE 2'S HOMES ARE CLASSIFIED. std.types List/Map/Set are ALIASED type declarations (`type List<element> = FreeMonoid<element>`);
+// the host's item_kind once read the kind from the connective, which an alias lacks, and answered OtherItem, so under the ruled
+// position rule these homes imported nothing. item_kind now reads the declaration form (module_item_kind), so each reads TypeItem
+// and this control asserts it: a type home, never a value home.
 fn roster_control_wave_two_alias_gap() -> String {
   let names = ["List", "Map", "Set"]
-  let unclassified = fold_list(xs: names, empty: "", cons: fn(acc, n) {
-    if roster_home_declaration_is_type(home: "std.types", import_name: n) || roster_home_declaration_is_value(home: "std.types", import_name: n) {
-      acc + " " + n + " IS classified"
-    } else {
+  let wrong = fold_list(xs: names, empty: "", cons: fn(acc, n) {
+    if roster_home_declaration_is_type(home: "std.types", import_name: n) && !roster_home_declaration_is_value(home: "std.types", import_name: n) {
       acc
+    } else {
+      acc + " " + n + " is not read as a type declaration"
     }
   })
-  if unclassified == "" {
+  if wrong == "" {
     ""
   } else {
-    "CONTROL-FAIL wave-two-alias-gap: the census now classifies aliased type declarations (std.types" + unclassified
-      + ") -- v2.workflow.roster_home_kind now reads their real kind, so Wave 2's List/Map/Set rows import again and this"
-      + " pinned gap, and the roster rule's Wave 2 limitation, must be retired with it.\n"
+    "CONTROL-FAIL wave-two-alias-gap: the census must classify an aliased type declaration as a type (std.types" + wrong
+      + "), the kind of a declaration being the kind of its declaration form (v1.compiler.infer_items item_kind).\n"
   }
 }
 
