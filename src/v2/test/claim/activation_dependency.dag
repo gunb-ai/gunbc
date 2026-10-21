@@ -819,4 +819,3 @@ fn acd_total_for(src: String) -> Bool {
     Present { value: tree } => acd_total(d: activation_dispositions(tree: tree), root: tree.root)
   }
 }
-
