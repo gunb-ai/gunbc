@@ -1,6 +1,6 @@
 module v2.compiler.decl_ref_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup, string_contains }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup }
 import std.decl_ref { DeclField, DeclarationRef, NamedField, TypeParameter, WholeDeclaration, declaration_ref_display_key, declaration_ref_eq }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List, Map, NonEmptyStr }
@@ -25,6 +25,7 @@ import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold
 import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, decl_ref_disposition_roster }
+import gunbc.source_layout { layout_module_storage_path }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
@@ -568,40 +569,36 @@ fn prose_spans_of(
 
 // A stale span whose module prefix is a file refused at ingest was never judged (see ref_in_refused_file).
 fn span_in_refused_file(span: String, refused: List<String>) -> Bool {
-  let segs = span.split(delimiter: ".")
-  any(
-    xs: refused,
-    predicate: fn(f) {
-      fold_list(
-        xs: segs,
-        empty: SegmentFold { index: 0, kept: [] },
-        cons: fn(acc, seg) {
-          let kept = list_snoc_item(xs: acc.kept, item: seg)
-          SegmentFold {
-            index: if acc.index == 1 || (length(xs: kept) >= 2 && string_contains(s: f, pattern: concat("/", join_segments_with(segs: kept, sep: "/"), ".dag"))) { 1 } else { 0 },
-            kept: kept
-          }
-        }
-      ).index == 1
+  fold_list(
+    xs: span.split(delimiter: "."),
+    empty: SegmentFold { index: 0, kept: [] },
+    cons: fn(acc, seg) {
+      let kept = list_snoc_item(xs: acc.kept, item: seg)
+      SegmentFold {
+        index: if acc.index == 1 || (length(xs: kept) >= 2 && module_file_is_refused(module: join_segments_with(segs: kept, sep: "."), refused: refused)) { 1 } else { 0 },
+        kept: kept
+      }
     }
-  )
+  ).index == 1
 }
 
-fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
-  match s.standing {
-    SpanStale => !span_in_refused_file(span: s.span, refused: refused) && !roster_has_span(span: s.span)
-    SpanResolves => false
-    SpanNotASymbol => false
-    SpanUnclassified => false
-  }
-}
+// The single classification of a prose span, read by refusal, the printed line and the roster join,
+// as resolution_arm is for resolutions. A stale span is Unjudged when its module prefix is a file
+// refused at ingest, Rostered when a typed disposition names it, and Refused otherwise.
+type SpanArm
+  = SpanArmResolves
+  | SpanArmNotASymbol
+  | SpanArmUnclassified
+  | SpanArmStaleUnjudged
+  | SpanArmStaleRostered
+  | SpanArmStaleRefused
 
-fn span_is_stale(s: ProseSpan) -> Bool {
+fn span_arm(s: ProseSpan, refused: List<String>) -> SpanArm {
   match s.standing {
-    SpanStale => true
-    SpanResolves => false
-    SpanNotASymbol => false
-    SpanUnclassified => false
+    SpanStale => if span_in_refused_file(span: s.span, refused: refused) { SpanArmStaleUnjudged } else if roster_has_span(span: s.span) { SpanArmStaleRostered } else { SpanArmStaleRefused }
+    SpanResolves => SpanArmResolves
+    SpanNotASymbol => SpanArmNotASymbol
+    SpanUnclassified => SpanArmUnclassified
   }
 }
 
@@ -628,8 +625,16 @@ fn ref_in_seed_layer(x: DeclarationRef) -> Bool {
 // citation and each refused file is printed by the verb. dissolve-on: the native ingest admits every
 // file of the governed trees, so no file is refused and none can hide a module.
 fn ref_in_refused_file(x: DeclarationRef, refused: List<String>) -> Bool {
-  let tail = concat("/", join_segments_with(segs: (x.module_path as String).split(delimiter: "."), sep: "/"), ".dag")
-  any(xs: refused, predicate: fn(f) { string_contains(s: f, pattern: tail) })
+  module_file_is_refused(module: x.module_path as String, refused: refused)
+}
+
+// The module's file by the one name-to-path authority, gunbc.source_layout, compared for equality
+// with the files refused at ingest: a module the layout gives no file is never excused.
+fn module_file_is_refused(module: String, refused: List<String>) -> Bool {
+  match layout_module_storage_path(module: module) {
+    Present { value: path } => any(xs: refused, predicate: fn(f) { f == path })
+    Absent => false
+  }
 }
 
 fn join_segments_with(segs: List<String>, sep: String) -> String {
@@ -735,7 +740,19 @@ fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> 
 
 fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
   any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && roster_row_matches_resolution(d: d, r: r) })
-    || any(xs: c.prose, predicate: fn(s) { span_is_stale(s: s) && subject_is_span(d: d, span: s.span) })
+    || any(
+      xs: c.prose,
+      predicate: fn(s) {
+        match span_arm(s: s, refused: c.refused_files) {
+          SpanArmStaleUnjudged => subject_is_span(d: d, span: s.span)
+          SpanArmStaleRostered => subject_is_span(d: d, span: s.span)
+          SpanArmStaleRefused => subject_is_span(d: d, span: s.span)
+          SpanArmResolves => false
+          SpanArmNotASymbol => false
+          SpanArmUnclassified => false
+        }
+      }
+    )
     || any(xs: c.unreadable, predicate: fn(u) { subject_is_site(d: d, site: u) })
 }
 
@@ -748,7 +765,20 @@ fn count_refused_resolutions(xs: List<DeclarationRefResolution>, refused: List<S
 }
 
 fn count_refused_spans(xs: List<ProseSpan>, refused: List<String>) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_is_refusal(s: s, refused: refused) { acc + 1 } else { acc } })
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(acc, s) {
+      match span_arm(s: s, refused: refused) {
+        SpanArmStaleRefused => acc + 1
+        SpanArmStaleUnjudged => acc
+        SpanArmStaleRostered => acc
+        SpanArmResolves => acc
+        SpanArmNotASymbol => acc
+        SpanArmUnclassified => acc
+      }
+    }
+  )
 }
 
 type SpanCounts {
@@ -862,9 +892,14 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
         xs: c.prose,
         empty: [],
         cons: fn(acc, s) {
-          if span_is_refusal(s: s, refused: c.refused_files) {
-            list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(sym: s.file), " `", s.span, "`"))
-          } else { acc }
+          match span_arm(s: s, refused: c.refused_files) {
+            SpanArmStaleRefused => list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(sym: s.file), " `", s.span, "`"))
+            SpanArmStaleUnjudged => acc
+            SpanArmStaleRostered => acc
+            SpanArmResolves => acc
+            SpanArmNotASymbol => acc
+            SpanArmUnclassified => acc
+          }
         }
       ),
       right: fold_list(xs: unrostered_unreadable(c: c), empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref unreadable-literal ", f)) })
