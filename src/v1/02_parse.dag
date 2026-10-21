@@ -4639,6 +4639,19 @@ fn parse_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<
   }
 }
 
+// A mock entry is keyed by its transport's own response discriminator: a status for shell and rest, and
+// for the file transport, which observes no status, nothing -- the entry opens with `=>` and carries the
+// bare reading, keyed `mock_reading`.
+fn parse_mock_entry_discriminator(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let tok = token_stream_first(stream: tokens)
+  let bare = match tok { Present { value: t } => is_fat_arrow_shape(shape: t.shape)  Absent => false }
+  if bare {
+    parsed_expr_result(from: tokens, tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "reading" } }, children: [], inferred: none, span: token_span(tok: tok)))
+  } else {
+    parse_status_pattern(tokens: tokens, ctx: ctx)
+  }
+}
+
 fn parse_optional_mock_response_block(tokens: TokenStream, ctx: ParseContext) -> MocksResult {
   let tok = token_stream_first(stream: tokens)
   let is_mock = match tok {
@@ -4667,7 +4680,7 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     MockEntriesResult { entries: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_status_pattern(tokens: tokens, ctx: ctx)
+    let r = parse_mock_entry_discriminator(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return MockEntriesResult { entries: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let status = r.expr
     let r2 = expect(tokens: r.tokens, expected: ExpectFatArrow)

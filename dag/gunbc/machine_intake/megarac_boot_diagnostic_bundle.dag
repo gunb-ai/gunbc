@@ -19,6 +19,7 @@ import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, post_power_fan_gate_text }
 import gunbc.machine_intake.oob_boot_handoff { BootReadbackConfirmed, boot_readback_verdict }
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
@@ -1127,6 +1128,7 @@ type MegaRacRunRecord {
   override: BootOverrideConsumption
   power_after: HostPowerReading
   timing: BootPhaseTiming
+  fan_gate: PostPowerFanGateReading
 }
 
 fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
@@ -1142,6 +1144,7 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
     override: OverrideNotHandedOff { reason: reason },
     power_after: HostPowerNotTaken { reason: reason },
     timing: boot_phase_timing_not_taken(reason: reason),
+    fan_gate: PostPowerFanGateNotReached { reason: reason },
   }
 }
 
@@ -2026,6 +2029,8 @@ fn megarac_boot_bundle_text(row: MegaRacBootRow, bundle: BootDiagnosticBundle, a
     sensors_text(row: row, s: bundle.sensors),
     "== this attempt: power, one-shot override, in-run smpro passes ==",
     megarac_run_record_text(row: row, r: bundle.run),
+    "== post-power-on chassis-fan gate (the observation that decided the stop) ==",
+    post_power_fan_gate_text(reading: bundle.run.fan_gate),
     "== smpro boot stage (ipmi master write-read) ==",
     "-- pass after the attempt --",
     smpro_text(s: bundle.smpro),
@@ -2148,6 +2153,7 @@ fn megarac_boot_chassis_power(row: MegaRacBootRow, username: NonEmptyStr, passwo
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_channel_lost"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "boot_fan_gate_power_off_poll"),
   ]
 {
   let r = diagnostic.ipmi.Tool.ChassisStatus(

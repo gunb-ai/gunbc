@@ -15,7 +15,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
+import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, chassis_observation_is_off, ipmi_chassis_control_verb }
 import gunbc.machine_intake.megarac_media_attach {
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
@@ -257,15 +257,6 @@ fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyS
   }
 }
 
-// ONE READ-BACK SAMPLE, PURE: only an observed OFF ends the poll.
-fn stale_power_off_observed(sample: ChassisPowerObservation) -> Bool {
-  match sample {
-    ChassisPowerRead { power_on: on } => !on
-    ChassisStatusUndecodable { cause: _ } => false
-    ChassisUnreadable => false
-  }
-}
-
 data megarac_stale_power_off_samples: Int = 12
 
 data megarac_stale_power_off_interval: Second = second(count: 5)
@@ -313,12 +304,14 @@ fn megarac_stale_power_off(
         username: host.binding.account,
         password_file: password_file,
         action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
+        deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
+        kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
       )
       if control.success == false {
         MegaRacStalePowerOffCommandRefused { stale_image: stale, before: before }
       } else {
         let last = megarac_stale_power_off_poll(host: host, password_file: password_file, bound: bound, remaining: megarac_stale_power_off_samples)
-        if stale_power_off_observed(sample: last) {
+        if chassis_observation_is_off(observation: last) {
           MegaRacStalePowerOffObserved { stale_image: stale, before: before }
         } else {
           MegaRacStalePowerOffNotObserved { stale_image: stale, before: before, last: last }
@@ -337,7 +330,7 @@ fn megarac_stale_power_off_poll(host: AdmittedMegaRacHost, password_file: NonEmp
 {
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_stale_power_off_interval)
   let sample = megarac_boot_media_chassis_power(host: host, password_file: password_file, bound: bound)
-  if stale_power_off_observed(sample: sample) || remaining <= 1 {
+  if chassis_power_off_poll_settled(sample: sample, remaining: remaining) {
     sample
   } else {
     megarac_stale_power_off_poll(host: host, password_file: password_file, bound: bound, remaining: remaining - 1)

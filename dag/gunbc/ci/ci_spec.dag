@@ -66,7 +66,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix }
+import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
 import extdeps.github.actions_environment { github_output_variable_name }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
@@ -986,6 +986,11 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_cap_release_ci_wet",
+}
+
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
@@ -1432,6 +1437,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
+    gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -2132,7 +2138,7 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
 }
 
 // THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag exactly (a prefix or any-line search would admit a refused receipt whose verbatim controller
+// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
 // answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
 // output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
 // under always(), so the refused receipt is still kept.
@@ -2143,7 +2149,7 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   bif_else(
     cond: bash_build_and_then(
       left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix)]),
+      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
@@ -3054,7 +3060,7 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     entry: gunbc_ci_runner_host_file_observe_target.entry,
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
 
@@ -3078,13 +3084,28 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   )
 }
 
+// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
+// path would replace the converge receipt, the record of a failed or withheld bracket.
+data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_cap_release_target.entry,
+    function: gunbc_ci_runner_host_cap_release_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
 
