@@ -124,7 +124,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterOwnerUnresolved {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("(the declaration said to own the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to one declaring module, so its kind could not be read)"),
+                    supplied: concat("(the declaration said to own the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to one declaring module, so its kind could not be read)", raven_probe_kind_link(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
@@ -133,7 +133,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterNotDeclaredByOwner {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("('", type_arg_display_spelling(n: arg, env: env), "' is not a parameter of the declaration its binder names, so no kind was declared for it)"),
+                    supplied: concat("('", type_arg_display_spelling(n: arg, env: env), "' is not a parameter of the declaration its binder names, so no kind was declared for it)", raven_probe_kind_link(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
@@ -151,7 +151,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterKindUnresolved {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("(a kind on the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to a single declaring position, so the two kinds could not be compared)"),
+                    supplied: concat("(a kind on the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to a single declaring position, so the two kinds could not be compared)", raven_probe_kind_link(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
@@ -160,7 +160,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterKindDiffers {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares its own kind, and that kind resolves to a different declaration than the slot's '", kind_name, "')"),
+                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares its own kind, and that kind resolves to a different declaration than the slot's '", kind_name, "')", raven_probe_kind_link(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
@@ -325,6 +325,76 @@ fn raven_probe_wall_dump(arg: Node, env: TypeEnv, module_name: String) -> String
     " d=", decl_text,
     " s=", to_string(value: arg.span.start), "-", to_string(value: arg.span.end)
   )
+}
+    " s=", to_string(value: arg.span.start), "-", to_string(value: arg.span.end)
+  )
+}
+
+// PRINT-ONLY (probe branch; msg_86fef5fe asks for the earliest link per row): re-runs the JUDGMENT'S
+// OWN lookups -- the same functions, not a parallel implementation -- and reports which one came back
+// empty, with the exact qualified name each side tried. Message-side only: it mints nothing and
+// cannot change a verdict (the verdict is the KindInhabitance the judgment already returned).
+// bk= / sk= also print whether the SAME kind terminal resolves under std.measure, which is the only
+// module that declares Scale and Quantity: bk=n with measureHit=y is the named-import not followed.
+fn raven_probe_kind_link(arg: Node, slot_kind_node: Node, env: TypeEnv, module_name: String) -> String {
+  match arg.declaration {
+    Absent => "|K d=n"
+    Present { value: carrier } =>
+      if !declaration_ref_is_type_parameter(ref: carrier) { "|K d=x" }
+      else {
+        match decl_type_parameter_name(ref: carrier) {
+          Absent => "|K pn=n"
+          Present { value: parameter_name } =>
+            let owner_qualified = concat(carrier.module_path as String, ".", carrier.decl_name as String)
+            match symbol_index_lookup(index: env.symbol_index, qualified_name: owner_qualified) {
+              Absent => concat("|K own=n tried=", owner_qualified)
+              Present { value: owner_decl } =>
+                match map_get(env.symbol_index.file_modules, owner_decl.span.file) {
+                  Absent => "|K fmod=n"
+                  Present { value: owner_module } =>
+                    if owner_module != (carrier.module_path as String) { "|K own!=mod" }
+                    else {
+                      match owner_decl.params |> filter(param =>
+                          authored_name_at(source_indices: env.source_indices, node: param) == parameter_name) |> first {
+                        Absent => "|K par=n"
+                        Present { value: binder } =>
+                          match find_property(props: binder.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
+                            Absent => "|K pk=n"
+                            Present { value: binder_kind_node } =>
+                              let binder_kind_name = concat(owner_module, ".", authored_name(env: env, node: binder_kind_node))
+                              let slot_kind_name = concat(module_name, ".", authored_name(env: env, node: slot_kind_node))
+                              match kind_declaring_position(kind_node: binder_kind_node, declaring_module: owner_module, env: env) {
+                                Absent => concat(concat(concat(concat("|K bk=n binderKind=", binder_kind_name), " slotKind="), slot_kind_name), measure_hit_text(kind_node: binder_kind_node, env: env))
+                                Present { value: binder_kind_decl } =>
+                                  match kind_declaring_position(kind_node: slot_kind_node, declaring_module: module_name, env: env) {
+                                    Absent => concat(concat(concat(concat("|K sk=n binderKind=", binder_kind_name), " slotKind="), slot_kind_name), measure_hit_text(kind_node: slot_kind_node, env: env))
+                                    Present { value: slot_kind_decl } =>
+                                      if slot_kind_decl.span.file == binder_kind_decl.span.file
+                                        && slot_kind_decl.span.start == binder_kind_decl.span.start
+                                        && slot_kind_decl.span.end == binder_kind_decl.span.end {
+                                        concat("|K cmp=same binderKind=", binder_kind_name)
+                                      } else {
+                                        concat(concat(concat(concat("|K cmp=diff binderKind=", binder_kind_name), " slotKind="), slot_kind_name), concat(concat("|K binderFile=", binder_kind_decl.span.file), concat(" slotFile=", slot_kind_decl.span.file)))
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// Does the SAME kind terminal resolve as a declaration of std.measure (the only module that declares
+// Scale and Quantity)? A 'yes' beside a failed lookup is a named import the judgment did not follow.
+fn measure_hit_text(kind_node: Node, env: TypeEnv) -> String {
+  match kind_declaring_position(kind_node: kind_node, declaring_module: "std.measure", env: env) {
+    Absent => " measureHit=n"
+    Present { value: _ } => " measureHit=y"
+  }
 }
 
 // The refusal names what it COMPARED AGAINST, not just what was supplied. A wall that says only
