@@ -23,7 +23,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.output_policy { ExpectSuccess }
@@ -991,12 +991,15 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
 ]
 
 // THE SOURCE READ, THROUGH THE MODELED ROUTE. `Filesystem.Read` is the repo's own readonly read authority
-// (`extdeps.filesystem.filesystem_io`), and the interpreter treats a readonly read of a path proven under
-// the checkout root as INPUT ACCESS, not a host effect (`v1_interpreter.rs`, the hermetic carve-out) -- so
-// this is a real read of the real file in hermetic mode too, which is what makes the tie honest rather than
-// a fixture that replays yesterday's answer.
+// (`extdeps.filesystem.filesystem_io`) and answers a scalar `{content, success, error}`; the typed
+// `FilesystemReadSucceeded | FilesystemReadRefused` shape comes only from `filesystem_read_outcome`, which
+// that module declares as THE fold for it (matching the variants off the raw op is not even writable). The
+// interpreter treats a readonly read of a path proven under the checkout root as INPUT ACCESS, not a host
+// effect (`v1_interpreter.rs`, the hermetic carve-out) -- so this is a real read of the real file in
+// hermetic mode too, which is what makes the tie honest rather than a fixture replaying yesterday's answer.
 fn known_red_transport_source_content(source: String) -> Optional<String> {
-  match Filesystem.Read(path: source) {
+  let read = Filesystem.Read(path: source)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadSucceeded { content: content } => Present { value: content }
     FilesystemReadRefused { error: _ } => Absent
   }
