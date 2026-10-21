@@ -34,22 +34,8 @@ import extdeps.provisioning.network_boot {
 // THE TARGET ENUM IS NOT MINE TO REINVENT (review 81711). extdeps.bmc.types already models the
 // Redfish BootSourceOverrideTarget value set that the BMC protocol defines; classifying a boot
 // entry as network-or-not is a question about THAT enum, so it is asked against it.
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideTarget,
-  RedfishBootTargetNetworkStanding,
-  NetworkBootTarget,
-  NotNetworkBootTarget,
-  redfish_boot_target_network_standing,
-  redfish_boot_target_wire,
-  BootTargetNone,
-  BootTargetPxe,
-  BootTargetHdd,
-  BootTargetCd,
-  BootTargetUsb,
-  BootTargetBiosSetup,
-  BootTargetDiags,
-  BootTargetUefiHttp,
-}
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishBootTargetNetworkStanding, NetworkBootTarget, NotNetworkBootTarget, redfish_boot_target_network_standing, redfish_boot_target_wire, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp }
+import gunbc.secure_boot_observation { FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.network_boot_delivery { BootControlReceiptStanding }
 // THE FRONTIER IS DATA, NOT PROSE (review 81734 / DESIGN 3c). A '//' note naming the future probe
 // is unreadable to any tool and is deleted by the next refactor that does not happen to need it;
@@ -78,23 +64,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // ask (a probe coverage gap), a refused axis means stop asking that way (a transport or policy
 // fact). Those two have different remedies, which is exactly why they are different arms.
 // ---------------------------------------------------------------------------
-
-// WHY A REFUSAL IS A UNION AND NOT A STRING. A refusal string cannot be routed to a remedy:
-// VendorCommandRejected means the transport does not speak that command (change the route),
-// ResourceNotFound means the transport speaks it but this unit has no such object (change the
-// question), AuthenticationRequired means someone must establish credentials (a human or a
-// secret store), and ReplyShapeUnrecognized means the reply did not match the schema (a
-// toolchain/version problem, and a fact worth recording because it usually means the BMC
-// firmware drifted), and AuthorizationDenied means credentials were accepted and the account lacks the
-// privilege (HTTP 403; a role grant, not a login). UnexpectedHttpStatus carries any other non-success status verbatim. Six different next actions, so six arms. A family row can be checked
-// against this union; it cannot be checked against prose.
-type FirmwareReadRefusal
-  = VendorCommandRejected { detail: NonEmptyStr }
-  | ResourceNotFound { detail: NonEmptyStr }
-  | AuthenticationRequired { detail: NonEmptyStr }
-  | AuthorizationDenied { detail: NonEmptyStr }
-  | UnexpectedHttpStatus { status: HttpStatus, detail: NonEmptyStr }
-  | ReplyShapeUnrecognized { detail: NonEmptyStr }
 
 // BootOrder is the firmware's own list of what it will try. A network stack in this list is the
 // precondition the readiness fn checks first, because every remote override mechanism merely
@@ -198,17 +167,6 @@ type NicsObservation
   = NicsObserved { nics: List<NonEmptyStr> }
   | NicsUnobserved { reason: NonEmptyStr }
   | NicsRefused { refusal: FirmwareReadRefusal }
-
-// ON, OFF, NEVER ASKED, and ASKED-AND-DENIED are four states, not two states plus a wrapper.
-// Secure Boot decides whether the pinned unsigned iPXE chainloader (S1) ever reaches a shell: a
-// fleet that cannot say which of these four it is in cannot say whether its own pin will boot.
-// The standing is read-only here; enrolling or clearing a key is a change of state, not a
-// reading of one, and belongs to a route with its own readback.
-type SecureBootObservation
-  = SecureBootEnabled
-  | SecureBootDisabled
-  | SecureBootUnobserved { reason: NonEmptyStr }
-  | SecureBootRefused { refusal: FirmwareReadRefusal }
 
 // BIOS version is on the seam because a firmware update changes which override mechanism a unit
 // supports. Treating it as informational is how a route keeps being applied to a unit that

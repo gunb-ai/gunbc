@@ -11,8 +11,7 @@ use crate::std_syntax::ItemFormKind::{
 };
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_syntax::{
-    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, PrefixOperatorSpec,
-    SyntaxSpec,
+    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -281,23 +280,12 @@ pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
 }
 
-pub fn rust_prefix_operators() -> Rc<Vec<Rc<PrefixOperatorSpec>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<PrefixOperatorSpec>>> = {
-            serde_json::from_str("[{\"symbol\": \"-\", \"binding_power\": 18}, {\"symbol\": \"!\", \"binding_power\": 18}]")
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<PrefixOperatorSpec>>>| c.clone())
-}
-
 pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
     thread_local! {
             static CACHED: Rc<SyntaxSpec> = {
                 Rc::new(SyntaxSpec {
         item_forms: rust_item_forms(),
         operators: rust_operators(),
-        prefix_operators: rust_prefix_operators(),
         keyword_literals: rust_keyword_literals(),
         keyword_set: rust_keyword_set(),
     })
