@@ -40,7 +40,11 @@ test fn witness_scale_well_formed() -> Bool {
 // SupervisorConvened (gunbc.plans.harness_session_lifecycle slice S1: the supervisor decides inside
 // the worker's paused session, so the belt convenes nothing), and back to 19 WITH
 // LaunchRevisionNotLanded (#13703, wire label revision_not_landed_on_main, which landed without
-// moving this pin). 19 = Spawned + SpawnFailed + one SpawnNotAdmitted per launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
+// moving this pin), and 19 -> 20 WITH SpawnLaunchPending (wire label launch_pending, the start
+// request enqueued on the attempt-unit spool with no answer read yet). BandInProgress now MEANS that
+// result: before this change no wire result carried it. 20 = Spawned + SpawnLaunchPending +
+// SpawnFailed + one SpawnNotAdmitted
+// per launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
 // per outcome variant over a CLOSED coproduct, so the literal pins a hand-enumerated fixture's
 // size and not a measured population. The two clauses above it are the ones with the failure
 // mode -- both directions of totality, derived on each side -- and they held through this
@@ -50,7 +54,7 @@ test fn witness_scale_well_formed() -> Bool {
 test fn witness_dispatch_button_states_total_over_wire() -> Bool {
   dispatch_button_wire_total()
     && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
-    && belt_dispatch_all_status_labels().length() == 19
+    && belt_dispatch_all_status_labels().length() == 20
 }
 
 test fn witness_dropped_state_is_located_red() -> Bool {

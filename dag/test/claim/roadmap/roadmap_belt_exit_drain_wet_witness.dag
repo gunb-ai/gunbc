@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
   attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -11,9 +11,10 @@ import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
+import gunbc.roadmap.spool_stall { spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
-  belt_exit_stall_failures, belt_exit_stall_read_at, BeltExitStallNone, BeltExitStallHeld, belt_exit_stall_release_at, belt_exit_stall_analyze_at, belt_exit_stall_record_at, BeltExitStallEntry, BeltExitStallUnreadable, belt_exit_stall_record_text, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
+  belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -360,8 +361,8 @@ test fn a_pass_that_claimed_nothing_behind_an_unmovable_entry_records_the_stall(
   let wrote = record(root: root, name: worker_exit)
   let pass = unmovable_pass(root: root)
   let reported = belt_exit_stall_failures(root: root, d: pass)
-  wrote && count(reported) == 1 && match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.entry)) == [worker_exit]
+  wrote && count(reported) == 1 && match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.entry)) == [worker_exit]
     _ => false
   }
 }
@@ -383,8 +384,8 @@ test fn a_pass_that_claimed_something_or_nothing_unmovable_records_no_stall() ->
   wrote && clean_wrote
     && count(belt_exit_stall_failures(root: root, d: pass)) == 0
     && count(belt_exit_stall_failures(root: clean_root, d: clean)) == 0
-    && belt_exit_stall_read_at(root: root) == BeltExitStallNone
-    && belt_exit_stall_read_at(root: clean_root) == BeltExitStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) == SpoolStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: clean_root)) == SpoolStallNone
 }
 
 // The record is create-only: a later stalled pass keeps the first record as the evidence.
@@ -395,8 +396,8 @@ test fn the_stall_record_is_create_only() -> Bool {
   let r1 = belt_exit_stall_failures(root: root, d: p1)
   let p2 = unmovable_pass(root: root)
   let r2 = belt_exit_stall_failures(root: root, d: p2)
-  wrote && count(r1) == 1 && count(r2) == 1 && match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1
+  wrote && count(r1) == 1 && count(r2) == 1 && match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1
     _ => false
   }
 }
@@ -408,12 +409,12 @@ test fn release_refuses_while_an_entry_is_unmovable_then_clears_the_record_and_h
   let pass = unmovable_pass(root: root)
   let recorded = belt_exit_stall_failures(root: root, d: pass)
   let still = belt_exit_stall_release_at(root: root, move: (r, e, from, to) => refusing_move_of(entry: worker_exit, root: r, name: e, from: from, to: to))
-  let held_after = match belt_exit_stall_read_at(root: root) { BeltExitStallHeld { entries: _ } => true _ => false }
+  let held_after = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) { SpoolStallHeld { entries: _ } => true _ => false }
   let freed = belt_exit_stall_release_at(root: root, move: belt_exit_entry_move_at)
   wrote && count(recorded) == 1 && held_after
     && match still { BeltExitStallStillUnmovable { entries } => count(entries) == 1 _ => false }
     && match freed { BeltExitStallReleased { reclaimed: _ } => true _ => false }
-    && belt_exit_stall_read_at(root: root) == BeltExitStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) == SpoolStallNone
     && names_at(root: root, stage: AttemptExitQueued) == [worker_exit]
     && count(names_in(root: root, stage_is_queued: false)) == 0
 }
@@ -436,13 +437,13 @@ test fn analyze_does_not_call_an_entry_foreign_when_the_principal_is_unread() ->
 test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadable() -> Bool {
   let root = fresh_spool(tag: "json")
   let cause = "mv exited 1:\nmv: \"x\" :: Permission denied"
-  let wrote = belt_exit_stall_record_at(root: root, unmovable: [BeltExitStallEntry { entry: worker_exit, step: "claim", cause: cause }])
-  let round_trips = match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == ["claim"]
+  let wrote = spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: [SpoolStallEntry { entry: worker_exit, step: "claim", cause: cause }])
+  let round_trips = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == ["claim"]
     _ => false
   }
   let bad_root = fresh_spool(tag: "badjson")
   let made = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["mkdir -p $(dirname ", attempt_exit_stall_record_path(instance_root: bad_root), ") && printf 'unmovable :: x' > ", attempt_exit_stall_record_path(instance_root: bad_root)], "")]), workdir: "/")
-  let unreadable = match belt_exit_stall_read_at(root: bad_root) { BeltExitStallUnreadable { reason: _ } => true _ => false }
+  let unreadable = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: bad_root)) { SpoolStallUnreadable { reason: _ } => true _ => false }
   round_trips && unreadable
 }
