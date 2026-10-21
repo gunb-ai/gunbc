@@ -812,10 +812,9 @@ mod tests {
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn cost_receipt_exact_demand_versus_carrier_presence() {
-        let Ok(list) = std::env::var("GUNBC_COST_ENTRIES") else {
-            eprintln!("cost receipt: GUNBC_COST_ENTRIES unset; no population, no receipt");
-            return;
-        };
+        // No population is no observation: it fails rather than passing with nothing measured.
+        let list = std::env::var("GUNBC_COST_ENTRIES")
+            .expect("cost receipt: GUNBC_COST_ENTRIES unset; no population, no observation");
         let pool = super::super::build_module_path_index_from_witness_roots();
         let route_closure = super::super::emit_host::fixture_pool_closure_of("std.coercion", &pool)
             .expect("std.coercion's closure loads");
@@ -824,19 +823,35 @@ mod tests {
         let mut carrier_present = 0usize;
         let mut carrier_without_demand = 0usize;
         let mut added_by_carrier_rule = 0usize;
+        let mut skipped = 0usize;
         for path in std::fs::read_to_string(&list)
             .expect("entry list")
             .lines()
             .filter(|l| !l.trim().is_empty())
         {
             let on_disk = super::super::process_workspace_root().join(path.trim());
-            let Ok(content) = std::fs::read_to_string(&on_disk) else {
-                continue;
+            let content = match std::fs::read_to_string(&on_disk) {
+                Ok(content) => content,
+                Err(e) => {
+                    skipped += 1;
+                    eprintln!("cost receipt skipped: {} unreadable: {e}", path.trim());
+                    continue;
+                }
             };
-            let Ok(sources) =
-                super::super::resolve_virtual_source_with_imports(path.trim(), &content, &pool)
-            else {
-                continue;
+            let sources = match super::super::resolve_virtual_source_with_imports(
+                path.trim(),
+                &content,
+                &pool,
+            ) {
+                Ok(sources) => sources,
+                Err(e) => {
+                    skipped += 1;
+                    eprintln!(
+                        "cost receipt skipped: {} closure unresolved: {e}",
+                        path.trim()
+                    );
+                    continue;
+                }
             };
             let resolved = compile(&sources);
             entries += 1;
@@ -871,7 +886,7 @@ mod tests {
             );
         }
         eprintln!(
-            "cost receipt: entries={entries} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
+            "cost receipt: entries={entries} skipped={skipped} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
         );
     }
 
