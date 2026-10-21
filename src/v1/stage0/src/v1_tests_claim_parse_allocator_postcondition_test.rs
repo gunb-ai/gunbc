@@ -3,7 +3,14 @@
 
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_types::{Bool, List};
+pub use crate::std_content_hash::Fnv1a64Structural;
+pub use crate::std_content_hash::{content_hash_atom, content_hash_combine_structural};
+use crate::std_occurrence_identity::OccurrenceCategory::*;
+pub use crate::std_occurrence_identity::{
+    DeclarationOccurrence, OccurrenceCategory, OccurrenceId, OccurrenceIndexEntry,
+    ReferenceOccurrence,
+};
+pub use crate::std_types::{Bool, List, NonEmptyStr};
 pub use crate::v1_compiler_parse::{parse_with_table, ParseWithTableResult};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
@@ -288,5 +295,227 @@ pub fn folds_transport_identity_matches_predeletion_golden() -> bool {
         34,
         573,
         13411,
+    )
+}
+
+pub fn category_string(c: OccurrenceCategory) -> String {
+    match c.clone() {
+        OccurrenceCategory::LexicalValueOccurrence => "lexical_value".to_string(),
+        OccurrenceCategory::TypeOccurrence => "type".to_string(),
+        OccurrenceCategory::CallableOccurrence => "callable".to_string(),
+        OccurrenceCategory::ConstructorOccurrence => "constructor".to_string(),
+        OccurrenceCategory::NamespaceSegmentOccurrence => "namespace_segment".to_string(),
+        OccurrenceCategory::FieldOccurrence => "field".to_string(),
+        OccurrenceCategory::MethodOccurrence => "method".to_string(),
+    }
+}
+
+pub fn ancestors_string(xs: Rc<Vec<OccurrenceId>>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            "".to_string()
+        } else {
+            let h = (*__fm)[0].clone();
+            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            v1_rt::concat(
+                v1_rt::concat(";".to_string(), (h.value.clone()).to_string()),
+                ancestors_string(t.clone()),
+            )
+        }
+    })
+}
+
+pub fn index_content_row(e: Rc<OccurrenceIndexEntry>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            (e.projection.occurrence.value.clone()).to_string(),
+                            ";".to_string(),
+                        ),
+                        e.projection.authored_name.clone(),
+                    ),
+                    ";".to_string(),
+                ),
+                v1_rt::concat(
+                    v1_rt::concat(e.projection.diagnostic_span.file.clone(), ";".to_string()),
+                    (e.projection.diagnostic_span.start.clone()).to_string(),
+                ),
+            ),
+            ";".to_string(),
+        ),
+        v1_rt::concat(
+            v1_rt::concat(
+                (e.projection.diagnostic_span.end.clone()).to_string(),
+                ";".to_string(),
+            ),
+            v1_rt::concat(
+                (e.containment.terminal.value.clone()).to_string(),
+                ancestors_string(e.containment.ancestors.clone()),
+            ),
+        ),
+    )
+}
+
+pub fn declaration_content_row(e: Rc<DeclarationOccurrence>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat((e.occurrence.value.clone()).to_string(), ";".to_string()),
+                        category_string(e.category.clone()),
+                    ),
+                    ";".to_string(),
+                ),
+                v1_rt::concat(
+                    v1_rt::concat(e.diagnostic_span.file.clone(), ";".to_string()),
+                    (e.diagnostic_span.start.clone()).to_string(),
+                ),
+            ),
+            ";".to_string(),
+        ),
+        v1_rt::concat(
+            v1_rt::concat((e.diagnostic_span.end.clone()).to_string(), ";".to_string()),
+            v1_rt::concat(
+                (e.containment.terminal.value.clone()).to_string(),
+                ancestors_string(e.containment.ancestors.clone()),
+            ),
+        ),
+    )
+}
+
+pub fn reference_content_row(e: Rc<ReferenceOccurrence>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat((e.occurrence.value.clone()).to_string(), ";".to_string()),
+                        category_string(e.category.clone()),
+                    ),
+                    ";".to_string(),
+                ),
+                v1_rt::concat(
+                    v1_rt::concat(e.diagnostic_span.file.clone(), ";".to_string()),
+                    (e.diagnostic_span.start.clone()).to_string(),
+                ),
+            ),
+            ";".to_string(),
+        ),
+        v1_rt::concat(
+            v1_rt::concat((e.diagnostic_span.end.clone()).to_string(), ";".to_string()),
+            v1_rt::concat(
+                (e.containment.terminal.value.clone()).to_string(),
+                ancestors_string(e.containment.ancestors.clone()),
+            ),
+        ),
+    )
+}
+
+pub fn digest_rows(seed: String, rows: Rc<Vec<String>>) -> String {
+    {
+        let seed_hash = crate::std_content_hash::content_hash_atom(v1_rt::concat(
+            v1_rt::concat("P13|".to_string(), seed.clone()),
+            "|SEED".to_string(),
+        ));
+        let combined = rows.iter().cloned().fold(
+            seed_hash.clone(),
+            |acc: Rc<Fnv1a64Structural>, r: String| {
+                crate::std_content_hash::content_hash_combine_structural(
+                    acc,
+                    crate::std_content_hash::content_hash_atom(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("P13|".to_string(), seed.clone()),
+                            "|".to_string(),
+                        ),
+                        r.clone(),
+                    )),
+                )
+            },
+        );
+        combined.digest.clone()
+    }
+}
+
+pub fn content_matches_golden(
+    parsed: Rc<ParseWithTableResult>,
+    label: String,
+    golden_idx: String,
+    golden_decl: String,
+    golden_ref: String,
+) -> bool {
+    (((digest_rows(
+        v1_rt::concat(label.clone(), "/idx".to_string()),
+        Rc::new(
+            parsed
+                .occurrence_transport
+                .index
+                .entries
+                .clone()
+                .iter()
+                .cloned()
+                .map(index_content_row)
+                .collect::<Vec<_>>(),
+        ),
+    ) == golden_idx.clone())
+        && (digest_rows(
+            v1_rt::concat(label.clone(), "/decl".to_string()),
+            Rc::new(
+                parsed
+                    .occurrence_transport
+                    .declarations
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .map(declaration_content_row)
+                    .collect::<Vec<_>>(),
+            ),
+        ) == golden_decl.clone()))
+        && (digest_rows(
+            v1_rt::concat(label.clone(), "/ref".to_string()),
+            Rc::new(
+                parsed
+                    .occurrence_transport
+                    .references
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .map(reference_content_row)
+                    .collect::<Vec<_>>(),
+            ),
+        ) == golden_ref.clone()))
+}
+
+pub fn chain40_transport_content_association_matches_predeletion_golden() -> bool {
+    content_matches_golden(
+        parse_chain_source(chain_source(40)),
+        "chain40".to_string(),
+        "430ddfdce5732ce8".to_string(),
+        "b07e5c7d9ea4af71".to_string(),
+        "2751065ad16b58a4".to_string(),
+    )
+}
+
+pub fn chain200_transport_content_association_matches_predeletion_golden() -> bool {
+    content_matches_golden(
+        parse_chain_source(chain_source(200)),
+        "chain200".to_string(),
+        "ef0e2cae9d61e391".to_string(),
+        "bfcbfd4020e5d69a".to_string(),
+        "ddab5f9126a03657".to_string(),
+    )
+}
+
+pub fn folds_transport_content_association_matches_predeletion_golden() -> bool {
+    content_matches_golden(
+        parse_chain_source(fold_fixture_source()),
+        "folds".to_string(),
+        "bc2da06da246af61".to_string(),
+        "25f2e4a06a1d9c1d".to_string(),
+        "3989a29bc2eb7e71".to_string(),
     )
 }

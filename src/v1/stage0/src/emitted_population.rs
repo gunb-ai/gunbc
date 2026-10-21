@@ -161,6 +161,7 @@
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_keyword_pattern_binder_refusal_test.rs
+// src/v1_tests_claim_parse_allocator_postcondition_test.rs
 // src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
