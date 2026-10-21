@@ -149,3 +149,18 @@ fn http_retry_after_wire(r: HttpRetryAfter) -> String {
   }
 }
 
+
+// RFC 9110 section 15.5 status codes a consumer decides on, named once so a consumer need not repeat the literal.
+fn http_unauthorized() -> HttpStatus { 401 }
+fn http_forbidden() -> HttpStatus { 403 }
+fn http_not_found() -> HttpStatus { 404 }
+
+fn http_status_is_success(status: HttpStatus) -> Bool {
+  match http_status_class_of(status: status) {
+    Successful => true
+    Informational => false
+    Redirection => false
+    ClientError => false
+    ServerError => false
+  }
+}
