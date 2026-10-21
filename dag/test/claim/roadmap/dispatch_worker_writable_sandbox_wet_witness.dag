@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
 }
@@ -44,7 +44,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_claim_entry,
   AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimUnmovable, AttemptSystemUnitClaimSymlink,
   AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
-  attempt_system_unit_launch_cli, attempt_system_unit_drain_pass, attempt_unit_stall_verdict, AttemptUnitStalled, AttemptUnitNotStalled, AttemptUnitDrainPass,
+  attempt_system_unit_write_answer, attempt_system_unit_launch_cli, attempt_system_unit_drain_pass, attempt_unit_stall_verdict, AttemptUnitStalled, AttemptUnitNotStalled, AttemptUnitDrainPass,
   attempt_system_unit_claimed_path,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
@@ -1060,12 +1060,49 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
     }
     let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
     let pass = attempt_system_unit_drain_pass(instance_root: root)
-    let retired_not_stalled = pass.retired == 1 && match attempt_unit_stall_verdict(pass: pass) {
+    let retired_not_stalled = pass.retired == 1 && pass.refused == 1 && match attempt_unit_stall_verdict(pass: pass) {
       AttemptUnitNotStalled => true
       AttemptUnitStalled { unmovable: _ } => false
     }
     prepared && empty_not_stalled && planted && retired_not_stalled
       && spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) == SpoolStallNone
+  }
+}
+
+// A REFUSAL IS AN ANSWER (end to end through the CLI). The refused request is answered and leaves requests/, and
+// the unit's exit is success; the drain's own failure (here: the answer cannot be created because one already
+// exists for the entry) is the nonzero exit.
+fn planted_symlink_request_root(tag: String, answer_exists: Bool) -> String? {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    none
+  } else {
+    let root = tmp.path as String
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
+    let prepared = attempt_system_unit_spool_prepare(instance_root: root)
+    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", attempt_system_unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
+    let answered = if answer_exists { attempt_system_unit_write_answer(instance_root: root, entry: entry, body: "", answer: AttemptSystemUnitStarted) } else { true }
+    if prepared && planted && answered { Present { value: root } } else { none }
+  }
+}
+
+test fn a_refused_request_does_not_fail_the_drain_unit() -> Bool {
+  match planted_symlink_request_root(tag: "k1", answer_exists: false) {
+    Absent => false
+    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root) {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
+  }
+}
+
+test fn a_request_the_drain_cannot_answer_fails_the_drain_unit() -> Bool {
+  match planted_symlink_request_root(tag: "k1", answer_exists: true) {
+    Absent => false
+    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written")
+    }
   }
 }
 
