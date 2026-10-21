@@ -8,11 +8,7 @@ import gunbc.guarantee_probe_corpus {
   probe_row_expectation_holds,
   census_blocking_count_for_class,
 }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_measurement { GuaranteeProbeId }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -51,13 +47,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
-}
-
-fn total_row_count_is_zero(census: CompileDiagnosticCensus) -> Bool {
-  match census {
-    CensusObserved { rows: rows } => count(rows) == 0
-    CensusNotRunnable { cause: _ } => false
-  }
 }
 
 fn row_holds(probe: GuaranteeProbeId, source: String) -> Bool {
@@ -125,7 +114,7 @@ data tag_reference_unlisted_module_source: String = "module probe_floor_tag_ref_
 data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 
 test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
-  total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
+  blocking_count(source: tag_reference_at_discriminant_seam_source, wanted: "MissingField") == 0
 }
 
 test fn floor_record_completeness_discriminant_tag_reference_outside_the_waiver_refuses() -> Bool {
