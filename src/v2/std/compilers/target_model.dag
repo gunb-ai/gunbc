@@ -15,7 +15,7 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration }
+import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
@@ -15302,17 +15302,13 @@ fn target_value_expr_branch_bool_gate(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  if length(xs: positional_child_target_nodes(node: node)) != 3 {
-    false
-  } else {
-    match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
-      Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(
-          node: cond,
-          source_bool_form: source_bool_form
-        )
-      Absent => false
-    }
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Present { value: cond } =>
+      target_value_expr_is_source_bool_literal_atom(
+        node: cond,
+        source_bool_form: source_bool_form
+      )
+    Absent => false
   }
 }
 
@@ -15940,7 +15936,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       } else {
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+        match branch_slot_target(n: body, slot: BranchConditionSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15949,7 +15945,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       Present { value: cond } =>
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+        match branch_slot_target(n: body, slot: BranchThenSlot) {
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
@@ -15958,7 +15954,7 @@ fn target_project_branch_bool_if_else(
               )
             )
           Present { value: then_arm } =>
-            match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+            match branch_slot_target(n: body, slot: BranchElseSlot) {
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(

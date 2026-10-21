@@ -46,6 +46,10 @@ import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
+  BranchElseSlot,
+  BranchSlot,
+  BranchThenSlot,
+  branch_slot_target,
   ComputationNode,
   Edge,
   Node,
@@ -215,13 +219,12 @@ fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<
   }
 }
 
-fn program_nth_child(node: Node, wanted: Int) -> Outcome<Node> {
-  match list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
-      match child {
-        Edge { label: _, target: arm } =>
-          Accepted { value: arm, diagnostics: None }
-      }
+// A Branch's arm is read through the v2.std.node slot table (branch_slot_target), so an arm shared with the
+// condition still names one slot; a Branch that is not three-positional holds no arm and is refused.
+fn program_branch_arm(node: Node, slot: BranchSlot) -> Outcome<Node> {
+  match branch_slot_target(n: node, slot: slot) {
+    Present { value: arm } =>
+      Accepted { value: arm, diagnostics: None }
     Absent =>
       Rejected {
         diagnostics: diagnostics_singleton(
@@ -238,9 +241,9 @@ fn program_choose_branch(
 ) -> Outcome<Node> {
   if count(node.children) == 3 {
     if program_runtime_bool_true(value: condition) {
-      program_nth_child(node: node, wanted: 1)
+      program_branch_arm(node: node, slot: BranchThenSlot)
     } else if program_runtime_bool_false(value: condition) {
-      program_nth_child(node: node, wanted: 2)
+      program_branch_arm(node: node, slot: BranchElseSlot)
     } else {
       Rejected {
         diagnostics: diagnostics_singleton(

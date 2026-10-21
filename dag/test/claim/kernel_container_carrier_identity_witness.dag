@@ -1,7 +1,19 @@
 module test.claim.kernel_container_carrier_identity_witness
 
 import std.types { String, Bool, Int, List }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra {
+  string_contains,
+  trim,
+  carrier_container_alias_rows,
+  carrier_container_arity_rows,
+}
+import std.dissolution {
+  DissolutionCondition, DissolutionFired, DissolutionPending, bound_dissolution, dissolution_status,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import gunbc.source_layout { layout_module_storage_path }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -13,7 +25,18 @@ import gunbc.instruments.multi_module_compile_fixture {
   fixture_blocking_rows
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// THE GRADE MOVED FROM SubstrateInputsOnly TO ReadsLiveTree, and the reason is a wall, not a
+// formality. The claims below `std_types_declares_every_declaration_position_alias` and its
+// control read the REAL `dag/std/types.dag` through `filesystem_read`, so the file's evaluation
+// touches live state. A row that DECLARES SubstrateInputsOnly while actually reading live state is
+// not re-checked by any text scan, and per the authority comment in cli_run.rs
+// (`parse_entry_live_tree_disposition`) it is now re-checked by NOTHING AT ALL — `falsifier.yml`
+// died in the 2026-08-15 floor cut, so a lying grade buys a predict-skip that nothing observes.
+// The honest grade for a file that reads the live tree is ReadsLiveTree (fail-closed: never
+// predict-skip), which is also what the other mixed fixture-plus-live-read witnesses in this
+// directory declare (cross_file_binding_assembly_witness et al.). The fixture-compile claims above
+// are unaffected: ReadsLiveTree only means they are always actually run, never scheduled away.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE SUBJECT: operator ruling 2026-09-29 -- std.types `List<element> = FreeMonoid<element>` is ONE
 // type, so FreeMonoid's constructors are values of List<T>, decided by DECLARATION IDENTITY
@@ -85,3 +108,311 @@ test fn kc_own_freemonoid_through_a_local_is_not_a_list_value() -> Bool {
 test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
   carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype KcPoint { x: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: KcPoint { x: 1 }) }\n"))
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// THE SINGLE-AUTHORITY GUARD (parent ruling msg_0a8ddec5 item b): std/types and std/algebra must
+// agree about the container ALIAS spellings, and this witness is the one that keeps them honest.
+//
+// THE DEFECT THIS GUARDS AGAINST. Two files state the same fact independently. std/algebra's
+// carrier roster (dag/std/algebra.dag `algebra_carriers`) declares each container carrier with a
+// `pascal_alias_spelling` — FreeMonoid is spelled `List`, FinitePowerSet `Set`,
+// FinitelySupportedFunction `Map` — and std/types.dag INDEPENDENTLY hand-writes `type List<element>
+// = FreeMonoid<element>` (and Set/Map). std/types even CONSUMES the roster for arity
+// (`container_type_arity = map_insert(carrier_container_arity_rows(), ...)`) while still writing the
+// alias bodies by hand. That is two authorities (DESIGN §3). They agree today; nothing re-checks it
+// if one drifts, and a drifted alias is a silent wrongness (DESIGN §5): a call site using `List`
+// would resolve against the roster's carrier while the type checker compares against std/types'
+// declaration, and the two can disagree about which constructors inhabit the type.
+//
+// WHY THE DOMAIN IS THE ARITY ROWS, NOT THE ALIAS ROWS. `carrier_container_alias_rows()` is keyed by
+// EVERY RowPresent alias spelling — Pascal AND snake (`list`, `set`, `map`) and a self-named
+// `PartialFunction` row. std/types declares only the Pascal spellings (`type List<..>`, never
+// `type list<..>`), so a claim over the alias domain would be red against main for the wrong reason.
+// `carrier_container_arity_rows()` is keyed by EXACTLY the `pascal_alias_spelling` rows — the only
+// spelling helper that sets `container_arity_row: RowPresent` — which is precisely the set of names
+// std/types declares in type position. Deriving the check's subject set from the roster (never a
+// hand-typed list) is also the point: the claim cannot itself become a third authority (DESIGN §3,
+// §6 "name the instrument, never transcribe its output").
+//
+// WHY THE PREDICATE IS PER-LINE AND HEAD-BOUND, AND WHY THAT IS ENOUGH. A two-`string_contains`
+// check over the whole text can be satisfied ACROSS lines (a name on one declaration, its carrier on
+// another) -- a §4b decoration whose forbidden state is expressible nowhere it runs. So the predicate
+// first `split`s at `\n` and requires the pairing on the SAME line, then cuts that line at its FIRST
+// `=` and matches ONLY the right-hand-side head (`split(s: line, separator: "=") |> skip(n: 1) |>
+// first`, the corpus's assignment idiom -- see the predicate's own block for the premises this
+// assumes). Two adversarial pairings are refused, each by one of those cuts: a name paired with a
+// carrier on ANOTHER line (CONTROL 4, killed by the `\n` cut), and a name whose actual head names a
+// different carrier while the EXPECTED carrier hides in a trailing comment (CONTROL 5, killed by the
+// `=` cut -- the comment lands in a later segment). The guard rests on no uniqueness-of-anchor
+// premise, so no future edit can quietly re-open either hole. The line form is stable (aliases are
+// single-line declarations); `starts_with(s: trim(s: rhs_head), prefix: carrier + "<")` keeps a
+// commented-out copy of a declaration from discharging the guard and tolerates the leading whitespace
+// the `=` cut leaves. The check stays green across a legal parameter RENAME: only `type <spelling><`
+// and the RHS head `<carrier><` are pinned, never the bound variable name. The executed controls make
+// this non-decoration: the predicate is pure over a supplied text, so the same predicate that passes
+// on the real file refuses a fixture with a declaration removed, a fixture with the carrier
+// repointed, a fixture that pairs name and carrier across two lines, and a fixture that hides the
+// expected carrier in a comment.
+//
+// WHY THIS IS A DRIFT GUARD AND NOT THE DISSOLUTION (DESIGN §3b, divergence with a stated reason).
+// The review asked for derivation instead of validation: make std/types' alias BODIES come from the
+// roster, the way `container_type_arity` at dag/std/types.dag:30 already comes from
+// `carrier_container_arity_rows()`. Measured answer: that is not expressible today, and the wall is
+// the parse/eval boundary. `algebra_carriers` (dag/std/algebra.dag) is a RUNTIME `fn` value -- its
+// rows are built by `fold` at evaluation time -- while `type List<element> = FreeMonoid<element>` is
+// PARSE data: a module-syntax entry the resolver and kernel consult before anything evaluates. The
+// substrate has no generated-declaration form -- no facility emits `type X<..> = Y<..>` module items
+// from an evaluated table (the only generated declarations in the repo are emitter output into
+// src/v1/stage0, which are Rust artifacts, not .dag items). So the two copies of the fact remain
+// separate declarations, and this claim is the one instrument that refuses drift between them; the
+// §5 ideal (make the wrong state unwritable) is the named next rung below, not a pretense here.
+//
+// WHY THE CHECK READS TEXT AND NOT A LENS / TYPECHECK (DESIGN §6b: the root-generalization duty --
+// the author owes why the existing resolved-declaration surface was not used; §5: "a typecheck and a
+// .contains() grep are not consumers"). Both candidate structural instruments were measured against
+// the EXACT fact this guard holds -- which carrier a given spelling is aliased to in std/types -- and
+// neither observes it:
+//   1. The compile-fixture route (multi_module_compile_fixture, the semantic arm already in this
+//      file): its own contract excludes the filesystem, so std/types is never loaded into it, and it
+//      was measured (scratch instrument, see PREDICTIONS_PIN) to be INSENSITIVE to the alias body --
+//      repointing the alias target leaves the acceptance verdict unchanged. It can only prove a locally
+//      redeclared carrier is not the kernel's; it cannot see std/types' alias body at all.
+//   2. The Node-tree reader (v2.std.decl_index DeclFact.node, the §6 lens): measured to ABORT in this
+//      lane (importing it drags a closure with unrelated generic-inference mismatches), and the host
+//      marshal for a transparent type alias returns a unit node with NO children (the alias RHS lives
+//      only in the node's `inferred`, which the TypeItem marshal arm does not carry). So even when the
+//      reader loads, it cannot see the alias body the guard compares.
+// The guard's subject is a PARSE-data declaration whose spelling<->carrier pairing is observable, at
+// the granularity the debt requires, only from the source text. That is the §6b answer: not "a lens
+// was cheaper" but "the lens and the typecheck are both blind to this fact, and one of them aborts".
+// The text check is therefore the discriminating instrument today; the lens becomes the instrument
+// only when the substrate carries an alias body in the reflected Node tree, which is the same next
+// rung the dissolution names.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────
+
+// THE PATH IS DERIVED FROM THE MODULE NAME, NOT HANDED IN. Hand-typing "dag/std/types.dag" restated
+// the storage rule (gunbc.plans.source_layout_authority R5: module `a.b.c` lives at `<root(a)>/b/c
+// .dag`) as a second authority for one fact (DESIGN §3): a layout move of std.types would keep this
+// string pointing at the OLD location and the guard would read a missing file. So the module name
+// `std.types` -- what this guard is actually about -- is the only spelling kept here, and the path
+// comes from the corpus's own storage policy, gunbc.source_layout.layout_module_storage_path. The
+// refusal arm is NOT silent: if the policy ever stops answering for std.types, every text-reading
+// member below reads the empty string and goes RED (the predicate finds no declaration line), which
+// is the loud failure the guard owes.
+data std_types_module: String = "std.types"
+
+fn std_types_declared_text() -> String {
+  match layout_module_storage_path(module: std_types_module) {
+    Absent => ""
+    Present { value: path } => filesystem_read(path: path).content
+  }
+}
+
+// THE PREDICATE, PURE OVER THE SUPPLIED TEXT, BOUND PER LINE. Both halves must hold on the SAME
+// declaration line: the line STARTS `type <spelling><` (a declaration, not a comment quoting one)
+// and CONTAINS ` = <carrier><`. Read as "does `text` declare `<spelling>` as an alias of
+// `<carrier>`, on one line". The per-line `split` is what makes the conjunction mean what a guard
+// needs: with two independent whole-text `string_contains` calls, a file could pair a name declared
+// on one line with a carrier bound on another and pass -- the §4b decoration whose forbidden state
+// is expressible nowhere it runs. Control 4 below is the executed adversarial input for exactly that.
+// THE MATCH IS BOUND TO THE ACTUAL RIGHT-HAND-SIDE HEAD, NOT TO A SUBSTRING OF THE LINE (side-chat
+// review 83725 finding 1, on head 04084699). The first form asked `string_contains(s: line,
+// pattern: " = " + carrier + "<")`, which is satisfied by that text ANYWHERE on the line --
+// including a trailing comment. A repointed declaration
+//   type List<element> = FinitePowerSet<element> // previously = FreeMonoid<element>
+// carried the expected carrier inside a comment and PASSED the guard while binding List to the
+// WRONG carrier. The cross-line control (CONTROL 4) did not catch it: a comment never splits
+// across lines, so no line-splitting rule sees that pairing. The line is now cut at its FIRST `=`
+// (`split(s: line, separator: "=") |> skip(n: 1) |> first`, the corpus's own assignment-splitting
+// idiom) and only the first segment after it -- the real right-hand side -- is examined. A comment
+// cannot reach that segment: `//` runs to end of line and always sits after some `=`, which the
+// cut puts in a LATER segment. CONTROL 5 executes exactly that comment input as a red and the
+// same shape with the comment naming a decoy carrier as a green, so the refusal is shown to come
+// from the head, not from the comment's presence.
+//
+// WHAT THIS CONSTRUCTION ASSUMES, stated so a reader can break it deliberately rather than
+// accidentally: (1) the FIRST `=` on a declaration line is the alias binding (true of the corpus
+// dialect -- `//` comments run to end of line and cannot precede it); a `=` inside an alias body
+// before the application would mis-split, and no carrier in the roster contains one. (2) The name
+// half still matches the emitter's shape `type <Spelling><` (std/types' real lines do; CONTROL 3
+// checks the positive against the REAL file, so a reflow of the real declarations that breaks
+// this shape turns CONTROL 3 red instead of silently passing -- fail-closed, the right direction
+// for a guard).
+fn std_types_declares_alias_of(spelling: String, carrier: String, text: String) -> Bool {
+  split(s: text, separator: "\n")
+    |> any(line =>
+      starts_with(s: line, prefix: "type " + spelling + "<")
+        && match split(s: line, separator: "=") |> skip(n: 1) |> first {
+             Absent => false,
+             Present { value: rhs_head } =>
+               starts_with(s: trim(s: rhs_head), prefix: carrier + "<")
+           })
+}
+
+// GREEN BY DESIGN (not by luck): every roster declaration-position alias — the arity-row domain,
+// derived from the roster, not enumerated here — is backed by a std/types declaration binding it to
+// the SAME carrier the roster says the spelling belongs to. The carrier is looked up from the
+// roster's own alias table so the claim never hard-codes a pairing.
+test fn every_declaration_position_alias_is_declared_in_std_types() -> Bool {
+  let types_text = std_types_declared_text()
+  sorted_map_keys(carrier_container_arity_rows())
+    |> all(spelling =>
+      match carrier_container_alias_rows() |> get(spelling) {
+        Absent => false,
+        Present { value: carrier } => std_types_declares_alias_of(spelling: spelling, carrier: carrier, text: types_text)
+      })
+}
+
+// CONTROL 1 (in-tree executed RED): a std/types that LOST a declaration is refused by the SAME
+// predicate. This is the drift the guard exists to catch; without it the green claim above would be
+// green-by-construction over data that cannot fail (DESIGN §4b, §5 "a discriminating input").
+test fn a_std_types_missing_a_declaration_is_refused_by_the_same_predicate() -> Bool {
+  let drifted = "module std.types\ntype Set<element> = FinitePowerSet<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: drifted)
+}
+
+// CONTROL 2 (in-tree executed RED): a std/types that REPOINTED an alias to a different carrier is
+// refused. The alias name is still declared, so a name-only check would pass; the carrier tie is
+// what the guard actually verifies, and this control proves the tie is load-bearing.
+test fn a_std_types_repointing_an_alias_to_another_carrier_is_refused() -> Bool {
+  let repointed = "module std.types\ntype List<element> = PointwisePower<element>\ntype Set<element> = FinitePowerSet<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: repointed)
+}
+
+// CONTROL 3 (the non-decoration witness for the whole guard): the SAME predicate is genuinely
+// satisfiable — it returns TRUE on the real std/types text for a known alias, so Controls 1 and 2
+// fail for the absence-of-declaration reason and not because the predicate rejects everything.
+test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
+  std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: std_types_declared_text())
+}
+
+// CONTROL 4 (in-tree executed RED, the adversarial pairing input): name and carrier appear in the
+// text -- `type List<element>` on one line, ` = FreeMonoid<element>` bound on another (a repointed
+// declaration carrying the real carrier in its comment) -- but never TOGETHER on one declaration
+// line. The per-line predicate refuses. This input is what the retired whole-text form would have
+// PASSED; it is the executed proof that the split is load-bearing and the guard is not a decoration.
+test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
+  let crossed = "module std.types\ntype List<element>\ntype Set<element> = FreeMonoid<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: crossed)
+}
+
+// CONTROL 5 (in-tree executed RED, the SAME-LINE comment pairing -- side-chat review on head
+// 04084699 finding 1). CONTROL 4 refused a name/carrier pairing SPLIT ACROSS LINES; the comment
+// case is the pairing the cross-line RED structurally cannot see: the expected carrier appears on
+// the SAME line as the declaration, inside a trailing comment, while the actual right-hand side
+// names a DIFFERENT carrier. Under the previous substring form this text PASSED (the comment
+// carried ` = FreeMonoid<element>` verbatim); under the head-bound form the comment never reaches
+// the first segment after the first `=`, so it is refused. The SECOND arm is the positive the
+// review asked to retain, and it is the one that proves the red comes from the head and not from
+// a comment merely being present: the same shape, now with the COMMENT naming the decoy carrier
+// (FinitePowerSet) and the actual head carrying FreeMonoid, is ACCEPTED. A rule that excluded
+// comments by refusing any line containing `//` would fail this arm.
+test fn a_repointed_alias_hiding_the_expected_carrier_in_a_comment_is_refused() -> Bool {
+  let commented =
+    "module std.types\ntype List<element> = FinitePowerSet<element> // previously = FreeMonoid<element>\ntype Set<element> = FinitePowerSet<element>\n"
+  !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: commented)
+    && std_types_declares_alias_of(
+      spelling: "List",
+      carrier: "FreeMonoid",
+      text: "module std.types\ntype List<element> = FreeMonoid<element> // previously = FinitePowerSet<element>\ntype Set<element> = FinitePowerSet<element>\n",
+    )
+}
+
+// THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (§3c; review 83623 finding 2). The first
+// version read substrings out of a description literal written a few lines above it -- a change
+// detector that went red only when someone edited that literal. This consumer tests the MECHANISM's
+// partition over typed evidence instead, in the corpus frontier idiom (the firmware standing probe:
+// handing the frontier its producer ref flips it, withholding does not). dissolution_trigger_fired
+// discharges a DeclarationAppears trigger on PRESENCE, so the arms are:
+//   * [] (nothing present) -> the capability producer has not arrived -> PENDING (guard owed).
+//   * [the exact producer ref] -> present -> FIRED (the producer the debt named has arrived).
+//   * [a same-MODULE lookalike, std.types.container_template_alias_rows -- a real declaration at
+//     std/types.dag:83] -> the EXACT ref is still absent -> PENDING. Presence is keyed on the full
+//     (module_path, decl_name) pair (declaration_ref_in_list is structural equality), so a sibling
+//     in the same module does NOT make the named declaration present. This is the arm that
+//     separates a real keying from an "any decl in std.types" collapse: rebind the trigger's
+//     decl_name to the lookalike and the SECOND arm goes red. Neither the guard's own deletion nor
+//     deleting the hand-written aliases can satisfy the trigger (both leave the producer absent ->
+//     Pending -> guard still owed), which is what the two retired versions' defects were.
+//
+// WHAT THIS TEST DOES AND DOES NOT ESTABLISH (side-chat review on head 04084699, finding 2 -- the
+// name here previously read `the_dissolution_fires_only_when_the_capability_arrives`, which claimed
+// more than the arms prove). This test establishes the KEYING of a dissolution condition: it fires
+// on the presence of exactly one named declaration and on nothing else. Presence of
+// `std.types::container_alias_declaration_rows` is a NECESSARY condition of the cure and is NOT
+// sufficient for it -- an unconsumed data item of that name, with the hand-written aliases still
+// present and this guard still green, satisfies every arm above and discharges the trigger while
+// the duplicated authority remains. That is a property of the mechanism, which can only ever key on
+// a named ref, and it is why retirement is NOT delegated to this trigger alone: the DISPOSITION
+// receipt on the owning row (gunbc.recurring_failure_mode
+// .container_alias_spellings_are_hand_written_from_a_runtime_roster) states the executed
+// prerequisites that must also hold -- the aliases generated, the resolver consuming them, and the
+// drift RED + valid-alias POSITIVE transferred onto that route.
+//
+// TWO CAPABILITIES, which this file's wording now keeps apart (finding 2): (i) ALIAS-BODY
+// REFLECTION -- the reflected Node tree of a std.types alias carrying its body, which would let a
+// claim read the binding STRUCTURALLY (the §6 lens route this file's §6b block measured as
+// unavailable: concept_decl_node drops the body). Reflection replaces the text check; it does not
+// remove the duplicated authority. (ii) DECLARATION GENERATION -- a parse-data form whose item
+// comes from the roster, so std/types stops hand-writing the bodies. That is what removes the
+// duplicated authority, and it is the capability the owning row's next-rung names. The trigger's
+// named producer ref is the roster data item that (ii) consumes, so its absence correctly keeps
+// (ii) unarrived; its presence is a prerequisite of (ii) rather than proof of it, exactly as above.
+test fn the_dissolution_condition_keys_on_its_named_producer_ref() -> Bool {
+  dissolution_status(condition: single_authority_alias_dissolve_on, present_decls: [])
+    == DissolutionPending
+    && dissolution_status(
+      condition: single_authority_alias_dissolve_on,
+      present_decls: [
+        decl_ref(
+          module_path: "std.types",
+          decl_name: "container_alias_declaration_rows",
+        ),
+      ],
+    )
+    == DissolutionFired
+    && dissolution_status(
+      condition: single_authority_alias_dissolve_on,
+      present_decls: [
+        decl_ref(
+          module_path: "std.types",
+          decl_name: "container_template_alias_rows",
+        ),
+      ],
+    )
+    == DissolutionPending
+}
+
+// THE DISSOLUTION TRIGGER, machine-readable (DESIGN §6: a check that replaces a construction states
+// when it retires). This guard exists only because the substrate cannot GENERATE the std/types
+// alias declarations from the roster: `algebra_carriers` is a runtime `fn` value while `type List`
+// is parse data, and there is no generated-declaration form in .dag (see the §3b block above --
+// measured, not assumed: the only generated declarations are emitter output into src/v1/stage0 Rust,
+// which are artifacts, not .dag module items). When that facility lands and the three std/types
+// container aliases are DERIVED from the roster -- the §5 ideal of making the drifted state
+// unwritable -- there is one authority to agree with and this claim's subject disappears.
+//
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT (DESIGN §4b meta-obligation 3, review 83706).
+// Two earlier shapes were each wrong in a way the mechanism could not see:
+//   * retires_dissolution over the guard's OWN predicate: a Retires trigger discharges on ABSENCE,
+//     so deleting the guard fired its own dissolution (review 83674).
+//   * retires_dissolution over std.types.List: a derived alias is STILL a declaration named List,
+//     so the trigger stayed Pending after the actual cure; and deleting the alias with no facility
+//     fired it (review 83706). It also named one alias of a plural debt.
+// The capability the §3b block itself names is a PARSE-DATA DECLARATION-GENERATION FORM. Its first
+// materialization is the data item std.types::container_alias_declaration_rows -- the parse-data
+// rows the three aliases are generated from (the name is patterned on std.types' existing
+// container_template_alias_rows, verified present at line 83; the new name is verified ABSENT
+// today, so an Appears trigger is Pending on the real corpus). One capability-producer retires the
+// whole class -- plural loss, singular CAPABILITY, which is what meta-obligation 3 requires; the
+// forbidden tell is a plural loss retired by a singular ARTIFACT. A bound_dissolution (Declaration-
+// Appears) fires on the ARRIVAL of the cure and cannot fire on any regression. The capability is
+// owned by the ledger row gunbc.recurring_failure_mode.
+// container_alias_spellings_are_hand_written_from_a_runtime_roster, which this trigger points at.
+data single_authority_alias_dissolve_on: DissolutionCondition = bound_dissolution(
+  decl_ref(
+    module_path: "std.types",
+    decl_name: "container_alias_declaration_rows",
+  ),
+)
