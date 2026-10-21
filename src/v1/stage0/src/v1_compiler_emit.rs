@@ -206,23 +206,6 @@ pub struct TcoReassignInput {
     pub depth: i64,
 }
 
-pub fn collect_type_names_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for item in items.iter().cloned() {
-            __result.extend(
-                (*collect_type_names_from_node(item.clone(), source_indices.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    })
-}
-
 pub fn collect_type_names_from_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
