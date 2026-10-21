@@ -3395,7 +3395,18 @@ data e1_j68_volts_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20
 // rows stay in the settled phase as read, hedged with that dispute, superseded once the labelled
 // re-read lands in e1_j68_volts_under_labels.
 data e1_j68_orientation_dispute: NonEmptyStr = "orientation disputed: read 2026-10-20 under a count that named R1 high; under the labelled positions of 2026-10-21, R1 reads as the return unpowered, so this map's L/R and 1 to 5 may be rotated against the labels"
-data e1_j68_volts_under_labels: List<PhaseNodeVoltage> = []
+// The labelled powered re-read (2026-10-21, energized at 48 V, module removed; the phase and the draw
+// at the reading were not restated, the re-read having been asked for in the settled state): R1, R3,
+// R4, R5, L1 and L4 at 0 V; R2, L2, L3 and L5 at 1.8 V. Under the candidate map that is the two
+// returns at 0 V, the reference at 1.8 V (VCCPGM, so the FPGA's JTAG bank is powered), TCK held low by
+// its pull-down, TMS and TDI pulled up, TDO high, and the three no-connect positions resting low.
+data e1_j68_powered_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "R1: 0v R2: 1.8V R3: 0v R4: 0v R5: 0v L1: 0v L2: 1.8v L3: 1.8v L4: 0v L5: 1.8v" }
+fn e1_j68_labelled_volt(point: NonEmptyStr, millivolts: Nat) -> PhaseNodeVoltage {
+  PhaseNodeVoltage { at: e1_terminal(c: e1_j68, name: point), reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly, evidence: e1_j68_powered_said }
+}
+data e1_j68_volts_under_labels: List<PhaseNodeVoltage> = concat(
+  map(["R1", "R3", "R4", "R5", "L1", "L4"], n => e1_j68_labelled_volt(point: n, millivolts: 0)),
+  map(["R2", "L2", "L3", "L5"], n => e1_j68_labelled_volt(point: n, millivolts: 1800)))
 data e1_setting_basis: NonEmptyStr = "the operator, asked whether the steps were at 48 V or 54 V: 'usually the supply was 48v at .10A, or .6A, but agin, no difference' and 'i had the amperage at .6A regularly so .1A was definitely not capping it, its not taking more' (2026-10-20); the voltage is the candidates' agreement, which limit any one step ran under is unrecorded, and the switch-event photographs alone show 54.00 V"
 data e1_ceiling_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "i had the amperage at .6A regularly so .1A was definitely not capping it, its not taking more." }
 data e1_j68_current_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "yes, its .07A, usually the supply was 48v at .10A, or .6A, but agin, no difference" }

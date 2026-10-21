@@ -2428,11 +2428,17 @@ test fn j68_jtag_standing_is_derived_from_the_readings() -> Bool {
   let powered = [e1_j68_disputed_volt(point: "R1", millivolts: 0), e1_j68_disputed_volt(point: "R5", millivolts: 0), e1_j68_disputed_volt(point: "R2", millivolts: 1800)]
   let scan = [JtagChainScan { read_on: "supplied", idcode: "supplied", evidence: e1_j68_labelled_photo }]
   let r5_valued = map(e1_j68_resistances, o => if terminal_ref_equal(a: o.first, b: j68_point(name: "R5")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 1153, approximate: false }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
-  match j68_jtag_standing(rs: rs, vs: e1_j68_volts_under_labels, scans: e1_j68_chain_scans) { CandidateByResistanceFingerprint => true, _ => false }
+  let no_powered = filter(e1_j68_volts_under_labels, v => false)
+  let r2_dropped = filter(e1_j68_volts_under_labels, v => !terminal_ref_equal(a: v.at, b: j68_point(name: "R2")))
+  match j68_jtag_standing(rs: rs, vs: e1_j68_volts_under_labels, scans: e1_j68_chain_scans) { PoweredCorroborated => true, _ => false }
+    && match j68_jtag_standing(rs: rs, vs: no_powered, scans: e1_j68_chain_scans) { CandidateByResistanceFingerprint => true, _ => false }
+    && match j68_jtag_standing(rs: rs, vs: r2_dropped, scans: e1_j68_chain_scans) { CandidateByResistanceFingerprint => true, _ => false }
+    && count(e1_j68_volts_under_labels) == 10
+    && count(filter(e1_j68_volts_under_labels, v => match v.value { ReadAbout { value } => millivolt_count(v: value) == 1800, ReadBelow { bound: _ } => false })) == 4
     && match j68_jtag_standing(rs: rs, vs: powered, scans: e1_j68_chain_scans) { PoweredCorroborated => true, _ => false }
     && match j68_jtag_standing(rs: rs, vs: powered, scans: scan) { FunctionallyIdentified => true, _ => false }
     && match j68_jtag_standing(rs: r5_valued, vs: powered, scans: scan) { JtagFingerprintAbsent => true, _ => false }
-    && count(e1_j68_volts_under_labels) == 0 && count(e1_j68_chain_scans) == 0
-    && j68_shape_text(layout: p4261_e1_layout).contains("J68 as a JTAG header is a candidate by its resistance fingerprint; the labelled powered re-read (R1 and R5 at 0 V, R2 near 1.8 V) and a read-only chain scan are not yet taken; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again")
+    && count(e1_j68_chain_scans) == 0
+    && j68_shape_text(layout: p4261_e1_layout).contains("J68 as a JTAG header is corroborated powered (returns at 0 V, the reference near 1.8 V); a read-only chain scan returning an IDCODE is not yet taken; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again")
     && all(flat_map(e1_phase_named(key: "p3-settled"), p => p.node_voltages), v => match v.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
 }
