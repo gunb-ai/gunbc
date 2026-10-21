@@ -319,7 +319,6 @@ fn raven_probe_wall_dump(arg: Node, env: TypeEnv, module_name: String) -> String
     Arrow => "arrow"
     Conj => "conj"
     Disj => "disj"
-    _ => "other"
   }
   let inferred_text = match arg.inferred { Present { value: _ } => "present"  Absent => "absent" }
   let decl_text = match arg.declaration {
