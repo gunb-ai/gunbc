@@ -970,6 +970,12 @@ type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
   | BoundToken { token_class: Symbol, binding: Symbol }
 
+// A token spine that keeps the grammar's nesting: an item is one token or a nested block of items with the
+// binding that spells its indent unit. Rendering folds it through target_text_nested.
+type ConcreteSyntaxLayoutItem
+  = LayoutToken { token: ConcreteSyntaxToken }
+  | LayoutNest { unit: Symbol, items: List<ConcreteSyntaxLayoutItem> }
+
 fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
     FixedToken { token_class: c } =>
@@ -4499,8 +4505,10 @@ fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outco
   }
 }
 
-// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: nesting
-// is layout, and a token spine carries none.
+// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: this FLAT spine
+// is for a consumer that reads no layout (ingest folds surface syntax BACK to a Node; a scaffold's prefix and
+// suffix are token runs). A consumer that renders text reads concrete_syntax_layout_items_from_node, which
+// keeps the nest and its unit, so the unit is never discarded on the route that prints.
 fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
@@ -4533,6 +4541,57 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
       )
     }
   )
+}
+
+fn concrete_syntax_layout_items_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxLayoutItem>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
+      fold_list(
+        xs: token_nodes,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              match find_named_child(root: token_node, name: ^grammar_nested_block_tokens) {
+                Accepted { value: inner, diagnostics: _ } =>
+                  bind_outcome(
+                    o: find_named_child(root: token_node, name: ^grammar_nested_block_unit),
+                    f: fn(unit_node) {
+                      bind_outcome(
+                        o: concrete_syntax_layout_unit_atom(unit_node: unit_node),
+                        f: fn(unit) {
+                          bind_outcome(
+                            o: concrete_syntax_layout_items_from_node(list_node: inner),
+                            f: fn(items) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutNest { unit: unit, items: items })) }
+                          )
+                        }
+                      )
+                    }
+                  )
+                Rejected { diagnostics: _ } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_from_wire_node(token: token_node),
+                    f: fn(tok) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutToken { token: tok })) }
+                  )
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn concrete_syntax_layout_unit_atom(unit_node: Node) -> Outcome<Symbol> {
+  match unit_node.kind {
+    TypeNode { connective: Atom { identity: unit } } => outcome_accepted(unit)
+    TypeNode { connective: Conj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Disj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Arrow } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Instantiation } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    ComputationNode { behavior: _ } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+  }
 }
 
 fn decode_bodied_arrow_statement_scaffold_bundle(
