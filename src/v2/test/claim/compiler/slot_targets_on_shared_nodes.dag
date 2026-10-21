@@ -6,11 +6,11 @@ module v2.test.claim.compiler.slot_targets_on_shared_nodes
 // first among the children still resolve each role to its own slot. v2.compiler.eval and v2.compiler.infer
 // read these roles through the tables.
 
-import std.types { Int, List }
 import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag { dag_type_atom_node }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated, lower_match }
 import v2.std.node {
+  Symbol,
   BindBinderSlot,
   BindBodySlot,
   BindValueSlot,
@@ -18,11 +18,9 @@ import v2.std.node {
   MatchScrutineeSlot,
   Node,
   bind_slot_target,
-  MatchSlot,
   match_role_slots,
   child_slot_target,
   match_slot_target,
-  node_synthetic,
   content_hash,
 }
 import std.optional { Optional, Present, Absent }
