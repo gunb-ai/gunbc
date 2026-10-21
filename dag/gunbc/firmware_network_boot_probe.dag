@@ -8,16 +8,17 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-// S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
-// (S0); this module emits it and defines none of it. Nothing outside this block names where these
-// types live.
+// OBSERVATION VOCABULARY IMPORTS. The shared Secure Boot carrier and read refusal live in
+// gunbc.secure_boot_observation; the rest of the vocabulary belongs to gunbc.firmware_network_boot_standing
+// (S0). This module emits them and defines none of it; nothing outside these two imports names where
+// they live.
+import gunbc.secure_boot_observation { FirmwareReadRefusal, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, FirmwareReadRefusal, BootOrderEntry, BootOption, firmware_boot_observation,
-  BootOrderObservation, BootOptionsObservation, NicsObservation, SecureBootObservation, BiosVersionObservation,
+  FirmwareBootObservation, BootOrderEntry, BootOption, firmware_boot_observation,
+  BootOrderObservation, BootOptionsObservation, NicsObservation, BiosVersionObservation,
   BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
   BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
   NicsObserved, NicsUnobserved, NicsRefused,
-  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused,
   BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
 }
 
@@ -126,7 +127,7 @@ fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict 
 }
 
 // ONE ACCOUNT, STATED ONCE: AxisReply values are SUPPLIED TRANSPORT-SHAPED HYPOTHESES. No existing
-// extdeps.bmc reader produces them yet (the frontier below is Pending), so nothing this module
+// extdeps.bmc reader produces them from a bound read yet (the supplied-observation decoder exists; the producer-bound reader in the frontier below is Pending), so nothing this module
 // returns is receipt-backed until the declared reader produces SuppliedProbeInput from a real read. probe() writes no wire
 // protocol. A reply names its own axis, so there is no axis tag to disagree with the payload.
 type AxisReply
@@ -137,6 +138,12 @@ type AxisReply
   | ReplySecureBootDisabled
   | ReplyBiosVersion { version: NonEmptyStr }
   | ReplyRefusedByBmc { axis: ObservationAxis, refusal: FirmwareReadRefusal }
+  | ReplyBeyondDecoder { axis: ObservationAxis, why: NonEmptyStr }
+
+// TWO FACTS, TWO ARMS (review 83313). ReplyRefusedByBmc is the BMC's own refusal or a body that is
+// not what the schema says. ReplyBeyondDecoder is a VALID answer this decoder cannot read (for
+// instance a paged collection it does not follow); it resolves to Unobserved with our reason, so a
+// limit of the observing layer is never recorded as a property of the BMC.
 
 // UNREACHABLE IS A FACT ABOUT THE BMC, NOT AN EMPTY ANSWER. BmcResponded { replies: [] } means the
 // BMC answered and had nothing for the axes asked; BmcSilent means nothing answered at all (a
@@ -232,6 +239,7 @@ fn reply_axis(reply: AxisReply) -> ObservationAxis {
     ReplySecureBootDisabled => SecureBootAxis
     ReplyBiosVersion { version: _ } => BiosVersionAxis
     ReplyRefusedByBmc { axis: a, refusal: _ } => a
+    ReplyBeyondDecoder { axis: a, why: _ } => a
   }
 }
 
@@ -308,6 +316,7 @@ fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: Obse
         NoReply => AxisNotObserved { reason: no_reply_reason() }
         ConflictingReplies => AxisNotObserved { reason: conflicting_replies_reason() }
         OneReply { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
+        OneReply { reply: ReplyBeyondDecoder { axis: _, why: w } } => AxisNotObserved { reason: w }
         OneReply { reply: r } => AxisPayload { reply: r }
       }
   }
@@ -469,8 +478,9 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
 
 // ---- THE FRONTIER THIS MODULE OWES: A REAL READER FOR AxisReply.
 //
-// probe() consumes AxisReply, and nothing yet decodes a real extdeps.bmc reply into one, so every
-// run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
+// probe() consumes AxisReply. A decoder from supplied REST observations exists (gunbc.firmware_network_boot_readers
+// decode_redfish_boot_reads), but the producer-bound reader observe_redfish_boot_axes is pending, so
+// AxisReplyInhabitedByReader is unestablished and every run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
 // extdeps.bmc.{megarac,openbmc,redfish} own their command surfaces, and a decoder written in the
 // probe's file would be a second owner of that surface that cannot be reviewed as transport work.
 // Until it exists the frontier is Pending and the inhabitation claim is Uninhabited, both as values
@@ -479,13 +489,13 @@ data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution
   trigger: DeclarationAppears { ref: firmware_boot_axis_reader_ref() },
 }
 
-// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares a decoder yet, so this ref names the
+// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares the reader yet, so this ref names the
 // declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
-// produce_probe_input, returning SuppliedProbeInput: the row selector, route and receipt as well as the decoded replies). The witness pins the literal; renaming the
-// future decoder means editing this one fn and that pin, and until then the status stays Pending
+// observe_redfish_boot_axes: the declaration that consumes ACTUAL bound transport observations, one subject, endpoint, row, route and receipt, and mints the SuppliedProbeInput; the supplied-body decoder decode_redfish_boot_reads exists and is not it). The witness pins the literal; renaming the
+// future reader means editing this one fn and that pin, and until then the status stays Pending
 // on purpose rather than reporting a discharge nobody earned.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "produce_probe_input")
+  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
 }
 
 fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
@@ -498,6 +508,6 @@ type AxisReplyInhabitation
 
 data firmware_boot_axis_reply_inhabitation: AxisReplyInhabitation = AxisReplyUninhabited {
   owed_by: firmware_boot_axis_reader_ref(),
-  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, boot entries classified by RedfishBootSourceOverrideTarget kind, every BMC refusal a FirmwareReadRefusal",
+  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, BootOrder entries keep their references with no guessed kind, BootOptions carries enabled and kind standing when it is read separately, every BMC refusal stays a typed FirmwareReadRefusal",
   falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot-entry kind from a label, or turns a refusal into no reply",
 }
