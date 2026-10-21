@@ -797,3 +797,10 @@ Changes are text-only (row receipts + comments; CONTROL 4 test MOVED verbatim, n
 edits). Predicted: identical to S2 — 13 PASS, kc_local_alias_of_the_carrier_admits_its_constructor
 FAIL (pre-existing), ROW NoSuchFunction{main}. Any member flip here means the comment move broke a
 parse (e.g. orphaned fn) — would need an immediate fix.
+
+## Dispatch U1 — renderer row parse check (renderer-d @3b28ae1da3d9, feat/renderer-shape-row)
+ORDERING SLIP: dispatched before recording this (rule is pre-register FIRST). Signal established
+from dispatch N, so risk is nil, but the slip is recorded rather than papered over.
+ PREDICT: U1BUILD_RC=0 (cached or fresh), U1ROW_RC=1 with cause NoSuchFunction{name:"main"} —
+ the ledger rows have no main and that is the parse+resolve PASS (dispatch N). A different error
+ (type mismatch, unresolved import) would mean the row text is malformed — must fix before PR.
