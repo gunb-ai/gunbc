@@ -57,11 +57,7 @@ pub fn resolve_entry_graph_demand_acquired(
         let roots = source_roots.to_vec();
         let census = custom.clone();
         *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-            match read_layout_module(&roots, &census, module) {
-                Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
-                Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
-                Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
-            }
+            layout_provider_answer(&roots, &census, module)
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
             super::entry_resolve::CoreResolve::Resolved(graph, si, _) => return Ok((graph, si)),
@@ -97,6 +93,21 @@ fn build_demand_acquired_index(
         source_roots,
         facts,
     )))
+}
+
+/// The layout's typed answer for one module: the source it read, no module, or a module whose bytes
+/// cannot be read. The read is the one `read_layout_module` performs, so Holds carries exactly the
+/// bytes the rebuild will acquire.
+pub(crate) fn layout_provider_answer(
+    source_roots: &[String],
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    module: &str,
+) -> super::entry_resolve::ProviderLayoutAnswer {
+    match read_layout_module(source_roots, custom, module) {
+        Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
+        Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
+        Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
+    }
 }
 
 pub(crate) fn acquire_layout_closure(
@@ -709,5 +720,44 @@ mod tests {
             }
         }
         let _ = std::env::set_current_dir(prev);
+    }
+
+    /// The demand-acquired layout answer at its real read boundary, under the governed `dag` root:
+    /// a readable module is Holds with the bytes read, an absent one is Lacks, and a file whose bytes
+    /// are not UTF-8 is Unreadable -- never Lacks.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn layout_provider_answer_keeps_unreadable_distinct_from_absent() {
+        use super::super::entry_resolve::ProviderLayoutAnswer;
+        let ws = super::super::process_workspace_root();
+        let roots = vec![ws.join("dag").to_string_lossy().to_string()];
+        let custom = std::collections::HashMap::new();
+        let name = format!("test.fixture.gp_layout_probe_{}", std::process::id());
+        let file = ws.join(format!(
+            "dag/test/fixture/gp_layout_probe_{}.dag",
+            std::process::id()
+        ));
+        std::fs::write(
+            &file,
+            format!("module {name}\n\nfn probe() -> Int {{ 1 }}\n"),
+        )
+        .expect("probe file");
+        let holds = matches!(super::layout_provider_answer(&roots, &custom, &name), ProviderLayoutAnswer::Holds(src) if src.content.contains("fn probe"));
+        std::fs::write(&file, [0xffu8, 0xfe, 0xfd]).expect("corrupt the probe");
+        let unreadable = matches!(
+            super::layout_provider_answer(&roots, &custom, &name),
+            ProviderLayoutAnswer::Unreadable
+        );
+        let _ = std::fs::remove_file(&file);
+        let lacks = matches!(
+            super::layout_provider_answer(&roots, &custom, &name),
+            ProviderLayoutAnswer::Lacks
+        );
+        assert!(holds, "a readable module must be Holds with its bytes");
+        assert!(
+            unreadable,
+            "an unreadable module must be Unreadable, not Lacks"
+        );
+        assert!(lacks, "an absent module must be Lacks");
     }
 }
