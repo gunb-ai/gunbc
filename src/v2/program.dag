@@ -1,6 +1,6 @@
 module v2.program
 
-import std.types { List, Map }
+import std.types { Int, List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
 import v2.compiler.eval {
@@ -42,7 +42,6 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import std.algebra { Empty, length, list_at_optional }
-import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
@@ -72,7 +71,6 @@ import v2.std.runtime {
   RuntimePrimitive,
   RuntimePrimitiveValue,
   RuntimeUnit,
-  RuntimeUnitValue,
   RuntimeValue,
   TransformInterpreter,
   ValueInterpreter
@@ -81,8 +79,13 @@ import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.workflow.runtime_run {
-  RuntimeRunBlocked,
-  RuntimeRunComplete,
+  RuntimeRunCompleted,
+  RuntimeRunLog,
+  RuntimeRunNotDerived,
+  RuntimeRunRole,
+  RuntimeRunRoot,
+  RuntimeRunSelectedBy,
+  RuntimeRunSelectorOf,
   runtime_run
 }
 
@@ -137,10 +140,19 @@ fn program_int_one_value() -> RuntimeValue {
   }
 }
 
-fn program_unit_value() -> RuntimeValue {
-  RuntimeUnit {
-    value: RuntimeUnitValue {
-      unit_type: program_unit_type()
+// THE LOCATOR IS A VALUE THE STORE CAN KEY ON. v2.extdeps.runtimes.v2_effect_io_pure keys a resource by the
+// content hash of its locator's node projection, and a Unit has none (v2.std.runtime
+// runtime_value_node_projection), so a Unit locator refuses every effect with
+// ^effect_io_pure_locator_unrepresentable before it is performed. A primitive projects.
+//
+// program_locator_literal and program_payload_literal are ONE node (both a childless Value with a
+// synthetic occurrence, and equal nodes are one node), so the roundtrip writes this value and reads it
+// back, and the roundtrip and the Branch that chooses it are typed by it.
+fn program_locator_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: program_i64_type(),
+      bytes: [program_byte()]
     }
   }
 }
@@ -208,8 +220,8 @@ fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<
     Accepted { value: program_bool_value(is_true: true), diagnostics: None }
   } else if node == program_kw_false() {
     Accepted { value: program_bool_value(is_true: false), diagnostics: None }
-  } else if node == program_locator_literal || node == program_payload_literal {
-    Accepted { value: program_unit_value(), diagnostics: None }
+  } else if node == program_locator_literal {
+    Accepted { value: program_locator_value(), diagnostics: None }
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
@@ -350,15 +362,21 @@ fn program_facts_for(node: Node) -> InferredFacts {
   )
 }
 
+fn program_facts_typed(node: Node, algebra: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: algebra,
+    descent: Holds { value: program_termination_proof() }
+  )
+}
+
 fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
-    optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
+    optional_present(value: program_facts_typed(node: program_pick_if_branch_with_effect_io, algebra: program_i64_type()))
   } else if node == program_effect_io_roundtrip {
-    optional_present(value: program_facts_for(node: program_effect_io_roundtrip))
+    optional_present(value: program_facts_typed(node: program_effect_io_roundtrip, algebra: program_i64_type()))
   } else if node == program_locator_literal {
-    optional_present(value: program_facts_for(node: program_locator_literal))
-  } else if node == program_payload_literal {
-    optional_present(value: program_facts_for(node: program_payload_literal))
+    optional_present(value: program_facts_typed(node: program_locator_literal, algebra: program_i64_type()))
   } else if node == program_kw_true() {
     optional_present(value: program_facts_for(node: program_kw_true()))
   } else if node == program_literal_two() {
@@ -401,7 +419,7 @@ fn program_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
 fn program_branch_effect_io_holds() -> Witness<Bool> {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
     Accepted { value: v, diagnostics: None } =>
-      match runtime_value_equality(a: v, b: program_unit_value()) {
+      match runtime_value_equality(a: v, b: program_locator_value()) {
         RuntimeValuesEqual => Holds { value: true }
         RuntimeValuesDiffer => Holds { value: false }
         RuntimeValueEqualityUnavailable { reason: r } =>
@@ -459,40 +477,61 @@ fn program_pick_if_arrow_holds() -> Witness<Bool> {
   }
 }
 
-data program_run_branch_gate: Node = program_kw_true()
-
-data program_run_io_step: Node = program_effect_io_roundtrip
-
-data program_run_branch_to_io: DependencyView = DependencyView {
-  source: program_run_branch_gate,
-  dependent: program_run_io_step,
-  kind: DataDependsOn,
-  usage_site: program_run_io_step
-}
-
-data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_step]
-
-data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
-
+// THE RUN TAKES ITS ORDER FROM DERIVED ACTIVATION (v2.workflow.runtime_run, gunbc.plans.demand_engine_program
+// M2a). Nothing here lists the nodes to run or a dependency between them: the condition and the then arm come
+// from v2.compiler.activation_dependency's derivation over the root, the condition runs first because the
+// Branch demands it to choose, and the else arm, which is not chosen, never runs. The run's root outcome is
+// eval's own, so it is checked as program_branch_effect_io_holds checks eval's; the receipts say what ran.
 fn program_runtime_run_holds() -> Witness<Bool> {
   match runtime_run(
-    nodes: program_run_nodes,
-    dependencies: program_run_dependencies,
-    tree: program_tree(root: program_effect_io_roundtrip),
+    tree: program_tree(root: program_pick_if_branch_with_effect_io),
+    root: program_pick_if_branch_with_effect_io,
     context: program_context_with_effect_io()
   ) {
-    RuntimeRunComplete { log: log, scheduled: scheduled } =>
-      match program_branch_effect_io_holds() {
-        Holds { value: equal } =>
-          Holds {
-            value: length(xs: log.entries) == 2
-              && length(xs: scheduled) == 2
-              && equal
+    RuntimeRunCompleted { root: outcome, log: log } =>
+      match outcome {
+        Accepted { value: v, diagnostics: None } =>
+          match runtime_value_equality(a: v, b: program_locator_value()) {
+            RuntimeValuesEqual => Holds { value: program_run_ran_condition_then_chosen_arm(log: log) }
+            RuntimeValuesDiffer => Holds { value: false }
+            RuntimeValueEqualityUnavailable { reason: r } =>
+              Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Accepted { value: _, diagnostics: _ } => Holds { value: false }
+        Rejected { diagnostics: _ } => Holds { value: false }
       }
-    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
-      Holds { value: false }
+    RuntimeRunNotDerived { not_derived: _ } => Holds { value: false }
+  }
+}
+
+// Exactly three receipts, in order: the condition as the Branch's selector, the then arm as the alternative
+// it chose, then the Branch itself. The else arm has none.
+fn program_run_ran_condition_then_chosen_arm(log: RuntimeRunLog) -> Bool {
+  length(xs: log.entries) == 3
+    && program_run_receipt_is(log: log, index: 0, node: program_kw_true(), role_is: fn(role) {
+      match role {
+        RuntimeRunSelectorOf { site: site } => site == program_pick_if_branch_with_effect_io
+        _ => false
+      }
+    })
+    && program_run_receipt_is(log: log, index: 1, node: program_effect_io_roundtrip, role_is: fn(role) {
+      match role {
+        RuntimeRunSelectedBy { site: site, selections: _ } => site == program_pick_if_branch_with_effect_io
+        _ => false
+      }
+    })
+    && program_run_receipt_is(log: log, index: 2, node: program_pick_if_branch_with_effect_io, role_is: fn(role) {
+      match role {
+        RuntimeRunRoot => true
+        _ => false
+      }
+    })
+}
+
+fn program_run_receipt_is(log: RuntimeRunLog, index: Int, node: Node, role_is: fn(RuntimeRunRole) -> Bool) -> Bool {
+  match list_at_optional(xs: log.entries, index: index) {
+    Present { value: receipt } => receipt.node == node && role_is(receipt.role)
+    Absent => false
   }
 }
 

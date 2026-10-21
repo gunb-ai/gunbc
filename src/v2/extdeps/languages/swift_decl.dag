@@ -11,13 +11,12 @@ import v2.std.grammar {
   formal_productions_catalog_to_node,
   FormalProduction
 }
+import v2.std.compilers.target_model { EmitLineBreaks, EmitSpellingEscape, EmitSpellingQuote }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductEnumSurface,
-  DeclEmitStringQuote,
   HeaderLeadingLines,
   ImportsLeading,
   MembersInsideTypeBody,
-  TargetSemanticDeclEmitEscape,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclSurfaceProjection,
   semantic_decl_emission_bundle,
@@ -451,14 +450,15 @@ fn swift_semantic_decl_serialize_profile_bundle_node() -> Node {
     emit_transform_rows: [
       TargetSemanticDeclEmitTransformRow {
         token_class: ^swift_token_string_lit,
-        transform: DeclEmitStringQuote {
-          open: "\"",
-          close: "\"",
+        transform: EmitSpellingQuote {
+        prefix: "",
+        open: "\"",
+        close: "\"",
           escapes: [
-            TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" },
-            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" },
-            TargetSemanticDeclEmitEscape { from: "\n", to: "\\n" },
-            TargetSemanticDeclEmitEscape { from: "\r", to: "\\r" }
+            EmitSpellingEscape { from: "\\", to: "\\\\" },
+            EmitSpellingEscape { from: "\"", to: "\\\"" },
+            EmitSpellingEscape { from: "\n", to: "\\n" },
+            EmitSpellingEscape { from: "\r", to: "\\r" }
           ]
         }
       }
