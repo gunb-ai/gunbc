@@ -94,7 +94,13 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    with_module_path_index(source_roots, |index| index.clone())
+    // STEP 0 (census cost): a hit still deep-clones the corpus index; count the materialization.
+    crate::cli_run::CENSUS_COST_INDEX_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    with_module_path_index(source_roots, |index| {
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
+            .fetch_add(index.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        index.clone()
+    })
 }
 
 /// THE CACHED MODULE-PATH INDEX, BORROWED. A keyed question -- is this module declared, where does

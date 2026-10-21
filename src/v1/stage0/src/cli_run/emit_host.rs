@@ -103,6 +103,36 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
     )
 }
 
+// STEP 0 COST COUNTERS (census cost-shape scoping, mgr msg_f3513042 — measurement only,
+// no behavior change). One process-wide pair of atomic counters at the two seams where a
+// census call can pay for the corpus: (1) the module-path index entry (a HashMap clone of
+// the whole corpus index on every cache hit), and (2) every real disk read the census's
+// resolve path performs. The census memo is inert since the floor-guard deletion, so
+// (hits, misses) above permanently reads (0, 0) and measures nothing — these two do.
+// Exposed exactly like compile_dag_diagnostic_census_memo_counts above: a pub fn read by an
+// in-process observer, so a receipt is process-differential (deltas around calls in one
+// process), never a claim about another process.
+pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64) {
+    (
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// Zero the four cost counters and return them (read-and-reset, so a caller brackets one
+/// census call or a run of them without subtracting an earlier snapshot).
+pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64) {
+    (
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
+            .swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.swap(0, std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
 /// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
 /// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
 /// same program through the same pipeline and differ only in what they report, so they must not

@@ -172,7 +172,9 @@ pub use emit_host::{
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
 };
 pub use emit_host::{
+    compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
+    reset_compile_dag_diagnostic_census_cost_counts,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3793,6 +3795,12 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
     let shared = entry_resolve::try_process_shared_index(&layers)?;
+    // STEP 0 (census cost): per-call clone of the corpus-length source-file vec.
+    CENSUS_COST_SHARED_VEC_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    CENSUS_COST_SHARED_VEC_LEN.fetch_add(
+        shared.source_files.len() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     let scratch = entry_resolve::new_multi_entry_index_scratch_over(
         shared.source_files.clone(),
         &shared.source_roots,
@@ -3819,6 +3827,12 @@ fn fixture_imported_corpus_sources(
             if let Some(rel_path) = module_index.get(&module_path) {
                 let abs_path = ws.join(rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3832,6 +3846,12 @@ fn fixture_imported_corpus_sources(
                 let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
                 let abs_path = ws.join(&rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3961,6 +3981,33 @@ thread_local! {
 static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+// STEP 0 COST COUNTERS (census cost-shape scoping — measurement only, no behavior change).
+// Process-wide, atomic, read/reset through the pub fns in emit_host exactly like the memo
+// counts above; a receipt is process-differential (deltas around calls in one process).
+// What each one sees is the point of each one:
+//  * INDEX_CLONES / INDEX_CLONED_ENTRIES — every `build_module_path_index` call deep-clones
+//    the whole corpus-keyed module-path index (one String key + one String path per corpus
+//    module, allocated fresh per clone). The index itself is memoized (MODULE_PATH_INDEX_CACHE);
+//    these count what the memo does NOT remove: the per-call materialization of its bytes.
+//  * SHARED_VEC_CLONES / SHARED_VEC_LEN — the scratch route clones the process-shared index's
+//    corpus-length Vec<Rc<SourceFile>> per census call (Rc bumps, but corpus-length per call).
+//  * DISK_READS / DISK_READ_BYTES — every actual fs::read_to_string the census's resolve path
+//    performs (the import-closure seeds). These are the "files and bytes materialized per call"
+//    the census is accused of paying corpus-scale for; the counters settle whether that
+//    accusation is closure-scale or corpus-scale with numbers, not adjectives.
+pub static CENSUS_COST_INDEX_CLONES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_INDEX_CLONED_ENTRIES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_CLONES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_LEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READ_BYTES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 /// One supplied module of a [`compile_dag_multi_module_fixture`] manifest: the path the compile
