@@ -1,4 +1,5 @@
 module test.claim.host.host_phase_status_witness
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import gunbc.host.host_standup { PhaseDisposition }
 import std.live_tree { LiveTreeDisposition }
