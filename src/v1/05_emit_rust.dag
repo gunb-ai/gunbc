@@ -16670,7 +16670,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             }
           } else { tn }
         }
-      let ctor_alias_resolved = ctor_name != tn
       let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
@@ -16804,9 +16803,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        if ctor_alias_resolved {
-          rust_maybe_shared_wrap(answer: shared_layer_of_type_expr(shared_types: shared_types, type_expr: resolved_type, type_decl_items: emit_info.type_decl_items, source_indices: si, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
-        } else { raw }
+        // The literal's sharing is decided ONCE, by the two callers (emit_rust_expr_record_lit and
+        // emit_field_value_with_context) from the resolved declaration; wrapping here as well for an
+        // alias-resolved constructor rendered `Rc::new(Rc::new(MoneyRate {..}))` (std.measure MoneyPerHour).
+        raw
         }
       }
   }
