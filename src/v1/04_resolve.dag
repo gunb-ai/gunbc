@@ -360,10 +360,10 @@ fn raven_probe_kind_link(arg: Node, slot_kind_node: Node, env: TypeEnv, module_n
                             Present { value: binder_kind_node } =>
                               let binder_kind_name = concat(owner_module, ".", authored_name(env: env, node: binder_kind_node))
                               let slot_kind_name = concat(module_name, ".", authored_name(env: env, node: slot_kind_node))
-                              match kind_declaring_position(kind_node: binder_kind_node, declaring_module: owner_module, env: env) {
+                              match kind_declaring_position(kind_node: binder_kind_node, env: env) {
                                 Absent => concat(concat(concat(concat("|K bk=n binderKind=", binder_kind_name), " slotKind="), slot_kind_name), measure_hit_text(kind_node: binder_kind_node, env: env))
                                 Present { value: binder_kind_decl } =>
-                                  match kind_declaring_position(kind_node: slot_kind_node, declaring_module: module_name, env: env) {
+                                  match kind_declaring_position(kind_node: slot_kind_node, env: env) {
                                     Absent => concat(concat(concat(concat("|K sk=n binderKind=", binder_kind_name), " slotKind="), slot_kind_name), measure_hit_text(kind_node: slot_kind_node, env: env))
                                     Present { value: slot_kind_decl } =>
                                       if slot_kind_decl.span.file == binder_kind_decl.span.file
@@ -385,12 +385,16 @@ fn raven_probe_kind_link(arg: Node, slot_kind_node: Node, env: TypeEnv, module_n
   }
 }
 
-// Does the SAME kind terminal resolve as a declaration of std.measure (the only module that declares
-// Scale and Quantity)? A 'yes' beside a failed lookup is a named import the judgment did not follow.
+// PROBE ONLY (scratch branch, never merged): does a std.measure-qualified query of this kind NAME
+// find a declaration? A 'yes' beside a failed authored-scope lookup says the name IS std.measure's,
+// reached only through the import chain. Deliberately the raw composed-name query the shipped
+// resolver no longer performs -- it asks 'would the OLD lookup have hit', which the kernel route
+// cannot answer.
 fn measure_hit_text(kind_node: Node, env: TypeEnv) -> String {
-  match kind_declaring_position(kind_node: kind_node, declaring_module: "std.measure", env: env) {
-    Absent => " measureHit=n"
+  let qualified = concat("std.measure.", authored_name(env: env, node: kind_node))
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: qualified) {
     Present { value: _ } => " measureHit=y"
+    Absent => " measureHit=n"
   }
 }
 
@@ -455,10 +459,10 @@ fn forwarded_parameter_kind_matches(arg: Node, slot_kind_node: Node, env: TypeEn
                           match find_property(props: binder.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
                             Absent => FwdParameterUnkinded
                             Present { value: binder_kind_node } =>
-                              match kind_declaring_position(kind_node: binder_kind_node, declaring_module: owner_module, env: env) {
+                              match kind_declaring_position(kind_node: binder_kind_node, env: env) {
                                 Absent => FwdParameterKindUnresolved
                                 Present { value: binder_kind_decl } =>
-                                  match kind_declaring_position(kind_node: slot_kind_node, declaring_module: module_name, env: env) {
+                                  match kind_declaring_position(kind_node: slot_kind_node, env: env) {
                                     Absent => FwdParameterKindUnresolved
                                     Present { value: slot_kind_decl } =>
                                       if slot_kind_decl.span.file == binder_kind_decl.span.file
@@ -478,26 +482,45 @@ fn forwarded_parameter_kind_matches(arg: Node, slot_kind_node: Node, env: TypeEn
   }
 }
 
-// THE POSITION A KIND NAME DENOTES, in the module that DECLARES the thing carrying the annotation --
-// the same resolution the width position performs, reached by the same index. Absent covers both "no
-// such declaration" and "no module recorded for the file it was found in", so a caller cannot read an
-// unresolved kind as a judgment either way.
-fn kind_declaring_position(kind_node: Node, declaring_module: String, env: TypeEnv) -> Node? {
-  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(declaring_module, ".", authored_name(env: env, node: kind_node))) {
-    Absent => Absent
-    Present { value: kind_decl } =>
+// THE POSITION A KIND NAME DENOTES. A kind name is an ordinary name: it reaches its declaration the
+// way every other bare name does, through the ONE binding kernel the typechecker uses
+// (v1.compiler.infer bare_occurrence_binding -- own-file declaration, then the file's NAMED imports
+// walked to the module that DECLARES the name, then the kernel check; an unimported name is
+// Undecided and refuses). Composing <declaring module>.<kind name> and querying the index bypassed
+// that kernel: it answered only for a kind declared in the SAME module as the annotated parameter,
+// so every correctly-imported `S: Scale` in std.realization_measurement, std.realization_schedule,
+// std.realization_width and std.realization refused with FwdParameterKindUnresolved while the
+// same-module witness fixtures passed. THE COMPOSED-NAME LOOKUP IS DELETED; no second path survives
+// beside this one. The scope is taken from the annotation's OWN span: v1.compiler.parse
+// with_type_param_kind_property stores the kind token verbatim (span: k.span), so the file the name
+// was AUTHORED in is the file whose imports decide its scope -- which is also why a parameter
+// annotated with a kind its module does not import still refuses, under Undecided. Absent covers
+// "no such declaration", "the chain did not end" and "no module recorded for the file it was found
+// in", so a caller cannot read an unresolved kind as a judgment either way.
+fn kind_declaring_position(kind_node: Node, env: TypeEnv) -> Node? {
+  let kind_name = authored_name(env: env, node: kind_node)
+  match bare_occurrence_binding(index: env.symbol_index, name: kind_name, reference: kind_node) {
+    BareOccurrenceDeclaredInItsFile { declaration: kind_decl } =>
       match map_get(env.symbol_index.file_modules, kind_decl.span.file) {
         Absent => Absent
         Present { value: _ } => Present { value: kind_decl }
       }
+    BareOccurrenceImportedByName { module_path: _, declaration: kind_decl } =>
+      match map_get(env.symbol_index.file_modules, kind_decl.span.file) {
+        Absent => Absent
+        Present { value: _ } => Present { value: kind_decl }
+      }
+    BareOccurrenceIsKernelName => Absent
+    BareOccurrenceUndecided => Absent
   }
 }
 
 // A literal argument is the Nat-indexed width arm only where the applied type's parameter at that
 // position is of kind WidthResolution. The kind is read from the declaration of the type being
 // applied (`MachineWidth<bits: WidthResolution>`): its __param_kind property names the kind, which is
-// resolved in the APPLIED TYPE'S DECLARING module through the symbol index and compared to the
-// WidthResolution declaration by source location. Any other kind (or none) is not a width position.
+// resolved in the AUTHORED scope of the annotation through the ONE binding kernel (kind_declaring_position)
+// and compared to the WidthResolution declaration by source location. Any other kind (or none) is not
+// a width position.
 fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeEnv) -> Bool {
   if !is_user_generic_use_site(n: applied, env: env) { false }
   else {
@@ -507,7 +530,7 @@ fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeE
       Present { value: width_decl } =>
         match map_get(env.symbol_index.file_modules, decl.span.file) {
           Absent => false
-          Present { value: declaring_module } =>
+          Present { value: _ } =>
             decl.params |> enumerate |> any(pair =>
               match applied.children |> skip(pair.first) |> first {
                 Absent => false
@@ -516,7 +539,7 @@ fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeE
                   && match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
                     Absent => false
                     Present { value: kind_node } =>
-                      match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(declaring_module, ".", authored_name(env: env, node: kind_node))) {
+                      match kind_declaring_position(kind_node: kind_node, env: env) {
                         Present { value: kind_decl } => kind_decl.span.file == width_decl.span.file && kind_decl.span.start == width_decl.span.start
                         Absent => false
                       }

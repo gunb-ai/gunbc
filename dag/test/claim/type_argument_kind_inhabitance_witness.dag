@@ -284,3 +284,35 @@ fn forward_lookalike_kind_source() -> String {
 test fn a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse() -> Bool {
   forwarded_cause_blocking_count(source: forward_lookalike_kind_source(), cause: "ForwardedParameterKindDiffers") >= 1
 }
+
+// THE IMPORTED-KIND POSITIVE, and the discriminating row for the binding kernel. `Bool` is declared
+// by std.types and reached here through the file's NAMED import; both the slot's kind and Box's
+// parameter kind are that authored token. Under the deleted composed-name lookup the binder side
+// queried <this synthetic module>.Bool, found nothing, and the forward refused with
+// ForwardedParameterKindUnresolved; under the kernel route the same-name import chain lands on
+// std.types' Bool on BOTH sides, the two resolved declarations share a source location, and the
+// forward is admitted. It is self-contained (std.types is a closure the fixtures already import),
+// so no ReadsLiveTree floor is touched. This is exactly the corpus class: std.realization_measurement's
+// `S: Scale` reaching std.measure's Scale through `import std.measure { Scale }`.
+fn forward_imported_kind_source() -> String {
+  "module kindprobe.pos_forward_imported\n\nimport std.types { Int, String, Bool }\n\ntype Phantom\ntype Width<bits: Bool> = Phantom\n\ntype Box<T: Bool> {\n  value: Width<T>\n}\n\n"
+}
+
+test fn a_forwarded_parameter_whose_kind_comes_by_import_is_admitted() -> Bool {
+  kind_mismatch_blocking_count(source: forward_imported_kind_source()) == 0
+    && forwarded_cause_blocking_count(source: forward_imported_kind_source(), cause: "ForwardedParameterKindUnresolved") == 0
+    && compile_dag_rust_emit_check(forward_imported_kind_source(), "src/kindprobe_pos_forward_imported.rs", [], [])
+}
+
+// THE UNIMPORTED-KIND NEGATIVE. `Nowhere` is declared by no module this file reaches and named by no
+// import it holds, so the chain ends Undecided and the kind cannot be resolved to a declaring
+// position. MUST REFUSE, under ForwardedParameterKindUnresolved: a kind name is an ordinary name, and
+// an unimported one has no declaration in scope -- the kernel admits nothing ambiently, and there is
+// no composed-name path left beside it for this name to leak through.
+fn forward_unimported_kind_source() -> String {
+  "module kindprobe.neg_forward_unimported\n\nimport std.types { Int, String }\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Box<T: Nowhere> {\n  value: Width<T>\n}\n\n"
+}
+
+test fn a_forwarded_parameter_naming_an_unimported_kind_must_refuse() -> Bool {
+  forwarded_cause_blocking_count(source: forward_unimported_kind_source(), cause: "ForwardedParameterKindUnresolved") >= 1
+}
