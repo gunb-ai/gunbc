@@ -271,13 +271,26 @@ The direct-host workflow now checks the Ubuntu 24.04 provider before CAD work. O
 
 `product.printed_chassis.print_workflow.converge_runtime(receipt: ...)` is the explicit provisioner for the modeled printer LAN host. It uses the existing package observe/install/readback mechanism and the same requirement population as preparation. An unsupported OS or unreadable package observation refuses. Print preparation observes these dependencies and does not install packages implicitly.
 
-What convergence does not yet cover: the CadQuery/OCP Python distributions. They are
-observed (exact versions, through an import probe) against
-`product.printing.cad_runtime_spec` `cad_runtime_python_requirements`, but nothing installs
-them, and both the probe and CAD execution use the PATH-resolved `python3`. Convergence
-also reaches the host over SSH while the check runs locally. Selecting one interpreter
-that the check observes and every CAD step consumes, on one execution route, precedes
-installing a CAD environment; until then a host without CadQuery refuses at the check.
+The print runtime is one observed value. `product.printing.print_runtime`
+`observe_print_runtime` checks the OS, packages, host architecture (`uname -m`), the CAD
+interpreter and the pinned Orca artifact, writes one `runtime.json` receipt, and mints
+`PrintRuntimeReady`. The CAD interpreter is not PATH `python3`: it is
+`/var/lib/gunbc/print-runtime/cad/<spec sha256>/bin/python`, named by
+`product.printing.cad_runtime_spec` (CPython tag, wheel platform, pinned distributions), and
+it must answer the probe from that executable. The CAD check, plate packing and readback are
+launched from that value only, and each plate readback records the runtime receipt's
+sha256. Slicer profiles are snapshotted once per invocation under `<output>/inputs`.
+
+`print_workflow.converge_runtime` (and so `provision_and_run`) converges that environment
+after the host packages (`product.printing.cad_runtime_converge`): it acquires the pinned
+micromamba by digest (`gunbc.url_file_acquisition`), takes an exclusive lock directory,
+solves the pinned Python and pip from conda-forge into the digest-named prefix, installs the
+pinned distributions with that prefix's own `python -m pip`, probes that interpreter, and
+only then writes the ready marker that publishes it. A second run is a no-op. A prefix that
+is unpublished or no longer matches is refused and left untouched; remove it to rebuild.
+The transitive packages below the pins are not locked, so the result is an observed matching
+environment, not a reproducible one. `/var/lib/gunbc/print-runtime` must be writable by the
+workflow's user.
 
 On 2026-10-05 a manual host-package install was mistakenly initiated before this declaration existed. It completed before the operator correction. The original failed preparation records remain under `/home/briansrls/print-run-2026-10-05/fan-recovery/prepared` on srv1. This is recorded as a process error; the later modeled readback does not retroactively make that earlier install modeled. Future provisioning goes through the declaration and convergence entry.
 
