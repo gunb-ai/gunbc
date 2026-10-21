@@ -804,3 +804,9 @@ from dispatch N, so risk is nil, but the slip is recorded rather than papered ov
  PREDICT: U1BUILD_RC=0 (cached or fresh), U1ROW_RC=1 with cause NoSuchFunction{name:"main"} —
  the ledger rows have no main and that is the parse+resolve PASS (dispatch N). A different error
  (type mismatch, unresolved import) would mean the row text is malformed — must fix before PR.
+
+## Dispatch U2 — #14612 row after Charter-4 route repoint (retirement route = census-row
+## typed expected/got fields, NO host intrinsic). Text-only edit to the NEXT-RUNG CARRIER receipt.
+ PREDICT (recorded BEFORE dispatch): U2BUILD_RC=0 (likely cached), row run U2ROW_RC=1 cause
+ NoSuchFunction{name:"main"} = ledger parse+resolve pass. A type-mismatch/unresolved-import would
+ mean the edited receipt text broke the string literal (e.g. an unescaped quote).
