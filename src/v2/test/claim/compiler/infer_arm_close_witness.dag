@@ -278,9 +278,9 @@ test fn rb_q2_all_open_coproduct_match_without_expected_refuses() -> Bool { ers_
 
 // THE B1 NESTED-OPTIONAL CASE with the deferral gone: Absent at Int?? is the OUTER Absent. The bare x: Int? at an Int?? position is an implicit lift and
 // refuses (explicit_present_is_the_authoring_policy); the explicit Present{value: x} beside Absent accepts, and the Absent arm is elaborated at Int??.
-fn rb_r1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int?? { if b { Absent } else { Present { value: x } } }\n") }
-fn rb_r2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Int?? {\n  match o {\n    Absent => Absent\n    Present { value: _ } => Present { value: x }\n  }\n}\n") }
-fn rb_r3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int?? { if b { Absent } else { x } }\n") }
+fn rb_r1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { Present { value: x } } }\n") }
+fn rb_r2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => Present { value: x }\n  }\n}\n") }
+fn rb_r3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { x } }\n") }
 test fn rb_r1_explicit_present_beside_absent_accepts_at_the_outer_layer() -> Bool { ers_infer_accepted(o: rb_r1()) }
 test fn rb_r2_match_form_accepts() -> Bool { ers_infer_accepted(o: rb_r2()) }
 test fn rb_r3_bare_x_at_the_outer_layer_refuses_as_an_implicit_lift() -> Bool { ers_has(o: rb_r3(), reason: ^inhabitance_optional_layer_depth_mismatch) }
