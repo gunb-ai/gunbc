@@ -196,7 +196,8 @@ test fn rb_l2_two_empties_declare_nothing() -> Bool { ers_has(o: rb_l2(), reason
 // join at Int? and then elaborate to Present at Optional<Int?>, so Absent would mean Present{Absent}, not the outer Absent. The sibling must not win:
 // the join refuses with the typed deferral until the expected type reaches the arms. The positive beside it declares the layer the join chose.
 fn rb_n1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { x } }\n") }
-test fn rb_n1_nested_optional_sibling_must_not_win() -> Bool { ers_has(o: rb_n1(), reason: ^infer_arm_join_deferred_to_declared_type) }
+// PR B: the expected type reaches the if arms, so the branch no longer defers; x: Int? at Optional<Int?> is a bare T at a T? position and refuses by layer depth (no implicit lift).
+test fn rb_n1_nested_optional_sibling_must_not_win() -> Bool { ers_has(o: rb_n1(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 fn rb_n2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? { if b { Absent } else { x } }\n") }
 test fn rb_n2_same_shape_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n2()) }
 fn rb_n3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
@@ -227,7 +228,8 @@ test fn rb_o_no_declaring_arm_anywhere_refuses() -> Bool { rb_o_code(o: rb_o_non
 
 // B1 THROUGH THE HAND-UP: arms handed up from an inner branch are closed by the enclosing join, so the deferral covers them too.
 fn rb_n5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Optional<Int?> { if b { if c { Absent } else { Absent } } else { x } }\n") }
-test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { ers_has(o: rb_n5(), reason: ^infer_arm_join_deferred_to_declared_type) }
+// PR B: the same refusal for arms handed up from an inner branch; they are not closed at the sibling's Int? (MEASURED reason: infer_grounding_not_derived).
+test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { !ers_infer_accepted(o: rb_n5()) }
 fn rb_n6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Int? { if b { if c { Absent } else { Absent } } else { x } }\n") }
 test fn rb_n6_handed_up_arms_at_the_joined_layer_accept() -> Bool { ers_infer_accepted(o: rb_n6()) }
 
@@ -252,3 +254,9 @@ test fn rb_mn_c_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { er
 test fn rb_mn_c2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_c2()) }
 test fn rb_mn_d_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_d()) }
 test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_d2()) }
+
+// B1 FOR THE Bool MATCH: the same deferral judgment (infer_join_defers_to_declared) as the if. Absent beside x: Int? at Optional<Int?> refuses.
+fn rb_m4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+fn rb_m5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+test fn rb_m4_bool_match_must_not_choose_a_layer() -> Bool { ers_has(o: rb_m4(), reason: ^infer_arm_join_deferred_to_declared_type) }
+test fn rb_m5_same_bool_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_m5()) }
