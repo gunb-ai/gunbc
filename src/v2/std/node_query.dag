@@ -332,7 +332,7 @@ fn binder_edge_with_default_declared(name: Symbol, type_node: Node, default: Nod
 // v2.std.anonymous_binder anonymous_binder_mint_parameter_list). It keeps the whole binder node, so the
 // default survives the rename.
 fn binder_relabelled(binder: Edge, name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: binder.target, declaration: NotADeclaration }
+  Edge { label: Authored { name: name }, target: binder.target, declaration: binder.declaration }
 }
 
 // THE ONE BINDER READER: a Named member whose target is a binder node. A Positional member, or a Named

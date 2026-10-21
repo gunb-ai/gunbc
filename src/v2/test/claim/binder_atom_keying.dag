@@ -159,7 +159,7 @@ test fn generic_binder_atom_is_keyed_declaration() -> ProcessExit {
 }
 
 test fn fn_name_atom_is_keyed_declaration() -> ProcessExit {
-  expect_binder_declaration(kind: "fn name", row: probe_norm(content: "module v2.test.subject\nfn f(alpha: Int) -> Int { 1 }\n", spelling: "alpha"))
+  expect_binder_declaration(kind: "fn name", row: probe_norm(content: "module v2.test.subject\nfn alpha() -> Int { 1 }\n", spelling: "alpha"))
 }
 
 test fn typed_param_atom_is_keyed_declaration() -> ProcessExit {
