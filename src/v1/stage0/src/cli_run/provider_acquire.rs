@@ -800,4 +800,180 @@ mod tests {
             vec!["test.fixture.read_probe_provider.probe_route UnavailableModuleUnreadable test.dag:10..15".to_string()]
         );
     }
+
+    /// COST RECEIPT, EXACT DEMAND VERSUS CARRIER PRESENCE (option 1b ruling; deferred to PR 2, where a
+    /// producer exists). Over the entries listed in GUNBC_COST_ENTRIES (one workspace-relative .dag
+    /// path per line), each entry's import closure is compiled through the pipeline and classified:
+    /// whether its pass DEMANDS std.coercion.unicode_scalar_unfold (the exact rule) and whether its
+    /// closure merely CONTAINS std.algebra, the FreeMonoid carrier's declaring module (the rejected
+    /// carrier rule). Printed, never asserted: the numbers are the receipt; the ruling, not the count,
+    /// rejected the carrier rule. Also printed: how many modules std.coercion's own closure adds to a
+    /// closure that lacks it, the per-closure cost the carrier rule would have paid.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn cost_receipt_exact_demand_versus_carrier_presence() {
+        // No population is no observation: it fails rather than passing with nothing measured.
+        let list = std::env::var("GUNBC_COST_ENTRIES")
+            .expect("cost receipt: GUNBC_COST_ENTRIES unset; no population, no observation");
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let route_closure = super::super::emit_host::fixture_pool_closure_of("std.coercion", &pool)
+            .expect("std.coercion's closure loads");
+        let mut entries = 0usize;
+        let mut demanding = 0usize;
+        let mut carrier_present = 0usize;
+        let mut carrier_without_demand = 0usize;
+        let mut added_by_carrier_rule = 0usize;
+        let mut skipped = 0usize;
+        for path in std::fs::read_to_string(&list)
+            .expect("entry list")
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+        {
+            let on_disk = super::super::process_workspace_root().join(path.trim());
+            let content = match std::fs::read_to_string(&on_disk) {
+                Ok(content) => content,
+                Err(e) => {
+                    skipped += 1;
+                    eprintln!("cost receipt skipped: {} unreadable: {e}", path.trim());
+                    continue;
+                }
+            };
+            let sources = match super::super::resolve_virtual_source_with_imports(
+                path.trim(),
+                &content,
+                &pool,
+            ) {
+                Ok(sources) => sources,
+                Err(e) => {
+                    skipped += 1;
+                    eprintln!(
+                        "cost receipt skipped: {} closure unresolved: {e}",
+                        path.trim()
+                    );
+                    continue;
+                }
+            };
+            let resolved = compile(&sources);
+            entries += 1;
+            let demands = resolved.provider_demands.iter().any(|d| {
+                d.declaration.module_path == "std.coercion"
+                    && d.declaration.decl_name == "unicode_scalar_unfold"
+            });
+            let has_carrier = sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/algebra.dag"));
+            let has_route = sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/coercion.dag"));
+            demanding += demands as usize;
+            carrier_present += has_carrier as usize;
+            if has_carrier && !demands {
+                carrier_without_demand += 1;
+            }
+            let added = if has_carrier && !has_route {
+                route_closure
+                    .iter()
+                    .filter(|r| !sources.iter().any(|s| s.path == r.path))
+                    .count()
+            } else {
+                0
+            };
+            added_by_carrier_rule += added;
+            eprintln!(
+                "cost receipt entry: {} closure={} demands_route={demands} carrier_present={has_carrier} carrier_rule_would_add={added}",
+                path.trim(),
+                sources.len()
+            );
+        }
+        eprintln!(
+            "cost receipt: entries={entries} skipped={skipped} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
+        );
+    }
+
+    /// THE REAL CROSSING THROUGH TWO REAL ADAPTERS (PR 2). The probe is the emit-check u_ row's shape:
+    /// a host-text value at a v2.std.text.String formal, importing only v2.std.text, so its authored
+    /// closure lacks std.coercion. Through the hermetic adapter (pool empty) the crossing's demand
+    /// cannot be met and the compile refuses GeneratedProviderUnavailable -- a class only a generated
+    /// demand produces, so the red proves the crossing was entered. Through the emit-check adapter
+    /// (the witness-root pool) the same closure acquires std.coercion and compiles with no blocking
+    /// diagnostic. Removing either the producer's demand or the adapter's acquisition reds one arm.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn the_real_crossing_refuses_hermetically_and_acquires_through_the_pool() {
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let probe = "module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n";
+        let sources = emit_check_sources(probe, &pool);
+        // The crossed value is the `s` argument of `take(t: s)`: the refusal is owed at its span.
+        let crossed = probe.find("take(t: s)").expect("probe call") + "take(t: ".len();
+        assert!(
+            !sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/coercion.dag")),
+            "the probe's authored closure already holds the route"
+        );
+        let classes = |r: &ResolvedPipelineResult| -> Vec<String> {
+            r.diagnostics
+                .iter()
+                .filter(|d| {
+                    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+                })
+                .map(|d| match d.diagnostic.as_ref() {
+                    CompilerDiagnostic::GeneratedProviderUnavailable {
+                        cause,
+                        declaration,
+                        span,
+                    } => {
+                        format!(
+                            "GeneratedProviderUnavailable/{cause:?}/{}.{}/{}:{}..{}",
+                            declaration.module_path,
+                            declaration.decl_name,
+                            span.file,
+                            span.start,
+                            span.end
+                        )
+                    }
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        };
+        let hermetic = compile_to_provider_fixed_point(
+            sources.clone(),
+            &|_: &str| PoolAnswer::Lacks,
+            &|m: &str| {
+                Err(ClosureOfError::Closure(format!(
+                    "hermetic: no pool holds '{m}'"
+                )))
+            },
+        )
+        .expect("hermetic compile runs");
+        // The typed refusal names the route and is located at the crossed value's authored span.
+        // The uncrossed value also trips the text wall and the inhabitance check at the same
+        // argument; by ruling (a) those consequences stay (no span-based suppression), and the
+        // acquiring arm below shows acquisition eliminates them.
+        let refusal = format!(
+            "GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold/{}:{}..{}",
+            super::super::emit_host::FIXTURE_SOURCE_PATH,
+            crossed,
+            crossed + 1
+        );
+        assert_eq!(
+            classes(&hermetic)
+                .iter()
+                .filter(|c| c.starts_with("GeneratedProviderUnavailable"))
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![refusal]
+        );
+        let acquired = compile_to_provider_fixed_point(
+            sources,
+            &|m: &str| super::super::emit_host::fixture_pool_answer(m, &pool),
+            &|m: &str| super::super::emit_host::fixture_pool_closure_of(m, &pool),
+        )
+        .expect("acquiring compile runs");
+        assert!(
+            classes(&acquired).is_empty(),
+            "the acquired closure still refuses: {:?}",
+            classes(&acquired)
+        );
+    }
 }
