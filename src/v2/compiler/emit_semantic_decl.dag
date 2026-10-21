@@ -2,8 +2,8 @@ module v2.compiler.emit_semantic_decl
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List, Map }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
-import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier, translate_type_expression_project }
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root, target_serialize_source_from_model }
 import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclMember, TargetSemanticDeclSurfaceProjection, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_surface_with_header, target_semantic_decl_surface_with_imports, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
@@ -15,6 +15,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_list_from_node,
   target_atom_type_spelling,
   target_type_expr_declaration_reference_emitted,
+  target_model_with_binding_spellings,
   target_type_expression_spelling,
   type_expression_projection_from_target
 }
@@ -30,10 +31,10 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Arrow, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Arrow, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode, symbol_intern_lexeme }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
-import std.algebra { Empty, contains, empty_map, is_empty }
+import std.algebra { Empty, contains, empty_map, fold_list, is_empty, map_insert }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -261,10 +262,48 @@ fn produced_type_binding_over(target: TargetModel, spellings: Map<Symbol, String
                   _ => outcome_rejected(d: emit_type_reference_unrealized_diagnostic(node: type_node))
                 }
             }
+          TypeNode { connective: Instantiation } =>
+            produced_type_binding_instantiation(target: target, spellings: spellings, type_node: type_node)
           _ => outcome_rejected(d: emit_type_reference_unrealized_diagnostic(node: type_node))
         }
     }
   }
+}
+
+// A TYPE APPLICATION (`Optional<T>`) IS SPELLED BY THE ONE RENDERER THE TYPE-EXPRESSION TRANSLATE ALREADY
+// USES, never a second open/args/separator/close here: the node is projected to the target's type
+// expression (translate_type_expression_project, whose Instantiation form is the target's
+// TargetGenericApply row) and serialized by the same serializer, with the explicit-entry map the caller
+// will serialize with. The text is the binding the signature token carries, as a declaration
+// reference's text is.
+fn produced_type_binding_instantiation(target: TargetModel, spellings: Map<Symbol, String>, type_node: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: type_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      bind_outcome(
+        o: translate_type_expression_project(node: type_node, target: target, projection: projection),
+        f: fn(emitted) {
+          bind_outcome(
+            o: target_serialize_source_from_model(target: target_model_with_binding_spellings(target: target, spellings: spellings), emitted: emitted),
+            f: fn(medium) { outcome_accepted(value: symbol_intern_lexeme(lexeme: medium.carried)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+// A function's own type parameters bind by the rule a type declaration's do (semantic_decl_type_binding):
+// recognized by identity against its binder list at the top of a reference, and spelled by their own
+// name where they sit inside an application, through the explicit-entry map the application is serialized with.
+fn produced_type_binding_with_params(target: TargetModel, params: List<Symbol>) -> fn(Node) -> Outcome<Symbol> {
+  semantic_decl_type_binding(
+    params: params,
+    resolve: produced_type_binding_over(
+      target: target,
+      spellings: fold_list(xs: params, empty: target.binding_spellings, cons: fn(acc, name) { map_insert(m: acc, key: name, value: name) })
+    )
+  )
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
