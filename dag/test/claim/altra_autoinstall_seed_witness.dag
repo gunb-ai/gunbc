@@ -47,7 +47,8 @@ import extdeps.debian.debconf {
   debconf_selection_owner,
   debconf_selection_standing,
   debconf_selection_value,
-  debconf_release_observed,
+  debconf_package_version,
+  debconf_source_locator,
 }
 
 import extdeps.storage.types { storage_device_serial }
@@ -4131,6 +4132,77 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
   }
 }
 
+// THE BINDING OF A GIVEN PACKAGE SET, for the pairing witnesses: same unit, attempt, selector and population as
+// built_seed_and_binding, only the packages vary — so two seeds bound through here differ in exactly what their
+// package intents make differ, and nothing else. A Refused bind is Absent (never a stand-in digest), so a caller
+// that compares two bindings can never be comparing one real one against an invented one.
+fn binding_with_packages(packages: List<PackageIntent>) -> Optional<AltraAutoinstallSeedBinding> {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => Absent
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed(
+        seed: seed,
+        target: target_altra,
+        unit_key: unit_a_key,
+        attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ) {
+        Bound { binding: binding } => Present { value: binding }
+        BindRefused { blocker: _ } => Absent
+      }
+  }
+}
+
+// THE ANSWER-PAIRING WITNESS — THE SERVED PRESEED IS COVERED BY THE BINDING ADDRESS, NOT DECORATION ON IT (review:
+// merry-fox-82, HOLD sections 1 and 5; the module's binding_digest comment names THIS row as the one that goes RED
+// if the "preseed" term inside served_bundle_digest is deleted, so the comment is only honest if the row exists).
+// Two seeds that are the SAME unit, attempt, disk, credential and delivery, differing only in the VALUE of one
+// debconf answer (America/New_York vs America/Los_Angeles — same package, same label, same answer kind). The
+// autoinstall user-data document carries NO debconf field (its fields are identity, locale, keyboard, the ssh
+// bool and the storage marker), so the document digest is PROVABLY EQUAL across the pair; the answer value lives
+// only in the served preseed file, and so it can move the bundle digest and the binding address through no other
+// route. That isolates the preseed term: delete it from served_bundle_digest and bundle_digest/document_digest/
+// binding_digest all become equal across the pair, and the two NOT-equal claims below go RED. (The document term
+// of the same fold has its own separate discriminator, the vault-read row; each sub-term is severable only by its
+// own witness, which is why this is a distinct test rather than a second assertion in that one.)
+test fn a_changed_answer_value_moves_the_served_bundle_and_address_without_moving_the_document() -> Bool {
+  match binding_with_packages(packages: answered_tzdata_packages) {
+    Absent => false
+    Present { value: york } =>
+      match binding_with_packages(packages: los_angeles_tzdata_packages) {
+        Absent => false
+        Present { value: la } =>
+          // THE DOCUMENT IS THE SAME: the user-data half cannot see the answer, so the only thing that can move
+          // the bundle digest is the preseed half. If this equality ever fails, the document has begun to fold
+          // answers and the preseed term stops being the sole differentiator — which this row would then have to
+          // say so about, not silently pass.
+          content_hash_eq_structural(
+            left: york.document_digest,
+            right: la.document_digest,
+          )
+            // THE PRESEED DIFFERS, so the bundle's combined digest moves with it.
+            && !content_hash_eq_structural(
+              left: york.served.bundle_digest,
+              right: la.served.bundle_digest,
+            )
+            // AND THE ADDRESS MOVED WITH THE BUNDLE — the claim that makes the preseed term load-bearing rather
+            // than decoration. Delete the preseed term from served_bundle_digest and this row reddens.
+            && !content_hash_eq_structural(
+              left: binding_digest(binding: york),
+              right: binding_digest(binding: la),
+            )
+      }
+  }
+}
+
 // THE ANSWER TEXT THAT LOOKS LIKE AN ANSWER BUT IS A COMMENT, AND THE AREA/ZONE JOIN THAT DOES NOT LINE UP
 // (review: merry-fox-82). Both are refusals through the PUBLIC producer, and they are the two ways a substring
 // audit was fooled before this round. The first is `# tzdata/Areas tzdata/Zones/` — every required key name
@@ -4396,6 +4468,18 @@ fn document_body_is_the_emitters_own(payload: UbuntuAutoinstallPayload, body: No
 // gunbc.os_install_emit::autoinstall_user_data produced, so this row goes RED the moment anyone disconnects the
 // binding from the real renderer: point the digest back at the internal rendering, or at a fixture string, and the
 // two digests stop agreeing. It is the connection, not the number, that is being asserted.
+// THE BINDING'S document_digest MUST BE EXACTLY THE RENDERER'S OWN SHA-256 OVER THESE BYTES. The digest fn now
+// returns `Absent` when the host hands back no hex (no fabricated stand-in — review 83764 #1), and this is where
+// that honesty is checked: if the digest ever came back `Absent` the binding would have carried a value it could
+// not derive, so the comparison is false and the row goes RED. A witness that re-hashed the content itself could
+// never see that fault; this one reads the module's own digest back out.
+fn document_digest_matches_content(binding_digest: Fnv1a64Structural, content: NonEmptyStr) -> Bool {
+  match rendered_document_digest(content: content) {
+    Absent => false
+    Present { value: digest } => content_hash_eq_structural(left: binding_digest, right: digest)
+  }
+}
+
 test fn the_binding_digests_the_bytes_the_renderer_produced_not_a_summary_of_its_own() -> Bool {
   match built_seed_and_binding() {
     Absent => false
@@ -4418,10 +4502,7 @@ test fn the_binding_digests_the_bytes_the_renderer_produced_not_a_summary_of_its
             //     fn rather than by a witness-side re-hash of a string this file already holds: swapping the
             //     module's hash for a hash of any fixed string still equals a witness that hashes that same
             //     fixed string, which is how this claim used to be satisfied while proving nothing.
-            && content_hash_eq_structural(
-              left: pair.binding.document_digest,
-              right: rendered_document_digest(content: content),
-            )
+            && document_digest_matches_content(binding_digest: pair.binding.document_digest, content: content)
             // (3) THOSE BYTES ARE THE SHIPPED EMITTER'S OWN, recomputed from the payload READ OUT OF THE
             //     DOCUMENT. A hand-built string with the right header and the right keys above passes every
             //     marker before this line and cannot pass this one (review: merry-fox-82, HOLD section 1).
@@ -4482,30 +4563,26 @@ test fn the_supplied_document_standing_is_answered_only_by_the_joined_record() -
               // (2) SOMEBODY SUPPLIED THE BYTES THIS BINDING PROMISED, for THIS attempt.
               match supplied_document_standing(
                 binding: pair.binding,
-                supplied: Present {
-                  value: record_supplied_served_document(
+                  supplied: record_supplied_served_document(
                     unit_key: unit_a_key,
                     attempt: attempt_one,
                     supplied_user_data: content,
                     supplied_preseed: pair.binding.served.preseed,
                     supplied_from: archive_authority(),
                   ),
-                },
               ) {
                 SuppliedBytesAreWhatThisBindingPromised =>
                   // (3) SUPPLIED BYTES ARE DIFFERENT. Same recording path, different text: the answer must be
                   // the mismatch arm, not the flattering one and not "foreign".
                   match supplied_document_standing(
                     binding: pair.binding,
-                    supplied: Present {
-                      value: record_supplied_served_document(
+                      supplied: record_supplied_served_document(
                         unit_key: unit_a_key,
                         attempt: attempt_one,
                         supplied_user_data: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
                         supplied_preseed: pair.binding.served.preseed,
                         supplied_from: archive_authority(),
                       ),
-                    },
                   ) {
                     SuppliedBytesAreNotWhatThisBindingPromised =>
                       // (4) A RECORD FOR ANOTHER ATTEMPT CANNOT SPEAK ABOUT THIS ONE — even when the bytes are
@@ -4514,30 +4591,26 @@ test fn the_supplied_document_standing_is_answered_only_by_the_joined_record() -
                       // compare, so the answer is foreign, never promised.
                       match supplied_document_standing(
                         binding: pair.binding,
-                        supplied: Present {
-                          value: record_supplied_served_document(
+                          supplied: record_supplied_served_document(
                             unit_key: unit_a_key,
                             attempt: attempt_two,
                             supplied_user_data: content,
                             supplied_preseed: pair.binding.served.preseed,
                             supplied_from: archive_authority(),
                           ),
-                        },
                       ) {
                         SuppliedRecordIsNotAboutThisAttempt =>
                           // AND THE IDENTITY JOIN IS NOT THE BYTE COMPARE: a foreign record whose bytes are
                           // wrong is STILL foreign — it never gets to answer about bytes it cannot own.
                           match supplied_document_standing(
                             binding: pair.binding,
-                            supplied: Present {
-                              value: record_supplied_served_document(
+                              supplied: record_supplied_served_document(
                                 unit_key: unit_b_key,
                                 attempt: attempt_one,
                                 supplied_user_data: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
                                 supplied_preseed: pair.binding.served.preseed,
                                 supplied_from: archive_authority(),
                               ),
-                            },
                           ) {
                             SuppliedRecordIsNotAboutThisAttempt => true
                             _ => false
@@ -4565,7 +4638,8 @@ test fn a_supplied_served_document_names_where_the_bytes_came_from() -> Bool {
     supplied_preseed: NoDebconfQuestionsToAnswer,
     supplied_from: archive_authority(),
   ) {
-    record =>
+    Absent => false
+    Present { value: record } =>
       match (record.supplied_from.uri.locator as String).contains("ports.ubuntu.com") {
         True => true
         False => false
@@ -5340,22 +5414,36 @@ test fn the_debconf_citation_carries_no_unread_obligation() -> Bool {
   }
 }
 
-// THE CITATION AND THE TRANSCRIPTION NAME THE SAME RELEASE. The shelf's authority locator is a URI whose path
-// carries a version, and its measured-release row is the version the type words were read out of; if those two
-// ever disagree, the citation points at a release nobody checked and the transcription has no source — the exact
-// §4d failure the standing exists to make visible, arriving quietly through a version bump on one row only.
-// Compared by containment on the version token rather than by equality, because the two spellings differ on
-// purpose: the locator is a Debian source path and the measured row is an Ubuntu pool release.
-test fn the_citation_and_the_transcription_name_the_same_release() -> Bool {
+// THE CITATION IS DERIVED FROM THE SINGLE VERSION DECLARATION, NOT RETYPED. The version now exists in exactly one
+// place (`debconf_package_version`) and the citation's source path is BUILT from it (`debconf_source_locator`), so
+// the locator and the transcription cannot drift apart on a version bump — the citation's version equals the
+// transcription's BY CONSTRUCTION, not because a test hopes to notice a mismatch. This row is the consumer that
+// makes that construction observable: it reconstructs the full expected path from the declared version and demands
+// the authority the caller actually reaches (`debconf_selection_authority`, the only public door to the anchor) be
+// EXACTLY that string. A mutation that hardcodes the anchor locator back to a literal version — the state this row
+// replaces — makes the two strings differ and goes RED; it is not the `.contains`-on-itself grep the review
+// rejected, because the version value flows through the comparison rather than a string matching its own copy.
+// (review: merry-fox-82; review 83752.)
+test fn the_citation_is_the_declared_version_with_the_fixed_path_built_around_it() -> Bool {
   match debconf_selection_authority() {
     authority =>
-      (authority.uri.locator as String).contains(needle: debconf_release_token())
-        && (debconf_release_observed as String).contains(needle: debconf_release_token())
+      (authority.uri.locator as String)
+        == ((concat(
+          concat("sources.debian.org/api/src/debconf/", debconf_package_version),
+          "/tools/debconf-set-selections",
+        )) as String)
   }
 }
 
-// THE TOKEN BOTH SIDES ARE CHECKED AGAINST, taken from the measured release rather than typed twice, so the row
-// above cannot pass by checking the locator against a string that matches nothing.
-fn debconf_release_token() -> NonEmptyStr {
-  "1.5.86ubuntu1" as NonEmptyStr
+// THE DERIVATION IS ACTUALLY A FUNCTION OF THE VERSION, NOT A CONSTANT THAT HAPPENS TO MATCH IT TODAY. Ask the
+// builder what locator it would produce for a DIFFERENT version and require the answer to carry that version in
+// the pinned path segment. A `debconf_source_locator` that had been quietly replaced by a constant string would
+// keep the row above green on the one real version while being wrong for every other; this row is the one that
+// would not survive it. (If the path shape changes upstream, update the two literals here to match the new shape.)
+test fn the_source_locator_truly_delegates_to_the_version_it_is_given() -> Bool {
+  match (debconf_source_locator(version: "9.9.9-fake" as NonEmptyStr) as String) {
+    built =>
+      built.contains(needle: "/api/src/debconf/9.9.9-fake/tools/")
+        && !built.contains(needle: "1.5.86ubuntu1")
+  }
 }

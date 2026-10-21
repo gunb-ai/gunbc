@@ -3049,19 +3049,24 @@ fn openssh_is_installed(intents: List<PackageIntent>) -> Bool {
 // completely unrelated to what was on the wire. So the binding takes the SHA-256 of the bytes the renderer
 // produced; the rendering above stays, as a human-readable configuration identity, and is no longer what
 // proves a boot.
-fn rendered_document_digest(content: NonEmptyStr) -> Fnv1a64Structural {
+// THE SHA-256 OF THE SERVED USER-DATA BYTES, OR NOTHING. There is deliberately no fall-back digest: when the host
+// does not hand back a hex string the caller is told so with `Absent` rather than being handed a same-typed
+// content-hash stand-in. A stand-in would flow into the binding's `document_digest`, its served-bundle digest and
+// its address indistinguishably from a real SHA-256, and the binding's whole point — "the board was handed bytes
+// whose SHA-256 is this" — would be a fabrication. Unobserved is therefore an absence, not a value. (review:
+// merry-fox-82; review 83764 finding 1. A future requirement to digest by another algorithm adds a second
+// `Present`-producing constructor here, never a fourth same-typed stand-in.)
+fn rendered_document_digest(content: NonEmptyStr) -> Optional<Fnv1a64Structural> {
   let hex = sha256_hex_of_text(text: content)
   match hex == "" {
-    True =>
-      content_hash_tagged_structural(
-        tag: "gunbc.provisioning.altra_autoinstall_seed.document/unavailable",
-        payload: content_hash_atom(value: content),
-      )
+    True => Absent
     False =>
-      content_hash_tagged_structural(
-        tag: "gunbc.provisioning.altra_autoinstall_seed.document/sha256",
-        payload: content_hash_atom(value: hex as NonEmptyStr),
-      )
+      Present {
+        value: content_hash_tagged_structural(
+          tag: "gunbc.provisioning.altra_autoinstall_seed.document/sha256",
+          payload: content_hash_atom(value: hex as NonEmptyStr),
+        ),
+      }
   }
 }
 
@@ -3087,6 +3092,10 @@ fn rendered_document_digest(content: NonEmptyStr) -> Fnv1a64Structural {
 type ServedSeedBundle sole_constructor {
   user_data: NonEmptyStr,
   preseed: ServedPreseed,
+  // THE SHA-256 OF THE USER-DATA HALF, carried out so the binder's `document_digest` is literally the value the
+  // bundle digest folded, not a second hashing of the same bytes that could drift from it (review 83764, finding 1
+  // removed the fabricated fallback that let a non-SHA-256 value masquerade here).
+  document_digest: Fnv1a64Structural,
   bundle_digest: Fnv1a64Structural,
 }
 
@@ -3152,42 +3161,51 @@ fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> 
 // admit_callers: the binder is the only caller. A test that wants a bundle asks the binder for one — that IS
 // the point: an independently authored bundle is the forgery this seal exists to refuse, and the compiler
 // refuses it (ConstructorCallAdmissionRefused), which is the evidence the seal holds.
+// THE PRESEED HALF OF THE SERVED BUNDLE, RENDERED OR REFUSED. The debconf answer file is rendered from the seed's
+// intents; a seed that asks nothing carries NoDebconfQuestionsToAnswer and a seed that asks carries the exact text
+// that will be served. `cast_preseed_text` isolates the one place the rendered text is promised non-empty, so the
+// honest-but-unreachable cast-failure arm lives here once rather than being written inline in every caller.
+fn cast_preseed_text(intents: List<PackageIntent>) -> Optional<NonEmptyStr> {
+  seed_preseed_file(intents: intents) as NonEmptyStr
+}
+
+fn render_served_preseed(seed: AltraAutoinstallSeed) -> Optional<ServedPreseed> {
+  match seed_preseed_file(intents: all_package_intents(seed: seed)) == "" {
+    True => Present { value: NoDebconfQuestionsToAnswer }
+    // THE CAST CANNOT FAIL ON THIS ARM (the text is non-empty by the test above), and the arm is still written:
+    // the alternative is an unwritten arm the compiler fills by refusing to resolve, or a silent Absent the binder
+    // reads as "unservable seed". The day a renderer can produce non-empty text that will not cast, this arm
+    // becomes real and the refusal is already the right answer.
+    False =>
+      match cast_preseed_text(intents: all_package_intents(seed: seed)) {
+        Absent => Absent
+        Present { value: lines } => Present { value: DebconfAnswersCarried { lines: lines } }
+      }
+  }
+}
+
 fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
   decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "bind_altra_autoinstall_seed")
 ] {
   match seed_document(seed: seed) {
     DocumentRefused { reason: _ } => Absent
     DocumentBuilt { payload: _, content: content } =>
-      match seed_preseed_file(intents: all_package_intents(seed: seed)) == "" {
-        True =>
-          Present {
-            value: ServedSeedBundle {
-                user_data: content,
-                preseed: NoDebconfQuestionsToAnswer,
-                bundle_digest: served_bundle_digest(
-                  document: rendered_document_digest(content: content),
-                  preseed: NoDebconfQuestionsToAnswer,
-                ),
-              },
-          }
-        False =>
-          match seed_preseed_file(intents: all_package_intents(seed: seed)) as NonEmptyStr {
-            // THE CAST CANNOT FAIL ON THIS ARM (the text is non-empty by the test above), and the arm is still
-            // written: the alternative is an unwritten arm, which the compiler would fill by refusing to
-            // resolve, or a silent Absent that the binder reads as "unservable seed". Refusing here would be
-            // wrong-but-honest; the day a renderer can produce non-empty text that will not cast, this arm
-            // becomes real and the binder's refusal is already the right answer.
+      match rendered_document_digest(content: content) {
+        // NO SHA-256, NO BUNDLE. The bundle's whole job is to be the digested thing the board was handed; without
+        // a real SHA-256 of the user-data half the digest would be a stand-in, so nothing is served and the binder
+        // refuses the seed rather than certifying a boot whose bytes cannot later be identified. (review 83764 #1.)
+        Absent => Absent
+        Present { value: document } =>
+          match render_served_preseed(seed: seed) {
             Absent => Absent
-            Present { value: lines } =>
+            Present { value: preseed } =>
               Present {
                 value: ServedSeedBundle {
-                    user_data: content,
-                    preseed: DebconfAnswersCarried { lines: lines },
-                    bundle_digest: served_bundle_digest(
-                      document: rendered_document_digest(content: content),
-                      preseed: DebconfAnswersCarried { lines: lines },
-                    ),
-                  },
+                  user_data: content,
+                  preseed: preseed,
+                  document_digest: document,
+                  bundle_digest: served_bundle_digest(document: document, preseed: preseed),
+                },
               }
           }
       }
@@ -3722,7 +3740,7 @@ fn bind_altra_autoinstall_seed(
               match seed_document(seed: seed) {
                 DocumentRefused { reason: why } =>
                   BindRefused { blocker: SeedHasNoRenderableDocument { reason: why } }
-                DocumentBuilt { payload: _, content: document } =>
+                DocumentBuilt { payload: _, content: _ } =>
               match serve_seed_bundle(seed: seed) {
                 // UNREACHABLE IN THIS ARM, AND STILL SAID. serve_seed_bundle mints its halves from the same
                 // seed_document this arm already built, so once a document exists the bundle exists. Saying
@@ -3739,7 +3757,10 @@ fn bind_altra_autoinstall_seed(
                   unit_key: unit_key,
                   attempt: attempt,
                   seed_digest: altra_autoinstall_seed_digest(seed: seed),
-                  document_digest: rendered_document_digest(content: document),
+                  // THE SAME VALUE THE BUNDLE DIGEST FOLDED, taken out of the bundle rather than re-hashed here,
+                  // so `document_digest` and the digest inside the served bundle cannot drift. The bundle is only
+                  // `Present` when a real SHA-256 existed, so this field can never carry a stand-in (review 83764 #1).
+                  document_digest: served.document_digest,
                   // THE RENDERING IS CARRIED, not just its digest, so the receipt can be re-checked without the
                   // seed still existing. And the disk evidence is inside the digest below, so "the machine
                   // booted seed X" cannot be answered for a machine that was pointed at a different drive.
@@ -3883,17 +3904,24 @@ fn record_supplied_served_document(
   supplied_user_data: NonEmptyStr,
   supplied_preseed: ServedPreseed,
   supplied_from: ExternalAuthority,
-) -> SuppliedServedDocument {
-  SuppliedServedDocument {
-    unit_key: unit_key,
-    attempt: attempt,
-    supplied_user_data: supplied_user_data,
-    supplied_preseed: supplied_preseed,
-    supplied_bundle_digest: served_bundle_digest(
-      document: rendered_document_digest(content: supplied_user_data),
-      preseed: supplied_preseed,
-    ),
-    supplied_from: supplied_from,
+) -> Optional<SuppliedServedDocument> {
+  match rendered_document_digest(content: supplied_user_data) {
+    // THE COMPARISON CANNOT BE ANSWERED FOR BYTES THAT CANNOT BE DIGESTED. A supplied record whose user-data half
+    // yields no SHA-256 has no digest to compare, and inventing one would let a board's boot be "confirmed" against
+    // bytes the model cannot actually identify. Absent here means the standing answer is NothingSupplied-grade
+    // honesty, not a false match. (Same defect class as review 83764 finding 1, on the supplied side.)
+    Absent => Absent
+    Present { value: document } =>
+      Present {
+        value: SuppliedServedDocument {
+          unit_key: unit_key,
+          attempt: attempt,
+          supplied_user_data: supplied_user_data,
+          supplied_preseed: supplied_preseed,
+          supplied_bundle_digest: served_bundle_digest(document: document, preseed: supplied_preseed),
+          supplied_from: supplied_from,
+        },
+      }
   }
 }
 

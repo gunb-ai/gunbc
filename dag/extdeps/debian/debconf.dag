@@ -30,20 +30,38 @@ import extdeps.uri { Uri, Https }
 // is SKIPPED outright (131), so a comment naming a question is not an answer no matter how exactly it spells it.
 // Each is a divergence waiting to happen if the rendered text is ever made the source of truth again — and the
 // third is the defect this repository actually shipped once, in a comment, not in upstream.
+// THE MEASURED DEBCONF VERSION, declared EXACTLY ONCE. Noble's arm64 pool publishes debconf 1.5.86ubuntu1
+// (ports.ubuntu.com noble main, Packages index: Version 1.5.86ubuntu1, SHA256 of the .deb
+// bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294); the `debconf-set-selections` script inside
+// that archive is 156 lines and the three record-grammar facts transcribed below are at lines 77, 78, 131 and 132
+// of it. This is the ONLY place the version string is written: the citation locator is derived from it below, so
+// the citation and the transcription cannot drift apart on a version bump (review: merry-fox-82; review 83752 —
+// the version used to be spelled twice, once here and once inside the locator, and the release/pool/codename were
+// packed into a prose row whose only consumer grepped itself). A future Ubuntu release moves THIS row and re-checks
+// those four lines; the pool and codename are commentary about where the archive came from, so they live here as
+// prose and nowhere as a second String leaf that could disagree with the version.
+data debconf_package_version: NonEmptyStr = "1.5.86ubuntu1"
+
+// THE CITATION'S SOURCE PATH, built from the declared version rather than retyping it. `sources.debian.org` serves
+// the unpacked source for exactly one version per path segment, so pinning the citation to a version is the point
+// of the locator — and deriving it from `debconf_package_version` is what keeps the citation's version equal to the
+// transcription's by construction, not by a test hoping to notice a mismatch.
+fn debconf_source_locator(version: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    concat("sources.debian.org/api/src/debconf/", version),
+    "/tools/debconf-set-selections",
+  ) as NonEmptyStr
+}
+
+// The scheme stays a literal `Https` atom here (not folded into the derivation) because the mandatory-tag wall reads
+// the accepted-value atom out of THIS declaration's own subtree; moving it into `debconf_source_locator` would hide
+// it behind a computation node and the wall would refuse the module.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "sources.debian.org/api/src/debconf/1.5.86ubuntu1/tools/debconf-set-selections"
+    locator: debconf_source_locator(version: debconf_package_version)
   }
 }
-
-// THE MEASURED RELEASE, named because the type list below is a transcription and a transcription needs a date.
-// Noble's arm64 pool publishes debconf 1.5.86ubuntu1 (ports.ubuntu.com noble main, Packages index: Version
-// 1.5.86ubuntu1, SHA256 of the .deb bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294); the script
-// inside that archive is 156 lines and the three facts below are at lines 77, 78, 131 and 132 of it. The locator
-// above points at the same version's source on sources.debian.org, which is where a reader can check the lines
-// without downloading an archive. A future Ubuntu release moves this row's version and re-checks all four lines.
-data debconf_release_observed: NonEmptyStr = "1.5.86ubuntu1 (Ubuntu 24.04 noble, arm64 pool)"
 
 // ---------------------------------------------------------------------------
 // 1. The type field, as a closed set rather than a string.
