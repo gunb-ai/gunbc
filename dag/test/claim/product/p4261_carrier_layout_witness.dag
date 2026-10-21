@@ -2484,7 +2484,7 @@ fn trace_ma(t: CarrierTransitionObservation) -> List<Nat> {
 fn k1_transition_named(key: NonEmptyStr) -> List<CarrierTransitionObservation> {
   filter(k1_transitions, t => t.key == key)
 }
-test fn the_k1_powers_one_converter_beside_u4_where_the_e1_powers_them_all() -> Bool {
+test fn the_k1_shows_one_of_three_inductor_outputs_where_the_e1_shows_all_three() -> Bool {
   let k1_on = filter(k1_phases, p => p.key == "k1-all-poles-on")
   let e1_read = filter(e1_phases, p => p.key == "inductors-settled-read")
   let tap = k1_transition_named(key: "k1-j30-tapped")
