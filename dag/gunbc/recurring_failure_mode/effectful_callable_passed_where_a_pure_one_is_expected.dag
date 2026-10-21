@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.effectful_callable_passed_where_a_pure_one_i
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data effectful_callable_passed_where_a_pure_one_is_expected: RecurringFailureMode = RecurringFailureMode {
   identity: "effectful_callable_passed_where_a_pure_one_is_expected" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a function value whose body performs an effect (a thunk `fn() { read_the_store() }`, a fold step that probes the host) is passed to a parameter of function type. A `.dag` function type `fn(A) -> B` carries no effect row, so the receiving function is judged, summarized and emitted as PURE while one of its calls performs whatever the argument does. The seed interpreter evaluates the closure wherever it is applied, so the program runs and its witnesses pass; the Rust emission realizes the receiver as a synchronous fn and the argument as a closure whose body awaits, which rustc refuses with E0728 (`await` is only allowed inside `async` functions and blocks). Accepted source, green by interpretation, unrealizable natively.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.seed_consumes_no_collection_roster_head
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data seed_consumes_no_collection_roster_head: RecurringFailureMode = RecurringFailureMode {
   identity: "seed_consumes_no_collection_roster_head" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "INVALID STATE: a bare collection-roster head (any, filter, ...) called on a v2.std.text String-alias receiver in a seed-compiled module. The seed consumes no part of the collection roster (the std.algebra collection_*_shape rows), so the head resolves to nothing and the seed refuses it as 'function ... not found in scope'. v2 binds the same head through v2.compiler.fold_lowering collection_roster_rows; the seed does not.",
     "HARM: authors of seed-compiled v2 modules are forced into equivalent respellings (v2.std.text string_any_char_in is the negated for_all over the negated predicate, identical in meaning to any). The refusal is typed and located, so this is a capability gap on the loud side of the ladder, never a silent wrong answer; the cost is respelling and the reader's time to recognize it.",

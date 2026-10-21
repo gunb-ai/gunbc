@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data guard_precondition_discharged_by_the_route_that_uses_it: RecurringFailureMode = RecurringFailureMode {
   identity: "guard_precondition_discharged_by_the_route_that_uses_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a guard that stops discriminating because its precondition moved is not a guard that failed -- it is one that was SILENTLY RETIRED, and it will keep reporting PASS forever** (INVALID STATE: a check is current, correct, and executing exactly as designed, and its answer has stopped carrying information because the condition it keys on is no longer reachable on the population it guards. Nothing is stale and nothing is broken. The check is dead and every consumer still reads its PASS as evidence. HARM: a failed check is loud and a retired one is indistinguishable from a healthy one, so the deficit never ranks for repair; worse, the guard continues to be CITED as coverage, and a second mechanism that would otherwise have been built is not built because this one is believed to exist.",

@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable }
 
 data corroboration_without_an_independent_derivation_axis: RecurringFailureMode = RecurringFailureMode {
   identity: "corroboration_without_an_independent_derivation_axis" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: Mitigatable, ceiling_reason: "mitigatable, and the reason is decidability rather than unbuilt work: whether two readings share an unstated premise is a property of how two agents derived a conclusion, not of any artifact in the tree; DESIGN section 5 names this the ratchet-forever case, and calling it mechanically preventable would be the `never` trap." as NonEmptyStr } },
 
   receipts: [
     "**corroboration without an independent derivation axis** (a second reader reaches the same conclusion as the first, and the agreement is counted as confirmation -- but both readings ran the same query over the same lexical projection of the same subject, so the second signature carries no information the first did not.",
