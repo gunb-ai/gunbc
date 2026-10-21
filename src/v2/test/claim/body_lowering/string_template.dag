@@ -184,7 +184,7 @@ fn st_shell() -> Node {
       children: [
         Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)), declaration: NotADeclaration },
         Edge { label: Positional, target: st_hole(), declaration: NotADeclaration },
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\, declaration: NotADeclaration }y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
       ]
     ),
     occurrence: st_minted(n: 0)
@@ -283,7 +283,7 @@ fn st_holeless_shell() -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)), declaration: NotADeclaration },
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\, declaration: NotADeclaration }y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
       ]
     ),
     occurrence: st_minted(n: 0)

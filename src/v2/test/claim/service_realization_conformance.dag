@@ -84,7 +84,7 @@ fn sr_argv_ok() -> Node {
 }
 
 fn sr_transport(kind: String, fields: List<Edge>) -> Edge {
-  sr_named(name: realization_transport_label(), target: sr_conj(children: Cons { head: sr_named(name: realization_transport_kind_label(), target: sr_atom(id: sr_lex(s: kind))), tail: fields })), declaration: NotADeclaration
+  sr_named(name: realization_transport_label(), target: sr_conj(children: Cons { head: sr_named(name: realization_transport_kind_label(), target: sr_atom(id: sr_lex(s: kind))), tail: fields }))
 }
 
 fn sr_arm(pat: Node) -> Node {
@@ -97,11 +97,11 @@ fn sr_code(lexeme: String) -> Node {
 
 // An arms block is a LIST of arm nodes (v2.std.list_introduction), as the lowering builds it.
 fn sr_arms(arms: List<Node>) -> Edge {
-  sr_named(name: realization_status_arms_label(), target: sr_list(elements: arms)), declaration: NotADeclaration
+  sr_named(name: realization_status_arms_label(), target: sr_list(elements: arms))
 }
 
 fn sr_projection(field: Symbol, key: String) -> Edge {
-  sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: field, target: sr_string(value: key))])), declaration: NotADeclaration
+  sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: field, target: sr_string(value: key))]))
 }
 
 fn sr_shell_entry(arms: List<Node>, field: Symbol, key: String) -> Node {
@@ -276,7 +276,7 @@ fn sr_shell_transport() -> Edge {
 }
 
 fn sr_arms_of(label: Symbol, arms: List<Node>) -> Edge {
-  sr_named(name: label, target: sr_list(elements: arms)), declaration: NotADeclaration
+  sr_named(name: label, target: sr_list(elements: arms))
 }
 
 // P1b. THE DOCUMENTED SHAPE. An entry is a Conj; each optional member at most once; a projection
