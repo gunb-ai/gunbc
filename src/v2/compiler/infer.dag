@@ -7090,6 +7090,8 @@ fn infer_gather_fold_step(
       kinds: kinds,
       resolved: resolved
     )
+  } else if !is_empty(xs: child.branch_hold.held) {
+    infer_gather_unresolved_hand_up_refused(acc: acc, child: child)
   } else {
     let family = infer_literal_edge_payload(parent: acc.node, edge: edge)
     match family {
@@ -7266,6 +7268,74 @@ type InferHoldResolution {
 }
 
 // THE JOIN RESOLVES EACH HELD ARM EXACTLY ONCE (see InferHeldArm).
+// NO ARM DECLARES A TYPE HERE: THE ENCLOSING JOIN MAY. The branch's own type is its first held arm's (still open) type and its
+// held arms stay held on the accumulator; the consumer either holds this branch as an arm of an enclosing branch (which closes
+// it and everything it handed up at its sibling's type) or refuses it as infer_no_arm_declares_a_type
+// (infer_gather_unresolved_hand_up_refused).
+fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmptyDiagnostics) -> InferGatherFoldAcc {
+  infer_gather_fold_acc_failed(
+    node: node,
+    pending: rejected_with_pending(pending: start.pending, rejected: r),
+    await_branch_row: false,
+    await_match_row: false,
+    await_loop_row: false,
+    await_transform_row: false,
+    children_remaining: 0
+  )
+}
+
+fn infer_gather_branch_hand_up(acc: InferGatherFoldAcc, start: InferHoldResolution) -> InferGatherFoldAcc {
+  match list_at_optional(xs: acc.branch_hold.held, index: 0) {
+    Absent => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: acc.node)))
+    Present { value: first } =>
+      match lookup_inferred_facts_in_entries(entries: first.settled.entries, key: first.settled.node) {
+        Absent => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: acc.node)))
+        Present { value: first_facts } =>
+          match inferred_facts_resolved_type(facts: first_facts) {
+            Violates { diagnostic: d } => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: d))
+            Holds { value: first_type } =>
+              match infer_descent_witness_for_node(n: acc.node) {
+                Violates { diagnostic: d } => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: d))
+                Holds { value: descent_proof } =>
+                  match inferred_facts_from_derived_type(node: acc.node, derived_type: first_type, descent: Holds { value: descent_proof }) {
+                    Rejected { diagnostics: r } => infer_gather_hand_up_failed(node: acc.node, start: start, r: r)
+                    Accepted { value: facts, diagnostics: d } =>
+                      match admitted_inferred_facts_entry(node: acc.node, facts: facts) {
+                        Rejected { diagnostics: r } => infer_gather_hand_up_failed(node: acc.node, start: start, r: r)
+                        Accepted { value: entry, diagnostics: ed } =>
+                          infer_gather_with_branch_hold(
+                            acc: infer_gather_fold_acc_ok(
+                              node: acc.node,
+                              entries: inferred_facts_index_enter(index: start.entries, entry: entry),
+                              pending: diagnostics_merge(outer: diagnostics_merge(outer: start.pending, inner: d), inner: ed),
+                              await_branch_row: false,
+                              await_match_row: false,
+                              await_loop_row: false,
+                              await_transform_row: false,
+                              children_remaining: 0
+                            ),
+                            hold: acc.branch_hold
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn infer_gather_unresolved_hand_up_refused(acc: InferGatherFoldAcc, child: InferGatherFoldAcc) -> InferGatherFoldAcc {
+  infer_gather_fold_acc_failed(
+    node: acc.node,
+    pending: rejected_with_pending(pending: acc.pending, rejected: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: child.node))),
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining
+  )
+}
+
 fn infer_gather_branch_join(
   acc: InferGatherFoldAcc,
   merged_entries: Map<Node, List<InferredFacts>>,
@@ -7285,6 +7355,15 @@ fn infer_gather_branch_join(
         }
       })
   }
+  let handed_up = !deferred && fold(acc.branch_hold.held, init: false, f: fn(any, h) {
+    any || match infer_held_arm_declaring_type(branch: acc.node, held: h, entries: start.entries) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  })
+  if handed_up {
+    infer_gather_branch_hand_up(acc: acc, start: start)
+  } else {
   let r = if deferred {
     InferHoldResolution { entries: start.entries, pending: start.pending, refused: Present { value: diagnostics_singleton(d: infer_arm_join_deferred_to_declared_type_diagnostic(node: acc.node)) } }
   } else {
@@ -7309,14 +7388,10 @@ fn infer_gather_branch_join(
     Absent =>
       infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials)
   }
+  }
 }
 
 fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
-  let unchanged = InferHoldResolution {
-    entries: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
-    pending: diagnostics_merge(outer: cur.pending, inner: held.settled.pending),
-    refused: Absent
-  }
   match infer_held_arm_declaring_type(branch: branch, held: held, entries: cur.entries) {
     Absent =>
       InferHoldResolution {
@@ -7324,37 +7399,59 @@ fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHel
         pending: cur.pending,
         refused: Present { value: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: branch)) }
       }
-    Present { value: declaring } =>
-      match lookup_inferred_facts_in_entries(entries: held.settled.entries, key: held.settled.node) {
-        Absent => unchanged
-        Present { value: arm_facts } =>
-          match inferred_facts_resolved_type(facts: arm_facts) {
-            Violates { diagnostic: _ } => unchanged
-            Holds { value: arm_type } =>
-              match infer_close_produced_at_declared(declared: declaring, produced: arm_type, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
-                Empty => unchanged
-                Cons { head: h0, tail: ht } =>
-                  match infer_descent_witness_for_node(n: held.settled.node) {
-                    Violates { diagnostic: d } =>
-                      InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: d) } }
-                    Holds { value: descent_proof } =>
-                      match inferred_facts_from_derived_type(
-                        node: held.settled.node,
-                        derived_type: infer_type_instantiated(t: arm_type, instances: Cons { head: h0, tail: ht }),
-                        descent: Holds { value: descent_proof }
-                      ) {
-                        Rejected { diagnostics: r } =>
-                          InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
-                        Accepted { value: closed_facts, diagnostics: cd } =>
-                          InferHoldResolution {
-                            entries: map_insert(
-                              m: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
-                              key: held.settled.node,
-                              value: [closed_facts]
-                            ),
-                            pending: diagnostics_merge(outer: diagnostics_merge(outer: cur.pending, inner: held.settled.pending), inner: cd),
-                            refused: Absent
-                          }
+    Present { value: declaring } => infer_close_held_arm_at(declaring: declaring, cur: cur, held: held, resolved: resolved)
+  }
+}
+
+// CLOSE ONE HELD ARM AT THE DECLARING TYPE, THEN EVERY ARM IT HANDED UP. A branch none of whose arms declares a type does not
+// refuse (infer_gather_branch_join): it hands its held arms to the enclosing join, so the verdict does not depend on which side
+// the declaring sibling stands (Present beside a nested Absent/Absent settles as Absent beside a nested Absent/Present). The
+// enclosing join's declaring type then closes the handed-up arms at the same type, once each, by the one closing relation.
+fn infer_close_held_arm_at(declaring: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
+  let own = infer_close_held_root_at(declaring: declaring, cur: cur, held: held, resolved: resolved)
+  fold(held.settled.branch_hold.held, init: own, f: fn(acc, handed) {
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent => infer_close_held_arm_at(declaring: declaring, cur: acc, held: handed, resolved: resolved)
+    }
+  })
+}
+
+fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
+  let unchanged = InferHoldResolution {
+    entries: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
+    pending: diagnostics_merge(outer: cur.pending, inner: held.settled.pending),
+    refused: Absent
+  }
+  match lookup_inferred_facts_in_entries(entries: held.settled.entries, key: held.settled.node) {
+    Absent => unchanged
+    Present { value: arm_facts } =>
+      match inferred_facts_resolved_type(facts: arm_facts) {
+        Violates { diagnostic: _ } => unchanged
+        Holds { value: arm_type } =>
+          match infer_close_produced_at_declared(declared: declaring, produced: arm_type, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+            Empty => unchanged
+            Cons { head: h0, tail: ht } =>
+              match infer_descent_witness_for_node(n: held.settled.node) {
+                Violates { diagnostic: d } =>
+                  InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: d) } }
+                Holds { value: descent_proof } =>
+                  match inferred_facts_from_derived_type(
+                    node: held.settled.node,
+                    derived_type: infer_type_instantiated(t: arm_type, instances: Cons { head: h0, tail: ht }),
+                    descent: Holds { value: descent_proof }
+                  ) {
+                    Rejected { diagnostics: r } =>
+                      InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
+                    Accepted { value: closed_facts, diagnostics: cd } =>
+                      InferHoldResolution {
+                        entries: map_insert(
+                          m: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
+                          key: held.settled.node,
+                          value: [closed_facts]
+                        ),
+                        pending: diagnostics_merge(outer: diagnostics_merge(outer: cur.pending, inner: held.settled.pending), inner: cd),
+                        refused: Absent
                       }
                   }
               }

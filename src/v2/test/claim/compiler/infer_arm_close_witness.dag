@@ -187,17 +187,22 @@ fn rb_n4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?)
 test fn rb_n4_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n4()) }
 
 // B3: ARM ORDER IS NOT A MEANING. Open (Absent) and derived (Present{x}) arms in every placement settle the same way.
-// MEASURED: with a `[]` arm the verdict depends on order in THIS PR -- native `[]` fails infer_grounding_not_derived before any join can hold it
+// MEASURED: with a `[]` arm the verdict still depends on order in THIS PR -- native `[]` fails infer_grounding_not_derived before any join can hold it
 // (Absent,[],Present gives grounding_not_derived; Present,[],Absent gives no_arm_declares) -- so the three-kind permutation control
-// is PR B's, where `[]` mints a held open type; the order-invariance claim here covers the kinds this PR's join can hold.
+// is PR B's, where `[]` mints a held open type.
 fn rb_o_code(o: Outcome<ResolvedTree>) -> Int {
   if ers_infer_accepted(o: o) { 0 } else if ers_has(o: o, reason: ^infer_arms_declare_conflicting_types) { 1 } else if ers_has(o: o, reason: ^infer_no_arm_declares_a_type) { 2 } else { 3 }
 }
 fn rb_o_APA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Present { value: 1 } } else { Absent } }\n  x\n}\n") }
 fn rb_o_AAP() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Present { value: 1 } } }\n  x\n}\n") }
 fn rb_o_PAA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Present { value: 1 } } else { if true { Absent } else { Absent } }\n  x\n}\n") }
-test fn rb_o_apa_and_aap_settle_the_same_way() -> Bool { rb_o_code(o: rb_o_APA()) == 0 && rb_o_code(o: rb_o_AAP()) == 0 }
-// KNOWN ORDER DEPENDENCE, pinned so it cannot go unnoticed: Present placed first makes the inner (Absent, Absent) join resolve before
-// the outer sibling can declare, so it refuses no_arm_declares where APA/AAP accept. Trigger: an inner join with no declaring arm
-// hands its hold to the enclosing join instead of refusing (reported to the cardinality coordinator; not closed by this PR).
-test fn rb_o_known_gap_paa_refuses_no_arm_declares() -> Bool { rb_o_code(o: rb_o_PAA()) == 2 }
+// An inner join with no declaring arm hands its held arms to the enclosing join (infer_gather_branch_hand_up), so Present placed first
+// settles exactly as Present placed last: one verdict under every placement (this was the pinned PAA gap).
+test fn rb_o_every_order_gives_one_verdict() -> Bool {
+  let v = rb_o_code(o: rb_o_APA())
+  rb_o_code(o: rb_o_AAP()) == v && rb_o_code(o: rb_o_PAA()) == v
+}
+test fn rb_o_the_verdict_is_acceptance() -> Bool { rb_o_code(o: rb_o_PAA()) == 0 }
+// The hand-up refuses where no enclosing declaring arm exists, in either nesting position.
+fn rb_o_none() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Absent } }\n  x\n}\n") }
+test fn rb_o_no_declaring_arm_anywhere_refuses() -> Bool { rb_o_code(o: rb_o_none()) == 2 }
