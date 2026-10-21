@@ -53,7 +53,8 @@ import v1.compiler.infer_env {
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  UnitVariantContribution
+  UnitVariantContribution,
+  bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided
 }
 
 // KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
