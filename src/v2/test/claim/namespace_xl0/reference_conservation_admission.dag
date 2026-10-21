@@ -11,8 +11,9 @@ import v2.compiler.reference_conservation_admission {
   changed_scope_observation_conserves
 }
 import v2.compiler.reference_conservation { ReferenceConservationSubject, dag_declared_token_classes, reference_conservation_of_subject }
-import v2.test.claim.namespace_xl0.reference_conservation { clean_control_subject }
-import v2.std.diagnostic { Accepted, Rejected, Textual }
+import v2.test.claim.namespace_xl0.reference_conservation { clean_control_subject, let_binder_removed_subject, nth_authored_atom, statement_let_binder_subject }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, Textual }
+import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -56,6 +57,32 @@ test fn a_dropped_atom_refuses_at_the_lost_atom_holds() -> Bool {
         Textual { file: _, extent: _ } => true
         _ => false
       }
+  }
+}
+
+// THE ADMISSION-PATH RED. The real normalized root of `statement_let_binder_source` with the let
+// binder's atom removed (v2.test.claim.namespace_xl0.reference_conservation subject_without_atom),
+// re-admitted through normalized_tree admit_normalized_tree and paired with the ORIGINAL parse. The
+// route must refuse, located at that atom's own locus as the parse read it. The bypass claim below
+// is the same supplied subject read without the verdict: its normalized outcome is Accepted, so
+// the refusal above is conserved_normalize's, not the structural admission's, and removing the
+// verdict from conserved_normalize turns the refusal claim green. The unmodified source is accepted
+// by the clean controls, so the real path still executes.
+test fn a_removed_authored_atom_is_refused_at_its_locus_by_the_admitted_route_holds() -> Bool {
+  match nth_authored_atom(subject: statement_let_binder_subject(), identity: ^rc_bound, n: 0) {
+    Absent => false
+    Present { value: atom } =>
+      match conserved_normalize(subject: let_binder_removed_subject()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: NonEmptyDiagnostics { head: d, tail: _ } } => d.reason == ^conservation_reason_dropped_reference && d.at == atom.locus
+      }
+  }
+}
+
+test fn the_same_supplied_tree_is_accepted_without_the_conservation_gate_holds() -> Bool {
+  match let_binder_removed_subject().normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
