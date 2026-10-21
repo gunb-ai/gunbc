@@ -34,6 +34,8 @@ import std.scoped_authorization { AttemptIdentity }
 // THE TWO SURFACES, so the overlap control below can state what a human gate looks like and check
 // that nothing in our ladder answers it. Both paths come from the substrate; neither is spelled here.
 import extdeps.github.deployment_protection_rule {
+  // THE RULE-ID CARRIER (review 83825); wrap at constructions, .value at reports.
+  GitHubDeploymentProtectionRuleId,
   InstallationAccessToken,
   OAuthClassicWithRepoScope,
   DeploymentProtectionRuleReview,
@@ -574,7 +576,7 @@ fn minted_ownership() -> EnvironmentRuleOwnership
   observe_rule_ownership_for(
     rules: [
       EnabledDeploymentProtectionRule {
-        id: 900000001,
+        id: GitHubDeploymentProtectionRuleId { value: 900000001 },
         node_id: "DPPR_1",
         enabled: true,
         app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
@@ -652,7 +654,7 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt?
     },
     status: 204,
     ownership: minted_ownership(),
-    requested_rule_id: 900000001,
+    requested_rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
   ) {
     Accepted { receipt: receipt } => Present { value: receipt }
     AcceptedReviewRefused { because: _ } => none
@@ -727,7 +729,7 @@ fn fx_mint_probe(
     review: review,
     status: status,
     ownership: ownership,
-    requested_rule_id: requested_rule_id,
+    requested_rule_id: GitHubDeploymentProtectionRuleId { value: requested_rule_id },  // wrap at the boundary; the proxy stays Int-keyed (installation precedent)
   )
 }
 
@@ -1138,7 +1140,7 @@ test fn the_ownership_reason_the_readback_gave_is_the_reason_the_broker_reports(
           ownership: observe_rule_ownership_for(
             rules: [
               EnabledDeploymentProtectionRule {
-                id: 900000001,
+                id: GitHubDeploymentProtectionRuleId { value: 900000001 },
                 node_id: "DPPR_1",
                 enabled: false,
                 app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
@@ -1160,7 +1162,7 @@ test fn the_ownership_reason_the_readback_gave_is_the_reason_the_broker_reports(
           ownership: observe_rule_ownership_for(
             rules: [
               EnabledDeploymentProtectionRule {
-                id: 900000001,
+                id: GitHubDeploymentProtectionRuleId { value: 900000001 },
                 node_id: "DPPR_1",
                 enabled: true,
                 app: RuleOwningApp { id: other_app_id, slug: "someone-else" },
@@ -1270,19 +1272,19 @@ fn sanctioned_review() -> DeploymentProtectionRuleReview {
 //   the missing CONDITION — a rule row is ownership only if it is ENABLED and attributed to this App.
 test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -> Bool {
   let enabled_rule = EnabledDeploymentProtectionRule {
-    id: 900000001,
+    id: GitHubDeploymentProtectionRuleId { value: 900000001 },
     node_id: "DPPR_1",
     enabled: true,
     app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
   }
   let disabled_rule = EnabledDeploymentProtectionRule {
-    id: 900000002,
+    id: GitHubDeploymentProtectionRuleId { value: 900000002 },
     node_id: "DPPR_2",
     enabled: false,
     app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
   }
   let foreign_rule = EnabledDeploymentProtectionRule {
-    id: 900000003,
+    id: GitHubDeploymentProtectionRuleId { value: 900000003 },
     node_id: "DPPR_3",
     enabled: true,
     app: RuleOwningApp { id: GitHubAppId { value: 2222222222 }, slug: "some-other-integration" },
@@ -1295,7 +1297,7 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
   // rather than merely being different.
   match observe_rule_ownership_for(rules: [enabled_rule], environment_name: gated_env) {
     OwnedByGateApp { observation: o } =>
-      o.rule_id == 900000001
+      o.rule_id.value == 900000001
         && o.app_id.value == gate_app_id.value
         && (o.app_slug as String) == "gunbc-deployment-gate"
         && o.environment_name == gated_env
@@ -1323,7 +1325,7 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     && (match observe_rule_ownership_for(
           rules: [
             EnabledDeploymentProtectionRule {
-              id: 900000004,
+              id: GitHubDeploymentProtectionRuleId { value: 900000004 },
               node_id: "DPPR_4",
               enabled: true,
               app: RuleOwningApp { id: gate_app_id, slug: "a-different-app" },
@@ -1370,7 +1372,7 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
          ownership: observe_rule_ownership_for(
            rules: [
              EnabledDeploymentProtectionRule {
-               id: 900000001,
+               id: GitHubDeploymentProtectionRuleId { value: 900000001 },
                node_id: "DPPR_1",
                enabled: true,
                app: RuleOwningApp { id: other_app_id, slug: "someone-else" },
@@ -1887,7 +1889,7 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
   ) {
     AcceptedReviewRefused {
       because: RuleIsNotTheOneRequested { requested_rule_id: r, observed_rule_id: o },
-    } => r == 900000002 && o == 900000001
+    } => r.value == 900000002 && o.value == 900000001
     AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }

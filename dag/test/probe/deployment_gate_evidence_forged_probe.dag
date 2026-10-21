@@ -84,6 +84,11 @@ import extdeps.github.deployment_protection_rule {
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
   InstallationWireFields,
+  // THE RULE-ID CARRIER (review 83825). The forgeries below must stay WELL-FORMED apart from the one
+  // axis each forgery is about -- a forged receipt refused because its rule field is the wrong TYPE would
+  // prove nothing about the SEAL. So every rule field here carries the carrier; the single deliberate
+  // type error is the cross-axis forgery in forge_an_accepted_review, where a RUN id reaches a rule slot.
+  GitHubDeploymentProtectionRuleId,
 }
 import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
 
@@ -111,7 +116,7 @@ data forged_approved_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewRece
   run_id: forged_run_id,
   environment_name: forged_environment,
   state: Approved,
-  rule_id: 900000001,
+  rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
   installation_id: forged_installation_id,
   owner: "gunb-ai",
   repo: "gunbc",
@@ -121,7 +126,7 @@ data forged_rejected_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewRece
   run_id: 35447067114,
   environment_name: forged_environment,
   state: Rejected,
-  rule_id: 900000001,
+  rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
   installation_id: forged_installation_id,
   owner: "gunb-ai",
   repo: "gunbc",
@@ -163,12 +168,13 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
     },
     status: 204,
     ownership: forged_ownership,
-    // THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825). Both axes are `Int` today, which is the
-    // whole defect: this call compiles, and the mint's own RuleIsNotTheOneRequested arm then compares the
-    // run's digits against the rule's digits -- a check that can only answer "no" for the wrong reason.
-    // The typed carrier makes this line refuse to compile: a run id is not a value a rule-id slot can
-    // receive. This forgery is the discriminating RED: with the carrier in place the census names it, and
-    // until the carrier exists the claim that reads it is red.
+    // THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825). This is the discriminating forgery:
+    // forged_run_id is an Int and the slot now demands GitHubDeploymentProtectionRuleId, so the call is
+    // refused AT THE MINT with a TypeMismatch -- the confusion the review found is unwritable, not checked.
+    // Before the carrier this line compiled and the mint's own RuleIsNotTheOneRequested arm answered a
+    // question about two different upstream objects by comparing their digits. The witness claim
+    // a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint reads exactly this row out of the census;
+    // delete the carrier and the row disappears and the claim goes red.
     requested_rule_id: forged_run_id,
   )
 }
@@ -199,7 +205,7 @@ fn forge_an_ownership() -> EnvironmentRuleOwnership {
   observe_rule_ownership(
     rules: [
       EnabledDeploymentProtectionRule {
-        id: 900000001,
+        id: GitHubDeploymentProtectionRuleId { value: 900000001 },
         node_id: "DPPR_1",
         enabled: true,
         app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },

@@ -95,6 +95,8 @@ import extdeps.github.deployment_protection_rule {
   rule_delivery_surfaces_checked,
   extdeps_published_authorities,
   EnabledDeploymentProtectionRule,
+  // THE RULE-ID CARRIER (review 83825): the row's id is a typed carrier, not digits.
+  GitHubDeploymentProtectionRuleId,
   RuleOwningApp,
   enabled_rule_readback_endpoint_path,
   enabled_rule_readback_endpoint_method,
@@ -541,19 +543,19 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
 // test.claim.deployment_gate_authorization_witness with the verdict it checks (§3b).
 test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() -> Bool {
   let row = EnabledDeploymentProtectionRule {
-    id: 900000001,
+    id: GitHubDeploymentProtectionRuleId { value: 900000001 },
     node_id: "RDP_1",
     enabled: true,
     app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
   }
-  row.id == 900000001
+  row.id.value == 900000001
     && row.enabled
     && row.app.id.value == 1900000001
     && (row.app.slug as String) == "gunbc-deployment-gate"
     // `enabled` is a Bool the row must be able to carry as false: a guard that could not represent a
     // DISABLED rule would be unable to refuse one.
     && !(EnabledDeploymentProtectionRule {
-           id: 900000002,
+           id: GitHubDeploymentProtectionRuleId { value: 900000002 },
            node_id: "RDP_2",
            enabled: false,
            app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },

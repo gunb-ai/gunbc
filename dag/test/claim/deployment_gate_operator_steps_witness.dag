@@ -40,6 +40,10 @@ import std.measure {
 import std.human_intervention { DischargedAt }
 import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
 import extdeps.github.deployment_protection_rule {
+  // THE RULE-ID CARRIER (review 83825). Witness helpers keep Int parameters and
+  // wrap HERE, at the constructions -- exactly how GitHubAppInstallationId is handled
+  // (installation_id: Int params, GitHubAppInstallationId { value: installation_id } at the record).
+  GitHubDeploymentProtectionRuleId,
   Approved,
   Rejected,
   review_state_wire,
@@ -328,7 +332,7 @@ fn ownership_with_enabled_for_owner(
       observe_rule_ownership(
         rules: [
           EnabledDeploymentProtectionRule {
-            id: rule_id,
+            id: GitHubDeploymentProtectionRuleId { value: rule_id },
             node_id: "DPPR_1",
             enabled: true,
             app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
@@ -418,7 +422,7 @@ fn ownership_with_enabled(
       observe_rule_ownership(
         rules: [
           EnabledDeploymentProtectionRule {
-            id: rule_id,
+            id: GitHubDeploymentProtectionRuleId { value: rule_id },
             node_id: "DPPR_1",
             enabled: enabled,
             app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
@@ -488,7 +492,7 @@ fn receipt_for(
       identity_repo: identity_repo,
       rule_id: rule_id,
     ),
-    requested_rule_id: rule_id,
+    requested_rule_id: GitHubDeploymentProtectionRuleId { value: rule_id },
   ) {
     // `none`, the spelling this model's Optional arms use. A fixture yielding the other absent
     // constructor would not fall into `none =>` at the consumer; it crashes the match instead of
@@ -1096,7 +1100,10 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
                approved_rule_id: a_rule,
                rejected_rule_id: r_rule,
              },
-           } => now_rule == 900000002 && a_rule == canonical_rule_id && r_rule == canonical_rule_id
+           } =>
+             now_rule.value == 900000002
+               && a_rule.value == canonical_rule_id
+               && r_rule.value == canonical_rule_id
            ReviewerRemovalBlocked { missing: _ } => false
          })
     // (c) THE STANDING IS ABOUT ANOTHER INSTALLATION: a different App installation now owns an enabled
@@ -2249,7 +2256,7 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
         ) {
           RemovalRefused {
             missing: TrialArmsDifferOnRule { approved_rule_id: a, rejected_rule_id: r },
-          } => a == 900000001 && r == 900000002
+          } => a.value == 900000001 && r.value == 900000002
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })

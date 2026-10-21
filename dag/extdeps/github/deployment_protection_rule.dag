@@ -1079,8 +1079,35 @@ data enabled_rule_readback_items_field: NonEmptyStr = "custom_deployment_protect
 
 // The rule record itself, as the pin types it: all four fields required, and `enabled` is the one that
 // makes ownership a claim about the gate rather than about an installation existing somewhere.
+// THE RULE'S OWN IDENTITY, AS ITS OWN TYPE (review 83825, folded per warm-crane-219's split). The
+// readback row's `id` -- the GitHub-internal id of a custom deployment protection rule -- is the same
+// upstream quantity every authorization site in gunbc.auth calls rule_id. It is NOT the environment id:
+// PendingDeploymentEnvironment.id stays Int, because it names a different object and giving it this type
+// would make a rule id passable as an environment id -- the same defect, renamed.
+//
+// WHY HERE, BESIDE THE RULE MODEL, AND NOT IN extdeps.github.app. GitHubAppId / GitHubAppInstallationId /
+// GitHubRepositoryId live in app.dag because those objects belong to the App API. The protection rule is
+// not an App object: it is a deployment object that happens to be OWNED by an App, modelled in this
+// module because this module is the upstream home of the rule's endpoints, webhook and readback. Putting
+// its id in app.dag would make the App module need to know about an object it does not otherwise model;
+// putting the rule's own id beside the rule keeps each upstream object's identity with its upstream object.
+//
+// THE SHAPE follows the established id carriers exactly: a sealed record over Int, whose field is the
+// digits GitHub sends. It is NOT sealed sole_constructor, for the same reason the three carriers are not:
+// GitHub sends the digits, so a module that has read the wire must be able to construct it, and sole
+// constructor confinement buys nothing that the minting functions do not already provide. What it DOES
+// buy is axis distinctness -- the fact §5 asks for. With rule_id: GitHubDeploymentProtectionRuleId, the
+// expression `rule_id: run_id` (an Int) no longer TYPE-CHECKS; the confusion the review found, where the
+// mint's RuleIsNotTheOneRequested compared a run's digits against a rule's digits, becomes unwritable
+// rather than validated. Run ids deliberately STAY Int here: their carrier is a separate replacement
+// migration over std.types.WorkflowRunId and the four extdeps.github Int run ids already on main (§3,
+// §2 -- this module must not mint a third representation of one upstream concept).
+type GitHubDeploymentProtectionRuleId {
+  value: Int,
+}
+
 type EnabledDeploymentProtectionRule {
-  id: Int,
+  id: GitHubDeploymentProtectionRuleId,
   node_id: NonEmptyStr,
   enabled: Bool,
   app: RuleOwningApp,

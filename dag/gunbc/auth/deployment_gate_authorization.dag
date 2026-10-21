@@ -72,6 +72,12 @@ import extdeps.github.deployment_protection_rule {
   PendingDeploymentWait,
   pending_wait_environment_name,
   EnabledDeploymentProtectionRule,
+  // THE RULE-ID CARRIER (review 83825, folded per warm-crane-219's split). rule_id is this type
+  // everywhere in this module -- the receipt's, the observation's, the trial arms', and every refusal
+  // payload that names a rule. Not Int: with Int, a run id (still Int, until its own migration) typed
+  // into a rule-id slot COMPILED, and the mint then compared a run's digits against a rule's digits.
+  // §5: make that unwritable, not validated.
+  GitHubDeploymentProtectionRuleId,
   review_call_succeeded,
   custom_rule_response_timeout,
   rule_gate_approval_ceiling,
@@ -846,7 +852,9 @@ fn observe_gate_installation(
 // a caller that wanted a token from the configured claim would have to produce this record, and this
 // record only comes from the two readbacks agreeing.
 type ObservedRuleOwnership sole_constructor {
-  rule_id: Int,
+  // THE CARRIER, NOT THE DIGITS (review 83825): this is the readback row's own id, a RULE id, so it
+  // carries that upstream quantity's type rather than Int. The mint cannot be handed a run's digits here.
+  rule_id: GitHubDeploymentProtectionRuleId,
   environment_name: NonEmptyStr,
   // THE REPOSITORY THE IDENTITY WAS READ FROM, carried down from the identity readback rather than
   // re-typed by the caller. This is what lets the review mint refuse "the right run, the wrong
@@ -1007,7 +1015,7 @@ type AcceptedRuleReviewReceipt sole_constructor {
   run_id: Int,
   environment_name: NonEmptyStr,
   state: ReviewState,
-  rule_id: Int,
+  rule_id: GitHubDeploymentProtectionRuleId,
   installation_id: GitHubAppInstallationId,
   // THE REPOSITORY THE CALL WAS MADE AGAINST. The review endpoint's route IS owner/repo-scoped, so a
   // receipt naming only a run id could have been minted against any repository hosting a run with that
@@ -1072,7 +1080,14 @@ type AcceptedReviewRefusal =
   // with `{ claimed: 0, observed: 0 }`, two constants standing in for values the model had. Both are
   // replaced by one arm that names what the READBACK produced, so a receipt whose rule is not the rule
   // the caller intended is refused with both rule ids visible.
-  | RuleIsNotTheOneRequested { requested_rule_id: Int, observed_rule_id: Int }
+  // A REAL MISMATCH CHECK, KEPT (review 83825): this compares TWO RULE IDs -- the rule the caller meant
+  // to answer against the rule the two readbacks attributed. The carrier does not make it dead, because it
+  // is not a cross-axis confusion: same axis, two objects, rotation guard. It carries the carriers so the
+  // refusal can say WHICH rule, not merely two numbers whose kind has to be remembered.
+  | RuleIsNotTheOneRequested {
+      requested_rule_id: GitHubDeploymentProtectionRuleId,
+      observed_rule_id: GitHubDeploymentProtectionRuleId,
+    }
 
 type AcceptedReviewOutcome
   = Accepted { receipt: AcceptedRuleReviewReceipt }
@@ -1098,7 +1113,7 @@ fn mint_accepted_rule_review(
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
-  requested_rule_id: Int
+  requested_rule_id: GitHubDeploymentProtectionRuleId
 ) -> AcceptedReviewOutcome
   admit_callers: [
     decl_ref(
@@ -1169,7 +1184,12 @@ fn mint_accepted_rule_review(
         // The rule the two readbacks attributed is checked against the rule the CALLER intended to
         // answer. Without this, ownership for gate A's rule would mint a receipt while the caller
         // believed it was answering gate B — the same environment, a different rule.
-        if o.rule_id != requested_rule_id {
+        // CARRIER AGAINST CARRIER. Both sides are GitHubDeploymentProtectionRuleId now, so this can
+        // only ever compare two RULE ids -- the cross-axis confusion the review found (a run's Int typed
+        // into the rule slot) is refused at the CALLER, before the mint is reached. `.value` keeps the
+        // comparison over the digits GitHub sent, exactly as the installation_id comparison a few lines
+        // above does; the sealed carriers themselves are what the refusal reports, un-restated.
+        if o.rule_id.value != requested_rule_id.value {
           AcceptedReviewRefused {
             because: RuleIsNotTheOneRequested {
               requested_rule_id: requested_rule_id,
@@ -2022,7 +2042,12 @@ type RemovalRefusalReason
   // rule A, reject on the gate's rule B" counted as a witnessed trial: more than one rule CAN be
   // enabled on one environment, and answering one is no evidence the other answers at all. Each of the
   // three carries both sides, because the operator has to see which arm drifted.
-  | TrialArmsDifferOnRule { approved_rule_id: Int, rejected_rule_id: Int }
+  // SAME-AXIS, KEPT: the two arms of one trial must have answered the SAME rule; the digits differing is
+  // the finding. Typed now so the report names rules, not remembered-kind integers.
+  | TrialArmsDifferOnRule {
+      approved_rule_id: GitHubDeploymentProtectionRuleId,
+      rejected_rule_id: GitHubDeploymentProtectionRuleId,
+    }
   | TrialArmsDifferOnInstallation {
       approved_installation_id: GitHubAppInstallationId,
       rejected_installation_id: GitHubAppInstallationId,
@@ -2053,9 +2078,9 @@ type RemovalRefusalReason
   // consumer -- a typed refusal nobody can read out of a decision is a second name for silence (§5).
   | StandingWasNotRead { because: StandingRefusalReason }
   | ActStandingDisagreesOnRule {
-      standing_rule_id: Int,
-      approved_rule_id: Int,
-      rejected_rule_id: Int,
+      standing_rule_id: GitHubDeploymentProtectionRuleId,
+      approved_rule_id: GitHubDeploymentProtectionRuleId,
+      rejected_rule_id: GitHubDeploymentProtectionRuleId,
     }
   | ActStandingDisagreesOnInstallation {
       standing_installation_id: GitHubAppInstallationId,
