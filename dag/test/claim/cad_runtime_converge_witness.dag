@@ -1,0 +1,61 @@
+module test.claim.cad_runtime_converge_witness
+
+import std.types { Bool, String }
+import gunbc.ensure { EnsureMayApply, ensure_decide }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.artifact_acquisition { ContentDigestSha256, UpstreamRevision, SourceUrl, SourceArgv }
+import extdeps.package_managers.micromamba { micromamba_linux_aarch64_release }
+import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec }
+import product.printing.print_runtime { CadEnvironmentReading, CadEnvironmentAbsent, CadEnvironmentWrong, CadEnvironmentUnreadable, cad_environment_reading_reason }
+import product.printing.cad_runtime_converge { as_observation, satisfies, build_plan, micromamba_subject, micromamba_path }
+
+fn decide(r: CadEnvironmentReading) -> UpsertDecision<CadRuntimeSpec> {
+  ensure_decide(policy: EnsureMayApply, observation: as_observation(r: r), observation_satisfies: satisfies(r: r), mismatch_reason: cad_environment_reading_reason(r: r), plan: build_plan(r: r))
+}
+
+fn applies(d: UpsertDecision<CadRuntimeSpec>) -> Bool {
+  match d {
+    Apply { plan: _ } => true
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+fn refuses(d: UpsertDecision<CadRuntimeSpec>) -> Bool {
+  match d {
+    Refuse { reason: _ } => true
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// POSITIVE CONTROL: an absent environment is built.
+test fn w_an_absent_environment_is_built() -> Bool {
+  applies(d: decide(r: CadEnvironmentAbsent))
+}
+
+// RED: a wrong or unpublished environment is refused and never rebuilt in place; an unreadable
+// state refuses rather than being read as absent.
+test fn w_a_wrong_or_unreadable_environment_is_not_touched() -> Bool {
+  refuses(d: decide(r: CadEnvironmentWrong { reason: "never published" }))
+    && refuses(d: decide(r: CadEnvironmentUnreadable { reason: "cannot list" }))
+}
+
+// The solver is acquired by its pinned digest, staged beside its install path, from its one
+// published URL.
+test fn w_micromamba_is_acquired_by_its_pinned_digest() -> Bool {
+  let s = micromamba_subject(spec: cad_runtime_spec)
+  let keyed = match s.key {
+    ContentDigestSha256 { hex: h } => (h as String) == (micromamba_linux_aarch64_release.sha256 as String)
+    UpstreamRevision { revision: _ } => false
+  }
+  let staged = match s.staging_path {
+    Present { value: p } => (p as String) != (s.install_path as String)
+    Absent => false
+  }
+  let sourced = length(list: s.sources) == 1 && all(s.sources, o => match o.locator {
+    SourceUrl { url: u } => (u as String) == (micromamba_linux_aarch64_release.url as String)
+    SourceArgv { argv: _ } => false
+  })
+  keyed && staged && sourced && (s.install_path as String) == micromamba_path(spec: cad_runtime_spec)
+}

@@ -1,0 +1,196 @@
+module test.claim.service_effect_propagation_specimens_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v1.std.core { DeclaredCallableIdentity, callable_identity, no_span }
+import v1.compiler.infer_items { ItemInfo, FnItem }
+import v1.compiler.infer_service {
+  ModuleCallees, ItemCallees, ResolvedCallee,
+  ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete, ExpansionBudgetExhausted,
+  UnresolvedCalleeEdge, ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
+  expand_transitive_services_loop, total_service_count
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.infer_service expand_transitive_services_loop, the monotone fixpoint
+// over supplied ModuleCallees and a supplied registry. P2.6 of the cull audit changed two things
+// in it: expand_transitive_services_once merges through a UniqueAccum seen-map instead of a linear
+// `any` scan, and the loop carries the previous pass's `after` count into the next pass's `before`
+// instead of recomputing it. The brief requires chain, diamond and exhaustion specimens. Until
+// this file none existed: service_effect_expansion_budget_witness asserts only that a compile
+// COMPLETED, and says in its own header that it cannot see whether the service reached the top.
+//
+// WHY SUPPLIED VALUES (DESIGN section 3, a witness discriminates at one interface). The claim is
+// about what this interface returns for inputs of a given shape, so the callee graph and the
+// registry are supplied here rather than derived by compiling source, which would re-run the
+// parser and typechecker once per claim. The pairing obligation is discharged by
+// resolved_rust_fn_service_chain_consumer_witness, which runs the REAL route (parse, typecheck,
+// build_module_callees, expand_transitive_services, registry) over a service chain and a no-service
+// control and asserts the leaf service parameter reaches the top. THIS FILE MUST NOT BE READ AS
+// REPLACING IT: deleting that integration leaves every claim below green.
+//
+// ORDER IS THE ITEM ORDER OF THE SUPPLIED ModuleCallees, deliberately ascending (callers first), so
+// the chain needs more than one pass: within a pass the registry is threaded, so a callee listed
+// BEFORE its caller would converge in one pass and the exhaustion specimen would have nothing to
+// exhaust.
+//
+// THE DECLARED ORDERING RULE the diamond baseline is derived from, independent of any run: an
+// item's merged services are its OWN services in their order, then each callee's services in
+// call-edge order, keeping the FIRST occurrence of each. The literals below were derived from that
+// rule by hand and are not copies of the head's output. The merge-base implementation cannot be re-run against these
+// tests: P2.6 added the `before` parameter, so its loop has a different call shape. The referent is
+// therefore the rule above and the hand derivation in the comment on the diamond test, not any
+// implementation's output.
+//
+// CEILING. Nothing here exercises the three non-resolved edge arms; those are covered by the
+// incompleteness causes, not by propagation.
+
+fn ident(name: String) -> DeclaredCallableIdentity {
+  DeclaredCallableIdentity { owner_module_path: "specimen", decl_name: name }
+}
+
+fn info(name: String, services: List<String>) -> ItemInfo {
+  ItemInfo {
+    name: name,
+    module_name: "specimen",
+    kind: FnItem,
+    service_names: services,
+    resource_requirements: [],
+    params: [],
+    is_self_recursive: false,
+    has_non_tail_self_call: false
+  }
+}
+
+fn item(name: String, callees: List<String>) -> ItemCallees {
+  ItemCallees {
+    item_identity: ident(name: name),
+    has_body: true,
+    called: callees |> map(c => ResolvedCallee { identity: ident(name: c), call_site: no_span() })
+  }
+}
+
+fn registry_of(rows: List<ItemInfo>) -> Map<String, ItemInfo> {
+  rows |> fold(init: empty_map(), f: (acc, row) =>
+    map_insert(acc, callable_identity(id: ident(name: row.name)), row)
+  )
+}
+
+fn services_in(analysis: ServiceEffectAnalysis, name: String) -> List<String> {
+  let reg = match analysis {
+    EffectsComplete { registry: r } => r
+    EffectsIncomplete { partial: p, causes: _ } => p
+  }
+  match map_get(reg, callable_identity(id: ident(name: name))) {
+    Present { value: row } => row.service_names
+    Absent => ["<absent>"]
+  }
+}
+
+fn is_complete(analysis: ServiceEffectAnalysis) -> Bool {
+  match analysis {
+    EffectsComplete { registry: _ } => true
+    EffectsIncomplete { partial: _, causes: _ } => false
+  }
+}
+
+fn exhausted_delta(analysis: ServiceEffectAnalysis) -> Int {
+  match analysis {
+    EffectsComplete { registry: _ } => -1
+    EffectsIncomplete { partial: _, causes: causes } =>
+      if causes |> count == 1 {
+        causes |> fold(init: -2, f: (acc, cause) =>
+          match cause {
+            ExpansionBudgetExhausted { remaining_delta: d } => d
+            UnresolvedCalleeEdge { item_identity: _, spelling: _, call_site: _ } => -3
+            ResolvedCalleeRegistryRowAbsent { caller: _, callee: _, call_site: _ } => -3
+            FunctionValueEffectsUnresolved { caller: _, call_site: _ } => -3
+            LocalBindingEffectsUnresolved { caller: _, name: _, call_site: _ } => -3
+          }
+        )
+      } else { -2 }
+  }
+}
+
+fn run(rows: List<ItemInfo>, items: List<ItemCallees>, passes: Int) -> ServiceEffectAnalysis {
+  let reg = registry_of(rows: rows)
+  expand_transitive_services_loop(
+    module_callees: [ModuleCallees { items: items }],
+    registry: reg,
+    remaining_passes: passes,
+    before: total_service_count(registry: reg)
+  )
+}
+
+// CHAIN a -> b -> c, service S declared at c only.
+fn chain_rows() -> List<ItemInfo> {
+  [info(name: "a", services: []), info(name: "b", services: []), info(name: "c", services: ["S"])]
+}
+
+fn chain_items() -> List<ItemCallees> {
+  [item(name: "a", callees: ["b"]), item(name: "b", callees: ["c"]), item(name: "c", callees: [])]
+}
+
+// ABSENCE CONTROL: the same three items with the b -> c edge removed. S is declared at c and must
+// not reach a or b, so an analysis that smears every declared service onto every item passes the
+// chain test and fails this one.
+fn broken_chain_items() -> List<ItemCallees> {
+  [item(name: "a", callees: ["b"]), item(name: "b", callees: []), item(name: "c", callees: [])]
+}
+
+// DIAMOND a -> {b, c}, b -> d, c -> d. d declares S1, S2; b declares T; c declares U.
+fn diamond_rows() -> List<ItemInfo> {
+  [info(name: "a", services: []), info(name: "b", services: ["T"]), info(name: "c", services: ["U"]),
+   info(name: "d", services: ["S1", "S2"])]
+}
+
+fn diamond_items() -> List<ItemCallees> {
+  [item(name: "a", callees: ["b", "c"]), item(name: "b", callees: ["d"]),
+   item(name: "c", callees: ["d"]), item(name: "d", callees: [])]
+}
+
+test fn chain_service_reaches_the_top() -> Bool {
+  let r = run(rows: chain_rows(), items: chain_items(), passes: 10)
+  is_complete(r) && services_in(analysis: r, name: "a") == ["S"] && services_in(analysis: r, name: "b") == ["S"]
+}
+
+test fn chain_without_the_edge_does_not_receive_the_service() -> Bool {
+  let r = run(rows: chain_rows(), items: broken_chain_items(), passes: 10)
+  is_complete(r) && services_in(analysis: r, name: "a") == [] && services_in(analysis: r, name: "b") == []
+}
+
+// Hand-derived from the declared rule. Pass 1: a = [T, U]; b = [T, S1, S2]; c = [U, S1, S2].
+// Pass 2: a = own [T, U] then b's [T, S1, S2] then c's [U, S1, S2], first occurrence kept =
+// [T, U, S1, S2]. Pass 3 changes nothing.
+test fn diamond_dedups_and_orders_by_the_declared_rule() -> Bool {
+  let r = run(rows: diamond_rows(), items: diamond_items(), passes: 10)
+  services_in(analysis: r, name: "a") == ["T", "U", "S1", "S2"]
+}
+
+test fn diamond_converges_and_leaves_the_middle_items_alone() -> Bool {
+  let r = run(rows: diamond_rows(), items: diamond_items(), passes: 10)
+  is_complete(r) && services_in(analysis: r, name: "b") == ["T", "S1", "S2"] && services_in(analysis: r, name: "c") == ["U", "S1", "S2"]
+}
+
+// EXHAUSTION. The chain needs two changing passes plus one confirming pass. With one pass the
+// budget is spent after b changed (1 -> 2): partial has S on b but not a, delta is exactly 1.
+test fn one_pass_budget_returns_the_partial_registry_and_the_exact_delta() -> Bool {
+  let r = run(rows: chain_rows(), items: chain_items(), passes: 1)
+  !is_complete(r) && exhausted_delta(analysis: r) == 1
+    && services_in(analysis: r, name: "b") == ["S"] && services_in(analysis: r, name: "a") == []
+}
+
+// Two passes: a also changed in pass 2 (2 -> 3) and the budget is spent. The delta is the LAST
+// pass's change, 1, not the change since the start, 2: this is the claim that the carried
+// `before` is the previous `after`.
+test fn two_pass_budget_reports_the_last_pass_delta_not_the_total() -> Bool {
+  let r = run(rows: chain_rows(), items: chain_items(), passes: 2)
+  !is_complete(r) && exhausted_delta(analysis: r) == 1 && services_in(analysis: r, name: "a") == ["S"]
+}
+
+// CONVERGED CONTROL: three passes is exactly enough to see the fixed point.
+test fn three_pass_budget_is_enough_and_completes() -> Bool {
+  let r = run(rows: chain_rows(), items: chain_items(), passes: 3)
+  is_complete(r) && services_in(analysis: r, name: "a") == ["S"]
+}

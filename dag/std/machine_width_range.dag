@@ -19,12 +19,10 @@ import std.measure { BitWidth, bit_width_count }
 // when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
 // below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally.
 //
-// WIDTH ZERO, STATED ONCE: the unsigned range [0, 2^0 - 1] is {0}, which is std.bounded_nat's own range at
-// zero bits (bounded_nat_admit admits width 0, and bounded_nat mints 0 there), so the two authorities agree
-// and the mint's behavior at zero is unchanged by routing through this one. The signed range
-// [-2^(N-1), 2^(N-1) - 1] at N = 0 is empty (2^-1 is not an integer), so a signed zero width admits nothing.
-// Whether a zero width is a VALID machine width is a separate question, left to the declaration that names
-// MachineWidth<0>; this function answers only membership.
+// WIDTH ZERO, STATED ONCE: the unsigned range [0, 2^0 - 1] is {0}; the signed range [-2^(N-1), 2^(N-1) - 1]
+// at N = 0 is empty (2^-1 is not an integer), so a signed zero width admits nothing. Whether a zero width
+// is a VALID machine width is a separate question, left to the declaration that names MachineWidth<0>
+// (std.machine_word's WordWidth has no zero member); this function answers only membership.
 fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> Bool {
   let n = bit_width_count(b: bits)
   let signed = match signedness {
