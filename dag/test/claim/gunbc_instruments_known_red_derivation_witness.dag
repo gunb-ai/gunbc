@@ -1081,19 +1081,6 @@ fn entry_resolve_verdict(subject: KnownRedSubject, entry: String) -> String {
   )
 }
 
-fn host_tool_verdict(subject: KnownRedSubject, tool: String, probed: String) -> String {
-  concat(
-    "FAIL ",
-    concat(
-      subject.function,
-      concat(
-        known_red_marker_host_tool,
-        concat("\"", concat(tool, concat("\"", concat(known_red_marker_probed, concat(probed, "))\n"))))
-      )
-    )
-  )
-}
-
 // THE TWO BUDGET ARMS. `budget_figure_phrase` renders both from one function and they differ in exactly one
 // thing: which ceiling label fired, and whether a cost was ever taken (`cost=UNMEASURED` for a preempted
 // witness, `cost=<n>ms CEILING` for one that completed over budget). The label is the ONLY discriminator
@@ -1163,10 +1150,9 @@ fn route_gap_body_ground(subject: KnownRedSubject, ground: String) -> String {
 }
 
 fn host_tool_body(subject: KnownRedSubject, tool: String, probed: String) -> String {
-  concat(
-    known_red_marker_host_tool,
-    concat("\"", concat(tool, concat("\"", concat(known_red_marker_probed, concat(probed, "))"))))
-  )
+  let head = concat(known_red_marker_host_tool, concat("\"", concat(tool, "\"")))
+  let tail = concat(" ", concat(known_red_marker_probed, concat(probed, "))")))
+  concat(head, tail)
 }
 
 fn panicked_body(subject: KnownRedSubject, payload: String) -> String {
