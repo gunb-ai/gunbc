@@ -1,0 +1,27 @@
+module test.probe.deployment_gate_carrier_axis_fn
+
+// THE SAME CROSS-AXIS FORGERY AT A FUNCTION BOUNDARY rather than a data annotation, so the
+// measurement separates "record-literal field conformance" from "expected-type conformance": if the
+// row lands here but not in the data form, the wall is in the literal check, not the type check.
+import std.types { Bool }
+import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
+import extdeps.github.deployment_protection_rule {
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+}
+
+data an_installation_fn: GitHubAppInstallationId = GitHubAppInstallationId { value: 987654 }
+data an_app_fn: GitHubAppId = GitHubAppId { value: 7 }
+
+fn forged_foreign_carrier_row_fn() -> EnabledDeploymentProtectionRule {
+  EnabledDeploymentProtectionRule {
+    id: an_installation_fn,
+    node_id: "DPPR_axis_fn",
+    enabled: true,
+    app: RuleOwningApp { id: an_app_fn, slug: "owning-app" },
+  }
+}
+
+fn uses_the_forgery() -> Bool {
+  forged_foreign_carrier_row_fn().enabled
+}

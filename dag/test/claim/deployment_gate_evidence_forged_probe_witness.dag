@@ -261,6 +261,56 @@ test fn the_axis_refusal_is_not_unlisted_import_use() -> Bool {
   axis_class_count(class: "UnlistedImportUse") == 0
 }
 
+// THE BASELINE HALF, without which the sweep above proves nothing. These four classes are import
+// and inhabitance diagnostics -- the kind a harness source can accumulate just by NAMING the
+// modules, whether or not any forgery is refused. If the control (which builds the row CORRECTLY
+// and forges nothing) shows the same four, then the axis source's rows are harness baseline and the
+// cross-axis line COMPILES CLEAN -- structural record interchangeability, a finding about the host
+// that would make the refusal claim false as written, and a claim that cannot go green for a false
+// statement is deleted rather than re-worded. If the control shows none, the rows belong to the
+// forgery and the source is fixed. Read the two halves together; neither means anything alone.
+fn control_class_count(class: String) -> Int {
+  match control_census() {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: class))
+  }
+}
+
+test fn the_control_shows_no_baseline_unresolved_type() -> Bool {
+  control_class_count(class: "UnresolvedType") == 0
+}
+
+test fn the_control_shows_no_baseline_unlisted_import_use() -> Bool {
+  control_class_count(class: "UnlistedImportUse") == 0
+}
+
+test fn the_control_shows_no_baseline_declared_type_inhabitance_rows() -> Bool {
+  control_class_count(class: "DeclaredTypeNotInhabited") == 0
+    && control_class_count(class: "DeclaredTypeInhabitanceUndecided") == 0
+}
+
+// THE PUREST FORM OF THE CLAIM, with no record literal in the way (the direct-annotation file): an
+// installation id in a slot whose declared type is the rule carrier. A record literal can hide a
+// check in its own conformance pass; an annotated binding cannot. If THIS refuses, the carriers are
+// nominal and the wall is real. If it compiles, two { value: Int } records are interchangeable and
+// the model must SAY so instead of implying a wall its witnesses cannot show.
+fn direct_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_direct"))
+}
+
+fn direct_class_count(class: String) -> Int {
+  match direct_census() {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: class))
+  }
+}
+
+test fn the_direct_annotation_refuses_a_foreign_carrier_by_type() -> Bool {
+  direct_class_count(class: "TypeMismatch") >= 1
+}
+
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
 // identity; if it were open, a caller could mint the identity and then the token, without GitHub
 // having confirmed anything about this repository.
