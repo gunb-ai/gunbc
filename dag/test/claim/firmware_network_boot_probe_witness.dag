@@ -1,0 +1,367 @@
+module test.claim.firmware_network_boot_probe_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import gunbc.firmware_network_boot_standing {
+  FirmwareBootObservation, BootOptionsUnobserved, NicsObserved, NicsUnobserved, NicsRefused,
+  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved,
+}
+import gunbc.secure_boot_observation { AuthenticationRequired, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
+import gunbc.firmware_network_boot_probe {
+  FirmwareBootFamilyRow, BmcStack, RouteVerdict,
+  firmware_boot_axis_reader_frontier_status, no_reply_reason, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
+}
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionPending, DissolutionFired }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.firmware_network_boot_probe {
+  firmware_boot_family_rows, firmware_boot_family_row, probe, route_for, supplied_probe_input, SuppliedProbeInput, ReadAttemptReceipt, ReadResponseReceipt, ReadReceiptStanding, AttemptWithoutResponse, AttemptAnswered, BmcContact,
+  ReplyNics, NicsAxis, SuppliedRouteMismatch,
+  FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
+  RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
+  TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBeyondDecoder, ReplyBiosVersion, BiosVersionAxis,
+  BmcResponded, BmcSilent, ConnectTimedOut, ContactAttempt, AxisReply, ReadRoute,
+  SuppliedSilence, DecodedFromSuppliedReplies, ProbeSubject,
+  ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
+  Routed, RequestRefused,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn subject() -> ProbeSubject {
+  ProbeSubject { unit_label: "unit-under-test" }
+}
+
+type SuppliedShape
+  = Said { replies: List<AxisReply> }
+  | Quiet { attempt: ContactAttempt }
+
+fn attempt_for(route: ReadRoute) -> ReadAttemptReceipt {
+  ReadAttemptReceipt { observed_at: 1, attempt_identity: "supplied-attempt", route: route }
+}
+
+fn contact_for(route: ReadRoute, shape: SuppliedShape) -> BmcContact {
+  match shape {
+    Said { replies: rs } => BmcResponded { receipt: ReadResponseReceipt { attempt: attempt_for(route: route), response_identity: "supplied-fixture" }, replies: rs }
+    Quiet { attempt: a } => BmcSilent { receipt: attempt_for(route: route), attempt: a }
+  }
+}
+
+fn ev(row: FirmwareBootFamilyRow, contact: SuppliedShape) -> SuppliedProbeInput {
+  supplied_probe_input(subject: subject(), row: row, contact: contact_for(route: row.route, shape: contact))
+}
+
+fn nics_of(row: FirmwareBootFamilyRow, nics: List<NonEmptyStr>) -> Bool? {
+  match probe(input: ev(row: row, contact: Said { replies: [ReplyNics { nics: nics }] })) {
+    DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+      match o.nics {
+        NicsObserved { nics: _ } => Present { value: true }
+        NicsUnobserved { reason: _ } => Present { value: false }
+        NicsRefused { refusal: _ } => Absent
+      }
+    SuppliedSilence { subject: _, provenance: _, attempt: _ } => Absent
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => Absent
+  }
+}
+
+// An empty NIC list is never an observed population; a nonempty one beside it is.
+test fn empty_nic_reply_is_unobserved_never_observed_empty() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      nics_of(row: r, nics: []) == Present { value: false } && nics_of(row: r, nics: ["eth0"]) == Present { value: true }
+  }
+}
+
+// The outcome carries the row's own provenance, so authority and receipt are not re-associated by hand.
+test fn silence_carries_provenance_and_route_disagreement_decodes_nothing() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
+    Absent => false
+    Present { value: r } => {
+      let silent_ok = match probe(input: ev(row: r, contact: Quiet { attempt: ConnectTimedOut })) {
+        SuppliedSilence { subject: _, provenance: p, attempt: _ } => p.route == r.route && p.authority == r.authority && p.family == r.family
+        _ => false
+      }
+      let other = supplied_probe_input(subject: subject(), row: r, contact: contact_for(route: MegaRacRestGetRoute, shape: Said { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "pxe")] }] }))
+      let mismatch_ok = match probe(input: other) {
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => true
+        _ => false
+      }
+      silent_ok && mismatch_ok
+    }
+  }
+}
+
+fn answered_with(standing: ReadReceiptStanding, identity: NonEmptyStr) -> Bool {
+  match standing {
+    AttemptAnswered { response: rr } => rr.response_identity == identity && rr.attempt.attempt_identity == "supplied-attempt"
+    AttemptWithoutResponse { attempt: _ } => false
+  }
+}
+
+// Silence keeps the attempt identity and has no response identity; a response keeps both.
+// Collapsing the two shapes (a silent standing that names a response, or an answered standing
+// that drops the attempt) makes one of the two arms below false.
+test fn silence_keeps_attempt_id_without_response_id_and_response_keeps_both() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
+    Absent => false
+    Present { value: r } => {
+      let silent_ok = match probe(input: ev(row: r, contact: Quiet { attempt: ConnectTimedOut })) {
+        SuppliedSilence { subject: _, provenance: p, attempt: _ } =>
+          match p.receipt {
+            AttemptWithoutResponse { attempt: a } => a.attempt_identity == "supplied-attempt"
+            AttemptAnswered { response: _ } => false
+          }
+        _ => false
+      }
+      let answered_ok = match probe(input: ev(row: r, contact: Said { replies: [] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: p, observation: _ } => answered_with(standing: p.receipt, identity: "supplied-fixture")
+        _ => false
+      }
+      silent_ok && answered_ok
+    }
+  }
+}
+
+// A row whose coverage omits SecureBootAxis neither claims nor disclaims it, so a supplied
+// SecureBoot reply must not surface as an observation.
+test fn uncovered_axis_reply_is_unobserved_never_routed() -> Bool {
+  let row = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "witness row" },
+    route: MegaRacRestGetRoute,
+    coverage: [TransportAnswers { axis: BootOrderAxis }]
+  )
+  match probe(input: ev(row: row, contact: Said { replies: [ReplySecureBootEnabled] })) {
+    DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_secure_boot(o: o)
+    SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+  }
+}
+
+test fn outcome_preserves_row_route_authority_and_receipt() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
+    Absent => false
+    Present { value: r } =>
+      match probe(input: ev(row: r, contact: Said { replies: [] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: p, observation: _ } =>
+          p.route == r.route && p.family == r.family && p.authority == r.authority && answered_with(standing: p.receipt, identity: "supplied-fixture")
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+fn first_row_of(rows: List<FirmwareBootFamilyRow>, stack: BmcStack) -> FirmwareBootFamilyRow? {
+  fold(
+    rows,
+    init: Absent,
+    f: (acc, r) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if r.family.stack == stack { Present { value: r } } else { Absent }
+      }
+  )
+}
+
+fn is_refused(verdict: RouteVerdict) -> Bool {
+  match verdict {
+    RequestRefused { why: _ } => true
+    Routed { route: _ } => false
+  }
+}
+
+fn is_unobserved_boot_order(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order {
+    BootOrderUnobserved { reason: _ } => true
+    BootOrderObserved { devices: _ } => false
+    BootOrderRefused { refusal: _ } => false
+  }
+}
+
+fn is_observed_boot_order(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order {
+    BootOrderObserved { devices: _ } => true
+    BootOrderUnobserved { reason: _ } => false
+    BootOrderRefused { refusal: _ } => false
+  }
+}
+
+fn is_unobserved_secure_boot(o: FirmwareBootObservation) -> Bool {
+  match o.secure_boot {
+    SecureBootUnobserved { reason: _ } => true
+    SecureBootEnabled => false
+    SecureBootDisabled => false
+    SecureBootRefused { refusal: _ } => false
+  }
+}
+
+test fn five_family_configuration_rows_of_one_table() -> Bool {
+  let rows = firmware_boot_family_rows()
+  let count = fold(rows, init: 0, f: (n, _r) => n + 1)
+  let megarac = fold(rows, init: 0, f: (n, r) => if (r.family.stack == (FirmwareFamilyStack { family: AmiMegaRac })) { n + 1 } else { n })
+  let shared = any(rows, r => r.family.reach == SharedHostNic)
+  let open = any(rows, r => r.family.stack == FirmwareFamilyStack { family: OpenBmc })
+  let smc = any(rows, r => r.family.stack == RedfishOnlyStack)
+  count == 5 && megarac == 2 && shared && open && smc
+}
+
+test fn supermicro_refuses_every_write_shaped_request() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
+    Absent => false
+    Present { value: row } =>
+      is_refused(verdict: route_for(row: row, request: SetBootOverrideRequest))
+        && is_refused(verdict: route_for(row: row, request: ChangeBootOrderRequest))
+        && is_refused(verdict: route_for(row: row, request: PowerActionRequest))
+        && !is_refused(verdict: route_for(row: row, request: ReadAxisRequest { axis: BootOrderAxis }))
+  }
+}
+
+test fn every_row_refuses_writes_not_only_supermicro() -> Bool {
+  all(firmware_boot_family_rows(), r => is_refused(verdict: route_for(row: r, request: PowerActionRequest)))
+}
+
+test fn silent_bmc_is_not_an_empty_answer() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: AmiMegaRac }) {
+    Absent => false
+    Present { value: r } => {
+      let off = probe(input: ev(row: r, contact: Quiet { attempt: ConnectTimedOut }))
+      let empty = probe(input: ev(row: r, contact: Said { replies: [] }))
+      let off_ok = match off {
+        SuppliedSilence { subject: _, provenance: _, attempt: ConnectTimedOut } => true
+        _ => false
+      }
+      let empty_ok = match empty {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_boot_order(o: o)
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+      off_ok && empty_ok
+    }
+  }
+}
+
+test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
+  let row = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "witness row" },
+    route: MegaRacRestGetRoute,
+    coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
+  )
+  match probe(input: ev(row: row, contact: Said { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "pxe")] }, ReplySecureBootEnabled] })) {
+    DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_secure_boot(o: o) && is_observed_boot_order(o: o)
+    SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+  }
+}
+
+test fn bmc_refusal_is_preserved_as_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match probe(input: ev(row: r, contact: Said { replies: [ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403 PasswordChangeRequired" } }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.boot_order {
+            BootOrderRefused { refusal: AuthenticationRequired { detail: d } } => d == "403 PasswordChangeRequired"
+            BootOrderRefused { refusal: _ } => false
+            BootOrderObserved { devices: _ } => false
+            BootOrderUnobserved { reason: _ } => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+test fn another_release_row_probes_without_touching_the_instrument() -> Bool {
+  let sixth = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.99" }, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "hypothetical sixth family" },
+    route: OpenBmcRedfishGetRoute,
+    coverage: [TransportAnswers { axis: BootOrderAxis }]
+  )
+  match probe(input: ev(row: sixth, contact: Said { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "net")] }] })) {
+    DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_observed_boot_order(o: o)
+    SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+  }
+}
+
+test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
+  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
+  let pending = match firmware_boot_axis_reader_frontier_status(present_decls: []) {
+    DissolutionPending => true
+    _ => false
+  }
+  let fired = match firmware_boot_axis_reader_frontier_status(present_decls: [reader]) {
+    DissolutionFired => true
+    _ => false
+  }
+  let uninhabited = match firmware_boot_axis_reply_inhabitation {
+    AxisReplyUninhabited { owed_by: o, over: _, falsified_by: _ } => o == reader
+    AxisReplyInhabitedByReader { observed: _ } => false
+  }
+  pending && fired && uninhabited
+}
+
+// A BMC answering one axis twice, with a payload and a refusal, is conflicting evidence: the axis
+// is Unobserved with the conflict named, never whichever reply came first.
+test fn conflicting_replies_for_one_axis_are_not_settled_by_order() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match probe(input: ev(row: r, contact: Said { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "net0")] }, ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403" } }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_boot_order(o: o)
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+// A row that both claims and disclaims one axis cannot route a read for it.
+test fn a_row_listing_an_axis_twice_routes_nothing() -> Bool {
+  let twice = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.98" }, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "hypothetical row with a contradictory coverage list" },
+    route: OpenBmcRedfishGetRoute,
+    coverage: [TransportAnswers { axis: BiosVersionAxis }, TransportCannotAnswer { axis: BiosVersionAxis, why: "contradicts the line above" }]
+  )
+  is_refused(verdict: route_for(row: twice, request: ReadAxisRequest { axis: BiosVersionAxis }))
+}
+
+// A valid answer the decoder cannot read is OUR limit: Unobserved, never a refusal pinned on the BMC (review 83313).
+test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: NicsAxis, why: "paged" }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.nics {
+            NicsUnobserved { reason: _ } => true
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+// A BootOptions collection the decoder does not read is Unobserved with the DECODER's reason, not a BMC refusal.
+test fn a_boot_options_reply_beyond_the_decoder_is_unobserved_with_its_reason() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: BootOptionsAxis, why: "unread" }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.boot_options {
+            BootOptionsUnobserved { reason: r } => r == "unread"
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}

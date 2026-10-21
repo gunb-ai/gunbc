@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.algebra { list_snoc_item }
 import std.measure { second, ByteSize, byte_size }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import v2.std.operation_argv { OperationRef, BoundOperationInvocation }
+import std.operation_argv { OperationRef, BoundOperationInvocation }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
   FileObserved, ShellObserved, operation_input_text,
