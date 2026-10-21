@@ -716,9 +716,6 @@ import gunbc.roadmap.roadmap_presentation {
 import extdeps.gunbc
 import extdeps.shell
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, gunbc_run_invocation_words_with_functions, invocation_words_bare }
-import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
-import extdeps.access.posix { file_mode_of_octal_text }
-import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.roadmap.spool_stall {
   SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
   SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at,
@@ -15869,6 +15866,10 @@ data belt_exit_moves: List<BeltExitMove> = [
   BeltExitMove { from: AttemptExitInbox, to: AttemptExitDone },
 ]
 
+fn belt_exit_stall_move_of_step(step: String) -> BeltExitMove? {
+  (belt_exit_moves |> filter(m => belt_exit_step(from: m.from, to: m.to) == step)).first()
+}
+
 fn belt_exit_stall_stage_of_step(step: String) -> HostSpoolStage? {
   (belt_exit_moves |> filter(m => belt_exit_step(from: m.from, to: m.to) == step) |> map(m => m.from)).first()
 }
@@ -15879,8 +15880,17 @@ fn belt_exit_stall_entry_path(root: String, stage: HostSpoolStage, entry: String
 
 // `stat` WITHOUT -L, so a symlink reads as `symbolic link` and never as what it points at. The type leads so
 // the prefix `directory|` is the whole claim that the entry is a plain directory.
+fn belt_exit_stall_path_stat_at(path: String) -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%F|%U|%a", path]), workdir: belt_observe_workdir as String), what: "stat")
+}
+
 fn belt_exit_stall_entry_stat_at(root: String, stage: HostSpoolStage, entry: String) -> BeltExitStallObservation {
-  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%F|%U|%a", belt_exit_stall_entry_path(root: root, stage: stage, entry: entry)]), workdir: belt_observe_workdir as String), what: "stat")
+  belt_exit_stall_path_stat_at(path: belt_exit_stall_entry_path(root: root, stage: stage, entry: entry))
+}
+
+// What a directory holds, one entry at most printed: empty output is an empty directory.
+fn belt_exit_stall_contents_at(path: String) -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/find", args: [path, "-mindepth", "1", "-maxdepth", "1", "-print", "-quit"]), workdir: belt_observe_workdir as String), what: "find")
 }
 
 // THE ONE CLASSIFICATION of a recorded entry's ownership, from the two readings (the entry's stat, the drain
@@ -15948,7 +15958,7 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
               BeltExitStallNotADirectory { stat: _ } => join([head, shown, "not a plain directory: the clear refuses it"], "")
               BeltExitStallOwnedByDrain => join([head, shown, "owned by the drain's principal: release re-attempts the claim"], "")
               BeltExitStallForeignOwned { mode: _ } =>
-                join([head, shown, "foreign-owned: the drain's principal cannot move it -- run `", belt_exit_stall_clear_invocation(entry: e.entry), "` (same source roots as this run); it prints the one privileged argv that re-owns this entry to the drain's principal, for a privileged operator to run, then release"], "")
+                join([head, shown, "foreign-owned: the drain's principal cannot rename it across directories -- run `", belt_exit_stall_clear_invocation(entry: e.entry), "` as the drain's principal (same source roots as this run, no privilege); for an EMPTY entry it re-creates the entry in the move's target stage and removes the foreign one, then release"], "")
             }
           }
         }
@@ -15956,17 +15966,19 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
   }
 }
 
-// THE CLEAR'S ADMISSION (DESIGN section 3b, the grant is bounded to its population). It names the one privileged
-// effect, re-owning an entry to the drain's principal (gunbc.executor_privileged_operation EnsureOwnedDirectory;
-// the mode is the entry's own, so only the owner changes), and admits it only for an entry that is ALL of: named in
-// the current stall record, located at exactly <instance_root>/attempt-exit-spool/<stage>/<entry> (a plain name, no
-// separator, no `..`), a plain directory (a symlink reads as `symbolic link` and is refused), and classified
-// foreign-owned by belt_exit_stall_ownership_of, the reading analyze reports. The effect is a re-own and not a
-// move or a removal: the entry's name IS the attempt's end (attempt_exit_entry_decode), and the ordinary claim
-// then hands it, a privileged move would leave it root-owned for the next rename and fork the claim route, and a
-// removal would destroy the evidence. The admission renders the argv and runs nothing.
+// THE CLEAR: AN UNPRIVILEGED RE-MATERIALIZATION OF THE CLAIM'S OWN OUTCOME (DESIGN section 3b: no privileged
+// effect remains, so none is selected or enrolled). A foreign-owned directory cannot be renamed by the drain's
+// principal because a cross-parent rename rewrites the directory's `..`, but the principal owns both stage
+// directories, so it can create the entry in the move's target stage and remove the empty foreign one: the same
+// name, the claim's own outcome, nothing lost. Entries are created empty (the record is the name), so the effect is
+// admitted only for an EMPTY plain directory; a non-empty foreign entry is tampering or another producer and is out
+// of scope here, with no privileged route offered. Never `rm -r`: rmdir refuses a non-empty directory by itself.
+// It is operator-invoked, never part of the drain, so the producer defect stays visible. Admission is ALL of:
+// named in the current stall record, a plain entry name at <instance_root>/attempt-exit-spool/<from>/<entry> (stat
+// without -L, so a symlink is refused), foreign-owned by belt_exit_stall_ownership_of (the reading analyze reports),
+// and empty.
 type BeltExitClearTarget
-  = BeltExitClearTargeted { stage: HostSpoolStage, path: String }
+  = BeltExitClearTargeted { move: BeltExitMove, from_path: String, to_path: String }
   | BeltExitClearTargetRefused { reason: String }
 
 fn belt_exit_entry_name_is_plain(entry: String) -> Bool {
@@ -15984,9 +15996,9 @@ fn belt_exit_stall_clear_target(root: String, held: SpoolStallRead, entry: Strin
         match entries |> filter(e => e.entry == entry) |> first() {
           Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, " is not named in the current stall record"], "") }
           Present { value: recorded } =>
-            match belt_exit_stall_stage_of_step(step: recorded.step) {
-              Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step names no spool stage"], "") }
-              Present { value: stage } => BeltExitClearTargeted { stage: stage, path: belt_exit_stall_entry_path(root: root, stage: stage, entry: entry) }
+            match belt_exit_stall_move_of_step(step: recorded.step) {
+              Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step names no spool move"], "") }
+              Present { value: move } => BeltExitClearTargeted { move: move, from_path: belt_exit_stall_entry_path(root: root, stage: move.from, entry: entry), to_path: belt_exit_stall_entry_path(root: root, stage: move.to, entry: entry) }
             }
         }
       }
@@ -15994,55 +16006,62 @@ fn belt_exit_stall_clear_target(root: String, held: SpoolStallRead, entry: Strin
 }
 
 type BeltExitClearAdmission
-  = BeltExitClearAdmitted { argv: List<String> }
+  = BeltExitClearAdmitted
   | BeltExitClearRefused { reason: String }
 
-fn belt_exit_stall_clear_argv(path: String, me: String, group: String, mode: String) -> List<String>? {
-  match file_mode_of_octal_text(text: mode) {
-    Absent => none
-    Present { value: m } => {
-      let install = executor_privileged_operation_argv(op: EnsureOwnedDirectory { path: path as NonEmptyStr, owner: me as NonEmptyStr, group: group as NonEmptyStr, mode: m }) |> map(w => w as String)
-      let elevated = sudo_elevate(command: concat(concat(["/usr/bin/find", path, "-maxdepth", "0", "-type", "d", "-exec"], install), [";"]))
-      Present { value: concat([elevated.bin_path], elevated.args) |> map(w => posix_single_quote(spelling: w)) }
-    }
-  }
-}
-
-// THE ARGV IS find(1) OVER THE ONE PATH, NOT A SHELL SCRIPT: `-type d` is lstat-based (find does not follow the
-// named path unless -L), so a path swapped for a symlink or a file matches nothing and the install (the typed
-// EnsureOwnedDirectory words) never runs. `install -d` on an existing path chowns what a symlink points at, and
-// the stage directory is the drain principal's own, so this test-then-install is the declared residual (census row
-// exit_spool_clear_has_no_realized_edge): the instant between find's lstat and the install is not closed.
-
-fn belt_exit_stall_clear_admission(path: String, stat: BeltExitStallObservation, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
+fn belt_exit_stall_clear_admission(stat: BeltExitStallObservation, whoami: BeltExitStallObservation, contents: BeltExitStallObservation) -> BeltExitClearAdmission {
   match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {
     BeltExitStallOwnedByDrain => BeltExitClearRefused { reason: "owned by the drain's principal: nothing to clear; release re-attempts the claim" }
     BeltExitStallNotADirectory { stat: s } => BeltExitClearRefused { reason: join(["not a plain directory (", s, "): only a plain directory is cleared, never a symlink or a file"], "") }
     BeltExitStallOwnerUnknown { reason } => BeltExitClearRefused { reason: join(["ownership is unknown (", reason, "), so it is not classified foreign-owned"], "") }
-    BeltExitStallForeignOwned { mode } =>
-      match whoami {
-        BeltExitStallUnobserved { reason: wr } => BeltExitClearRefused { reason: join(["the drain's principal is unread: ", wr], "") }
-        BeltExitStallObserved { value: me } =>
-          match group {
-            BeltExitStallUnobserved { reason: gr } => BeltExitClearRefused { reason: join(["the drain's group is unread: ", gr], "") }
-            BeltExitStallObserved { value: g } =>
-              if string_length(s: g) == 0 {
-                BeltExitClearRefused { reason: "the drain's group is empty" }
-              } else {
-                match belt_exit_stall_clear_argv(path: path, me: me, group: g, mode: mode) {
-                  Absent => BeltExitClearRefused { reason: join(["the entry's mode ", mode, " is not an octal mode"], "") }
-                  Present { value: argv } => BeltExitClearAdmitted { argv: argv }
-                }
-              }
+    BeltExitStallForeignOwned { mode: _ } =>
+      match contents {
+        BeltExitStallUnobserved { reason } => BeltExitClearRefused { reason: join(["its contents are unread (", reason, ")"], "") }
+        BeltExitStallObserved { value } =>
+          if string_length(s: value) == 0 {
+            BeltExitClearAdmitted
+          } else {
+            BeltExitClearRefused { reason: "not empty: exit records are created empty (the name is the record), so a non-empty foreign entry is tampering or a different producer; this verb never removes content and offers no privileged route for it" }
           }
       }
   }
 }
 
-fn belt_exit_stall_clear_at(root: String, entry: String, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
+type BeltExitClearOutcome
+  = BeltExitCleared { to_path: String }
+  | BeltExitClearFailed { reason: String }
+
+fn belt_exit_clear_run(program: String, args: List<String>) -> String? {
+  match belt_exec(cmd: host_exec_argv(program: program, args: args), workdir: belt_observe_workdir as String) {
+    ExecOk { stdout: _ } => none
+    ExecFailed { program: _, exit_code, stderr } => Present { value: join([program, " exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => Present { value: join([program, " refused: ", reason], "") }
+  }
+}
+
+// mkdir (never -p) of the target, skipped when it is already a plain directory (an idempotent re-run), then rmdir
+// of the foreign entry. Both run as the caller: the drain's principal.
+fn belt_exit_stall_clear_at(root: String, entry: String, whoami: BeltExitStallObservation) -> BeltExitClearOutcome {
   match belt_exit_stall_clear_target(root: root, held: spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)), entry: entry) {
-    BeltExitClearTargetRefused { reason } => BeltExitClearRefused { reason: reason }
-    BeltExitClearTargeted { stage, path } => belt_exit_stall_clear_admission(path: path, stat: belt_exit_stall_entry_stat_at(root: root, stage: stage, entry: entry), whoami: whoami, group: group)
+    BeltExitClearTargetRefused { reason } => BeltExitClearFailed { reason: reason }
+    BeltExitClearTargeted { move: _, from_path, to_path } =>
+      match belt_exit_stall_clear_admission(stat: belt_exit_stall_path_stat_at(path: from_path), whoami: whoami, contents: belt_exit_stall_contents_at(path: from_path)) {
+        BeltExitClearRefused { reason } => BeltExitClearFailed { reason: reason }
+        BeltExitClearAdmitted => {
+          let made = match belt_exit_stall_path_stat_at(path: to_path) {
+            BeltExitStallObserved { value } => if starts_with(s: value, prefix: "directory|") { none } else { Present { value: join([to_path, " exists and is not a plain directory (", value, ")"], "") } }
+            BeltExitStallUnobserved { reason: _ } => belt_exit_clear_run(program: "/bin/mkdir", args: ["--", to_path])
+          }
+          match made {
+            Present { value: why } => BeltExitClearFailed { reason: join(["could not create the target: ", why], "") }
+            Absent =>
+              match belt_exit_clear_run(program: "/bin/rmdir", args: ["--", from_path]) {
+                Present { value: why } => BeltExitClearFailed { reason: join(["the target exists but the foreign entry was not removed: ", why], "") }
+                Absent => BeltExitCleared { to_path: to_path }
+              }
+          }
+        }
+      }
   }
 }
 
@@ -16072,10 +16091,6 @@ fn belt_exit_stall_rearm_at(path_unit: NonEmptyStr) -> BeltExitStallRearm {
     Present { value: r } => r
     Absent => BeltExitStallRearmed
   }
-}
-
-fn belt_exit_stall_whoami_group() -> BeltExitStallObservation {
-  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-gn"]), workdir: belt_observe_workdir as String), what: "id -gn")
 }
 
 fn belt_exit_stall_whoami() -> BeltExitStallObservation {
