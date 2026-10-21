@@ -86,6 +86,7 @@ import v2.extdeps.languages.dag {
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
   dag_surface_kw_then_ident_from_captured,
+  dag_surface_kw_then_ident_occurrence_from_captured,
   parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
@@ -241,6 +242,7 @@ import v2.std.node {
 import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
+import std.occurrence_identity { NodeOccurrenceIdentity }
 import v2.std.node_query { binder_edge, binder_edge_declared, binder_edge_with_default_declared, construct_field_edges, member_edge_type_node, construct_node, construct_node_elided, construct_tag_elided_reference, construct_tag_reading, construct_tag_reading_of_target, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, field_projection_optional, find_named_child, positional_payload_field_name, pattern_wildcard_name, wildcard_pattern_identity, repeated_name_edges, variant_declaration_node }
 import std.roster_frontier { FrontierRow, PathSubject }
 
@@ -4360,11 +4362,11 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
 // THE WRAP IS A CARRIER, NOT THE IMAGE ROOT. It names the member for the namespace graft, which
 // dissolves it and re-hangs the Arrow under the module; the Arrow is what stands for the authored
 // declaration in the admitted tree, so the Arrow's builder closes the image and names it root.
-fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: Node) -> Node {
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, name_occurrence: NodeOccurrenceIdentity, source: Node) -> Node {
   node_lowered_from(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: fn_name }, target: arrow, declaration: NotADeclaration }
+      edge_declared(name: fn_name, target: arrow, occurrence: name_occurrence)
     ],
     source: source
   )
@@ -4500,6 +4502,7 @@ type BodyLowerFnSignature {
   order: List<Symbol>,
   return_type: Node,
   fn_name: Symbol,
+  fn_name_occurrence: NodeOccurrenceIdentity,
   type_params: DeclTypeParams,
 }
 
@@ -4525,15 +4528,20 @@ fn body_lower_fn_signature_after_domain(captured: Node, declared: BodyLowerDecla
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => Absent
         Present { value: fn_name } =>
+         match dag_surface_kw_then_ident_occurrence_from_captured(captured: captured) {
+          Absent => Absent
+          Present { value: fn_name_occurrence } =>
           Present {
             value: BodyLowerFnSignature {
               domain: declared.domain,
               order: declared.order,
               return_type: return_type,
               fn_name: fn_name,
+              fn_name_occurrence: fn_name_occurrence,
               type_params: body_lower_decl_type_params(captured: captured)
             }
           }
+         }
       }
   }
 }
@@ -4661,6 +4669,12 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                   o: body_lower_wrapper_retained_shell(shell: shell)
                                 )
                                 Present { value: data_name } =>
+                                 match dag_surface_kw_then_ident_occurrence_from_captured(captured: captured) {
+                                  Absent => body_lowering_after_pending(
+                                    pending: diagnostics_merge(outer: bd0, inner: bd),
+                                    o: body_lower_wrapper_retained_shell(shell: shell)
+                                  )
+                                  Present { value: data_name_occurrence } =>
                                   let signature = declared_signature(params: [], source: shell)
                                   let arrow = body_lower_constant_member_arrow(arrow: body_lower_callable_arrow(
                                     source: shell,
@@ -4677,11 +4691,13 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                       value: body_lower_fn_decl_named_member_wrap(
                                         arrow: arrow,
                                         fn_name: data_name,
+                                        name_occurrence: data_name_occurrence,
                                         source: shell
                                       ),
                                       diagnostics: diagnostics_merge(outer: bd0, inner: bd)
                                     )
                                   )
+                                 }
                               }
                           }
                       }
@@ -4783,6 +4799,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
       }
     ),
     fn_name: sig.fn_name,
+    name_occurrence: sig.fn_name_occurrence,
     source: shell
   )
 }

@@ -7490,6 +7490,15 @@ fn dag_surface_kw_then_ident_rest_from_captured(captured: Node) -> Optional<Node
   }
 }
 
+// The occurrence of the name token that dag_surface_kw_then_ident_from_captured reads: the token that
+// DECLARES the name, so the declaration edge keyed by that name can say where it was declared.
+fn dag_surface_kw_then_ident_occurrence_from_captured(captured: Node) -> Optional<NodeOccurrenceIdentity> {
+  match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ident_node, diagnostics: _ } => Present { value: ident_node.occurrence_id }
+  }
+}
+
 fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
   match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
     Rejected { diagnostics: _ } => Absent

@@ -41,7 +41,7 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import v2.compiler.normalize { normalize_scoped }
 import std.occurrence_identity { scoped_occurrence_allocator }
 import v2.std.language_model { LanguageModel }
-import v2.std.node { Atom, Authored, DeclaresAt, NotADeclaration, NodeOccurrenceIdentity, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
+import v2.std.node { Atom, Authored, DeclaresAt, NotADeclaration, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
@@ -51,6 +51,7 @@ import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   DeclarationRole,
   OccurrenceCategoryModuleScopeExposed,
   OccurrenceCategoryModuleScopeNotExposed,
