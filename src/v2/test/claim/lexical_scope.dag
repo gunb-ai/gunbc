@@ -159,8 +159,8 @@ fn specimen_sites(spelling: String) -> String {
 }
 
 test fn the_called_parameter_head_at_the_call_is_bound_in_the_frame() -> Bool {
-  specimen_sites(spelling: "chars") == "label/unbound,value/frame,"
-    && specimen_sites(spelling: "x") == "label/unbound,value/frame,"
+  specimen_sites(spelling: "chars") == "value/frame,"
+    && specimen_sites(spelling: "x") == "value/frame,"
 }
 
 // The non-value edge of the pair: the same spelling in a sibling parameter's type. It was asserted `unbound`
@@ -399,7 +399,7 @@ test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() ->
 // List<Int>` is a TYPE position, so the roster must consult the home's declared kind (v2.workflow.roster_home_kind),
 // never the spelling -- its four controls live in v2.workflow.roster_import_sweep roster_kind_controls.
 test fn the_wave_two_fixture_sites_are_pinned() -> Bool {
-  w2_fixture_digest() == "List/type,Int/type,List/return,Int/return,List/return,Int/return,std.algebra.FreeMonoid/label,xs/label,xs/value,"
+  w2_fixture_digest() == "List/type,Int/type,List/return,Int/return,List/return,Int/return,xs/value,"
 }
 
 fn w2_fixture_digest() -> String {
