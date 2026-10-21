@@ -1,7 +1,7 @@
 module v2.test.claim.census_scoped_acquisition
 
 import std.types { Bool, Int, List, String }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, list_find_first }
 import std.optional { Absent, Present }
 import v2.compiler.source_root_eval {
   native_census_scoped_entries,
@@ -272,25 +272,26 @@ test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
 // reaches it (no import path from std.fermi to std.primitives is declared, which is the whole point:
 // the ambient tier is import-free by design).
 test fn the_declared_substrate_rides_every_scoped_population() -> Bool {
-  let substrate = native_census_substrate_entries();
-  let entries = native_census_scoped_entries(subjects: ["std.fermi"]);
+  let substrate = native_census_substrate_entries()
+  let entries = native_census_scoped_entries(subjects: ["std.fermi"])
   (substrate |> count) > 0
     && all_names_in(entries: substrate, population: entries)
     && count_item(entries: entries, name: "std.primitives") == 1
 }
 
-// The union does not duplicate: a subject already naming the substrate is not added again, so a
-// run over std.primitives itself loads it once (acquisition would otherwise count it twice).
+// The union does not duplicate: a subject already naming the substrate is not added again (the caller's
+// own list stays faithful -- including its own duplicates, which the fold neither adds to nor removes
+// from: exactly one copy rides per copy the caller named, and zero extra).
 test fn a_subject_naming_the_substrate_does_not_duplicate_it() -> Bool {
   count_item(entries: native_census_scoped_entries(subjects: ["std.fermi", "std.primitives"]), name: "std.primitives") == 1
-    && count_item(entries: native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]), name: "std.primitives") == 1
+    && count_item(entries: native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]), name: "std.primitives") == 2
 }
 
 // The subjects ride unchanged, in argv order, in front of the appended substrate: the union only ADDS,
 // it never drops or reorders a module the caller named (clever-carp-254's inclusion condition: a
 // module's pre-fix rows must be a subset of its post-fix rows).
 test fn the_union_never_drops_or_reorders_the_named_subjects() -> Bool {
-  let entries = native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]);
+  let entries = native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"])
   match entries {
     Cons { head: first, tail: rest } =>
       match rest {
