@@ -7638,6 +7638,19 @@ fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: Inf
       match inferred_facts_resolved_type(facts: arm_facts) {
         Violates { diagnostic: _ } => unchanged
         Holds { value: arm_type } =>
+          match infer_join_arm_types(first: declaring, second: arm_type, expected: Absent, resolved: resolved) {
+            ArmTypesConflict =>
+              InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: infer_arms_declare_conflicting_types_diagnostic(node: held.settled.node)) } }
+            ArmTypesJoined { joined: _ } => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
+            ArmTypesNoneDeclare => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
+            ArmTypesDeferred => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
+          }
+      }
+  }
+}
+
+// THE CLOSURE ITSELF, after the arm-agreement judgment (infer_join_arm_types, the one judgment the non-held join also uses) admitted the arm.
+fn infer_close_held_root_closed(declaring: Node, cur: InferHoldResolution, held: InferHeldArm, arm_type: Node, unchanged: InferHoldResolution, resolved: ResolvedTree) -> InferHoldResolution {
           match infer_close_produced_at_declared(declared: declaring, produced: arm_type, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
             Empty => unchanged
             Cons { head: h0, tail: ht } =>
@@ -7665,8 +7678,6 @@ fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: Inf
                   }
               }
           }
-      }
-  }
 }
 
 fn infer_held_arm_declaring_type(branch: Node, held: InferHeldArm, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
