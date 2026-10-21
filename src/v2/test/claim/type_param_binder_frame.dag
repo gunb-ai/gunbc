@@ -110,23 +110,28 @@ fn tpb_std_optional_witness() -> DagSourceReadWitness {
   }
 }
 
-fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: tpb_std_optional_witness(),
-      tail: Cons {
-        head: DagSourceReadWitness {
-          source: Medium { carried: src, fidelity: Lossless },
-          artifact: tpb_artifact,
-          compilation_unit: ^type_param_binder_frame_cu,
-          source_root: V2Tree
-        },
-        tail: Empty
-      }
+fn tpb_src_ingest(src: String) -> List<DagSourceReadWitness> {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: tpb_artifact,
+      compilation_unit: ^type_param_binder_frame_cu,
+      source_root: V2Tree
     },
+    tail: Empty
+  }
+}
+
+fn tpb_assemble_ingest(ingest: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: ingest,
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
   )
+}
+
+fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
+  tpb_assemble_ingest(ingest: tpb_src_ingest(src: src))
 }
 
 // THE RESOLVED OUTCOME IS THE SHARE POINT, for the reason v2.test.claim.match_arm_binder_frame
