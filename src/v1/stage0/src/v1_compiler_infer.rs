@@ -17550,15 +17550,6 @@ pub fn sole_constructor_construction_diags(
     }
 }
 
-pub fn zero_field_variant_tag_reference_frontier_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15; REPLACED 2026-10-20): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its tag without materializing a value. The corpus-wide seam that sanctioned it was measured dead for zero-field arms (the field wall never fires on them) and live only for payload arms, where the literal is a HOLLOW value. It is now the enumerated waiver payload_arm_tag_reference_waiver_results over payload_arm_tag_reference_waiver_pairs (gunbc.rung_drop payload_arm_tag_reference_hollow_value); a hollow payload-arm literal at `discriminant` in any other module refuses with one MissingField per owed field. DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the function, the list and the row are deleted together.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn payload_arm_tag_reference_waiver_pairs() -> Rc<Vec<Rc<DeclarationRef>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
