@@ -413,6 +413,25 @@ test fn a_type_without_optional_sugar_does_not_request_the_std_optional_declarat
   request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n", spelling: "std.optional.Optional") == "not-requested"
 }
 
+// A DECLARED SIGNATURE'S ORDER EDGE IS COMPILER ENCODING, NOT A MENTION. Every Arrow carries the parameter
+// labels as a FreeMonoid introduction under ^arrow_signature_order_edge, which resolve carries through
+// unchanged (v2.compiler.lexical_scope arrow_slot ArrowCarriedSlot), so a member that writes no list owes
+// no read of std.algebra. RED before the collector skipped that edge: every fn or data member requested
+// std.algebra.FreeMonoid, an ambient closure edge (gunbc.recurring_failure_mode
+// an_ambient_closure_edge_from_compiler_encoding_references). The paired positive differs in an authored
+// list literal alone, whose head resolve answers by declaring path and so still needs the module.
+test fn a_fn_signature_requests_no_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n", spelling: "std.algebra.FreeMonoid") == "not-requested"
+}
+
+test fn a_data_declaration_requests_no_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\ndata k: Bool = true\n", spelling: "std.algebra.FreeMonoid") == "not-requested"
+}
+
+test fn an_authored_list_literal_requests_the_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let ys = [x, x]\n  x\n}\n", spelling: "std.algebra.FreeMonoid") == "requested"
+}
+
 fn owed_as_member(read: AcquisitionMemberRead, spelling: String) -> Bool {
   match read {
     AcquisitionMemberReadOk { requests: requests, test_markers: _ } => length(xs: requests.members |> filter(fn(r) { r == spelling })) > 0

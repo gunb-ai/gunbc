@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.else_arm_lowered_as_an_if_nested_inside_it
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data else_arm_lowered_as_an_if_nested_inside_it: RecurringFailureMode = RecurringFailureMode {
   identity: "else_arm_lowered_as_an_if_nested_inside_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: an `else` arm lowered to an `if` nested INSIDE it, as though the arm were `else if`. `v2.compiler.body_lowering_fold` `body_lower_if_else_capture_optional` answered what follows `else` with the first if_expr found by a DEEP search of the else part (`body_lower_find_production_shell_optional`), so `if u == 0 { .. } else { match k { A => x  B { v: w } => if c { w } else { u } } }` lowered its else arm to the nested `if c {..} else {..}` alone: the match's scrutinee, its other arms and its patterns were dropped with no refusal.",

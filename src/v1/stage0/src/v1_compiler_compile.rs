@@ -8,6 +8,7 @@ pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_generated_provider::GeneratedProviderDemand;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -3524,6 +3525,7 @@ pub fn stage0_self_compile_refusal_message(
 pub struct ResolvedPipelineResult {
     pub graph: Option<Rc<ResolvedGraph>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub provider_demands: Rc<Vec<Rc<GeneratedProviderDemand>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub complexity: Rc<ComplexityReport>,
     pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
@@ -3547,6 +3549,7 @@ pub fn compile_to_resolved_with_options(
             std::option::Option::None => Rc::new(ResolvedPipelineResult {
                 graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
+                provider_demands: Rc::new(vec![]),
                 source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: crate::v1_compiler_complexity::empty_complexity_report(),
                 ownership: Rc::new(vec![]),
@@ -3565,11 +3568,12 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let typed = crate::v1_compiler_infer::reconcile(
+                let pass = crate::v1_compiler_infer::reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                let typed = pass.graph.clone();
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
                 let complexity = if options.analyze_complexity.clone() {
@@ -3600,6 +3604,7 @@ pub fn compile_to_resolved_with_options(
                         ),
                         test_reference_diags.clone(),
                     ),
+                    provider_demands: pass.provider_demands.clone(),
                     source_indices: source_indices.clone(),
                     complexity: complexity.clone(),
                     ownership: ownership.clone(),

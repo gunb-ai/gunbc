@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.authority_merges_unprotected_while_its_projection_is_guarded
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data authority_merges_unprotected_while_its_projection_is_guarded: RecurringFailureMode = RecurringFailureMode {
   identity: "authority_merges_unprotected_while_its_projection_is_guarded" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**the GENERATED PROJECTION is merge-protected and the HAND-AUTHORED AUTHORITY it is derived from is not, so the file where losing a fact is unrecoverable is exactly the file git resolves silently** (INVALID STATE: a repository binds a refusing merge driver to a path because that path is machine-derived and a wrong merge there is undetectable by reading, while the declaration file the projection is derived FROM matches no merge attribute at all and falls through to vanilla three-way text merge.",
