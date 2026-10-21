@@ -138,7 +138,7 @@ fn canon_head_label(node: Node) -> String {
 
 fn canon_first_child_v2(node: Node) -> String {
   match node.children |> first {
-    Present { value: c } => canon_shape_v2(node: c)
+    Present { value: c } => canon_shape_v2(node: c.target)
     Absent => "?"
   }
 }

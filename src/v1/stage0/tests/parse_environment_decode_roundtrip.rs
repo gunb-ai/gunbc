@@ -415,6 +415,8 @@ fn the_loader_decodes_a_pre_declaration_revision_with_historical_rows() {
             ("(".to_string(), 21i64),
             ("[".to_string(), 21i64),
             ("as".to_string(), 13i64),
+            // The record-literal arm's historical gate: the parser refused the brace when
+            // `14 <= min_bp`, i.e. consumed at min_bp <= 13 -- consume-iff-scale 13.
             ("{".to_string(), 13i64)
         ],
         "a historical environment did not receive the parser's historical postfix gates"
@@ -516,7 +518,7 @@ fn the_wire_migration_fills_only_absent_row_fields() {
             .iter()
             .map(|r| r.binding_power)
             .collect::<Vec<_>>(),
-        vec![21i64, 21i64, 19i64],
+        vec![21i64, 21i64, 19i64, 13i64],
         "the migration changed a document that declared its own postfix rows"
     );
 
