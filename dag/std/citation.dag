@@ -7,6 +7,7 @@ import std.integer { NonNegativeInt }
 import std.nat { nat_compare }
 import std.algebra { Less, Equal, Greater }
 import std.measure { Second }
+import extdeps.ietf.http_semantics { http_status_is_success }
 import std.content_hash {
   Sha256Digest,
   Sha256Hash,
@@ -186,10 +187,6 @@ fn cited_representation_identity_eq(
   external_subject_ref_eq(a: left.source, b: right.source)
     && left.access_route == right.access_route
     && left.byte_domain == right.byte_domain
-}
-
-fn http_status_is_success(status: HttpStatus) -> Bool {
-  status >= 200 && status <= 299
 }
 
 fn citation_exact_pin(

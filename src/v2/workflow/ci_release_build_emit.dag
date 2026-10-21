@@ -2,8 +2,10 @@ module v2.workflow.ci_release_build_emit
 
 import gunbc.ci.ci_spec {
   ci_floor_build_verify_stmt,
-  ci_release_build_line
+  ci_release_build_line,
+  ci_emitted_release_build_line
 }
+import gunbc.ci.ci_release_bins { ci_emitted_release_bins }
 import gunbc.fleet.fleet_release_bins_key { root_statement }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
@@ -48,9 +50,15 @@ fn ci_release_build_emit_stmts(statements: List<Node>) -> String {
 }
 
 fn ci_release_build_script() -> String {
-  bash_emit_program_sequence_script(programs: [
-    ci_release_build_emit_stmts(statements: [root_statement()]),
-    ci_cargo_eagain_retry_script(command: ci_release_build_line()),
-    ci_release_build_emit_stmts(statements: [ci_floor_build_verify_stmt(), ci_release_build_sccache_stats_stmt()])
-  ])
+  bash_emit_program_sequence_script(programs: concat(
+    concat(
+      [
+        ci_release_build_emit_stmts(statements: [root_statement()]),
+        ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+      ],
+      // Each emitted release bin is built by the gunbc the line above produced, so it follows it.
+      map(ci_emitted_release_bins(), bin => ci_cargo_eagain_retry_script(command: ci_emitted_release_build_line(bin: bin)))
+    ),
+    [ci_release_build_emit_stmts(statements: [ci_floor_build_verify_stmt(), ci_release_build_sccache_stats_stmt()])]
+  ))
 }

@@ -1,0 +1,273 @@
+module v2.workflow.roster_home_kind
+
+import std.algebra { FreeMonoid, fold_list }
+import std.types { Bool, List, String }
+import std.occurrence_identity {
+  LabelPosition,
+  PatternTagPosition,
+  ReferencePosition,
+  ReturnPosition,
+  TypeAnnotationPosition,
+  ValuePosition
+}
+import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at, type_declarer_qualified_names }
+import v2.compiler.reference_site_collector {
+  HeadBoundAtRootValue,
+  HeadBoundInFrame,
+  HeadBindingUndecided,
+  HeadLexicallyUnbound,
+  ScopedReferenceSite,
+  SiteHeadBinding
+}
+import v2.lens.enforcement.standing_intent { whole_corpus_scope }
+
+// THE POSITION-TO-HOME-KIND RULE (tidy-ant-251's roster correction on #14435, msg_66a5409b). A site needs its home's
+// import when its head is unbound AND its reference position is compatible with the KIND its home declaration declares
+// -- the kind is read from the home's declaration identity, NEVER from the spelling:
+//   Value                    <-> a value declaration (fn, service, or a typed data constant)
+//   TypeAnnotation, Return   <-> a type declaration (TypeItem)
+//   Label, PatternTag        <-> neither, unless the home declaration says so
+// The manager's third type position, BinderType, is not a separate ReferencePosition arm: occurrence_role issues a
+// binder's type annotation as TypeAnnotationPosition through CoreMarker{CoreBinderTypeEdge} (its one marker table), so
+// the three named type kinds land on two arms -- verified by execution on the fixture whose `xs: List<Int>` binder-type
+// site reads TypeAnnotationPosition. "No such declaration" (zero keyed rows) reads as not-a-match in BOTH directions,
+// so a home whose declaration cannot be located imports nothing rather than importing on a guess.
+//
+// WHY THIS MODULE HOLDS IT, AND WHY IT IS THE SWEEP'S ONLY CORPUS READ. v2.workflow.roster_import_sweep has no
+// file-read primitive -- its sweep is pure over (path, text) for one file -- and the home's declared kind is a corpus
+// fact keyed by qualified name. v2.std.decl_index decl_facts_at is the one home for that question ("THE KEYED READ...
+// Both project one census"); this module is its only consumer on the roster route. The pool roots are READ from
+// v2.lens.enforcement.standing_intent whole_corpus_scope -- the repo's one corpus-scope row, the same input
+// v2.workflow.enforcement_live enforcement_corpus_facts hands decl_facts -- never repeated here, so no second table
+// decides which files can declare a roster home.
+//
+// THE BINDING FACT STAYS WHERE IT WAS. site.head is v2.compiler.reference_site_collector's own classification and this
+// module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
+// position<->kind compatibility neither the collector nor the sweep could express alone.
+
+// WHAT THE RULE ANSWERS, as a coproduct rather than a Bool, so non-decidability is expressible (DESIGN 5: runtime
+// uncertainty -> a typed refusal, never a plausible "no import needed"). Four readings:
+//   KindNotAsked     the rule decided, and the answer is no: the head is bound, or the position is a label/pattern tag,
+//                    which matches no declaration kind unless the declaration says so. Silence is correct here.
+//   KindMatched      unbound head, a position that needs a kind, and the home declaration's kind fits -> import needed.
+//   KindNotMatched   unbound head, a position that needs a kind, and the home declaration's kind does NOT fit -> the
+//                    rule decided, and the answer is no. Silence is correct here too (value use of a type home, etc).
+//   KindUnclassified the rule COULD NOT decide: the head is unbound at a value/type position, but the census gives no
+//                    row that classifies the home (zero keyed rows, or only OtherItem rows). This is NOT a "no": the
+//                    sweep must refuse the module, located by home and name (review 83187: a home the census cannot
+//                    classify must not silently plan no import). The measured population is Wave 2's aliased type homes
+//                    (std.types List/Map/Set -> OtherItem; host item_kind, v1_compiler_infer_items.rs:274).
+type HomeKindVerdict
+  = KindNotAsked
+  | KindMatched
+  | KindNotMatched
+  | KindUnclassified
+
+// THE RULE THE SWEEP CALLS, for the import count and the label plan alike: one classifier, both questions. It is the
+// verbatim KindMatched reading of roster_site_home_kind_verdict -- one authority, never two answers.
+fn roster_site_needs_home_import(
+  site: ScopedReferenceSite,
+  home: String,
+  import_name: String,
+  imported_from_home: Bool
+) -> Bool {
+  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: imported_from_home) == KindMatched
+}
+
+// THE VERDICT. The binding fact comes from the site as v2.compiler.reference_site_collector classified it; the position
+// from v2.compiler.occurrence_role; the KIND from v2.std.decl_index keyed by the home declaration identity. Only the
+// last can fail to decide, and only in KindUnclassified.
+fn roster_site_home_kind_verdict(
+  site: ScopedReferenceSite,
+  home: String,
+  import_name: String,
+  imported_from_home: Bool
+) -> HomeKindVerdict {
+  match site.head {
+    HeadLexicallyUnbound => position_verdict(position: site.position, home: home, import_name: import_name)
+    // THE BINDING FACT, UNCHANGED FROM BEFORE THIS PR for a head the collector cannot decide. An undecided head is the
+    // free name only when the import that made it undecided comes from the home the row claims (the sweep's own
+    // roster_symbol_imported decides that, never this module); undecided for any other reason is free for NO position,
+    // which is what keeps an imported qualified tag (`count.Yes` under v2.std.node ConstructTagEdge, with count
+    // imported -- the D4 control) out of the rows while v2.compiler.module_acquisition keeps the same head a
+    // non-candidate from the binding alone. No position or kind is consulted here: an undecided head is not a name the
+    // position rule was ever asked about, so it cannot be Unclassified either.
+    HeadBindingUndecided =>
+      // THE BINDING FACT FIRST, EXACTLY AS BEFORE THIS PR: the head is the free name only when the import that made it
+      // undecided comes from the home the row claims (roster_symbol_imported decides that, never this module); an
+      // undecided head for any other reason is free for NO position. THEN THE SAME POSITION-x-KIND AUTHORITY, no second
+      // filter anywhere (review 83367c): the imported `y: chars` in a type position against a VALUE home decides
+      // NotMatched, so it never becomes a label-plan candidate, and after pass 1's import lands the label plan still
+      // counts exactly the call head. An imported head whose kind the census cannot answer decides KindUnclassified,
+      // which the sweep refuses located -- refusing typed where kind cannot be answered, never defaulting to Matched.
+      if imported_from_home {
+        position_verdict(position: site.position, home: home, import_name: import_name)
+      } else {
+        KindNotAsked
+      }
+    HeadBoundAtRootValue => KindNotAsked
+    HeadBoundInFrame => KindNotAsked
+  }
+}
+
+// THE PREDICATE THE SWEEP CONSULTS, from the same verdict authority (never a second classifier): this site's head, at
+// THIS position, over this home, is one the census cannot decide.
+// THE SAME QUESTION THE SWEEP'S CLASSIFIER ASKS, including the binding fact it passes (roster_symbol_imported's exact
+// home) -- one verdict authority, never two readings. With imported_from_home true, an exact-home-imported head at a
+// value/type position whose home the census cannot classify is KindUnclassified too (review 83367c: refuse typed where
+// kind cannot be answered, imported heads included); with false it is the pre-PR binding-only path for that row.
+fn roster_site_verdict_is_unclassified(site: ScopedReferenceSite, home: String, import_name: String, imported_from_home: Bool) -> Bool {
+  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: imported_from_home) == KindUnclassified
+}
+
+fn position_verdict(position: ReferencePosition, home: String, import_name: String) -> HomeKindVerdict {
+  let side = roster_home_declaration_side(home: home, import_name: import_name)
+  match position {
+    // A label or pattern tag asks the kind question of NOBODY: the rule itself answers no (KindNotAsked), so these
+    // positions never refuse and never import. Only the positions the rule must ask about can report Unclassified.
+    LabelPosition => KindNotAsked
+    PatternTagPosition => KindNotAsked
+    // A value ask and a type ask are DIFFERENT questions about the same single classification, so they get one table
+    // each; the two type positions share theirs. No arm re-reads the census -- `side` was computed once.
+    ValuePosition =>
+      match side {
+        SideValue => KindMatched
+        SideBoth => KindMatched
+        SideType => KindNotMatched
+        SideNeither => KindUnclassified
+      }
+    TypeAnnotationPosition => type_ask_verdict(side: side)
+    ReturnPosition => type_ask_verdict(side: side)
+  }
+}
+
+fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
+  match side {
+    SideType => KindMatched
+    SideBoth => KindMatched
+    SideValue => KindNotMatched
+    SideNeither => KindUnclassified
+  }
+}
+
+// The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.
+fn roster_home_declarations(home: String, import_name: String) -> List<DeclFact> {
+  decl_facts_at(pool_roots: roster_corpus_pool_roots(), qualified_name: home + "." + import_name)
+}
+
+// WHICH SIDE OF THE RULE A HOME'S DECLARATION SITS ON -- the ONE classification of the keyed census rows for
+// <home>.<import_name>. One fold, one pass, one answer; nothing else over ItemKind decides. Zero keyed rows, or rows
+// that all answer OtherItem (the census's own "I cannot classify"), give SideNeither, which the verdict tables read as
+// KindUnclassified -- a refusal, never a silent no-import (review 83187). A name keyed by rows on BOTH sides (the census
+// can key a qualified name more than once) is SideBoth and matches either ask, as the two independent existential reads
+// it replaces did.
+type HomeKindSide
+  = SideNeither
+  | SideType
+  | SideValue
+  | SideBoth
+
+fn roster_home_declaration_side(home: String, import_name: String) -> HomeKindSide {
+  fold_list(
+    xs: roster_home_declarations(home: home, import_name: import_name),
+    empty: SideNeither,
+    cons: fn(side, fact) { side_with_kind(side: side, kind: fact.kind) }
+  )
+}
+
+// THE KIND GROUNDING, the host's own assignment, item_kind (v1_compiler_infer_items.rs:274): TypeItem = a connective
+// without a transport (an OPAQUE type declaration); ServiceItem = has a transport; FnItem = has a body (with params, or
+// without an annotation); DataItem = has a BODY AND a type annotation (v1_compiler_infer_items.rs:291-293) -- a TYPED
+// CONSTANT, a value definition the emitter treats as a data definition (v1/05_emit_rust.dag:11785/11856
+// `info.kind == DataItem`, v1/04_infer.dag:15105 DataItem => ExportData); OtherItem = none of the above, and this
+// function adds NOTHING to it: OtherItem leaves the side untouched, never defaulting either way. So the value side is
+// FnItem | ServiceItem | DataItem (a `data` row is referenced at VALUE positions -- review 83165 caught an earlier
+// revision classing DataItem as a type, which would have refused a data constant its import at a call head), the type
+// side is TypeItem alone, and OtherItem reaches neither: measured on the corpus, std.types.List -- declared
+// `type List<element> = FreeMonoid<element>` at dag/std/types.dag:119 -- keys a row whose kind is OtherItem, while the
+// opaque `type FreeMonoid<a>` at dag/std/algebra.dag:34 keys TypeItem. Nothing downstream can repair OtherItem: the
+// host marshals its fact's node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the
+// `_ => unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index
+// type_declarer_qualified_names -- the type-declarer seam -- filters on TypeItem only (coproduct_reflection.rs:2012).
+fn side_with_kind(side: HomeKindSide, kind: ItemKind) -> HomeKindSide {
+  match kind {
+    TypeItem =>
+      match side {
+        SideNeither => SideType
+        SideType => SideType
+        SideValue => SideBoth
+        SideBoth => SideBoth
+      }
+    FnItem => side_as_value(side: side)
+    ServiceItem => side_as_value(side: side)
+    DataItem => side_as_value(side: side)
+    OtherItem => side
+  }
+}
+
+fn side_as_value(side: HomeKindSide) -> HomeKindSide {
+  match side {
+    SideNeither => SideValue
+    SideType => SideBoth
+    SideValue => SideValue
+    SideBoth => SideBoth
+  }
+}
+
+// The two control-facing readings, each a single reading OF THE ONE classification (never a second pass over ItemKind).
+fn roster_home_declaration_is_type(home: String, import_name: String) -> Bool {
+  match roster_home_declaration_side(home: home, import_name: import_name) {
+    SideType => true
+    SideBoth => true
+    SideValue => false
+    SideNeither => false
+  }
+}
+
+fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
+  match roster_home_declaration_side(home: home, import_name: import_name) {
+    SideValue => true
+    SideBoth => true
+    SideType => false
+    SideNeither => false
+  }
+}
+
+// THE POOL ROOTS ARE READ, NOT REPEATED (see the header): the same ScopeRoster.roots the enforcement census reads.
+fn roster_corpus_pool_roots() -> List<String> {
+  whole_corpus_scope.roots
+}
+
+// The roots the census was read under, for a failure message: a home missing under one root list is a different fact
+// from a home missing under all of them, and the reader must be able to tell which.
+fn roster_corpus_pool_roots_text() -> String {
+  fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
+}
+
+// THE WITNESS, asked for only when a count disagrees: every recorded site as its position, its head and its scope path,
+// so a control that goes red says WHICH reading moved without a second run. It lives here because this is the module
+// that matches these two coproducts (review 82610: import what you match, and only that).
+fn roster_home_kind_sites_text(sites: FreeMonoid<ScopedReferenceSite>) -> String {
+  fold_list(xs: sites, empty: "", cons: fn(acc, st) {
+    acc + "| " + roster_home_kind_position_text(position: st.position) + "/" + roster_home_kind_head_text(head: st.head) + " "
+  })
+}
+
+fn roster_home_kind_position_text(position: ReferencePosition) -> String {
+  match position {
+    ValuePosition => "value"
+    TypeAnnotationPosition => "type"
+    ReturnPosition => "return"
+    LabelPosition => "label"
+    PatternTagPosition => "tag"
+  }
+}
+
+fn roster_home_kind_head_text(head: SiteHeadBinding) -> String {
+  match head {
+    HeadLexicallyUnbound => "unbound"
+    HeadBindingUndecided => "undecided"
+    HeadBoundAtRootValue => "root"
+    HeadBoundInFrame => "frame"
+  }
+}
