@@ -15982,13 +15982,20 @@ type BeltExitClearAdmission
 fn belt_exit_stall_clear_argv(path: String, me: String, group: String, mode: String) -> List<String>? {
   match file_mode_of_octal_text(text: mode) {
     Absent => none
-    Present { value: m } =>
-      {
-      let elevated = sudo_elevate(command: executor_privileged_operation_argv(op: EnsureOwnedDirectory { path: path as NonEmptyStr, owner: me as NonEmptyStr, group: group as NonEmptyStr, mode: m }) |> map(w => w as String))
+    Present { value: m } => {
+      let install = executor_privileged_operation_argv(op: EnsureOwnedDirectory { path: path as NonEmptyStr, owner: me as NonEmptyStr, group: group as NonEmptyStr, mode: m }) |> map(w => w as String)
+      let elevated = sudo_elevate(command: concat(["/bin/sh", "-c", belt_exit_stall_clear_guard_script, "sh", path], install))
       Present { value: concat([elevated.bin_path], elevated.args) |> map(w => posix_single_quote(spelling: w)) }
     }
   }
 }
+
+// THE GUARD RUNS AS ROOT, AT EXECUTION: `install -d` on an existing path chowns what a symlink points at, and the
+// stage directory is the drain principal's own, so the entry could be swapped for a symlink between the verb's
+// observation and the operator's run. The script refuses a symlink (and a non-directory) immediately before the
+// install. What remains is the instant between this test and the install; the parent being writable by the drain
+// principal makes that a declared residual (census row exit_spool_clear_has_no_realized_edge), not a closed class.
+data belt_exit_stall_clear_guard_script: String = "if [ -L \"$1\" ] || [ ! -d \"$1\" ]; then echo \"refused: $1 is not a plain directory\" >&2; exit 1; fi; shift; exec \"$@\""
 
 fn belt_exit_stall_clear_admission(path: String, stat: BeltExitStallObservation, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
   match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {

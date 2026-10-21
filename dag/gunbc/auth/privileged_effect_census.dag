@@ -807,7 +807,7 @@ data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
 // is the approval-broker route the analyze text used to name and which has no redeemer for this effect. The effect
 // recurs on any incident that leaves a foreign-owned entry, so it is not break-glass.
 data exit_spool_clear_has_no_realized_edge: DivergenceReason = DivergenceReason {
-  statement: "the selected administrator edge is unrealized; the verb renders the one argv and exits non-zero, and a privileged operator runs it by hand, so no credential or edge names the effect (belt_exit_stall_clear_cli never elevates itself)" as NonEmptyStr,
+  statement: "the selected administrator edge is unrealized; the verb renders the one argv and exits non-zero, and a privileged operator runs it by hand, so no credential or edge names the effect (belt_exit_stall_clear_cli never elevates itself). DECLARED RESIDUAL: the argv refuses a symlink or non-directory as root immediately before the install, but the stage directory is writable by the drain principal, so the instant between that test and the install is not closed (an exec-time no-follow install does not exist in the vocabulary)" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy route runs its host-root effects under the administrator edge (plan gunbc.plans.srv1_deploy_principal_split stage 2, gated by deploy_route_switch_admitted), and belt_exit_stall_clear_cli executes the admitted argv through that edge instead of printing it. SUFFICIENT FOR overlaying this row as RealizedAdministratorEdge" as NonEmptyStr),
 }
 

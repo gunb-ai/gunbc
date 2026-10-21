@@ -604,9 +604,10 @@ test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bo
     && deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SoleTenantOfJobUid)
 }
 
-// THE EXIT-SPOOL CLEAR, THE SELECTION EXECUTED: a root re-own of one spool entry is a host-root write, so the
-// census row's own effect selects the administrator edge; the same effect stripped of its host-root reach has no
-// admissible pattern (the characterization is what decides, not the call site).
+// THE EXIT-SPOOL CLEAR, THE SELECTION EXECUTED over the census row's own effect: a root re-own of one spool entry is
+// a host-root write, so the real fold selects the administrator edge and the row states its divergence. (The other
+// characterizations, no host-root reach -> NoAdmissiblePattern and break-glass -> OperatorApprovedCapability, were
+// probed once remotely and are recorded in the census comment, not re-asserted here.)
 test fn the_exit_spool_clear_selects_the_administrator_edge_and_not_federation_or_approval() -> Bool {
   any(census_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.roadmap.roadmap_belt_actuate::belt_exit_stall_clear_at"
