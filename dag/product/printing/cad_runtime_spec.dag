@@ -1,8 +1,11 @@
 module product.printing.cad_runtime_spec
 
-import std.types { NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.cadquery.cadquery { cadquery_distribution_name, cadquery_version, cadquery_ocp_distribution }
-import extdeps.opencascade.ocp { ocp_distribution_name, ocp_distribution_version }
+import extdeps.opencascade.ocp { ocp_distribution_name, ocp_distribution_version, ocp_wheel_python_abi, ocp_wheel_platform_linux_aarch64 }
 
 // WHAT THE PRINT RUNTIME'S CAD INTERPRETER MUST IMPORT, AND AT WHICH VERSION. This is the one roster
 // the runtime check reads back against, and the one a CAD environment convergence will install.
@@ -34,3 +37,41 @@ data cad_runtime_python_requirements: List<PythonDistributionRequirement> = [
   ocp_requirement,
   cadquery_requirement,
 ]
+
+// THE INTERPRETER AND PLATFORM THE PINNED WHEELS ARE BUILT FOR. The OCP wheel is published for
+// CPython 3.11 on manylinux aarch64 (extdeps.opencascade.ocp ocp_wheel_python_abi,
+// ocp_wheel_platform_linux_aarch64), and the pinned Orca artifact is the aarch64 AppImage, so the
+// direct-host print runtime is an aarch64 runtime. Another architecture is a different spec, not a
+// tolerance of this one.
+data cad_runtime_python_tag: NonEmptyStr = ocp_wheel_python_abi
+data cad_runtime_architecture: Architecture = Aarch64
+
+// architecture is what the host must report; wheel_platform is the upstream tag that selects the
+// wheel for it, and is what the identity text carries.
+type CadRuntimeSpec sole_constructor {
+  python_tag: NonEmptyStr
+  architecture: Architecture
+  wheel_platform: NonEmptyStr
+  requirements: List<PythonDistributionRequirement>
+}
+
+data cad_runtime_spec: CadRuntimeSpec = CadRuntimeSpec {
+  python_tag: cad_runtime_python_tag,
+  architecture: cad_runtime_architecture,
+  wheel_platform: ocp_wheel_platform_linux_aarch64,
+  requirements: cad_runtime_python_requirements,
+}
+
+// THE SPEC'S CANONICAL TEXT, AND ITS DIGEST NAMES THE ENVIRONMENT. One line per fact in a fixed
+// order. An environment lives at a directory named by this digest, so changing any pin names a
+// different environment instead of mutating the one a previous preparation ran in.
+fn cad_runtime_spec_text(spec: CadRuntimeSpec) -> String {
+  join(concat(
+    [concat("python_tag=", spec.python_tag as String), concat("wheel_platform=", spec.wheel_platform as String)],
+    map(spec.requirements, r => join([r.distribution as String, "==", r.version as String], "")),
+  ), "\n")
+}
+
+fn cad_runtime_spec_digest(spec: CadRuntimeSpec) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: cad_runtime_spec_text(spec: spec))))
+}
