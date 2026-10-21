@@ -26111,16 +26111,16 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
             let owners = kernel_arm_owner_bindings(
                 env.clone(),
                 Rc::new({
-                    let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&kernel.bindings.clone()))
+                    let mut __keyed: Vec<_> = Rc::new(v1_rt::map_values(&kernel.bindings.clone()))
                         .iter()
                         .cloned()
+                        .map(|__e: Rc<TypeBinding>| {
+                            let __k = (|b: Rc<TypeBinding>| b.name.clone())(__e.clone());
+                            (__k, __e)
+                        })
                         .collect();
-                    __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
-                        let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
-                        let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                        v1_rt::canonical_key_cmp(&__ka, &__kb)
-                    });
-                    __sorted
+                    __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                    __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
                 }),
             );
             Rc::new(v1_rt::map_keys(&owners)).iter().cloned().fold(
@@ -26243,16 +26243,16 @@ pub fn kernel_optional_owner_declaring(env: Rc<TypeEnv>, name: String) -> Option
 pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
     match env.parents.clone().last().cloned() {
         Some(kernel) => Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&kernel.bindings.clone()))
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_values(&kernel.bindings.clone()))
                 .iter()
                 .cloned()
+                .map(|__e: Rc<TypeBinding>| {
+                    let __k = (|b: Rc<TypeBinding>| b.name.clone())(__e.clone());
+                    (__k, __e)
+                })
                 .collect();
-            __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
-                let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
-                let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         })
         .iter()
         .cloned()
