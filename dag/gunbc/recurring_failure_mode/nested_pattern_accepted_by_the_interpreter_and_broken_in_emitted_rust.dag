@@ -3,10 +3,12 @@ module gunbc.recurring_failure_mode.nested_pattern_accepted_by_the_interpreter_a
 import v2.std.node { NotADeclaration }
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust: RecurringFailureMode = RecurringFailureMode {
   identity: "nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: a match that the seed's typecheck and interpreter accept, and whose emitted Rust either does not compile or panics. Two shapes, both found by the EdgeLabel cut (quiet-koi-814, gunbc#12799) only when neat-boar-16 ran self-host on srv1 -- no local claim, compile or interpreter run showed either. (1) A RECORD PATTERN that destructures a coproduct field -- `Edge { label: Authored { name: f }, target: t, declaration: NotADeclaration }` beside `Edge { label: Positional, target: _, declaration: NotADeclaration }` -- is not checked for exhaustiveness over the field's coproduct, so adding an EdgeLabel arm left two such matches (`v2.extdeps.languages.dag` `dag_int_literal_magnitude_edge_target_optional` and its twin in `v2.std.compilers.target_model`) accepted and the emitted crate failed rustc E0004. The same blind spot covers a match whose scrutinee reaches the checker through a generic call (`list_at_optional`), which surfaced as six runtime pattern-match failures in the interpreter. (2) A THREE-LEVEL CONSTANT PATTERN -- `StructuralLabel { label: CoreMarker { marker: ArrowBodyEdge } }` beside a sibling arm with a different constant marker AND a wildcard sibling at the middle level (`StructuralLabel { label: _ }`) -- is lowered by `v1.compiler.emit_rust` as a guard on the middle variant only plus a `let ... else { unreachable!() }` on the innermost constant, so the first arm with the right middle variant but the wrong marker panics (`v2.std.node` `arrow_signature_edges_conform`, emitted line 676, in the self-host binary and the census driver). The interpreter evaluates both shapes correctly.",

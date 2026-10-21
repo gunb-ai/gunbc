@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.check_subject_narrower_than_its_declared_cla
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = RecurringFailureMode {
   identity: "check_subject_narrower_than_its_declared_claim" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a check's subject is narrower than the claim it is cited for** (EVERY DEGREE OF FREEDOM IN A CHECK'S SUBJECT -- which call sites, which spellings, which lexical states, which domain, which files -- is a place its coverage can silently be narrower than the population it is read as covering.",

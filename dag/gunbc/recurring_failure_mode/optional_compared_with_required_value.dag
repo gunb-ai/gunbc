@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.optional_compared_with_required_value
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_compared_with_required_value: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_compared_with_required_value" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "optional compared with required value: `==` or `!=` between a `T?` operand and a `T` operand (std.filesystem is_text_readable: `entry.symlink_target == TargetFile`, with symlink_target: SymlinkTarget?). No declared coercion route lifts T into T? (DESIGN section 4, operator ruling 2026-09-26: implicit coercion is only the implicit-safe subset of declared routes), so the comparison has no single meaning, yet the checker accepted it with zero diagnostics.",

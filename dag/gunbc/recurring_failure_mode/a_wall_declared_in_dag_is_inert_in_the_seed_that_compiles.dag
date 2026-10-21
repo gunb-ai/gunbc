@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_wall_declared_in_dag_is_inert_in_the_seed_that_compiles
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_wall_declared_in_dag_is_inert_in_the_seed_that_compiles: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wall_declared_in_dag_is_inert_in_the_seed_that_compiles" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "A wall declared in .dag is inert in the seed that compiles. INVALID STATE: a refusal is authored in the .dag authority -- the diagnostic variant declared, its severity and gate set to blocking, its construction sites written, its admitting predicate defined -- while the SEED, which is the binary that actually compiles the corpus, carries an earlier or stub version of that predicate. The .dag says the wall exists. The compiler does not have it. Both statements are true of different artifacts, and every ordinary reading conflates them because the .dag IS the authority everywhere else.",
