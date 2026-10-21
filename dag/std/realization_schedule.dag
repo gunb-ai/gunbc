@@ -9,7 +9,8 @@ import std.measure {
   Measure, Time, ByteSize, Watt,
   Second, Millisecond,
   byte_size, byte_size_count, watt, time_measure, measure_count,
-  second_count, millisecond_count
+  second_count, millisecond_count,
+  Scale,
 }
 import std.content_hash { ContentHash }
 import std.content_hash {

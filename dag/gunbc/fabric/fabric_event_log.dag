@@ -4,7 +4,7 @@ import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for, fabric_
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { Count, One, Measure }
+import std.measure { Count, One, Measure, Quantity, Scale }
 import product.host_identity { HostIdentity }
 import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_wire, fabric_object_ref_of_wire,

@@ -2,7 +2,7 @@ module product.capacity.pool
 
 import std.types { Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.nat { Nat }
-import std.measure { Measure, measure_add, measure_le }
+import std.measure { Measure, measure_add, measure_le, Quantity, Scale }
 import extdeps.accounting.budget { Appropriation }
 import std.resource_release_law { ReleaseLaw, FencedResource, QuiescenceRequired }
 import extdeps.accounting.encumbrance {

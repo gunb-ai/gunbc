@@ -1,5 +1,6 @@
 module std.realization
 
+import std.measure { Scale }
 import std.types { Bool, String, List }
 import std.effects {
   KeySource,

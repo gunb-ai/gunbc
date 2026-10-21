@@ -2,7 +2,7 @@ module gunbc.fabric.fabric_cell_grant
 
 import std.types { NonEmptyStr, String, Timestamp, List, Int }
 import std.decl_ref { decl_ref }
-import std.measure { Measure }
+import std.measure { Measure, Quantity, Scale }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact }

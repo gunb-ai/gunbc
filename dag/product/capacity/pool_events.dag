@@ -3,7 +3,7 @@ module product.capacity.pool_events
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { Measure, measure_count }
+import std.measure { Measure, measure_count, Quantity, Scale }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
 import product.capacity.pool {

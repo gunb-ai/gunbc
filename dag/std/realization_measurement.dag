@@ -17,6 +17,7 @@ import std.measure {
   byte_size,
   Watt,
   watt,
+  Scale,
 }
 import std.realization_schedule {
   CostAccount,

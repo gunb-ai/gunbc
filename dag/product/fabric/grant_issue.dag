@@ -8,7 +8,7 @@ import product.fabric.provider_admission {
   ProviderUseRefusal,
 }
 import std.types { NonEmptyStr, List, Int, Timestamp }
-import std.measure { Measure }
+import std.measure { Measure, Quantity, Scale }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity {

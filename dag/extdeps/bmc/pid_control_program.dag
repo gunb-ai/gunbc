@@ -2,7 +2,7 @@ module extdeps.bmc.pid_control_program
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, exact_decimal_equal }
-import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time }
+import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time, Quantity, Scale }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
