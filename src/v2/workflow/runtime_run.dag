@@ -24,8 +24,14 @@ module v2.workflow.runtime_run
 // with no resolve, and an empty value-use result over no resolution would be fabricated completeness. The
 // consumer of those rows is the check of eval's own order on resolved programs, a separate change.
 //
-// COMPLETENESS BEFORE EXECUTION. A Branch or Match the derivation could not classify (not_derived) refuses the
-// whole run as RuntimeRunNotDerived before anything is evaluated, distinct from an execution refusal.
+// COMPLETENESS FOLLOWS ACTIVATION, NOT STRUCTURE. A Branch or Match the derivation could not classify
+// (not_derived) stops the run as RuntimeRunNotDerived -- a category distinct from an execution refusal -- when
+// the run is about to DRIVE that site, before its selector runs. A site the run never drives contributes no
+// runtime refusal: one in an untaken alternative (gunbc.plans.demand_engine_program M2: an untaken alternative
+// contributes no runtime read, refusal or effect), and one inside a region delegated whole to eval, whose
+// interior is eval's. So the run derives each site's disposition when that occurrence becomes active, with the
+// derivation's own per-node step (v2.compiler.activation_dependency activation_dispose, the step
+// activation_dispositions folds over a tree), never by a whole-tree pass that would consult sites it must not.
 //
 // A SCRUTINEE-ONLY MATCH (zero alternatives) keeps its selector demand and has nothing to choose among: its
 // selector is evaluated, the interpretation's chooser is still asked, and a node it returns is outside the
@@ -36,14 +42,13 @@ module v2.workflow.runtime_run
 // same Node in two roles. Each evaluation is recorded with its role; nothing is suppressed because an equal
 // node already ran.
 
-import std.algebra { Cons, Empty, fold_list, list_snoc_item, non_empty, non_empty_to_list }
+import std.algebra { Cons, Empty, fold_list, list_snoc_item, non_empty_to_list }
 import std.optional { Absent, Present }
 import std.types { List }
 import v2.compiler.activation_dependency {
   ActivationDependencies,
   ActivationNotDerived,
-  activation_dispose,
-  activation_dispositions_of_root
+  activation_dispose
 }
 import v2.compiler.eval {
   EvalContext,
@@ -90,11 +95,18 @@ type RuntimeRunLog {
 }
 
 type RuntimeRunResult
-  = RuntimeRunNotDerived { not_derived: List<ActivationNotDerived> }
+  = RuntimeRunNotDerived { not_derived: List<ActivationNotDerived>, log: RuntimeRunLog }
   | RuntimeRunCompleted { root: Outcome<RuntimeValue>, log: RuntimeRunLog }
 
+// WHAT ONE STEP ANSWERS: an execution outcome, or the derivation's refusal to classify a site the run was about to
+// drive. The second is not an Outcome: it stops the run and is reported as RuntimeRunNotDerived, never folded into
+// a diagnostic.
+type RuntimeRunStepResult
+  = RuntimeRunStepOutcome { outcome: Outcome<RuntimeValue> }
+  | RuntimeRunStepNotDerived { not_derived: List<ActivationNotDerived> }
+
 type RuntimeRunStep {
-  result: Outcome<RuntimeValue>
+  result: RuntimeRunStepResult
   log: RuntimeRunLog
 }
 
@@ -102,20 +114,29 @@ fn runtime_run_log_empty() -> RuntimeRunLog {
   RuntimeRunLog { entries: [] }
 }
 
+fn runtime_run_outcome(o: Outcome<RuntimeValue>, log: RuntimeRunLog) -> RuntimeRunStep {
+  RuntimeRunStep { result: RuntimeRunStepOutcome { outcome: o }, log: log }
+}
+
+// A receipt records an evaluated outcome; a step that stopped as not-derived evaluated nothing to record.
 fn runtime_run_receipt(
   step: RuntimeRunStep,
   node: Node,
   role: RuntimeRunRole,
   evaluation: RuntimeRunEvaluation
 ) -> RuntimeRunStep {
-  RuntimeRunStep {
-    result: step.result,
-    log: RuntimeRunLog {
-      entries: list_snoc_item(
-        xs: step.log.entries,
-        item: RuntimeRunReceipt { node: node, role: role, evaluation: evaluation, result: step.result }
-      )
-    }
+  match step.result {
+    RuntimeRunStepOutcome { outcome: o } =>
+      RuntimeRunStep {
+        result: step.result,
+        log: RuntimeRunLog {
+          entries: list_snoc_item(
+            xs: step.log.entries,
+            item: RuntimeRunReceipt { node: node, role: role, evaluation: evaluation, result: o }
+          )
+        }
+      }
+    RuntimeRunStepNotDerived { not_derived: _ } => step
   }
 }
 
@@ -129,54 +150,54 @@ fn runtime_run_bind<T>(
   match o {
     Accepted { value: v, diagnostics: od } =>
       runtime_run_bind_accepted(od: od, step: f(v, log))
-    Rejected { diagnostics: r } => RuntimeRunStep { result: Rejected { diagnostics: r }, log: log }
+    Rejected { diagnostics: r } => runtime_run_outcome(o: Rejected { diagnostics: r }, log: log)
   }
 }
 
 fn runtime_run_bind_accepted(od: Diagnostics, step: RuntimeRunStep) -> RuntimeRunStep {
-  RuntimeRunStep { result: bind_outcome_accepted(od: od, inner: step.result), log: step.log }
-}
-
-fn runtime_run(tree: InferredTree, root: Node, context: EvalContext) -> RuntimeRunResult {
-  runtime_run_derived(
-    tree: tree,
-    root: root,
-    context: context,
-    derived: activation_dispositions_of_root(root: root)
-  )
-}
-
-fn runtime_run_derived(
-  tree: InferredTree,
-  root: Node,
-  context: EvalContext,
-  derived: ActivationDependencies
-) -> RuntimeRunResult {
-  if non_empty(xs: derived.not_derived) {
-    RuntimeRunNotDerived { not_derived: derived.not_derived }
-  } else {
-    match eval_ill_formed_input(tree: tree, inputs: inputs_root_only(root: root)) {
-      Present { value: bad } =>
-        RuntimeRunCompleted { root: eval_ill_formed_refusal(at: bad), log: runtime_run_log_empty() }
-      Absent =>
-        runtime_run_completed(
-          step: runtime_run_node(
-            scope: eval_control_scope(tree: tree, context: context),
-            node: root,
-            role: RuntimeRunRoot,
-            log: runtime_run_log_empty()
-          )
-        )
-    }
+  match step.result {
+    RuntimeRunStepOutcome { outcome: inner } =>
+      runtime_run_outcome(o: bind_outcome_accepted(od: od, inner: inner), log: step.log)
+    RuntimeRunStepNotDerived { not_derived: _ } => step
   }
 }
 
-fn runtime_run_completed(step: RuntimeRunStep) -> RuntimeRunResult {
-  RuntimeRunCompleted { root: step.result, log: step.log }
+// Continue from a step: its outcome binds as above, and a not-derived stop passes through unchanged.
+fn runtime_run_then(
+  step: RuntimeRunStep,
+  f: fn(RuntimeValue, RuntimeRunLog) -> RuntimeRunStep
+) -> RuntimeRunStep {
+  match step.result {
+    RuntimeRunStepOutcome { outcome: o } => runtime_run_bind(o: o, log: step.log, f: f)
+    RuntimeRunStepNotDerived { not_derived: _ } => step
+  }
 }
 
-// ONE NODE: the derivation's own disposition of this node (activation_dispose, the step the whole-tree
-// derivation folds) says whether it is a site, and which.
+fn runtime_run(tree: InferredTree, root: Node, context: EvalContext) -> RuntimeRunResult {
+  match eval_ill_formed_input(tree: tree, inputs: inputs_root_only(root: root)) {
+    Present { value: bad } =>
+      RuntimeRunCompleted { root: eval_ill_formed_refusal(at: bad), log: runtime_run_log_empty() }
+    Absent =>
+      runtime_run_result(
+        step: runtime_run_node(
+          scope: eval_control_scope(tree: tree, context: context),
+          node: root,
+          role: RuntimeRunRoot,
+          log: runtime_run_log_empty()
+        )
+      )
+  }
+}
+
+fn runtime_run_result(step: RuntimeRunStep) -> RuntimeRunResult {
+  match step.result {
+    RuntimeRunStepOutcome { outcome: o } => RuntimeRunCompleted { root: o, log: step.log }
+    RuntimeRunStepNotDerived { not_derived: rows } => RuntimeRunNotDerived { not_derived: rows, log: step.log }
+  }
+}
+
+// ONE NODE, AS IT BECOMES ACTIVE: the derivation's disposition of this node says whether it is a site, which,
+// or one the derivation could not classify. Nothing beneath the node is consulted here.
 fn runtime_run_node(
   scope: EvalControlScope,
   node: Node,
@@ -187,31 +208,27 @@ fn runtime_run_node(
     acc: ActivationDependencies { demands: [], not_derived: [], zero_alternatives: [] },
     n: node
   )
-  match own.demands {
-    Cons { head: demand, tail: _ } =>
-      runtime_run_site(
-        scope: scope,
-        site: node,
-        selector: demand.selector,
-        alternatives: non_empty_to_list(xs: demand.alternatives),
-        role: role,
-        log: log
-      )
+  match own.not_derived {
+    Cons { head: _, tail: _ } =>
+      RuntimeRunStep { result: RuntimeRunStepNotDerived { not_derived: own.not_derived }, log: log }
     Empty =>
-      match own.zero_alternatives {
-        Cons { head: zero, tail: _ } =>
-          runtime_run_site(scope: scope, site: node, selector: zero.selector, alternatives: [], role: role, log: log)
+      match own.demands {
+        Cons { head: demand, tail: _ } =>
+          runtime_run_site(
+            scope: scope,
+            site: node,
+            selector: demand.selector,
+            alternatives: non_empty_to_list(xs: demand.alternatives),
+            role: role,
+            log: log
+          )
         Empty =>
-          match own.not_derived {
-            // Unreachable after the whole-tree check, and refused rather than evaluated if it is not.
-            Cons { head: _, tail: _ } =>
-              RuntimeRunStep {
-                result: outcome_rejected(d: eval_diagnostic(reason: ^runtime_run_site_not_derived, node: node)),
-                log: log
-              }
+          match own.zero_alternatives {
+            Cons { head: zero, tail: _ } =>
+              runtime_run_site(scope: scope, site: node, selector: zero.selector, alternatives: [], role: role, log: log)
             Empty =>
               runtime_run_receipt(
-                step: RuntimeRunStep { result: eval_control_node(scope: scope, node: node), log: log },
+                step: runtime_run_outcome(o: eval_control_node(scope: scope, node: node), log: log),
                 node: node,
                 role: role,
                 evaluation: RuntimeRunWhole
@@ -248,10 +265,9 @@ fn runtime_run_site(
 }
 
 fn runtime_run_complete(frame: EvalControlFrame, step: RuntimeRunStep) -> RuntimeRunStep {
-  runtime_run_bind(
-    o: step.result,
-    log: step.log,
-    f: fn(value, done) { RuntimeRunStep { result: eval_control_complete(frame: frame, value: value), log: done } }
+  runtime_run_then(
+    step: step,
+    f: fn(value, done) { runtime_run_outcome(o: eval_control_complete(frame: frame, value: value), log: done) }
   )
 }
 
@@ -262,10 +278,8 @@ fn runtime_run_activate(
   alternatives: List<ActivationAlternative<Node>>,
   log: RuntimeRunLog
 ) -> RuntimeRunStep {
-  let selected = runtime_run_node(scope: scope, node: selector, role: RuntimeRunSelectorOf { site: frame.site }, log: log)
-  runtime_run_bind(
-    o: selected.result,
-    log: selected.log,
+  runtime_run_then(
+    step: runtime_run_node(scope: scope, node: selector, role: RuntimeRunSelectorOf { site: frame.site }, log: log),
     f: fn(value, after_selector) {
       runtime_run_bind(
         o: eval_control_choose(
@@ -311,17 +325,17 @@ fn runtime_run_chosen(
 ) -> RuntimeRunStep {
   match runtime_run_alternatives_rooted_at(alternatives: alternatives, chosen: chosen) {
     Empty =>
-      RuntimeRunStep {
-        result: outcome_rejected(d: eval_diagnostic(reason: ^runtime_run_selection_outside_alternatives, node: site)),
+      runtime_run_outcome(
+        o: outcome_rejected(d: eval_diagnostic(reason: ^runtime_run_selection_outside_alternatives, node: site)),
         log: log
-      }
+      )
     Cons { head: first, tail: rest } =>
       match first {
         SelectedByPattern { ordinal: _, pattern: _ } =>
-          RuntimeRunStep {
-            result: outcome_rejected(d: eval_diagnostic(reason: ^runtime_run_match_selection_unqualified, node: site)),
+          runtime_run_outcome(
+            o: outcome_rejected(d: eval_diagnostic(reason: ^runtime_run_match_selection_unqualified, node: site)),
             log: log
-          }
+          )
         SelectedByBranchSlot { slot: _ } =>
           runtime_run_node(
             scope: scope,

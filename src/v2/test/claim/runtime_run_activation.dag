@@ -110,7 +110,7 @@ import v2.workflow.runtime_run {
 // value is one of those; Bool: a site that chooses its own condition. v2.program's own lookup answers the
 // rest.
 fn rr_facts(node: Node) -> InferredFacts {
-  if node == program_literal_two() || node == rr_false_site || node == rr_inner_site || node == rr_nested_site || node == rr_bind_over_branch {
+  if node == program_literal_two() || node == rr_false_site || node == rr_inner_site || node == rr_nested_site || node == rr_bind_over_branch || node == rr_untaken_malformed_site {
     program_facts_typed(node: node, algebra: program_i64_type())
   } else if node == rr_shared_site {
     program_facts_typed(node: node, algebra: program_bool_type())
@@ -171,6 +171,15 @@ data rr_chooser_refuses_site: Node = rr_branch(condition: program_literal_two(),
 
 // A Branch with two positional children: the derivation cannot classify it.
 data rr_malformed_site: Node = rr_node(behavior: Branch, children: [rr_positional(target: program_kw_true()), rr_positional(target: program_literal_two())])
+
+// The malformed site in the else arm (untaken), as the then arm (chosen), and under a Bind (delegated).
+data rr_untaken_malformed_site: Node = rr_branch(condition: program_kw_true(), then_arm: program_literal_two(), else_arm: rr_malformed_site)
+data rr_chosen_malformed_site: Node = rr_branch(condition: program_kw_true(), then_arm: rr_malformed_site, else_arm: program_literal_two())
+data rr_bind_over_malformed: Node = rr_node(behavior: Bind, children: [
+  rr_positional(target: dag_type_atom_node(identity: ^rr_binder)),
+  rr_positional(target: program_kw_true()),
+  rr_positional(target: rr_malformed_site)
+])
 
 data rr_zero_alternative_match: Node = rr_node(behavior: Match, children: [rr_positional(target: program_kw_true())])
 
@@ -275,14 +284,14 @@ fn rr_context_choosing_condition() -> EvalContext {
 fn rr_root_of(result: RuntimeRunResult) -> Optional<Outcome<RuntimeValue>> {
   match result {
     RuntimeRunCompleted { root: root, log: _ } => optional_present(value: root)
-    RuntimeRunNotDerived { not_derived: _ } => optional_absent()
+    RuntimeRunNotDerived { not_derived: _, log: _ } => optional_absent()
   }
 }
 
 fn rr_log_of(result: RuntimeRunResult) -> RuntimeRunLog {
   match result {
     RuntimeRunCompleted { root: _, log: log } => log
-    RuntimeRunNotDerived { not_derived: _ } => RuntimeRunLog { entries: [] }
+    RuntimeRunNotDerived { not_derived: _, log: log } => log
   }
 }
 
@@ -437,11 +446,53 @@ test fn rr_c_false_branch_answer_does_not_depend_on_the_effect_handler_holds() -
   }
 }
 
-// (d) A SITE THE DERIVATION CANNOT CLASSIFY refuses the whole run before anything is evaluated (the run differs
-// from eval here by design: completeness is checked first).
+// (d) A ROOT SITE THE DERIVATION CANNOT CLASSIFY stops the run before anything is evaluated (the run differs from
+// eval here by design: a site it is about to drive must be classified).
 test fn rr_d_not_derived_refuses_before_running_holds() -> Bool {
   match rr_run(root: rr_malformed_site) {
-    RuntimeRunNotDerived { not_derived: rows } => length(xs: rows) == 1
+    RuntimeRunNotDerived { not_derived: rows, log: log } => length(xs: rows) == 1 && rr_receipt_count(log: log) == 0
+    RuntimeRunCompleted { root: _, log: _ } => false
+  }
+}
+
+// (q) A MALFORMED SITE IN AN UNTAKEN ALTERNATIVE contributes no runtime refusal: the outer Branch chooses the
+// literal, the run completes with eval's answer, and the malformed site has no receipt. A whole-tree completeness
+// preflight would refuse here.
+test fn rr_q_malformed_site_in_an_untaken_alternative_does_not_refuse_holds() -> Bool {
+  let site = rr_untaken_malformed_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_literal_two(), kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: true)
+    && rr_no_receipt_for(log: log, node: rr_malformed_site)
+}
+
+// (r) A MALFORMED SITE INSIDE A DELEGATED BIND is eval's, not the run's: the run evaluates the Bind whole, reports
+// eval's answer for it whatever that is, and does not stop as not-derived.
+test fn rr_r_malformed_site_inside_a_delegated_bind_is_evals_holds() -> Bool {
+  let root = rr_bind_over_malformed
+  match rr_run(root: root) {
+    RuntimeRunCompleted { root: _, log: log } =>
+      rr_agrees_with_eval(tree: rr_tree(root: root), root: root, context: rr_context())
+        && rr_receipt_count(log: log) == 1
+        && rr_receipt_is(log: log, index: 0, node: root, kind: 0, site: root, accepted: rr_accepted(o: rr_eval(tree: rr_tree(root: root), root: root, context: rr_context())))
+    RuntimeRunNotDerived { not_derived: _, log: _ } => false
+  }
+}
+
+// (s) A MALFORMED SITE THAT IS CHOSEN stops the run as not-derived when it becomes active: the outer selector has
+// run (its receipt stands), the malformed site's selector has not, and neither site has a receipt.
+test fn rr_s_malformed_chosen_site_stops_the_run_when_it_becomes_active_holds() -> Bool {
+  let site = rr_chosen_malformed_site
+  match rr_run(root: site) {
+    RuntimeRunNotDerived { not_derived: rows, log: log } =>
+      length(xs: rows) == 1
+        && rr_receipt_count(log: log) == 1
+        && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+        && rr_no_receipt_for(log: log, node: rr_malformed_site)
+        && rr_no_receipt_for(log: log, node: site)
     RuntimeRunCompleted { root: _, log: _ } => false
   }
 }
