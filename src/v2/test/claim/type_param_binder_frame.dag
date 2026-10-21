@@ -1,5 +1,6 @@
 module v2.test.claim.type_param_binder_frame
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.std.arrow_signature { declared_signature }
@@ -708,7 +709,7 @@ test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool {
 }
 
 fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
-  emit_semantic_type_decl(
+  emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),

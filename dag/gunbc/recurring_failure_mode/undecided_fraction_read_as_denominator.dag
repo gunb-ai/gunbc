@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.undecided_fraction_read_as_denominator
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data undecided_fraction_read_as_denominator: RecurringFailureMode = RecurringFailureMode {
   identity: "undecided_fraction_read_as_denominator" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a census with an unresolvable fraction of its population reports a denominator it does not have** (an occurrence census that emits a third disposition for `could not determine` is honest at the row grain and misleading at the total grain: rows scored `identity unavailable` are neither agreements nor divergences, so any ratio taken over the reported total silently treats them as decided.",

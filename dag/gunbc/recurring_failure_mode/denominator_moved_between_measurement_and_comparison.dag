@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data denominator_moved_between_measurement_and_comparison: RecurringFailureMode = RecurringFailureMode {
   identity: "denominator_moved_between_measurement_and_comparison" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**denominator moved between the measurement and the comparison** (an identity-grain join is only as stable as the POPULATION it joins against, and `refs/remotes/origin/main` is not stable: it is one ref shared by every worktree of a clone, and any concurrent session's fetch fast-forwards it under a lane that is mid-merge. So a check of the shape `merge, then join the result against origin/main` reads the ref TWICE AT TWO TIMES and reports the interval's inbound commits as rows the merge lost. Specimen (2026-09-03, gunbc#10197): merging `origin/main` at `b05994a8e39` into the rung-drop split, then joining `gunbc.recurring_failure_mode` rows by identity, reported three of main's rows silently dropped by a clean auto-merge with no conflict -- which would have been a severe finding about the single-line-row carrier the PR exists to repair, and it read as a confirmation of that PR's own thesis, which is what made it credible. It was false. `git reflog show origin/main` showed the ref had fast-forwarded 78 -> 79 -> 81 rows in the four minutes after the merge, twice by other sessions; the three rows had ARRIVED, not vanished. `git merge-tree --write-tree` against the CURRENT ref reproduced the complete 81 and a re-run of the identical merge in a scratch worktree produced 81 as well, which is what falsified it.",
