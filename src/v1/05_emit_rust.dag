@@ -16487,21 +16487,26 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               _ => acc
             }
           )
-          match find_struct_name_by_fields(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries) {
-            Present { value: resolved_sn } =>
-              let field_strs = fields |> map(f =>
-                let fname = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
-                let fval = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-                concat("    ", emit_ident(name: fname, target: Rust), ": ", fval, ",")
-              )
-              let body = field_strs |> join(separator: "\n")
-              let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
-              rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: resolved_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: struct_lit)
-            Absent =>
-              let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
-              if resolution_candidates |> count > 1 {
-                "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
-              } else {
+          // Lane G (P1.5 step 2, v1-interface-cull-audit@63a464ed): one candidate set drives
+          // zero/one/many; find_struct_name_by_fields returned Present exactly when this same
+          // helper returned a singleton, so the old search + re-search pair replays identically:
+          // 1 -> nominal struct literal, >1 -> refusal, 0 -> tuple pass-through.
+          let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
+          if resolution_candidates |> count == 1 {
+            match resolution_candidates |> first {
+              Present { value: cand } =>
+                let resolved_sn = cand.name
+                let field_strs = fields |> map(f =>
+                  let fname = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+                  let fval = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+                  concat("    ", emit_ident(name: fname, target: Rust), ": ", fval, ",")
+                )
+                let body = field_strs |> join(separator: "\n")
+                let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
+                rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: resolved_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: struct_lit)
+              // Unreachable by totality: a count==1 list always has a first element; the
+              // zero-candidate case is the else branch below, and many refuses above.
+              Absent =>
                 let vals = fields |> map(f =>
                   emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
                 )
