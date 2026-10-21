@@ -171,6 +171,7 @@ wc -c /tmp/analyze.py | sed 's/^/analyze_bytes=/'
 echo "=== RUNG 1: unkinded (no kinded-kv patch) -- baseline at main was 0 rows ==="
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_unk.out 2>/tmp/cen_unk.err
 echo "census_unk_rc=$?"
+tail -12 /tmp/cen_unk.err | fold -w 195 | sed "s/^/CENUERR /"; grep -ac "panic\|Panicked" /tmp/cen_unk.err | sed "s/^/CENU_PANIC_LINES=/"
 cat /tmp/cen_unk.out /tmp/cen_unk.err > /tmp/unk.txt
 python3 /tmp/analyze.py > /tmp/analysis_unk.txt 2>&1; echo "analyze_unk_rc=$?"
 grep -a "UNK_total\|UNK_cause\|GROUP" /tmp/analysis_unk.txt | head -14 | cut -c1-190
@@ -187,6 +188,7 @@ git apply /tmp/kv90.patch; echo "kv90_rc=$?"
 echo "matrix=OFF (corpus population must stay pure)"
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_k.out 2>/tmp/cen_k.err
 echo "census_kind_rc=$?"
+echo "--- cen_k.err tail (r15+ relay) ---"; tail -30 /tmp/cen_k.err | fold -w 195 | sed "s/^/CENKERR /"; echo "--- cen_k.out head ---"; head -8 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKOUT /"; grep -ac "panic\|Panicked" /tmp/cen_k.err | sed "s/^/CENK_PANIC_LINES=/"; grep -a "panic\|Panicked" /tmp/cen_k.err | head -6 | fold -w 300 | sed "s/^/CENKPANIC /"
 cat /tmp/cen_k.out /tmp/cen_k.err > /tmp/kin.txt
 python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
@@ -214,7 +216,9 @@ echo "=== WITNESS ROWS: the positive and the three negatives ==="
 for r in a_forwarded_parameter_declaring_the_slots_kind_is_admitted \
          a_forwarded_parameter_declaring_a_different_kind_must_refuse \
          a_forwarded_unkinded_parameter_must_refuse \
-         a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse; do
+         a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse \
+         a_forwarded_parameter_whose_kind_comes_by_import_is_admitted \
+         a_forwarded_parameter_naming_an_unimported_kind_must_refuse; do
   timeout 600 ./target/release/gunbc test "//test/claim/type_argument_kind_inhabitance_witness:$r" > /tmp/w_$r.out 2>/tmp/w_$r.err
   echo "WITNESS $r rc=$?"
   tail -3 /tmp/w_$r.out | fold -w 190 | sed 's/^/    /'
@@ -297,6 +301,7 @@ wc -c /tmp/analyze.py | sed 's/^/analyze_bytes=/'
 echo "=== RUNG 1: unkinded (no kinded-kv patch) -- baseline at main was 0 rows ==="
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_unk.out 2>/tmp/cen_unk.err
 echo "census_unk_rc=$?"
+tail -12 /tmp/cen_unk.err | fold -w 195 | sed "s/^/CENUERR /"; grep -ac "panic\|Panicked" /tmp/cen_unk.err | sed "s/^/CENU_PANIC_LINES=/"
 cat /tmp/cen_unk.out /tmp/cen_unk.err > /tmp/unk.txt
 python3 /tmp/analyze.py > /tmp/analysis_unk.txt 2>&1; echo "analyze_unk_rc=$?"
 grep -a "UNK_total\|UNK_cause\|GROUP" /tmp/analysis_unk.txt | head -14 | cut -c1-190
@@ -313,6 +318,7 @@ git apply /tmp/kv90.patch; echo "kv90_rc=$?"
 echo "matrix=OFF (corpus population must stay pure)"
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_k.out 2>/tmp/cen_k.err
 echo "census_kind_rc=$?"
+echo "--- cen_k.err tail (r15+ relay) ---"; tail -30 /tmp/cen_k.err | fold -w 195 | sed "s/^/CENKERR /"; echo "--- cen_k.out head ---"; head -8 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKOUT /"; grep -ac "panic\|Panicked" /tmp/cen_k.err | sed "s/^/CENK_PANIC_LINES=/"; grep -a "panic\|Panicked" /tmp/cen_k.err | head -6 | fold -w 300 | sed "s/^/CENKPANIC /"
 cat /tmp/cen_k.out /tmp/cen_k.err > /tmp/kin.txt
 python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
@@ -340,7 +346,9 @@ echo "=== WITNESS ROWS: the positive and the three negatives ==="
 for r in a_forwarded_parameter_declaring_the_slots_kind_is_admitted \
          a_forwarded_parameter_declaring_a_different_kind_must_refuse \
          a_forwarded_unkinded_parameter_must_refuse \
-         a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse; do
+         a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse \
+         a_forwarded_parameter_whose_kind_comes_by_import_is_admitted \
+         a_forwarded_parameter_naming_an_unimported_kind_must_refuse; do
   timeout 600 ./target/release/gunbc test "//test/claim/type_argument_kind_inhabitance_witness:$r" > /tmp/w_$r.out 2>/tmp/w_$r.err
   echo "WITNESS $r rc=$?"
   tail -3 /tmp/w_$r.out | fold -w 190 | sed 's/^/    /'
