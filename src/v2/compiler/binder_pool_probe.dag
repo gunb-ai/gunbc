@@ -1,0 +1,132 @@
+module v2.compiler.binder_pool_probe
+
+import std.types { List }
+import v2.std.node { Symbol }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.reference_conservation {
+  authored_atom_population,
+  dag_declared_token_classes,
+  occurrence_identity_index,
+  reference_conservation_subject_of_read
+}
+import v2.compiler.reference_conservation_admission { conservation_read_of }
+import v2.compiler.reference_conservation_census {
+  SampleRuleApplied,
+  SampleRuleRevisionUnreadable,
+  reference_conservation_sample_by_rule_at
+}
+import v2.compiler.occurrence_role {
+  OccurrenceRolesRead,
+  OccurrenceRoleTableRefused,
+  dag_name_table_admission,
+  occurrence_role_index,
+  occurrence_roles_of_admitted
+}
+import std.occurrence_identity {
+  CallableOccurrence,
+  ConstructorOccurrence,
+  DeclarationRole,
+  FieldOccurrence,
+  LexicalValueOccurrence,
+  TypeOccurrence
+}
+import std.optional { Absent, Present }
+import std.integer { int_to_decimal_string }
+import std.algebra { fold_list, empty_map, map_lookup }
+import std.process { exit_failure, ExitSuccess, ProcessExit }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.text { String }
+
+// SCRATCH MEASUREMENT PROBE, NOT FOR LANDING. For each module, the declaration-role atoms whose
+// occurrence the normalized tree does NOT carry (so conservation matches them through the
+// per-declaration spelling pool), grouped by OccurrenceCategory. Category is a PROXY for binder kind:
+// Lexical mixes fn and lambda parameters with let and use-site entries.
+type ProbeCounts {
+  lexical: Int
+  field: Int
+  type_decl: Int
+  callable: Int
+  other: Int
+  keyed: Int
+  header: Int
+}
+
+fn probe_zero() -> ProbeCounts {
+  ProbeCounts { lexical: 0, field: 0, type_decl: 0, callable: 0, other: 0, keyed: 0, header: 0 }
+}
+
+fn probe_line(path: String, c: ProbeCounts) -> String {
+  "probe " + path + " lexical=" + int_to_decimal_string(value: c.lexical) + " field=" + int_to_decimal_string(value: c.field) + " type=" + int_to_decimal_string(value: c.type_decl) + " callable=" + int_to_decimal_string(value: c.callable) + " other=" + int_to_decimal_string(value: c.other) + " keyed_decl=" + int_to_decimal_string(value: c.keyed) + "\n"
+}
+
+fn probe_for_text(path: String, text: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "probe-grammar-unprepared " + path + "\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let subject = reference_conservation_subject_of_read(
+        read: conservation_read_of(path: path, text: text),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        prepared: prepared
+      )
+      match subject.parsed {
+        Rejected { diagnostics: _ } => "probe-parse-refused " + path + "\n"
+        Accepted { value: artifact, diagnostics: _ } =>
+          match subject.normalized {
+            Rejected { diagnostics: _ } => "probe-normalize-refused " + path + "\n"
+            Accepted { value: tree, diagnostics: _ } =>
+              match occurrence_roles_of_admitted(tree: artifact.tree, admission: dag_name_table_admission()) {
+                OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => "probe-role-table-refused " + path + "\n"
+                OccurrenceRolesRead { roles: r } =>
+                  let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
+                  let role_index = occurrence_role_index(roles: r)
+                  let population = authored_atom_population(artifact: artifact, token_classes: dag_declared_token_classes())
+                  probe_line(
+                    path: path,
+                    c: fold_list(xs: population.atoms, empty: probe_zero(), cons: fn(acc, atom) {
+                      if atom.item < 0 {
+                        acc
+                      } else {
+                        match map_lookup(m: role_index, key: atom.occurrence) {
+                          Absent => acc
+                          Present { value: ar } =>
+                            match ar.role {
+                              DeclarationRole =>
+                                match map_lookup(m: index, key: atom.occurrence) {
+                                  Present { value: _ } => ProbeCounts { lexical: acc.lexical, field: acc.field, type_decl: acc.type_decl, callable: acc.callable, other: acc.other, keyed: acc.keyed + 1, header: acc.header }
+                                  Absent =>
+                                    match ar.category {
+                                      LexicalValueOccurrence => ProbeCounts { lexical: acc.lexical + 1, field: acc.field, type_decl: acc.type_decl, callable: acc.callable, other: acc.other, keyed: acc.keyed, header: acc.header }
+                                      FieldOccurrence => ProbeCounts { lexical: acc.lexical, field: acc.field + 1, type_decl: acc.type_decl, callable: acc.callable, other: acc.other, keyed: acc.keyed, header: acc.header }
+                                      TypeOccurrence => ProbeCounts { lexical: acc.lexical, field: acc.field, type_decl: acc.type_decl + 1, callable: acc.callable, other: acc.other, keyed: acc.keyed, header: acc.header }
+                                      CallableOccurrence => ProbeCounts { lexical: acc.lexical, field: acc.field, type_decl: acc.type_decl, callable: acc.callable + 1, other: acc.other, keyed: acc.keyed, header: acc.header }
+                                      _ => ProbeCounts { lexical: acc.lexical, field: acc.field, type_decl: acc.type_decl, callable: acc.callable, other: acc.other + 1, keyed: acc.keyed, header: acc.header }
+                                    }
+                                }
+                              _ => acc
+                            }
+                        }
+                      }
+                    })
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn probe_for_path(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { probe_for_text(path: path, text: read.content) } else { "probe-unreadable " + path + "\n" }
+}
+
+// The sample is drawn by the sampling rule at the checked-out revision, so it is the current tree's.
+fn binder_pool_probe_exit() -> ProcessExit {
+  match reference_conservation_sample_by_rule_at(ref: "HEAD") {
+    SampleRuleRevisionUnreadable { ref: r } => exit_failure(reason: "revision " + r + " unreadable")
+    SampleRuleApplied { selected: paths } =>
+      exit_failure(reason: fold_list(xs: paths, empty: "", cons: fn(acc, p) { acc + probe_for_path(path: p) }))
+  }
+}
