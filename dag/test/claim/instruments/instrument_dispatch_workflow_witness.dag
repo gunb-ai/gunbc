@@ -1,7 +1,7 @@
 module test.claim.instruments.instrument_dispatch_workflow_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { length }
+import std.algebra { length, string_contains }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import gunbc.design_ruling { design_rulings }
 import gunbc.rung_drop.standing { standing_rung_drops }
@@ -204,8 +204,13 @@ test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds()
 // runner labels (gunbc.ci.ci_runner_placement puts both on self-hosted linux arm64), so an unbounded
 // instrument fan-out sits on the same pool as the required lane. THESE ROWS HOLD ONLY THE LOWER EDGE:
 // one measurement cannot run twice against itself, and two different labels on one ref must not collapse
-// into one group. The UPPER edge -- how many instrument runs may occupy that pool at once -- is not held
-// by any row here and is declared lost at gunbc.rung_drop instrument_dispatch_upper_edge_unmeasured.
+// into one group. The UPPER edge question was settled by the operator, not left open: a concurrency
+// group never isolated jobs from each other, so no upper edge worth having was lost. The wall between
+// jobs on that pool is the SLOT -- gunbc.runner.runner_slot_desired + gunbc.host.memory_envelope -- and
+// the operator ruling saying so is carried in gunbc.design_ruling
+// instrument_measurement_queues_run_in_parallel.provenance; the fleet gap that IS real (live unit shape
+// vs declared slot shape) is gunbc.recurring_failure_mode
+// the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.
 
 // THE RENDERED GROUP IS THE JOIN OF THE DECLARED PARTS, AND CARRIES BOTH EXPRESSIONS. The witness
 // pins the parts rather than one opaque literal, so a consumer can ask which half changed.
@@ -281,16 +286,34 @@ test fn the_memory_guard_observes_and_prints_the_swap_bound_holds() -> Bool {
   contains(t, "/memory.swap.max'") && contains(t, "memory.swap.max=")
 }
 
-// THE RELAXATION AND ITS COST ARE BOTH CARRIED IN ROWS, NOT IN PROSE. The per-dispatch key is an
-// operator ruling (gunbc.design_ruling instrument_measurement_queues_run_in_parallel), and the upper
-// edge the old global group imposed on the shared self-hosted pool is a standing rung drop
-// (gunbc.rung_drop instrument_dispatch_upper_edge_unmeasured, MechanicallyPreventable ->
-// OutsideTheLadder, DeletedWithoutReplacement). This row refuses if either is deleted or softened -- the
-// alternative was a comment claiming a "ship gate" that does not exist, which is the fabricated
-// instrument §5 refuses. The rows, unlike the comment, can be checked.
+// THE RELAXATION IS CARRIED IN A ROW, NOT IN PROSE. The per-dispatch key is an operator ruling
+// (gunbc.design_ruling instrument_measurement_queues_run_in_parallel), whose provenance carries the
+// operator's isolation ruling verbatim: the global group never isolated jobs, so no upper edge on
+// concurrent instrument occupancy was lost and none is owed -- the SLOT is the isolation authority
+// (gunbc.runner.runner_slot_desired + gunbc.host.memory_envelope). This row refuses if the ruling is
+// deleted or softened, which is what keeps the relaxation auditable rather than narrated in the
+// instrument's own comment. There is deliberately NO assertion here that a rung drop exists for an
+// "upper edge": the operator rejected that premise on 2026-10-21, and a row asserting the old drop
+// would pin a claim the tree no longer makes. The fleet failure that IS real -- the live unit memory
+// shape drifting from the declared slot shape -- is asserted in its own ledger class,
+// gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.
 test fn the_relaxation_is_authorized_by_a_row_and_its_cost_is_declared_holds() -> Bool {
   let ruling_id = decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_measurement_queues_run_in_parallel")
-  let drop_identities = map(standing_rung_drops(), d => d.identity)
-  (length(xs: filter(design_rulings(), r => declaration_ref_eq(a: r.reference, b: ruling_id))) == 1)
-    && (length(xs: filter(drop_identities, i => i == "instrument_dispatch_upper_edge_unmeasured")) == 1)
+  let ruling_rows = filter(design_rulings(), r => declaration_ref_eq(a: r.reference, b: ruling_id))
+  (length(xs: ruling_rows) == 1)
+    // The provenance must carry the isolation authority BY SYMBOL, not merely gesture at it: a ruling
+    // that authorized the relaxation while hiding what actually protects the pool would leave this
+    // PR's central claim in prose. Checked by token, not by equality against a copy of the text -- a
+    // copy would still pass if the wording drifted, and the tokens are what a reader follows.
+    && (length(xs: filter(ruling_rows, r => string_contains(s: r.provenance, pattern: "gunbc.runner.runner_slot_desired"))) == 1)
+    && (length(xs: filter(ruling_rows, r => string_contains(s: r.provenance, pattern: "gunbc.host.memory_envelope"))) == 1)
+}
+
+// THE DROPPED DROP STAYS DROPPED. If a rung drop for an instrument-dispatch "upper edge" ever comes
+// back, it re-pins the premise the operator rejected (that the global group provided a guarantee),
+// so it must be a deliberate, argued re-filing -- not a paste. This row refuses silently while the
+// tree is clean and refuses LOUDLY the moment such a drop is restored.
+test fn no_upper_edge_rung_drop_is_restored_holds() -> Bool {
+  let identities = map(standing_rung_drops(), d => d.identity)
+  length(xs: filter(identities, i => i == "instrument_dispatch_upper_edge_unmeasured")) == 0
 }

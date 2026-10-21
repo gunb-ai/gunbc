@@ -111,12 +111,14 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // still dispatching from a pre-fix ref, because the old group no longer contains those runs together.
 // It dissolves when no pre-fix ref dispatches, which follows from the default branch carrying this form
 // and from stale refs ageing out. The relaxation is therefore bounded in TIME and in the number of
-// stale refs, not permanent. WHAT IS NOT HELD, DECLARED: the old global group also capped how many
-// instrument runs could occupy the shared self-hosted pool at once, and keying per dispatch removes
-// that upper edge; nothing in this model measures the required lane's wait during a parallel window,
-// so no gate here protects it. The loss is carried as the standing rung drop
-// gunbc.rung_drop instrument_dispatch_upper_edge_unmeasured, and the relaxation itself as the ruling
-// row gunbc.design_ruling instrument_measurement_queues_run_in_parallel.
+// stale refs, not permanent. WHAT THE OLD GROUP NEVER DID, AND SO LOSING IT COSTS NOTHING: it did not
+// isolate one run from another. Isolation on the shared self-hosted pool is the SLOT's job --
+// gunbc.runner.runner_slot_desired declares the per-slot shape and gunbc.host.memory_envelope enforces
+// it (memory.high throttles early, memory.max refuses late, MemorySwapMax 0 refuses an overrun instead
+// of paging it) -- which is the operator's ruling on this change, recorded verbatim in the provenance
+// of gunbc.design_ruling instrument_measurement_queues_run_in_parallel. No row here claims to bound how
+// many instrument runs occupy the pool at once, and none is owed: the guarantee that protects the
+// required lane is the cgroup, and the guard step above reads exactly that.
 
 // THE DISPATCH KEY. The label input name is defined here, ABOVE the group expression that reads it,
 // so this file keeps its existing property of containing no forward reference.
