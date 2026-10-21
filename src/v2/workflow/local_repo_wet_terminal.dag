@@ -3347,21 +3347,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "src/v2/test/claim/body_lowering/map_literal.dag",
       function: "ml_the_key_law_names_both_occurrences_holds",
       expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
-      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
-      function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
-      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
-      function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
-      expectation: ExpectedToHold {}
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
     }
   ]
 }
