@@ -91,10 +91,10 @@ fn acd_assemble(src: String) -> Optional<ResolvedTree> {
   }
 }
 
-data acd_branch_source: String = "module acd\n\nimport std.types { Bool }\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
-data acd_use_source: String = "module acd\n\nimport std.types { Bool }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c {\n    let x = a + 1\n    x * 2\n  } else {\n    0\n  }\n}\n"
+data acd_branch_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
+data acd_use_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c {\n    let x = a + 1\n    x * 2\n  } else {\n    0\n  }\n}\n"
 data acd_match_source: String = "module acd\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, a: Int) -> Int {\n  match s {\n    Dark => a + 1\n    Light => a + 2\n  }\n}\n"
-data acd_nested_source: String = "module acd\n\nimport std.types { Bool }\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, c: Bool, a: Int) -> Int {\n  match s {\n    Dark => if c { a + 1 } else { a + 2 }\n    Light => a + 3\n  }\n}\n"
+data acd_nested_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, c: Bool, a: Int) -> Int {\n  match s {\n    Dark => if c { a + 1 } else { a + 2 }\n    Light => a + 3\n  }\n}\n"
 
 // ---- claim-side judgements -------------------------------------------------------------------------
 
