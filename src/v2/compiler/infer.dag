@@ -2751,7 +2751,7 @@ fn infer_match_bool(
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
+    match match_slot_target(n: node, slot: MatchScrutineeSlot) {
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
         match list_at_optional(xs: positional_targets, index: 1) {
@@ -3381,7 +3381,7 @@ fn infer_match_coproduct(
   if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
+    match match_slot_target(n: node, slot: MatchScrutineeSlot) {
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
         match list_tail(xs: positional_targets) {
@@ -6066,7 +6066,7 @@ fn infer_unsolved_constructor_type_variable_diagnostic(node: Node) -> Diagnostic
 // (`let x = Absent`): the variable is minted at the use and stays unbound. An unbound variable is the
 // counted frontier, never an admission -- the let is refused at its value.
 fn infer_unannotated_let_unsolved_refusal(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
-  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+  match bind_slot_target(n: node, slot: BindValueSlot) {
     Absent => outcome_accepted(entries)
     Present { value: bound } =>
       match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
@@ -6098,7 +6098,7 @@ fn infer_bind_annotation_check(node: Node, entries: Map<Node, List<InferredFacts
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(entries)
     Present { value: annotation } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+      match bind_slot_target(n: node, slot: BindValueSlot) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
           infer_judge_declared_position_closing(
@@ -8917,7 +8917,7 @@ fn infer_match_arm_field_binder(acc: InferMatchArmBinders, rows: List<InferBinde
 fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
   match bind.kind {
     ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2) {
+      match bind_slot_target(n: bind, slot: BindBodySlot) {
         Present { value: body } => infer_loop_takes_collection_member(loop_node: body)
         Absent => false
       }
@@ -9104,7 +9104,7 @@ fn infer_fold_bind_check(node: Node, entries: Map<Node, List<InferredFacts>>, re
       match infer_settled_type_at(target: init, entries: entries) {
         Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_carrier_type_not_derived, at: init) } }
         Present { value: carrier } =>
-          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 2) {
+          match bind_slot_target(n: node, slot: BindBodySlot) {
             Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_member_formal_unread, at: node) } }
             Present { value: loop_node } =>
               match fold_loop_step(loop_node: loop_node) {

@@ -779,14 +779,6 @@ type MatchSlot
   = MatchScrutineeSlot
   | MatchArmSlot
 
-fn match_positional_slot(ordinal: Int) -> MatchSlot {
-  if ordinal == 0 {
-    MatchScrutineeSlot
-  } else {
-    MatchArmSlot
-  }
-}
-
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
