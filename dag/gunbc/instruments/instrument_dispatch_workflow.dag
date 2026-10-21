@@ -33,7 +33,7 @@ import gunbc.instrument_targets {
   type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets, namespace_wave_binding_diff_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
-import gunbc.instruments.namespace_wave_binding_diff { shard_dir }
+import gunbc.instruments.namespace_wave_binding_diff { shard_dir, binding_diff_base_ref }
 import gunbc.instruments.namespace_wave_binding_shard { indices_below }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
@@ -733,23 +733,37 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // job ends, carrying only the run-scoped token, which expires with the run. A failure at any
     // point here refuses BEFORE the instrument runs (bash -e on the heredoc): fail-closed -- the
     // transport never lets the instrument guess at a missing base.
+    // The base a wave is diffed against is the READER's policy fact, not the transport's: it is read
+    // from namespace_wave_binding_diff.binding_diff_base_ref() (which delegates to the census base
+    // ref). Normally 'origin/main'; a simulation head may set it to an arbitrary commit. GitHub's
+    // compare API names branches/sha by their own spelling, so a leading 'origin/' is trimmed here --
+    // a transport-side spelling of the reader's fact, never a second authority (the reader still
+    // judges every receipt against its OWN computation; a disagreement can only refuse, never admit).
+    // EXTERNAL FACT (fleet, chain at 538faf3a45c): the slot checkout is fetch-depth 1, so NEITHER end
+    // of the merge base has parentage; the reader's own `git merge-base` needs ancestors on BOTH
+    // sides. ensure_objects therefore fetches the base by exact sha WITH ancestry (depth 50) and
+    // deepens the HEAD side once, always -- both cheap (~100 commits), turning 'unreached' refusals
+    // into observations. Comments live outside the emitted list: bare lines inside it leak verbatim.
     "import base64 as _b64\n",
     "SERVER = os.environ['GITHUB_SERVER_URL']\n",
+    "BASE_REF = '", binding_diff_base_ref(), "'.replace('origin/', '')\n",
     "def auth_header():\n",
     "    return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()\n",
     "def ensure_objects(rev):\n",
     "    subprocess.run(['git', 'config', '--global', '--replace-all', 'http.' + SERVER + '/.extraHeader', auth_header()], check=True)\n",
+    "    subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=50', 'origin', rev], check=False)\n",
+    "    subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)\n",
     "    shallow = os.path.exists(os.path.join('.git', 'shallow'))\n",
     "    for _round in range(8):\n",
     "        probe = subprocess.run(['git', 'cat-file', '-t', rev], capture_output=True, text=True)\n",
     "        if probe.returncode == 0 and probe.stdout.strip() == 'commit':\n",
     "            return\n",
-    "        subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', 'main:refs/remotes/origin/main'], check=True)\n",
+    "        subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', BASE_REF + ':refs/remotes/origin/' + BASE_REF], check=True)\n",
     "        if shallow:\n",
     "            subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)\n",
     "    raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')\n",
     "def merge_base():\n",
-    "    return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']\n",
+    "    return api('/repos/' + REPO + '/compare/' + BASE_REF + '...' + HEAD)['merge_base_commit']['sha']\n",
     // A head shard belongs to one head, so shard candidates are restricted to THIS head; a base is
     // a fact of (main revision, instrument revision) reused by every wave run (ruling 2026-10-20:
     // select the base artifact by the main revision in its file name, newest among those), so base
@@ -820,6 +834,20 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "            if not chunk:\n",
     "                break\n",
     "            f.write(chunk)\n",
+    // SINGLE LOCATION, TYPED DUPLICATE REFUSAL (ruling 2026-10-21, after fleet merge run
+    // 39555924538): every receipt is staged flat at the dest root, and ONLY the file the artifact is
+    // authoritative for (its must_glob) is copied -- a shard artifact's zip also carries the base the
+    // transport staged into the reader's dir before export, and copying the whole tree dropped that
+    // copy under dest/shards/, producing the same basename twice (root + nested) so the import batch
+    // cp refused ('will not overwrite just-created') and reddened the step. Overwriting a duplicate
+    // silently would let a later writer mask an earlier one; instead, a same-named pair whose bytes
+    // differ refuses the transport with a typed cause BEFORE the instrument runs. Same bytes = the
+    // same fact re-staged, accepted.
+    "def place(dest, src):\n",
+    "    dst = os.path.join(dest, os.path.basename(src))\n",
+    "    if os.path.exists(dst) and open(dst, 'rb').read() != open(src, 'rb').read():\n",
+    "        raise SystemExit('wave-transport: transport_duplicate_receipt_bytes_differ: ' + os.path.basename(src) + ' staged twice with different bytes -- refusing before the instrument runs')\n",
+    "    shutil.copy2(src, dst)\n",
     "def fetch(wid, dest, want_name, must_glob):\n",
     "    for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:\n",
     "        if a.get('name') != want_name or a.get('expired'):\n",
@@ -837,12 +865,8 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "        if not hits:\n",
     "            shutil.rmtree(tmp)\n",
     "            return False\n",
-    "        for root, dirs, files in os.walk(tmp):\n",
-    "            for name in files:\n",
-    "                sub = os.path.relpath(root, tmp)\n",
-    "                dst_dir = dest if sub == '.' else os.path.join(dest, sub)\n",
-    "                os.makedirs(dst_dir, exist_ok=True)\n",
-    "                shutil.copy2(os.path.join(root, name), os.path.join(dst_dir, name))\n",
+    "        for hit in hits:\n",
+    "            place(dest, hit)\n",
     "        shutil.rmtree(tmp)\n",
     "        return True\n",
     "    return False\n",
@@ -861,7 +885,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "        clear(PROBE)\n",
     "        if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):\n",
     "            for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):\n",
-    "                shutil.copy2(hit, os.path.join(STAGING, os.path.basename(hit)))\n",
+    "                place(STAGING, hit)\n",
     "            break\n",
     "    clear(PROBE)\n",
     "PYEOF\n",
