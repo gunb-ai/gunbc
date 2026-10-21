@@ -886,7 +886,10 @@ mod tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn the_real_crossing_refuses_hermetically_and_acquires_through_the_pool() {
         let pool = super::super::build_module_path_index_from_witness_roots();
-        let sources = emit_check_sources("module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n", &pool);
+        let probe = "module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n";
+        let sources = emit_check_sources(probe, &pool);
+        // The crossed value is the `s` argument of `take(t: s)`: the refusal is owed at its span.
+        let crossed = probe.find("take(t: s)").expect("probe call") + "take(t: ".len();
         assert!(
             !sources
                 .iter()
@@ -901,11 +904,17 @@ mod tests {
                 })
                 .map(|d| match d.diagnostic.as_ref() {
                     CompilerDiagnostic::GeneratedProviderUnavailable {
-                        cause, declaration, ..
+                        cause,
+                        declaration,
+                        span,
                     } => {
                         format!(
-                            "GeneratedProviderUnavailable/{cause:?}/{}.{}",
-                            declaration.module_path, declaration.decl_name
+                            "GeneratedProviderUnavailable/{cause:?}/{}.{}/{}:{}..{}",
+                            declaration.module_path,
+                            declaration.decl_name,
+                            span.file,
+                            span.start,
+                            span.end
                         )
                     }
                     other => format!("{other:?}"),
@@ -922,10 +931,16 @@ mod tests {
             },
         )
         .expect("hermetic compile runs");
-        // The typed refusal names the route. The uncrossed value also trips the text wall and the
-        // inhabitance check at the same argument; whether the final refusal should suppress those
-        // consequences is an open review question, so this asserts the refusal, not their absence.
-        let refusal = "GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold".to_string();
+        // The typed refusal names the route and is located at the crossed value's authored span.
+        // The uncrossed value also trips the text wall and the inhabitance check at the same
+        // argument; by ruling (a) those consequences stay (no span-based suppression), and the
+        // acquiring arm below shows acquisition eliminates them.
+        let refusal = format!(
+            "GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold/{}:{}..{}",
+            super::super::emit_host::FIXTURE_SOURCE_PATH,
+            crossed,
+            crossed + 1
+        );
         assert_eq!(
             classes(&hermetic)
                 .iter()
