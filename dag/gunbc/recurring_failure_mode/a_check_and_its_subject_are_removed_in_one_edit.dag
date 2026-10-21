@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_check_and_its_subject_are_removed_in_one_edit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_check_and_its_subject_are_removed_in_one_edit: RecurringFailureMode = RecurringFailureMode {
   identity: "a_check_and_its_subject_are_removed_in_one_edit" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a check and the thing it checked are removed in ONE edit, so nothing remains to object** (INVALID STATE: a change removes a field, a declaration or an arm, and the SAME change removes the assertion that read it -- because the assertion no longer compiles without it. No artifact survives that is false, and no execution survives that can be inspected. The removal PRESENTS as the removal of the subject, which is what appears in the diff and what the change is described as; the wall that read the subject leaves with it and appears nowhere as a loss. HARM: a population that was guarded becomes unguarded, and every downstream reading of the change is correct -- the fact is still carried, the type still compiles, the witness still passes -- because the only thing that would have complained went with the subject. A conjunction cannot object to its own deletion.",

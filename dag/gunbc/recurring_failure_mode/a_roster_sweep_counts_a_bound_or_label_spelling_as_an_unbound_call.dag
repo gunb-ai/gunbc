@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_roster_sweep_counts_a_bound_or_label_spell
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call: RecurringFailureMode = RecurringFailureMode {
   identity: "a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: v2.workflow.roster_import_sweep emits an import for a row's home in a module where the row's spelling occurs only as a LEXICALLY BOUND reference (a fn parameter) or as an ARGUMENT LABEL, never as a free call to the ambient name. The generated import binds a name the module does not use and sits beside a same-spelled parameter, a shadowing a later resolve may refuse or, worse, silently prefer.",

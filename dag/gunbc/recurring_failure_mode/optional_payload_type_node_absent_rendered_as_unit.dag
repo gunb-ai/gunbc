@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.optional_payload_type_node_absent_rendered_as_unit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data optional_payload_type_node_absent_rendered_as_unit: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_payload_type_node_absent_rendered_as_unit" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an Optional carrier whose payload type node is absent on the declared children was rendered with a fabricated `()` payload** (INVALID STATE: `Optional<List<Optional<Int>>>` emitted as `Option<Rc<Vec<Option<()>>>>` because render_rust_optional_carrier_inner took `Absent => \"()\"`; the element payload was erased to Unit).",

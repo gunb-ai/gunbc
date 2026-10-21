@@ -31,20 +31,36 @@ import gunbc.artifact_acquisition {
 // ensure_parent has made the directory); an ancestor that exists but cannot be listed refuses.
 type UrlFileEntry = UrlFileEntryAbsent | UrlFileEntryListed | UrlFileEntryUnreadable { reason: NonEmptyStr }
 
+// THE ANCESTOR WALK IS A TAIL CALL. `first_cause` is Absent while the requested path itself is being
+// read, and then carries that path's indeterminacy up, so whatever an ancestor establishes, a
+// refusal names the path that was asked about.
 fn url_file_entry(path: String) -> UrlFileEntry {
+  url_file_entry_from(path: path, first_cause: Absent)
+}
+
+fn url_file_refusal(first_cause: NonEmptyStr?, own: String) -> UrlFileEntry {
+  match first_cause {
+    Absent => UrlFileEntryUnreadable { reason: own as NonEmptyStr }
+    Present { value: c } => UrlFileEntryUnreadable { reason: c }
+  }
+}
+
+fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry {
   let parent = path_parent_directory(path: path)
   match listed_entry_presence(directory: parent, name: path_basename(path: path)) {
     FilesystemEntryAbsent(_) => UrlFileEntryAbsent
-    FilesystemEntryListed { directory: _, name: _ } => UrlFileEntryListed
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+    FilesystemEntryListed { directory: _, name: _ } => match first_cause {
+      Absent => UrlFileEntryListed
+      Present { value: c } => UrlFileEntryUnreadable { reason: c }
+    }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => url_file_refusal(first_cause: first_cause, own: c)
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       if parent == "/" || parent == "." || parent == path {
-        UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+        url_file_refusal(first_cause: first_cause, own: c)
       } else {
-        match url_file_entry(path: parent) {
-          UrlFileEntryAbsent => UrlFileEntryAbsent
-          UrlFileEntryListed => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
-          UrlFileEntryUnreadable { reason: _ } => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+        match first_cause {
+          Absent => url_file_entry_from(path: parent, first_cause: Present { value: c as NonEmptyStr })
+          Present { value: f } => url_file_entry_from(path: parent, first_cause: Present { value: f })
         }
       }
   }

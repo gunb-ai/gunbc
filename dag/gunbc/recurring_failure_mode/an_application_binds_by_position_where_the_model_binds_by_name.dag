@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data an_application_binds_by_position_where_the_model_binds_by_name: RecurringFailureMode = RecurringFailureMode {
   identity: "an_application_binds_by_position_where_the_model_binds_by_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "TWO ROUTES ANSWER ONE QUESTION -- which argument feeds which parameter -- and they disagree about whether the children's SEQUENCE is part of the answer. The class is not a lowering bug: it is a fork of the binding AUTHORITY, and the model has already decided the question on the carrier that owns it, so the defect is that one route does not read what the model says.",
