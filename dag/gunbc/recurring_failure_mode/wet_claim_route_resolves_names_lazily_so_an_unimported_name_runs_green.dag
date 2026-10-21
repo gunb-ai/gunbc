@@ -2,10 +2,16 @@ module gunbc.recurring_failure_mode.wet_claim_route_resolves_names_lazily_so_an_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data wet_claim_route_resolves_names_lazily_so_an_unimported_name_runs_green: RecurringFailureMode = RecurringFailureMode {
   identity: "wet_claim_route_resolves_names_lazily_so_an_unimported_name_runs_green" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (green with unresolved names), still mitigated by the
+  // per-head entry-compile discipline only; the ceiling restates the row's own CEILING/NEXT-RUNG lines.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the wet lane demands module-scope name resolution before evaluating claims -- the capability is the route's own resolver entry, the one the compile route already uses -- SUFFICIENT FOR an unimported name to red the wet job rather than ride through it." } },
 
   receipts: [
     "INVALID STATE: a claim body that references a name the module has not imported -- a function, a type -- is EVALUATED and REPORTS HELD by the wet claim route, where the same module compiled as an entry point refuses with name-not-found. HARM: a witness that is supposed to prove something about a named dependency can be holding while never resolving that name, so the green tally is an artifact of the route and not of the claim. CAUSE: the wet route resolves names lazily, at use, and a name whose use is never reached (or whose evaluation short-circuits before it) is never demanded; nothing in the route asks 'does this module's name environment contain every free name it mentions' before executing.",
