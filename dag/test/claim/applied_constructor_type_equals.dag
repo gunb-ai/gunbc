@@ -21,3 +21,14 @@ test fn same_applied_box_int_is_accepted() -> Bool {
 test fn list_int_equals_freemonoid_int() -> Bool {
   blocking_count(source: "module locate.listalias\nimport std.types { List }\nimport std.algebra { FreeMonoid }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: FreeMonoid<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
 }
+
+// AN APPLICATION AGAINST THE SAME SPELLING WITH DIFFERENT ARGUMENTS REFUSES (parent
+// ruling msg_d6381674; the class PRED-C measured CLOSED by arm 2). Box<Int> and Box<Bool>
+// share one declaration, so head identity cannot separate them -- the descent must compare
+// the applied arguments. On main and on the #14056 leaf/binder head both were ACCEPTED
+// (census count 0, a silent wrong-type accept); at the PR-2 head the applied-children
+// descent refuses it. The positive above (Box<Int> vs Box<Int>) keeps the refusal from
+// collapsing into over-rejection of one head.
+test fn box_int_against_box_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.boxneq\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
