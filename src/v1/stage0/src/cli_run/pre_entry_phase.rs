@@ -210,10 +210,17 @@ fn drain_rows() -> Vec<PhaseRow> {
 // would be skipped by `_exit` and the receipt would silently vanish exactly when a compile fails
 // to write its tree.
 //
-// Boundary this measures: argv decode (before the transaction), output materialization,
-// diagnostic rendering, teardown. It does NOT reach code before `main` (the runtime's own
-// startup) -- that residue shows up in `process_unattributed` as time no row explains, which is
-// where a hidden phase is supposed to surface.
+// The boundary this timer spans is MAIN ENTRY TO PRE-EXIT SAMPLING (named in the emitted rows as
+// `boundary=main_entry_to_pre_exit_sampling`): from `record_invocation_start`, main's first act,
+// to the sample taken at the print site on the return path. Within it sit argv decode, the
+// transactions, output materialization, diagnostic rendering, and whatever drops run before the
+// print. UNOBSERVED -- not in any row, NOT counted in `process_unattributed`: (a) code before
+// `main` (the runtime's own startup), which happens before the start instant, and (b) exit-time
+// cleanup, which happens after the sample (and whose Rust destructors `std::process::exit` /
+// `libc::_exit` do not run at all). Time in (a) or (b) is invisible to this instrument, not
+// attributed somewhere: a reader must not read `process_unattributed` as "everything outside the
+// transactions for the whole process", because it is only everything outside the transactions
+// BETWEEN the two sampling instants.
 
 /// Process-lifetime receipts staged for the CLI return path. Process-global, not thread-local:
 /// the compile transaction and the printing site are the same thread in the CLI, but a host that
@@ -241,8 +248,8 @@ fn invocation_elapsed() -> Option<Duration> {
 /// Print the compile transaction's receipt: the drained phase rows with attribution, the
 /// transaction total, and the transaction's own unattributed time, and stage the invocation
 /// total for the process rows. One call site: `cli_run::compile_emission_over` (the wrapper),
-/// which passes the instant the transaction began so rows a PREDECESSOR recorded before it are
-/// excluded from the netting. Staging on EVERY disposition is what lets
+/// which passes the instant the transaction began so rows a PREDECESSOR recorded before it never
+/// count toward the root cover. Staging on EVERY disposition is what lets
 /// `invocation_receipt_lines` tell "a verb that never compiled" (print nothing) apart from
 /// "a compile that failed" (print everything the rows explain).
 /// The time the transaction's rows can PROVABLY account for, and the non-nettable raw total.
@@ -355,16 +362,22 @@ fn invocation_receipt_lines(
     let scale = scale.wire();
     let transactions_total_ms: u128 = transactions.iter().map(|(_, ms)| ms).sum();
     vec![
+        // `boundary=` names exactly what the timer spans (side-chat guard on the first wording,
+        // which implied whole-process coverage): main entry to the sample taken here. Pre-main
+        // startup and exit-time cleanup are OUTSIDE both instants -- unobserved, not counted in
+        // process_unattributed (see THE OUTER BOUNDARY above).
         format!(
-            "[pre-entry] phase=process_invocation_total ms={} scale={scale} attribution=inclusive transactions={}",
+            "[pre-entry] phase=process_invocation_total ms={} scale={scale} attribution=inclusive transactions={} boundary=main_entry_to_pre_exit_sampling",
             elapsed.as_millis(),
             transactions.len()
         ),
-        // Unattributed OUTSIDE every transaction: argv decode, output materialization, diagnostic
-        // rendering, teardown. This is the §5a-A figure; it is visible precisely so that a hidden
-        // cost cannot be read as `wall_ms`'s rounding error.
+        // Unattributed BETWEEN THE TWO SAMPLING INSTANTS: argv decode, output materialization,
+        // diagnostic rendering, drops before the print. Pre-main startup and exit-time cleanup
+        // are unobserved, NOT part of this figure (the `boundary=` on the total row says which).
+        // This is the §5a-A figure; it is visible precisely so that a hidden cost cannot be read
+        // as `wall_ms`'s rounding error.
         format!(
-            "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=floor",
+            "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=floor boundary=main_entry_to_pre_exit_sampling",
             elapsed
                 .as_millis()
                 .saturating_sub(transactions_total_ms)
@@ -465,9 +478,11 @@ mod tests {
         assert!(lines.is_empty(), "{lines:?}");
     }
 
-    /// The §5a-A row: the invocation total MINUS the transaction totals is what no row explains.
-    /// A hidden phase outside the transaction (output materialization, diagnostic rendering,
-    /// teardown) can only surface through this subtraction, so the arithmetic is the instrument.
+    /// The §5a-A row: the invocation total MINUS the transaction totals is what no row explains
+    /// BETWEEN the two sampling instants. A hidden phase in that window (output materialization,
+    /// diagnostic rendering, drops before the print) can only surface through this subtraction,
+    /// so the arithmetic is the instrument. Pre-main startup and exit-time cleanup sit outside
+    /// both instants and are unobserved — never folded into this figure.
     #[test]
     fn process_rows_subtract_transaction_totals_from_the_invocation() {
         let lines = invocation_receipt_lines(
@@ -481,6 +496,19 @@ mod tests {
                 && lines[0].contains("transactions=2"),
             "{}",
             lines[0]
+        );
+        // The emitted label names the timer's ACTUAL span (side-chat guard): a reader cannot
+        // mistake these rows for whole-process coverage. Pre-main startup and exit-time cleanup
+        // are outside both sampling instants -- unobserved, not counted in the figure below.
+        assert!(
+            lines[0].contains("boundary=main_entry_to_pre_exit_sampling"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("boundary=main_entry_to_pre_exit_sampling"),
+            "{}",
+            lines[1]
         );
         assert!(
             lines[1].contains("phase=process_unattributed ms=30"),
