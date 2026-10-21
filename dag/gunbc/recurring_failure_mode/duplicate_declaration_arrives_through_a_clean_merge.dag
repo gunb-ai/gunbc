@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.duplicate_declaration_arrives_through_a_clean_merge
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data duplicate_declaration_arrives_through_a_clean_merge: RecurringFailureMode = RecurringFailureMode {
   identity: "duplicate_declaration_arrives_through_a_clean_merge" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a branch appends a declaration to an append-only carrier that its OWN MERGE BASE already carries, and the three-way text merge reports nothing, because both sides are INSERTIONS AT DIFFERENT OFFSETS and text merge is offset-based rather than identity-based.** INVALID STATE: one module declares one name twice, each copy byte-identical to the other, arriving through a merge that never saw a conflict.",

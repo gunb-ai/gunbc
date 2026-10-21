@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data citation_verified_against_a_rendering_that_destroyed_its_scope: RecurringFailureMode = RecurringFailureMode {
   identity: "citation_verified_against_a_rendering_that_destroyed_its_scope" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A CITATION CHECKED AGAINST A RENDERING OF ITS SOURCE IS CHECKED AGAINST AN ARTEFACT THAT NO LONGER CARRIES WHAT MAKES THE CITATION TRUE OR FALSE.** A verbatim quotation is not only a string; it is a string WITH A SCOPE -- the element that authored it and the heading that governs it. Rendering to text preserves the string and destroys both. So a reader working from the rendering can confirm the wording perfectly and still be wrong about whose fact it is, and the confirmation feels like exactly the verification that was asked for.",

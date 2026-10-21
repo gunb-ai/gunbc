@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.review_summary_inverts_roles_and_affirms_the_join
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data review_summary_inverts_roles_and_affirms_the_join: RecurringFailureMode = RecurringFailureMode {
   identity: "review_summary_inverts_roles_and_affirms_the_join" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a review summary that inverts real roles and then affirms the join** (a review names files that all exist, assigns each the wrong role, and closes by asserting the one property it was uniquely positioned to test.",
