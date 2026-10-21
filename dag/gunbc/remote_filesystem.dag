@@ -1,0 +1,229 @@
+module gunbc.remote_filesystem
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { trim, join, count, to_string }
+import std.host_text { chars }
+import std.optional { Absent, Present }
+import std.filesystem { path_parent_directory }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils {
+  cat_command, ls_almost_all_one_per_line_command, ls_long_directory_command, rm_force_command, rm_recursive_force_command,
+  mktemp_directory_command, dd_overwrite_path_command, ln_hard_command,
+}
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_remote_file_write { typed_remote_file_step, TypedRemoteFileStepRan, TypedRemoteFileStepArgvRefused, TypedRemoteFileStepLegRefused }
+import gunbc.filesystem_interface {
+  FilesystemInterface, FilesystemReadAnswer, FilesystemListAnswer, FilesystemDeleteAnswer,
+  FilesystemCreateNewAnswer, FilesystemWriteOwnerOnlyAnswer,
+}
+
+// THE FILESYSTEM INTERFACE OF gunbc.filesystem_interface, REALIZED ON A REMOTE HOST over the typed-argv
+// route the host converge already uses (gunbc.typed_remote_file_write typed_remote_file_step, which ends
+// in ssh.Session.ExecPortableWords / ExecPortableWordsWithStdin). It is one realization of the interface
+// the CAS store is written over, not a second copy of the store: the compare-and-set logic is not
+// repeated here.
+//
+// WHAT EACH FIELD GIVES, STATED SO A GREEN OVER IT IS NOT OVER-READ.
+//   read / list    cat / ls -1 -A. A failed leg is classified by a SECOND leg, `ls -ld`, never by reading
+//                  stderr text: the entry answering absent is `not_found`; one that exists but did not
+//                  read is `other`, which is broader than the local realization's permission_denied.
+//                  The two legs are not one atomic observation (the entry may move between them); the
+//                  store's own re-observation after a failed create is what bounds that.
+//   delete         rm -f. A missing entry is a SUCCESS here and a not_found failure locally; the store
+//                  deletes only names it just listed, and a later listing is what establishes the result.
+//   create-exclusive  The bytes are staged in a directory `mktemp -d` created exclusively beside the
+//                  destination, given the declared mode, and then PUBLISHED WITH `ln` (a hard link).
+//                  link(2) creates the destination name atomically and fails with EEXIST when it is
+//                  taken, so exactly one concurrent creator wins and a loser never overwrites; this is
+//                  the create-exclusive atomicity the store assumes, obtained without a shell (`set -C`
+//                  would need one). The staging directory is then removed. A host or filesystem that
+//                  cannot hard-link answers `ln` with a failure whose destination does NOT exist: that
+//                  is `other`, a typed refusal, and never an `already_exists` that would read as
+//                  contention.
+//   RESIDUE        A cancelled or killed leg between mktemp and the removal leaves a
+//                  `.gunbc-cas-stage.*` directory beside the slot. It is not a generation name, so the
+//                  store's listings ignore it; it is not reclaimed here (declared residual).
+// A leg the route refuses (non-portable argv, no credential) is a failed operation with kind `other`
+// and the route's own cause: nothing is attempted and nothing is invented.
+type RemoteLeg
+  = RemoteLegRan { exit_ok: Bool, stdout: String, stderr: String }
+  | RemoteLegRefused { cause: String }
+
+fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, words: List<String>, stdin_payload: String) -> RemoteLeg {
+  match typed_remote_file_step(target: target, context: context, raws: words, stdin_payload: stdin_payload) {
+    TypedRemoteFileStepArgvRefused => RemoteLegRefused { cause: "remote argv refused as non-portable under the far-side shell re-parse allowlist" }
+    TypedRemoteFileStepLegRefused { cause: why } => RemoteLegRefused { cause: why as String }
+    TypedRemoteFileStepRan { result: r } => RemoteLegRan { exit_ok: r.success, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+data remote_kind_not_found: String = "not_found"
+data remote_kind_already_exists: String = "already_exists"
+data remote_kind_other: String = "other"
+
+fn remote_entry_exists(target: SshTarget, context: FleetSshExecutionContext, path: String) -> Bool? {
+  match remote_leg(target: target, context: context, words: argv_words(command: ls_long_directory_command(path: path)), stdin_payload: "") {
+    RemoteLegRefused { cause: _ } => none
+    RemoteLegRan { exit_ok: ok, stdout: _, stderr: _ } => Present { value: ok }
+  }
+}
+
+fn remote_failure_kind(target: SshTarget, context: FleetSshExecutionContext, path: String) -> String {
+  match remote_entry_exists(target: target, context: context, path: path) {
+    Present { value: false } => remote_kind_not_found
+    Present { value: true } => remote_kind_other
+    Absent => remote_kind_other
+  }
+}
+
+fn remote_read(target: SshTarget, context: FleetSshExecutionContext, path: String) -> FilesystemReadAnswer {
+  match remote_leg(target: target, context: context, words: argv_words(command: cat_command(path: path)), stdin_payload: "") {
+    RemoteLegRefused { cause: c } => FilesystemReadAnswer { content: "", success: false, error: c, error_kind: remote_kind_other }
+    RemoteLegRan { exit_ok: true, stdout: o, stderr: _ } => FilesystemReadAnswer { content: o, success: true, error: "", error_kind: "" }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } =>
+      FilesystemReadAnswer { content: "", success: false, error: trim(s: e), error_kind: remote_failure_kind(target: target, context: context, path: path) }
+  }
+}
+
+fn remote_list(target: SshTarget, context: FleetSshExecutionContext, path: String) -> FilesystemListAnswer {
+  match remote_leg(target: target, context: context, words: argv_words(command: ls_almost_all_one_per_line_command(path: path)), stdin_payload: "") {
+    RemoteLegRefused { cause: c } => FilesystemListAnswer { entries: "", success: false, error: c, error_kind: remote_kind_other }
+    RemoteLegRan { exit_ok: true, stdout: o, stderr: _ } => FilesystemListAnswer { entries: o, success: true, error: "", error_kind: "" }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } =>
+      FilesystemListAnswer { entries: "", success: false, error: trim(s: e), error_kind: remote_failure_kind(target: target, context: context, path: path) }
+  }
+}
+
+fn remote_delete(target: SshTarget, context: FleetSshExecutionContext, path: String) -> FilesystemDeleteAnswer {
+  match remote_leg(target: target, context: context, words: argv_words(command: rm_force_command(path: path)), stdin_payload: "") {
+    RemoteLegRefused { cause: c } => FilesystemDeleteAnswer { success: false, error: c, error_kind: remote_kind_other }
+    RemoteLegRan { exit_ok: true, stdout: _, stderr: _ } => FilesystemDeleteAnswer { success: true, error: "", error_kind: "" }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } => FilesystemDeleteAnswer { success: false, error: trim(s: e), error_kind: remote_kind_other }
+  }
+}
+
+// The four digits of a mode number, as chmod spells them.
+fn remote_mode_octal(bits: Int) -> NonEmptyStr {
+  join([to_string(bits / 512 % 8), to_string(bits / 64 % 8), to_string(bits / 8 % 8), to_string(bits % 8)], "") as NonEmptyStr
+}
+
+type RemoteCreateOutcome
+  = RemoteCreated { bytes_written: Int }
+  | RemoteCreateFailed { kind: String, error: String }
+
+// stage -> (mode) -> link -> remove staging. `mode` is absent for the default-access create.
+fn remote_create_exclusive(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  path: String,
+  content: String,
+  mode: Int?,
+) -> RemoteCreateOutcome {
+  let template = join([path_parent_directory(path: path), "/.gunbc-cas-stage.XXXXXX"], "") as NonEmptyStr
+  match remote_leg(target: target, context: context, words: argv_words(command: mktemp_directory_command(template: template)), stdin_payload: "") {
+    RemoteLegRefused { cause: c } => RemoteCreateFailed { kind: remote_kind_other, error: c }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } => RemoteCreateFailed { kind: remote_kind_other, error: trim(s: e) }
+    RemoteLegRan { exit_ok: true, stdout: o, stderr: _ } => {
+      let stage_dir = trim(s: o)
+      let staged = join([stage_dir, "/payload"], "")
+      let result = remote_stage_and_link(target: target, context: context, staged: staged, path: path, content: content, mode: mode)
+      remote_remove_staging(target: target, context: context, stage_dir: stage_dir, result: result)
+    }
+  }
+}
+
+// The staging directory is removed whether or not the link won. A removal that fails after a published
+// create does not unpublish it: the create stands and the leftover directory is the declared residue.
+// A removal that fails after a FAILED create is reported with the create's own failure, never hidden.
+fn remote_remove_staging(target: SshTarget, context: FleetSshExecutionContext, stage_dir: String, result: RemoteCreateOutcome) -> RemoteCreateOutcome {
+  match remote_leg(target: target, context: context, words: argv_words(command: rm_recursive_force_command(path: stage_dir)), stdin_payload: "") {
+    RemoteLegRan { exit_ok: true, stdout: _, stderr: _ } => result
+    RemoteLegRefused { cause: c } => remote_staging_left(result: result, why: c)
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } => remote_staging_left(result: result, why: trim(s: e))
+  }
+}
+
+fn remote_staging_left(result: RemoteCreateOutcome, why: String) -> RemoteCreateOutcome {
+  match result {
+    RemoteCreated { bytes_written: _ } => result
+    RemoteCreateFailed { kind: k, error: e } => RemoteCreateFailed { kind: k, error: join([e, "; staging directory left in place: ", why], "") }
+  }
+}
+
+fn remote_stage_and_link(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  staged: String,
+  path: String,
+  content: String,
+  mode: Int?,
+) -> RemoteCreateOutcome {
+  match remote_leg(target: target, context: context, words: argv_words(command: dd_overwrite_path_command(path: staged)), stdin_payload: content) {
+    RemoteLegRefused { cause: c } => RemoteCreateFailed { kind: remote_kind_other, error: c }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } => RemoteCreateFailed { kind: remote_kind_other, error: trim(s: e) }
+    RemoteLegRan { exit_ok: true, stdout: _, stderr: _ } =>
+      match remote_apply_mode(target: target, context: context, staged: staged, mode: mode) {
+        Present { value: failed } => failed
+        Absent => remote_link_into_place(target: target, context: context, staged: staged, path: path, content: content)
+      }
+  }
+}
+
+fn remote_apply_mode(target: SshTarget, context: FleetSshExecutionContext, staged: String, mode: Int?) -> RemoteCreateOutcome? {
+  match mode {
+    Absent => none
+    Present { value: bits } =>
+      match remote_leg(
+        target: target, context: context,
+        words: argv_words(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: remote_mode_octal(bits: bits), path: staged)),
+        stdin_payload: "",
+      ) {
+        RemoteLegRefused { cause: c } => Present { value: RemoteCreateFailed { kind: remote_kind_other, error: c } }
+        RemoteLegRan { exit_ok: false, stdout: _, stderr: e } => Present { value: RemoteCreateFailed { kind: remote_kind_other, error: trim(s: e) } }
+        RemoteLegRan { exit_ok: true, stdout: _, stderr: _ } => none
+      }
+  }
+}
+
+fn remote_link_into_place(target: SshTarget, context: FleetSshExecutionContext, staged: String, path: String, content: String) -> RemoteCreateOutcome {
+  match remote_leg(target: target, context: context, words: argv_words(command: ln_hard_command(source: staged, destination: path)), stdin_payload: "") {
+    RemoteLegRefused { cause: c } => RemoteCreateFailed { kind: remote_kind_other, error: c }
+    RemoteLegRan { exit_ok: true, stdout: _, stderr: _ } => RemoteCreated { bytes_written: remote_content_bytes(content: content) }
+    RemoteLegRan { exit_ok: false, stdout: _, stderr: e } =>
+      match remote_entry_exists(target: target, context: context, path: path) {
+        Present { value: true } => RemoteCreateFailed { kind: remote_kind_already_exists, error: trim(s: e) }
+        Present { value: false } => RemoteCreateFailed { kind: remote_kind_other, error: trim(s: e) }
+        Absent => RemoteCreateFailed { kind: remote_kind_other, error: trim(s: e) }
+      }
+  }
+}
+
+fn remote_content_bytes(content: String) -> Int { count(chars(content)) }
+
+fn remote_create_answer(path: String, outcome: RemoteCreateOutcome) -> FilesystemCreateNewAnswer {
+  match outcome {
+    RemoteCreated { bytes_written: n } => FilesystemCreateNewAnswer { success: true, bytes_written: n, path: path, error: "", error_kind: "" }
+    RemoteCreateFailed { kind: k, error: e } => FilesystemCreateNewAnswer { success: false, bytes_written: 0, path: path, error: e, error_kind: k }
+  }
+}
+
+fn remote_filesystem(target: SshTarget, context: FleetSshExecutionContext) -> FilesystemInterface {
+  FilesystemInterface {
+    read: fn(path) { remote_read(target: target, context: context, path: path) }
+    list: fn(path) { remote_list(target: target, context: context, path: path) }
+    delete: fn(path) { remote_delete(target: target, context: context, path: path) }
+    write_create_new: fn(path, content) {
+      remote_create_answer(path: path, outcome: remote_create_exclusive(target: target, context: context, path: path, content: content, mode: none))
+    }
+    write_create_new_with_mode: fn(path, content, mode) {
+      remote_create_answer(path: path, outcome: remote_create_exclusive(target: target, context: context, path: path, content: content, mode: Present { value: mode }))
+    }
+    write_owner_only: fn(path, content) {
+      match remote_create_exclusive(target: target, context: context, path: path, content: content, mode: Present { value: 384 }) {
+        RemoteCreated { bytes_written: n } => FilesystemWriteOwnerOnlyAnswer { success: true, bytes_written: n, path: path, error: "" }
+        RemoteCreateFailed { kind: _, error: e } => FilesystemWriteOwnerOnlyAnswer { success: false, bytes_written: 0, path: path, error: e }
+      }
+    }
+  }
+}
