@@ -2259,7 +2259,7 @@ fn sole_ctor_count(source: String) -> Int {
 // side, whose >= 1 needs a violation an import error cannot emit, and from the textual drift guard on
 // the shared header in the argument-spine test -- which is a substring check, NOT a resolution check: it
 // narrows how the header can drift silently and does not prove where the name resolves to (the frontier
-// firmware_network_boot_probe_resolution_frontier records that residual gap.
+// row firmware_network_boot_probe_resolution_frontier records that residual gap).
 // OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
