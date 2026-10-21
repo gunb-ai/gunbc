@@ -108,8 +108,17 @@ fn sample(calls: usize) -> Vec<String> {
             stage.assembly_graph / 1000,
             stage.assembly_symbol_index / 1000,
             match &census {
-                v1_compiler::cli_run::CompileDiagnosticCensus::Observed(rows) =>
-                    format!("Observed({} rows)", rows.len()),
+                v1_compiler::cli_run::CompileDiagnosticCensus::Observed(rows) => {
+                    // Byte-identity is judged on this digest across the fix: every row's Debug
+                    // rendering, hashed. The count alone could survive a per-row change.
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    rows.len().hash(&mut h);
+                    for row in rows {
+                        format!("{row:?}").hash(&mut h);
+                    }
+                    format!("Observed({} rows DIGEST={:016x})", rows.len(), h.finish())
+                }
                 v1_compiler::cli_run::CompileDiagnosticCensus::NotRunnable(cause) =>
                     format!("NotRunnable(len {})", cause.len()),
             }
