@@ -1,7 +1,9 @@
 module gunbc.recurring_failure_mode.census_rows_read_the_loaded_population
 
 import std.types { String, NonEmptyStr }
-import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // REGISTERED BY THE SHARD-CONTEXT DEFECT (Manager 1, 2026-10-21, msg_dfb4289f; strengthened by
 // clever-carp-254's fleet rows at run 39622052948 and sunny-bee-153's artifact read on branch
@@ -14,10 +16,22 @@ import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUn
 data census_rows_read_the_loaded_population: RecurringFailureMode = RecurringFailureMode {
   identity: "census_rows_read_the_loaded_population" as NonEmptyStr,
 
-  // The row states no rung for itself: the hermeticity half is fixed and executed; the open half
-  // (the per-round substrate re-read) names its next-rung trigger inside its receipts rather than
-  // as a position on the ladder. No rung number was read for this class, so none is claimed.
-  rung: RungUnread { cause: NoRungStated },
+  // The rung is READABLE for this class, so it is read (review 84236 / side chat RC, October 2026):
+  // a discriminating RED run by execution on the real files (the same module's ambient primitive
+  // rows flip partial->unbound when the substrate is absent from the population; three claims in
+  // v2.test.claim.census_scoped_acquisition fail if the union drops, duplicates or reorders), a
+  // positive repaired execution (both populations now print byte-identical std.fermi rows,
+  // aggregates 2254/48), and the same comparison enrolled as a regression control. CURRENT is
+  // Mitigatable, not higher: the RED and the enrolled control catch a recurrence when the fleet or
+  // the claim suite EXECUTES, and the claim suite CI-refuses regressions in the shared fold itself
+  // -- but a new scoped route could still bypass native_census_scoped_entries and nothing at build
+  // time refuses that yet, so the class is not mechanically prevented. CEILING is
+  // MechanicallyPreventable and the blocker is unbuilt work, not a grounding: hoisting the declared
+  // substrate to one ingest+resolve per run keyed by content identity -- the same hoist that ends
+  // the ~110-minute per-round re-read at the fleet's base profile -- makes re-entry impossible
+  // rather than CI-refused. Trigger capability: the substrate-hoisted shared baseline, executed
+  // check = the fleet log's substrate Filesystem.Read count (10 once vs 10 x 22 now).
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of ingesting and resolving the declared substrate once per census run, memoized by content identity, so no fold re-enters the filesystem layer per round and no scoped route can carry its own population read -- the fleet log's substrate Filesystem.Read count (10 once vs 10 x 22) is the executed check." } },
 
   receipts: [
     "THE FAILURE MODE: the resolver's ambient primitive-authority tier (v2.compiler.resolve resolve_atom_primitive_authority) binds an unimported spelling -- first, contains, map_get, starts_with, join, split, replace, string_length, fold, keys, values -- by looking up a contract row (std.primitives.<name>_contract) in the symbol index of the modules the run LOADED. While the scoped census loaded exactly the named subjects' closures, whether such a name bound was a fact about the invocation's subject list, not about the module: the same module, same binary, emitted binding_partial ... ambient:primitive_authority std.primitives.first_contract in one run and binding_unbound in another, because std.primitives rode the first run's closures and not the second's. A census consumer comparing base against shards then reads the difference as a behavior change of the module and refuses a merge that changed nothing -- which is exactly how this blocked //gunbc/instruments:namespace-wave-binding-diff's positive merge for #14324.",
