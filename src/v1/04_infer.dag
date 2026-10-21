@@ -16508,7 +16508,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
 }
 
 fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
-  let resolved = resolve_item_types(item: item, env: env, module_name: module_name, inherited_owner: none, inherited_binders: none)
+  let resolved = resolve_item_types(item: item, env: env, module_name: module_name, inherited_owner: none, inherited_binders: [])
   let ritem = resolved.item
   let is_func = ritem.params |> count > 0
   let is_zero_arg_func = ritem.params |> count == 0 && ritem.inferred != none && ritem.body != none
@@ -18070,7 +18070,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // is a no-op wherever a carrier is already present (see binder_marked_module_item).
   let marked_module_node = node_with_children_params_inferred(
     n: resolved.module,
-    children: map(module_items(n: resolved.module), item => binder_marked_module_item(item: item, module_name: authored_name_at(source_indices: source_indices, node: resolved.module), source_indices: source_indices, inherited_owner: none, inherited_binders: none)),
+    children: map(module_items(n: resolved.module), item => binder_marked_module_item(item: item, module_name: authored_name_at(source_indices: source_indices, node: resolved.module), source_indices: source_indices, inherited_owner: none, inherited_binders: [])),
     params: resolved.module.params,
     inferred: resolved.module.inferred
   )
