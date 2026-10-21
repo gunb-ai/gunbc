@@ -11,11 +11,11 @@ import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
-import gunbc.roadmap.spool_stall { SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
+import gunbc.roadmap.spool_stall { SpoolStallStep, SpoolStallMove, SpoolStallClaim, SpoolStallListRequests, spool_stall_step_text, spool_stall_step_of_text, SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
   belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
-  belt_exit_step, belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, BeltExitCleared, BeltExitClearFailed, BeltExitClearOutcome, belt_exit_stall_whoami,
+  belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, BeltExitCleared, BeltExitClearFailed, BeltExitClearOutcome, belt_exit_stall_whoami,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -439,9 +439,9 @@ test fn analyze_does_not_call_an_entry_foreign_when_the_principal_is_unread() ->
 test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadable() -> Bool {
   let root = fresh_spool(tag: "json")
   let cause = "mv exited 1:\nmv: \"x\" :: Permission denied"
-  let wrote = spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: [SpoolStallEntry { entry: worker_exit, step: "claim", cause: cause }])
+  let wrote = spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: [SpoolStallEntry { entry: worker_exit, step: SpoolStallClaim, cause: cause }])
   let round_trips = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
-    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == ["claim"]
+    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == [SpoolStallClaim]
     _ => false
   }
   let bad_root = fresh_spool(tag: "badjson")
@@ -456,7 +456,7 @@ test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadabl
 data clear_entry: String = "n+a+worker+inv+exit-code+exited+200"
 
 fn held_inbox() -> SpoolStallRead {
-  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitQueued), cause: "mv: Permission denied" }] }
+  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitQueued }, cause: "mv: Permission denied" }] }
 }
 
 fn target_refused(t: BeltExitClearTarget) -> Bool {
@@ -478,10 +478,9 @@ fn clear_done(o: BeltExitClearOutcome) -> Bool {
 test fn the_clear_target_is_only_an_entry_named_in_the_current_stall_record_with_its_move() -> Bool {
   let root = "/srv/inst"
   let located = match belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: clear_entry) {
-    BeltExitClearTargeted { move, from_path, to_path } =>
+    BeltExitClearTargeted { from_path, to_path } =>
       from_path == join([attempt_exit_inbox_dir(instance_root: root), "/", clear_entry], "")
         && to_path == join([attempt_exit_queued_dir(instance_root: root), "/", clear_entry], "")
-        && move.from == AttemptExitInbox && move.to == AttemptExitQueued
     BeltExitClearTargetRefused { reason: _ } => false
   }
   located
@@ -491,7 +490,7 @@ test fn the_clear_target_is_only_an_entry_named_in_the_current_stall_record_with
     && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: ""))
     && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallNone, entry: clear_entry))
     && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallUnreadable { reason: "corrupt" }, entry: clear_entry))
-    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: "somewhere else", cause: "x" }] }, entry: clear_entry))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallListRequests, cause: "x" }] }, entry: clear_entry))
 }
 
 test fn the_clear_admits_only_an_empty_plain_directory_the_drain_principal_does_not_own() -> Bool {
@@ -540,4 +539,16 @@ test fn the_real_clear_re_materializes_the_entry_in_queued_idempotently_and_refu
     && clear_done(o: rerun) && idempotent
     && clear_failed(o: linked)
     && any(report, l => string_contains(s: l, pattern: "belt_exit_stall_clear_cli") && string_contains(s: l, pattern: "entry="))
+}
+
+// THE STEP DECODES ONCE, AT READ: every spelling an earlier head wrote still decodes (the lab's live record wrote
+// "inbox -> queued"), each decodes to the typed step that renders back to it, and an unknown spelling is refused
+// rather than guessed. -- quick-bee-65
+test fn a_recorded_step_decodes_once_to_a_typed_step_and_an_unknown_spelling_is_refused() -> Bool {
+  let moved = match spool_stall_step_of_text(text: "inbox -> queued") { Present { value: SpoolStallMove { from, to } } => from == AttemptExitInbox && to == AttemptExitQueued _ => false }
+  let claim = match spool_stall_step_of_text(text: "claim") { Present { value: SpoolStallClaim } => true _ => false }
+  let listed = match spool_stall_step_of_text(text: "list-requests") { Present { value: SpoolStallListRequests } => true _ => false }
+  let renders = spool_stall_step_text(step: SpoolStallMove { from: AttemptExitRunning, to: AttemptExitQueued }) == "running -> queued"
+  let refused = match spool_stall_step_of_text(text: "inbox => queued") { Absent => true _ => false }
+  moved && claim && listed && renders && refused && match spool_stall_step_of_text(text: "somewhere else") { Absent => true _ => false }
 }

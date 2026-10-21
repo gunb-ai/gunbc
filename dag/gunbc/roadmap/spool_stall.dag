@@ -3,6 +3,7 @@ module gunbc.roadmap.spool_stall
 import std.types { String, Bool, Int, List, FilePath }
 import std.optional { Present, Absent }
 import extdeps.shell
+import gunbc.durable_handoff_host { HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused, host_spool_stage_wire }
 import extdeps.languages.json.emit { JsonValue, JsonArray, serialize_json, json_string, json_array, json_object, json_kv }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
@@ -29,10 +30,40 @@ import extdeps.filesystem.filesystem_io {
 // gunbc.roadmap.attempt_system_unit_launch attempt_unit_stall_verdict); the record's shape, its one JSON
 // encoding, its create-only write, its fail-closed read and its delete are this module's, parameterized by
 // the spool's paths (gunbc.host.host_layout owns the paths).
+// WHAT THE DRAIN WAS DOING WHEN THE ENTRY COULD NOT LEAVE, typed once for every spool (never a second entry type per
+// spool). A stage move names where the entry sits (`from`) and where it was bound (`to`); the attempt-unit spool's two
+// failures are not stage moves and name no location. Text exists only on disk and in printing: spool_stall_step_text
+// writes it, spool_stall_step_of_text is the one decode at read and refuses a spelling it does not know.
+type SpoolStallStep
+  = SpoolStallMove { from: HostSpoolStage, to: HostSpoolStage }
+  | SpoolStallListRequests
+  | SpoolStallClaim
+
 type SpoolStallEntry {
   entry: String
-  step: String
+  step: SpoolStallStep
   cause: String
+}
+
+fn spool_stall_step_text(step: SpoolStallStep) -> String {
+  match step {
+    SpoolStallMove { from, to } => join([host_spool_stage_wire(stage: from), " -> ", host_spool_stage_wire(stage: to)], "")
+    SpoolStallListRequests => "list-requests"
+    SpoolStallClaim => "claim"
+  }
+}
+
+data spool_stall_stages: List<HostSpoolStage> = [AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused]
+
+// The exact spellings written by every earlier head ("inbox -> queued", "list-requests", "claim") decode; anything else is None.
+fn spool_stall_step_of_text(text: String) -> SpoolStallStep? {
+  if text == "list-requests" {
+    Present { value: SpoolStallListRequests }
+  } else if text == "claim" {
+    Present { value: SpoolStallClaim }
+  } else {
+    (spool_stall_stages |> flat_map(f => spool_stall_stages |> map(t => SpoolStallMove { from: f, to: t })) |> filter(m => spool_stall_step_text(step: m) == text)).first()
+  }
 }
 
 data spool_stall_schema: String = "gunbc.spool_stall.v1"
@@ -44,7 +75,7 @@ data spool_stall_schema: String = "gunbc.spool_stall.v1"
 data spool_stall_schema_exit_spool_v1: String = "gunbc.belt_exit_stall.v1"
 
 fn spool_stall_entry_json(u: SpoolStallEntry) -> JsonValue {
-  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
+  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: spool_stall_step_text(step: u.step))), json_kv(key: "cause", value: json_string(s: u.cause))])
 }
 
 fn spool_stall_record_text(unmovable: List<SpoolStallEntry>) -> String {
@@ -86,10 +117,14 @@ fn spool_stall_entry_of_json(doc: JsonValue) -> SpoolStallEntry? {
     JsonStringMemberFound { value: entry } =>
       match json_required_string_member(doc: doc, key: "step") {
         JsonStringMemberRefused { reason: _ } => none
-        JsonStringMemberFound { value: step } =>
+        JsonStringMemberFound { value: text } =>
           match json_required_string_member(doc: doc, key: "cause") {
             JsonStringMemberRefused { reason: _ } => none
-            JsonStringMemberFound { value: cause } => Present { value: SpoolStallEntry { entry: entry, step: step, cause: cause } }
+            JsonStringMemberFound { value: cause } =>
+              match spool_stall_step_of_text(text: text) {
+                Absent => none
+                Present { value: step } => Present { value: SpoolStallEntry { entry: entry, step: step, cause: cause } }
+              }
           }
       }
   }
@@ -108,7 +143,7 @@ fn spool_stall_of_json(doc: JsonValue) -> SpoolStallRead {
           JsonMemberFound { value: JsonArray { elements } } => {
             let decoded: List<SpoolStallEntry?> = elements |> map(el => spool_stall_entry_of_json(doc: el))
             let entries: List<SpoolStallEntry> = decoded |> flat_map(d => match d { Present { value: u } => [u] Absent => [] as List<SpoolStallEntry> })
-            if count(entries) == count(decoded) { SpoolStallHeld { entries: entries } } else { SpoolStallUnreadable { reason: "a stall record entry lacks its entry, step or cause" } }
+            if count(entries) == count(decoded) { SpoolStallHeld { entries: entries } } else { SpoolStallUnreadable { reason: "a stall record entry lacks its entry or cause, or its step is not a spelling this reader knows" } }
           }
           _ => SpoolStallUnreadable { reason: "the stall record has no unmovable array" }
         }

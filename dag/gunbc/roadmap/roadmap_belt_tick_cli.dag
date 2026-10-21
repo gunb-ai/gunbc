@@ -18,7 +18,7 @@ import gunbc.live_deploy.desired {
   DesiredDeploymentRosterRefused,
 }
 import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_attempt_unit_drain_path_unit_name }
-import gunbc.roadmap.spool_stall { spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
+import gunbc.roadmap.spool_stall { spool_stall_step_text, spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
 import gunbc.host.host_layout { attempt_unit_spool_stall_record_path }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -544,7 +544,7 @@ fn belt_exit_stall_release_cli() -> ProcessExit {
           BeltExitStallNotHeld => rearm()
           BeltExitStallReleased { reclaimed: _ } => rearm()
           BeltExitStallStillUnmovable { entries } =>
-            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", e.step, ": ", e.cause, ")"], "")), "; ")], ""))
+            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", spool_stall_step_text(step: e.step), ": ", e.cause, ")"], "")), "; ")], ""))
           BeltExitStallReleaseRefused { reason } => exit_failure(reason: join(["belt_exit_stall_release_cli: ", reason], ""))
         }
       }

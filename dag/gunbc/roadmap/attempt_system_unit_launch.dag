@@ -59,7 +59,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
@@ -1006,9 +1006,9 @@ fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, handled: AttemptUnitHan
   }
 }
 
-fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: String, cause: String) -> AttemptUnitDrainPass {
+fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: SpoolStallStep, cause: String) -> AttemptUnitDrainPass {
   AttemptUnitDrainPass {
-    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))),
+    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))),
     retired: pass.retired,
     refused: pass.refused,
     unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
@@ -1019,12 +1019,12 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
   let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
-    AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: "list-requests", cause: reason)
+    AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: SpoolStallListRequests, cause: reason)
     AttemptSystemUnitRequestNames { names: entries } =>
       fold(entries, init: empty, f: (acc, entry) =>
         match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
           AttemptSystemUnitAlreadyClaimed { entry: _ } => acc
-          AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: "claim", cause: c)
+          AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: SpoolStallClaim, cause: c)
           AttemptSystemUnitClaimSymlink { entry: e } =>
             attempt_unit_pass_retired(
               pass: acc,

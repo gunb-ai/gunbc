@@ -769,7 +769,7 @@ import extdeps.gunbc
 import extdeps.shell
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import gunbc.roadmap.spool_stall {
-  SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
+  SpoolStallEntry, SpoolStallStep, SpoolStallMove, SpoolStallListRequests, SpoolStallClaim, spool_stall_step_text, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
   SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at,
   SpoolStallCleared, SpoolStallClearRefused, spool_stall_clear_at,
 }
@@ -15599,7 +15599,7 @@ type BeltExitDrainEntry
   = BeltExitEntryHanded { entry: String, enqueue: BeltObligationEnqueue }
   | BeltExitEntryClaimed { entry: String }
   | BeltExitEntryRefused { entry: String, reason: String }
-  | BeltExitEntryUnmovable { entry: String, step: String, cause: String }
+  | BeltExitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
 type BeltExitDrain
   = BeltExitDrained { entries: List<BeltExitDrainEntry>, launch: BeltObligationEnqueue? }
@@ -15636,7 +15636,7 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
     AttemptExitEntryMalformed { entry_name: _, reason } =>
       match move(root, entry, AttemptExitInbox, AttemptExitRefused) {
         Absent => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record: ", reason], "") }
-        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitRefused), cause: why }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitRefused }, cause: why }
       }
     AttemptExitEntryDecoded { record: _ } => belt_exit_entry_claim_at(root: root, entry: entry, move: move)
     AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => belt_exit_entry_claim_at(root: root, entry: entry, move: move)
@@ -15647,7 +15647,7 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
 fn belt_exit_entry_claim_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrainEntry {
   match move(root, entry, AttemptExitInbox, AttemptExitQueued) {
     Absent => BeltExitEntryClaimed { entry: entry }
-    Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitQueued), cause: why }
+    Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitQueued }, cause: why }
   }
 }
 
@@ -15688,7 +15688,7 @@ fn belt_exit_running_entry_reconcile_at(root: String, entry: String, unit: Attem
 fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitRunning, AttemptExitQueued) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitRunning, to: AttemptExitQueued), cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitRunning, to: AttemptExitQueued }, cause: why }]
   }
 }
 
@@ -15721,7 +15721,7 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
 fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitInbox, AttemptExitDone) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitDone), cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitDone }, cause: why }]
   }
 }
 
@@ -15768,7 +15768,7 @@ fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {
     BeltExitEntryHanded { entry, enqueue } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "handed", value: belt_obligation_enqueue_json(e: enqueue))])
     BeltExitEntryClaimed { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "claimed", value: json_string(s: "queued"))])
     BeltExitEntryRefused { entry, reason } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "refused", value: json_string(s: reason))])
-    BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: step)), json_kv(key: "cause", value: json_string(s: cause))]))])
+    BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: spool_stall_step_text(step: step))), json_kv(key: "cause", value: json_string(s: cause))]))])
   }
 }
 
@@ -15792,7 +15792,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
       concat(
         entries |> flat_map(e => match e {
           BeltExitEntryRefused { entry, reason } => [join([entry, ": ", reason], "")]
-          BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", step, " (stays on disk): ", cause], "")]
+          BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays on disk): ", cause], "")]
           BeltExitEntryClaimed { entry: _ } => [] as List<String>
           BeltExitEntryHanded { entry: _, enqueue: _ } => [] as List<String>
         }),
@@ -15916,42 +15916,8 @@ fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExi
   }
 }
 
-// WHERE A RECORDED ENTRY LIVES, ONE SPELLING: the stage its failing step names, then the entry. The stat reading
+// WHERE A RECORDED ENTRY LIVES: the stage its failing move starts from (the entry sits in `from`). The stat reading
 // and the clear's admission both take their path from here, so what is observed is exactly what is cleared.
-// The stage is recovered from the record's `step` by EXACT match against the one spelling (belt_exit_step) the
-// drain's four move sites write, never by matching text: a step that is none of them names no location, and
-// nothing is observed or cleared for it. The source stage of the move is the stage the entry sits in.
-fn belt_exit_stage_word(stage: HostSpoolStage) -> String {
-  match stage {
-    AttemptExitInbox => "inbox"
-    AttemptExitQueued => "queued"
-    AttemptExitRunning => "running"
-    AttemptExitDone => "done"
-    AttemptExitRefused => "refused"
-  }
-}
-
-fn belt_exit_step(from: HostSpoolStage, to: HostSpoolStage) -> String {
-  join([belt_exit_stage_word(stage: from), " -> ", belt_exit_stage_word(stage: to)], "")
-}
-
-type BeltExitMove { from: HostSpoolStage, to: HostSpoolStage }
-
-data belt_exit_moves: List<BeltExitMove> = [
-  BeltExitMove { from: AttemptExitInbox, to: AttemptExitRefused },
-  BeltExitMove { from: AttemptExitInbox, to: AttemptExitQueued },
-  BeltExitMove { from: AttemptExitRunning, to: AttemptExitQueued },
-  BeltExitMove { from: AttemptExitInbox, to: AttemptExitDone },
-]
-
-fn belt_exit_stall_move_of_step(step: String) -> BeltExitMove? {
-  (belt_exit_moves |> filter(m => belt_exit_step(from: m.from, to: m.to) == step)).first()
-}
-
-fn belt_exit_stall_stage_of_step(step: String) -> HostSpoolStage? {
-  (belt_exit_moves |> filter(m => belt_exit_step(from: m.from, to: m.to) == step) |> map(m => m.from)).first()
-}
-
 fn belt_exit_stall_entry_path(root: String, stage: HostSpoolStage, entry: String) -> String {
   join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", entry], "")
 }
@@ -16025,10 +15991,11 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
     SpoolStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
     SpoolStallHeld { entries } =>
       entries |> map(e => {
-        let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
-        match belt_exit_stall_stage_of_step(step: e.step) {
-          Absent => join([head, "owner unknown (the step names no spool stage)"], "")
-          Present { value: stage } => {
+        let head = join([e.entry, ": ", spool_stall_step_text(step: e.step), " failed (", e.cause, "); "], "")
+        match e.step {
+          SpoolStallListRequests => join([head, "owner unknown (the step is not a spool stage move)"], "")
+          SpoolStallClaim => join([head, "owner unknown (the step is not a spool stage move)"], "")
+          SpoolStallMove { from: stage, to: _ } => {
             let stat = belt_exit_stall_entry_stat_at(root: root, stage: stage, entry: e.entry)
             let shown = match stat { BeltExitStallObserved { value: v } => join(["stat type|owner|mode: ", v, "; "], "") BeltExitStallUnobserved { reason: _ } => "" }
             match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {
@@ -16056,7 +16023,7 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
 // without -L, so a symlink is refused), foreign-owned by belt_exit_stall_ownership_of (the reading analyze reports),
 // and empty.
 type BeltExitClearTarget
-  = BeltExitClearTargeted { move: BeltExitMove, from_path: String, to_path: String }
+  = BeltExitClearTargeted { from_path: String, to_path: String }
   | BeltExitClearTargetRefused { reason: String }
 
 fn belt_exit_entry_name_is_plain(entry: String) -> Bool {
@@ -16074,9 +16041,10 @@ fn belt_exit_stall_clear_target(root: String, held: SpoolStallRead, entry: Strin
         match entries |> filter(e => e.entry == entry) |> first() {
           Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, " is not named in the current stall record"], "") }
           Present { value: recorded } =>
-            match belt_exit_stall_move_of_step(step: recorded.step) {
-              Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step names no spool move"], "") }
-              Present { value: move } => BeltExitClearTargeted { move: move, from_path: belt_exit_stall_entry_path(root: root, stage: move.from, entry: entry), to_path: belt_exit_stall_entry_path(root: root, stage: move.to, entry: entry) }
+            match recorded.step {
+              SpoolStallMove { from, to } => BeltExitClearTargeted { from_path: belt_exit_stall_entry_path(root: root, stage: from, entry: entry), to_path: belt_exit_stall_entry_path(root: root, stage: to, entry: entry) }
+              SpoolStallListRequests => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step is not a spool stage move"], "") }
+              SpoolStallClaim => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step is not a spool stage move"], "") }
             }
         }
       }
@@ -16122,7 +16090,7 @@ fn belt_exit_clear_run(program: String, args: List<String>) -> String? {
 fn belt_exit_stall_clear_at(root: String, entry: String, whoami: BeltExitStallObservation) -> BeltExitClearOutcome {
   match belt_exit_stall_clear_target(root: root, held: spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)), entry: entry) {
     BeltExitClearTargetRefused { reason } => BeltExitClearFailed { reason: reason }
-    BeltExitClearTargeted { move: _, from_path, to_path } =>
+    BeltExitClearTargeted { from_path, to_path } =>
       match belt_exit_stall_clear_admission(stat: belt_exit_stall_path_stat_at(path: from_path), whoami: whoami, contents: belt_exit_stall_contents_at(path: from_path)) {
         BeltExitClearRefused { reason } => BeltExitClearFailed { reason: reason }
         BeltExitClearAdmitted => {
