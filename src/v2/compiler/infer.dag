@@ -2423,7 +2423,8 @@ fn infer_match_bool_arm_rows_accept(
   first_arm_target: Node,
   second_arm_target: Node,
   cd: Diagnostics,
-  scrutinee_type: Node
+  scrutinee_type: Node,
+  resolved: ResolvedTree
 ) -> Outcome<InferredFacts> {
   match infer_match_bool_arm_row(
     arm: first_arm_target,
@@ -2446,9 +2447,10 @@ fn infer_match_bool_arm_rows_accept(
             right: second_row.coverage
           ) {
             InferBoolLiteralExhaustive =>
-              if !infer_branch_type_atoms_equal(a: first_body, b: second_body) {
-                outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
-              } else {
+              match infer_join_arm_types(first: first_body, second: second_body, resolved: resolved) {
+                ArmTypesNoneDeclare => outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: node))
+                ArmTypesConflict => outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+                ArmTypesJoined { joined: joined_body } => {
                 match infer_descent_witness_for_node(n: node) {
                   Violates { diagnostic: d } =>
                     Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -2456,7 +2458,7 @@ fn infer_match_bool_arm_rows_accept(
                     bind_outcome(
                       o: inferred_facts_from_derived_type(
                         node: node,
-                        derived_type: first_body,
+                        derived_type: joined_body,
                         descent: Holds { value: descent_proof }
                       ),
                       f: fn(facts) {
@@ -2470,6 +2472,7 @@ fn infer_match_bool_arm_rows_accept(
                       }
                     )
                 }
+              }
               }
             InferBoolLiteralMissingTrue =>
               outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
@@ -2839,7 +2842,8 @@ fn infer_match_bool(
                                   cd: cd,
                                   scrutinee_type: scrutinee_type
                                 ),
-                                scrutinee_type: scrutinee_type
+                                scrutinee_type: scrutinee_type,
+                                resolved: resolved
                               )
                             } else {
                               outcome_rejected(infer_match_scrutinee_not_bool_diagnostic(node: node))
@@ -3306,20 +3310,54 @@ fn infer_arm_body_type_read(row: InferCoproductArmRow, entries: Map<Node, List<I
 // arm whose type is still open (Absent, none, [], {..}) is closed against it, once, by the one closing
 // relation (infer_close_produced_at_declared); declaring arms are never touched.
 fn infer_arm_declaring_type(rows: List<InferCoproductArmRow>, entries: Map<Node, List<InferredFacts>>, instances: List<TypeVariableInstance>, resolved: ResolvedTree) -> Optional<Node> {
-  fold(rows, init: Absent, f: fn(acc, row) {
+  infer_declaring_among(types: fold(rows, init: Empty, f: fn(acc, row) {
+    match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
+      Absent => acc
+      Present { value: t } => list_snoc_item(xs: acc, item: t)
+    }
+  }))
+}
+
+// THE PARTITION BY TYPE STATE, over arm types: the first one that mentions no unsolved constructor-use variable declares.
+fn infer_declaring_among(types: List<Node>) -> Optional<Node> {
+  fold(types, init: Absent, f: fn(acc, t) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
-          Absent => Absent
-          Present { value: t } =>
-            match infer_produced_open_type_params(produced: t) {
-              Empty => Present { value: t }
-              Cons { head: _, tail: _ } => Absent
-            }
+        match infer_produced_open_type_params(produced: t) {
+          Empty => Present { value: t }
+          Cons { head: _, tail: _ } => Absent
         }
     }
   })
+}
+
+type InferArmTypesJoin
+  = ArmTypesJoined { joined: Node }
+  | ArmTypesNoneDeclare
+  | ArmTypesConflict
+
+// ONE ARM-PARTITION AND CLOSING JUDGMENT FOR TWO ARM TYPES (Bool matches; the coproduct match composes the same two steps,
+// infer_arm_declaring_type and infer_arm_type_closed_at). An open arm is closed once at the declaring arm's type, and the closed
+// types must then be equal ignoring provenance. Each form keeps its own coverage check and maps the verdict to its own diagnostic.
+fn infer_join_arm_types(first: Node, second: Node, resolved: ResolvedTree) -> InferArmTypesJoin {
+  let declaring = infer_declaring_among(types: [first, second])
+  let first_open = !is_empty(xs: infer_produced_open_type_params(produced: first))
+  let second_open = !is_empty(xs: infer_produced_open_type_params(produced: second))
+  match declaring {
+    Absent => if first_open || second_open { ArmTypesNoneDeclare } else { ArmTypesJoined { joined: first } }
+    Present { value: _ } =>
+      let a = infer_arm_type_closed_at(t: first, declaring: declaring, resolved: resolved)
+      let b = infer_arm_type_closed_at(t: second, declaring: declaring, resolved: resolved)
+      if infer_type_equal_ignoring_provenance(
+        a: infer_type_alias_normalized_at(t: a, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+        b: infer_type_alias_normalized_at(t: b, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
+      ) {
+        ArmTypesJoined { joined: a }
+      } else {
+        ArmTypesConflict
+      }
+  }
 }
 
 fn infer_arm_type_closed_at(t: Node, declaring: Optional<Node>, resolved: ResolvedTree) -> Node {

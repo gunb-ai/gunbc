@@ -212,3 +212,11 @@ fn rb_n5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool,
 test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { ers_has(o: rb_n5(), reason: ^infer_arm_join_deferred_to_declared_type) }
 fn rb_n6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Int? { if b { if c { Absent } else { Absent } } else { x } }\n") }
 test fn rb_n6_handed_up_arms_at_the_joined_layer_accept() -> Bool { ers_infer_accepted(o: rb_n6()) }
+
+// ONE ARM JOIN FOR if AND Bool match (infer_join_arm_types): an unannotated let over a Bool match settles as the if does.
+fn rb_m1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Present { value: 1 }\n    false => Absent\n  }\n  x\n}\n") }
+fn rb_m2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Present { value: 1 }\n  }\n  x\n}\n") }
+fn rb_m3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Absent\n  }\n  x\n}\n") }
+test fn rb_m1_bool_match_present_then_absent_accepts() -> Bool { ers_infer_accepted(o: rb_m1()) }
+test fn rb_m2_bool_match_absent_then_present_accepts() -> Bool { ers_infer_accepted(o: rb_m2()) }
+test fn rb_m3_all_absent_bool_match_refuses_no_arm_declares() -> Bool { ers_has(o: rb_m3(), reason: ^infer_no_arm_declares_a_type) }
