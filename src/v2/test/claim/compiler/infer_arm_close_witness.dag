@@ -206,3 +206,9 @@ test fn rb_o_the_verdict_is_acceptance() -> Bool { rb_o_code(o: rb_o_PAA()) == 0
 // The hand-up refuses where no enclosing declaring arm exists, in either nesting position.
 fn rb_o_none() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Absent } }\n  x\n}\n") }
 test fn rb_o_no_declaring_arm_anywhere_refuses() -> Bool { rb_o_code(o: rb_o_none()) == 2 }
+
+// B1 THROUGH THE HAND-UP: arms handed up from an inner branch are closed by the enclosing join, so the deferral covers them too.
+fn rb_n5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Optional<Int?> { if b { if c { Absent } else { Absent } } else { x } }\n") }
+test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { ers_has(o: rb_n5(), reason: ^infer_arm_join_deferred_to_declared_type) }
+fn rb_n6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Int? { if b { if c { Absent } else { Absent } } else { x } }\n") }
+test fn rb_n6_handed_up_arms_at_the_joined_layer_accept() -> Bool { ers_infer_accepted(o: rb_n6()) }
