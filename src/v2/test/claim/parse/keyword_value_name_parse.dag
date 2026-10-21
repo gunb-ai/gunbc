@@ -406,11 +406,11 @@ test fn kvn_none_tail_match_bool_scrutinee_block_tail_control_holds() -> Bool {
   }
 }
 
-data kvn_tail_loop_condition_block_source: String = "module m.t\nfn f(b: Bool) -> Int? {\n  loop b { none }\n}\n"
+data kvn_tail_loop_block_tail_source: String = "module m.t\nfn f() -> Int? {\n  loop { none }\n}\n"
 
-// Control: a block whose tail is none after an identifier (loop_condition_block) parses; the pun guard fires only on a field-ending none.
-test fn kvn_none_tail_loop_condition_block_control_holds() -> Bool {
-  match g_tokenize_parse(text: kvn_tail_loop_condition_block_source, file: ^probe_kvn_tail_loop_condition_block) {
+// Control: a block whose tail is none after an identifier (loop { none }) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_loop_block_tail_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_loop_block_tail_source, file: ^probe_kvn_tail_loop_block_tail) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
