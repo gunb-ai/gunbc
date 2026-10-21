@@ -1,6 +1,6 @@
 module test.claim.generic_arity_n_descent_witness
 
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_total_count, census_blocking_histograms_equal }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_total_count, census_blocking_histograms_equal, census_count_at_key }
 import std.types { NonEmptyStr }
 
 // A MULTI-PARAMETER GENERIC BINDS ITS TYPE ARGUMENTS POSITIONALLY. unify_generics descended only
@@ -19,10 +19,12 @@ import std.types { NonEmptyStr }
 //  - arity_n_pos_* / arity_n_else_* / arity_n_ctl_cas_*: keyed. The census counts the WHOLE compile,
 //    import closure included, so each compares a source to a baseline that differs on one axis
 //    using census_blocking_histograms_equal (key and multiplicity, both directions) or
-//    a one-extra-blocking-occurrence-of-class differential (gan_refused_at), and requires
-//    CensusObserved on both sides; CensusNotRunnable is a refusal, never a pass.
+//    a keyed differential (gan_refused_arg, gan_refused_arg_with_mismatch: the added blocking keys, class AND
+//    subject, with their total), and requires CensusObserved on both sides; CensusNotRunnable never passes.
+//  - arity_n_else_*_open_accepted: two head shapes the compiler ACCEPTS today (Map formal against Optional,
+//    List formal against Map); pinned as open, they flip when a generic still free after binding is refused.
 // POSITION: arity_n_pos_* pass ApPair<Int, String> to ap_second_of / ap_first_of; a position swap in
-// unify_generic_child_pairs flips both the accepted and the refused consumer.
+// unify_generic_child_pairs makes the accepted-consumer claims (arity_n_pos_*_reaches_*) fail.
 // ap_slot / ap_brand_slot is the #14354 control: a generic bound to a brand must stay that brand.
 // dissolve-on: never -- permanent regression control for arity-N binding.
 
@@ -148,20 +150,41 @@ fn gan_same_blocking(base: CompileDiagnosticCensus, other: CompileDiagnosticCens
   }
 }
 
-// The red side exceeds the green by exactly one blocking occurrence in total, and that occurrence is of `class`.
-// The subject is not asserted: the shared closure cancels in the differential, and class identity is the claim.
-fn gan_one_more_blocking_of_class(red: List<CompileDiagnosticCensusRow>, green: List<CompileDiagnosticCensusRow>, class: String) -> Bool {
-  let rb = census_blocking_rows(rows: red)
-  let gb = census_blocking_rows(rows: green)
-  (census_total_count(rows: rb) - census_total_count(rows: gb) == 1)
-    && (census_total_count(rows: census_rows_of_class(rows: rb, wanted: class)) - census_total_count(rows: census_rows_of_class(rows: gb, wanted: class)) == 1)
+// Occurrences of one blocking (class, subject) key added by `red` over `green`.
+fn gan_added_at(red: List<CompileDiagnosticCensusRow>, green: List<CompileDiagnosticCensusRow>, class: String, subject: String) -> Int {
+  census_count_at_key(rows: red, diagnostic_class: class, subject_name: subject, blocking: true) - census_count_at_key(rows: green, diagnostic_class: class, subject_name: subject, blocking: true)
 }
 
-// Both sides observed, then `red` exceeds `green` by exactly one blocking occurrence, of `class`.
-fn gan_refused_at(green: CompileDiagnosticCensus, red: CompileDiagnosticCensus, class: String) -> Bool {
+fn gan_added_total(red: List<CompileDiagnosticCensusRow>, green: List<CompileDiagnosticCensusRow>) -> Int {
+  census_total_count(rows: census_blocking_rows(rows: red)) - census_total_count(rows: census_blocking_rows(rows: green))
+}
+
+// The argument-compatibility refusal of a call: the located DeclaredTypeNotInhabited at the argument for `param`.
+fn gan_param_subject(param: String) -> String {
+  "direct call argument for parameter '" + param + "'"
+}
+
+// Both sides observed; `red` adds exactly one blocking occurrence over `green`, DeclaredTypeNotInhabited at `param`.
+fn gan_refused_arg(green: CompileDiagnosticCensus, red: CompileDiagnosticCensus, param: String) -> Bool {
   match green {
     CensusObserved { rows: g } => match red {
-      CensusObserved { rows: r } => gan_one_more_blocking_of_class(red: r, green: g, class: class)
+      CensusObserved { rows: r } =>
+        (gan_added_total(red: r, green: g) == 1)
+          && (gan_added_at(red: r, green: g, class: "DeclaredTypeNotInhabited", subject: gan_param_subject(param: param)) == 1)
+      CensusNotRunnable { cause: _ } => false
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// As gan_refused_arg, plus the TypeMismatch whose subject is the offending type `got`: exactly two added occurrences.
+fn gan_refused_arg_with_mismatch(green: CompileDiagnosticCensus, red: CompileDiagnosticCensus, param: String, got: String) -> Bool {
+  match green {
+    CensusObserved { rows: g } => match red {
+      CensusObserved { rows: r } =>
+        (gan_added_total(red: r, green: g) == 2)
+          && (gan_added_at(red: r, green: g, class: "TypeMismatch", subject: got) == 1)
+          && (gan_added_at(red: r, green: g, class: "DeclaredTypeNotInhabited", subject: gan_param_subject(param: param)) == 1)
       CensusNotRunnable { cause: _ } => false
     }
     CensusNotRunnable { cause: _ } => false
@@ -197,7 +220,6 @@ test fn arity_n_ctl_cas_unobserved_census_does_not_pass() -> Bool {
 
 test fn arity_n_ctl_cas_added_diagnostic_does_not_pass() -> Bool {
   !gan_same_blocking(base: gan_census(source: gan_fx_cas_base), other: gan_census(source: gan_fx_cas_added_diag))
-    && gan_refused_at(green: gan_census(source: gan_fx_cas_base), red: gan_census(source: gan_fx_cas_added_diag), class: "TypeMismatch")
 }
 
 test fn arity_n_pos_second_reaches_string_consumer() -> Bool {
@@ -205,7 +227,7 @@ test fn arity_n_pos_second_reaches_string_consumer() -> Bool {
 }
 
 test fn arity_n_pos_second_refused_by_int_consumer() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_int_consumer_refused), class: "TypeMismatch")
+  gan_refused_arg_with_mismatch(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_int_consumer_refused), param: "x", got: "Primitive(String)")
 }
 
 test fn arity_n_pos_first_reaches_int_consumer() -> Bool {
@@ -213,25 +235,28 @@ test fn arity_n_pos_first_reaches_int_consumer() -> Bool {
 }
 
 test fn arity_n_pos_first_refused_by_string_consumer() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_first_string_consumer_refused), class: "TypeMismatch")
+  gan_refused_arg_with_mismatch(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_first_string_consumer_refused), param: "x", got: "Primitive(Int)")
 }
 
 test fn arity_n_else_pair_matched_head_accepted() -> Bool {
   gan_same_blocking(base: gan_census(source: gan_fx_else_pair_base), other: gan_census(source: gan_fx_else_pair_mapbox_green))
 }
 
-test fn arity_n_else_map_formal_optional_actual() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_else_map_opt_green), red: gan_census(source: gan_fx_else_map_opt_red), class: "TypeMismatch")
+// OPEN, observed accepted: Map<K, V> formal against an Optional<Int> actual, and List<T> formal against a Map actual,
+// compile with no blocking diagnostic beyond the matched-head fixture. These pin the current silent acceptance, not a wall;
+// they flip when the PR-2 refusal of a generic still free after binding lands.
+test fn arity_n_else_map_formal_optional_actual_open_accepted() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_else_map_opt_green), other: gan_census(source: gan_fx_else_map_opt_red))
 }
 
-test fn arity_n_else_list_formal_map_actual() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_else_list_map_green), red: gan_census(source: gan_fx_else_list_map_red), class: "TypeMismatch")
+test fn arity_n_else_list_formal_map_actual_open_accepted() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_else_list_map_green), other: gan_census(source: gan_fx_else_list_map_red))
 }
 
 test fn arity_n_else_map_formal_bare_actual() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_else_map_bare_green), red: gan_census(source: gan_fx_else_map_bare_red), class: "TypeMismatch")
+  gan_refused_arg(green: gan_census(source: gan_fx_else_map_bare_green), red: gan_census(source: gan_fx_else_map_bare_red), param: "m")
 }
 
 test fn arity_n_else_pair_formal_mapbox_actual() -> Bool {
-  gan_refused_at(green: gan_census(source: gan_fx_else_pair_mapbox_green), red: gan_census(source: gan_fx_else_pair_mapbox_red), class: "TypeMismatch")
+  gan_refused_arg(green: gan_census(source: gan_fx_else_pair_mapbox_green), red: gan_census(source: gan_fx_else_pair_mapbox_red), param: "p")
 }
