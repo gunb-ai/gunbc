@@ -806,6 +806,8 @@ fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) ->
   }
 }
 
+fn child_slot_edge(slot: ChildSlot) -> Edge { slot.edge }
+
 fn child_slot_target(slot: ChildSlot) -> Node {
   slot.edge.target
 }
