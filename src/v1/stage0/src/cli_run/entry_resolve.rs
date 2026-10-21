@@ -2271,13 +2271,11 @@ pub(crate) fn resolved_graph_from_sources(
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
-            let loc = match si.get(&span.file) {
-                Some(idx) => {
-                    let lc = byte_to_line_col(idx.clone(), span.start);
-                    format!("{}:{}:{}", span.file, lc.line, lc.col)
-                }
-                None => span.file.clone(),
-            };
+            // THE LOCATION IS THE AUTHORITY'S. This built `{file}:{line}:{col}` in host Rust; it
+            // now calls the function emitted from the seed's span authority, which also owns the
+            // unlocated arms (a span for a file with no index, or a `<synthetic>` span, comes back
+            // typed rather than as a bare path). `si` already holds the index; it is handed over.
+            let loc = crate::v1_std_core::render_span_location(span.clone(), Rc::new(si.clone()));
             msgs.push(format!(
                 "{}: error: [module {}] {}",
                 loc,
@@ -2627,14 +2625,21 @@ pub(crate) fn parse_module_node_located(
     let source_index = super::pool_acquire::newline_index_for(&filename, content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index.clone());
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    // ONE map, shared by pointer: the parser consumes an Rc clone of it, and the refusal below
+    // renders through the authority with the same index the parse actually used -- not a rebuild,
+    // which would put two indexers in charge of the coordinates.
+    let source_indices = std::rc::Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(error) = &result.error {
         let span = crate::v1_std_core::diagnostic_to_span(error.diagnostic.clone());
         let message = crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone());
-        let lc = crate::v1_std_core::byte_to_line_col(source_index, span.start);
+        // Same authority, same reason: this refusal's whole point (its own scaffold note records
+        // hours lost to a positionless `parse-failed`) is that the LOCATION is trustworthy, so the
+        // location must come from the one place that computes it -- including the honest "no
+        // position" arms this hand format could never express.
         return Err(format!(
-            "parse-failed at {rel}:{}:{}: {message}",
-            lc.line, lc.col
+            "parse-failed at {}: {message}",
+            crate::v1_std_core::render_span_location(span.clone(), source_indices.clone())
         ));
     }
     result

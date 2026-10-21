@@ -147,14 +147,14 @@ data emitter_shared_layer_producers: List<SharedLayerProducer> = [
   {
     producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
     position: "an ANONYMOUS single-field record literal resolved to a nominal struct by field name",
-    authority: SpellingKeyed { key_expression: "set_contains(shared_types, r_sn), r_sn from find_unique_struct_name_by_fields" },
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, r_sn), r_sn from anonymous_record_struct_candidates" },
     divergence: DivergesOnScalarOrCardinality { why: "r_sn is a declared struct name from the type-summary roster, so it is bare by construction" },
     carrier_node: NoNodeInScope { what_is_in_scope_instead: "a struct NAME recovered from the field-name search; the literal's own resolved_type is the anonymous product, not the struct" },
   },
   {
     producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
     position: "an ANONYMOUS multi-field record literal resolved to a nominal struct by field names",
-    authority: SpellingKeyed { key_expression: "set_contains(shared_types, resolved_sn), resolved_sn from find_struct_name_by_fields" },
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, resolved_sn), resolved_sn from anonymous_record_struct_candidates" },
     divergence: DivergesOnScalarOrCardinality { why: "same shape as the single-field arm, spelled separately because the two arms build their struct literal differently" },
     carrier_node: NoNodeInScope { what_is_in_scope_instead: "a struct NAME recovered from the field-name search" },
   },

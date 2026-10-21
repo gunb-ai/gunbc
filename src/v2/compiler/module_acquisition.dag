@@ -385,9 +385,22 @@ fn acquisition_reference_texts(collection: ScopedReferenceSiteCollection) -> Lis
   ).order
 }
 
-// Only a head nothing binds is a candidate module reference. A head a binder binds is a projection; a head the
-// walk could not classify (HeadBindingUndecided) might be one, and probing storage for it could deny a valid
-// program or read a file the program does not mention. Neither requests anything or reads anything.
+// Only a head nothing binds, or a head no VALUE binder could bind, is a candidate module reference. A head a
+// value binder binds is a projection; a head the walk could not classify (HeadBindingUndecided) might be one,
+// and probing storage for it could deny a valid program or read a file the program does not mention, so
+// neither of those requests anything or reads anything.
+// THE BINDING FACT, ALONE -- the position is deliberately NOT consulted here (tidy-ant-251's D3
+// ruling). Acquisition asks "could this head be a module's member?", which a value frame answers: an
+// unbound head is the only reading with no local explanation, so it is the only candidate. Reading the
+// POSITION here is what would widen acquisition: an imported qualified tag (`Choice.Yes` with Choice
+// imported) sits at a label position, and "non-value position => candidate" would make a head the tree
+// already says is undecided into a module request. The roster reads BOTH fields instead, because it
+// asks the different question "would importing this name be wrong?".
+//
+// The two consumers therefore never re-decide anything: each reads one fact that ONE authority issued,
+// and the claim that a non-value head still requests its module is carried by the head reading (a type
+// mention in a signature is not a value binder's name, so it reads unbound), not by a position arm --
+// which is why v2.test.claim.module_acquisition's binder-type and annotation positives stay green here.
 fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
   match head {
     HeadLexicallyUnbound => true
@@ -539,7 +552,10 @@ fn acquisition_identity_checked(front: AcquisitionFrontEnd, module: String, file
       if qualified_name_to_dotted_string(qn: parsed) == module {
         acquisition_sites_requests(
           front: front,
-          sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
+          sites: collect_scoped_module_reference_sites(
+            root: front.tree.root,
+            imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })
+          ),
           module: module,
           file: file
         )
