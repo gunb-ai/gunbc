@@ -12128,36 +12128,6 @@ fn index_insert_typed(
     typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
-    // RAVEN PROBE (scratch branch agent/v1-param-binder-probe only; never merged; named so it can be
-    // re-run). Per-module TYPECHECK PROGRESS on STDERR, out of band: nothing is minted, no diagnostic
-    // list is touched, so env_errors and the abandonment gate are UNTOUCHED -- the abandonment this
-    // prints is the compiler's own verdict, not an artifact of the instrument. The typed result is
-    // read at the point the host caches it, the first place after typecheck_module where progress is
-    // observable from authority code. Tagged so a watcher can grep it; items_analyzed is the
-    // analyzed-count only on the ItemsChecked form.
-    {
-        let mod_name = result.typed.module.name.as_str();
-        if mod_name == "std.measure"
-            || mod_name == "std.realization_schedule"
-            || mod_name == "std.realization_measurement"
-        {
-            match &result.typed.progress {
-                crate::v1_compiler_infer_items::ModuleTypecheckProgress::ItemsChecked => eprintln!(
-                    "RAVENPROG|{}|items_analyzed={}|diagnostics={}",
-                    mod_name,
-                    result.typed.items.len(),
-                    result.diagnostics.len()
-                ),
-                crate::v1_compiler_infer_items::ModuleTypecheckProgress::AbandonedBeforeItems => {
-                    eprintln!(
-                        "RAVENPROG|{}|progress=AbandonedBeforeItems|diagnostics={}",
-                        mod_name,
-                        result.diagnostics.len()
-                    )
-                }
-            }
-        }
-    }
     index
         .typed_module_cache
         .borrow_mut()
