@@ -326,9 +326,6 @@ fn raven_probe_wall_dump(arg: Node, env: TypeEnv, module_name: String) -> String
     " s=", to_string(value: arg.span.start), "-", to_string(value: arg.span.end)
   )
 }
-    " s=", to_string(value: arg.span.start), "-", to_string(value: arg.span.end)
-  )
-}
 
 // PRINT-ONLY (probe branch; msg_86fef5fe asks for the earliest link per row): re-runs the JUDGMENT'S
 // OWN lookups -- the same functions, not a parallel implementation -- and reports which one came back
