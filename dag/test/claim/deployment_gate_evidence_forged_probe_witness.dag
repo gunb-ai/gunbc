@@ -88,7 +88,12 @@ fn control_type_mismatch_count() -> Int {
 }
 
 fn axis_census() -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(harness_axis_source)
+  // THE SAME IDIOM AS probe_census, and not by accident: the inline-string cut of this source read
+  // zero TypeMismatch rows with no way to see why (unrunnable? refused earlier? never attempted?) --
+  // exactly the silent zero §5 says to refuse. As a file on disk, compiled through the same
+  // probe_source the evidence probe uses, a zero can be interrogated against the compiler's own
+  // diagnostics, and it sits in the same probe directory its sibling already lives in.
+  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_forgery"))
 }
 
 fn axis_type_mismatch_count() -> Int {
@@ -107,7 +112,6 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
 data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, standing_from_join, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport extdeps.github.app { GitHubAppInstallationId, GitHubAppId }\nimport extdeps.github.deployment_protection_rule { EnabledDeploymentProtectionRule, RuleOwningApp, GitHubDeploymentProtectionRuleId }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\ndata control_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule { id: GitHubDeploymentProtectionRuleId { value: 1 }, node_id: \"DPPR_control\", enabled: true, app: RuleOwningApp { id: GitHubAppId { value: 2 }, slug: \"s\" } }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, BUILDS THE READBACK ROW CORRECTLY, calls nothing, and forges nothing\" }\n"
-data harness_axis_source: String = "module probe_deployment_gate_axis_control\nimport std.types { String }\nimport extdeps.github.app { GitHubAppInstallationId, GitHubAppId }\nimport extdeps.github.deployment_protection_rule { EnabledDeploymentProtectionRule, RuleOwningApp, GitHubDeploymentProtectionRuleId }\ndata an_installation: GitHubAppInstallationId = GitHubAppInstallationId { value: 987654 }\ndata an_app: GitHubAppId = GitHubAppId { value: 7 }\ndata forged_foreign_carrier_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule { id: an_installation, node_id: \"DPPR_axis\", enabled: true, app: RuleOwningApp { id: an_app, slug: \"owning-app\" } }\nfn label() -> String { \"axis control: one deliberate cross-axis row, a GitHubAppInstallationId in the GitHubDeploymentProtectionRuleId slot\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -162,7 +166,7 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
 // claim asked for two rows; it read one. Measured, not theorised: this census surfaces the FIRST type
 // error of a module and stops, so a second deliberate type error in the same source is invisible to it.
 // Each deliberate type error therefore gets its own compiled source, and each is counted on its own --
-// the run digits here, the foreign carrier in harness_axis_source below. A claim that asked two for one
+// the run digits here, the foreign carrier in deployment_gate_carrier_axis_forgery.dag. A claim that asked two for one
 // row would go green while one of the two axes had silently stopped being refused.
 //
 // DELETING THE CARRIER REDDENS THIS: the rule slot reverts to plain Int, forged_rule_row_from_run_digits
@@ -177,7 +181,7 @@ test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
 // it refuses an installation id, GitHubAppInstallationId: the same { value: Int } shape, imported from
 // extdeps.github.app, the closest neighbour the confusion could actually take. If the rule field had been
 // given the installation type by mistake, or a single "GitHubId" type had been minted to cover both, the
-// line in harness_axis_source would COMPILE -- which is precisely the mistake separate carriers prevent,
+// line in the axis forgery file would COMPILE -- which is precisely the mistake separate carriers prevent,
 // and why §5 prefers the construction over checking digits at runtime. The control imports
 // GitHubAppInstallationId too, so a refusal cannot be an artifact of an unknown name; only a wrong AXIS
 // produces the row. Delete the separate carriers and this claim goes red.
