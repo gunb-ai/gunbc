@@ -163,7 +163,8 @@ test fn rb_e2_unfixed_empty_list_let_refuses() -> Bool { ers_has(o: rb_e2(), rea
 test fn rb_e3_empty_list_arm_closes_at_sibling() -> Bool { ers_infer_accepted(o: rb_e3()) }
 // WITH a declared expected type, Int beside Absent must refuse at this head (no silent accept), with its accepting positive beside it.
 // The REASON is the join's (infer_arms_declare_conflicting_types) because the expected type does not yet reach the branch arms;
-// PR B (session/gentle-newt-78-b, stacked on this PR) is the trigger that restores the literal-at-expected refusal reason.
+// PR B (session/gentle-newt-78-b, stacked on this PR) is the trigger that delivers the expected type to the arms and removes
+// the infer_arm_join_deferred_to_declared_type refusal below.
 fn rb_x_refused(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
@@ -190,3 +191,50 @@ fn rb_l1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\
 test fn rb_l1_two_empties_at_declared_list_accept() -> Bool { ers_infer_accepted(o: rb_l1()) }
 fn rb_l2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { [] }\n  x\n}\n") }
 test fn rb_l2_two_empties_declare_nothing() -> Bool { ers_has(o: rb_l2(), reason: ^infer_no_arm_declares_a_type) }
+
+// B1: WITH A DECLARED EXPECTED TYPE THE JOIN MUST NOT CHOOSE A LAYER. `if b { Absent } else { x }` with x: Int? at Optional<Int?> would
+// join at Int? and then elaborate to Present at Optional<Int?>, so Absent would mean Present{Absent}, not the outer Absent. The sibling must not win:
+// the join refuses with the typed deferral until the expected type reaches the arms. The positive beside it declares the layer the join chose.
+fn rb_n1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { x } }\n") }
+test fn rb_n1_nested_optional_sibling_must_not_win() -> Bool { ers_has(o: rb_n1(), reason: ^infer_arm_join_deferred_to_declared_type) }
+fn rb_n2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? { if b { Absent } else { x } }\n") }
+test fn rb_n2_same_shape_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n2()) }
+fn rb_n3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+test fn rb_n3_match_sibling_must_not_win() -> Bool { ers_has(o: rb_n3(), reason: ^infer_arm_join_deferred_to_declared_type) }
+fn rb_n4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Int? {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+test fn rb_n4_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n4()) }
+
+// B3: ARM ORDER IS NOT A MEANING. Open (Absent) and derived (Present{x}) arms in every placement settle the same way.
+// MEASURED: with a `[]` arm the verdict still depends on order in THIS PR -- native `[]` fails infer_grounding_not_derived before any join can hold it
+// (Absent,[],Present gives grounding_not_derived; Present,[],Absent gives no_arm_declares) -- so the three-kind permutation control
+// is PR B's, where `[]` mints a held open type.
+fn rb_o_code(o: Outcome<ResolvedTree>) -> Int {
+  if ers_infer_accepted(o: o) { 0 } else if ers_has(o: o, reason: ^infer_arms_declare_conflicting_types) { 1 } else if ers_has(o: o, reason: ^infer_no_arm_declares_a_type) { 2 } else { 3 }
+}
+fn rb_o_APA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Present { value: 1 } } else { Absent } }\n  x\n}\n") }
+fn rb_o_AAP() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Present { value: 1 } } }\n  x\n}\n") }
+fn rb_o_PAA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Present { value: 1 } } else { if true { Absent } else { Absent } }\n  x\n}\n") }
+// An inner join with no declaring arm hands its held arms to the enclosing join (infer_gather_branch_hand_up), so Present placed first
+// settles exactly as Present placed last: one verdict under every placement (this was the pinned PAA gap).
+test fn rb_o_every_order_gives_one_verdict() -> Bool {
+  let v = rb_o_code(o: rb_o_APA())
+  rb_o_code(o: rb_o_AAP()) == v && rb_o_code(o: rb_o_PAA()) == v
+}
+test fn rb_o_the_verdict_is_acceptance() -> Bool { rb_o_code(o: rb_o_PAA()) == 0 }
+// The hand-up refuses where no enclosing declaring arm exists, in either nesting position.
+fn rb_o_none() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Absent } }\n  x\n}\n") }
+test fn rb_o_no_declaring_arm_anywhere_refuses() -> Bool { rb_o_code(o: rb_o_none()) == 2 }
+
+// B1 THROUGH THE HAND-UP: arms handed up from an inner branch are closed by the enclosing join, so the deferral covers them too.
+fn rb_n5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Optional<Int?> { if b { if c { Absent } else { Absent } } else { x } }\n") }
+test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { ers_has(o: rb_n5(), reason: ^infer_arm_join_deferred_to_declared_type) }
+fn rb_n6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Int? { if b { if c { Absent } else { Absent } } else { x } }\n") }
+test fn rb_n6_handed_up_arms_at_the_joined_layer_accept() -> Bool { ers_infer_accepted(o: rb_n6()) }
+
+// ONE ARM JOIN FOR if AND Bool match (infer_join_arm_types): an unannotated let over a Bool match settles as the if does.
+fn rb_m1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Present { value: 1 }\n    false => Absent\n  }\n  x\n}\n") }
+fn rb_m2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Present { value: 1 }\n  }\n  x\n}\n") }
+fn rb_m3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Absent\n  }\n  x\n}\n") }
+test fn rb_m1_bool_match_present_then_absent_accepts() -> Bool { ers_infer_accepted(o: rb_m1()) }
+test fn rb_m2_bool_match_absent_then_present_accepts() -> Bool { ers_infer_accepted(o: rb_m2()) }
+test fn rb_m3_all_absent_bool_match_refuses_no_arm_declares() -> Bool { ers_has(o: rb_m3(), reason: ^infer_no_arm_declares_a_type) }

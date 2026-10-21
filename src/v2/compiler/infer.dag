@@ -262,6 +262,26 @@ fn infer_no_arm_declares_a_type_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+fn infer_arm_join_deferred_to_declared_type_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_arm_join_deferred_to_declared_type,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// WITH A DECLARED EXPECTED TYPE THE ARM JOIN MUST NOT CHOOSE A LAYER. Closing an open arm at its sibling's declaring type
+// picks the optional depth by position: `if b { Absent } else { x }` with x: Int? at Int?? would join at Int? and then be
+// elaborated to Present at Int??, so Absent would mean Present{Absent}, not the outer Absent. When the sibling's declaring
+// type is not the expected type the join is not the authority; it refuses until the expected type reaches the arms
+// (Rule A part 2). A declaring type equal to the expected type chooses no layer the declaration did not.
+fn infer_declaring_type_differs_from_expected(declaring: Node, expected: Node, resolved: ResolvedTree) -> Bool {
+  !infer_type_equal_ignoring_provenance(
+    a: infer_type_alias_normalized_at(t: declaring, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+    b: infer_type_alias_normalized_at(t: expected, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
+  )
+}
+
 fn infer_arms_declare_conflicting_types_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_arms_declare_conflicting_types,
@@ -2403,7 +2423,8 @@ fn infer_match_bool_arm_rows_accept(
   first_arm_target: Node,
   second_arm_target: Node,
   cd: Diagnostics,
-  scrutinee_type: Node
+  scrutinee_type: Node,
+  resolved: ResolvedTree
 ) -> Outcome<InferredFacts> {
   match infer_match_bool_arm_row(
     arm: first_arm_target,
@@ -2426,9 +2447,10 @@ fn infer_match_bool_arm_rows_accept(
             right: second_row.coverage
           ) {
             InferBoolLiteralExhaustive =>
-              if !infer_branch_type_atoms_equal(a: first_body, b: second_body) {
-                outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
-              } else {
+              match infer_join_arm_types(first: first_body, second: second_body, resolved: resolved) {
+                ArmTypesNoneDeclare => outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: node))
+                ArmTypesConflict => outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+                ArmTypesJoined { joined: joined_body } => {
                 match infer_descent_witness_for_node(n: node) {
                   Violates { diagnostic: d } =>
                     Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -2436,7 +2458,7 @@ fn infer_match_bool_arm_rows_accept(
                     bind_outcome(
                       o: inferred_facts_from_derived_type(
                         node: node,
-                        derived_type: first_body,
+                        derived_type: joined_body,
                         descent: Holds { value: descent_proof }
                       ),
                       f: fn(facts) {
@@ -2450,6 +2472,7 @@ fn infer_match_bool_arm_rows_accept(
                       }
                     )
                 }
+              }
               }
             InferBoolLiteralMissingTrue =>
               outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
@@ -2819,7 +2842,8 @@ fn infer_match_bool(
                                   cd: cd,
                                   scrutinee_type: scrutinee_type
                                 ),
-                                scrutinee_type: scrutinee_type
+                                scrutinee_type: scrutinee_type,
+                                resolved: resolved
                               )
                             } else {
                               outcome_rejected(infer_match_scrutinee_not_bool_diagnostic(node: node))
@@ -3286,20 +3310,54 @@ fn infer_arm_body_type_read(row: InferCoproductArmRow, entries: Map<Node, List<I
 // arm whose type is still open (Absent, none, [], {..}) is closed against it, once, by the one closing
 // relation (infer_close_produced_at_declared); declaring arms are never touched.
 fn infer_arm_declaring_type(rows: List<InferCoproductArmRow>, entries: Map<Node, List<InferredFacts>>, instances: List<TypeVariableInstance>, resolved: ResolvedTree) -> Optional<Node> {
-  fold(rows, init: Absent, f: fn(acc, row) {
+  infer_declaring_among(types: fold(rows, init: Empty, f: fn(acc, row) {
+    match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
+      Absent => acc
+      Present { value: t } => list_snoc_item(xs: acc, item: t)
+    }
+  }))
+}
+
+// THE PARTITION BY TYPE STATE, over arm types: the first one that mentions no unsolved constructor-use variable declares.
+fn infer_declaring_among(types: List<Node>) -> Optional<Node> {
+  fold(types, init: Absent, f: fn(acc, t) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
-          Absent => Absent
-          Present { value: t } =>
-            match infer_produced_open_type_params(produced: t) {
-              Empty => Present { value: t }
-              Cons { head: _, tail: _ } => Absent
-            }
+        match infer_produced_open_type_params(produced: t) {
+          Empty => Present { value: t }
+          Cons { head: _, tail: _ } => Absent
         }
     }
   })
+}
+
+type InferArmTypesJoin
+  = ArmTypesJoined { joined: Node }
+  | ArmTypesNoneDeclare
+  | ArmTypesConflict
+
+// ONE ARM-PARTITION AND CLOSING JUDGMENT FOR TWO ARM TYPES (Bool matches; the coproduct match composes the same two steps,
+// infer_arm_declaring_type and infer_arm_type_closed_at). An open arm is closed once at the declaring arm's type, and the closed
+// types must then be equal ignoring provenance. Each form keeps its own coverage check and maps the verdict to its own diagnostic.
+fn infer_join_arm_types(first: Node, second: Node, resolved: ResolvedTree) -> InferArmTypesJoin {
+  let declaring = infer_declaring_among(types: [first, second])
+  let first_open = !is_empty(xs: infer_produced_open_type_params(produced: first))
+  let second_open = !is_empty(xs: infer_produced_open_type_params(produced: second))
+  match declaring {
+    Absent => if first_open || second_open { ArmTypesNoneDeclare } else { ArmTypesJoined { joined: first } }
+    Present { value: _ } =>
+      let a = infer_arm_type_closed_at(t: first, declaring: declaring, resolved: resolved)
+      let b = infer_arm_type_closed_at(t: second, declaring: declaring, resolved: resolved)
+      if infer_type_equal_ignoring_provenance(
+        a: infer_type_alias_normalized_at(t: a, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+        b: infer_type_alias_normalized_at(t: b, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
+      ) {
+        ArmTypesJoined { joined: a }
+      } else {
+        ArmTypesConflict
+      }
+  }
 }
 
 fn infer_arm_type_closed_at(t: Node, declaring: Optional<Node>, resolved: ResolvedTree) -> Node {
@@ -3309,6 +3367,27 @@ fn infer_arm_type_closed_at(t: Node, declaring: Optional<Node>, resolved: Resolv
       match infer_close_produced_at_declared(declared: d, produced: t, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
         Empty => t
         Cons { head: h0, tail: ht } => infer_type_instantiated(t: t, instances: Cons { head: h0, tail: ht })
+      }
+  }
+}
+
+fn infer_match_join_deferred(rows: List<InferCoproductArmRow>, entries: Map<Node, List<InferredFacts>>, instances: List<TypeVariableInstance>, expected: Optional<Node>, resolved: ResolvedTree) -> Bool {
+  match expected {
+    Absent => false
+    Present { value: e } =>
+      match infer_arm_declaring_type(rows: rows, entries: entries, instances: instances, resolved: resolved) {
+        Absent => false
+        Present { value: declaring } =>
+          infer_declaring_type_differs_from_expected(declaring: declaring, expected: e, resolved: resolved) && fold(rows, init: false, f: fn(any, row) {
+            any || match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
+              Absent => false
+              Present { value: t } =>
+                match infer_produced_open_type_params(produced: t) {
+                  Empty => false
+                  Cons { head: _, tail: _ } => true
+                }
+            }
+          })
       }
   }
 }
@@ -3372,7 +3451,8 @@ fn infer_match_coproduct_rows(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
   scrutinee_target: Node,
-  cd: Diagnostics
+  cd: Diagnostics,
+  expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
   match fold(arms, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, arm) {
     match acc {
@@ -3391,7 +3471,9 @@ fn infer_match_coproduct_rows(
         Accepted { value: _, diagnostics: _ } =>
           {
             let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, resolved: resolved)
-            if bodies.mismatch {
+            if infer_match_join_deferred(rows: rows, entries: entries, instances: coproduct.instances, expected: expected, resolved: resolved) {
+              outcome_rejected(infer_arm_join_deferred_to_declared_type_diagnostic(node: node))
+            } else if bodies.mismatch {
               outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
             } else {
               match bodies.underived {
@@ -3497,7 +3579,8 @@ fn infer_match_coproduct(
                               scrutinee_target: scrutinee_target,
                               entries: entries,
                               resolved: resolved,
-                              cd: cd
+                              cd: cd,
+                              expected: expected
                             )
                         }
                     }
@@ -7063,6 +7146,8 @@ fn infer_gather_fold_step(
       kinds: kinds,
       resolved: resolved
     )
+  } else if !is_empty(xs: child.branch_hold.held) {
+    infer_gather_unresolved_hand_up_refused(acc: acc, child: child)
   } else {
     let family = infer_literal_edge_payload(parent: acc.node, edge: edge)
     match family {
@@ -7239,6 +7324,74 @@ type InferHoldResolution {
 }
 
 // THE JOIN RESOLVES EACH HELD ARM EXACTLY ONCE (see InferHeldArm).
+// NO ARM DECLARES A TYPE HERE: THE ENCLOSING JOIN MAY. The branch's own type is its first held arm's (still open) type and its
+// held arms stay held on the accumulator; the consumer either holds this branch as an arm of an enclosing branch (which closes
+// it and everything it handed up at its sibling's type) or refuses it as infer_no_arm_declares_a_type
+// (infer_gather_unresolved_hand_up_refused).
+fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmptyDiagnostics) -> InferGatherFoldAcc {
+  infer_gather_fold_acc_failed(
+    node: node,
+    pending: rejected_with_pending(pending: start.pending, rejected: r),
+    await_branch_row: false,
+    await_match_row: false,
+    await_loop_row: false,
+    await_transform_row: false,
+    children_remaining: 0
+  )
+}
+
+fn infer_gather_branch_hand_up(acc: InferGatherFoldAcc, start: InferHoldResolution) -> InferGatherFoldAcc {
+  match list_at_optional(xs: acc.branch_hold.held, index: 0) {
+    Absent => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: acc.node)))
+    Present { value: first } =>
+      match lookup_inferred_facts_in_entries(entries: first.settled.entries, key: first.settled.node) {
+        Absent => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: acc.node)))
+        Present { value: first_facts } =>
+          match inferred_facts_resolved_type(facts: first_facts) {
+            Violates { diagnostic: d } => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: d))
+            Holds { value: first_type } =>
+              match infer_descent_witness_for_node(n: acc.node) {
+                Violates { diagnostic: d } => infer_gather_hand_up_failed(node: acc.node, start: start, r: diagnostics_singleton(d: d))
+                Holds { value: descent_proof } =>
+                  match inferred_facts_from_derived_type(node: acc.node, derived_type: first_type, descent: Holds { value: descent_proof }) {
+                    Rejected { diagnostics: r } => infer_gather_hand_up_failed(node: acc.node, start: start, r: r)
+                    Accepted { value: facts, diagnostics: d } =>
+                      match admitted_inferred_facts_entry(node: acc.node, facts: facts) {
+                        Rejected { diagnostics: r } => infer_gather_hand_up_failed(node: acc.node, start: start, r: r)
+                        Accepted { value: entry, diagnostics: ed } =>
+                          infer_gather_with_branch_hold(
+                            acc: infer_gather_fold_acc_ok(
+                              node: acc.node,
+                              entries: inferred_facts_index_enter(index: start.entries, entry: entry),
+                              pending: diagnostics_merge(outer: diagnostics_merge(outer: start.pending, inner: d), inner: ed),
+                              await_branch_row: false,
+                              await_match_row: false,
+                              await_loop_row: false,
+                              await_transform_row: false,
+                              children_remaining: 0
+                            ),
+                            hold: acc.branch_hold
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn infer_gather_unresolved_hand_up_refused(acc: InferGatherFoldAcc, child: InferGatherFoldAcc) -> InferGatherFoldAcc {
+  infer_gather_fold_acc_failed(
+    node: acc.node,
+    pending: rejected_with_pending(pending: acc.pending, rejected: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: child.node))),
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining
+  )
+}
+
 fn infer_gather_branch_join(
   acc: InferGatherFoldAcc,
   merged_entries: Map<Node, List<InferredFacts>>,
@@ -7248,6 +7401,19 @@ fn infer_gather_branch_join(
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
   let start = InferHoldResolution { entries: merged_entries, pending: merged_pending, refused: Absent }
+  let handed_up = match acc.declared_position_expected {
+    Present { value: _ } => false
+    Absent =>
+      fold(acc.branch_hold.held, init: false, f: fn(any, h) {
+        any || match infer_held_arm_declaring_type(branch: acc.node, held: h, entries: start.entries) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      })
+  }
+  if handed_up {
+    infer_gather_branch_hand_up(acc: acc, start: start)
+  } else {
   let r = match acc.declared_position_expected {
     Present { value: expected } =>
       match acc.branch_hold.held {
@@ -7275,6 +7441,7 @@ fn infer_gather_branch_join(
       )
     Absent =>
       infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials)
+  }
   }
 }
 
@@ -7320,11 +7487,6 @@ fn infer_judge_branch_arms_at_expected(branch: Node, start: InferHoldResolution,
 }
 
 fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
-  let unchanged = InferHoldResolution {
-    entries: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
-    pending: diagnostics_merge(outer: cur.pending, inner: held.settled.pending),
-    refused: Absent
-  }
   match infer_held_arm_declaring_type(branch: branch, held: held, entries: cur.entries) {
     Absent =>
       InferHoldResolution {
@@ -7332,37 +7494,59 @@ fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHel
         pending: cur.pending,
         refused: Present { value: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: branch)) }
       }
-    Present { value: declaring } =>
-      match lookup_inferred_facts_in_entries(entries: held.settled.entries, key: held.settled.node) {
-        Absent => unchanged
-        Present { value: arm_facts } =>
-          match inferred_facts_resolved_type(facts: arm_facts) {
-            Violates { diagnostic: _ } => unchanged
-            Holds { value: arm_type } =>
-              match infer_close_produced_at_declared(declared: declaring, produced: arm_type, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
-                Empty => unchanged
-                Cons { head: h0, tail: ht } =>
-                  match infer_descent_witness_for_node(n: held.settled.node) {
-                    Violates { diagnostic: d } =>
-                      InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: d) } }
-                    Holds { value: descent_proof } =>
-                      match inferred_facts_from_derived_type(
-                        node: held.settled.node,
-                        derived_type: infer_type_instantiated(t: arm_type, instances: Cons { head: h0, tail: ht }),
-                        descent: Holds { value: descent_proof }
-                      ) {
-                        Rejected { diagnostics: r } =>
-                          InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
-                        Accepted { value: closed_facts, diagnostics: cd } =>
-                          InferHoldResolution {
-                            entries: map_insert(
-                              m: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
-                              key: held.settled.node,
-                              value: [closed_facts]
-                            ),
-                            pending: diagnostics_merge(outer: diagnostics_merge(outer: cur.pending, inner: held.settled.pending), inner: cd),
-                            refused: Absent
-                          }
+    Present { value: declaring } => infer_close_held_arm_at(declaring: declaring, cur: cur, held: held, resolved: resolved)
+  }
+}
+
+// CLOSE ONE HELD ARM AT THE DECLARING TYPE, THEN EVERY ARM IT HANDED UP. A branch none of whose arms declares a type does not
+// refuse (infer_gather_branch_join): it hands its held arms to the enclosing join, so the verdict does not depend on which side
+// the declaring sibling stands (Present beside a nested Absent/Absent settles as Absent beside a nested Absent/Present). The
+// enclosing join's declaring type then closes the handed-up arms at the same type, once each, by the one closing relation.
+fn infer_close_held_arm_at(declaring: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
+  let own = infer_close_held_root_at(declaring: declaring, cur: cur, held: held, resolved: resolved)
+  fold(held.settled.branch_hold.held, init: own, f: fn(acc, handed) {
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent => infer_close_held_arm_at(declaring: declaring, cur: acc, held: handed, resolved: resolved)
+    }
+  })
+}
+
+fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: InferHeldArm, resolved: ResolvedTree) -> InferHoldResolution {
+  let unchanged = InferHoldResolution {
+    entries: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
+    pending: diagnostics_merge(outer: cur.pending, inner: held.settled.pending),
+    refused: Absent
+  }
+  match lookup_inferred_facts_in_entries(entries: held.settled.entries, key: held.settled.node) {
+    Absent => unchanged
+    Present { value: arm_facts } =>
+      match inferred_facts_resolved_type(facts: arm_facts) {
+        Violates { diagnostic: _ } => unchanged
+        Holds { value: arm_type } =>
+          match infer_close_produced_at_declared(declared: declaring, produced: arm_type, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+            Empty => unchanged
+            Cons { head: h0, tail: ht } =>
+              match infer_descent_witness_for_node(n: held.settled.node) {
+                Violates { diagnostic: d } =>
+                  InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: d) } }
+                Holds { value: descent_proof } =>
+                  match inferred_facts_from_derived_type(
+                    node: held.settled.node,
+                    derived_type: infer_type_instantiated(t: arm_type, instances: Cons { head: h0, tail: ht }),
+                    descent: Holds { value: descent_proof }
+                  ) {
+                    Rejected { diagnostics: r } =>
+                      InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
+                    Accepted { value: closed_facts, diagnostics: cd } =>
+                      InferHoldResolution {
+                        entries: map_insert(
+                          m: concat_inferred_facts_entries(a: cur.entries, b: held.settled.entries),
+                          key: held.settled.node,
+                          value: [closed_facts]
+                        ),
+                        pending: diagnostics_merge(outer: diagnostics_merge(outer: cur.pending, inner: held.settled.pending), inner: cd),
+                        refused: Absent
                       }
                   }
               }
