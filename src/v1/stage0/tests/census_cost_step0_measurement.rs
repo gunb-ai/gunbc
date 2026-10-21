@@ -80,7 +80,7 @@ fn cpu_micros() -> u64 {
 fn sample(calls: usize, fixture: &'static str, tag: &str) -> Vec<String> {
     let _ = reset_compile_dag_diagnostic_census_cost_counts();
     let mut out = Vec::new();
-    let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
     for i in 1..=calls {
         let rchar0 = proc_io("rchar:");
         let blk0 = proc_io("read_bytes:");
@@ -95,13 +95,21 @@ fn sample(calls: usize, fixture: &'static str, tag: &str) -> Vec<String> {
         let cpu_us = cpu_micros().saturating_sub(cpu0);
         let phase_rows = pre_entry_phase::take_rows_with_attribution();
         let stage = resolve_stage_totals();
-        let (ic, ie, vc, vl, r, b) = compile_dag_diagnostic_census_cost_counts();
-        let (pic, pie, pvc, pvl, pr, pb) = prev;
-        prev = (ic, ie, vc, vl, r, b);
-        let (ic, ie, vc, vl, r, b) = (ic - pic, ie - pie, vc - pvc, vl - pvl, r - pr, b - pb);
+        let (ic, ie, vc, vl, r, b, refusals) = compile_dag_diagnostic_census_cost_counts();
+        let (pic, pie, pvc, pvl, pr, pb, pref) = prev;
+        prev = (ic, ie, vc, vl, r, b, refusals);
+        let (ic, ie, vc, vl, r, b, refusals) = (
+            ic - pic,
+            ie - pie,
+            vc - pvc,
+            vl - pvl,
+            r - pr,
+            b - pb,
+            refusals - pref,
+        );
         out.push(format!(
             "{tag} CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={ic} INDEX_ENTRIES={ie} \
-             VEC_CLONES={vc} VEC_LEN={vl} READS={r} DISK_BYTES={b} PROC_RCHAR={} PROC_BLK_BYTES={} \
+             VEC_CLONES={vc} VEC_LEN={vl} READS={r} DISK_BYTES={b} ID_REFUSALS={refusals} PROC_RCHAR={} PROC_BLK_BYTES={} \
              STAGE{{load={}us parse={}us resolve={}us normalize={}us typecheck={}us \
              reconcile_assembly={}us schedule={}us probe={}us graph={}us sym={}us}} \
              CENSUS={}",
@@ -189,6 +197,19 @@ fn step0_census_cost_one_and_four_calls() {
         "disk-read counter must still see the import closure on the warm series, got {}",
         warm.4
     );
+    // THE READ-THROUGH IS ACTUALLY BEING TAKEN. The identity proof returns a located Err rather
+    // than panicking, so a proof that WRONGLY refused a legitimate scratch would not fail here --
+    // it would just quietly rebuild the pool per call and the census would only get slow again.
+    // This assertion is what catches that silent regression: over warm calls the proof must have
+    // PROVEN, never refused. (The drifted-facts RED that drives this counter nonzero lives in
+    // cli_run's own #[cfg(test)] unit tests, a separate binary, so it cannot contaminate this
+    // process's count.)
+    assert_eq!(
+        warm.6, 0,
+        "warm census calls were refused the underlay read-through {} times: a false refusal \
+         silently puts the ~10 s back, so this must stay 0 for the fix to be live",
+        warm.6
+    );
     // CONDITION 1 (mgr msg_ef915e6b): run a fixture whose module path collides with a pool
     // module, then re-measure the ordinary fixture. If any shared pool cache is fixture-
     // dependent (or absorbs fixture state), the ordinary fixture's digest shifts after the
@@ -222,7 +243,7 @@ fn step0_census_cost_one_and_four_calls() {
     // gate, not sanity; the two counters here prove the counter mechanism is alive, so the zero
     // above cannot be a dead counter. (sample(1, STD-POST) resets at its start, so these hold
     // that one call.)
-    let (_ic, _ie, vc, _vl, r, _b) = compile_dag_diagnostic_census_cost_counts();
+    let (_ic, _ie, vc, _vl, r, _b, _refusals) = compile_dag_diagnostic_census_cost_counts();
     assert!(
         vc >= 1,
         "scratch-map clone counter must see the calls in the post-collision series, got {vc}"

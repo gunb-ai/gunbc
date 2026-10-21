@@ -760,6 +760,7 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
+        build_id: crate::cli_run::next_facts_build_id(),
         nodes,
         adjacency,
         selection,
@@ -1529,6 +1530,7 @@ fn multi_entry_index_shell_body(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         scratch_underlay: RefCell::new(None),
+        underlay_identity: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),

@@ -99,7 +99,7 @@ use serde::Serialize;
 // (3) every real disk read the census's resolve path performs. Exposed as a pub fn read by an
 // in-process observer, so a receipt is process-differential (deltas around calls in one
 // process), never a claim about another process.
-pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64) {
+pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
     (
         crate::cli_run::CENSUS_COST_INDEX_CLONES.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES.load(std::sync::atomic::Ordering::Relaxed),
@@ -107,12 +107,17 @@ pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, 
         crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READS.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READ_BYTES.load(std::sync::atomic::Ordering::Relaxed),
+        // The identity proof's verdict, as an OBSERVABLE: zero over warm calls is what says the
+        // read-through is actually being taken (a false refusal would silently put the ~10 s back
+        // and only show up here), and the drifted-facts RED in cli_run's own tests drives it
+        // nonzero -- which is what keeps the proof from being code that never runs.
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.load(std::sync::atomic::Ordering::Relaxed),
     )
 }
 
-/// Zero the six cost counters and return them (read-and-reset, so a caller brackets one
+/// Zero the seven cost counters and return them (read-and-reset, so a caller brackets one
 /// census call or a run of them without subtracting an earlier snapshot).
-pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64) {
+pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
     (
         crate::cli_run::CENSUS_COST_INDEX_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
@@ -121,6 +126,7 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
         crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READS.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READ_BYTES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.swap(0, std::sync::atomic::Ordering::Relaxed),
     )
 }
 
