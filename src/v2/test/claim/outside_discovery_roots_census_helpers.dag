@@ -44,12 +44,13 @@ data emitted_registry_path: String = concat(
 // emitter, not by `git ls-files`, which is what makes the wet pairing a comparison between two instruments
 // rather than `measure() == measure()`.
 //
-// Why 13 and not the 12 this work was scoped with: `carrier_realization_census.dag` declares 4 test fns and
-// was left out of the scoping count. Excluding it would not make the census quieter -- the path is tracked,
-// under no governed tree, and declares claims, so it is reported -- it would only make the claim that pairs
-// the registry against the tree lie. So the expectation follows the tree and the discrepancy is reported
-// upward rather than absorbed. The three `*_census.dag` files in the same directory that declare NOTHING are
-// a different case; they have their own standing, claimed below.
+// Why the expectation follows the tree and not an earlier scoping list: `carrier_realization_census.dag`
+// declares test fns and was left out of that scoping. Excluding a tracked file under no governed tree that
+// declares claims would not make the census quieter -- it is reported either way -- it would only make the
+// claim that pairs the registry against the tree lie. Discrepancies are reported upward, not absorbed. The
+// `*_census.dag` files in the same directory that declare NOTHING are a different case; they have their own
+// standing, claimed below. When main adds or removes a subject claim file, this list is the carrier that
+// must follow it: the pairing claim goes red on the difference, in either direction.
 data subject_population_expected: List<String> = [
   "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
   "src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag",
@@ -58,6 +59,7 @@ data subject_population_expected: List<String> = [
   "src/v1/tests/claim/escape_json_string_differential.dag",
   "src/v1/tests/claim/item_kind_dissolves_shape_predicates_control_test.dag",
   "src/v1/tests/claim/keyword_pattern_binder_refusal_test.dag",
+  "src/v1/tests/claim/parse_allocator_postcondition_test.dag",
   "src/v1/tests/claim/parse_source_extent_control_test.dag",
   "src/v1/tests/claim/production_fed_exposure_discrimination_control_test.dag",
   "src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag",

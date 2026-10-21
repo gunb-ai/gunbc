@@ -302,8 +302,9 @@ fn findings_under_note_subject(findings: List<String>) -> List<String> {
 //
 // AND THE MARKER ANSWER IS TYPED ON EVERY LINE, because it is not the marker authority. `acquisition_test_
 // markers` is the authority on "declares a test fn" and it is a PARSE; what the census was handed is a
-// pattern match over text, produced by `git grep -E -l` with a caller-supplied regex. The two agree on this
-// population -- the same 13 paths under the note's subject -- and the line says which one spoke. Printing a
+// pattern match over text, produced by `git grep -E -l` with a caller-supplied regex. The two are held to
+// agree on the census's own reported population, by the witness claims over that population; the line says
+// which one spoke. Printing a
 // pattern-grain observation with the authority's name on it is the transcribed standing DESIGN §6 forbids: a
 // reader would take a text match for the parser's verdict, and a pattern that drifts (prose `test fn`,
 // fixture text) would then be invisible behind an authority it never consulted.

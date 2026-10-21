@@ -54,11 +54,12 @@ data census_checkout_dir: String = "."
 data claim_file_pathspec: String = "*.dag"
 
 // THE MARKER, as git's text test reads it: a line that begins a `test fn` declaration with an identifier
-// after the keyword. Why not the bare phrase -- measured at this head, the two differ: 17 tracked `.dag`
-// outside the governed trees contain `test fn` somewhere in their text, and 13 DECLARE one. The four extra
-// files are prose ("read `test fn` from source are not its consumer") in modules that implement other
-// things, and reporting them as uncovered claims is a fabricated finding. The declaration shape is what the
-// interpreter's own marker read asks, so this is the text test that agrees with the parse on this population.
+// after the keyword. Why not the bare phrase -- the two answer different populations. The bare phrase matches
+// any `.dag` that contains the letters `test fn` anywhere, including prose ("read `test fn` from source are
+// not its consumer") in modules that implement other things; reporting those prose mentions as uncovered
+// claims is a fabricated finding. The anchored declaration shape matches only files that DECLARE one, which
+// is the population the interpreter's own marker read asks for, so this is the text test that agrees with the
+// parse on this population.
 //
 // The whitespace class is spelled `[[:space:]]` because git's `-E` gets this string through a shell, where a
 // backslash would not survive to the matcher.

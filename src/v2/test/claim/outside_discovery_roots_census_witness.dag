@@ -444,10 +444,11 @@ test fn every_receipt_line_says_the_marker_answer_is_a_pattern_match_not_the_mar
 }
 
 // THE MARKER PATTERN IS THE DECLARATION SHAPE, not the bare phrase -- claimed on the data the live entry
-// reads with, because at this head the two differ in the population they report (17 tracked `.dag` outside
-// the governed trees contain the phrase `test fn` somewhere in their text; 13 declare one). A naive reader
-// who passed the bare phrase would silently promote four prose files to findings, so "it contains the
-// phrase" is not enough: the pattern must be anchored and must name a declaration.
+// reads with, because the two answer different populations. The bare phrase matches any `.dag` containing the
+// letters `test fn` anywhere, including prose mentions in modules that implement other things; the anchored
+// declaration shape matches only files that DECLARE one. A naive reader who passed the bare phrase would
+// silently promote those prose files to findings, so "it contains the phrase" is not enough: the pattern must
+// be anchored and must name a declaration.
 test fn the_marker_pattern_asks_for_a_declaration_and_not_a_mention() -> Bool {
   !(claim_declaration_pattern == bare_marker_phrase)
     && claim_declaration_pattern.starts_with(prefix: "^")
