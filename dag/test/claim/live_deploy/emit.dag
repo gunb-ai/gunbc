@@ -999,7 +999,7 @@ fn placement_scoped_paths(spec: DeploymentSpec, instance: HostDashboardInstance)
   concat(
     deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names),
     concat(
-      deployment_approval_broker_front_door_steps(holding: spec.role_singletons, lab_plan: spec.target.lab_plan),
+      deployment_approval_broker_front_door_steps(holding: spec.role_singletons),
       concat(
         deployment_tailnet_door_steps(names: spec.names),
         deployment_oidc_config_steps(instance: instance),
