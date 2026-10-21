@@ -659,14 +659,28 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
 // does not accept as evidence. They are rows now, and a row differs from a comment in one way that
 // matters: it is read by a fold, so it can turn red.
 
+// The population the trigger check is answered from: every module a row's trigger NAMES, walked by the
+// compiler's own census. The machine_intake roots alone were not enough -- the onboarding row's trigger
+// lives in gunbc.tools.bmc_onboard, so with a machine_intake-only population "pending" there was decided
+// by a census that could not see the module, and repointing the trigger at a declaration that exists
+// there stayed invisible. falsification row "the onboarding row dissolves against a declaration that
+// already exists" found exactly that and went green. The falsification found the hole; this closes it.
+data recovery_trigger_pool_roots: List<String> = [
+  "dag/gunbc/machine_intake",
+  "dag/gunbc/tools",
+]
+
+data recovery_trigger_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_trigger_pool_roots)
+
 // Is this row's trigger a declaration the live tree's own census does NOT declare? The population is
-// recovery_live_decl_facts -- what the compiler found under dag/gunbc/machine_intake -- so "pending" is
-// answered by the tree, not by this file's belief about it. An UnboundDissolution is never pending: it is
-// a description, nothing can discharge it, and that is the shape these rows were written to avoid.
+// recovery_trigger_decl_facts -- what the compiler found under every module a trigger names -- so
+// "pending" is answered by the tree, not by this file's belief about it. An UnboundDissolution is never
+// pending: it is a description, nothing can discharge it, and that is the shape these rows were written
+// to avoid.
 fn recovery_frontier_pending(row: FrontierRow) -> Bool {
   match row.dissolution {
     BoundDissolution { trigger: t } =>
-      !any(xs: recovery_live_decl_facts, predicate: fn(d) {
+      !any(xs: recovery_trigger_decl_facts, predicate: fn(d) {
         d.qualified_name
           == concat(
             dissolution_trigger_ref(trigger: t).module_path as String,
