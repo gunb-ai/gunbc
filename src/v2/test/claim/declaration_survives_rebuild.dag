@@ -14,7 +14,9 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, bind_outcome, outcome_accepted }
-import v2.std.node { Authored, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, symbol_lexeme }
+import std.occurrence_identity { OccurrenceId }
+import v2.std.node { Atom, Authored, Conj, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, TypeNode, canonicalize_node_strip_provenance, content_hash, symbol_lexeme }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -128,4 +130,38 @@ test fn declaration_survives_resolve_and_infer() -> ProcessExit {
     Accepted { value: verdict, diagnostics: _ } => verdict
     Rejected { diagnostics: _ } => ExitFailure { code: 2, reason: "pipeline refused the subject module" }
   }
+}
+
+// THE DECLARATION IS PROVENANCE, NOT STRUCTURE. Two trees that differ only in which token declared a
+// name are one structure: content_hash and every erasure route must not see Edge.declaration, while
+// derived == does (the control that makes the other three discriminate).
+fn declared_pair_leaf() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^leaf } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 1 } } }
+}
+
+fn declared_pair(occurrence: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^alpha }, target: declared_pair_leaf(), declaration: DeclaresAt { occurrence: OccurrenceMinted { id: OccurrenceId { value: occurrence } } } }],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } }
+  }
+}
+
+fn undeclared_pair() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^alpha }, target: declared_pair_leaf(), declaration: NotADeclaration }],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } }
+  }
+}
+
+test fn declaration_is_outside_hash_and_erasure() -> Bool {
+  content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: declared_pair(occurrence: 9))
+    && content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: undeclared_pair())
+    && canonicalize_node_strip_provenance(n: declared_pair(occurrence: 7)) == canonicalize_node_strip_provenance(n: undeclared_pair())
+    && exact_structural_equality_zip_fold(source_facts: declared_pair(occurrence: 7), candidate: declared_pair(occurrence: 9))
+}
+
+test fn derived_equality_sees_the_declaration() -> Bool {
+  declared_pair(occurrence: 7) != declared_pair(occurrence: 9) && declared_pair(occurrence: 7) != undeclared_pair()
 }

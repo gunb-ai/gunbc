@@ -604,7 +604,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: edge.declaration })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
   )
 }
 
