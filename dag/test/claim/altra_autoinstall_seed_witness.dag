@@ -49,6 +49,9 @@ import extdeps.debian.debconf {
   debconf_selection_value,
   debconf_package_version,
   debconf_source_locator,
+  debconf_perl_whitespace,
+  a_declared_separator_appears,
+  DebconfSelectionRefusalCause,
 }
 
 import extdeps.storage.types { storage_device_serial }
@@ -5194,6 +5197,172 @@ test fn a_tab_in_a_key_field_a_newline_in_a_key_field_and_a_one_character_value_
       LabelCarriesAFieldBoundary { label: _ } => false
       ValueCarriesTheContinuationCharacter { value: _ } => false
     }
+  }
+}
+
+// PERL'S \s IS SIX CHARACTERS AND BOTH DOORS MUST KNOW ALL SIX (review: merry-fox-82; review 83816 — the mint
+// hand-listed space, tab and newline; upstream's field regex is Perl, whose \s also matches \v (0b), \f (0c) and
+// \r (0d)). An owner pasted from a CRLF file carried \r and was minted as well-formed, so the record and the line
+// debconf parses from it disagree — the exact state the sole mint exists to make unnameable. A value of "\r" was
+// credited as an answer while selecting nothing. THE DENOMINATOR IS ASSERTED BEFORE ANY LEG IS CHECKED: six members
+// is the claim (Perl 5.18 added the last two; Noble ships perl 5.38), and a fold over a truncated authority would
+// otherwise "pass" by checking less than it claims. Then every member is checked in BOTH doors — as a whole value
+// it must take ValueSelectsNothing, and embedded in an owner it must take OwnerCarriesAFieldBoundary — because
+// the whole point of the shared authority row is that the two doors cannot drift apart, and a set only one door
+// consults is exactly the defect being repaired.
+data perl_whitespace_members: List<String> = [" ", "\t", "\n", "\u{b}", "\u{c}", "\r"]
+
+// THE VALUE-DOOR REFUSAL, ANY OF THE THREE VALUE ARMS. A separator typed as the whole value is refused, and which
+// of the three value arms fires is a property of the CHARACTER, not something this row should force: "\n" is caught
+// by value_ends_the_line (it splits the record) before the nothing-check is reached, while space/tab/CR/FF/VT are
+// caught by the nothing-check itself. What must hold for ALL SIX is that none of them mints — the review defect was
+// that three of the six minted at all. The exact nothing-arm attribution for the three characters the old mint
+// missed (CR, FF, VT) is asserted separately, more sharply, below.
+fn value_refused_by_a_value_arm(cause: DebconfSelectionRefusalCause) -> Bool {
+  match cause {
+    ValueEndsTheLine { value: _ } => true
+    ValueCarriesTheContinuationCharacter { value: _ } => true
+    ValueSelectsNothing { value: _ } => true
+    _ => false
+  }
+}
+
+fn refusals_from_both_doors(members: List<String>, missing: Int) -> Bool {
+  match members {
+    Empty => missing == 0
+    Cons { head: one, tail: rest } =>
+      match debconf_answer_record(
+        owner: "tzdata" as NonEmptyStr,
+        label: "tzdata/Areas" as NonEmptyStr,
+        kind: AnswerSelect,
+        value: one as NonEmptyStr,
+      ) {
+        // A SEPARATOR AS A WHOLE VALUE IS NEVER AN ANSWER — refused by one of the three value arms.
+        MintedSelection { record: _ } => false
+        RefusedAtTheMint { cause: value_cause } =>
+          match value_refused_by_a_value_arm(cause: value_cause) {
+            True =>
+              match debconf_answer_record(
+                owner: concat("tzdata", concat(one, "extra")) as NonEmptyStr,
+                label: "tzdata/Areas" as NonEmptyStr,
+                kind: AnswerSelect,
+                value: "America" as NonEmptyStr,
+              ) {
+                // THE SAME CHARACTER EMBEDDED IN A KEY FIELD IS REFUSED BY THE FIELD DOOR.
+                MintedSelection { record: _ } => false
+                RefusedAtTheMint { cause: field_cause } =>
+                  match field_cause {
+                    OwnerCarriesAFieldBoundary { owner: _ } => refusals_from_both_doors(members: rest, missing: missing)
+                    _ => false
+                  }
+              }
+            False => false
+          }
+      }
+  }
+}
+
+test fn perl_whitespace_class_is_six_members_and_both_doors_know_all_six() -> Bool {
+  match list_length(items: perl_whitespace_members) {
+    // THE CLAIMED SIZE OF PERL's \s. If upstream's reader ever decodes Unicode whitespace, the row grows and this
+    // number moves with it — but never silently, and never in one door only.
+    6 => refusals_from_both_doors(members: perl_whitespace_members, missing: 0)
+    _ => false
+  }
+}
+
+// THE THREE CHARACTERS THE OLD MINT MISSED ARE NOW REFUSED BY THE NOTHING-ARM SPECIFICALLY (the precise review
+// 83816 defect). CR, FF and VT do not contain a newline and do not end in a backslash, so the ONLY door that can
+// refuse a whole-value of them is the separator-authority nothing-check — which used to know only space, tab and
+// newline, so these three reached MintedSelection and were credited as answers that select nothing. Each must take
+// ValueSelectsNothing by name, so this row cannot pass on the weaker "refused by some value arm" above and cannot
+// pass if the nothing-check regresses to three members.
+fn nothing_arm_refuses(members: List<String>) -> Bool {
+  match members {
+    Empty => true
+    Cons { head: one, tail: rest } =>
+      match debconf_answer_record(
+        owner: "tzdata" as NonEmptyStr,
+        label: "tzdata/Areas" as NonEmptyStr,
+        kind: AnswerSelect,
+        value: one as NonEmptyStr,
+      ) {
+        MintedSelection { record: _ } => false
+        RefusedAtTheMint { cause: cause } =>
+          match cause {
+            ValueSelectsNothing { value: _ } => nothing_arm_refuses(members: rest)
+            _ => false
+          }
+      }
+  }
+}
+
+// CR (0d), FORM-FEED (0c), VERTICAL-TAB (0b) — Perl's \s members the mint used to miss.
+data perl_added_whitespace: List<String> = ["\u{c}", "\u{b}", "\r"]
+
+test fn the_three_perl_added_separators_are_refused_by_the_nothing_arm() -> Bool {
+  match list_length(items: perl_added_whitespace) {
+    3 => nothing_arm_refuses(members: perl_added_whitespace)
+    _ => false
+  }
+}
+
+// THE AUTHORITY THE MODULE USES IS THE AUTHORITY THE WITNESS CHECKS, not a witness-side copy that could agree with
+// a stale mint. This row reads the module's OWN declaration and requires it to hold the same six characters the
+// Perl class has: a mint that dropped \v or \f would keep every leg above green only by checking against a
+// different list than the one it enforces, and this is the row that forbids that. Compared by length AND by
+// containment of each member in both directions, so a member substituted for another (say 0x85 for 0x0b) reddens.
+test fn the_mint_separator_authority_is_the_six_ascii_class_it_proclaims() -> Bool {
+  match list_length(items: debconf_perl_whitespace) {
+    6 =>
+      fold(
+        perl_whitespace_members,
+        init: true,
+        f: (agree, one) =>
+          match a_declared_separator_appears(text: one, separators: debconf_perl_whitespace) {
+            True => agree
+            False => false
+          },
+      )
+    _ => false
+  }
+}
+
+// THE ssh BLOCK IN THE SERVED DOCUMENT FOLLOWS THE PACKAGE SET, NOT A FLAG BESIDE IT (review 83764 finding 2: the
+// Bool over Optional was noted and left in place because its consumer is a Bool field in a sibling module —
+// gunbc.os_install_emit's AutoinstallPayload.install_openssh_server, merry's ruling: do not edit that file here.
+// Leaving the Bool is only honest if the Bool is CAUSALLY tied to the thing it names, so the tie is measured here,
+// through the real emitter rather than by reading the Bool back). A headless board whose package set contains
+// openssh-server must be handed an ssh block, or nobody can log into the machine it just installed; a board that
+// does not contain it must NOT be handed one, because `install-server: true` for an absent package is a promise the
+// installer cannot keep. Both directions are checked on the SERVED user-data bytes (the document the board
+// actually receives, via the binder's served bundle), not on the model value, so a mutation that hardcodes the Bool
+// in either direction reddens exactly one leg.
+fn packages_without_openssh() -> List<PackageIntent> {
+  [QuestionAnswered {
+    package: PostfixPackage,
+      answers: debconf_answer_for(
+        package: PostfixPackage,
+        kind: AnswerSelect,
+        label: "postfix/main_mailer_type" as NonEmptyStr,
+        value: "No configuration" as NonEmptyStr,
+      ),
+  }]
+}
+
+test fn the_served_document_installs_the_ssh_server_exactly_when_the_package_set_names_it() -> Bool {
+  match binding_with_packages(packages: clean_packages) {
+    Absent => false
+    Present { value: with_ssh } =>
+      match binding_with_packages(packages: packages_without_openssh()) {
+        Absent => false
+        Present { value: without_ssh } =>
+          // THE PACKAGE SET CONTAINS openssh-server, SO THE SERVED USER-DATA MUST ASK FOR THE SSH SERVER.
+          with_ssh.served.user_data.contains(needle: "install-server")
+            // THE PACKAGE SET DOES NOT CONTAIN IT, SO THE SERVED USER-DATA MUST NOT. An ssh block naming a
+            // package nobody installs is the fabricated-promise half of the same defect.
+            && !without_ssh.served.user_data.contains(needle: "install-server")
+      }
   }
 }
 

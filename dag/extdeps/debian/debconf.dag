@@ -251,7 +251,7 @@ fn debconf_selection_record(
               match ends_with(s: value as String, suffix: "\\") {
                 True => RefusedAtTheMint { cause: ValueCarriesTheContinuationCharacter { value: value } }
                 False =>
-                  match value_has_a_character_that_is_not_a_separator(text: value as String) {
+                  match value_has_a_character_outside_the_separator_authority(text: value as String) {
                     False => RefusedAtTheMint { cause: ValueSelectsNothing { value: value } }
                     True => MintedSelection { record: DebconfSelectionRecord {
                       owner: owner,
@@ -329,55 +329,68 @@ fn value_ends_the_line(text: String) -> Bool {
 
 // EVERY CHARACTER A SEPARATOR MEANS NOTHING WAS CHOSEN. Substring-and-length walking again, because this
 // language has no character indexing; the claim is small and deliberately so — it refuses the strings made
-// entirely of space, tab and newline, which are exactly the ones a human types into a preseed editor and
-// nothing notices.
-fn value_has_a_character_that_is_not_a_separator(text: String) -> Bool {
+// entirely of Perl's \s class (the six ASCII separators declared below), which are exactly the ones a human
+// types into a preseed editor and nothing notices.
+// THE SEPARATOR AUTHORITY, PERL'S \s CLASS, DECLARED ONCE (review: merry-fox-82; review 83816 — the mint used to
+// hand-list space, tab and newline in two separate walkers, but upstream debconf-set-selections splits its fields
+// with a Perl regex whose \s matches SIX ASCII characters: space, tab, \n (0a), \v (0b), \f (0c), \r (0d) — \v and
+// \f joined the class in Perl 5.18, and Noble ships perl 5.38). An owner containing \r (text pasted from a CRLF
+// file, exactly what a sysadmin editing a seed by hand produces) was minted as a well-formed field upstream would
+// have split; a value of "\r" was credited as an answer through the `ValueSelectsNothing` walker, which only knew
+// three of the six. Both walkers now consult THIS row, so the two cannot drift apart and a future seventh member
+// (Perl's Unicode \s arms, if the reader ever decodes) is a one-row edit here that both checks receive for free
+// (§2: one authority, no hand-listed copies). THE ASCII SET ONLY, DELIBERATELY: whether NEL (85) or NBSP (a0)
+// match \s depends on whether the reader decoded the file as UTF-8, which upstream does not promise in the cited
+// script — that boundary is stated here rather than silently assumed either way.
+data debconf_perl_whitespace: List<String> = [" ", "\t", "\n", "\u{b}", "\u{c}", "\r"]
+
+// `one` equals one of the declared separators. The comparison is against the authority members, never against a
+// literal typed at the call site, which is what keeps the mint and any future check on the same set.
+fn char_is_a_declared_separator(one: String, separators: List<String>) -> Bool {
+  match separators {
+    Empty => false
+    Cons { head: sep, tail: rest } =>
+      match one == sep {
+        True => true
+        False => char_is_a_declared_separator(one: one, separators: rest)
+      }
+  }
+}
+
+// THE SIX-WALKER. A list made only of authority separators reaches `false` and is refused as selecting nothing; a
+// single character outside the six returns `true`. The base case's polarity is the entire claim (a value that
+// selects nothing is not an answer), so it is a mutation row, not a comment.
+fn value_has_a_character_outside_the_separator_authority(text: String) -> Bool {
   match text.length() {
-    // EXHAUSTED MEANS NOTHING WAS FOUND. The base case is the whole value of this walker: a string made only of
-    // separators reaches it having never returned true, so a value that selects nothing is refused. Writing the
-    // base case the other way round would accept every whitespace-only value while every accessor, the line and
-    // the record itself stayed well-formed — the defect would live only in what the audit credits.
     0 => false
     _ =>
       match text.substring(start: 0, end: 1) {
         one =>
-          match one == " " {
-            True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
-            False =>
-              match one == "\t" {
-                True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
-                False =>
-                  match one == "\n" {
-                    True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
-                    False => true
-                  }
-              }
+          match char_is_a_declared_separator(one: one, separators: debconf_perl_whitespace) {
+            True => value_has_a_character_outside_the_separator_authority(
+              text: text.substring(start: 1, end: text.length()),
+            )
+            False => true
           }
       }
   }
 }
 
-// A KEY FIELD: no space, no tab, no newline in it. Upstream splits the first three fields as (\S+) runs, so any
-// of the three ends the field early and re-aligns every field after it; the scan is written with `contains`
-// because all three refusals are "does this character appear anywhere", which is what \S+ means for one field.
-// NO ZERO-LENGTH ARM HERE, DELIBERATELY, for the reason debconf_selection_record states at its refusals: every
-// caller passes a NonEmptyStr, so the empty string cannot be named at the door, and an arm written for it can
-// never go RED.
-fn key_field_is_well_formed(text: String) -> Bool {
-  match text.contains(needle: " ") {
-    True => false
-    False => match text.contains(needle: "\t") {
-      True => false
-      // A record is one line. A newline inside a field would render two lines out of one record, and the second
-      // would be read by upstream as a separate record whose owner is whatever follows — an answer smuggled in
-      // as a continuation. The regex has no such concept because its reader is line-based; the record must not
-      // grow one either.
-      False => match text.contains(needle: "\n") {
-        True => false
-        False => true
+// ANY OF THE SIX APPEARS ANYWHERE — \S+ means a field contains no whitespace character, so the field scan is the
+// same authority consulted the other way: a field is well-formed exactly when none of the six occurs in it.
+fn a_declared_separator_appears(text: String, separators: List<String>) -> Bool {
+  match separators {
+    Empty => false
+    Cons { head: sep, tail: rest } =>
+      match text.contains(needle: sep) {
+        True => true
+        False => a_declared_separator_appears(text: text, separators: rest)
       }
-    }
   }
+}
+
+fn key_field_is_well_formed(text: String) -> Bool {
+  !a_declared_separator_appears(text: text, separators: debconf_perl_whitespace)
 }
 
 // THE ACCESSORS, so a consumer reads fields instead of reaching into the record's shape.
