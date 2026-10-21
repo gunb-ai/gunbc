@@ -1,0 +1,124 @@
+module gunbc.url_file_acquisition
+
+import std.types { NonEmptyStr, Bool, FilePath }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.http.client
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import gunbc.artifact_acquisition {
+  AcquisitionKey, ContentDigestSha256, UpstreamRevision, AcquisitionSource, AcquisitionSubject, AcquisitionHandler,
+  SourceUrl, SourceArgv,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptUnreachable, AttemptRejected,
+  AcquisitionFetched, AcquisitionRefused, PublishFailed, VerifyMechanismFailed,
+}
+
+// ONE FILE, ONE URL PER SOURCE, ONE SHA-256: the transport binding for gunbc.artifact_acquisition
+// when the artifact is a single file. Download into the subject's staging path, verify the digest
+// there, and publish by rename only after it matches, so the install path never holds bytes that
+// failed their key. Its first subject was the Ubuntu install ISO
+// (extdeps.provisioning.ubuntu_install_media_fetch); the print runtime's pinned micromamba binary
+// is the second, which is when the binding moved here instead of being written twice.
+
+// The presence probe is OutcomeIsData: a non-zero `test -f` here means the file is ABSENT, which is
+// one of this fn's four declared answers, not a fault. The type already draws the distinction the arm
+// formalises -- AcquisitionProbeFailed is the separate 'the probe itself broke' arm -- so subject
+// state and probe breakage were never conflated here; only the effect layer's glyph conflated them.
+fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
+  let present = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
+  if present.is_file == false {
+    AcquisitionAbsent
+  } else {
+    match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
+      Sha256Matches => AcquisitionVerified
+      Sha256Mismatch => AcquisitionDigestMismatch
+      Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
+    }
+  }
+}
+
+// THE PROBE KEEPS ITS PATH-AND-DIGEST SIGNATURE and the handler adapts to it, rather than the other
+// way round. Its three real-execution witnesses drive it with a temp file they wrote themselves, and
+// a probe that could only be called with a whole AcquisitionSubject would have forced those fixtures
+// to build one -- more ceremony around the same two facts. One authority, called by both.
+fn observe_url_file_subject(subject: AcquisitionSubject) -> AcquisitionObservation {
+  observe_url_file(
+    path: subject.install_path,
+    expected_hash: url_file_digest(key: subject.key),
+  )
+}
+
+// THE DIGEST THIS SUBJECT IS KEYED ON. A single-file URL subject is always digest-keyed -- the
+// artifact is one file with one published SHA-256 -- so the revision arm is
+// unreachable here and answers with a string that could never verify rather than a plausible one.
+fn url_file_digest(key: AcquisitionKey) -> NonEmptyStr {
+  match key {
+    ContentDigestSha256 { hex: h } => h
+    UpstreamRevision { revision: _ } => "a single-file URL subject is never revision-keyed" as NonEmptyStr
+  }
+}
+
+fn ensure_url_file_parent(subject: AcquisitionSubject) -> Bool {
+  let made = shell.Mkdir.Parents(path: subject.parent_directory as FilePath)
+  made.success
+}
+
+fn url_file_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.staging_path {
+    Present { value: p } => p
+    Absent => subject.install_path
+  }
+}
+
+fn attempt_url_file_source(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  let part_path = url_file_staging_path(subject: subject)
+  match origin.locator {
+    SourceArgv { argv: _ } =>
+      AttemptRejected { detail: "this mirror was built with a command-line locator, which the single-file URL transport cannot fetch; it downloads a URL" as NonEmptyStr }
+    SourceUrl { url: u } => attempt_url_file_download(subject: subject, origin: origin, url: u, part_path: part_path)
+  }
+}
+
+fn attempt_url_file_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
+  if downloaded.success == false {
+    AttemptUnreachable
+  } else {
+    match sha256sum_verify_via_shell(path: part_path, expected_digest: url_file_digest(key: subject.key)) {
+      Sha256Matches => url_file_publish(subject: subject, origin: origin, part_path: part_path)
+      Sha256Mismatch => url_file_discard_mismatch(part_path: part_path)
+      Sha256VerifyInfraFailure { reason: r } => url_file_discard_infra_failure(part_path: part_path, subject: subject, origin: origin, reason: r)
+    }
+  }
+}
+
+fn url_file_publish(subject: AcquisitionSubject, origin: AcquisitionSource, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let moved = shell.Move.File(source: part_path as FilePath, destination: subject.install_path as FilePath)
+  if moved.success {
+    AttemptTerminal { outcome: AcquisitionFetched {
+      identity: subject.identity, install_path: subject.install_path, source: origin,
+    } }
+  } else {
+    AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
+      identity: subject.identity, source: origin.identity, install_path: subject.install_path,
+    } } }
+  }
+}
+
+fn url_file_discard_mismatch(part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptFailedKey
+}
+
+fn url_file_discard_infra_failure(part_path: NonEmptyStr, subject: AcquisitionSubject, origin: AcquisitionSource, reason: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+    identity: subject.identity, source: origin.identity, reason: reason,
+  } } }
+}
+
+data url_file_acquisition_handler: AcquisitionHandler = AcquisitionHandler {
+  observe: observe_url_file_subject,
+  ensure_parent: ensure_url_file_parent,
+  attempt: attempt_url_file_source,
+}

@@ -6,6 +6,7 @@ import std.process {ExitFailure}
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import product.printing.print_runtime {PrintRuntimeReady,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
 import product.printing.runtime_converge {converge}
+import product.printing.cad_runtime_converge {converge_cad_runtime}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import extdeps.tools.hostname
 import std.algebra {trim}
@@ -85,7 +86,14 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
 
 // Explicit dependency-provisioning phase. The print phase only observes; callers
 // request convergence through this same workflow root when the host needs setup.
-fn converge_runtime(receipt:String) -> ProcessExit {converge(receipt:receipt)}
+// Host packages first (the CAD interpreter links against them), then the CAD environment;
+// a refusal at either stops here.
+fn converge_runtime(receipt:String) -> ProcessExit {
+ match converge(receipt:receipt) {
+  ExitSuccess=>converge_cad_runtime(receipt:concat(receipt,".cad"))
+  package_refusal=>package_refusal
+ }
+}
 
 // Explicitly requested provisioning followed by ordinary preparation and printing.
 // This composes the existing phases in one invocation; the default run remains
