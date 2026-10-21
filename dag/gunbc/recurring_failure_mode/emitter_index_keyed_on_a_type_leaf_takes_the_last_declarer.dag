@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.emitter_index_keyed_on_a_type_leaf_takes_the
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "an emitter index keyed on a type's leaf takes the last declarer: the Rust emitter builds its per-closure facts about type declarations into maps keyed on the declared LEAF NAME, folded over every module with map_insert, so when two modules of one closure declare the same leaf the map holds ONE row -- whichever was folded last -- and every reader of either declaration is answered with that row. INVALID STATE: a declaration emitted from another declaration's facts. Nothing refuses: the lookup is Present, the row is well-formed, and it is about a different type.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.occurrence_identity_compared_as_structure
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data occurrence_identity_compared_as_structure: RecurringFailureMode = RecurringFailureMode {
   identity: "occurrence_identity_compared_as_structure" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: a control claiming equality of parsed structure compares whole Node values, or their byte renderings, including OccurrenceMinted allocator ordinals. The occurrence_identity_scope_law in std.occurrence_identity makes those ordinals unique only within one explicit allocator scope. What else that allocator minted changes the ordinals; equal ordinals from separate parses do not establish occurrence identity. A full parse and a heads parse mint different populations when one reads bodies and the other skips them. HARM: matching declaration structures compare unequal because the control asks an allocation question as part of its structural question. The same false negative affects any full-versus-partial parse comparison that includes minted ids, not only a census differential.",
     "EXECUTED SPECIMEN (2026-09-11, gunbc#11092, review 64052 cutover validation): cli_run::closure_edge_demand_tests::heads_and_resolved_readings_agree_on_candidate_and_variant_gating, fixture a.dag, declares module frontier, type Box<T> { value: T }, type Choice = First | Second, fn generic<T>(x: T) -> Box<T> { Box { value: x } }, and fn duplicated() -> Int { 1 }. With both normalizers using v1.compiler.compile::census_heads_module_node, an added full == heads assertion over census_heads_both_readings failed. Comparing its printed operands after removing ONLY OccurrenceMinted ordinal values made the remaining text identical. That diagnostic comparison established the specimen; it is not a proposed normalization implementation or an identity authority. A second run showed the same defect even for heads-versus-heads when production advanced the intern/occurrence snapshot before the differential read it. The shipped regression supplies the SAME incoming snapshot to both heads readers and compares the differential HEADS result with production HEADS, which catches the hand-strip/generated-strip fork without equating full and partial allocation histories. The existing full/heads differential policy and parse witnesses are unchanged.",
