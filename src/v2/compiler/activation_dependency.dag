@@ -64,7 +64,8 @@ import v2.std.node {
   Node,
   PositionalOrdinal,
   branch_slot_target,
-  match_arm_slots,
+  MatchArmSlot,
+  match_role_slots,
   match_slot_target,
   node_child_slots,
   node_subtree_nodes
@@ -182,7 +183,7 @@ fn activation_match(acc: ActivationDependencies, site: Node) -> ActivationDepend
 
 fn activation_collect_arms(site: Node) -> ActivationArms {
   fold_list(
-    xs: match_arm_slots(n: site),
+    xs: match_role_slots(n: site, role: MatchArmSlot),
     empty: ActivationArms { alternatives: [], malformed: optional_absent() },
     cons: fn(arms, s) { activation_arm_at(arms: arms, s: s) }
   )
