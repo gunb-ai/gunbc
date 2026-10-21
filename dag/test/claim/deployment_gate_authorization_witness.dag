@@ -1839,23 +1839,31 @@ test fn the_receipt_carries_the_observed_repository_not_the_callers() -> Bool {
 }
 
 
-// WHAT THE CARRIERS BUY, MEASURED RATHER THAN ASSUMED, because the first version of this comment
-// claimed more than the checker does.
+// WHAT THE CARRIERS BUY, MEASURED RATHER THAN ASSUMED — twice, because the first version of this
+// comment claimed more than the checker did, and the base then moved under the correction.
 //   CONSTRUCTION: handing an app id where an installation id belongs is REFUSED —
 //   "type mismatch: expected 'Product(GitHubAppInstallationId)', got 'Product(GitHubAppId)'". A claim
-//   with the axes swapped cannot be written.
-//   COMPARISON: NOT refused. Both carriers are one-Int records and `==` is judged memberwise, so the
-//   two axes answer EQUAL when their numbers match. A carrier therefore does not make a cross-axis
-//   comparison false, and this file reads `.value` on purpose: the check is a check, not a trick the
-//   reader is asked to assume.
-test fn the_carriers_separate_the_axes_at_construction_and_not_at_comparison() -> Bool {
+//   with the axes swapped cannot be written. This witness carries that side, per carrier: constructing
+//   a carrier and reading back its own value.
+//   COMPARISON ACROSS AXES IS NOT WRITABLE EITHER. Measured at the rebase onto main d577b1856cd
+//   (head 011fad21c15): `installation == app` — two same-numbered carriers of DIFFERENT axes —
+//   refused at resolve as a type mismatch, where the previous base had let it through memberwise
+//   equal (the superseded wording this comment once carried). The refusal has an owner already, so
+//   this file gives it no second home (§3): the class row
+//   gunbc.recurring_failure_mode.cross_type_comparison_answers_instead_of_refusing and its enrolled
+//   control test.claim.record_escapes_declared_optional_return_witness::
+//   w_an_equality_between_unrelated_records_is_refused. A compiling file cannot contain a compile
+//   error, so what THIS claim asserts is what remains demonstrable inside a witness: same-axis
+//   equality is memberwise, each carrier reads back its own value, and each field accepts only its
+//   own carrier.
+test fn the_carriers_separate_the_axes_at_construction_and_read_back_their_values() -> Bool {
   let installation = GitHubAppInstallationId { value: 4242 }
+  let same_axis = GitHubAppInstallationId { value: 4242 }
   let app = GitHubAppId { value: 4242 }
-  // same number, equal — if anyone later believes `==` discriminates the axes, this line says so
-  (installation == app)
+  (installation == same_axis)
     && installation.value == 4242
     && app.value == 4242
-    // and the only thing that does separate them: each field accepts its own carrier
+    // and each field accepts its own carrier only
     && fx_claim_axes_are_field_typed()
 }
 
