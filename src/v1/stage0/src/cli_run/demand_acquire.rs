@@ -44,19 +44,46 @@ pub fn resolve_entry_graph_demand_acquired(
     ),
     String,
 > {
-    let index = build_demand_acquired_index(source_roots, entry_file)?;
-    resolve_entry_with_index(&index, entry_file)
+    // GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
+    // authored references reach, so a provider a generated reference demands is outside it. The index
+    // carries the layout's answer for such a module (provider_layout); the resolve core records every
+    // provider the model asks to acquire that the layout holds and the index does not, and this loop
+    // rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
+    // ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
+    let custom = Rc::new(custom_root_module_census(source_roots)?);
+    let mut seeds: Vec<String> = Vec::new();
+    loop {
+        let index = build_demand_acquired_index(source_roots, entry_file, &seeds)?;
+        let roots = source_roots.to_vec();
+        let census = custom.clone();
+        *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
+            matches!(read_layout_module(&roots, &census, module), Ok(Some(_)))
+        }));
+        match resolve_entry_with_index(&index, entry_file) {
+            Ok(resolved) => return Ok(resolved),
+            Err(refusal) => {
+                let outside = index.providers_outside_index.borrow().clone();
+                let fresh: Vec<String> =
+                    outside.into_iter().filter(|m| !seeds.contains(m)).collect();
+                if fresh.is_empty() {
+                    return Err(refusal);
+                }
+                seeds.extend(fresh);
+            }
+        }
+    }
 }
 
 fn build_demand_acquired_index(
     source_roots: &[String],
     entry_file: &str,
+    provider_seeds: &[String],
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = super::pre_entry_phase::timed(
         "demand_layout_acquire",
         super::pre_entry_phase::PhaseScale::Closure,
-        || acquire_layout_closure(source_roots, entry_file),
+        || acquire_layout_closure_seeded(source_roots, entry_file, provider_seeds),
     )?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
@@ -70,6 +97,17 @@ fn build_demand_acquired_index(
 pub(crate) fn acquire_layout_closure(
     source_roots: &[String],
     entry_file: &str,
+) -> Result<ModuleSourceIndex, String> {
+    acquire_layout_closure_seeded(source_roots, entry_file, &[])
+}
+
+/// The entry's layout closure, also closing over `provider_seeds` -- modules generated references
+/// demand that no authored reference reaches. A seed the layout does not hold is skipped here; the
+/// resolve that demanded it refuses it typed (GeneratedProviderUnavailable).
+pub(crate) fn acquire_layout_closure_seeded(
+    source_roots: &[String],
+    entry_file: &str,
+    provider_seeds: &[String],
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
     if !path.is_file() {
@@ -96,6 +134,15 @@ pub(crate) fn acquire_layout_closure(
     );
     let mut queue: VecDeque<String> = VecDeque::new();
     queue.push_back(entry_module);
+    for seed in provider_seeds {
+        if index.contains_key(seed) {
+            continue;
+        }
+        if let Some(acquired) = read_layout_module(source_roots, &custom, seed)? {
+            index.insert(seed.clone(), acquired);
+            queue.push_back(seed.clone());
+        }
+    }
     let mut known: HashSet<String> = index.keys().cloned().collect();
     while let Some(module) = queue.pop_front() {
         let Some(source) = index.get(&module).cloned() else {
