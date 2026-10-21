@@ -257,8 +257,8 @@ import v1.compiler.infer_access {
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.generated_provider {
   GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
-  ModuleInClosure, ModuleInPool, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
-  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused
+  ModuleInClosure, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -18609,29 +18609,48 @@ type RealizeState {
 }
 
 // THE SEED'S ACQUISITION BOUNDARY, read from the checked closure. Whether a demanded module is in the
-// closure, and which declarations it has there, is a fact of the typed modules; whether the pool
-// holds a module outside the closure is the one fact a closure builder supplies (pool_modules: the
-// demanded module paths its pool answers for). The decision itself is std.generated_provider's.
-// Declarations are the module's own items by authored name; a refused declaration surfaces as its
-// own blocking diagnostic, so this boundary reports none as refused.
-fn closure_provider_module_fact(module_path: String, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, pool_modules: List<String>) -> ProviderModuleFact {
+// closure, which declarations it has there, and which of those were refused are facts of the typed
+// modules and the closure's own diagnostics; how the pool answered for a module outside the closure
+// is the builder's typed observation (ProviderPoolObservation, one per demanded module). The decision
+// itself is std.generated_provider's.
+//
+// A declaration is refused when a blocking diagnostic of this closure is located inside it.
+fn span_contains(outer: SourceSpan, inner: SourceSpan) -> Bool {
+  outer.file == inner.file && inner.start >= outer.start && inner.end <= outer.end
+}
+
+fn declaration_refused_in_closure(item: Node, diagnostics: List<ErrorNode>) -> Bool {
+  diagnostics |> any(d => is_interpreter_blocking_diagnostic(d: d.diagnostic) && span_contains(outer: item.span, inner: diagnostic_to_span(d: d.diagnostic)))
+}
+
+fn item_declared_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<NonEmptyStr> {
+  items
+    |> map(i => authored_name_at(source_indices: source_indices, node: i))
+    |> filter(n => n != "")
+    |> map(n => n as NonEmptyStr)
+}
+
+// A demanded module outside the closure with no pool observation is a builder that skipped its one
+// obligation; judge_closure supplies an observation for every demanded module path, and the absent
+// answer reads as not in the pool so the refusal still names the module rather than acquiring it.
+fn closure_provider_module_fact(module_path: String, modules: List<TypedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>, pool: List<ProviderPoolObservation>) -> ProviderModuleFact {
   match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_path) |> first {
     Present { value: m } =>
       ModuleInClosure {
-        declarations: m.items
-          |> map(i => authored_name_at(source_indices: source_indices, node: i))
-          |> filter(n => n != "")
-          |> map(n => n as NonEmptyStr),
-        refused: []
+        declarations: item_declared_names(items: m.items, source_indices: source_indices),
+        refused: item_declared_names(items: m.items |> filter(i => declaration_refused_in_closure(item: i, diagnostics: diagnostics)), source_indices: source_indices)
       }
     Absent =>
-      if pool_modules |> any(p => p == module_path) { ModuleInPool } else { ModuleNotInPool }
+      match pool |> filter(p => p.module_path == module_path) |> first {
+        Present { value: p } => p.fact
+        Absent => ModuleNotInPool
+      }
   }
 }
 
-fn closure_provider_acquisition_step(demands: List<GeneratedProviderDemand>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, pool_modules: List<String>) -> ProviderAcquisitionStep {
+fn closure_provider_acquisition_step(demands: List<GeneratedProviderDemand>, modules: List<TypedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>, pool: List<ProviderPoolObservation>) -> ProviderAcquisitionStep {
   provider_acquisition_step(
-    observed: demands |> map(d => observe_provider_demand(demand: d, fact: closure_provider_module_fact(module_path: d.declaration.module_path, modules: modules, source_indices: source_indices, pool_modules: pool_modules))),
+    observed: demands |> map(d => observe_provider_demand(demand: d, fact: closure_provider_module_fact(module_path: d.declaration.module_path, modules: modules, diagnostics: diagnostics, source_indices: source_indices, pool: pool))),
     closure_modules: modules
       |> map(m => authored_name_at(source_indices: source_indices, node: m.module))
       |> filter(n => n != "")

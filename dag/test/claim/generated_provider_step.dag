@@ -13,7 +13,7 @@ import std.generated_provider {
   AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused,
   generated_provider_demand, group_provider_demands, provider_acquisition_step,
   UnavailableProviderDemand, ModuleInClosure, ModuleInPool, ModuleNotInPool,
-  observe_provider_demand, generated_provider_unavailable_message
+  observe_provider_demand, generated_provider_unavailable_message, stalled_acquisition_step
 }
 
 // Supplied inputs at the std.generated_provider interface (DESIGN section 3, a witness discriminates
@@ -156,4 +156,14 @@ test fn module_in_closure_without_the_declaration_is_declaration_absent_not_modu
 test fn refusal_message_names_the_declaration_and_the_cause() -> Bool {
   generated_provider_unavailable_message(declaration: unfold_ref(), cause: UnavailableDeclarationAbsent)
     == "generated provider unavailable: std.coercion.unicode_scalar_unfold -- its module does not declare it; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
+}
+
+// A builder whose acquisition added nothing gets the model's AcquisitionMadeNoProgress, for exactly
+// the demands on the stalled modules.
+test fn a_stalled_acquisition_refuses_as_no_progress_for_its_own_demands() -> Bool {
+  let step = stalled_acquisition_step(demands: [
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 1)),
+    generated_provider_demand(declaration: list_head_ref(), site: site(start: 2))
+  ], stalled_modules: ["std.coercion" as NonEmptyStr])
+  refusal_count(step: step) == 1 && first_refusal_cause_is(step: step, want: AcquisitionMadeNoProgress)
 }

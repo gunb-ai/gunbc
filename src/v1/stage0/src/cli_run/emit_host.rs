@@ -452,7 +452,7 @@ pub fn compile_dag_multi_module_fixture(
         // provider outside it refuses (GeneratedProviderUnavailable) instead of reaching the tree.
         let resolved = super::provider_acquire::compile_to_provider_fixed_point(
             files,
-            &|_: &str| false,
+            &|_: &str| super::provider_acquire::PoolAnswer::Lacks,
             &|module: &str| Err(format!("hermetic fixture: no pool holds '{module}'")),
         )
         .unwrap_or_else(|cause| unreachable!("an empty pool never asks for acquisition: {cause}"));
@@ -2075,6 +2075,22 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 ///
 /// The control that the selected bytes equal the full render's is
 /// [`compile_dag_render_selection_agreement`], which runs the full render for real.
+/// The witness-root module index's answer for a demanded module: Lacks when no file declares it,
+/// Unreadable when the index names a file that cannot be read now, Holds otherwise. The index
+/// panics on two files for one module path when it is built, so no answer here is ambiguous.
+pub(crate) fn fixture_pool_answer(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> super::provider_acquire::PoolAnswer {
+    match pool.get(module) {
+        None => super::provider_acquire::PoolAnswer::Lacks,
+        Some(path) => match std::fs::metadata(process_workspace_root().join(path)) {
+            Ok(meta) if meta.is_file() => super::provider_acquire::PoolAnswer::Holds,
+            _ => super::provider_acquire::PoolAnswer::Unreadable,
+        },
+    }
+}
+
 /// A demanded provider joins an emit-check fixture with its own import closure, read from the
 /// witness-root module index the way the fixture's own imports were.
 pub(crate) fn fixture_pool_closure_of(
@@ -2104,7 +2120,7 @@ pub(crate) fn compile_fixture_rendering_only_what_is_read(
     // The witness-root module index is this surface's pool for generated providers.
     let resolved = super::provider_acquire::compile_to_provider_fixed_point(
         sources,
-        &|module: &str| pool.contains_key(module),
+        &|module: &str| fixture_pool_answer(module, pool),
         &|module: &str| fixture_pool_closure_of(module, pool),
     )
     .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;

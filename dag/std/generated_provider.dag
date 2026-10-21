@@ -231,3 +231,23 @@ fn generated_provider_unavailable_message(declaration: DeclarationRef, cause: Ge
     "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
   )
 }
+
+// WHAT A BUILDER'S POOL ANSWERED FOR ONE DEMANDED MODULE OUTSIDE THE CLOSURE. The builder supplies one
+// per demanded module path; the closure fact, when the module is already in the closure, comes from
+// the checked closure and takes precedence.
+type ProviderPoolObservation {
+  module_path: String
+  fact: ProviderModuleFact
+}
+
+// A STALLED ACQUISITION, AS THE MODEL'S OWN REFUSAL: the builder asked for modules and its pool's
+// closures added nothing to the sources, so the demanded modules count as already held while still
+// unsatisfied -- provider_acquisition_step's AcquisitionMadeNoProgress, never a builder's prose.
+fn stalled_acquisition_step(demands: List<GeneratedProviderDemand>, stalled_modules: List<NonEmptyStr>) -> ProviderAcquisitionStep {
+  provider_acquisition_step(
+    observed: demands
+      |> filter(d => stalled_modules |> any(m => m == d.declaration.module_path))
+      |> map(d => ObservedProviderDemand { demand: d, observation: ProviderModuleAvailable }),
+    closure_modules: stalled_modules
+  )
+}

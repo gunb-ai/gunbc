@@ -2112,18 +2112,28 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // On Acquire, each acquired module's own closure joins the sources and the whole closure is
     // checked again; the closure only grows and the model refuses a module it already holds, so the
     // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
+    // The entry index carries each pooled module's source text in memory (read when the index was
+    // built, which refuses an unreadable or doubly-declared module), so its answer is Holds or Lacks.
+    let pool = |m: &str| {
+        if index.source_files.contains_key(m) {
+            super::provider_acquire::PoolAnswer::Holds
+        } else {
+            super::provider_acquire::PoolAnswer::Lacks
+        }
+    };
     match super::provider_acquire::judge_closure(
         &provider_demands,
         typed.modules.clone(),
+        typed.diagnostics.clone(),
         source_indices.clone(),
-        &|m: &str| index.source_files.contains_key(m),
+        &pool,
     ) {
         super::provider_acquire::ClosureProviderStep::Complete => {}
         super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
             return Err(format_error_nodes(&diagnostics, &source_indices));
         }
         super::provider_acquire::ClosureProviderStep::Acquire(modules) => {
-            let merged = super::provider_acquire::extend_with_acquired(
+            let extended = super::provider_acquire::extend_with_acquired(
                 sources.clone(),
                 &modules,
                 &|module: &str| {
@@ -2139,8 +2149,20 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                     load_sources_for_entry_with_pool(index, &on_disk.to_string_lossy())
                 },
             )?;
+            let merged = match extended {
+                Some(merged) => merged,
+                None => match super::provider_acquire::stalled(&provider_demands, &modules) {
+                    super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
+                        return Err(format_error_nodes(&diagnostics, &source_indices));
+                    }
+                    _ => unreachable!("a stalled acquisition always refuses"),
+                },
+            };
             let acquired =
                 resolved_graph_from_sources_with_index(index, merged, phase_label, memo_share)?;
+            // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose pool is
+            // immutable for the index's lifetime, so the post-acquisition graph is the answer for
+            // this subject in this run. No persisted or cross-process key is minted here.
             if memo_share == ResolvedGraphMemoShare::Memoize {
                 index
                     .resolved_graph_memo

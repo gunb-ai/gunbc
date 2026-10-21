@@ -14,7 +14,8 @@
 //! Seed-growth receipt: `gunbc.generated_provider_acquire_seed_growth`.
 
 use crate::std_generated_provider::{
-    group_provider_demands, GeneratedProviderDemand, ProviderAcquisitionStep,
+    group_provider_demands, stalled_acquisition_step, GeneratedProviderDemand,
+    ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
 };
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_items::TypedModule;
@@ -47,25 +48,67 @@ pub(crate) enum ClosureProviderStep {
     Refused(Rc<im::Vector<Rc<ErrorNode>>>),
 }
 
-/// Judge a checked closure. `in_pool` is the builder's own storage answer for a module path; it is
-/// asked only about demanded modules.
+/// WHAT A BUILDER'S POOL CAN ANSWER for one demanded module outside the closure. There is no
+/// ambiguous arm, and that is an admitted fact of both pools rather than an omission: the entry
+/// index refuses two files for one module path when it is built (`module_source_identity`), and
+/// the witness-root module index panics on the same collision (`insert_module_path`), so neither
+/// pool can hold several candidates by the time a demand reaches it.
+pub(crate) enum PoolAnswer {
+    Holds,
+    Lacks,
+    /// The pool names the module and its source cannot be read.
+    Unreadable,
+}
+
+fn pool_observation(module_path: &str, answer: PoolAnswer) -> Rc<ProviderPoolObservation> {
+    Rc::new(ProviderPoolObservation {
+        module_path: module_path.to_string(),
+        fact: Rc::new(match answer {
+            PoolAnswer::Holds => ProviderModuleFact::ModuleInPool,
+            PoolAnswer::Lacks => ProviderModuleFact::ModuleNotInPool,
+            PoolAnswer::Unreadable => ProviderModuleFact::ModuleUnreadableInPool,
+        }),
+    })
+}
+
+/// Judge a checked closure. The builder answers for every demanded module path (the model reads
+/// the closure fact first, so an answer for a module already in the closure is never used);
+/// `diagnostics` are the closure's own, from which the model reads refused declarations.
 pub(crate) fn judge_closure(
     demands: &ProviderDemands,
     modules: Rc<im::Vector<Rc<TypedModule>>>,
+    diagnostics: Rc<im::Vector<Rc<ErrorNode>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    in_pool: &dyn Fn(&str) -> bool,
+    pool: &dyn Fn(&str) -> PoolAnswer,
 ) -> ClosureProviderStep {
-    let pool_modules: im::Vector<String> = demands
-        .iter()
-        .map(|d| d.declaration.module_path.clone())
-        .filter(|m| in_pool(m))
-        .collect();
+    let mut answered: Vec<String> = Vec::new();
+    let mut observations: im::Vector<Rc<ProviderPoolObservation>> = im::Vector::new();
+    for d in demands.iter() {
+        let module_path = d.declaration.module_path.clone();
+        if !answered.contains(&module_path) {
+            observations.push_back(pool_observation(&module_path, pool(&module_path)));
+            answered.push(module_path);
+        }
+    }
     let step = v1_compiler_infer::closure_provider_acquisition_step(
         demands.clone(),
         modules,
+        diagnostics,
         source_indices,
-        Rc::new(pool_modules),
+        Rc::new(observations),
     );
+    step_outcome(step)
+}
+
+/// The model's refusal for an acquisition whose pool closures added nothing.
+pub(crate) fn stalled(demands: &ProviderDemands, modules: &[String]) -> ClosureProviderStep {
+    step_outcome(stalled_acquisition_step(
+        demands.clone(),
+        Rc::new(modules.iter().cloned().collect()),
+    ))
+}
+
+fn step_outcome(step: Rc<ProviderAcquisitionStep>) -> ClosureProviderStep {
     match step.as_ref() {
         ProviderAcquisitionStep::AcquisitionComplete => ClosureProviderStep::Complete,
         ProviderAcquisitionStep::AcquireModules { modules } => {
@@ -87,7 +130,7 @@ pub(crate) fn judge_closure(
 /// manifest refuses there rather than reaching into the tree.
 pub(crate) fn compile_to_provider_fixed_point(
     sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
-    in_pool: &dyn Fn(&str) -> bool,
+    pool: &dyn Fn(&str) -> PoolAnswer,
     closure_of: &dyn Fn(&str) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String>,
 ) -> Result<Rc<crate::v1_compiler_compile::ResolvedPipelineResult>, String> {
     let mut sources = sources;
@@ -98,38 +141,48 @@ pub(crate) fn compile_to_provider_fixed_point(
             Some(graph) => graph,
             None => return Ok(resolved),
         };
+        let refused = |diagnostics: Rc<im::Vector<Rc<ErrorNode>>>| {
+            let mut all = (*resolved.diagnostics).clone();
+            all.extend(diagnostics.iter().cloned());
+            Rc::new(crate::v1_compiler_compile::ResolvedPipelineResult {
+                diagnostics: Rc::new(all),
+                ..(*resolved).clone()
+            })
+        };
         match judge_closure(
             &resolved.provider_demands,
             graph.modules.clone(),
+            resolved.diagnostics.clone(),
             resolved.source_indices.clone(),
-            in_pool,
+            pool,
         ) {
             ClosureProviderStep::Complete => return Ok(resolved),
-            ClosureProviderStep::Refused(diagnostics) => {
-                let mut all = (*resolved.diagnostics).clone();
-                all.extend(diagnostics.iter().cloned());
-                return Ok(Rc::new(
-                    crate::v1_compiler_compile::ResolvedPipelineResult {
-                        diagnostics: Rc::new(all),
-                        ..(*resolved).clone()
-                    },
-                ));
-            }
+            ClosureProviderStep::Refused(diagnostics) => return Ok(refused(diagnostics)),
             ClosureProviderStep::Acquire(modules) => {
-                sources = extend_with_acquired(sources, &modules, closure_of)?;
+                match extend_with_acquired(sources.clone(), &modules, closure_of)? {
+                    Some(extended) => sources = extended,
+                    None => match stalled(&resolved.provider_demands, &modules) {
+                        ClosureProviderStep::Refused(diagnostics) => {
+                            return Ok(refused(diagnostics))
+                        }
+                        _ => unreachable!("a stalled acquisition always refuses"),
+                    },
+                }
             }
         }
     }
 }
 
 /// ONE ACQUISITION STEP FOR EVERY BUILDER: each acquired module's own closure joins the sources,
-/// deduplicated by path. Adding nothing is refused rather than looped on: the model only asks for
-/// modules outside the closure, so an empty extension means the builder's pool and closure disagree.
+/// deduplicated by path. `None` when the extension added nothing: the model only asks for modules
+/// outside the closure, so an empty extension is a stalled acquisition, which the caller refuses
+/// through [`stalled`] (the model's AcquisitionMadeNoProgress), never by looping. An `Err` is the
+/// provider's own closure failing to load -- an ordinary closure error, loud and located.
 pub(crate) fn extend_with_acquired(
     sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
     modules: &[String],
     closure_of: &dyn Fn(&str) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String>,
-) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Option<Vec<Rc<crate::v1_compiler_compile::SourceFile>>>, String> {
     let mut sources = sources;
     let before = sources.len();
     for module in modules {
@@ -139,25 +192,24 @@ pub(crate) fn extend_with_acquired(
             }
         }
     }
-    if sources.len() == before {
-        return Err(format!(
-            "generated provider acquisition made no progress: acquiring {modules:?} added no \
-             source to the closure"
-        ));
-    }
-    Ok(sources)
+    Ok(if sources.len() == before {
+        None
+    } else {
+        Some(sources)
+    })
 }
 
 /// SUPPLIED DEMANDS THROUGH EACH REAL ADAPTER (operator ruling on PR 1). No producer emits a demand
-/// yet, so each test supplies one at this file's interface -- `judge_closure` and
+/// yet, so each test supplies one at this file's interface -- `judge_closure`, `stalled` and
 /// `extend_with_acquired` -- over a closure the surface really compiled and the pool it really
 /// answers from. The inhabitance claim that a real producer emits this shape lands with the
-/// host-text crossing that produces it.
+/// host-text crossing that produces it (PR 2).
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::std_decl_ref::{DeclField, DeclarationRef};
     use crate::std_generated_provider::{GeneratedProviderCause, GeneratedProviderSite};
+    use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
     use crate::v1_std_core::CompilerDiagnostic;
 
     fn supplied(module_path: &str, decl_name: &str) -> ProviderDemands {
@@ -192,24 +244,44 @@ mod tests {
         }
     }
 
-    /// Emit-check surface: the witness-root module index is the pool. A module whose closure
-    /// lacks std.coercion acquires exactly that module for a supplied route demand, then reaches
-    /// the fixed point; a declaration the module does not have refuses as DeclarationAbsent.
+    fn judge(
+        demand: &ProviderDemands,
+        resolved: &ResolvedPipelineResult,
+        pool: &dyn Fn(&str) -> PoolAnswer,
+    ) -> ClosureProviderStep {
+        let graph = resolved.graph.clone().expect("the closure compiles");
+        judge_closure(
+            demand,
+            graph.modules.clone(),
+            resolved.diagnostics.clone(),
+            resolved.source_indices.clone(),
+            pool,
+        )
+    }
+
+    fn compile(sources: &[Rc<SourceFile>]) -> Rc<ResolvedPipelineResult> {
+        crate::v1_compiler_compile::compile_to_resolved(Rc::new(sources.to_vec().into()))
+    }
+
+    fn emit_check_sources(fixture: &str, pool: &HashMap<String, String>) -> Vec<Rc<SourceFile>> {
+        super::super::resolve_virtual_source_with_imports(
+            super::super::emit_host::FIXTURE_SOURCE_PATH,
+            fixture,
+            pool,
+        )
+        .expect("fixture closure")
+    }
+
+    /// Emit-check surface: the witness-root module index is the pool. A carrier-only closure has no
+    /// demand and no std.coercion; a supplied route demand acquires exactly that module, then
+    /// reaches the fixed point; a declaration the module does not have refuses as DeclarationAbsent.
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn emit_check_pool_acquires_the_demanded_module_then_reaches_the_fixed_point() {
         let pool = super::super::build_module_path_index_from_witness_roots();
-        let fixture = "module test.fixture.generated_provider_carrier_only\n\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\n\nfn keep(xs: FreeMonoid<Char>) -> FreeMonoid<Char> { xs }\n";
-        let sources = super::super::resolve_virtual_source_with_imports(
-            super::super::emit_host::FIXTURE_SOURCE_PATH,
-            fixture,
-            &pool,
-        )
-        .expect("fixture closure");
-        let resolved =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(sources.clone().into()));
-        let graph = resolved.graph.clone().expect("fixture compiles");
-        // Carrier present, no crossing: no demand, and std.coercion is not in the closure.
+        let answer = |m: &str| super::super::emit_host::fixture_pool_answer(m, &pool);
+        let sources = emit_check_sources("module test.fixture.generated_provider_carrier_only\n\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\n\nfn keep(xs: FreeMonoid<Char>) -> FreeMonoid<Char> { xs }\n", &pool);
+        let resolved = compile(&sources);
         assert!(
             resolved.provider_demands.is_empty(),
             "a FreeMonoid<Char> carrier demanded a provider"
@@ -218,13 +290,7 @@ mod tests {
             .iter()
             .any(|s| s.path.ends_with("dag/std/coercion.dag")));
         let demand = supplied("std.coercion", "unicode_scalar_unfold");
-        let step = judge_closure(
-            &demand,
-            graph.modules.clone(),
-            resolved.source_indices.clone(),
-            &|m: &str| pool.contains_key(m),
-        );
-        let modules = match step {
+        let modules = match judge(&demand, &resolved, &answer) {
             ClosureProviderStep::Acquire(m) => m,
             other => panic!(
                 "expected Acquire, got refused={:?}",
@@ -235,57 +301,92 @@ mod tests {
         let extended = extend_with_acquired(sources, &modules, &|m: &str| {
             super::super::emit_host::fixture_pool_closure_of(m, &pool)
         })
+        .expect("the provider's closure loads")
         .expect("acquisition extends the closure");
-        let again = crate::v1_compiler_compile::compile_to_resolved(Rc::new(extended.into()));
-        let graph = again.graph.clone().expect("acquired closure compiles");
+        let again = compile(&extended);
         assert!(matches!(
-            judge_closure(
-                &demand,
-                graph.modules.clone(),
-                again.source_indices.clone(),
-                &|m: &str| pool.contains_key(m)
-            ),
+            judge(&demand, &again, &answer),
             ClosureProviderStep::Complete
         ));
-        let missing = supplied("std.coercion", "no_such_declaration");
         assert_eq!(
-            refused_classes(&judge_closure(
-                &missing,
-                graph.modules.clone(),
-                again.source_indices.clone(),
-                &|m: &str| pool.contains_key(m)
+            refused_classes(&judge(
+                &supplied("std.coercion", "no_such_declaration"),
+                &again,
+                &answer
             )),
             vec!["GeneratedProviderUnavailable/UnavailableDeclarationAbsent".to_string()]
         );
     }
 
-    /// Hermetic fixture surface: the pool is empty, so a demand outside the manifest refuses as
-    /// ModuleAbsent instead of reaching the tree.
+    /// The emit-check pool's typed answers: a module the index names at a file that cannot be read
+    /// refuses as ModuleUnreadable, never as absent and never by acquiring.
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn hermetic_fixture_refuses_a_provider_outside_its_manifest() {
-        let files = vec![Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: "hermetic.dag".to_string(),
-            content: "module test.fixture.hermetic_provider\n\nfn one() -> Int { 1 }\n".to_string(),
-        })];
-        let resolved = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
-        let graph = resolved.graph.clone().expect("hermetic fixture compiles");
+    fn emit_check_pool_reports_an_unreadable_provider_as_unreadable() {
+        let mut pool = super::super::build_module_path_index_from_witness_roots();
+        pool.insert(
+            "test.fixture.generated_provider_unreadable".to_string(),
+            "dag/test/fixture/generated_provider_unreadable_does_not_exist.dag".to_string(),
+        );
+        let resolved = compile(&emit_check_sources(
+            "module test.fixture.generated_provider_plain\n\nfn one() -> Int { 1 }\n",
+            &pool,
+        ));
         assert_eq!(
-            refused_classes(&judge_closure(
-                &supplied("std.coercion", "unicode_scalar_unfold"),
-                graph.modules.clone(),
-                resolved.source_indices.clone(),
-                &|_: &str| false
+            refused_classes(&judge(
+                &supplied("test.fixture.generated_provider_unreadable", "anything"),
+                &resolved,
+                &|m: &str| super::super::emit_host::fixture_pool_answer(m, &pool)
             )),
-            vec!["GeneratedProviderUnavailable/UnavailableModuleAbsent".to_string()]
+            vec!["GeneratedProviderUnavailable/UnavailableModuleUnreadable".to_string()]
         );
     }
 
-    /// Entry-resolve surface (claims, claim_batch, whole-tree compile, demand-acquired run): the
-    /// index is the pool and an acquired module joins with its own entry closure.
+    /// Hermetic fixture surface: the pool is empty, so a demand outside the manifest refuses as
+    /// ModuleAbsent; a demanded declaration that is in the manifest but refused (a blocking
+    /// diagnostic located inside it) refuses as DeclarationRefused, read from the closure's own
+    /// diagnostics.
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn entry_resolve_pool_acquires_the_demanded_module() {
+    fn hermetic_fixture_refuses_absent_and_refused_providers_by_their_own_causes() {
+        let lacks = |_: &str| PoolAnswer::Lacks;
+        let files = vec![Rc::new(SourceFile {
+            path: "hermetic.dag".to_string(),
+            content: "module test.fixture.hermetic_provider\n\nfn one() -> Int { 1 }\n\nfn broken() -> Int { \"not an int\" }\n".to_string(),
+        })];
+        let resolved = compile(&files);
+        assert_eq!(
+            refused_classes(&judge(
+                &supplied("std.coercion", "unicode_scalar_unfold"),
+                &resolved,
+                &lacks
+            )),
+            vec!["GeneratedProviderUnavailable/UnavailableModuleAbsent".to_string()]
+        );
+        assert_eq!(
+            refused_classes(&judge(
+                &supplied("test.fixture.hermetic_provider", "broken"),
+                &resolved,
+                &lacks
+            )),
+            vec!["GeneratedProviderUnavailable/UnavailableDeclarationRefused".to_string()]
+        );
+        assert!(matches!(
+            judge(
+                &supplied("test.fixture.hermetic_provider", "one"),
+                &resolved,
+                &lacks
+            ),
+            ClosureProviderStep::Complete
+        ));
+    }
+
+    /// Entry-resolve surface (claims, claim_batch, whole-tree compile, demand-acquired run): the
+    /// index is the pool and an acquired module joins with its own entry closure; an acquisition
+    /// that adds nothing is the model's AcquisitionMadeNoProgress, not a loop and not prose.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn entry_resolve_pool_acquires_the_demanded_module_and_a_stalled_extension_refuses_typed() {
         let index = super::super::entry_resolve::try_process_shared_index(
             &super::super::default_source_roots(),
         )
@@ -305,9 +406,20 @@ mod tests {
         )
         .expect("entry resolves");
         let demand = supplied("std.coercion", "unicode_scalar_unfold");
-        let modules = match judge_closure(&demand, graph.modules.clone(), si.clone(), &|m: &str| {
-            index.source_files.contains_key(m)
-        }) {
+        let holds = |m: &str| {
+            if index.source_files.contains_key(m) {
+                PoolAnswer::Holds
+            } else {
+                PoolAnswer::Lacks
+            }
+        };
+        let modules = match judge_closure(
+            &demand,
+            graph.modules.clone(),
+            graph.diagnostics.clone(),
+            si.clone(),
+            &holds,
+        ) {
             ClosureProviderStep::Acquire(m) => m,
             other => panic!(
                 "expected Acquire, got refused={:?}",
@@ -315,28 +427,26 @@ mod tests {
             ),
         };
         assert_eq!(modules, vec!["std.coercion".to_string()]);
-        let extended = extend_with_acquired(sources, &modules, &|m: &str| {
+        let closure_of = |m: &str| {
             let provider = index.source_files.get(m).cloned().expect("pool answered");
             let on_disk = super::super::process_workspace_root().join(&provider.path);
             super::super::entry_resolve::load_sources_for_entry_with_pool(
                 &index,
                 &on_disk.to_string_lossy(),
             )
-        })
-        .expect("acquisition extends the closure");
+        };
+        let extended = extend_with_acquired(sources, &modules, &closure_of)
+            .expect("the provider's closure loads")
+            .expect("acquisition extends the closure");
         assert!(extended
             .iter()
             .any(|s| s.path.ends_with("dag/std/coercion.dag")));
-        // A second acquisition of the same module adds nothing and is refused, never looped on.
-        assert!(
-            extend_with_acquired(extended.clone(), &modules, &|m: &str| {
-                let provider = index.source_files.get(m).cloned().expect("pool answered");
-                super::super::entry_resolve::load_sources_for_entry_with_pool(
-                    &index,
-                    &provider.path,
-                )
-            })
-            .is_err()
+        assert!(extend_with_acquired(extended, &modules, &closure_of)
+            .expect("the provider's closure loads")
+            .is_none());
+        assert_eq!(
+            refused_classes(&stalled(&demand, &modules)),
+            vec!["GeneratedProviderUnavailable/AcquisitionMadeNoProgress".to_string()]
         );
     }
 
@@ -346,34 +456,19 @@ mod tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn a_present_provider_acquires_nothing_and_a_chained_demand_acquires_only_its_own_module() {
         let pool = super::super::build_module_path_index_from_witness_roots();
-        let fixture = "module test.fixture.generated_provider_present\n\nimport std.coercion { unicode_scalar_unfold }\n\nfn one() -> Int { 1 }\n";
-        let sources = super::super::resolve_virtual_source_with_imports(
-            super::super::emit_host::FIXTURE_SOURCE_PATH,
-            fixture,
-            &pool,
-        )
-        .expect("fixture closure");
-        let resolved =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(sources.clone().into()));
-        let graph = resolved.graph.clone().expect("fixture compiles");
-        let in_pool = |m: &str| pool.contains_key(m);
+        let answer = |m: &str| super::super::emit_host::fixture_pool_answer(m, &pool);
+        let resolved = compile(&emit_check_sources("module test.fixture.generated_provider_present\n\nimport std.coercion { unicode_scalar_unfold }\n\nfn one() -> Int { 1 }\n", &pool));
         assert!(matches!(
-            judge_closure(
+            judge(
                 &supplied("std.coercion", "unicode_scalar_unfold"),
-                graph.modules.clone(),
-                resolved.source_indices.clone(),
-                &in_pool
+                &resolved,
+                &answer
             ),
             ClosureProviderStep::Complete
         ));
         let mut chained = (*supplied("std.coercion", "unicode_scalar_unfold")).clone();
         chained.extend(supplied("std.graph", "CallGraph").iter().cloned());
-        match judge_closure(
-            &Rc::new(chained),
-            graph.modules.clone(),
-            resolved.source_indices.clone(),
-            &in_pool,
-        ) {
+        match judge(&Rc::new(chained), &resolved, &answer) {
             ClosureProviderStep::Acquire(modules) => {
                 assert_eq!(modules, vec!["std.graph".to_string()])
             }
