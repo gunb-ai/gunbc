@@ -148,18 +148,8 @@ test fn rb_d8_depth_8_accepts() -> Bool { ers_infer_accepted(o: rb_d8()) }
 // The REASON is the join's (infer_arms_declare_conflicting_types) because the expected type does not yet reach the branch arms;
 // PR B (session/gentle-newt-78-b, stacked on this PR) is the trigger that delivers the expected type to the arms and removes
 // the infer_arm_join_deferred_to_declared_type refusal below.
-fn rb_x_refused(o: Outcome<ResolvedTree>) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-  }
-}
 fn rb_x1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { 1 } else { Absent } }\n") }
-test fn rb_x1_int_beside_absent_at_declared_return_refuses() -> Bool { rb_x_refused(o: rb_x1()) }
+test fn rb_x1_int_beside_absent_at_declared_return_refuses() -> Bool { ers_fatal_is(o: rb_x1(), reason: ^infer_arm_join_deferred_to_declared_type) }
 fn rb_x2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { Present { value: 1 } } else { Absent } }\n") }
 test fn rb_x2_present_beside_absent_at_declared_return_accepts() -> Bool { ers_infer_accepted(o: rb_x2()) }
 
