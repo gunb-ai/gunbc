@@ -1,8 +1,16 @@
 module v1.tests.claim.parse_allocator_postcondition_test
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
-import std.types { String, List, Int, Bool }
+import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.algebra { FreeMonoid, Empty, Cons }
+import std.content_hash { content_hash_atom, content_hash_combine_structural }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+}
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse { parse_with_table, ParseWithTableResult }
 import v1.std.core { build_newline_index, empty_intern_table }
@@ -171,5 +179,126 @@ test fn folds_transport_identity_matches_predeletion_golden() -> Bool {
     parsed: parse_chain_source(source: fold_fixture_source),
     golden_next_id: 35, golden_entries: 33, golden_count: 33, golden_min: 0, golden_max: 34,
     golden_sum: 573, golden_sumsq: 13411,
+  )
+}
+
+// ---- CONTENT-ASSOCIATION GOLDENS (mgr msg_da084a50 cycle) ----
+// The statistics goldens above are invariant under swapping two occurrence-to-ID
+// associations. These digests pin the CANONICAL ROW of every transport record -- id +
+// authored_name + span(file,start,end) + containment path -- folded in record order into
+// an FNV1a64 structural digest per (specimen, family), so any association swap that keeps
+// the id SET changes at least one digest. Captured from src/v1/02_parse.dag at
+// 2d79743e2498bda7a95e5b6253ca2e7fd73aa6a7 (merge base, pre-deletion, all recovery walks
+// present) via the same-binary .dag-flip harness (Tree A = base file, Tree B = merged head
+// file, one gunbc build); the two runs produced byte-identical digest lines. The deliberate
+// RED (swap authored_name "a"<->"b" at the single record site, 02_parse.dag
+// parse_context_record_occurrence) turns folds_transport_content_association_... FAIL while
+// every statistics golden stays PASS -- the id set survives the swap, the association does
+// not. Capture harness itself is throwaway (never committed); digests re-derivable with any
+// tree-flippable claim runner.
+
+fn category_string(c: OccurrenceCategory) -> String {
+  match c {
+    LexicalValueOccurrence => "lexical_value"
+    TypeOccurrence => "type"
+    CallableOccurrence => "callable"
+    ConstructorOccurrence => "constructor"
+    NamespaceSegmentOccurrence => "namespace_segment"
+    FieldOccurrence => "field"
+    MethodOccurrence => "method"
+  }
+}
+
+fn ancestors_string(xs: FreeMonoid<OccurrenceId>) -> String {
+  match xs {
+    Empty => ""
+    Cons { head: h, tail: t } => concat(concat(";", to_string(h.value)), ancestors_string(xs: t))
+  }
+}
+
+fn index_content_row(e: OccurrenceIndexEntry) -> String {
+  concat(
+    concat(
+      concat(to_string(e.projection.occurrence.value), ";", e.projection.authored_name),
+      ";",
+      concat(e.projection.diagnostic_span.file as String, ";", to_string(e.projection.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.projection.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn declaration_content_row(e: DeclarationOccurrence) -> String {
+  concat(
+    concat(
+      concat(to_string(e.occurrence.value), ";", category_string(c: e.category)),
+      ";",
+      concat(e.diagnostic_span.file as String, ";", to_string(e.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn reference_content_row(e: ReferenceOccurrence) -> String {
+  concat(
+    concat(
+      concat(to_string(e.occurrence.value), ";", category_string(c: e.category)),
+      ";",
+      concat(e.diagnostic_span.file as String, ";", to_string(e.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn digest_rows(seed: String, rows: List<String>) -> String {
+  let seed_hash = content_hash_atom(value: concat("P13|", seed, "|SEED") as NonEmptyStr)
+  let combined = rows |> fold(
+    init: seed_hash,
+    f: (acc, r) => content_hash_combine_structural(left: acc, right: content_hash_atom(value: concat(concat("P13|", seed, "|"), r) as NonEmptyStr)),
+  )
+  combined.digest as String
+}
+
+fn content_matches_golden(parsed: ParseWithTableResult, label: String, golden_idx: String, golden_decl: String, golden_ref: String) -> Bool {
+  digest_rows(seed: concat(label, "/idx"), rows: parsed.occurrence_transport.index.entries |> map(index_content_row)) == golden_idx
+    && digest_rows(seed: concat(label, "/decl"), rows: parsed.occurrence_transport.declarations |> map(declaration_content_row)) == golden_decl
+    && digest_rows(seed: concat(label, "/ref"), rows: parsed.occurrence_transport.references |> map(reference_content_row)) == golden_ref
+}
+
+test fn chain40_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 40)),
+    label: "chain40",
+    golden_idx: "430ddfdce5732ce8", golden_decl: "b07e5c7d9ea4af71", golden_ref: "2751065ad16b58a4",
+  )
+}
+
+test fn chain200_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 200)),
+    label: "chain200",
+    golden_idx: "ef0e2cae9d61e391", golden_decl: "bfcbfd4020e5d69a", golden_ref: "ddab5f9126a03657",
+  )
+}
+
+test fn folds_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: fold_fixture_source),
+    label: "folds",
+    golden_idx: "bc2da06da246af61", golden_decl: "25f2e4a06a1d9c1d", golden_ref: "3989a29bc2eb7e71",
   )
 }
