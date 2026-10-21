@@ -26,13 +26,20 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    literal_homomorphism_rows,
+    conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows,
+    kernel_optional_mint_name, literal_homomorphism_rows,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, CollectionSizeEffect,
     FreeMonoid,
+};
+use crate::std_coercion::ConversionPlanJudgment::{
+    ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
+    ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText,
+};
+use crate::std_coercion::CrossingPlanSelection::{
+    CrossingPlanJudged, CrossingPlanNone, CrossingPlanSeveral,
 };
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
@@ -42,7 +49,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, SubtractionRefinement,
+    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, select_text_crossing_plan,
+    unicode_scalar_unfold, ConversionPlanJudgment, CrossingPlanSelection, SubtractionRefinement,
     TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
@@ -58,13 +66,15 @@ use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
 };
+use crate::std_generated_provider::GeneratedProviderCause::GeneratedConversionRoute;
 use crate::std_generated_provider::ProviderAcquisitionStep::{
     AcquireModules, AcquisitionComplete, ProviderAcquisitionRefused,
 };
 use crate::std_generated_provider::ProviderModuleFact::{ModuleInClosure, ModuleNotInPool};
 pub use crate::std_generated_provider::{
-    group_provider_demands, observe_provider_demand, provider_acquisition_step,
-    GeneratedProviderDemand, ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
+    generated_provider_demand, group_provider_demands, observe_provider_demand,
+    provider_acquisition_step, GeneratedProviderCause, GeneratedProviderDemand,
+    GeneratedProviderSite, ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -12213,7 +12223,7 @@ pub fn host_text_unfolded_at_code_point_boundary(
     value: Rc<Node>,
     destination_type: Rc<Node>,
     scope: Rc<InferScope>,
-) -> Rc<Node> {
+) -> Rc<InferResult> {
     match value.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: _, .. }) => {
             match argument_text_representation(value.clone(), scope.type_env.clone()) {
@@ -12222,31 +12232,208 @@ pub fn host_text_unfolded_at_code_point_boundary(
                         destination_type.clone(),
                         scope.clone(),
                     ) {
-                        crate::v1_std_core::make_named_expr_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "chars".to_string(),
-                            Rc::new(ExprData::ExprMethodCall {
-                                method_semantics: Some(Rc::new(
-                                    MethodSemantics::PlainMethodSemantics,
-                                )),
-                            }),
-                            Rc::new(vec![value.clone()]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: destination_type.clone(),
-                            })),
-                            value.span.clone(),
-                            elaborated_span("chars".to_string()),
+                        host_text_crossing_call(
+                            value.clone(),
+                            destination_type.clone(),
+                            scope.clone(),
                         )
                     } else {
-                        value.clone()
+                        ok_infer(value.clone())
                     }
                 }
-                TextRepresentation::CodePointSequence => value.clone(),
-                TextRepresentation::NotText => value.clone(),
-                TextRepresentation::TextRepresentationUnidentified => value.clone(),
+                TextRepresentation::CodePointSequence => ok_infer(value.clone()),
+                TextRepresentation::NotText => ok_infer(value.clone()),
+                TextRepresentation::TextRepresentationUnidentified => ok_infer(value.clone()),
             }
         }
-        _ => value.clone(),
+        _ => ok_infer(value.clone()),
+    }
+}
+
+pub fn host_text_crossing_refused(
+    value: Rc<Node>,
+    message: String,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+        typed: value.clone(),
+        emissions: infer_emissions_of_diagnostics(Rc::new(vec![inference_error(
+            v1_rt::concat("host-text crossing: ".to_string(), message.clone()),
+            value.span.clone(),
+            scope.module_name.clone(),
+        )])),
+    })
+}
+
+pub fn host_text_crossing_demand(
+    route: Rc<DeclarationRef>,
+    value: Rc<Node>,
+) -> Rc<GeneratedProviderDemand> {
+    crate::std_generated_provider::generated_provider_demand(
+        route.clone(),
+        Rc::new(GeneratedProviderSite {
+            cause: GeneratedProviderCause::GeneratedConversionRoute,
+            at: value.span.clone(),
+            occurrence: match (*value.occurrence_identity.clone()).clone() {
+                NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+                _ => Some(value.occurrence_identity.clone()),
+            },
+        }),
+    )
+}
+
+pub fn host_text_crossing_call(
+    value: Rc<Node>,
+    destination_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    match (*crate::std_coercion::select_text_crossing_plan(conversion_plan_rows(), TextRepresentation::HostText, TextRepresentation::CodePointSequence)).clone() {
+    CrossingPlanSelection::CrossingPlanNone => host_text_crossing_refused(value.clone(), "no conversion plan in gunbc.structural_realization_bindings conversion_plan_rows runs from host text to a code-point sequence".to_string(), scope.clone()),
+    CrossingPlanSelection::CrossingPlanSeveral { routes: rs, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(((rs.clone().len() as i64)).to_string(), " conversion plans run from host text to a code-point sequence; the roster must name one".to_string()), scope.clone()),
+    CrossingPlanSelection::CrossingPlanJudged { judgment: j, .. } => match (*j.clone()).clone() {
+    ConversionPlanJudgment::ConversionPlanAdmitted { plan: plan, .. } => host_text_crossing_admitted(plan.route.clone(), value.clone(), destination_type.clone(), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanAbsent { route: r, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat("no conversion plan names ".to_string(), r.module_path.clone()), ".".to_string()), r.decl_name.clone()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanAmbiguous { route: r, row_count: n, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat((n.clone()).to_string(), " conversion plans name ".to_string()), r.module_path.clone()), ".".to_string()), r.decl_name.clone()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanEndpointMismatch { plan: p, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the plan ".to_string(), p.route.module_path.clone()), ".".to_string()), p.route.decl_name.clone()), " does not run from host text to a code-point sequence".to_string()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanEndpointNotText { .. } => host_text_crossing_refused(value.clone(), "one side of the crossing is not identified text".to_string(), scope.clone()),
+},
+}
+}
+
+pub fn host_text_crossing_admitted(
+    route: Rc<DeclarationRef>,
+    value: Rc<Node>,
+    destination_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let demand = infer_emissions_of_provider_demand(host_text_crossing_demand(
+            route.clone(),
+            value.clone(),
+        ));
+        let identity = Rc::new(DeclaredCallableIdentity {
+            owner_module_path: route.module_path.clone(),
+            decl_name: route.decl_name.clone(),
+        });
+        let qualified = crate::v1_std_core::callable_identity(identity.clone());
+        match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            qualified.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved { sig, declared, .. } => {
+                if ((declared.owner_module_path.clone() != identity.owner_module_path.clone())
+                    || (declared.decl_name.clone() != identity.decl_name.clone()))
+                {
+                    Rc::new(InferResult {
+                        typed: value.clone(),
+                        emissions: infer_emissions_concat(
+                            demand.clone(),
+                            host_text_crossing_refused(
+                                value.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "the route ".to_string(),
+                                                qualified.clone(),
+                                            ),
+                                            " resolved to ".to_string(),
+                                        ),
+                                        crate::v1_std_core::callable_identity(declared.clone()),
+                                    ),
+                                    ", not to itself".to_string(),
+                                ),
+                                scope.clone(),
+                            )
+                            .emissions
+                            .clone(),
+                        ),
+                    })
+                } else {
+                    match sig.params.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(InferResult {
+                            typed: value.clone(),
+                            emissions: infer_emissions_concat(
+                                demand.clone(),
+                                host_text_crossing_refused(
+                                    value.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat("the route ".to_string(), qualified.clone()),
+                                        " declares no parameter to take the host text".to_string(),
+                                    ),
+                                    scope.clone(),
+                                )
+                                .emissions
+                                .clone(),
+                            ),
+                        }),
+                        Some(param) => {
+                            let param_name = crate::v1_std_core::param_node_name_at(
+                                param.clone(),
+                                scope.type_env.source_indices.clone(),
+                            );
+                            Rc::new(InferResult {
+                                typed: crate::v1_std_core::make_named_expr_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                    qualified.clone(),
+                                    Rc::new(ExprData::ExprCall {
+                                        call_semantics: Some(Rc::new(
+                                            CallSemantics::PlainCallSemantics {
+                                                target: Rc::new(
+                                                    CallTargetIdentity::SourceDeclarationCall {
+                                                        owner_module_path: identity
+                                                            .owner_module_path
+                                                            .clone(),
+                                                        decl_name: identity.decl_name.clone(),
+                                                    },
+                                                ),
+                                            },
+                                        )),
+                                        descent_evidence: std::option::Option::None,
+                                    }),
+                                    Rc::new(vec![crate::v1_std_core::make_arg_node(
+                                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                        Some(param_name.clone()),
+                                        value.clone(),
+                                        value.span.clone(),
+                                        elaborated_span(param_name.clone()),
+                                    )]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: destination_type.clone(),
+                                    })),
+                                    value.span.clone(),
+                                    elaborated_span(qualified.clone()),
+                                ),
+                                emissions: demand.clone(),
+                            })
+                        }
+                    }
+                }
+            }
+            FuncSigLookup::FuncSigUnresolved => Rc::new(InferResult {
+                typed: value.clone(),
+                emissions: demand.clone(),
+            }),
+            FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => Rc::new(InferResult {
+                typed: value.clone(),
+                emissions: infer_emissions_concat(
+                    demand.clone(),
+                    host_text_crossing_refused(
+                        value.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat("the route ".to_string(), qualified.clone()),
+                            " resolves ambiguously in this closure".to_string(),
+                        ),
+                        scope.clone(),
+                    )
+                    .emissions
+                    .clone(),
+                ),
+            }),
+        }
     }
 }
 
@@ -12429,14 +12616,20 @@ pub fn infer_call_arguments_generic_pass(
                 expected.clone(),
             );
             let ar = if formal_is_code_point_sequence.clone() {
-                Rc::new(InferResult {
-                    typed: host_text_unfolded_at_code_point_boundary(
+                {
+                    let crossed = host_text_unfolded_at_code_point_boundary(
                         ar_inferred.typed.clone(),
                         code_point_formal.clone(),
                         scope.clone(),
-                    ),
-                    emissions: ar_inferred.emissions.clone(),
-                })
+                    );
+                    Rc::new(InferResult {
+                        typed: crossed.typed.clone(),
+                        emissions: infer_emissions_concat(
+                            ar_inferred.emissions.clone(),
+                            crossed.emissions.clone(),
+                        ),
+                    })
+                }
             } else {
                 ar_inferred.clone()
             };
@@ -12895,7 +13088,7 @@ pub fn unfold_scalar_sequence_image(
     {
         let scalar_nodes = Rc::new({
             let mut __result = Vec::new();
-            for cp in Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            for cp in crate::std_coercion::unicode_scalar_unfold(s.clone())
                 .iter()
                 .cloned()
             {
