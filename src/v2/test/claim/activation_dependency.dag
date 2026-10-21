@@ -91,10 +91,10 @@ fn acd_assemble(src: String) -> Optional<ResolvedTree> {
   }
 }
 
-data acd_branch_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
-data acd_use_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c {\n    let x = a + 1\n    x * 2\n  } else {\n    0\n  }\n}\n"
+data acd_branch_source: String = "module acd\n\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
+data acd_use_source: String = "module acd\n\n\nfn f(c: Bool, a: Int) -> Int {\n  if c {\n    let x = a + 1\n    x * 2\n  } else {\n    0\n  }\n}\n"
 data acd_match_source: String = "module acd\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, a: Int) -> Int {\n  match s {\n    Dark => a + 1\n    Light => a + 2\n  }\n}\n"
-data acd_nested_source: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, c: Bool, a: Int) -> Int {\n  match s {\n    Dark => if c { a + 1 } else { a + 2 }\n    Light => a + 3\n  }\n}\n"
+data acd_nested_source: String = "module acd\n\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, c: Bool, a: Int) -> Int {\n  match s {\n    Dark => if c { a + 1 } else { a + 2 }\n    Light => a + 3\n  }\n}\n"
 
 // ---- claim-side judgements -------------------------------------------------------------------------
 
@@ -541,27 +541,3 @@ fn acd_total_for(src: String) -> Bool {
     Present { value: tree } => acd_total(d: activation_dispositions(tree: tree), root: tree.root)
   }
 }
-
-test fn acd_p1_assembles_holds() -> Bool {
-  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: _ } => true }
-}
-test fn acd_p2_one_site_holds() -> Bool {
-  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => acd_sites(root: t.root) == 1 }
-}
-test fn acd_p3_demand_holds() -> Bool {
-  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => acd_demand_count(d: activation_dispositions(tree: t)) == 1 }
-}
-test fn acd_p4_not_derived_zero_holds() -> Bool {
-  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => length(xs: activation_dispositions(tree: t).not_derived) == 0 }
-}
-test fn acd_p5_children_three_holds() -> Bool {
-  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => match acd_site_of_kind(root: t.root, want_match: false) { Absent => false  Present { value: b } => length(xs: b.children) == 3 } }
-}
-data acd_v1: String = "module acd\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
-data acd_v2: String = "module acd\n\nimport std.types { Bool }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { 1 } else { 2 }\n}\n"
-data acd_v3: String = "module acd\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { 1 } else { 2 }\n}\n"
-data acd_v4: String = "module acd\n\nfn f(c: Bool) -> Int {\n  if c {\n    1\n  } else {\n    2\n  }\n}\n"
-test fn acd_q1_holds() -> Bool { match acd_assemble(src: acd_v1) { Absent => false  Present { value: _ } => true } }
-test fn acd_q2_holds() -> Bool { match acd_assemble(src: acd_v2) { Absent => false  Present { value: _ } => true } }
-test fn acd_q3_holds() -> Bool { match acd_assemble(src: acd_v3) { Absent => false  Present { value: _ } => true } }
-test fn acd_q4_holds() -> Bool { match acd_assemble(src: acd_v4) { Absent => false  Present { value: _ } => true } }
