@@ -478,4 +478,108 @@ mod tests {
             ),
         }
     }
+
+    /// STRUCTURAL CENSUS OF THE EMISSIONS CARRIER (review finding 2, the structural half; PR 2's
+    /// crossing is the nonempty-transport half). Over the parsed `src/v1/04_infer.dag`:
+    /// an `InferEmissions` record literal appears only inside its authority functions, and a
+    /// `.diagnostics` / `.provider_demands` read off an emissions value appears only there and at
+    /// `typecheck_module`'s stage-boundary finalization. Construction is identified exactly, by the
+    /// literal's type name. Projection is identified SYNTACTICALLY -- a field read whose base is a
+    /// `.emissions` field or a local whose name ends in `emissions` -- so a projection through a
+    /// differently-named local escapes it; the next rung is the same reader over the typed graph,
+    /// keyed on the base's inferred type. Runs in the required unit run: it parses one file.
+    #[test]
+    fn emissions_are_built_and_projected_only_at_their_named_sites() {
+        use crate::v1_std_core::{ExprData, Node};
+        const AUTHORITY: &[&str] = &[
+            "infer_emissions_empty",
+            "infer_emissions_of_diagnostics",
+            "infer_emissions_of_provider_demand",
+            "infer_emissions_concat",
+            "infer_emissions_filter_diagnostics",
+            "infer_emissions_concat_all",
+        ];
+        const FINALIZATION: &[&str] = &["typecheck_module"];
+        let path = "src/v1/04_infer.dag";
+        let content = std::fs::read_to_string(super::super::process_workspace_root().join(path))
+            .expect("04_infer.dag is readable");
+        let artifact = super::super::pool_acquire::artifact_for(path, &content);
+        let nl = super::super::pool_acquire::newline_index_for(path, &content);
+        let mut si = HashMap::new();
+        si.insert(path.to_string(), nl);
+        let si = Rc::new(si);
+        let parsed = crate::v1_compiler_parse::parse_with_table(
+            artifact.tokens.clone(),
+            si.clone(),
+            crate::v1_std_core::empty_intern_table(),
+        );
+        let module = parsed.result.module.clone().expect("04_infer.dag parses");
+
+        fn walk(n: &Rc<Node>, f: &mut dyn FnMut(&Rc<Node>)) {
+            f(n);
+            for c in n.children.iter() {
+                walk(c, f);
+            }
+            if let Some(b) = &n.body {
+                walk(b, f);
+            }
+        }
+        let mut constructions: Vec<String> = Vec::new();
+        let mut projections: Vec<String> = Vec::new();
+        let mut authority_seen: Vec<String> = Vec::new();
+        for item in crate::v1_std_core::module_items(module).iter() {
+            let owner = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+            if AUTHORITY.contains(&owner.as_str()) {
+                authority_seen.push(owner.clone());
+            }
+            walk(item, &mut |n| match n.expr_data.as_ref() {
+                ExprData::ExprRecordLit { .. } => {
+                    if crate::v1_std_core::record_lit_type_name_at(n.clone(), si.clone()).as_deref()
+                        == Some("InferEmissions")
+                        && !AUTHORITY.contains(&owner.as_str())
+                    {
+                        constructions.push(owner.clone());
+                    }
+                }
+                ExprData::ExprFieldAccess { .. } => {
+                    let field = crate::v1_std_core::authored_name_at(si.clone(), n.clone());
+                    if field != "diagnostics" && field != "provider_demands" {
+                        return;
+                    }
+                    let Some(base) = n.children.first() else {
+                        return;
+                    };
+                    let base_name = crate::v1_std_core::authored_name_at(si.clone(), base.clone());
+                    let on_emissions = match base.expr_data.as_ref() {
+                        ExprData::ExprFieldAccess { .. } => base_name == "emissions",
+                        ExprData::ExprVar { .. } => base_name.ends_with("emissions"),
+                        _ => false,
+                    };
+                    if on_emissions
+                        && !AUTHORITY.contains(&owner.as_str())
+                        && !FINALIZATION.contains(&owner.as_str())
+                    {
+                        projections.push(format!("{owner}: {base_name}.{field}"));
+                    }
+                }
+                _ => {}
+            });
+        }
+        // The census reads what it claims to read: every authority function was found.
+        authority_seen.sort();
+        let mut expected: Vec<String> = AUTHORITY.iter().map(|s| s.to_string()).collect();
+        expected.sort();
+        assert_eq!(
+            authority_seen, expected,
+            "the census did not find every authority function"
+        );
+        assert!(
+            constructions.is_empty(),
+            "InferEmissions built outside its authority: {constructions:?}"
+        );
+        assert!(
+            projections.is_empty(),
+            "emissions projected outside a named site: {projections:?}"
+        );
+    }
 }
