@@ -12035,7 +12035,8 @@ pub(crate) fn scratch_underlay_if_proven(
         };
     }
     let verdict = scratch_underlay_identity_proof(index, &base);
-    *index.underlay_identity.borrow_mut() = Some(verdict.clone());
+    // The memo stores the verdict as `Option<String>` (None = proven); the proof speaks `Result`.
+    *index.underlay_identity.borrow_mut() = Some(verdict.as_ref().err().cloned());
     verdict?;
     Ok(Some(base))
 }
