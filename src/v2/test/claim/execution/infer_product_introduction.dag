@@ -75,7 +75,7 @@ fn product_introduction_node_derived(inferred: InferredTree, n: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: _ } => true
       }
   }
@@ -194,7 +194,7 @@ fn params_conj_evidence_is_composed_over_type_kind(inferred: InferredTree, n: No
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } =>
           let evidence = g.witness.structural.evidence
           match evidence.kind {
@@ -323,7 +323,7 @@ test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bo
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => true
+            GroundingNotDerived { node: _, site: _ } => true
             DerivedGrounding { grounding: _ } => false
           }
       }
@@ -338,7 +338,7 @@ fn product_introduction_hand_tree_grounding(tree: Node, n: Node) -> Int {
         Absent => 2
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => 1
+            GroundingNotDerived { node: _, site: _ } => 1
             DerivedGrounding { grounding: _ } => 0
           }
       }

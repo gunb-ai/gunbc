@@ -73,6 +73,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
+use crate::v1_std_core::SpanLocation::Located;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
@@ -89,20 +90,20 @@ pub use crate::v1_std_core::{
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node,
+    local_transport_node, locate_span, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
-    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
-    TokenShape, UnaryOpKind,
+    param_node_type_expr, pre_intern_tokens, render_span_location, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, type_param_kind_property_name, unlocated_cause_phrase, variant_node_fields,
+    variant_node_name_at, with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
+    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode,
+    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier,
+    ParsedModuleItemKind, SpanLocation, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2052,48 +2053,6 @@ pub fn is_lit_str_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_lit_int_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLitInt => true,
-        _ => false,
-    }
-}
-
-pub fn is_lit_float_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLitFloat => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_begin_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrBegin => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_mid_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrMid => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_end_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrEnd => true,
-        _ => false,
-    }
-}
-
-pub fn is_unknown_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShUnknown => true,
-        _ => false,
-    }
-}
-
 pub fn is_newline_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShNewline => true,
@@ -2171,20 +2130,6 @@ pub fn is_gt_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_le_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLe => true,
-        _ => false,
-    }
-}
-
-pub fn is_ge_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShGe => true,
-        _ => false,
-    }
-}
-
 pub fn is_fat_arrow_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShFatArrow => true,
@@ -2234,86 +2179,9 @@ pub fn is_eq_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_eq_eq_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShEqEq => true,
-        _ => false,
-    }
-}
-
-pub fn is_ne_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShNe => true,
-        _ => false,
-    }
-}
-
-pub fn is_plus_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShPlus => true,
-        _ => false,
-    }
-}
-
-pub fn is_minus_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShMinus => true,
-        _ => false,
-    }
-}
-
-pub fn is_star_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStar => true,
-        _ => false,
-    }
-}
-
-pub fn is_slash_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShSlash => true,
-        _ => false,
-    }
-}
-
-pub fn is_percent_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShPercent => true,
-        _ => false,
-    }
-}
-
-pub fn is_bang_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShBang => true,
-        _ => false,
-    }
-}
-
-pub fn is_and_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShAnd => true,
-        _ => false,
-    }
-}
-
-pub fn is_or_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShOr => true,
-        _ => false,
-    }
-}
-
 pub fn is_question_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShQuestion => true,
-        _ => false,
-    }
-}
-
-pub fn is_null_coalesce_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShNullCoalesce => true,
         _ => false,
     }
 }
@@ -2539,13 +2407,6 @@ pub fn tok_is_lbracket(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_rbracket(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_rbracket_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
 pub fn tok_is_colon(tok: Option<Rc<Token>>) -> bool {
     match tok.clone() {
         Some(t) => is_colon_shape(t.shape.clone()),
@@ -2588,52 +2449,10 @@ pub fn tok_is_fat_arrow(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_arrow(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_arrow_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_lt(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_lt_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_gt(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_gt_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
 pub fn tok_is_pipe(tok: Option<Rc<Token>>) -> bool {
     match tok.clone() {
         Some(t) => is_pipe_shape(t.shape.clone()),
         std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_pipe_arrow(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_pipe_arrow_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_question(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_question_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
-    match tok.clone() {
-        Some(t) => t.span.clone(),
-        std::option::Option::None => crate::v1_std_core::no_span(),
     }
 }
 
@@ -3662,19 +3481,6 @@ pub fn parse_context_after_node_list(
     parse_context_with_occurrence_state(
         ctx.clone(),
         occurrence_allocator_after_node_list(ctx.occurrence_allocator.clone(), nodes.clone()),
-        ctx.occurrence_index.clone(),
-        ctx.declaration_occurrences.clone(),
-        ctx.reference_occurrences.clone(),
-    )
-}
-
-pub fn parse_context_after_optional_node(
-    ctx: Rc<ParseContext>,
-    node: Option<Rc<Node>>,
-) -> Rc<ParseContext> {
-    parse_context_with_occurrence_state(
-        ctx.clone(),
-        occurrence_allocator_after_optional_node(ctx.occurrence_allocator.clone(), node.clone()),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -5571,51 +5377,6 @@ pub fn make_capability_node(
     })
 }
 
-pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "type".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parse_type_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
-    }
-}
-
 pub fn parse_type_after_kw(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -7340,10 +7101,6 @@ pub fn parse_variant_fields(
             }
         }
     }
-}
-
-pub fn parse_more_variants(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<VariantsResult> {
-    parse_more_variants_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
 }
 
 pub fn parse_more_variants_acc(
@@ -11688,20 +11445,6 @@ pub fn int_to_string_acc(
     }
 }
 
-pub fn first_child_or_self(n: Rc<Node>) -> Rc<Node> {
-    match n.children.clone().first().cloned() {
-        Some(ch) => ch.clone(),
-        std::option::Option::None => n,
-    }
-}
-
-pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
-    match n.children.clone().last().cloned() {
-        Some(ch) => ch.clone(),
-        std::option::Option::None => n,
-    }
-}
-
 pub fn node_to_name_str(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13477,51 +13220,6 @@ pub fn parse_io_blocks_acc(
                 }
             }
         }
-    }
-}
-
-pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "data".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parse_data_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -18743,16 +18441,13 @@ pub fn duplicate_field_init_message(
 }
 
 pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> String {
-    match v1_rt::map_get(&ctx.source_indices.clone(), span.file.clone()) {
-        Some(index) => {
-            let lc = crate::v1_std_core::byte_to_line_col(index.clone(), span.start.clone());
-            v1_rt::concat(
-                v1_rt::concat(int_to_string(lc.line.clone()), ":".to_string()),
-                int_to_string(lc.col.clone()),
-            )
-        }
-        std::option::Option::None => {
-            v1_rt::concat("byte ".to_string(), int_to_string(span.start.clone()))
+    match (*crate::v1_std_core::locate_span(span.clone(), ctx.source_indices.clone())).clone() {
+        SpanLocation::Located { at: at, .. } => v1_rt::concat(
+            v1_rt::concat(int_to_string(at.start_line.clone()), ":".to_string()),
+            int_to_string(at.start_col.clone()),
+        ),
+        SpanLocation::Unlocated { cause: cause, .. } => {
+            crate::v1_std_core::unlocated_cause_phrase(cause.clone())
         }
     }
 }

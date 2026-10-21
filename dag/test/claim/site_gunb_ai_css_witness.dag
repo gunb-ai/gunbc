@@ -5,17 +5,7 @@ module test.claim.site_gunb_ai_css_witness
 // copy of gunb.ai's served assets/site.css (fetched 2026-10-19). The oracle is outside this repo's
 // model, which is what stops the typed rows from agreeing with themselves.
 //
-// The sheet is built in slices: the render is a PREFIX of the served file until the last section
-// lands, so the parity claim is "served starts with render, and the render ends where a section
-// ends". Once the sheet is complete the prefix claim and the equality claim are the same claim.
-//
-// PARTIAL, UNCOVERED RANGE: this claim covers the served bytes [0, len(render)) = fixture lines 1-402 (file
-// header, TOKENS, RESET + BASE, LAYOUT, MASTHEAD, TEXT ROLES, HERO, PROSE, MEASURE WRAPPERS, CARVED RULE, COMMAND PANEL,
-// INVARIANT PANEL, ROLE TOKENS and the first part of the STORY DECK, through .deck-card-body). NOT covered: fixture
-// lines 403-680 (the rest of the STORY DECK through MEDIA QUERIES), i.e. every byte after the
-// ".deck-card-body" rule's closing "}\n".
-// witness_render_ends_at_a_section_boundary pins where the covered range stops. Later PRs extend the
-// render per section group until the prefix claim is an equality claim.
+// The sheet is complete: the parity claim is byte equality with the served file.
 //
 // RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
 //
@@ -46,18 +36,10 @@ fn rendered_sheet() -> String {
 }
 
 // The parity claim. The fixture is checked non-empty first (a missing file reads "" and a render
-// that is also "" would start it), and the render is checked non-empty for the same reason.
-test fn witness_generated_sheet_is_a_prefix_of_the_served_sheet() -> Bool {
+// that is also "" would equal it).
+test fn witness_generated_sheet_equals_the_served_sheet() -> Bool {
   string_contains(s: served_sheet(), pattern: "/* ╔══ TOKENS ")
-    && rendered_sheet() != ""
-    && served_sheet().starts_with(prefix: rendered_sheet())
-}
-
-// The render stops exactly where a section stops: the served bytes that follow it are the gap and
-// the next section's banner, so a render that merely stopped early inside the :root block is red.
-test fn witness_render_ends_at_a_section_boundary() -> Bool {
-  rendered_sheet().ends_with(suffix: "  gap: 0.85rem;\n}\n")
-    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 10) == "\n/* Code p"
+    && rendered_sheet() == served_sheet()
 }
 
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
