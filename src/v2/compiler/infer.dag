@@ -4,8 +4,10 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import std.types { List, Map }
 import std.primitive_projection { never_type_declaration }
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, occurrence_id_eq }
+import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, type_variable_origin }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, occurrence_id_eq }
 import v2.std.provenance { node_occurrence_id_optional }
+import std.integer { int_to_decimal_string }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
@@ -1469,6 +1471,12 @@ type InferVariantArmReferenceValue
   | VariantArmReferenceValueIdentityContested { claimants: FreeMonoid<QualifiedName> }
   | VariantArmReferenceValueBodyUnavailable
 
+// A CONSTRUCTOR USE INSTANTIATES ITS DECLARATION'S TYPE PARAMETERS AS FRESH INSTANCE VARIABLES, never
+// as the declaration's parameter atom: `^T` of std.optional Optional is spelled like a rigid fn type
+// variable `T`, and closing a produced type by parameter NAME (infer_produced_open_type_params) solved
+// the rigid one as if it were the use's own. The variable is minted by v2.std.anonymous_binder
+// fresh_constructor_use_variable (keyed by the use node's occurrence id, so two uses in one fn are two
+// variables) and its origin is read back only through anonymous_binder type_variable_origin.
 fn infer_open_type_param_atom(name: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: name } },
@@ -1477,7 +1485,7 @@ fn infer_open_type_param_atom(name: Symbol) -> Node {
   }
 }
 
-fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName) -> Node {
+fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName, use_id: OccurrenceId) -> Node {
   let head = declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
   let params = symbol_index_declared_type_params_at(index: bindings, qualified_path: coproduct)
   match params {
@@ -1488,7 +1496,7 @@ fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: Qualified
         children: Cons {
           head: Edge { label: Positional, target: head },
           tail: list_map(xs: params, f: fn(p) {
-            Edge { label: Positional, target: infer_open_type_param_atom(name: p) }
+            Edge { label: Positional, target: infer_open_type_param_atom(name: fresh_constructor_use_variable(use_id: use_id.value, label: p)) }
           })
         },
         occurrence_id: OccurrenceSynthetic
@@ -1619,11 +1627,14 @@ fn infer_variant_arm_value_reference_facts(
     VariantArmReferenceValueNotDerived =>
       inferred_facts_not_derived(site: VariantArmValueNotDerived, node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+      match node_occurrence_id_optional(node: n) {
+      Absent => outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+      Present { value: use_id } =>
       infer_reference_facts_or_frontier(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
             node: n,
-            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct),
+            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use_id: use_id),
             descent: Holds { value: descent_proof }
           ),
           declaration: declared
@@ -1631,6 +1642,7 @@ fn infer_variant_arm_value_reference_facts(
         n: n,
         descent_proof: descent_proof
       )
+      }
   }
 }
 
@@ -2080,8 +2092,12 @@ fn infer_branch_operand_resolved_type_with_entries(
         Present { value: verdict } =>
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
-              Holds {
-                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct)
+              match node_occurrence_id_optional(node: node) {
+                Absent => Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+                Present { value: use_id } =>
+                  Holds {
+                    value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use_id: use_id)
+                  }
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
@@ -4742,22 +4758,19 @@ type InferTypePair {
 // instances that close them (infer_close_produced_at_declared) through the same
 // infer_match_generic_formal used for generic formals -- produced as the formal, declared as
 // the instance source. Not a second solver.
-fn infer_produced_open_type_params(produced: Node, declarations: SymbolIndex) -> List<Symbol> {
-  match declaration_denotation_of_type(t: produced) {
-    Absent => Empty
-    Present { value: denotation } =>
-      fold(
-        symbol_index_declared_type_params_at(index: declarations, qualified_path: denotation.declaration),
-        init: Empty,
-        f: fn(acc, p) {
-          if inhabitance_node_mentions_type_variable(n: produced, type_variables: [p]) {
-            list_snoc_item(xs: acc, item: p)
-          } else {
-            acc
-          }
+fn infer_produced_open_type_params(produced: Node) -> List<Symbol> {
+  fold(node_subtree_nodes(root: produced), init: Empty, f: fn(acc, m) {
+    match m.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        match type_variable_origin(sym: id) {
+          TypeVariableOfConstructorUse =>
+            if !fold(acc, init: false, f: fn(found, v) { found || (v == id) }) { list_snoc_item(xs: acc, item: id) } else { acc }
+          TypeVariableOfBinder => acc
+          TypeVariableRigid => acc
         }
-      )
-  }
+      _ => acc
+    }
+  })
 }
 
 fn infer_close_produced_at_declared(
@@ -4769,7 +4782,7 @@ fn infer_close_produced_at_declared(
 ) -> List<TypeVariableInstance> {
   let declared_n = infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings)
   let produced_n = infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings)
-  let open_params = infer_produced_open_type_params(produced: produced_n, declarations: declarations)
+  let open_params = infer_produced_open_type_params(produced: produced_n)
   match open_params {
     Empty => instances
     Cons { head: _, tail: _ } =>
@@ -6037,6 +6050,36 @@ fn infer_gather_application_row_on_arguments(
           instances: infer_no_type_variable_instances(),
           binder_types: infer_no_binder_types()
         )
+      }
+  }
+}
+
+fn infer_unsolved_constructor_type_variable_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_unsolved_constructor_type_variable,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// AN UNANNOTATED LET DECLARES NO POSITION, so nothing closes a constructor-use variable its value carries
+// (`let x = Absent`): the variable is minted at the use and stays unbound. An unbound variable is the
+// counted frontier, never an admission -- the let is refused at its value.
+fn infer_unannotated_let_unsolved_refusal(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+    Absent => outcome_accepted(entries)
+    Present { value: bound } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
+        Absent => outcome_accepted(entries)
+        Present { value: facts } =>
+          match inferred_facts_resolved_type_optional(facts: facts) {
+            Absent => outcome_accepted(entries)
+            Present { value: produced } =>
+              match infer_produced_open_type_params(produced: produced) {
+                Empty => outcome_accepted(entries)
+                Cons { head: _, tail: _ } => outcome_rejected(infer_unsolved_constructor_type_variable_diagnostic(node: bound))
+              }
+          }
       }
   }
 }
@@ -7821,7 +7864,20 @@ fn infer_gather_settled_row(
       )
     Absent =>
       if infer_is_let_bind(bind: acc.node) {
-        infer_gather_let_result_row(node: acc.node, entries: merged_entries, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+        match infer_unannotated_let_unsolved_refusal(node: acc.node, entries: merged_entries, resolved: resolved) {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: acc.node,
+              pending: rejected_with_pending(pending: merged_pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: next, diagnostics: _ } =>
+            infer_gather_let_result_row(node: acc.node, entries: next, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+        }
       } else {
       match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
         Rejected { diagnostics: r } =>

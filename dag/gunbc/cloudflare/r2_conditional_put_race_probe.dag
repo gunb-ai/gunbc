@@ -2,7 +2,7 @@ module gunbc.cloudflare.r2_conditional_put_race_probe
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, HttpStatus, http_status_of }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.citation { http_status_is_success }
+import extdeps.ietf.http_semantics { http_status_is_success }
 import std.measure { Microsecond, microsecond_count }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
