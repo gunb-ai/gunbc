@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data by_name_evaluation_is_a_string_not_a_binding: RecurringFailureMode = RecurringFailureMode {
   identity: "by_name_evaluation_is_a_string_not_a_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**A by-name evaluation TYPE-CHECKS AGAINST ANY CONTEXT AND ANY NAME, so the relationship between the evaluation context and the namespace it can reach is carried nowhere the compiler can see.** `run_in_context(ctx, \"gunbc.x.y\", false)` compiles whether or not `ctx` is scoped for `gunbc.*`. The binding is a STRING at compile time and a lookup at run time, and every static gate passes over the gap.",

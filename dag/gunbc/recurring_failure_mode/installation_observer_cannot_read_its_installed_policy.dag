@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.installation_observer_cannot_read_its_installed_policy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data installation_observer_cannot_read_its_installed_policy: RecurringFailureMode = RecurringFailureMode {
   identity: "installation_observer_cannot_read_its_installed_policy" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "2026-10-09, PR #13607: microvm_controller_install_srv1_wet installed release a85cc481af5 on srv1, then refused exact adapter readback. The installed sudoers policy was correctly root:root 0440, but workspace_executor_installed_adapter_matches attempted an ordinary Filesystem.Read as ghrunner. The observer had neither filesystem read permission nor an exact privileged read grant. No VM was commissioned by this installation.",
     "Earliest unjustified boundary: installation establishes restricted policy custody, while the adapter observer assumes its caller can read every installed artifact directly. Correct installation makes that assumption false. This differs from demanding an output grant before installation: the read runs after installation, but the installed capability set never provided it.",

@@ -1,0 +1,32 @@
+module test.claim.live_deploy.fci1_bounded_store_wet_witness
+
+import std.types { Bool, String, FilePath }
+import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
+  Fci1StoreAbsent, Fci1StoreObserved, Fci1StoreUnobservable, fci1_store_state_at,
+}
+import extdeps.shell
+
+fn store_scratch() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/fci1-store-witness.XXXXXX").path
+}
+
+// The real producer over a real directory: a present root with a descendant is observed, the same
+// parent with the root removed is established absent, and an unlistable parent is unobservable.
+test fn the_store_state_reads_present_absent_and_unlistable_from_the_real_filesystem() -> Bool {
+  let parent = store_scratch()
+  let root = join([parent, "/allocation"], "")
+  let _ = shell.Mkdir.Parents(path: join([root, "/gen"], "") as FilePath)
+  let present = match fci1_store_state_at(parent: parent, name: "allocation", root: root) {
+    Fci1StoreObserved { metadata: _, hashes: _ } => true
+    _ => false
+  }
+  let _ = shell.Remove.RecursiveForce(path: root as FilePath)
+  let absent = match fci1_store_state_at(parent: parent, name: "allocation", root: root) { Fci1StoreAbsent => true  _ => false }
+  let unlistable = match fci1_store_state_at(parent: join([parent, "/no-such-parent"], ""), name: "allocation", root: root) {
+    Fci1StoreUnobservable { cause: _ } => true
+    _ => false
+  }
+  let _ = shell.Remove.RecursiveForce(path: parent as FilePath)
+  present && absent && unlistable
+}
+

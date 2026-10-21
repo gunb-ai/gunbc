@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.check_reachable_only_from_an_entry_point_the_context_never_calls
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data check_reachable_only_from_an_entry_point_the_context_never_calls: RecurringFailureMode = RecurringFailureMode {
   identity: "check_reachable_only_from_an_entry_point_the_context_never_calls" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a check exists, executes correctly, and is reachable only from ONE entry point of the tool -- and the context holding its subject never calls that entry point** (THE SUBJECT IS FULLY PRESENT IN THE EXECUTED POPULATION AND EVERY OTHER CHECK FIRES OVER IT. Nothing is unscheduled, nothing is unprepared, no denominator is misread. The missing edge is that the one check lives behind a subcommand the consumers of that context do not invoke, so for that population the wall is not weak, it is ABSENT -- while every signal a reader consults reports green.)",

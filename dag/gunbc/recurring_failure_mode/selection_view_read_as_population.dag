@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.selection_view_read_as_population
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data selection_view_read_as_population: RecurringFailureMode = RecurringFailureMode {
   identity: "selection_view_read_as_population" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a selection view read as the population** (a decidable predicate is written over MEASURED values -- cost at or above N, latency under N, rows a report printed -- and its output is then treated as the population of the class under study.",

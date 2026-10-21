@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.exit_status_read_through_a_pipe_reports_the_last_stage
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data exit_status_read_through_a_pipe_reports_the_last_stage: RecurringFailureMode = RecurringFailureMode {
   identity: "exit_status_read_through_a_pipe_reports_the_last_stage" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**exit status read through a pipe reports the last stage** (an instrument runs its subject as `subject ... | tail -n 40` or `| grep ...` and then reads `$?`, or lets the pipeline's status be the step's; without `set -o pipefail` a POSIX pipeline's status is the LAST stage's, so a subject that refused with exit 1 or 2 is reported as exit 0 whenever `tail` or `grep` exits 0 -- the instrument fails toward green on the one defect it was run to detect.",
