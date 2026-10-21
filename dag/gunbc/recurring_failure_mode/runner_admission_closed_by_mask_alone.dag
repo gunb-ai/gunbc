@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.runner_admission_closed_by_mask_alone
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data runner_admission_closed_by_mask_alone: RecurringFailureMode = RecurringFailureMode {
   identity: "runner_admission_closed_by_mask_alone" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
   receipts: [
     "INVALID STATE: a runner host is called drained when its slot units are masked, while an already-running idle listener keeps polling GitHub and can be assigned a job at any instant. Masking inhibits only the successor of an exited unit.",
     "HARM: the template-level cap drop-ins re-apply to every running slot on daemon-reload, so a job assigned in the gap can be OOM-killed by the new cap; stopping the idle listener instead races the same assignment and cancels the job. One visibly cancelled, re-runnable job, only on a cap change.",
