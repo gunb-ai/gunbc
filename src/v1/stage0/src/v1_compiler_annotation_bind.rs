@@ -138,17 +138,31 @@ pub fn region_sweep_step(acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>) -> Rc
             Some(top) => top.scope.clone(),
             std::option::Option::None => Rc::new(AnnotationScope::FileScope),
         };
-        Rc::new(RegionSweepAcc {
-            open: v1_rt::rc_list_push(open.clone(), region.clone()),
-            regions: v1_rt::rc_list_push(
+        {
+            let __rb_0_0 = v1_rt::rc_list_push(open.clone(), region.clone());
+            let __rb_1_0 = v1_rt::rc_list_push(
                 acc.regions.clone(),
                 Rc::new(AnnotationRegion {
                     scope: region.scope.clone(),
                     extent: region.extent.clone(),
                     parent: parent.clone(),
                 }),
-            ),
-        })
+            );
+            let mut __rb_h = acc;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.open = __rb_0_0;
+                    __rb_r.regions = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(RegionSweepAcc {
+                        open: __rb_0_0,
+                        regions: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

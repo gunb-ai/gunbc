@@ -1036,10 +1036,6 @@ fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
 }
 
-fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
-  language_spec_for_target(target: target).expression_semantics
-}
-
 fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)

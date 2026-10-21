@@ -1,0 +1,16 @@
+module test.fixture.laneg_single_amb_provider
+
+// Lane G (v1-interface-cull-audit@63a464edf01 P1.5 steps 1-2) emission evidence, provider side of
+// the SINGLE-FIELD / many-candidates case for
+// test.claim.record_emission_candidate_set_witness. Two record types sharing one field name, so the
+// changed single-field candidate-set arm must refuse rather than pick. Its own module, not shared
+// with the resolution cases: the candidate pool IS the specimen, so each case gets its own provider.
+// Importless (witness-cost ruling, as in test.fixture.anonhead_provider).
+
+type LanegDupS1 { w: Int }
+
+type LanegDupS2 { w: Int }
+
+fn takes_ds1(a: LanegDupS1) -> Int {
+  1
+}

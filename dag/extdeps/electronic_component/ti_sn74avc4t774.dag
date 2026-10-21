@@ -1,0 +1,71 @@
+module extdeps.electronic_component.ti_sn74avc4t774
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, LevelTranslatorSpec, LevelTranslatorSpecification, MillivoltRange, TranslatorPin,
+  PortA, PortB, DirectionControl, OutputEnable, TranslatorGround, SupplyA, SupplyB,
+}
+
+// TI's SN74AVC4T774 datasheet, SCES693I (February 2008, revised February 2025; read 2026-10-20):
+// "4-Bit Dual-Supply Bus Transceiver With Configurable Voltage-Level Shifting and 3-State Outputs
+// With Independent Direction Control Inputs". Table 4-1 gives the RSV (UQFN, 16 pins) numbering used
+// here; the package option addendum gives orderable SN74AVC4T774RSVR the part marking ZVK, and notes
+// that a part may carry an additional marking for the lot trace code. VCCA and VCCB each 1.1 V to
+// 3.6 V; each DIRn is referenced to VCCA and sets its channel's direction (high: A to B; low: B to A);
+// OE high places all outputs in three-state.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/gpn/sn74avc4t774"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_sn74avc4t774",
+      decl_name: "sn74avc4t774_rsv",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sn74avc4t774_rsv: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "SN74AVC4T774RSVR",
+  package: "UQFN-16 (RSV), 2.6 mm x 1.8 mm",
+  top_marking: "ZVK",
+  specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
+    channels: 4,
+    supply_a: MillivoltRange { minimum: millivolt(count: 1100), maximum: millivolt(count: 3600) },
+    supply_b: MillivoltRange { minimum: millivolt(count: 1100), maximum: millivolt(count: 3600) },
+    pins: [
+      TranslatorPin { number: 1, name: "A1", role: PortA { channel: 1 } },
+      TranslatorPin { number: 2, name: "A2", role: PortA { channel: 2 } },
+      TranslatorPin { number: 3, name: "A3", role: PortA { channel: 3 } },
+      TranslatorPin { number: 4, name: "A4", role: PortA { channel: 4 } },
+      TranslatorPin { number: 5, name: "DIR3", role: DirectionControl { channel: 3 } },
+      TranslatorPin { number: 6, name: "DIR4", role: DirectionControl { channel: 4 } },
+      TranslatorPin { number: 7, name: "OE", role: OutputEnable { three_state_when_high: true } },
+      TranslatorPin { number: 8, name: "GND", role: TranslatorGround },
+      TranslatorPin { number: 9, name: "B4", role: PortB { channel: 4 } },
+      TranslatorPin { number: 10, name: "B3", role: PortB { channel: 3 } },
+      TranslatorPin { number: 11, name: "B2", role: PortB { channel: 2 } },
+      TranslatorPin { number: 12, name: "B1", role: PortB { channel: 1 } },
+      TranslatorPin { number: 13, name: "VCCB", role: SupplyB },
+      TranslatorPin { number: 14, name: "VCCA", role: SupplyA },
+      TranslatorPin { number: 15, name: "DIR1", role: DirectionControl { channel: 1 } },
+      TranslatorPin { number: 16, name: "DIR2", role: DirectionControl { channel: 2 } },
+    ],
+  } },
+  vendor_application_statements: [
+    "SN74AVC4T774 4-Bit Dual-Supply Bus Transceiver With Configurable Voltage-Level Shifting and 3-State Outputs With Independent Direction Control Inputs",
+    "each DIRn, referenced to VCCA, controls signal flow for its A/B channel: high drives A to B, low drives B to A; OE high places all outputs in 3-state mode",
+  ],
+}

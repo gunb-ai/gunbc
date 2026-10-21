@@ -19,6 +19,7 @@ import gunbc.ownership { Ownership, Owned }
 import gunbc.executor_privileged_operation {
   EnsureOwnedDirectory,
   RemoveDirectoryTree,
+  SystemdMaskNowUnit,
   executor_managed_directory_mode,
   executor_privileged_operation_shell_command,
 }
@@ -36,6 +37,7 @@ import extdeps.github.actions_runner {
   actions_runner_slot_extract_script,
 }
 import product.host_identity { HostIdentity }
+import gunbc.runner.runner_slot_job_role { runner_instance_job_user }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation {
   identity_is_fabric_execution_member,
@@ -61,9 +63,7 @@ import gunbc.runner.runner_unit {
   RunnerUnitInstanceMalformed,
   NotARunnerUnit,
 }
-import extdeps.systemd.systemctl { systemctl_mask_now_argv }
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv, shell_command_text_of_node, shell_command_intent }
+import gunbc.shell_command_text { shell_command_text_of_node, shell_command_intent }
 import v2.extdeps.languages.bash_build { bash_build_with_redir }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
@@ -77,6 +77,8 @@ import gunbc.runner.runner_slot_retirement {
   transition_required_retiring,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
   retirement_unit,
+  host_maskable_units,
+  unit_in_maskable_scope,
 }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
@@ -88,7 +90,7 @@ import gunbc.runner.runner_slot_retirement {
 data runner_slot_provision_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -162,7 +164,7 @@ fn slot_member_unit_name(m: RunnerSlotMember) -> NonEmptyStr {
 }
 
 fn retirement_mask_line(unit: String) -> String {
-  shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_mask_now_argv(unit: unit as NonEmptyStr)))
+  executor_privileged_operation_shell_command(op: SystemdMaskNowUnit { unit: unit as NonEmptyStr })
 }
 
 fn realization_requires_actuation(evidence: SlotRetirementEvidence, unit: String) -> Bool {
@@ -278,12 +280,12 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
 // and no tree to derive; handing it a host identity would report "the required identity is not a
 // runner unit", which is true of the string and wrong about the state.
 fn obligation_withheld_scripts(
-  deploy: RunnerHostDeploy,
+  required: RequiredRetirees,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
   evidence: SlotRetirementEvidence,
 ) -> List<String> {
   let removed = membership_removed_unit_names(membership: membership)
-  match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+  match required {
     RetireesUnresolved { host: uh, cause: c } =>
       [withheld_diagnostic_line(message: join([
         "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
@@ -328,14 +330,14 @@ fn obligation_withheld_scripts_over(
 // obligation_withheld_scripts rather than being that empty list's meaning. Acting on the other arm
 // -- treating "cannot derive the obligation" as "there is nothing to retire" -- is the silence this
 // whole change exists to remove; acting on it HERE would be a teardown.
-fn retirement_actuation_units(
-  deploy: RunnerHostDeploy,
+fn retirement_actuation_candidates(
+  required: RequiredRetirees,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
   evidence: SlotRetirementEvidence,
 ) -> List<String> {
   let from_membership = membership_removed_unit_names(membership: membership)
     |> filter(u => realization_requires_actuation(evidence: evidence, unit: u))
-  let from_obligation = match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+  let from_obligation = match required {
     RetireesUnresolved { host: _, cause: _ } => []
     RetireesKnown { units: units } =>
       units
@@ -346,6 +348,36 @@ fn retirement_actuation_units(
         )
   }
   first_occurrences(items: concat(from_membership, from_obligation))
+}
+
+// A MASK IS EMITTED ONLY FOR A CANDIDATE INSIDE THE HOST'S STATIC "MAY BE MASKED" SET, the one set
+// gunbc.runner.runner_host_grants renders the sudoers from (gunbc.runner.runner_slot_retirement
+// host_maskable_units). The realization already refuses a unit its evidence's authorization does not
+// cover, so this intersection is the identity join made structural: no mask line can exist that the grants
+// do not carry, on either candidate arm (membership removal or transition obligation).
+fn retirement_actuation_units(
+  required: RequiredRetirees,
+  maskable: List<NonEmptyStr>,
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  retirement_actuation_candidates(required: required, membership: membership, evidence: evidence)
+    |> filter(u => unit_in_maskable_scope(scope: maskable, unit: u))
+}
+
+// EVERY CANDIDATE OUTSIDE THAT SET IS WITHHELD IN A TYPED LINE, never a mask sudo would refuse under set -e.
+fn ungranted_actuation_withheld_scripts(
+  required: RequiredRetirees,
+  maskable: List<NonEmptyStr>,
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  retirement_actuation_candidates(required: required, membership: membership, evidence: evidence)
+    |> filter(u => !unit_in_maskable_scope(scope: maskable, unit: u))
+    |> map(u => withheld_diagnostic_line(message: join([
+      "__GUNBC_CONVERGE_WITHHELD__ runner-slot retirement: unit=", u,
+      " cause=the host's rendered grants do not authorize masking this unit, so no mask is emitted",
+    ], "")))
 }
 
 // A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
@@ -622,11 +654,33 @@ fn gunbc_runner_slot_privileged_commands(
 // transaction, and a second top-level path that masked slots beside it would be two authorities over
 // one population. The retirement scripts and the teardown scripts are separate lists on the plan so
 // apply can order them explicitly and so a reader can see that no pass does both to one unit.
+// THE HOST-KEYED PRODUCTION WRAPPER: the two inputs the fold used to read from inside itself -- the
+// retirement obligation and the static maskable scope -- are computed here, from the same lookups, and
+// handed to runner_slot_provision_plan_over. A witness about the fold supplies them; this wrapper is
+// the one route that reads the live fleet.
 fn runner_slot_provision_plan(
   deploy: RunnerHostDeploy,
   artifact: ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
   retirement_evidence: SlotRetirementEvidence,
+) -> RunnerSlotProvisionPlan {
+  runner_slot_provision_plan_over(
+    deploy: deploy,
+    artifact: artifact,
+    observed: observed,
+    retirement_evidence: retirement_evidence,
+    required: transition_required_retiring(host: deploy.host_label as HostIdentity),
+    maskable: host_maskable_units(host: deploy.host_label as HostIdentity),
+  )
+}
+
+fn runner_slot_provision_plan_over(
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observed: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
+  required: RequiredRetirees,
+  maskable: List<NonEmptyStr>,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
     desired: desired_runner_slot_members(deploy: deploy),
@@ -661,7 +715,11 @@ fn runner_slot_provision_plan(
             slot_dir: m.slot_dir,
             privileged: gunbc_runner_slot_privileged_commands(
               slot_dir: m.slot_dir,
-              job_user: deploy.job_user,
+              job_user: runner_instance_job_user(
+                host: deploy.host_label as HostIdentity,
+                instance_name: m.instance_name,
+                ci_job_user: deploy.job_user,
+              ),
             ),
           )]
         MemberChanged { at: _, from: _, to: _ } => []
@@ -671,7 +729,8 @@ fn runner_slot_provision_plan(
       }
     ),
     retirement_scripts: retirement_actuation_units(
-      deploy: deploy,
+      required: required,
+      maskable: maskable,
       membership: membership,
       evidence: retirement_evidence,
     ) |> map(u => retirement_mask_line(unit: u)),
@@ -698,10 +757,18 @@ fn runner_slot_provision_plan(
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
       ),
-      obligation_withheld_scripts(
-        deploy: deploy,
-        membership: membership,
-        evidence: retirement_evidence,
+      concat(
+        obligation_withheld_scripts(
+          required: required,
+          membership: membership,
+          evidence: retirement_evidence,
+        ),
+        ungranted_actuation_withheld_scripts(
+          required: required,
+          maskable: maskable,
+          membership: membership,
+          evidence: retirement_evidence,
+        ),
       ),
     ),
   }

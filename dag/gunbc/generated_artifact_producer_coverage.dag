@@ -2,7 +2,7 @@ module gunbc.generated_artifact_producer_coverage
 
 import std.types { String, List, Bool }
 import std.decl_ref { declaration_ref_display_key }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   DeclarationRefResolution,
   declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
   resolve_declaration_ref_live

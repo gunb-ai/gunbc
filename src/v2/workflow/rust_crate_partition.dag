@@ -266,6 +266,9 @@ fn stage0_std_primitive_modules() -> List<String> {
   [
     "std_content_hash",
     "std_coercion",
+    // std.host_text (HostText, chars) is imported by std_coercion and by seed-mirrored modules since NAMESPACE-XL
+    // wave 1 gave chars its declared home; it imports only std.types, so it sits in this lowest tier with its importers.
+    "std_host_text",
     "extdeps_currency_currency",
     "std_decl_ref",
     "std_keyed_row",
@@ -311,6 +314,9 @@ fn stage0_std_core_modules() -> List<String> {
       "extdeps_units_iso8601",
       "extdeps_units_iso_80000_3",
       "std_occurrence_identity",
+      // std.generated_provider (generated-provider demands, acquisition step) is read by v1.compiler.infer and
+      // v1.compiler.compile; it imports std.types, std.optional, std.algebra, std.decl_ref and std.occurrence_identity.
+      "std_generated_provider",
       "std_source_annotation",
       "std_kernel_type_name",
       "std_target_representation",

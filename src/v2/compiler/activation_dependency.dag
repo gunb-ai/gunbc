@@ -1,0 +1,291 @@
+module v2.compiler.activation_dependency
+
+// WHAT A BRANCH OR A MATCH DEMANDS. Authority: gunbc.plans.demand_engine_program section 2.4 and D4: a
+// Branch demands its condition and a Match its scrutinee, then EXACTLY ONE arm out of a statically known
+// set, chosen by that value -- a static demand with a runtime selector, never a dynamic edge. An arm that
+// is not taken contributes no prerequisite to anything outside it.
+//
+// THE CARRIER IS v2.std.dependency ActivationDemand, NOT A DependencyKind. A prerequisite row has one
+// source and one dependent; "one of these, chosen by that" has neither, and a row per arm would make every
+// arm a prerequisite and run the untaken ones with their effects. The same reason the selector is not
+// projected as a DataDependsOn row to each arm: gating an arm is activation, not data flow, and a reader of
+// the flat views must not be able to see an arm as something to schedule (parent ruling on this change).
+// The consumer is v2.workflow.runtime_run (v2.program's run), which evaluates a site's selector, asks the
+// interpretation to choose, checks the choice against these alternatives and evaluates only the chosen one.
+//
+// ROLES ARE READ BY SLOT. The normalized tree shares equal nodes, so a condition equal to an arm is two
+// edges that compare equal; the condition, scrutinee and arms are found through v2.std.node's slot tables
+// (node_child_slots, branch_positional_slot, match_positional_slot, branch_slot_target,
+// match_slot_target), never by comparing edges or taking "the first positional". The slot of an arm travels
+// in the alternative (ActivationSelection), so a consumer does not recompute the position.
+//
+// A SCRUTINEE-ONLY MATCH IS ITS OWN CASE (ActivationZeroAlternatives), neither a demand nor malformed: inference
+// admits `match (n) { }` on an uninhabited scrutinee, so zero alternatives are meaningful and their validity is
+// inference's judgment, never inferred here from the absence of arms.
+//
+// A MALFORMED SITE IS A TYPED ROW, NEVER A SKIP OR A DEFAULT (DESIGN section 5). Lowering emits only
+// three-positional Branches (lower_branch), and branch_view refuses any other shape; a Branch of another
+// arity, a Match with no scrutinee, or an arm without exactly one pattern and one body marker is returned as
+// ActivationNotDerived. Every Branch and Match of the tree is in exactly one of the three populations.
+//
+// ONLY A COMPLETE POPULATION SUPPORTS AN INDEPENDENCE CONCLUSION. ActivationDependencies is demands PLUS
+// not_derived, as A1's ValueUseDependencies is relations plus not_derived: a consumer that reads only the
+// demands and drops not_derived would read a missing relation as independence. v2.workflow.runtime_run refuses
+// the whole run when not_derived is non-empty.
+//
+// ACTIVATION IS A RUNTIME DEMAND FACT ONLY. An untaken alternative contributes no runtime read, refusal or
+// effect, but inference and typing still judge every arm: nothing here suppresses compile-time checking.
+//
+// ARM ORDER IS SELECTION PRIORITY, NOT A PREREQUISITE. A Match's first matching pattern wins, so the order of
+// the alternatives (and the ordinal in SelectedByPattern) is data for the selector; no relation between arms
+// is ever emitted. Reordering overlapping arms changes which alternative the head is.
+//
+// THE DEMAND KEY IS NOT THE NODE. ActivationDemand<Subject> is a judgment over structure AND context; this
+// module instantiates Subject at Node because resolve's record is per-node, and joins nothing on Node
+// equality, so a consumer that instantiates the template under a context is not merged by this module.
+//
+// NOT DERIVED HERE: a name bound by an arm pattern is a use of the scrutinee's component, which is data
+// flow. A1 does not derive it (resolve records a pattern binder as LexicalOwedFormal, which
+// value_use_dependency returns as NotDerivedStanding); that is the declared frontier, to land with the change
+// that gives resolve's record a value for the formal.
+
+import std.algebra { Cons, Empty, FreeSemigroup, fold_list, length, list_snoc_item }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Int, List }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.compilers.body_lowering { OperandSlot, ResidueOperand, WholeOperand, operand_slot_of }
+import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  BranchConditionSlot,
+  BranchElseSlot,
+  BranchThenSlot,
+  ChildSlot,
+  Branch,
+  ComputationNode,
+  Match,
+  MatchScrutineeSlot,
+  Node,
+  PositionalOrdinal,
+  branch_slot_target,
+  MatchArmSlot,
+  match_role_slots,
+  match_slot_target,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  Found,
+  Ambiguous,
+  NotFound,
+  core_edge_target_lookup,
+  match_arm_node_conforms,
+  node_child_slots,
+  node_subtree_nodes
+}
+
+type ActivationNotDerivedReason
+  = BranchNotConditionThenElse { children: Int, positional: Int }
+  | MatchScrutineeAbsent
+  | MatchArmMalformed { arm: Node }
+
+type ActivationNotDerived {
+  site: Node
+  reason: ActivationNotDerivedReason
+}
+
+// A Match WITH A SCRUTINEE AND NO ARMS: a structural case of its own, neither a demand (there is no choice to
+// carry; ActivationDemand's alternatives are a FreeSemigroup and none is fabricated) nor malformed. Node admits
+// a scrutinee-only Match and inference accepts `match (n) { }` exactly when the scrutinee is uninhabited
+// (v2.compiler.infer UninhabitedScrutinee), refusing it otherwise. Whether this site is valid is therefore
+// INFERENCE'S judgment of the scrutinee, which this module does not make and does not infer from the absence
+// of arms: a consumer that needs the answer reads inference, and one that does not may treat the site as
+// having nothing to select. The selector is kept: the scrutinee is still demanded.
+type ActivationZeroAlternatives {
+  site: Node
+  selector: Node
+}
+
+// THE ONE RESULT: every Branch and Match of the tree is in exactly one population.
+type ActivationDependencies {
+  demands: List<ActivationDemand<Node>>
+  not_derived: List<ActivationNotDerived>
+  zero_alternatives: List<ActivationZeroAlternatives>
+}
+
+fn activation_dispositions(tree: ResolvedTree) -> ActivationDependencies {
+  activation_dispositions_of_root(root: tree.root)
+}
+
+// The same derivation over a bare root, so a claim can hand it a shape the front end does not write (a
+// shared node, a malformed site).
+fn activation_dispositions_of_root(root: Node) -> ActivationDependencies {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: ActivationDependencies { demands: [], not_derived: [], zero_alternatives: [] },
+    cons: fn(acc, n) { activation_dispose(acc: acc, n: n) }
+  )
+}
+
+fn activation_dispose(acc: ActivationDependencies, n: Node) -> ActivationDependencies {
+  match n.kind {
+    ComputationNode { behavior: Branch } => activation_branch(acc: acc, site: n)
+    ComputationNode { behavior: Match } => activation_match(acc: acc, site: n)
+    _ => acc
+  }
+}
+
+fn activation_demand_row(acc: ActivationDependencies, demand: ActivationDemand<Node>) -> ActivationDependencies {
+  ActivationDependencies { demands: list_snoc_item(xs: acc.demands, item: demand), not_derived: acc.not_derived, zero_alternatives: acc.zero_alternatives }
+}
+
+fn activation_refused(acc: ActivationDependencies, site: Node, reason: ActivationNotDerivedReason) -> ActivationDependencies {
+  ActivationDependencies {
+    demands: acc.demands,
+    not_derived: list_snoc_item(xs: acc.not_derived, item: ActivationNotDerived { site: site, reason: reason }),
+    zero_alternatives: acc.zero_alternatives
+  }
+}
+
+fn activation_is_positional(s: ChildSlot) -> Int {
+  match s.ordinal {
+    PositionalOrdinal { index: _ } => 1
+    _ => 0
+  }
+}
+
+fn activation_positional_count(site: Node) -> Int {
+  fold_list(
+    xs: node_child_slots(n: site),
+    empty: 0,
+    cons: fn(acc, s) { acc + activation_is_positional(s: s) }
+  )
+}
+
+// A BRANCH: the condition selects the then or the else slot. Exactly three positional children and no
+// others (the table names ordinals 0, 1 and "2 and beyond"; a fourth is not an else).
+fn activation_branch(acc: ActivationDependencies, site: Node) -> ActivationDependencies {
+  let positional = activation_positional_count(site: site)
+  if positional == 3 && length(xs: site.children) == 3 {
+    match branch_slot_target(n: site, slot: BranchConditionSlot) {
+      Present { value: condition } =>
+        match branch_slot_target(n: site, slot: BranchThenSlot) {
+          Present { value: then_arm } =>
+            match branch_slot_target(n: site, slot: BranchElseSlot) {
+              Present { value: else_arm } =>
+                activation_demand_row(acc: acc, demand: ActivationDemand {
+                  site: site,
+                  selector: condition,
+                  alternatives: FreeSemigroup {
+                    head: ActivationAlternative { selected_by: SelectedByBranchSlot { slot: BranchThenSlot }, root: then_arm },
+                    tail: [ActivationAlternative { selected_by: SelectedByBranchSlot { slot: BranchElseSlot }, root: else_arm }]
+                  }
+                })
+              Absent => activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
+            }
+          Absent => activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
+        }
+      Absent => activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
+    }
+  } else {
+    activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
+  }
+}
+
+type ActivationArms {
+  alternatives: List<ActivationAlternative<Node>>
+  malformed: Optional<Node>
+}
+
+// A MATCH: the scrutinee selects one arm; each positional child past the scrutinee slot is an arm, whose
+// pattern selects it and whose body is the alternative's root.
+fn activation_match(acc: ActivationDependencies, site: Node) -> ActivationDependencies {
+  match match_slot_target(n: site, slot: MatchScrutineeSlot) {
+    Absent => activation_refused(acc: acc, site: site, reason: MatchScrutineeAbsent)
+    Present { value: scrutinee } =>
+      activation_match_arms(acc: acc, site: site, scrutinee: scrutinee, arms: activation_collect_arms(site: site))
+  }
+}
+
+fn activation_collect_arms(site: Node) -> ActivationArms {
+  fold_list(
+    xs: match_role_slots(n: site, role: MatchArmSlot),
+    empty: ActivationArms { alternatives: [], malformed: optional_absent() },
+    cons: fn(arms, s) { activation_arm_at(arms: arms, s: s) }
+  )
+}
+
+fn activation_arm_at(arms: ActivationArms, s: ChildSlot) -> ActivationArms {
+  match activation_arm_parts(arm: s.edge.target) {
+    Present { value: parts } =>
+      ActivationArms {
+        alternatives: list_snoc_item(xs: arms.alternatives, item: activation_arm_alternative(s: s, parts: parts)),
+        malformed: arms.malformed
+      }
+    Absent =>
+      ActivationArms { alternatives: arms.alternatives, malformed: activation_first_malformed(prior: arms.malformed, arm: s.edge.target) }
+  }
+}
+
+type ActivationArmParts {
+  pattern: Node
+  body: Node
+}
+
+// AN ARM'S PATTERN AND BODY, READ BY MARKER. The substrate authority is label-based (match_arm_node_conforms
+// requires one of each marker in any order, and infer reads them by marker), so the pair is found through
+// core_edge_target_lookup and the arm's storage order is never consulted. A missing or duplicate marker is
+// Absent (the caller records MatchArmMalformed), and so is a body that is surface residue.
+fn activation_arm_parts(arm: Node) -> Optional<ActivationArmParts> {
+  if match_arm_node_conforms(arm: arm) {
+    match core_edge_target_lookup(children: arm.children, marker: MatchArmPatternEdge) {
+      Found { target: pattern } =>
+        match core_edge_target_lookup(children: arm.children, marker: MatchArmBodyEdge) {
+          Found { target: body_edge } =>
+            match operand_slot_of(n: body_edge) {
+              WholeOperand { node: body } => optional_present(value: ActivationArmParts { pattern: pattern, body: body })
+              ResidueOperand { node: _ } => optional_absent()
+            }
+          Ambiguous => optional_absent()
+          NotFound => optional_absent()
+        }
+      Ambiguous => optional_absent()
+      NotFound => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn activation_first_malformed(prior: Optional<Node>, arm: Node) -> Optional<Node> {
+  match prior {
+    Present { value: p } => optional_present(value: p)
+    Absent => optional_present(value: arm)
+  }
+}
+
+fn activation_arm_alternative(s: ChildSlot, parts: ActivationArmParts) -> ActivationAlternative<Node> {
+  ActivationAlternative {
+    selected_by: SelectedByPattern { ordinal: s.ordinal, pattern: parts.pattern },
+    root: parts.body
+  }
+}
+
+fn activation_match_arms(acc: ActivationDependencies, site: Node, scrutinee: Node, arms: ActivationArms) -> ActivationDependencies {
+  match arms.malformed {
+    Present { value: arm } => activation_refused(acc: acc, site: site, reason: MatchArmMalformed { arm: arm })
+    Absent =>
+      match arms.alternatives {
+        Empty =>
+          ActivationDependencies {
+            demands: acc.demands,
+            not_derived: acc.not_derived,
+            zero_alternatives: list_snoc_item(xs: acc.zero_alternatives, item: ActivationZeroAlternatives { site: site, selector: scrutinee })
+          }
+        Cons { head: first, tail: rest } =>
+          activation_demand_row(acc: acc, demand: ActivationDemand {
+            site: site,
+            selector: scrutinee,
+            alternatives: FreeSemigroup { head: first, tail: rest }
+          })
+      }
+  }
+}

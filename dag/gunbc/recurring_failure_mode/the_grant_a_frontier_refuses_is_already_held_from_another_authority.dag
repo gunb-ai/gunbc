@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.the_grant_a_frontier_refuses_is_already_held_from_another_authority
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data the_grant_a_frontier_refuses_is_already_held_from_another_authority: RecurringFailureMode = RecurringFailureMode {
   identity: "the_grant_a_frontier_refuses_is_already_held_from_another_authority" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: one authority DECLINES to grant a capability to a principal, states the harm the grant would cause, and blocks its own consumer on a frontier until a safer principal exists -- while a SECOND authority over the same principal on the same host already grants that capability, wider. The refusal is then a wall with no back, and the belief it creates in every reader of the declining module -- \"this principal cannot do that\" -- is FALSE and recorded nowhere. Nothing refuses, because the two authorities never meet: each is internally coherent, the narrowing one is the one people read, and the widening one is older and lives in a module about a different subject.",
@@ -22,6 +24,10 @@ data the_grant_a_frontier_refuses_is_already_held_from_another_authority: Recurr
     "NEXT-RUNG TRIGGER, at capability grain and deliberately not naming an artifact. EVERY sudoers body this repository renders for a runner-host principal is derived from an operation that pins its complete argv, so a path-only grant for that principal has no spelling -- which makes the union over ALL authorities rendering for one principal a set the corpus can state, and makes a capability refusal like the one gunbc.runner.runner_microvm_network_apply embodies checkable against it rather than against one module's roster. WHAT DOES NOT SATISFY IT: a lens comparing the two rendered files (validation where construction is available, and it reports only the hosts whose files someone thought to compare); narrowing /etc/sudoers.d/gunbc-deploy by hand on one host (the population is every host the deploy preamble has run on, and the generator would rewrite it); or deleting the frontier because the grant it refuses is already held -- that is the inversion, and it converts a true statement about a wall into permission to stop building it.",
 
     "THE STANDING LOSS IS ROSTERED SEPARATELY, because a class is not a declared drop: gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant carries the bounded population and the restoration trigger. CLOSING THE GRANTS IS A SEPARATE ITEM and is not this row's repair: legacy jobs on the host consume them today, so narrowing them needs a consumer census of each grant and an operator decision, and it is what gates untrusted-PR qualification of the microVM host.",
+
+    "INSTANCE, 2026-10-19, read-only on srv1: `sudo -n -u ghrunner sudo -n -ll -u root /usr/bin/systemctl mask --now actions-runner@srv1-03.service` matched the gunbc-deploy entry `/usr/bin/systemctl`. ghrunner runs every srv1 CI job, same-repository pull_request jobs included, and holds whole-binary systemctl, install, apt-get and visudo as RunAsUsers ALL, so PR code is root on srv1. It fits this class: gunbc.runner.runner_host_grants pins argv while gunbc.ci.ci_deploy_sudoers does not, for one principal. The consumer census, split and staged migration are in gunbc.plans.srv1_deploy_principal_split; the rung is unchanged (mitigatable) until that plan's transition lands.",
+
+    "STAGE 0 (2026-10-19, gunbc.plans.srv1_deploy_principal_split): the selection had no vocabulary for host-root reach, so it could not name the administrator edge for the srv1 deploy effects. MintsHostRootReach and the AdministratorEdge pattern now exist, the four deploy effects are census rows executed through the fold, and test.claim.authorization_pattern_selection_witness holds the RED (same effect at MintsAccountWideCredential -> NoAdmissiblePattern) beside the positive control. Rung is unchanged (mitigatable): the whole-binary grants are still held. The co-tenant requirement is a declared frontier, gunbc.ci.deploy_route_requirement.",
 
     "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster.",
   ],

@@ -163,6 +163,16 @@ test fn owned_process_observations_are_kept_distinct() -> Bool {
   run && gone && unread && garbled && foreign
 }
 
+// RED: the three unparseable-stat causes were one fixed detail under the wildcard; each now
+// names its own cause, so a truncated comm, a short field list and a non-integer start time differ.
+test fn unparseable_stat_causes_are_distinguished() -> Bool {
+  let rec = "4242 100\n"
+  let comm = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  let short = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node) S 1") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  let nonint = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 x 12345 67 18446744073709551615\n") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  comm != "" && short != "" && nonint != "" && comm != short && comm != nonint && short != nonint
+}
+
 // GAPS ARE RETAINED: an interval over two cadences, a clock that stepped back, and a final gap left
 // unclosed when the last mark is not a stop request.
 test fn gaps_step_backs_and_unclosed_ends_are_retained() -> Bool {

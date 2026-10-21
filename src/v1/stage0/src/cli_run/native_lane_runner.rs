@@ -7279,13 +7279,13 @@ pub fn run_self_host_frontier(
     })
 }
 
-/// D13's DEPENDENCY-DEMAND CENSUS, RUN BY THE EMITTED COMPILER (`demand-census` verb). The seed's
-/// whole job is the preparation it shares with every native instrument; the census is the emitted
-/// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
-/// line for line and its status is returned unjudged.
-pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
+/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is
+/// the parameter). The seed's whole job is the preparation it shares with every native instrument;
+/// the census is the emitted binary's, which prints its own lines and decides its own exit. The
+/// child's stdout is relayed line for line and its status is returned unjudged.
+pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["demand-census".to_string()];
+    let mut args = vec![verb.to_string()];
     args.extend(source_roots.iter().cloned());
     let output = Command::new(&preparation.binary_path)
         .args(&args)
@@ -7297,7 +7297,7 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
             )
         })?;
     let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — demand-census stdout: {cause}")
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — {verb} stdout: {cause}")
     })?;
     for line in stdout.lines() {
         println!("{line}");
@@ -7306,7 +7306,8 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
         eprintln!("{line}");
     }
     output.status.code().ok_or_else(|| {
-        "V2-NATIVE REFUSAL cause=NativeRunKilled — the demand-census child exited without a status"
-            .to_string()
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
+        )
     })
 }

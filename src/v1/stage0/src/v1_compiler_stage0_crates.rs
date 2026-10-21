@@ -562,7 +562,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 default_features: true,
-                features: Rc::new(vec![]),
+                features: Rc::new(vec!["arbitrary_precision".to_string()]),
             }),
         }),
         Rc::new(CargoDependency {
@@ -1193,13 +1193,6 @@ pub fn partition_facade_wrapper_reexports_outcome(
             }
         },
     )
-}
-
-pub fn stage0_partition_lookups_valid() -> bool {
-    match (*stage0_crate_boundary_emit_outcome()).clone() {
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: _, .. } => true,
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: _, .. } => false,
-    }
 }
 
 pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {

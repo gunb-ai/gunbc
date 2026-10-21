@@ -45,6 +45,7 @@ import product.fabric.flex_market {
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
 }
 import product.fabric.flex_vast_shadow {
+  flex_offer_disk_rate, flex_vast_storage_billing_month, flex_offer_quote,
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
   flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_screen_by_recipe, flex_offer_in_shadow_field,
@@ -71,7 +72,7 @@ import std.rational { NonzeroNatFraction }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.procps.kill { procps_kill_standing }
 import product.fabric.serving_recipe {
-  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
+  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, SelectionQuoteRefusedEstimated,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
@@ -936,7 +937,7 @@ fn qualifying_pro_6000() -> VastAiOffer {
 }
 
 fn screened(offer: VastAiOffer) -> FlexShadowFieldEntry {
-  flex_offer_in_shadow_field(offer: offer, host: host_of(offer))
+  flex_offer_in_shadow_field(offer: offer, host: host_of(offer), search_type: flex_search_type)
 }
 
 fn is_established(e: FlexShadowFieldEntry) -> Bool {
@@ -987,7 +988,7 @@ test fn a_host_below_the_driver_floor_or_cpu_ram_floor_is_refused() -> Bool {
   let ok = qualifying_pro_6000()
   let small_host = VastAiOfferHostResources { id: ok.id, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 127999, disk_space: ExactDecimal { units: 1000, fraction_digits: 0 } }
   is_excluded(e: screened(offer: low))
-    && is_excluded(e: flex_offer_in_shadow_field(offer: ok, host: small_host))
+    && is_excluded(e: flex_offer_in_shadow_field(offer: ok, host: small_host, search_type: flex_search_type))
 }
 
 fn flash_next_with_driver_standing(sd: CitedFigureStanding) -> ServingRecipe {
@@ -1048,4 +1049,63 @@ test fn the_search_query_and_the_screen_read_one_filter_fact() -> Bool {
       Absent => true
       Present { value: _ } => false
     })
+}
+
+// INTERRUPTIBLE IS THE SEARCH, NOT is_bid. A live bid search (2026-10-18) answered is_bid false on every
+// offer, so a qualifying PRO 6000 read from a bid search with is_bid false is a member; the same offer
+// returned by an on-demand search is not an interruptible candidate. A screen keyed on is_bid fails both.
+fn with_is_bid(o: VastAiOffer, bid: Bool) -> VastAiOffer {
+  VastAiOffer {
+    id: o.id, machine_id: o.machine_id, gpu_name: o.gpu_name, num_gpus: o.num_gpus, compute_cap: o.compute_cap,
+    gpu_arch: o.gpu_arch, verification: o.verification, geolocation: o.geolocation, rentable: o.rentable, rented: o.rented,
+    is_bid: Present { value: bid }, min_bid: o.min_bid, dph_total: o.dph_total, storage_cost: o.storage_cost, inet_up_cost: o.inet_up_cost,
+    inet_down_cost: o.inet_down_cost, gpu_ram: o.gpu_ram, driver_version: o.driver_version, cuda_max_good: o.cuda_max_good, inet_down: o.inet_down,
+  }
+}
+
+fn member_entry(e: FlexShadowFieldEntry) -> Bool {
+  match e {
+    ShadowEntryEstablished => true
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
+    ShadowEntryExcluded => false
+  }
+}
+
+test fn interruptibility_is_the_search_type_not_is_bid() -> Bool {
+  let observed = with_is_bid(o: qualifying_pro_6000(), bid: false)
+  member_entry(e: flex_offer_in_shadow_field(offer: observed, host: host_of(observed), search_type: vast_ai_search_type_bid))
+    && !member_entry(e: flex_offer_in_shadow_field(offer: with_is_bid(o: qualifying_pro_6000(), bid: true), host: host_of(observed), search_type: vast_ai_search_type_ondemand))
+}
+
+// THE DISK RATE: $0.15/GB-month on the 730-hour month the quote rests on is 221 micro-dollars per
+// GiB-hour (0.15 * 2^30/10^9 / 730, rounded up). A fold that kept decimal GB reads 206; one that forgot the
+// hours reads a monthly figure. The quote built on it is Estimated, naming the uncited month.
+test fn the_disk_rate_converts_gb_month_to_gib_hour_and_the_quote_stays_estimated() -> Bool {
+  match flex_offer_disk_rate(offer: qualifying_pro_6000(), month: flex_vast_storage_billing_month) {
+    Absent => false
+    Present { value: r } => money_amount_micro_count(m: r.rate.amount) == 221
+  } && match flex_offer_quote(offer: qualifying_pro_6000(), recipe: flex_serving_recipe) {
+    SelectionQuoteRefusedEstimated { standings: ss } => any(ss, s => match s { TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "storage_cost") _ => false })
+    _ => false
+  }
+}
+
+// ONE CARD PER RENTAL. A Vast offer is a whole machine at one price, so a two-GPU machine of the right class
+// is not a one-card Flash-Next rental: its min_bid prices two cards. The first live flex_pass (fleet-converge
+// run 39214273788) admitted x2, x4 and x8 machines; the same offer as a one-GPU machine is admitted.
+fn with_num_gpus(o: VastAiOffer, n: Int) -> VastAiOffer {
+  VastAiOffer {
+    id: o.id, machine_id: o.machine_id, gpu_name: o.gpu_name, num_gpus: n, compute_cap: o.compute_cap,
+    gpu_arch: o.gpu_arch, verification: o.verification, geolocation: o.geolocation, rentable: o.rentable, rented: o.rented,
+    is_bid: o.is_bid, min_bid: o.min_bid, dph_total: o.dph_total, storage_cost: o.storage_cost, inet_up_cost: o.inet_up_cost,
+    inet_down_cost: o.inet_down_cost, gpu_ram: o.gpu_ram, driver_version: o.driver_version, cuda_max_good: o.cuda_max_good, inet_down: o.inet_down,
+  }
+}
+
+test fn a_multi_gpu_machine_is_not_a_one_card_rental() -> Bool {
+  let one = with_num_gpus(o: qualifying_pro_6000(), n: 1)
+  let two = with_num_gpus(o: qualifying_pro_6000(), n: 2)
+  member_entry(e: flex_offer_in_shadow_field(offer: one, host: host_of(one), search_type: vast_ai_search_type_bid))
+    && !member_entry(e: flex_offer_in_shadow_field(offer: two, host: host_of(two), search_type: vast_ai_search_type_bid))
+    && (match flex_vast_offer_query(recipe: flex_serving_recipe) { Present { value: q } => q.num_gpus == 1  Absent => false })
 }

@@ -1,0 +1,12 @@
+module v2.test.claim.manual.ctor_tag_forge_argument_red
+
+// Route 3: `tag_of` must not accept a predicate. Its one parameter is the value whose arm is
+// being tagged, so there is no position a caller can put a truth function in.
+
+import std.primitives { tag_of, same_arm }
+
+type Fg3 = A { a: Int } | B { b: Bool } | C
+
+test fn r3_tag_of_must_not_accept_a_predicate() -> Bool {
+  same_arm(tag: tag_of(v: fn(_w) { true }), v: A { a: 1 })
+}

@@ -1,0 +1,145 @@
+module test.claim.forwarded_type_parameter_kind_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+
+// A FORWARDED TYPE PARAMETER AT A KINDED SLOT, JUDGED BY DECLARATION IDENTITY.
+//
+// SUBJECT: v2.compiler.resolve resolve_kind_inhabitance's type-parameter arm, driven through the real
+// assembly route (v2.compiler.program_assembly assemble_program_from_ingest) so the grammar, the
+// lowering, the symbol index and the wall all execute for every row. The vehicle is the one
+// v2.test.claim.type_application_kind uses for a NAMED argument, chosen for the reason that file states:
+// the route is dominated by dag_language_model(), which carries a function and cannot be served, so
+// every specimen here is nullary and pure over an inline source string.
+//
+// WHAT WAS BROKEN, AND WHAT EACH ROW THEREFORE PINS. The arm answered
+// v2.std.type_binder ArgumentTypeParameterUnjudged for ANY argument that was a bound type parameter
+// (gunbc.recurring_failure_mode type_parameter_kind_deferral_never_collected), so the three specimens
+// that differ ONLY in how the forwarding declaration's own parameter is kinded were indistinguishable --
+// all three were admitted. Rows (1)-(3) are that triple.
+//
+// DISCRIMINATION. Deleting the judgment (restoring `=> acc`) reds (2) and (3) and leaves (1), (4) and (5)
+// green: (1) is the positive control that holds with the old arm and the new one, so a failure there is a
+// failure of the fixture rather than of the judgment, and (4)/(5) show the refusal is the wall's own and
+// not a fixture that cannot resolve anything.
+//
+// WHY THE KINDS ARE DECLARED HERE RATHER THAN IMPORTED. The judgment compares RESOLVED kind
+// declarations; the corpus has exactly one kinded type family (dag.std.machine_constraints
+// MachineWidth<bits: WidthResolution>), so importing the corpus's one kind would make "a parameter of a
+// DIFFERENT kind" inexpressible. Declaring two kinds locally is what makes row (3) representable at all.
+data ftk_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^forwarded_type_parameter_kind_witness_artifact,
+  file_path: "src/v2/pilot/forwarded_type_parameter_kind_pilot.dag"
+}
+
+fn ftk_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: ftk_artifact,
+        compilation_unit: ^forwarded_type_parameter_kind_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn ftk_accepts<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ftk_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// (1) POSITIVE CONTROL. The forwarding declaration's parameter is declared with the REQUIRED kind and
+// forwarded to the slot that asks for it. Accepted on main and accepted now: a correctly kinded forward
+// is admitted, by the same declaration-identity test the named-argument path already used.
+fn ftk_forwarded_matching_kind() -> Outcome<ResolvedTree> {
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Slot<b: Resolution>\n\ntype Forward<b: Resolution> = Slot<b>\n")
+}
+
+test fn a_forwarded_parameter_declared_with_the_required_kind_is_admitted() -> Bool {
+  ftk_accepts(o: ftk_forwarded_matching_kind())
+}
+
+// (2) THE WIDEN'S FIRST VICTIM. The forwarded parameter declares NO kind, so nothing establishes that
+// the inhabitants it can stand for are inhabitants of the slot's kind. RED BEFORE: admitted.
+fn ftk_forwarded_without_a_kind() -> Outcome<ResolvedTree> {
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Slot<b: Resolution>\n\ntype Forward<b> = Slot<b>\n")
+}
+
+test fn a_forwarded_parameter_declared_without_a_kind_refuses() -> Bool {
+  ftk_refuses_with(o: ftk_forwarded_without_a_kind(), reason: ^resolve_reason_forwarded_parameter_unkinded)
+}
+
+// (3) THE WIDEN'S SECOND VICTIM. The forwarded parameter declares a DIFFERENT kind -- `Colour`, whose
+// arms are not `Resolution`'s -- so it ranges over things the slot's kind never admits. RED BEFORE:
+// admitted, because "is a type parameter" was the whole test.
+fn ftk_forwarded_wrong_kind() -> Outcome<ResolvedTree> {
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Colour\n  = Red\n  | Blue\n\ntype Slot<b: Resolution>\n\ntype Forward<b: Colour> = Slot<b>\n")
+}
+
+test fn a_forwarded_parameter_declared_of_a_different_kind_refuses() -> Bool {
+  ftk_refuses_with(o: ftk_forwarded_wrong_kind(), reason: ^resolve_reason_forwarded_parameter_kind_differs)
+}
+
+// (4) CONTROL: THE REFUSAL IS THE WALL'S OWN, NOT THE FIXTURE'S. A named non-inhabitant at the same slot
+// refuses with the same reason, which main already did -- so (2) and (3) refuse for the wall's reason,
+// and the diagnostic class is reachable in this fixture independently of the forwarded case.
+fn ftk_named_non_inhabitant() -> Outcome<ResolvedTree> {
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Colour\n  = Red\n  | Blue\n\ntype Slot<b: Resolution>\n\ntype Use = Slot<Red>\n")
+}
+
+test fn a_named_non_inhabitant_at_the_kinded_slot_refuses() -> Bool {
+  ftk_refuses_with(o: ftk_named_non_inhabitant(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+}
+
+// (5) CONTROL: THE JUDGMENT DOES NOT LEAVE A KINDED POSITION. A parameter forwarded into a slot that
+// declares NO kind is not judged, so these rows stay green; if they went red the new judgment would be
+// a check on genericity rather than a check on kinds.
+fn ftk_unkinded_slot_forward() -> Outcome<ResolvedTree> {
+  ftk_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Plain<t>\n\ntype Forward<b> = Plain<b>\n")
+}
+
+test fn a_parameter_forwarded_into_an_unkinded_slot_is_not_repudiated() -> Bool {
+  ftk_accepts(o: ftk_unkinded_slot_forward())
+}
+
+// NO FN-HEADER WITNESS EXISTS IN THIS FILE, AND THAT IS A MEASURED FINDING, NOT AN OVERSIGHT.
+// Review 81998 asked for the Arrow branch's witness (a function's OWN kinded type parameter forwarded
+// into a kinded slot). It is not authorable today: `fn width_of<b: Resolution>(s: Slot<b>) -> Nat { 0 }`
+// assembles -- no parse, unbound-symbol, arity or arrow-stage reason fires -- and the refusal is this
+// judgment's own resolve_reason_forwarded_parameter_kind_unresolved, because the symbol index records no type-parameter
+// conjunct for an fn header: symbol_index_fill_declared_child takes it from symbol_index_declared,
+// which reads it through type_decl_view, under which an `fn` item is NotATypeDecl and answers
+// binders: optional_absent, so symbol_index_mark_declared_binders never inserts into the
+// declared_type_params map that symbol_index_declared_binders_at reads. What an fn does get is
+// symbol_index_fill_kinded_type_params, a value reading at <fn>.<name> in a different map. Measured against the control that the same index reading SUCCEEDS
+// at a type declaration's path, so the empty record is specific to fn headers.
+// gunbc.recurring_failure_mode fn_type_parameter_header_is_never_indexed carries the specimen, the
+// per-stage measurements and the trigger: when the fill records an fn header's binders, the two rows
+// deleted here (matching-kind admitted; different-kind refused with resolve_reason_forwarded_parameter_kind_differs)
+// become authorable and must be reinstated and run. The Arrow push branch is NOT deleted for being
+// uncovered: the specimen reaches it and decides there, which is what the exact-reason measurement proves,
+// so DESIGN section 3c's deletion does not apply to a branch that is live and merely unobservable.

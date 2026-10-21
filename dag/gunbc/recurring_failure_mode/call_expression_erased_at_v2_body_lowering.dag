@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.call_expression_erased_at_v2_body_lowering
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data call_expression_erased_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "call_expression_erased_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a call expression is erased by v2 normalize before resolve runs, so every reference it carries -- callee and arguments -- is invisible to name resolution and the refusal a missing declaration should raise has nothing to fire on** (INVALID STATE: v2.compiler.normalize, via v2.compiler.body_lowering_fold, lowers a function body that is a call into a Transform node whose only child is the `dag_token_lbrace` atom. The callee identity and every argument subtree are dropped. The module then passes normalize and resolve Accepted, with no diagnostic of any severity).",

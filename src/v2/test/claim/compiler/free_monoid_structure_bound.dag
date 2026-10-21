@@ -7,7 +7,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_re
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
-import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
+import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterUnresolved, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, algebra_inhabitance_node, free_monoid_structure_node, monoid_type_node }
 import v2.std.node_query { binder_edge }
 import std.types { Bool, List }
@@ -200,6 +200,11 @@ fn fmb_conforms(c: TypeApplicationConformance) -> Bool {
     TypeApplicationArityMismatch { declared: _, supplied: _ } => false
     TypeApplicationKindNotInhabited { argument: _, kind: _ } => false
     TypeApplicationKindUnresolved { argument: _, kind: _ } => false
+    // A forwarded parameter refused for any of these three reasons is equally a non-conformance; the
+    // distinction lives in the reason, not in whether the caller accepts.
+    TypeApplicationForwardedParameterUnkinded { argument: _, kind: _ } => false
+    TypeApplicationForwardedParameterKindDiffers { argument: _, kind: _ } => false
+    TypeApplicationForwardedParameterUnresolved { argument: _, kind: _ } => false
     TypeApplicationBinderOrderMalformed => false
   }
 }

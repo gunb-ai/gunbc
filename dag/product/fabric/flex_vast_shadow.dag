@@ -1,7 +1,7 @@
 module product.fabric.flex_vast_shadow
 
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
@@ -10,8 +10,9 @@ import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
   Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
-  second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  second, Second, second_count, scale_exponent, Giga, gibibyte_scale_factor_bytes, seconds_per_minute, minutes_per_hour, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+  money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.currency.currency { CurrencyCode, Usd }
@@ -35,6 +36,9 @@ import product.fabric.flex_market {
 }
 import product.fabric.serving_recipe {
   ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+  ServingCardSupply, RentedCardSupply, ServingDiskRate, PerGibibyteHour, ServingSelectionQuote,
+  SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable,
+  serving_card_hourly, serving_cost_per_million_tokens, serving_unit_cost_for_selection,
   ServingCardFacts, serving_recipe_accepts_card, CardAccepted,
   CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor,
 }
@@ -49,6 +53,7 @@ import extdeps.cloud.vast_ai {
 }
 import std.rational { NonzeroNatFraction }
 import std.nat { Nat }
+import std.induction { int_pow_bounded }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import std.optional { Absent, Present }
@@ -392,6 +397,11 @@ data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path:
 
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
+// The instant the trial's charges are read from: 2026-10-16T00:00Z, the day the operator set the trial's cap
+// and total. Only rows under our label count (flex_vast_loop flex_spent), so an earlier start could only add
+// rows that are not ours; a later one could hide ours, so it is never moved later.
+data flex_trial_charges_from: EpochMs = 1792108800000
+
 data flex_trial_policy: FlexPolicy = FlexPolicy {
   fleet_rate_cap: flex_trial_fleet_rate_cap,
   on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
@@ -426,6 +436,11 @@ type FlexVastHostFilters {
   gpu_ram_min: ByteSize
   inet_down_min: Bandwidth
   verified: Bool
+  // The GPUs one rental carries. A Vast offer is a whole machine rented at one price (extdeps.cloud.vast_ai
+  // num_gpus), so a 4-GPU machine's min_bid is four cards' price; a recipe that serves on one card
+  // admits only one-card machines. The first live flex_pass (run 39214273788) admitted x2, x4 and x8
+  // machines into the field without it.
+  gpu_count: Nat
 }
 
 type FlexHostImageRow {
@@ -445,6 +460,7 @@ data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
   gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
   inet_down_min: bandwidth(count: 1000 * vast_ai_bits_per_megabit),
   verified: true,
+  gpu_count: 1,
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
@@ -557,6 +573,7 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
               cpu_ram_min: f.cpu_ram_min,
               inet_down_min: f.inet_down_min,
               verified: f.verified,
+              num_gpus: f.gpu_count,
             },
           }
       }
@@ -628,6 +645,7 @@ fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, 
     && offer.gpu_ram >= vast_ai_wire_mb(b: filters.gpu_ram_min)
     && host.cpu_ram >= vast_ai_wire_mb(b: filters.cpu_ram_min)
     && (!filters.verified || offer.verification == "verified")
+    && (offer.num_gpus == (filters.gpu_count as Int))
 }
 
 // Consumer: flex_offer_in_shadow_field (the roster walk), and through it product.fabric.flex_vast_loop flex_entry_wall.
@@ -658,22 +676,103 @@ fn flex_offer_screen_by_recipe(offer: VastAiOffer, host: VastAiOfferHostResource
   }
 }
 
-fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
-  match offer.is_bid {
-    Absent => false
-    Present { value: bid } => bid && offer.rentable && !offer.rented
-  }
+// INTERRUPTIBLE IS THE SEARCH THAT FOUND THE OFFER, NOT is_bid. A live read-only search from srv1 on
+// 2026-10-18 (type bid) answered 63 offers, every one with is_bid false, and a running interruptible
+// rental under ctrl-bidder also read is_bid false; so is_bid does not mark an offer as rentable at a bid
+// price, and screening on it excluded every bid offer. search_type is the query the offer was returned for
+// (extdeps.cloud.vast_ai VastAiOfferQuery); only a bid search's offers are interruptible candidates.
+fn flex_interruptible_rentable(offer: VastAiOffer, search_type: String) -> Bool {
+  (search_type == vast_ai_search_type_bid) && offer.rentable && !offer.rented
 }
 
-fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources) -> FlexShadowFieldEntry {
-  if flex_interruptible_rentable(offer: offer) {
+fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources, search_type: String) -> FlexShadowFieldEntry {
+  if flex_interruptible_rentable(offer: offer, search_type: search_type) {
     flex_offer_screen_by_recipe(offer: offer, host: host, recipe: flex_serving_recipe)
   } else {
     ShadowEntryExcluded
   }
 }
 
+// ---- THE QUOTE OF ONE SHADOW-FIELD OFFER, as select_supply and the create walls take it: the recipe's cost
+// per accepted unit on this card, at the offer's bid floor (min_bid, the least an interruptible rental can
+// cost an hour) plus the recipe's disk at the host's storage rate.
+// Vast prices storage in dollars per GB-month (extdeps.cloud.vast_ai: storage_cost $/GB-month); the hourly
+// rate divides by the hours in a billing month, which no cited Vast page states. That figure is
+// TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
+// and names what would ground it. GB to GiB is exact (2^30 / 10^9).
+// The billing month is a DURATION, and a zero month is unrepresentable: the period is one second more than
+// a Second-valued predecessor (the encoding std.rational NonzeroNatFraction uses for its denominator), so
+// the hourly division below has no zero case to check.
+type FlexStorageBillingMonth {
+  period_less_one_second: Second
+  standing: CitedFigureStanding
+}
+
+fn flex_billing_month_seconds(m: FlexStorageBillingMonth) -> Nat {
+  second_count(s: m.period_less_one_second) + 1
+}
+
+data flex_vast_storage_billing_month: FlexStorageBillingMonth = FlexStorageBillingMonth {
+  period_less_one_second: second(count: 730 * 3600 - 1),
+  standing: TranscribedUncited {
+    read_obligation: "the period Vast divides storage_cost ($/GB-month) by to bill storage per hour (taken as 730 hours); read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
+  },
+}
+
+// Bytes in a decimal gigabyte, from std.measure's Giga exponent (Vast's storage_cost is per GB).
+fn flex_bytes_per_gigabyte() -> Int? {
+  match scale_exponent(s: Giga) {
+    Absent => none
+    Present { value: e } => int_pow_bounded(base: 10, exp: e)
+  }
+}
+
+// $/GB-month to $/GiB-hour, rounded up: x * (bytes per GiB / bytes per GB) * (seconds per hour / seconds
+// per billing month). Every factor is std.measure's own; the month is the one uncited figure.
+fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexStorageBillingMonth) -> ServingDiskRate? {
+  match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
+    DecimalMoneyConverted { amount: per_gb_month } =>
+      match flex_bytes_per_gigabyte() {
+        Absent => none
+        Present { value: bytes_per_gb } =>
+          let seconds_per_hour = seconds_per_minute() * minutes_per_hour()
+          let denominator = bytes_per_gb * flex_billing_month_seconds(m: month)
+          Present {
+            value: ServingDiskRate {
+              rate: MoneyRate {
+                amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * gibibyte_scale_factor_bytes() * seconds_per_hour + (denominator - 1)) / denominator),
+                currency: vast_ai_quote_currency,
+              },
+            },
+          }
+      }
+    _ => none
+  }
+}
+
+fn flex_offer_quote(offer: VastAiOffer, recipe: ServingRecipe) -> ServingSelectionQuote {
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: _ } => SelectionQuoteRefusedUnavailable
+    DecimalMoneyPerHourConverted { rate: floor } =>
+      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_billing_month) {
+        Absent => SelectionQuoteRefusedUnavailable
+        Present { value: disk } =>
+          let quote = serving_unit_cost_for_selection(cost: serving_cost_per_million_tokens(recipe: recipe, hourly: serving_card_hourly(recipe: recipe, supply: RentedCardSupply { dph: floor, disk_rate: disk })))
+          match flex_vast_storage_billing_month.standing {
+            TranscribedUncited { read_obligation: _ } =>
+              match quote {
+                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_billing_month.standing]) }
+                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_billing_month.standing] }
+                other => other
+              }
+            _ => quote
+          }
+      }
+  }
+}
+
 data flex_search_type: String = vast_ai_search_type_bid
+
 data flex_search_limit: Int = vast_ai_search_limit_default
 data flex_keyset_page_limit: Int = vast_ai_keyset_page_limit
 
@@ -737,6 +836,23 @@ fn flex_candidates_from_vast_offer(
       "cited region unobserved on search-offers" as NonEmptyStr,
       "use permit unobserved on search-offers" as NonEmptyStr,
     ],
+  }
+}
+
+// THE ACCOUNT the flex tier rents under: the operator's Vast account, the one the custody key
+// (gunbc.flex_vast_credential) authenticates as. Read 2026-10-18 from srv1 as the creator_id of the
+// operator's private template under that key; ctrl shares this account, isolated by label.
+data flex_vast_account: ProviderAccountObservationIdentity = "739031" as ProviderAccountObservationIdentity
+
+// THE ADMISSION AN OFFER CAN HAVE BEFORE ANY BID ATTEMPT IS BUILT. search-offers carries none of the
+// consequences a bid attempt needs (flex_candidates_from_vast_offer), so an offer whose candidates are
+// unestablished is refused with the missing facts named, exactly as flex_shadow_bid refuses it; an offer
+// whose candidates are derived has no admission until an attempt is built (none, never a guess).
+fn flex_offer_admission_unattempted(offer: VastAiOffer, account: ProviderAccountObservationIdentity) -> FlexBidAdmission? {
+  match flex_candidates_from_vast_offer(offer: offer, machine: flex_machine_key_for_offer(account: account, offer: offer)) {
+    VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+      Present { value: FlexBidRefused { cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: ms } } }
+    VastCandidateDerived { candidates: _ } => none
   }
 }
 

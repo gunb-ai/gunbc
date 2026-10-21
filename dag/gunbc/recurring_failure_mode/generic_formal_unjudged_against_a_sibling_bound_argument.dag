@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.generic_formal_unjudged_against_a_sibling_bound_argument
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.guarantee_rung { Mitigatable }
 
 data generic_formal_unjudged_against_a_sibling_bound_argument: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_formal_unjudged_against_a_sibling_bound_argument" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a direct call to a generic function whose type parameter is already FIXED by one argument admits a later argument of a different concrete type at a formal declared as that same parameter. Measured on main 7af52ea7e2 (entry compile of a scratch probe): `pair<U>(a: U, b: U)` called as `pair(a: Item { .. }, b: other())` with `other() -> Other` is admitted, and so is `list_snoc_item(xs: xs, item: other())` with `xs: List<Item>`. Each such argument raises only the advisory DeclaredTypeInhabitanceUndecided with reason UndecidableGenericFormal. The same argument at a CONCRETE formal (`take(b: Item)`) refuses DeclaredTypeNotInhabited in the same run, so refusal is reachable at the position and the admission is a gap, not a limit.",
@@ -16,7 +20,11 @@ data generic_formal_unjudged_against_a_sibling_bound_argument: RecurringFailureM
     "DISTINGUISHING FACTS. (1) The parameter is bound by a SIBLING argument at the same call; the judged argument's formal still reads as the raw type parameter, because v1.compiler.infer direct_call_argument_inhabitance_diags hands the obligation the substitution basis whenever the formal carries an unbound variable, and declared_type_inhabitance answers UndecidableGenericFormal for any generic formal. (2) NOT a spelling collision: the probe's parameter is spelled U and involves no List, and it is admitted identically. (3) NOT silent: every occurrence is a typed, located, counted advisory inside the declared drop gunbc.rung_drop.direct_call_unbound_carried_generic_compat, whose population is exactly this diagnostic, reason and position.",
 
     "RUNG FOUND AT: mitigatable, under that declared drop -- counted, never refused. The drop's restoration trigger as first written named only synthesized constructor signatures and higher-order callback formals, so it would have been satisfied while this class stayed admitted; it is widened in the same change to the capability this class needs. CEILING: structurally guaranteed (the binding is decidable from the sibling argument's established type). NEXT-RUNG TRIGGER, named as the capability: the call's bound generics substituted into each formal before compatibility, keyed by the TypeParameter declaration rather than its spelling -- derived-node identity step 2 (gunbc.recurring_failure_mode generic_identity_decided_by_spelling). It cannot climb by name: that row measured a spelling-keyed substitution rewriting a kept binding into List's own element child and refusing the compiler's own sources. SUFFICIENT FOR: both probe calls in test.claim.generic_sibling_bound_argument_witness to refuse DeclaredTypeNotInhabited.",
+    "WHOLE-FORMAL DEFERRAL IS THIS ROW'S CLASS, NOT A SILENT ONE (folded 2026-10-20 from a proposed row whose separate class identity duplicated this one and the first-wins row; opening corrected 2026-10-20 after the side-chat review located the deferral at the wrong stage -- the pass has no cannot-bind/whole-formal-deferral branch). Measured sequence from source, all three steps downstream of collection: (1) `v1.compiler.infer` `infer_call_arguments_generic_pass` only COLLECTS -- it infers each actual and folds substitutions through its no-formal, lambda, record-literal, or ordinary-unification handling; nothing is skipped there. (2) `direct_call_argument_inhabitance_diags` then selects the RAW `substitution_basis` as the declared type whenever `direct_call_formal_has_unbound_type_variable` holds on it -- including when a sibling argument has already established that variable's binding. (3) `declared_type_inhabitance` answers `UndecidableGenericFormal` on that raw form, and that diagnostic is a typed, located, COUNTED advisory under this row's standing Mitigatable rung and its declared drop. So the deferral the proposal described is real, but it is the judgment seam's raw-formal answer, not a pass-level skip: this row's counted shape. The SILENT part -- the actual being dropped and nothing said -- lives one seam over, in `unify_generics`' already-bound arm, and belongs to `silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics`. The two must be read together at one call site and never collapsed into one label: raw-formal-with-advisory here, silent-drop there. A future reader who attributes the skip to the collection pass has conflated collection with the subsequent compatibility judgment.",
+
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_call_arguments_generic_pass", field: WholeDeclaration },
+  ],
 }

@@ -316,6 +316,7 @@ pub enum TargetProducer {
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
     SelfHostFrontier,
+    DeclRefCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -465,6 +466,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("rfm-rung-census"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
+            },
+        ),
+        (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",
@@ -531,6 +538,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-serve-startup-slow"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-overrun"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
@@ -577,6 +596,8 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("self-host-frontier"),
             TargetProducer::SelfHostFrontier,
+            instrument_label("decl-ref-census"),
+            TargetProducer::DeclRefCensus,
         ),
         (
             instrument_label("generic-identity-census"),
@@ -603,6 +624,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "src/v2/workflow/roster_import_sweep.dag",
                 function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
+            instrument_label("claim-coverage-census"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/claim_coverage_census_live.dag",
+                function: "claim_coverage_census_exit",
             },
         ),
         (
@@ -1073,9 +1101,16 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => {
-            run_dependency_demand_census(&self_host_source_roots())
-        }
+        TargetProducer::DependencyDemandCensus => run_census_verb(
+            "demand-census",
+            "dependency-demand-census",
+            &self_host_source_roots(),
+        ),
+        TargetProducer::DeclRefCensus => run_census_verb(
+            "decl-ref-census",
+            "decl-ref-census",
+            &self_host_source_roots(),
+        ),
         TargetProducer::SelfHostFrontier => run_self_host_frontier(
             &self_host_source_roots(),
             &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
@@ -1160,9 +1195,13 @@ fn run_cli_wire_census(
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -1249,9 +1288,13 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -5484,17 +5527,17 @@ fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> In
     }
 }
 
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
+/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
+/// the exit are decided by the emitted verb; the host adds no verdict.
+fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_census_verb(verb, source_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,
                 1 => Termination::ObservationDidNotHold,
                 _ => Termination::SubjectUnreached,
             },
-            message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
-            ),
+            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,

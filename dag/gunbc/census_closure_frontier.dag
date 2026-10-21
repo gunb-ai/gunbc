@@ -5,6 +5,7 @@ import gunbc.host.host_assimilation_program { host_assimilation_program_frontier
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
+import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -77,6 +78,7 @@ import gunbc.serving.serving_provision_derivation { serving_provision_derivation
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier_rows }
+import gunbc.approve_ios_enrolment_machine { approve_ios_enrolment_state_generator_frontier_rows }
 import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
@@ -125,6 +127,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     census_app_installation_route_frontier_rows,
     census_app_installation_population_frontier_rows,
     human_intervention_frequency_frontier_rows,
+    deploy_route_requirement_frontier_rows,
     census_app_custody_handoff_frontier_rows,
     github_app_human_step_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
@@ -159,6 +162,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     colo_types_frontier_rows,
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
+    approve_ios_enrolment_state_generator_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_manifest_broker_frontier_rows,
     machine_word_consumer_frontier_rows,

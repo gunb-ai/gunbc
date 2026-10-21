@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.python_target_returns_a_statement
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data python_target_returns_a_statement: RecurringFailureMode = RecurringFailureMode {
   identity: "python_target_returns_a_statement" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**python target returns a statement** (INVALID STATE: a .dag function whose body is a `let` chain or a `match` -- an expression in the source language -- is emitted for the Python target as `return ` followed by Python STATEMENTS, so the emitted module is not a Python program: `python3 -m py_compile` refuses it with SyntaxError at the first such function.",
