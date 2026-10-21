@@ -334,8 +334,11 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
 // absent or ambiguous spelling refuses with the reasons that route already types.
 //
 // WHEN NO KERNEL ATOM IS REACHED IT REFUSES, naming the atom where the chain stopped
-// (carrier_chain_reaches_no_kernel_atom) or the atom a chain revisited (carrier_chain_cycles). It
-// never answers the last atom it saw: an unreached kernel type is a gap in the rows, and the caller
+// (carrier_chain_reaches_no_kernel_atom), a carrier position that is no atom, named by its connective
+// (carrier_position_is_not_an_atom), or the atom a chain revisited (carrier_chain_cycles). It
+// CONSUMER: the Protocol.swift carrier switch (node://adhoc-bd767f51-51d), the next change stacked on this
+// one; it calls this on each reflected wire field type. Until it lands only the witness runs it.
+// It never answers the last atom it saw: an unreached kernel type is a gap in the rows, and the caller
 // must see it rather than print a spelling no row backs (DESIGN section 5).
 fn kernel_carrier_of_type_node(pool_roots: List<String>, node: Node) -> Outcome<Symbol> {
   kernel_carrier_from(pool_roots: pool_roots, node: node, visited: [])
@@ -351,10 +354,23 @@ fn kernel_carrier_from(pool_roots: List<String>, node: Node, visited: List<Strin
     _ =>
       outcome_rejected(
         d: scoped_type_reflection_diagnostic(
-          type_name: symbol_intern_lexeme(lexeme: "NOT_AN_ATOM"),
-          invariant: ^carrier_chain_reaches_no_kernel_atom
+          type_name: non_atom_carrier_shape(node: node),
+          invariant: ^carrier_position_is_not_an_atom
         )
       )
+  }
+}
+
+// The located port of a carrier position that is not an atom: the connective the node actually has,
+// so the refusal names the shape it was given and invents no type.
+fn non_atom_carrier_shape(node: Node) -> Symbol {
+  match node.kind {
+    TypeNode { connective: Atom { identity: i } } => i
+    TypeNode { connective: Conj } => ^Conj
+    TypeNode { connective: Disj } => ^Disj
+    TypeNode { connective: Arrow } => ^Arrow
+    TypeNode { connective: Instantiation } => ^Instantiation
+    _ => ^not_a_type_node
   }
 }
 

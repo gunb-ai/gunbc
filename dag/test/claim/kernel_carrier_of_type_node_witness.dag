@@ -3,7 +3,7 @@ module test.claim.kernel_carrier_of_type_node_witness
 import std.types { String, List, Bool }
 import v2.std.diagnostic { Accepted, Rejected, InvariantPortLocus, LocusAnchor, diagnostics_reason_lexemes }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme, host_text_type_node }
+import v2.std.node { Node, Connective, TypeNode, Atom, Conj, Arrow, symbol_intern_lexeme, symbol_lexeme, host_text_type_node }
 import v2.std.node_reflection { kernel_carrier_of_type_node }
 
 // THE CLAIM for kernel_carrier_of_type_node: Timestamp, NonEmptyStr and LeaseToken each reach the
@@ -92,4 +92,27 @@ test fn an_alias_cycle_in_fixture_source_refuses_naming_the_revisited_atom() -> 
           _ => false
         })
   }
+}
+
+// RED for the non-atom arm: a carrier position that is a compound type (a product, a function) refuses
+// with its own reason and is located at the connective the node actually has, not at an invented type.
+fn compound(c: Connective) -> Node {
+  Node { kind: TypeNode { connective: c }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn compound_refusal(n: Node) -> String {
+  match kernel_carrier_of_type_node(pool_roots: pool(), node: n) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } =>
+          diagnostics_reason_lexemes(diagnostics: ds) + "@" + symbol_lexeme(sym: port)
+        _ => "OTHER_LOCUS"
+      }
+  }
+}
+
+test fn a_compound_carrier_refuses_located_at_its_connective() -> Bool {
+  compound_refusal(n: compound(c: Conj)) == "carrier_position_is_not_an_atom@Conj"
+    && compound_refusal(n: compound(c: Arrow)) == "carrier_position_is_not_an_atom@Arrow"
 }
