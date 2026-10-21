@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.github.effect { RepositoryPath }
+import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure }
 import extdeps.github.git_database { GitTreeItemWire }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitTreeMode, GitRegularBlobMode, GitExecutableBlobMode }
@@ -66,7 +67,7 @@ fn good_candidate() -> HealRepairCandidate {
 
 // Main's committed artifact paths, including a workflow projection the publisher must never admit.
 fn main_policy() -> PublisherPathPolicy {
-  publisher_path_policy(committed_artifact_paths: ["DESIGN.md", ".gitignore", ".github/workflows/witnesses.yml"])
+  publisher_path_policy(committed_artifact_paths: heal_fixture_committed_paths())
 }
 
 fn good_run() -> TriggeringRunFacts {

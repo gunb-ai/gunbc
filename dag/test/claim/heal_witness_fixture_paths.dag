@@ -1,0 +1,18 @@
+module test.claim.heal_witness_fixture_paths
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List }
+
+// THE COMMITTED ARTIFACT PATHS THE HEAL WITNESSES SUPPLY, held once. heal_candidate_witness and
+// heal_publication_boundary_witness build their supplied populations from these rows, and
+// regeneration_rosters_witness pairs the same rows with the real committed_generated_artifact_paths()
+// producer, so a fixture edited away from the producer reds the pairing claim.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_design_document_path: String = "DESIGN.md"
+data fixture_gitignore_path: String = ".gitignore"
+data fixture_witnesses_workflow_path: String = ".github/workflows/witnesses.yml"
+
+fn heal_fixture_committed_paths() -> List<String> {
+  [fixture_design_document_path, fixture_witnesses_workflow_path, fixture_gitignore_path]
+}
