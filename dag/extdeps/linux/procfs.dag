@@ -164,7 +164,7 @@ service linux.Procfs {
     readonly
     transport file { path: "/proc/uptime" }
     mock_response {
-      0 => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
+      => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
     }
   }
 
