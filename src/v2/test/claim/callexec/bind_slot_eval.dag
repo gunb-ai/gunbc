@@ -5,17 +5,19 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two, dag_type_atom_node }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.compilers.body_lowering { lower_bind }
+import v2.std.compilers.body_lowering { lower_bind, lower_match }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
-import v2.std.node { Node }
+import v2.std.node { Atom, Conj, MatchArmBodyEdge, MatchArmPatternEdge, Node, TypeNode, core_edge, node_synthetic }
+import v2.std.node { Symbol }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SUBJECT IS EVAL OF A BIND, AT ITS OWN INTERFACE. eval reads the binder, value and body of a Bind
+// THE SUBJECT IS EVAL OF A BIND AND OF A MATCH, AT ITS OWN INTERFACE. eval reads the binder, value and body of a Bind
 // through the v2.std.node slot table (bind_slot_target); the input is SUPPLIED -- the shape lower_bind
 // builds. The value (1) and the body (2) differ, so a reader that takes the value slot for the body
 // answers 1, and one that takes the body slot for the value binds the wrong value.
@@ -53,6 +55,41 @@ fn bse_eval(root: Node) -> Optional<Int> {
 test fn a_bind_evaluates_to_its_body_not_its_value_holds() -> Bool {
   match bse_eval(root: bse_bind()) {
     Present { value: n } => n == 2
+    Absent => false
+  }
+}
+
+// The Match twin: eval reads the scrutinee through match_slot_target. The scrutinee is the Bool literal
+// `true`; the arms are `true => 1` and `false => 2`, so a reader that took an arm slot for the scrutinee
+// has no Bool value to choose on.
+fn bse_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: OccurrenceSynthetic,
+    children: []
+  }
+}
+
+fn bse_arm(pattern: Node, body: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [core_edge(marker: MatchArmPatternEdge, target: pattern), core_edge(marker: MatchArmBodyEdge, target: body)]
+  )
+}
+
+fn bse_match() -> Node {
+  lower_match(
+    scrutinee: bse_atom(s: ^dag_token_kw_true),
+    arms: [
+      bse_arm(pattern: bse_atom(s: ^dag_token_kw_true), body: dag_int_literal_fixture_one()),
+      bse_arm(pattern: bse_atom(s: ^dag_token_kw_false), body: dag_int_literal_fixture_two())
+    ]
+  )
+}
+
+test fn a_match_on_true_evaluates_the_first_arm_holds() -> Bool {
+  match bse_eval(root: bse_match()) {
+    Present { value: n } => n == 1
     Absent => false
   }
 }
