@@ -98,7 +98,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, standing_from_join, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, standing_from_join, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport extdeps.github.app { GitHubAppInstallationId, GitHubAppId }\nimport extdeps.github.deployment_protection_rule { EnabledDeploymentProtectionRule, RuleOwningApp, GitHubDeploymentProtectionRuleId }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\ndata control_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule { id: GitHubDeploymentProtectionRuleId { value: 1 }, node_id: \"DPPR_control\", enabled: true, app: RuleOwningApp { id: GitHubAppId { value: 2 }, slug: \"s\" } }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, BUILDS THE READBACK ROW CORRECTLY, calls nothing, and forges nothing\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -143,16 +143,23 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
 //
 // CLASS-SCOPED AND CONTROL-DISCRIMINATED, for the same reason: the census keys a TypeMismatch by the
 // offending expression's own shape as the host renders it, and pinning that string would test a guess.
-// The control imports the row's type, the mints and the witness proxies, WRITES NO LITERAL and CALLS
-// NOTHING, so it contributes no TypeMismatch by construction; a nonzero probe count against a zero
-// control count can therefore only be a cross-type FORGERY being refused. And the >= 1 is discriminating,
-// not merely satisfiable by anything of the class: every OTHER forgery in this probe is refused for SEAL
-// or for ADMISSION (SoleConstructorViolation, ConstructorCallAdmissionRefused -- the claims below), never
-// for TYPE; before the carrier this whole file type-checked, so the TypeMismatch class in this probe had
-// exactly one possible source, this line. Delete the carrier and forged_rule_row_from_run_digits compiles,
-// the row vanishes, and this claim goes red -- the whole point of a RED written before its GREEN.
+// The control is the stronger half: it IMPORTS the row's type, the app id carriers, the sealed mints and
+// the witness proxies, then BUILDS THE SAME ROW CORRECTLY -- id on the rule axis, app on the app axis --
+// so it contributes no TypeMismatch BY CONSTRUCTION, not by absence of any attempt. Two probe rows carry
+// the >= 2: run digits (forged_rule_row_from_run_digits) and a foreign installation carrier
+// (forged_rule_row_from_foreign_carrier) both in the rule slot. Zero control against two probe rows can
+// only be the wrong-axis fields being refused.
+//
+// WHY >= 2 IS DISCRIMINATING, NOT MERELY SATISFIABLE. Every OTHER forgery in this probe is refused for
+// SEAL or ADMISSION (SoleConstructorViolation, ConstructorCallAdmissionRefused -- the claims below), never
+// for TYPE; before the carrier this whole file type-checked, so the TypeMismatch class here has exactly
+// two possible sources, the two forged rows. Delete the carrier and both slots revert to plain Int: the
+// run-digits line compiles (row gone) and the foreign-installation line is STILL refused (a carrier in an
+// Int slot is still a type error) -- the count drops to one and this claim goes red. Swap the rule carrier
+// for the installation carrier and the foreign-carrier row is the one that vanishes -- red again. Both
+// axes are under guard, which is the whole reason separate carriers exist rather than one GitHubId type.
 test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
-  probe_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
+  probe_type_mismatch_count() >= 2 && control_type_mismatch_count() == 0
 }
 
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
