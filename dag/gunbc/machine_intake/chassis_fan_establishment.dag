@@ -1,6 +1,6 @@
 module gunbc.machine_intake.chassis_fan_establishment
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { rpm_count, sdr_undecoded_line_count_value }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
@@ -45,6 +45,7 @@ type PostPowerFanRefusal
   | PostPowerThermalUnreadable
   | PostPowerThermalNotPublished { publication: SdrTemperaturePublication }
   | PostPowerThermalRowsUndecoded { undecoded_line_count: Int }
+  | PostPowerThermalReadingUnrecognised { texts: List<String> }
   | FanReadUnreadable
   | FanRowsUndecoded { texts: List<String> }
   | FittedHeaderMissing { header: NonEmptyStr }
@@ -65,20 +66,26 @@ type FanHeaderLookup
   | FanHeaderUnique { line: SdrTypeLine }
   | FanHeaderDuplicate
 
-fn fan_header_lookup(lines: List<SdrTypeLine>, header: NonEmptyStr) -> FanHeaderLookup {
-  fold(lines, init: FanHeaderAbsent, f: (acc, line) => if (line.name as String) == (header as String) {
-    match acc {
-      FanHeaderAbsent => FanHeaderUnique { line: line }
-      FanHeaderUnique { line: _ } => FanHeaderDuplicate
-      FanHeaderDuplicate => FanHeaderDuplicate
-    }
-  } else { acc })
+// ONE INDEX PER READ, THEN A LOOKUP PER HEADER: each line is folded into a name-keyed map exactly once, and a second row
+// under a name makes its entry Duplicate whatever order the rows arrive in. Judging N headers is then N lookups, not N scans.
+fn fan_header_index(lines: List<SdrTypeLine>) -> Map<String, FanHeaderLookup> {
+  fold(lines, init: empty_map(), f: (acc, line) => map_insert(acc, line.name as String, match map_get(acc, line.name as String) {
+    Present { value: _ } => FanHeaderDuplicate
+    Absent => FanHeaderUnique { line: line }
+  }))
+}
+
+fn fan_header_lookup(index: Map<String, FanHeaderLookup>, header: NonEmptyStr) -> FanHeaderLookup {
+  match map_get(index, header as String) {
+    Present { value: found } => found
+    Absent => FanHeaderAbsent
+  }
 }
 
 data fan_row_status_ok: String = "ok"
 
-fn fitted_header_refusal(lines: List<SdrTypeLine>, header: NonEmptyStr) -> PostPowerFanRefusal? {
-  match fan_header_lookup(lines: lines, header: header) {
+fn fitted_header_refusal(index: Map<String, FanHeaderLookup>, header: NonEmptyStr) -> PostPowerFanRefusal? {
+  match fan_header_lookup(index: index, header: header) {
     FanHeaderAbsent => Present { value: FittedHeaderMissing { header: header } }
     FanHeaderDuplicate => Present { value: FittedHeaderDuplicated { header: header } }
     FanHeaderUnique { line: line } =>
@@ -101,9 +108,10 @@ fn fitted_headers(first: NonEmptyStr, rest: List<NonEmptyStr>) -> List<NonEmptyS
 }
 
 fn first_fitted_header_refusal(lines: List<SdrTypeLine>, headers: List<NonEmptyStr>) -> PostPowerFanRefusal? {
+  let index = fan_header_index(lines: lines)
   fold(headers, init: Absent, f: (acc, h) => match acc {
     Present { value: r } => Present { value: r }
-    Absent => fitted_header_refusal(lines: lines, header: h)
+    Absent => fitted_header_refusal(index: index, header: h)
   })
 }
 
@@ -142,9 +150,11 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
 fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
   match thermal {
     ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
-    ThermalRead { publication: p, undecoded_line_count: u } => match p {
+    ThermalRead { publication: p, undecoded_line_count: u, unrecognised_readings: r } => match p {
       TemperaturePublished => if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
         Present { value: PostPowerThermalRowsUndecoded { undecoded_line_count: sdr_undecoded_line_count_value(c: u) as Int } }
+      } else if r.length() > 0 {
+        Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
       } else { Absent }
       TemperatureSensorsSilent => Present { value: PostPowerThermalNotPublished { publication: p } }
       TemperatureUndecodable => Present { value: PostPowerThermalNotPublished { publication: p } }

@@ -26,6 +26,7 @@ import extdeps.bmc.ipmi_sdr {
   TemperatureNoSensorRows,
   TemperatureUndecodable,
   sdr_decode_lines,
+  sdr_unrecognised_temperature_texts,
   sdr_decoded_lines,
   sdr_fan_reading,
   sdr_temperature_publication,
@@ -98,7 +99,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // with the boot handoff's power-state read.
 
 type ThermalObservation
-  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
+  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount, unrecognised_readings: List<String> }
   | ThermalUnreadable
 
 // THE FAN READ GETS THE SAME ARM, AND IT IS THE FOURTH TIME THIS ONE DEFECT HAS BEEN FIXED IN THIS
@@ -176,7 +177,7 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
     } else {
       match round.thermal {
         ThermalUnreadable => HostPostStateUnobserved
-        ThermalRead { publication: p, undecoded_line_count: _ } => match p {
+        ThermalRead { publication: p, undecoded_line_count: _, unrecognised_readings: _ } => match p {
           TemperaturePublished => HostPosted
           TemperatureSensorsSilent => HostPoweredOnPrePost
           TemperatureUndecodable => HostPostStateUnobserved
@@ -278,6 +279,7 @@ fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalOb
     ThermalRead {
       publication: sdr_temperature_publication(results: results),
       undecoded_line_count: sdr_unstructured_count(results: results),
+      unrecognised_readings: sdr_unrecognised_temperature_texts(results: results),
     }
   } else {
     ThermalUnreadable
@@ -439,8 +441,8 @@ fn render_fan_observation(fans: FanSensorObservation) -> String {
 fn render_thermal_detail(thermal: ThermalObservation) -> String {
   match thermal {
     ThermalUnreadable => "UNREAD"
-    ThermalRead { publication: p, undecoded_line_count: u } =>
-      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+    ThermalRead { publication: p, undecoded_line_count: u, unrecognised_readings: r } =>
+      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u)), " unrecognised=", to_string(r.length())], "")
   }
 }
 
