@@ -52,7 +52,10 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.rust_emitted_edge { module_to_filename }
 import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
 import v2.lens.module_graph { ModuleDeclarationFact }
-import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
+import gunbc.ci.ci_layer_roots {
+  witness_discovery_scan_dirs,
+  v1_claim_scoped_witness_batch_deleted_subject_directory
+}
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
 // THE STANDING. Three states, each a decision the census can actually make about ONE PATH from its inputs:
@@ -122,7 +125,13 @@ fn declaration_ref_display(ref: DeclarationRef) -> String {
 // subject of the note it cites -- not a list of the files found under it.
 // ONE fact, two spellings derived from it. The path prefix used for containment is the directory plus the
 // separator, so the two cannot drift apart -- a second literal would be a second source for one fact.
-data note_declared_subject_directory: String = "src/v1/tests/claim"
+// THE SUBJECT IS IMPORTED, NOT RESTATED (review 84153 #1): the note at
+// gunbc.ci.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note owns this subject, and the typed
+// carrier beside it is the one place the directory is spelled (§3: one fact, one home). The witness claim
+// the_subject_carrier_and_the_note_prose_agree ties the carrier to the note's prose, so the census credits
+// the note for a population the note actually declares -- if the note is rewritten, the census's sorting
+// and its receipt's credit move together or a claim goes RED.
+data note_declared_subject_directory: String = v1_claim_scoped_witness_batch_deleted_subject_directory
 data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 
 // TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
@@ -367,15 +376,6 @@ fn path_is_in_a_scan_lane(path: String) -> Bool {
   })
 }
 
-// Census-visible means the layout authority answers for the path; the src/v1 population does not qualify and
-// keeps its own standing instead of appearing here too.
-fn is_census_visible(path: String) -> Bool {
-  match repository_module_file_of_path(path: path) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE GAP POPULATION, computed from the marker answer the census was already handed. Nothing new is read and
 // nothing is excluded by name.
 fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
@@ -383,7 +383,10 @@ fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
     xs: claim_bearers,
     predicate: fn(path) {
       !(path.starts_with(prefix: fixture_path_prefix))
-        && is_census_visible(path: path)
+        && (match repository_module_file_of_path(path: path) {
+             Present { value: _ } => true
+             Absent => false
+           })
         && !(path_is_in_a_scan_lane(path: path))
     }
   )

@@ -56,7 +56,6 @@ import v2.workflow.outside_discovery_roots_census {
   scan_dir_gap_population,
   scan_dir_gap_receipt_lines,
   scan_dir_gap_header_lines,
-  is_census_visible,
   emitted_entry_for_module,
   subject_path_is_emitted
 }
@@ -611,15 +610,32 @@ test fn the_ruled_population_and_the_gap_population_are_disjoint() -> Bool {
   })
 }
 
-// The census-visible test is what keeps the two populations apart: `OutsideDiscoveryRoots` is refused BY the
-// layout, this one is owned by the layout and skipped by the lanes. A path can be in at most one, and the
-// src/v1 population must stay in its own standing.
+// The layout's case is what keeps the two populations apart: `OutsideDiscoveryRoots` is refused BY the
+// layout (Absent), this one is owned by the layout (Present) and skipped by the lanes. A path can be in at
+// most one, and the src/v1 population must stay in its own standing. The case is MATCHED here exactly as
+// `outside_roots_row` matches it -- no Bool predicate mediates the layout's answer (review 84153 #2).
 test fn census_visibility_decides_which_population_a_path_is_in() -> Bool {
   all(xs: governed_listing_rows, predicate: fn(path) {
-    is_census_visible(path: path)
+    match repository_module_file_of_path(path: path) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }) && all(xs: subject_population_expected, predicate: fn(path) {
-    !(is_census_visible(path: path)) && path_is_under_note_subject(path: path)
+    (match repository_module_file_of_path(path: path) {
+       Present { value: _ } => false
+       Absent => true
+     }) && path_is_under_note_subject(path: path)
   })
+}
+
+// THE NOTE'S SUBJECT IS ONE FACT, NOT TWO (review 84153 #1, §3 "one fact, one home"): the census classifies
+// paths by the note's subject directory, and that directory is a TYPED CARRIER at the note's own home in
+// gunbc.ci.ci_layer_roots -- not a copy here. But a carrier beside prose is only one fact if they agree, so
+// this claim reads the note's own String and requires it to NAME the directory the carrier declares. The
+// RED is the drift: rewrite the note to a different subject and the carrier no longer matches its prose, so
+// this goes RED and the census's sorting/receipt-credit cannot quietly keep crediting the old subject.
+test fn the_subject_carrier_and_the_note_prose_agree() -> Bool {
+  string_contains(s: v1_claim_scoped_witness_batch_deleted_note, pattern: v1_claim_scoped_witness_batch_deleted_subject_directory)
 }
 
 // The population is a JOIN over the marker answer: a path the read never answered cannot appear, no matter how
