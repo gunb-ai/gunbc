@@ -15710,7 +15710,7 @@ fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
         _ => false
       })
       let unmovable = entries |> flat_map(e => match e {
-        BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: replace(cause, "\n", " ") }]
+        BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: cause }]
         _ => [] as List<BeltExitStallEntry>
       })
       if count(claimed) == 0 && count(unmovable) > 0 { BeltExitStalled { unmovable: unmovable } } else { BeltExitNotStalled }
@@ -15718,18 +15718,18 @@ fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
   }
 }
 
-data belt_exit_stall_header: String = "exit-drain-stalled"
-data belt_exit_stall_entry_prefix: String = "unmovable :: "
-data belt_exit_stall_field_separator: String = " :: "
+data belt_exit_stall_schema: String = "gunbc.belt_exit_stall.v1"
+
+fn belt_exit_stall_entry_json(u: BeltExitStallEntry) -> JsonValue {
+  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
+}
 
 fn belt_exit_stall_record_text(unmovable: List<BeltExitStallEntry>) -> String {
-  join(
-    concat(
-      [belt_exit_stall_header, "entries that arrive while this record exists wait in the spool and are not consumed; release it with belt_exit_stall_release_cli once every entry below can leave"],
-      unmovable |> map(u => join([belt_exit_stall_entry_prefix, u.entry, belt_exit_stall_field_separator, u.step, belt_exit_stall_field_separator, u.cause], "")),
-    ),
-    "\n",
-  )
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: belt_exit_stall_schema)),
+    json_kv(key: "note", value: json_string(s: "entries that arrive while this record exists wait in the spool and are not consumed; release it with belt_exit_stall_release_cli once every entry below can leave")),
+    json_kv(key: "unmovable", value: json_array(elements: unmovable |> map(u => belt_exit_stall_entry_json(u: u)))),
+  ]))
 }
 
 type BeltExitStallRecord
@@ -15758,22 +15758,39 @@ type BeltExitStallRead
   | BeltExitStallHeld { entries: List<BeltExitStallEntry> }
   | BeltExitStallUnreadable { reason: String }
 
-fn belt_exit_stall_entry_of_line(line: String) -> BeltExitStallEntry? {
-  if !starts_with(s: line, prefix: belt_exit_stall_entry_prefix) {
-    none
-  } else {
-    let parts: List<String> = split(s: replace(line, belt_exit_stall_entry_prefix, ""), delimiter: belt_exit_stall_field_separator)
-    let head: String? = parts.first()
-    match head {
-      Absent => none
-      Present { value: entry } =>
-        let rest: List<String> = skip(parts, 1)
-        let second: String? = rest.first()
-        match second {
-          Absent => none
-          Present { value: step } => Present { value: BeltExitStallEntry { entry: entry, step: step, cause: join(skip(parts, 2), belt_exit_stall_field_separator) } }
+fn belt_exit_stall_entry_of_json(doc: JsonValue) -> BeltExitStallEntry? {
+  match json_required_string_member(doc: doc, key: "entry") {
+    JsonStringMemberRefused { reason: _ } => none
+    JsonStringMemberFound { value: entry } =>
+      match json_required_string_member(doc: doc, key: "step") {
+        JsonStringMemberRefused { reason: _ } => none
+        JsonStringMemberFound { value: step } =>
+          match json_required_string_member(doc: doc, key: "cause") {
+            JsonStringMemberRefused { reason: _ } => none
+            JsonStringMemberFound { value: cause } => Present { value: BeltExitStallEntry { entry: entry, step: step, cause: cause } }
+          }
+      }
+  }
+}
+
+// Fail closed: a record whose schema is another, or any of whose entries does not decode, is Unreadable --
+// never a shorter list of the entries that did.
+fn belt_exit_stall_of_json(doc: JsonValue) -> BeltExitStallRead {
+  match json_required_string_member(doc: doc, key: "schema") {
+    JsonStringMemberRefused { reason } => BeltExitStallUnreadable { reason: reason }
+    JsonStringMemberFound { value: schema } =>
+      if schema != belt_exit_stall_schema {
+        BeltExitStallUnreadable { reason: join(["the stall record has schema ", schema, ", not ", belt_exit_stall_schema], "") }
+      } else {
+        match json_object_unique_member(v: doc, key: "unmovable") {
+          JsonMemberFound { value: JsonArray { elements } } => {
+            let decoded: List<BeltExitStallEntry?> = elements |> map(el => belt_exit_stall_entry_of_json(doc: el))
+            let entries: List<BeltExitStallEntry> = decoded |> flat_map(d => match d { Present { value: u } => [u] Absent => [] as List<BeltExitStallEntry> })
+            if count(entries) == count(decoded) { BeltExitStallHeld { entries: entries } } else { BeltExitStallUnreadable { reason: "a stall record entry lacks its entry, step or cause" } }
+          }
+          _ => BeltExitStallUnreadable { reason: "the stall record has no unmovable array" }
         }
-    }
+      }
   }
 }
 
@@ -15785,10 +15802,10 @@ fn belt_exit_stall_read_at(root: String) -> BeltExitStallRead {
     FilesystemExactPathUnreadable { path: _, kind: _, error } => BeltExitStallUnreadable { reason: error }
     FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => BeltExitStallUnreadable { reason: error }
     FilesystemExactPathRead { path: _, content } =>
-      BeltExitStallHeld { entries: split(s: content, delimiter: "\n") |> flat_map(l => match belt_exit_stall_entry_of_line(line: l) {
-        Present { value: u } => [u]
-        Absent => [] as List<BeltExitStallEntry>
-      }) }
+      match parse_json_document(s: content) {
+        JsonDocumentParsed { value: doc } => belt_exit_stall_of_json(doc: doc)
+        JsonDocumentUnreadable { gap: g } => BeltExitStallUnreadable { reason: json_document_gap_text(gap: g) }
+      }
   }
 }
 
@@ -15863,27 +15880,45 @@ fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolSt
 // ANALYZE IS READ-ONLY: for each recorded entry it reports the recorded cause and the entry's own owner, mode
 // and type (stat), and for an entry owned by another principal it names the follow-up -- a privileged clear
 // through the approval-broker route (gunbc.auth.approval_broker redeem_capability). Nothing is moved.
-fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> String {
-  let path = join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox), "/", entry], "")
-  match belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%U %a %F", path]), workdir: belt_observe_workdir as String) {
-    ExecOk { stdout } => trim(stdout)
-    ExecFailed { program: _, exit_code: _, stderr } => join(["not in inbox (", trim(stderr), ")"], "")
-    ExecRefused { program: _, reason } => reason
+// An observation either happened or it did not; a failed reading is never folded into a value, so ownership
+// is classified only from two readings that both succeeded.
+type BeltExitStallObservation
+  = BeltExitStallObserved { value: String }
+  | BeltExitStallUnobserved { reason: String }
+
+fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExitStallObservation {
+  match out {
+    ExecOk { stdout } => BeltExitStallObserved { value: trim(stdout) }
+    ExecFailed { program: _, exit_code, stderr } => BeltExitStallUnobserved { reason: join([what, " exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => BeltExitStallUnobserved { reason: join([what, " refused: ", reason], "") }
   }
 }
 
-fn belt_exit_stall_analyze_at(root: String, whoami: String) -> List<String> {
+fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> BeltExitStallObservation {
+  let path = join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox), "/", entry], "")
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%U %a %F", path]), workdir: belt_observe_workdir as String), what: "stat")
+}
+
+fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) -> List<String> {
   match belt_exit_stall_read_at(root: root) {
     BeltExitStallNone => ["no stall record: the exit drain is not stalled"]
     BeltExitStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
     BeltExitStallHeld { entries } =>
       entries |> map(e => {
-        let stat = belt_exit_stall_entry_stat_at(root: root, entry: e.entry)
-        let foreign = !starts_with(s: stat, prefix: join([whoami, " "], ""))
-        join([
-          e.entry, ": ", e.step, " failed (", e.cause, "); stat owner/mode/type: ", stat,
-          if foreign { "; foreign-owned: the drain's principal cannot move it -- a privileged clear through the approval-broker route is the follow-up, then release" } else { "; owned by the drain's principal: release re-attempts the claim" },
-        ], "")
+        let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
+        match belt_exit_stall_entry_stat_at(root: root, entry: e.entry) {
+          BeltExitStallUnobserved { reason: sr } => join([head, "owner unknown (", sr, "); the entry may no longer be in the inbox"], "")
+          BeltExitStallObserved { value: stat } =>
+            match whoami {
+              BeltExitStallUnobserved { reason: wr } => join([head, "stat owner/mode/type: ", stat, "; owner unknown (the drain's principal is unread: ", wr, ")"], "")
+              BeltExitStallObserved { value: me } =>
+                if starts_with(s: stat, prefix: join([me, " "], "")) {
+                  join([head, "stat owner/mode/type: ", stat, "; owned by the drain's principal: release re-attempts the claim"], "")
+                } else {
+                  join([head, "stat owner/mode/type: ", stat, "; foreign-owned: the drain's principal cannot move it -- a privileged clear through the approval-broker route is the follow-up, then release"], "")
+                }
+            }
+        }
       })
   }
 }
@@ -15916,12 +15951,8 @@ fn belt_exit_stall_rearm_at(path_unit: NonEmptyStr) -> BeltExitStallRearm {
   }
 }
 
-fn belt_exit_stall_whoami() -> String {
-  match belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-un"]), workdir: belt_observe_workdir as String) {
-    ExecOk { stdout } => trim(stdout)
-    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
-    ExecRefused { program: _, reason: _ } => ""
-  }
+fn belt_exit_stall_whoami() -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-un"]), workdir: belt_observe_workdir as String), what: "id -un")
 }
 
 // THE RUN CLAIMS A BOUNDED POPULATION BEFORE ITS FIRST OBSERVATION, AND ONLY WHAT IT CLAIMED IS SETTLED

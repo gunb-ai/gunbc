@@ -374,7 +374,7 @@ fn attempt_exit_stalled_dir(instance_root: String) -> String {
 }
 
 fn attempt_exit_stall_record_path(instance_root: String) -> String {
-  join([attempt_exit_stalled_dir(instance_root: instance_root), "/stall.txt"], "")
+  join([attempt_exit_stalled_dir(instance_root: instance_root), "/stall.json"], "")
 }
 
 // THE ATTEMPT-SYSTEM-UNIT REQUEST SPOOL. The launcher argv is pinned to instance_root only, so the
