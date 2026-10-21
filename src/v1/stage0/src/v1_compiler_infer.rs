@@ -5715,6 +5715,38 @@ pub fn structured_application_lit_is_declared_optional_variant(
     }
 }
 
+pub fn settled_declaration_of_literal_name(
+    lit_name: String,
+    type_env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match settled_declaration_of_type_name(lit_name.clone(), type_env.clone()) {
+        Some(d) => Some(d.clone()),
+        std::option::Option::None => match crate::v1_compiler_infer_env::symbol_index_lookup(
+            type_env.symbol_index.clone(),
+            lit_name.clone(),
+        ) {
+            Some(owner) => {
+                if ((owner.connective.clone() == Connective::Disj)
+                    && crate::v1_std_core::has_child_named(
+                        owner.clone(),
+                        crate::v1_std_core::qualified_last_segment(lit_name.clone()),
+                        type_env.source_indices.clone(),
+                    ))
+                {
+                    crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+                        owner.clone(),
+                        type_env.source_indices.clone(),
+                        type_env.clone(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+            std::option::Option::None => std::option::Option::None,
+        },
+    }
+}
+
 pub fn application_type_names_compatible(
     formal_name: String,
     lit_name: String,
@@ -5729,19 +5761,20 @@ pub fn application_type_names_compatible(
             true
         } else {
             {
-                let same_declaration = match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), formal_name.clone()) {
-    Some(formal_item) => match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), lit_name.clone()) {
-    Some(lit_item) => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(formal_item.clone(), source_indices.clone(), type_env.clone()) {
-    Some(formal_item_ref) => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(lit_item.clone(), source_indices.clone(), type_env.clone()) {
-    Some(lit_item_ref) => crate::std_decl_ref::declaration_ref_eq(formal_item_ref.clone(), lit_item_ref.clone()),
-    std::option::Option::None => false,
-},
-    std::option::Option::None => false,
-},
-    std::option::Option::None => false,
-},
-    std::option::Option::None => false,
-};
+                let same_declaration =
+                    match settled_declaration_of_type_name(formal_name.clone(), type_env.clone()) {
+                        Some(formal_ref) => match settled_declaration_of_literal_name(
+                            lit_name.clone(),
+                            type_env.clone(),
+                        ) {
+                            Some(lit_ref) => crate::std_decl_ref::declaration_ref_eq(
+                                formal_ref.clone(),
+                                lit_ref.clone(),
+                            ),
+                            std::option::Option::None => false,
+                        },
+                        std::option::Option::None => false,
+                    };
                 if same_declaration.clone() {
                     true
                 } else {
