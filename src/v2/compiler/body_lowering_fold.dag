@@ -1844,17 +1844,13 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
-      if emitted == ^dag_surface_none_literal {
-        match body_lower_none_literal(shell: node) {
-          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
-          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
-        }
-      } else if emitted == ^dag_string_template {
-        match body_lower_string_template(shell: node) {
-          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
-          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
-        }
-      } else {
+      match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+        Present { value: leaf } =>
+          match leaf {
+            Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+            Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+          }
+        Absent =>
       match parse_production_captured_child_optional(node: node) {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
@@ -1863,7 +1859,6 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
             OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
           }
         Absent => body_lower_operand_fold_children_read(node: node)
-      }
       }
     Absent =>
           match node_atom_identity_optional(node: node) {
@@ -3480,6 +3475,13 @@ fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
 }
 
 fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: folded) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_reduce_emitted_non_leaf(folded: folded, emitted: emitted)
+  }
+}
+
+fn body_lower_reduce_emitted_non_leaf(folded: Node, emitted: Symbol) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
@@ -3492,13 +3494,6 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
-  } else if emitted == ^dag_surface_none_literal {
-    body_term_sealed_outcome(o: body_lower_none_literal(shell: folded), shape: LoweredOperatorExpression)
-  } else if emitted == ^dag_string_template {
-    match body_term_sealed_outcome(o: body_lower_string_template(shell: folded), shape: LoweredOperatorExpression) {
-      Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    }
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
@@ -3691,6 +3686,16 @@ fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node>
 // payload type is chosen here: with no expected Optional<T> the reference is the constructor of an
 // unsolved variable, exactly as a bare Absent is (a refusal at a non-Optional position; `let x = none` gets
 // whatever verdict `let x = Absent` gets, whichever way infer settles an unsolved constructor binding).
+fn body_lower_leaf_literal_optional(emitted: Symbol, shell: Node) -> Optional<Outcome<Node>> {
+  if emitted == ^dag_surface_none_literal {
+    Present { value: body_lower_none_literal(shell: shell) }
+  } else if emitted == ^dag_string_template {
+    Present { value: body_lower_string_template(shell: shell) }
+  } else {
+    Absent
+  }
+}
+
 fn body_lower_none_literal(shell: Node) -> Outcome<Node> {
   outcome_accepted(value: declaration_reference_node(qn: absent_declaration_identity(), occurrence_id: shell.occurrence_id))
 }
@@ -3844,6 +3849,13 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
 }
 
 fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_fold_dispatch_non_leaf(node: node, emitted: emitted)
+  }
+}
+
+fn body_lower_fold_dispatch_non_leaf(node: Node, emitted: Symbol) -> Outcome<Node> {
         if emitted == ^dag_surface_match_expr {
           body_term_sealed_outcome(o: body_lower_match_expr(shell: node), shape: LoweredMatch)
         } else if emitted == ^dag_surface_if_expr {
@@ -3854,10 +3866,6 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
           body_term_sealed_outcome(o: body_lower_let_expr(shell: node), shape: LoweredLet)
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
-        } else if emitted == ^dag_surface_none_literal {
-          body_term_sealed_outcome(o: body_lower_none_literal(shell: node), shape: LoweredOperatorExpression)
-        } else if emitted == ^dag_string_template {
-          body_term_sealed_outcome(o: body_lower_string_template(shell: node), shape: LoweredOperatorExpression)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -12390,6 +12398,13 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
 }
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: shell) {
+    Present { value: leaf } => body_term_sealed_lowering(o: body_lowering_lowered(o: leaf), shape: LoweredOperatorExpression)
+    Absent => body_lower_production_emitted_non_leaf(shell: shell, emitted: emitted, fn_body_pass_through: fn_body_pass_through)
+  }
+}
+
+fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_term_sealed_lowering(o: body_lower_service_decl(shell: shell), shape: LoweredServiceDeclaration)
   } else if emitted == ^dag_surface_resource_decl {
@@ -12410,10 +12425,6 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
-  } else if emitted == ^dag_surface_none_literal {
-    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_none_literal(shell: shell)), shape: LoweredOperatorExpression)
-  } else if emitted == ^dag_string_template {
-    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_string_template(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_surface_postfix_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_postfix_expr(shell: shell)), shape: LoweredPostfix)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
