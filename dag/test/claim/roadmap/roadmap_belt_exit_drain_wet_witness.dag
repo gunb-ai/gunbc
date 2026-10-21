@@ -11,10 +11,11 @@ import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
-import gunbc.roadmap.spool_stall { spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
+import gunbc.roadmap.spool_stall { SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
   belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
+  belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, belt_exit_stall_whoami, belt_exit_stall_whoami_group,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -446,4 +447,79 @@ test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadabl
   let made = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["mkdir -p $(dirname ", attempt_exit_stall_record_path(instance_root: bad_root), ") && printf 'unmovable :: x' > ", attempt_exit_stall_record_path(instance_root: bad_root)], "")]), workdir: "/")
   let unreadable = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: bad_root)) { SpoolStallUnreadable { reason: _ } => true _ => false }
   round_trips && unreadable
+}
+
+// THE CLEAR'S ADMISSION ON SUPPLIED VALUES (a witness discriminates at one interface): the record, the two
+// readings and the entry are supplied, so each refusal is one boundary's answer. The inhabitance claim below
+// runs the real route that produces these shapes.
+data clear_entry: String = "n+a+worker+inv+exit-code+exited+200"
+
+fn held_inbox() -> SpoolStallRead {
+  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: "inbox -> queued", cause: "mv: Permission denied" }] }
+}
+
+fn target_refused(t: BeltExitClearTarget) -> Bool {
+  match t { BeltExitClearTargetRefused { reason: _ } => true _ => false }
+}
+
+fn admission_refused(a: BeltExitClearAdmission) -> Bool {
+  match a { BeltExitClearRefused { reason: _ } => true _ => false }
+}
+
+test fn the_clear_target_is_only_an_entry_named_in_the_current_stall_record_at_its_stage() -> Bool {
+  let root = "/srv/inst"
+  let admitted = belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: clear_entry)
+  let located = match admitted {
+    BeltExitClearTargeted { stage, path } => path == join([attempt_exit_inbox_dir(instance_root: root), "/", clear_entry], "") && stage == AttemptExitInbox
+    BeltExitClearTargetRefused { reason: _ } => false
+  }
+  located
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: "someone-else"))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: "../../etc"))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: ".."))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: ""))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallNone, entry: clear_entry))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallUnreadable { reason: "corrupt" }, entry: clear_entry))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: "somewhere else", cause: "x" }] }, entry: clear_entry))
+}
+
+test fn the_clear_admits_only_a_plain_directory_the_drain_principal_does_not_own() -> Bool {
+  let me = BeltExitStallObserved { value: "gunbc" }
+  let grp = BeltExitStallObserved { value: "gunbc" }
+  let p = "/srv/inst/attempt-exit-spool/inbox/e"
+  let foreign = belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "directory|root|755" }, whoami: me, group: grp)
+  let argv_ok = match foreign {
+    BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: "-o")) && any(argv, w => string_contains(s: w, pattern: "gunbc")) && any(argv, w => string_contains(s: w, pattern: p)) && !any(argv, w => string_contains(s: w, pattern: " -R"))
+    BeltExitClearRefused { reason: _ } => false
+  }
+  argv_ok
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "directory|gunbc|755" }, whoami: me, group: grp))
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "symbolic link|root|777" }, whoami: me, group: grp))
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "regular file|root|644" }, whoami: me, group: grp))
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallUnobserved { reason: "gone" }, whoami: me, group: grp))
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "directory|root|755" }, whoami: BeltExitStallUnobserved { reason: "id refused" }, group: grp))
+    && admission_refused(a: belt_exit_stall_clear_admission(path: p, stat: BeltExitStallObserved { value: "directory|root|755" }, whoami: me, group: BeltExitStallUnobserved { reason: "id refused" }))
+}
+
+// INHABITANCE: the real stall record, the real stat of a real entry, and the real `id` readings produce the shapes
+// above. A real drain-owned entry is refused; the same entry read against another principal is admitted with the
+// argv naming that entry; a symlink planted at the recorded name is refused; and analyze names this verb.
+test fn the_real_stall_and_stat_route_yields_the_admission_shapes_and_analyze_names_the_verb() -> Bool {
+  let root = fresh_spool(tag: "clear")
+  let wrote = record(root: root, name: worker_exit)
+  let recorded = belt_exit_stall_failures(root: root, d: unmovable_pass(root: root))
+  let me = belt_exit_stall_whoami()
+  let grp = belt_exit_stall_whoami_group()
+  let own = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: me, group: grp)
+  let other = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
+  let absent = belt_exit_stall_clear_at(root: root, entry: "not-recorded", whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
+  let rm = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["rmdir ", attempt_exit_inbox_dir(instance_root: root), "/", worker_exit, " && ln -s /tmp ", attempt_exit_inbox_dir(instance_root: root), "/", worker_exit], "")]), workdir: "/")
+  let linked = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
+  let report = belt_exit_stall_analyze_at(root: root, whoami: BeltExitStallObserved { value: "nobody-else" })
+  wrote && count(recorded) == 1
+    && admission_refused(a: own)
+    && match other { BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: worker_exit)) _ => false }
+    && admission_refused(a: absent)
+    && admission_refused(a: linked)
+    && any(report, l => string_contains(s: l, pattern: "belt_exit_stall_clear_cli") && string_contains(s: l, pattern: "entry="))
 }

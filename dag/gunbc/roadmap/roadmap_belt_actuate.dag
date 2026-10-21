@@ -715,6 +715,10 @@ import gunbc.roadmap.roadmap_presentation {
 }
 import extdeps.gunbc
 import extdeps.shell
+import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, gunbc_run_invocation_words_with_functions, invocation_words_bare }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
+import extdeps.access.posix { file_mode_of_octal_text }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.roadmap.spool_stall {
   SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
   SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at,
@@ -15822,7 +15826,7 @@ fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolSt
 
 // ANALYZE IS READ-ONLY: for each recorded entry it reports the recorded cause and the entry's own owner, mode
 // and type (stat), and for an entry owned by another principal it names the follow-up -- a privileged clear
-// through the approval-broker route (gunbc.auth.approval_broker redeem_capability). Nothing is moved.
+// through the verb belt_exit_stall_clear_cli (belt_exit_stall_clear_at). Nothing is moved.
 // An observation either happened or it did not; a failed reading is never folded into a value, so ownership
 // is classified only from two readings that both succeeded.
 type BeltExitStallObservation
@@ -15837,9 +15841,76 @@ fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExi
   }
 }
 
-fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> BeltExitStallObservation {
-  let path = join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox), "/", entry], "")
-  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%U %a %F", path]), workdir: belt_observe_workdir as String), what: "stat")
+// WHERE A RECORDED ENTRY LIVES, ONE SPELLING: the stage its failing step names, then the entry. The stat reading
+// and the clear's admission both take their path from here, so what is observed is exactly what is cleared.
+// The stage is read off the record's `step` ("inbox -> queued" claims from the inbox, "running -> queued" from
+// running); a step that names neither stage names no location, and nothing is observed or cleared for it.
+fn belt_exit_stall_stage_of_step(step: String) -> HostSpoolStage? {
+  if starts_with(s: step, prefix: "inbox") {
+    Present { value: AttemptExitInbox }
+  } else if starts_with(s: step, prefix: "running") {
+    Present { value: AttemptExitRunning }
+  } else {
+    none
+  }
+}
+
+fn belt_exit_stall_entry_path(root: String, stage: HostSpoolStage, entry: String) -> String {
+  join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", entry], "")
+}
+
+// `stat` WITHOUT -L, so a symlink reads as `symbolic link` and never as what it points at. The type leads so
+// the prefix `directory|` is the whole claim that the entry is a plain directory.
+fn belt_exit_stall_entry_stat_at(root: String, stage: HostSpoolStage, entry: String) -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%F|%U|%a", belt_exit_stall_entry_path(root: root, stage: stage, entry: entry)]), workdir: belt_observe_workdir as String), what: "stat")
+}
+
+// THE ONE CLASSIFICATION of a recorded entry's ownership, from the two readings (the entry's stat, the drain
+// principal's login). Analyze reports it and the clear's admission is gated on it, so the follow-up is offered
+// for exactly the entries the clear admits. Foreign-owned is claimed only for a plain directory whose owner is
+// read and is not the drain's principal; every unread or unexpected reading is its own arm, never a guess.
+type BeltExitStallOwnership
+  = BeltExitStallOwnedByDrain
+  | BeltExitStallForeignOwned { mode: String }
+  | BeltExitStallNotADirectory { stat: String }
+  | BeltExitStallOwnerUnknown { reason: String }
+
+fn belt_exit_stall_ownership_of(stat: BeltExitStallObservation, whoami: BeltExitStallObservation) -> BeltExitStallOwnership {
+  match stat {
+    BeltExitStallUnobserved { reason: sr } => BeltExitStallOwnerUnknown { reason: join([sr, "; the entry may no longer be in its stage"], "") }
+    BeltExitStallObserved { value: s } =>
+      if !starts_with(s: s, prefix: "directory|") {
+        BeltExitStallNotADirectory { stat: s }
+      } else {
+        match whoami {
+          BeltExitStallUnobserved { reason: wr } => BeltExitStallOwnerUnknown { reason: join(["the drain's principal is unread: ", wr], "") }
+          BeltExitStallObserved { value: me } =>
+            if string_length(s: me) == 0 {
+              BeltExitStallOwnerUnknown { reason: "the drain's principal is empty" }
+            } else if starts_with(s: s, prefix: join(["directory|", me, "|"], "")) {
+              BeltExitStallOwnedByDrain
+            } else {
+              match split(s: s, delimiter: "|").last() {
+                Present { value: m } => BeltExitStallForeignOwned { mode: m }
+                Absent => BeltExitStallOwnerUnknown { reason: "the stat reading has no mode" }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE VERB THE REFUSAL NAMES, and its exact invocation, so an operator reading analyze can act on it. The
+// source roots are the run's own, so they are not guessed here.
+data belt_exit_stall_clear_function: String = "belt_exit_stall_clear_cli"
+
+fn belt_exit_stall_clear_invocation(entry: String) -> String {
+  match admit_named_argument(name: "entry", value: entry) {
+    NamedArgumentAdmitted { argument } =>
+      join(["gunbc ", join(invocation_words_bare(words: gunbc_run_invocation_words_with_functions(source_roots: [], entry: "gunbc.roadmap.roadmap_belt_tick_cli", functions: [belt_exit_stall_clear_function], claim_run: false, arguments: [argument])), " ")], "")
+    NamedArgumentNameEmpty => "(the clear verb takes --arg entry=<entry>)"
+    NamedArgumentNameHoldsSeparator { name: _ } => "(the clear verb takes --arg entry=<entry>)"
+  }
 }
 
 fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) -> List<String> {
@@ -15849,20 +15920,105 @@ fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) ->
     SpoolStallHeld { entries } =>
       entries |> map(e => {
         let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
-        match belt_exit_stall_entry_stat_at(root: root, entry: e.entry) {
-          BeltExitStallUnobserved { reason: sr } => join([head, "owner unknown (", sr, "); the entry may no longer be in the inbox"], "")
-          BeltExitStallObserved { value: stat } =>
-            match whoami {
-              BeltExitStallUnobserved { reason: wr } => join([head, "stat owner/mode/type: ", stat, "; owner unknown (the drain's principal is unread: ", wr, ")"], "")
-              BeltExitStallObserved { value: me } =>
-                if starts_with(s: stat, prefix: join([me, " "], "")) {
-                  join([head, "stat owner/mode/type: ", stat, "; owned by the drain's principal: release re-attempts the claim"], "")
-                } else {
-                  join([head, "stat owner/mode/type: ", stat, "; foreign-owned: the drain's principal cannot move it -- a privileged clear through the approval-broker route is the follow-up, then release"], "")
-                }
+        match belt_exit_stall_stage_of_step(step: e.step) {
+          Absent => join([head, "owner unknown (the step names no spool stage)"], "")
+          Present { value: stage } => {
+            let stat = belt_exit_stall_entry_stat_at(root: root, stage: stage, entry: e.entry)
+            let shown = match stat { BeltExitStallObserved { value: v } => join(["stat type|owner|mode: ", v, "; "], "") BeltExitStallUnobserved { reason: _ } => "" }
+            match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {
+              BeltExitStallOwnerUnknown { reason } => join([head, shown, "owner unknown (", reason, ")"], "")
+              BeltExitStallNotADirectory { stat: _ } => join([head, shown, "not a plain directory: the clear refuses it"], "")
+              BeltExitStallOwnedByDrain => join([head, shown, "owned by the drain's principal: release re-attempts the claim"], "")
+              BeltExitStallForeignOwned { mode: _ } =>
+                join([head, shown, "foreign-owned: the drain's principal cannot move it -- run `", belt_exit_stall_clear_invocation(entry: e.entry), "` (same source roots as this run); it prints the one privileged argv that re-owns this entry to the drain's principal, for a privileged operator to run, then release"], "")
             }
+          }
         }
       })
+  }
+}
+
+// THE CLEAR'S ADMISSION (DESIGN section 3b, the grant is bounded to its population). It names the one privileged
+// effect, re-owning an entry to the drain's principal (gunbc.executor_privileged_operation EnsureOwnedDirectory;
+// the mode is the entry's own, so only the owner changes), and admits it only for an entry that is ALL of: named in
+// the current stall record, located at exactly <instance_root>/attempt-exit-spool/<stage>/<entry> (a plain name, no
+// separator, no `..`), a plain directory (a symlink reads as `symbolic link` and is refused), and classified
+// foreign-owned by belt_exit_stall_ownership_of, the reading analyze reports. The effect is a re-own and not a
+// move or a removal: the entry's name IS the attempt's end (attempt_exit_entry_decode), and the ordinary claim
+// then hands it, a privileged move would leave it root-owned for the next rename and fork the claim route, and a
+// removal would destroy the evidence. The admission renders the argv and runs nothing.
+type BeltExitClearTarget
+  = BeltExitClearTargeted { stage: HostSpoolStage, path: String }
+  | BeltExitClearTargetRefused { reason: String }
+
+fn belt_exit_entry_name_is_plain(entry: String) -> Bool {
+  string_length(s: entry) > 0 && entry != "." && entry != ".." && !string_contains(s: entry, pattern: "/") && !string_contains(s: entry, pattern: "\n")
+}
+
+fn belt_exit_stall_clear_target(root: String, held: SpoolStallRead, entry: String) -> BeltExitClearTarget {
+  match held {
+    SpoolStallNone => BeltExitClearTargetRefused { reason: "no stall record: the exit drain is not stalled, so there is nothing to clear" }
+    SpoolStallUnreadable { reason } => BeltExitClearTargetRefused { reason: join(["the stall record is unreadable: ", reason], "") }
+    SpoolStallHeld { entries } =>
+      if !belt_exit_entry_name_is_plain(entry: entry) {
+        BeltExitClearTargetRefused { reason: join(["entry ", entry, " is not a plain entry name"], "") }
+      } else {
+        match entries |> filter(e => e.entry == entry) |> first() {
+          Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, " is not named in the current stall record"], "") }
+          Present { value: recorded } =>
+            match belt_exit_stall_stage_of_step(step: recorded.step) {
+              Absent => BeltExitClearTargetRefused { reason: join(["entry ", entry, ": the recorded step names no spool stage"], "") }
+              Present { value: stage } => BeltExitClearTargeted { stage: stage, path: belt_exit_stall_entry_path(root: root, stage: stage, entry: entry) }
+            }
+        }
+      }
+  }
+}
+
+type BeltExitClearAdmission
+  = BeltExitClearAdmitted { argv: List<String> }
+  | BeltExitClearRefused { reason: String }
+
+fn belt_exit_stall_clear_argv(path: String, me: String, group: String, mode: String) -> List<String>? {
+  match file_mode_of_octal_text(text: mode) {
+    Absent => none
+    Present { value: m } =>
+      {
+      let elevated = sudo_elevate(command: executor_privileged_operation_argv(op: EnsureOwnedDirectory { path: path as NonEmptyStr, owner: me as NonEmptyStr, group: group as NonEmptyStr, mode: m }) |> map(w => w as String))
+      Present { value: concat([elevated.bin_path], elevated.args) |> map(w => posix_single_quote(spelling: w)) }
+    }
+  }
+}
+
+fn belt_exit_stall_clear_admission(path: String, stat: BeltExitStallObservation, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
+  match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {
+    BeltExitStallOwnedByDrain => BeltExitClearRefused { reason: "owned by the drain's principal: nothing to clear; release re-attempts the claim" }
+    BeltExitStallNotADirectory { stat: s } => BeltExitClearRefused { reason: join(["not a plain directory (", s, "): only a plain directory is cleared, never a symlink or a file"], "") }
+    BeltExitStallOwnerUnknown { reason } => BeltExitClearRefused { reason: join(["ownership is unknown (", reason, "), so it is not classified foreign-owned"], "") }
+    BeltExitStallForeignOwned { mode } =>
+      match whoami {
+        BeltExitStallUnobserved { reason: wr } => BeltExitClearRefused { reason: join(["the drain's principal is unread: ", wr], "") }
+        BeltExitStallObserved { value: me } =>
+          match group {
+            BeltExitStallUnobserved { reason: gr } => BeltExitClearRefused { reason: join(["the drain's group is unread: ", gr], "") }
+            BeltExitStallObserved { value: g } =>
+              if string_length(s: g) == 0 {
+                BeltExitClearRefused { reason: "the drain's group is empty" }
+              } else {
+                match belt_exit_stall_clear_argv(path: path, me: me, group: g, mode: mode) {
+                  Absent => BeltExitClearRefused { reason: join(["the entry's mode ", mode, " is not an octal mode"], "") }
+                  Present { value: argv } => BeltExitClearAdmitted { argv: argv }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn belt_exit_stall_clear_at(root: String, entry: String, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
+  match belt_exit_stall_clear_target(root: root, held: spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)), entry: entry) {
+    BeltExitClearTargetRefused { reason } => BeltExitClearRefused { reason: reason }
+    BeltExitClearTargeted { stage, path } => belt_exit_stall_clear_admission(path: path, stat: belt_exit_stall_entry_stat_at(root: root, stage: stage, entry: entry), whoami: whoami, group: group)
   }
 }
 
@@ -15892,6 +16048,10 @@ fn belt_exit_stall_rearm_at(path_unit: NonEmptyStr) -> BeltExitStallRearm {
     Present { value: r } => r
     Absent => BeltExitStallRearmed
   }
+}
+
+fn belt_exit_stall_whoami_group() -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-gn"]), workdir: belt_observe_workdir as String), what: "id -gn")
 }
 
 fn belt_exit_stall_whoami() -> BeltExitStallObservation {
