@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.realization_arms_diverge_on_whether_the_program_refuses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data realization_arms_diverge_on_whether_the_program_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "realization_arms_diverge_on_whether_the_program_refuses" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "realization arms diverge on WHETHER THE PROGRAM REFUSES (two realizations of one accepted program agree on the returned value and disagree on whether an evaluation-time refusal fires, because the fact that decides it -- evaluation order -- is modeled nowhere and each arm improvises).",

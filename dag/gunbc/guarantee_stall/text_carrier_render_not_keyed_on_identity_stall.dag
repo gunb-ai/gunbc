@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 data text_carrier_render_not_keyed_on_identity_stall: GuaranteeStall = GuaranteeStall {
   subject: "Two authorities answer whether a type is host text. The checker decides it by DECLARATION IDENTITY (v1.compiler.infer_env text_representation_by_identity, gunbc.rung_drop text_boundary_identity_wall); the Rust renderer decides which carrier to emit by the authored spelling plus kernel provenance (v1.compiler.emit_rust is_host_text_carrier_type). Nothing forces the two answers to agree: on the self-host path a disagreement surfaces only as a rustc type mismatch in the emitted-crate build, and on any other emission nothing observes it. Nothing fell -- the renderer was provenance-keyed before the checker climbed -- so this is a stall below its ceiling, not a drop (review 72772).",

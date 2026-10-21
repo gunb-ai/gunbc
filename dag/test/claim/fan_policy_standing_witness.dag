@@ -389,7 +389,7 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
     chassis_raw: "",
-    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
     fans: FanSensorsRead { lines: [], undecoded_lines: [] },
   }
 }
@@ -400,7 +400,7 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     round_index: index,
     chassis: ChassisPowerRead { power_on: power_on },
     chassis_raw: "",
-    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] } } else { ThermalUnreadable },
     fans: FanSensorsRead {
       lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
       undecoded_lines: [],
@@ -448,7 +448,7 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     round_index: 0,
     chassis: ChassisUnreadable,
     chassis_raw: "",
-    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
     fans: FanSensorsRead { lines: [], undecoded_lines: [] },
   }
 }
@@ -964,7 +964,7 @@ fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
     chassis_raw: "",
-    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
     fans: fans,
   }
 }

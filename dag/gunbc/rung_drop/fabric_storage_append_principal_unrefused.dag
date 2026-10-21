@@ -1,7 +1,8 @@
 module gunbc.rung_drop.fabric_storage_append_principal_unrefused
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED WITH THE CUTOVER THAT CAUSED IT (gunbc#11723, review 68598). Under git, an append to the
@@ -80,16 +81,7 @@ data fabric_storage_append_principal_unrefused: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle, reached only through tailscale serve on srv1 (tailnet membership is the only boundary)" },
-    population: [
-      "SERVED WRITERS (FabricStorageServed, every executor but the placed host): gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle",
-      "LOCAL WRITERS (FabricStorageLocalFiles, the placed host srv1): gunbc.fabric.fabric_storage_file_store fabric_storage_file_put / fabric_storage_file_advance, reached in process by gunbc.fabric.fabric_storage_binding fabric_storage_binding_for",
-      "LOOPBACK (any account on the placed host): the served backend's TCP loopback listener, where a forged Tailscale-User-Login passes the served roster",
-      "gunbc.fabric.fabric_event_log event_log_append",
-      "gunbc.fabric.fabric_event_log event_log_append_with",
-      "gunbc.fabric.fabric_event_log fabric_seat_acquire",
-      "gunbc.spark.pair_serving_authority_log (every writer to a pair-serving-authority partition and to host-placement: establishment, transition, entry state, cancellation, host-effect claim and release, placement prepare / claim / finalize / abort)",
-      "gunbc.fabric.durable_cas_fabric_storage fabric_storage_compare_and_set (the D0 operator-consent claim slot)",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "SERVED WRITERS (FabricStorageServed, every executor but the placed host): gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle", tail: ["LOCAL WRITERS (FabricStorageLocalFiles, the placed host srv1): gunbc.fabric.fabric_storage_file_store fabric_storage_file_put / fabric_storage_file_advance, reached in process by gunbc.fabric.fabric_storage_binding fabric_storage_binding_for", "LOOPBACK (any account on the placed host): the served backend's TCP loopback listener, where a forged Tailscale-User-Login passes the served roster", "gunbc.fabric.fabric_event_log event_log_append", "gunbc.fabric.fabric_event_log event_log_append_with", "gunbc.fabric.fabric_event_log fabric_seat_acquire", "gunbc.spark.pair_serving_authority_log (every writer to a pair-serving-authority partition and to host-placement: establishment, transition, entry state, cancellation, host-effect claim and release, placement prepare / claim / finalize / abort)", "gunbc.fabric.durable_cas_fabric_storage fabric_storage_compare_and_set (the D0 operator-consent claim slot)"] } },
     restoration_trigger: "BOTH of: (served writers) a modeled roster of fabric writer USER principals, grounded in the observed reading gunbc.fabric.fabric_writer_identity_observe takes of the Tailscale-User-Login each fleet writer presents through tailscale serve on srv1 -- SUFFICIENT FOR fabric_storage_serve_handle to refuse a put or advance from any login outside the roster, including an absent login, with a discriminating RED over the real handler; AND (local writers) principal admission on the placed host's own write path -- at the FabricStorageLocalFiles binding or by routing the placed host's writes through the served door -- SUFFICIENT FOR a put or advance by an unrostered local principal to refuse, with a discriminating RED over the real file store. A roster at the served door alone retires nothing: the placed host's writes never reach it.",
   }
 }

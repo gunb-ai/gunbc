@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFailureMode {
   identity: "exact_duplicate_match_arm_not_refused" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an exact duplicate constructor pattern appears twice in one match, the second arm is unreachable, and the compiler accepts both -- so SOURCE ORDER silently decides which body answers** (INVALID STATE: two arms of one `match` name the SAME closed-variant constructor with DIFFERENT bodies.",

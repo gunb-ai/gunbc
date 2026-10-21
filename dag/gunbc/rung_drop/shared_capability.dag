@@ -2,7 +2,7 @@ module gunbc.rung_drop.shared_capability
 
 import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.rung_drop {
-  RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, AuthoredProse, dissolved_is_admissible,
+  RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, Enumerated, AuthoredProse, dissolved_is_admissible,
 }
 
 // ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.

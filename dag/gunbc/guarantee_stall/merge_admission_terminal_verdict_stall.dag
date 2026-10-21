@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.merge_admission_terminal_verdict_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // FILED AS A STALL AND NOT AS A RUNG DROP, WHICH IS A CORRECTION TO THIS SUBJECT'S FIRST FILING
 // ON THIS BRANCH (2026-09-03). A section 4b(3) drop ASSERTS A REGRESSION -- a change lowered a rung

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.behavior_named_edge_label_validated_not_cons
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data behavior_named_edge_label_validated_not_constructed: RecurringFailureMode = RecurringFailureMode {
   identity: "behavior_named_edge_label_validated_not_constructed" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a behavior node carrying a Named edge whose label is not the marker that behavior admits -- a Transform with a Named edge other than `v2.std.type_binder` `<cast-target>`, or (once the let-annotation carrier lands) a Bind with a Named edge other than its annotation marker. `v2.std.node` states only the SHAPE (`PositionalPlusOneNamedEdges`: at most one Named edge beside the positional children) and cannot intern the marker lexemes, so the LABEL is checked by a second function, `v2.std.type_binder` `type_binder_labels_conform`, over any Node. HARM if it were not checked: a foreign Named edge on a Transform would be carried as a cast target nobody authored, or skipped by readers that pass the marker over.",
