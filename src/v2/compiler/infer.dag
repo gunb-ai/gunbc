@@ -28,7 +28,7 @@ import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.arm_resolution { ResolvedArm, node_is_arm_test, infer_match_variant_payload, resolve_is_arm }
+import v2.compiler.arm_resolution { ArmDecided, ArmTestDecision, ArmUndecided, ResolvedArm, node_is_arm_test, infer_match_variant_payload, resolve_is_arm }
 import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, EqualityNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding, constructed_root_arm_resolutions }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
@@ -6266,7 +6266,7 @@ fn infer_transform_arm_test_optional(node: Node, entries: Map<Node, List<Inferre
 // agree on what the type declares. A spelling the roster does not declare refuses (misspelt, or an arm
 // of another type); an operand that is not a declared coproduct refuses at the test. An arm test whose
 // operand type is not derived gets no entry and stays on the counted frontier with its operand.
-fn infer_arm_resolutions(tree: ResolvedTree, entries: Map<Node, List<InferredFacts>>) -> Outcome<Map<Node, Optional<ResolvedArm>>> {
+fn infer_arm_resolutions(tree: ResolvedTree, entries: Map<Node, List<InferredFacts>>) -> Outcome<Map<Node, ArmTestDecision>> {
   fold(node_subtree_nodes(root: tree.root), init: outcome_accepted(value: empty_map()), f: fn(acc, n) {
     if node_is_arm_test(node: n) {
       infer_arm_resolutions_step(acc: acc, test: n, tree: tree, entries: entries)
@@ -6277,13 +6277,13 @@ fn infer_arm_resolutions(tree: ResolvedTree, entries: Map<Node, List<InferredFac
 }
 
 fn infer_arm_resolutions_step(
-  acc: Outcome<Map<Node, Optional<ResolvedArm>>>,
+  acc: Outcome<Map<Node, ArmTestDecision>>,
   test: Node,
   tree: ResolvedTree,
   entries: Map<Node, List<InferredFacts>>
-) -> Outcome<Map<Node, Optional<ResolvedArm>>> {
+) -> Outcome<Map<Node, ArmTestDecision>> {
   match infer_arm_resolution_of_test(test: test, tree: tree, entries: entries) {
-    Absent => infer_arm_test_recorded(acc: acc, test: test, arm: Absent)
+    Absent => infer_arm_test_recorded(acc: acc, test: test, decision: ArmUndecided)
     Present { value: decided } =>
       match decided {
         Rejected { diagnostics: d } =>
@@ -6294,23 +6294,27 @@ fn infer_arm_resolutions_step(
         Accepted { value: arm, diagnostics: _ } =>
           match acc {
             Rejected { diagnostics: prior } => Rejected { diagnostics: prior }
-            Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: optional_present(value: arm)), diagnostics: ad }
+            Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: ArmDecided { arm: arm }), diagnostics: ad }
           }
       }
   }
 }
 
-fn infer_arm_decided_flatten(found: Optional<Optional<ResolvedArm>>) -> Optional<ResolvedArm> {
+fn infer_arm_decided_flatten(found: Optional<ArmTestDecision>) -> Optional<ResolvedArm> {
   match found {
-    Present { value: inner } => inner
+    Present { value: decision } =>
+      match decision {
+        ArmDecided { arm: arm } => optional_present(value: arm)
+        ArmUndecided => Absent
+      }
     Absent => Absent
   }
 }
 
-fn infer_arm_test_recorded(acc: Outcome<Map<Node, Optional<ResolvedArm>>>, test: Node, arm: Optional<ResolvedArm>) -> Outcome<Map<Node, Optional<ResolvedArm>>> {
+fn infer_arm_test_recorded(acc: Outcome<Map<Node, ArmTestDecision>>, test: Node, decision: ArmTestDecision) -> Outcome<Map<Node, ArmTestDecision>> {
   match acc {
     Rejected { diagnostics: prior } => Rejected { diagnostics: prior }
-    Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: arm), diagnostics: ad }
+    Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: decision), diagnostics: ad }
   }
 }
 

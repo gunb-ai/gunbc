@@ -29,6 +29,12 @@ type ResolvedArm sole_constructor {
 // re-derives the decision (the std.operator_realization precedent). A payload arm has no arm-reference
 // value to hand tag_of; it is an explicit typed cause, never a wildcard match or a fallback, until the
 // arm-reference entry (R1 PR2) mints the tag for both kinds on one path.
+// What infer concluded about one arm test it met: a decided ResolvedArm, or the counted frontier (operand
+// type not derived). A coproduct rather than Optional<ResolvedArm> so a Map value is never a nested optional.
+type ArmTestDecision
+  = ArmDecided { arm: ResolvedArm }
+  | ArmUndecided
+
 type ArmRealization
   = UnitArmSameArm
   | PayloadArmReferenceAwaited
