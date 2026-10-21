@@ -16384,7 +16384,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
           if rc_name != "" && !rust_expr_is_grounded_shared_value(expr: raw) {
             let nested_layer = match corrected_parent {
               Present { value: _ } => shared_layer_of_leaf(shared_types: shared_types, leaf: qualified_last_segment(name: rc_name), type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
-              Absent => shared_layer_of_type_expr(shared_types: shared_types, type_expr: resolved_type(n: field_value), type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names)
+              Absent => shared_layer_of_type_expr(shared_types: shared_types, type_expr: nested_rt, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names)
             }
             rust_maybe_shared_wrap(answer: nested_layer, raw: raw)
           } else { raw }
