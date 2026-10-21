@@ -68,7 +68,7 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 // cancels a real CI job on another PR's author. Two closures are declared:
 //   AdmissionMaskOnly: a running idle listener is not stopped and nothing is written; the bracket refuses
 //     AdmissionNotClosed naming the units. It stays a declared arm so the refusal it was has a control.
-//   AdmissionMaskRosterAndNoWorker (RULING B, decided at root by sleek-owl-397): a running idle listener is
+//   AdmissionMaskRosterAndNoWorker (gunbc.design_ruling runner_listener_admission_is_mask_roster_and_no_worker): a running idle listener is
 //     ADMITTED to the write and to its stop/start only when THREE independent readings agree: its unit is
 //     masked, the organization roster says its registration is busy=false, and its cgroup holds no
 //     Runner.Worker. All three are re-read immediately before the stop. A reading that is unread or
@@ -95,11 +95,43 @@ type AdmissionClosure
 
 data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskRosterAndNoWorker
 
-data listener_restart_residual: String = "residual: a job GitHub assigns to a still-registered idle listener after the last of the three readings (mask, roster busy=false, no Runner.Worker) and before the stop lands is cancelled by the stop; the readings are re-read immediately before the stop to narrow that window, not to close it"
+// THE RESIDUAL AND ITS FRONTIER ARE TYPED CARRIERS, NOT PROSE: a fold can read which hazard is accepted, what
+// narrows it, and which capabilities would restore the closure, so "has the trigger fired" is a question a
+// reader of the corpus can ask. The wire below renders FROM these rows.
+type ListenerRestartResidual {
+  narrowed_by_reread_before_stop: Bool
+  closes: Bool
+}
 
-data listener_reregistration_frontier: String = "frontier: the residual closes only when admission can be closed atomically against a busy runner (an upstream-documented busy-refusing deregistration or admission close) AND a long-lived slot can be re-registered afterwards; trigger: that upstream documentation, or a re-registration route for long-lived slots, landing as a consumed arm of AdmissionClosure"
+// the capabilities whose landing restores the closure; each is a consumed arm of AdmissionClosure when it lands
+type ReregistrationTrigger
+  = UpstreamAtomicBusyRefusingAdmissionClose
+  | LongLivedSlotReregistrationRoute
 
-fn listener_restart_residual_wire() -> String { join([listener_restart_residual, "; ", listener_reregistration_frontier], "") }
+type ListenerReregistrationFrontier {
+  residual: ListenerRestartResidual
+  triggers: List<ReregistrationTrigger>
+  requires_all: Bool
+}
+
+data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { narrowed_by_reread_before_stop: true, closes: false }
+
+data listener_reregistration_frontier: ListenerReregistrationFrontier = ListenerReregistrationFrontier { residual: listener_restart_residual, triggers: [UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute], requires_all: true }
+
+fn reregistration_trigger_wire(t: ReregistrationTrigger) -> String {
+  match t {
+    UpstreamAtomicBusyRefusingAdmissionClose => "an upstream-documented atomic busy-refusing admission close"
+    LongLivedSlotReregistrationRoute => "a re-registration route for long-lived slots"
+  }
+}
+
+fn listener_restart_residual_wire() -> String {
+  let f = listener_reregistration_frontier
+  join([
+    "residual: a job GitHub assigns to a still-registered idle listener after the last of the three readings (mask, roster busy=false, no Runner.Worker) and before the stop lands is cancelled by the stop; the readings are re-read immediately before the stop to narrow that window, not to close it; ",
+    "frontier: the closure is restored only when ", join(map(f.triggers, reregistration_trigger_wire), if f.requires_all { " AND " } else { " OR " }), " lands as a consumed arm of AdmissionClosure",
+  ], "")
+}
 
 // THE WAIT BOUND IS A POLICY ROW (ratified by the operator: 2700s wait, 15s poll). It must exceed the
 // longest expected job on a runner slot, so a drain does not refuse on normal work; the cost is up to
