@@ -20,25 +20,32 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // shared process-level state instead of asserting a cached answer, and that replacement's two
 // reporting functions are the hand growth enumerated below.
 //
-// WHY THE MEMO WAS DELETED AND NOT RE-PAIRED. It was never arbitrary caching: it repaired a
-// measured cost-shape defect (the sibling compile_dag_rust_emit_check was memoized and this was
-// not, so a witness asking two QUESTIONS about one source paid two full compiles; the row
-// reached 5437ms CPU against the then-standing 5000ms claim CPU refusal -- the admissible repair
-// being to stop recomputing, never to raise the line). But its soundness precondition was the
-// floor's prepared-inventory snapshot: it keyed on the source TOGETHER WITH that inventory's
-// content digest, because build_module_path_index_from_witness_roots reads those bytes and the
-// census is a function of the corpus as well as the source. When run_required_floor was deleted
-// the guard could never arm, every call fell through to disk, and what remained was a HashMap
-// monument plus two atomics reporting (0, 0) forever -- a cache that cached nothing, with a hit
-// rate no one could disprove because nothing read it. Re-arming it would require declaring every
-// input the census now reads (corpus bytes, and the process-level cache state it borrows), a
-// stronger claim than anything here can establish; DESIGN's cache-impurity rule forbids a hit
-// that asserts disk. So the recomputation is DELETED at its sources rather than papered over.
+// WHY THE MEMO WAS DELETED AND NOT RE-PAIRED. It was never arbitrary caching: it was written to
+// repair a measured cost-shape defect (at the time, the sibling compile_dag_rust_emit_check had a
+// live memo and this had none, so a witness asking two QUESTIONS about one source paid two full
+// compiles; the row reached 5437ms CPU against the then-standing 5000ms claim CPU refusal -- the
+// admissible repair being to stop recomputing, never to raise the line. Its soundness
+// precondition was the floor's prepared-inventory snapshot: it keyed on the source TOGETHER WITH
+// that inventory's content digest, because build_module_path_index_from_witness_roots reads those
+// bytes and the census is a function of the corpus as well as the source. When run_required_floor
+// was deleted -- in the earlier floor-residue chain-delete, not on this branch -- the guard went
+// with it and the cell stopped being consulted AT THAT POINT. What reached this PR was the
+// residue of that removal: a HashMap nobody consulted, two atomics still reporting (0, 0) forever,
+// and an entry point whose only job was forwarding. A cache that cached nothing, with a hit rate
+// no one could disprove because nothing read it.
+//
+// The work each call redid is measured, not assumed: CPU-bound pool-cache rebuild (~10 s of a
+// 12.9 s warm call), NOT disk -- the fixture's import closure reads 3 files and 89,436 bytes,
+// closure-scale, identical before and after. Re-arming the memo would require declaring every
+// input the census now reads (corpus bytes, and the process-level state it now borrows through),
+// a stronger claim than anything here can establish; DESIGN's cache-impurity rule forbids a hit
+// that asserts a fact about its inputs that nothing established. So the recomputation is DELETED
+// at its sources rather than papered over.
 //
 // THE COST, BY EXECUTION NOT ARGUMENT. A warm census call measured 12.9 s before this change and
 // 0.34 s after, and census_cost_step0_measurement now REFUSES the series when a corpus module-path
 // index materializes at all (its gate is INDEX_CLONES == 0 over warm calls). Where the memo made
-// the repeat call free by asserting a fact about disk, these make it cheap by not doing the work.
+// the repeat call free by asserting its key was complete, these make it cheap by not doing the work.
 //
 // WHY THE INSTRUMENTS ARE RUST AND NOT .dag, which is the question this receipt exists to answer
 // honestly. The instrumented SUBJECT is a host builtin: compile_dag_diagnostic_census runs
@@ -55,16 +62,18 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // split for a reason this one never had -- its _uncached returns EmitCheckRead, a different type).
 //
 // HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run.emit_host, both
-// reporting-only. The six counters they read are module-level statics and are NOT citable
-// declarations; they are named here rather than omitted, because a receipt that counts only what
-// the roster can cite would under-report its own growth.
+// reporting-only. The SEVEN counters they read are module-level statics and are NOT citable
+// declarations (CENSUS_COST_INDEX_CLONES, INDEX_CLONED_ENTRIES, SHARED_VEC_CLONES,
+// SHARED_VEC_LEN, DISK_READS, DISK_READ_BYTES, IDENTITY_REFUSALS); they are named here rather
+// than omitted, because a receipt that counts only what the roster can cite would under-report
+// its own growth.
 data census_memo_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_diagnostic_census_memo_counts", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_diagnostic_census_uncached", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_diagnostic_census_cost_counts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "reset_compile_dag_diagnostic_census_cost_counts", field: WholeDeclaration }
   ],
-  reason: "Reporting on a host builtin's cost path is a property of the host that runs it. compile_dag_diagnostic_census_cost_counts reads the six counters at the seams where a census call can pay for the corpus (the module-path index entry, the scratch's source-file map, every real disk read the resolve path performs); reset_compile_dag_diagnostic_census_cost_counts brackets a call series so the reading is a process-differential DELTA, never a claim about another process. Neither decides anything: the census vocabulary is unchanged and pre-existing, no verdict branches on them, and the severity policy stays in compile_clean_diagnostic_is_hard.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The six statics they read are not declarations and are disclosed in this file's header instead.\n\nWHY A COUNTER AND NOT A MEMO IS THE HAND HALF NOW. A memo asserts a result; a counter only states what was touched. The deleted memo needed a content key complete over every input the census reads -- the claim the floor snapshot used to supply and nothing supplies now -- while a counter needs only that the seam it sits on is the seam the cost goes through, and THAT is checked rather than asserted: census_cost_step0_measurement refuses the series when the corpus-index clone count is nonzero over warm calls, so the gate cannot be turned green by a dead counter, because the same series asserts the surviving disk-read counter is nonzero (a counter mechanism that stopped seeing work would make the zero decoration, not cost).",
+  reason: "Reporting on a host builtin's cost path is a property of the host that runs it. compile_dag_diagnostic_census_cost_counts reads the SEVEN counters at the seams where a census call can pay for the corpus or skip it (the module-path index entry, the scratch's source-file map, every real disk read the resolve path performs, and the underlay identity proof's verdict -- the last being what proves the read-through is actually taken rather than silently refused); reset_compile_dag_diagnostic_census_cost_counts brackets a call series so the reading is a process-differential DELTA, never a claim about another process. Neither decides anything: the census vocabulary is unchanged and pre-existing, no verdict branches on them, and the severity policy stays in compile_clean_diagnostic_is_hard.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The seven statics they read are not declarations and are named by the header instead.\n\nWHY A COUNTER AND NOT A MEMO IS THE HAND HALF NOW. A memo asserts a result; a counter only states what was touched. The deleted memo needed a content key complete over every input the census reads -- the claim the floor snapshot used to supply and nothing supplies now -- while a counter needs only that the seam it sits on is the seam the cost goes through, and THAT is checked rather than asserted: census_cost_step0_measurement refuses the series when the corpus-index clone count is nonzero over warm calls, so the gate cannot be turned green by a dead counter, because the same series asserts the surviving disk-read counter is nonzero (a counter mechanism that stopped seeing work would make the zero decoration, not cost).",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete both when compile_dag_diagnostic_census and its sibling compile_dag_rust_emit_check are MODELED operations rather than host builtins -- at which point their sharing is the substrate's own Realization memoization on a content hash (DESIGN section 2, one kernel spanning resolve-cost to sccache), the corpus state they read through is a modeled node the cost model already sees, and hand-carried counters beside them are exactly the duplicated authority that carrier dissolves. The two siblings migrate together or not at all: leaving one hand-instrumented beside a modeled sibling would be the fork this receipt's own single-authority argument refuses. NOTE FOR THE READER OF 2026-10-21: the trigger has NOT fired. What fired was the DELETION of the memo the trigger had been written against, because that memo lost its soundness precondition (see the header); the census is still a host builtin dispatched by the interpreter, so the enumerated items are live and this row stays.",
-  current_boundary: "Confined to one builtin and one process. The counters are read only by census_cost_step0_measurement and reset only by its own call; no verdict anywhere branches on them, and no caller outside the census path sees them. The sharing they measure is READ-ONLY: a census call reads the process-shared index and writes only into a scratch holding the fixture's own sources, so the shared index is never populated with fixture state -- proved by fixture_closure_extension_does_not_populate_the_process_shared_index (green) against fixture_closure_extension_via_shared_index_grows_both_closure_edges (the pre-fix route, which still reproduces the leak); and the pool caches a scratch reads through are pool facts, checked by this file's companion measurement's collision fixture (a fixture named over a pool module leaves the census digest byte-identical). The census output itself is asserted byte-identical to the pre-change digest (23 rows), so the cost path changed and the reported content did not. THE ATTRIBUTION THAT MOVED WITH THE MEMO, declared rather than hidden: record_shared_artifact_fill_cpu was written on this builtin's memo MISS, and that call is gone with the memo -- no census path writes the fill accumulator any more (only the decl_facts census in coproduct_reflection does). That is not a dropped attribution but a vanished one: the shared construction the memo used to bracket and charge is now a first-touch inside the ordinary compile, charged the way any other compile is. If a future reader wants the census's shared-build cost attributed on its own clock again, that is the capability this deletion removed, and the counters are where it would be re-instrumented -- not a re-armed memo."
+  current_boundary: "Confined to one builtin and one process. The counters are read only by census_cost_step0_measurement and reset only by its own call; no verdict anywhere branches on them, and no caller outside the census path sees them. The sharing they measure is READ-ONLY: a census call reads the process-shared index and writes only into a scratch holding the fixture's own sources, so the shared index is never populated with fixture state -- proved by fixture_closure_extension_does_not_populate_the_process_shared_index (green) against fixture_closure_extension_via_shared_index_grows_both_closure_edges (the pre-fix route, which still reproduces the leak); and the pool caches a scratch reads through are pool facts, checked by this file's companion measurement's collision fixture (a fixture named over a pool module leaves the census digest byte-identical). The census output itself is asserted byte-identical to the pre-change digest (23 rows), so the cost path changed and the reported content did not. THE FILL ATTRIBUTION THIS RECEIPT ONCE CLAIMED IS OLDER THAN THIS BRANCH, corrected against the tree rather than remembered. This row used to assert that record_shared_artifact_fill_cpu was written on this builtin's memo MISS and was 'gone with the memo'. That was FALSE when written: at this branch's base the entry point already forwarded straight to the uncached body (the miss was not bracketed) and the census path wrote the fill accumulator NOWHERE -- both had been removed earlier, when the floor residue was chain-deleted, not here. What THIS change deleted is the residue of that earlier removal: a never-consulted memo cell, two atomics still reporting (0, 0), and a forwarding wrapper. So the census has no shared-artifact fill attribution, and has had none since before this PR; only coproduct_reflection's decl_facts census writes the accumulator today. If a future reader wants the census's shared-build cost charged on its own clock again, the counters enumerated here are where it would be re-instrumented -- not a re-armed memo, and not this receipt's older sentence, which is withdrawn."
 }

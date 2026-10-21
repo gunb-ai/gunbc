@@ -139,26 +139,40 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
 ///
 /// THE DELETION STORY, because a future reader must not re-add what is deleted here. A memo
 /// once sat on top of this function, and it was NOT arbitrary caching: it was the repair for a
-/// measured cost-shape defect (the sibling `compile_dag_rust_emit_check` was memoized and this
-/// was not, so `neither_green_source_refuses_and_neither_mis_resolves` in
+/// measured cost-shape defect (when that memo was written, the sibling `compile_dag_rust_emit_check`
+/// had a live memo and this did not, so `neither_green_source_refuses_and_neither_mis_resolves` in
 /// `test.claim.callable_candidate_ambiguity_witness` recomputed half its compiles -- 5437 ms CPU
 /// against the then-standing 5000 ms claim CPU refusal). The memo then lost its soundness
 /// precondition: it keyed on source PLUS the floor's prepared-inventory content digest, because
-/// `build_module_path_index_from_witness_roots` reads those bytes. `run_required_floor` was
-/// deleted, so the guard could never arm, every call fell through to disk, and what remained
-/// was a `HashMap`-shaped monument plus two atomics reporting (0, 0) forever.
+/// `build_module_path_index_from_witness_roots` reads those bytes. When `run_required_floor` was
+/// deleted (in the earlier floor-residue chain-delete, not on this branch) the guard went with it
+/// and the cell stopped being consulted AT THAT POINT; what reached this PR was the residue -- a
+/// `HashMap` nobody consulted, two atomics still reporting (0, 0), and an entry point whose only
+/// job was forwarding. And the work each call redid is measured here rather than guessed: it was
+/// CPU-bound pool-cache rebuild (~10 s of a 12.9 s warm call), NOT disk -- the fixture's import
+/// closure reads 3 files and 89,436 bytes, closure-scale, identical before and after
+/// (`census_cost_step0_measurement`).
 ///
 /// WHY DELETION AND NOT A RE-ARMED GUARD. The deleted key was complete ONLY under the frozen
 /// floor snapshot -- with the snapshot gone, a content-keyed memo would have to declare every
 /// input it reads (corpus bytes, floor inventory, and the process-level cache state this
 /// function now reads through), which is a stronger claim than anything here can establish.
-/// DESIGN's cache-impurity rule forbids a hit that asserts disk. So the recomputation is not
+/// DESIGN's cache-impurity rule forbids a hit that asserts a fact about its inputs that nothing
+/// established. So the recomputation is not
 /// cached, it is DELETED at its two sources, which is the same defect class the memo was
 /// invented for and is strictly cheaper than the memo ever was: a warm census call measured
 /// 12.9 s before this change and 0.34 s after it (Step 0 series, `census_cost_step0_measurement`,
 /// which now gates the corpus-index clone count at zero). Where the memo made the repeat call
-/// free by asserting a fact about disk, these make the repeat call cheap by not doing the work.
+/// free by asserting its key was complete, these make the repeat call cheap by not doing the work.
 /// The `hits/misses` atomics and the memo cell went with it; nothing ever branched on them.
+///
+/// THE SIBLING IS NOT CITED AS A HEALTHY MIRROR. It is in the state this function was in: its
+/// entry point forwards to `compile_dag_rust_emit_check_uncached`, its `..._MEMO` cell is declared
+/// and `forget`-ed but never consulted, and its two atomics are read only by
+/// `compile_dag_rust_emit_check_memo_counts`. That residue is pre-existing and outside this PR's
+/// named accusation (the census's cost shape), and it is declared here rather than left for a
+/// reader to find it contradicting the asymmetry above. The sibling's split survives on its own
+/// merits (the different return type); its cache does not exist.
 ///
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
