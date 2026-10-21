@@ -9,6 +9,7 @@ import v2.lens.common.algebraic_composition {
   ParallelismKindPolicy,
   ParallelismRelation,
   ReadsParallelismFacts,
+  StructuralNotACoupling,
   UnresolvedCoupling,
   parallelism_classifier
 }
@@ -103,6 +104,14 @@ fn parallelism_relation_for_reads_parallelism_facts(
   )
 }
 
+fn parallelism_structural_view_diagnostic(view: DependencyView) -> Diagnostic {
+  Diagnostic {
+    reason: ^parallelism_reason_structural_view_is_not_a_coupling,
+    at: node_locus(node: view.usage_site),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn parallelism_relation_for_policy(
   tree: InferredTree,
   view: DependencyView,
@@ -111,6 +120,7 @@ fn parallelism_relation_for_policy(
   match policy {
     KnownParallelismRelation { relation: r } => r
     ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
+    StructuralNotACoupling => UnresolvedCoupling { diagnostic: parallelism_structural_view_diagnostic(view: view) }
   }
 }
 

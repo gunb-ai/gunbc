@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.hub_cache_root_relative_to_executing_home
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data hub_cache_root_relative_to_executing_home: RecurringFailureMode = RecurringFailureMode {
   identity: "hub_cache_root_relative_to_executing_home" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**the Hugging Face cache root is relative to the executing process's home** (a Hub CLI run inside a --rm container with no HF_HUB_CACHE writes to the container's own ~/.cache/huggingface/hub, so a completed download is deleted with the container while the host cache stays empty).",

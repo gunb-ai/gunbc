@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data shared_symbol_projection_is_not_injective: RecurringFailureMode = RecurringFailureMode {
   identity: "shared_symbol_projection_is_not_injective" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "shared symbol projection is not injective (A NAME-TO-SYMBOL PROJECTION SHARED BY EVERY TARGET ERASES A DISTINCTION THE SOURCE CARRIED. Until the emit fold, nothing refused, so two distinct identities silently became one emitted symbol. Emit now refuses EmittedSymbolCollision; the invalid source state remains writable.",
