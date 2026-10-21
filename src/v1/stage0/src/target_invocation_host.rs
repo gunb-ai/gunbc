@@ -596,6 +596,8 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("self-host-frontier"),
             TargetProducer::SelfHostFrontier,
+        ),
+        (
             instrument_label("decl-ref-census"),
             TargetProducer::DeclRefCensus,
         ),
