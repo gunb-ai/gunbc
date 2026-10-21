@@ -6,7 +6,7 @@ import gunbc.guarantee_rung {
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
 }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling, stall_report_message, every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size, NextRungTrigger, climbs_when, climbs_when_awaiting, stall_trigger_admission, every_stall_trigger_is_admitted }
-import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent, Undeclared, Declared }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent, GroundingUndeclared, GroundingDeclared }
 import std.types { List, NonEmptyStr }
 import std.algebra { fold_list, length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -33,7 +33,7 @@ data control_stall: GuaranteeStall = GuaranteeStall {
   subject: "control.stall.subject",
   current: StructurallyGuaranteed,
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: Undeclared },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: ["control.stall.member"] },
   next_rung_trigger: climbs_when(capability: "control stall trigger")
 }
@@ -241,8 +241,8 @@ fn stall_grounding_refs(ss: List<GuaranteeStall>) -> List<DeclarationRef> {
     empty: [],
     cons: fn(acc, s) {
       match s.blocker {
-        AwaitsOneGrounding { grounding: Declared { reference: r } } => concat(acc, [r])
-        AwaitsOneGrounding { grounding: Undeclared } => acc
+        AwaitsOneGrounding { grounding: GroundingDeclared { reference: r } } => concat(acc, [r])
+        AwaitsOneGrounding { grounding: GroundingUndeclared } => acc
         ClimbableButUnbuilt => acc
       }
     },
@@ -260,7 +260,7 @@ test fn a_declared_grounding_naming_no_declaration_is_refused() -> Bool {
     current: Mitigatable,
     ceiling: StructurallyGuaranteed,
     blocker: AwaitsOneGrounding {
-      grounding: Declared {
+      grounding: GroundingDeclared {
         reference: DeclarationRef { module_path: "std.algebra" as NonEmptyStr, decl_name: "NoSuchDecl_Grounding_RED" as NonEmptyStr, field: WholeDeclaration },
       },
     },

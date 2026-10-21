@@ -28,8 +28,8 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashb
 // second prose statement of the same capability: two texts for one climb were two answers that
 // could disagree, and 34 rows had already diverged.
 type GroundingAuthority
-  = Declared { reference: DeclarationRef }
-  | Undeclared
+  = GroundingDeclared { reference: DeclarationRef }
+  | GroundingUndeclared
 
 type ClimbBlocker
   = AwaitsOneGrounding { grounding: GroundingAuthority }
@@ -37,8 +37,8 @@ type ClimbBlocker
 
 fn grounding_authority_label(g: GroundingAuthority) -> String {
   match g {
-    Declared { reference: r } => declaration_ref_display_key(ref: r)
-    Undeclared => "the trigger capability, not yet declared"
+    GroundingDeclared { reference: r } => declaration_ref_display_key(ref: r)
+    GroundingUndeclared => "the trigger capability, not yet declared"
   }
 }
 
