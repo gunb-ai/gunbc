@@ -798,6 +798,19 @@ data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install runs its host-root writes under the administrator edge from the main-pinned deploy slot, gated by deploy_route_switch_admitted (plan gunbc.plans.srv1_deploy_principal_split, controller-install scope addition). Sufficient only when the install's argv are emitted through the edge and no job-user sudoers line names them." as NonEmptyStr),
 }
 
+// THE EXIT-SPOOL CLEAR (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_clear_at). The effect is one root write
+// (install -d re-owning a recorded foreign-owned entry to the drain's principal), so it is characterized like every
+// other srv1 host-root write, and the executed selection (select_authorization_pattern over this effect) answers
+// AdministratorEdge. Two characterizations were also run and are not this effect: with no host-root reach and an
+// unbindable identity the selection admits NOTHING (federation refused on identity, operator approval and the
+// operator session refused on unattended), and as a break-glass effect it answers OperatorApprovedCapability, which
+// is the approval-broker route the analyze text used to name and which has no redeemer for this effect. The effect
+// recurs on any incident that leaves a foreign-owned entry, so it is not break-glass.
+data exit_spool_clear_has_no_realized_edge: DivergenceReason = DivergenceReason {
+  statement: "the selected administrator edge is unrealized; the verb renders the one argv and exits non-zero, and a privileged operator runs it by hand, so no credential or edge names the effect (belt_exit_stall_clear_cli never elevates itself)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy route runs its host-root effects under the administrator edge (plan gunbc.plans.srv1_deploy_principal_split stage 2, gated by deploy_route_switch_admitted), and belt_exit_stall_clear_cli executes the admitted argv through that edge instead of printing it. SUFFICIENT FOR overlaying this row as RealizedAdministratorEdge" as NonEmptyStr),
+}
+
 fn srv1_host_root_effect(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
@@ -892,6 +905,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_clear_at"),
+    effect: srv1_host_root_effect(subject: "re-own one recorded foreign-owned exit-spool entry to the drain's principal (install -d -o -g -m on <instance_root>/attempt-exit-spool/<stage>/<entry>), admitted only for an entry named in the current stall record, classified foreign-owned and a plain directory" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: exit_spool_clear_has_no_realized_edge },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
