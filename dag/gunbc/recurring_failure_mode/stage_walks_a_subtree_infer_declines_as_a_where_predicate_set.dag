@@ -2,12 +2,11 @@ module gunbc.recurring_failure_mode.stage_walks_a_subtree_infer_declines_as_a_wh
 
 import std.types { NonEmptyStr }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 
 data stage_walks_a_subtree_infer_declines_as_a_where_predicate_set: RecurringFailureMode = RecurringFailureMode {
   identity: "stage_walks_a_subtree_infer_declines_as_a_where_predicate_set" as NonEmptyStr,
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "every partition walker asks the one inferred-subtree predicate in v2.std.type_binder, so no walker can demand facts for a subtree infer declines" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed, because infer_where_predicate_set_edge and node_inferred_subtree_nodes (consumed by program_partition) both ask the one v2.std.type_binder where_predicate_set_edge, so a partition walker cannot demand facts for a subtree infer declines; the class is decidable and fully modeled, and a new walker that bypasses node_inferred_subtree_nodes is a separate walker, not this invalid state" } },
 
   receipts: [
     "INVALID STATE: a module declaring a where-refinement (`type Pos = Int where positive`) is refused at the partition closure as partition_facts_miss, so the program never reaches member emission. v2.compiler.program_partition partition_closure_entry_for_node demands a facts entry for every node of v2.std.type_binder node_inferred_subtree_nodes, and the facts lookup returns Absent for a node under the where-predicate set. HARM: a legal module is refused by a stage that has no opinion about refinements, and the refusal names a partition fact rather than the declined subtree. Sibling of the declaration-binder-edge case recorded at node_inferred_subtree_nodes.",
