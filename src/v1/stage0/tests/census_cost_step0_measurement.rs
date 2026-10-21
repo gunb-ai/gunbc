@@ -18,7 +18,8 @@
 use std::time::Instant;
 use v1_compiler::cli_run::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
-    compile_dag_diagnostic_census_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
+    compile_dag_diagnostic_census_memo_counts, pre_entry_phase,
+    reset_compile_dag_diagnostic_census_cost_counts, resolve_stage_totals,
 };
 
 /// module header / blank / one corpus import / one data. 4 lines, per the brief.
@@ -74,10 +75,16 @@ fn sample(calls: usize) -> Vec<String> {
         let rchar0 = proc_io("rchar:");
         let blk0 = proc_io("read_bytes:");
         let cpu0 = cpu_micros();
+        // Drain the phase receipt before the call so what prints below is THIS call's rows,
+        // and snapshot the cumulative stage account so the call's delta is readable as the
+        // difference between consecutive STAGE lines (the account is monotonic per process).
+        let _ = pre_entry_phase::take_rows_with_attribution();
         let t0 = Instant::now();
         let census = compile_dag_diagnostic_census(FIXTURE);
         let wall_us = t0.elapsed().as_micros() as u64;
         let cpu_us = cpu_micros().saturating_sub(cpu0);
+        let phase_rows = pre_entry_phase::take_rows_with_attribution();
+        let stage = resolve_stage_totals();
         let (ic, ie, vc, vl, r, b) = compile_dag_diagnostic_census_cost_counts();
         let (pic, pie, pvc, pvl, pr, pb) = prev;
         prev = (ic, ie, vc, vl, r, b);
@@ -85,9 +92,21 @@ fn sample(calls: usize) -> Vec<String> {
         out.push(format!(
             "CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={ic} INDEX_ENTRIES={ie} \
              VEC_CLONES={vc} VEC_LEN={vl} READS={r} DISK_BYTES={b} PROC_RCHAR={} PROC_BLK_BYTES={} \
+             STAGE{{load={}us parse={}us resolve={}us normalize={}us typecheck={}us \
+             reconcile_assembly={}us schedule={}us probe={}us graph={}us sym={}us}} \
              CENSUS={}",
             proc_io("rchar:").saturating_sub(rchar0),
             proc_io("read_bytes:").saturating_sub(blk0),
+            stage.load / 1000,
+            stage.parse / 1000,
+            stage.resolve / 1000,
+            stage.normalize / 1000,
+            stage.typecheck_compute / 1000,
+            stage.reconcile_assembly / 1000,
+            stage.assembly_schedule / 1000,
+            stage.assembly_probe / 1000,
+            stage.assembly_graph / 1000,
+            stage.assembly_symbol_index / 1000,
             match &census {
                 v1_compiler::cli_run::CompileDiagnosticCensus::Observed(rows) =>
                     format!("Observed({} rows)", rows.len()),
@@ -95,6 +114,9 @@ fn sample(calls: usize) -> Vec<String> {
                     format!("NotRunnable(len {})", cause.len()),
             }
         ));
+        for row in phase_rows {
+            out.push(format!("  PHASE {i}: {row}"));
+        }
     }
     out
 }
