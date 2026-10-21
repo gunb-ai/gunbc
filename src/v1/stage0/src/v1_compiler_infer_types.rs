@@ -1158,10 +1158,6 @@ pub fn enrich_base_with_fields(
     })
 }
 
-pub fn placeholder_type_node(name: String) -> Rc<Node> {
-    nominal_type_ref(name.clone())
-}
-
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2158,22 +2154,6 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
             }
             _ => error_type(),
         }
-    }
-}
-
-pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
-    ((((((binding.resolved.transport.clone() == std::option::Option::None)
-        && (binding.resolved.expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (binding.resolved.connective.clone() == Connective::NoConnective))
-        && (binding.resolved.inferred.clone() != std::option::Option::None))
-        && ((binding.resolved.properties.clone().len() as i64) == 0))
-        && (binding.resolved.type_annotation.clone() == std::option::Option::None))
-}
-
-pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
-    match resolved.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: ty, .. }) => ty.clone(),
-        _ => resolved,
     }
 }
 
