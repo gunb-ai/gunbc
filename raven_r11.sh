@@ -104,6 +104,12 @@ for pair in "v1_compiler_infer.rs:RAVENPROG|N|" "v1_compiler_emit_rust.rs:RAVENP
 done
 # the deleted spelling test must be gone from the generated code too
 grep -ac "param_node_type_expr(n: p)" "$CAND/v1_compiler_infer_resolve.rs" 2>/dev/null | sed 's/^/candidate_text_equality_must_be_0=/'
+for sym in raven_probe_kind_link measure_hit_text type_arg_kind_inhabitance ForwardedParameterKindUnresolved; do
+  files=$(grep -rlF "$sym" "$CAND" 2>/dev/null | sed "s|$CAND/||" | tr "\n" ",")
+  echo "CANDIDATE_HAS $sym in $files"
+  test -n "$files" || { echo "ABORT_CANDIDATE_MISSING $sym"; exit 47; }
+done
+
 
 echo "=== install EVERY file the round produced ==="
 test -n "$CAND_FILES" || { echo ABORT_NO_CANDIDATE_TREE; exit 48; }
@@ -186,6 +192,8 @@ python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
 grep -a native-census-infer /tmp/kin.txt | grep -a "std.measure\|std.realization" | cut -c1-400 | sed "s/^/PROG_KIN /"
 grep -a "RAVENPROG" /tmp/kin.txt | cut -c1-400 | sed "s/^/MINT_KIN /" | sort | uniq -c
+grep -ao "|K [^)]*" /tmp/kin.txt | cut -c1-70 | sort | uniq -c | sort -rn | head -30 | sed "s/^/KINDLINK /"
+grep -ao "|K [^)]*" /tmp/unk.txt | cut -c1-70 | sort | uniq -c | sort -rn | head -12 | sed "s/^/KINDLINK_UNK /"
 echo "KIN_capture_bytes=$(wc -c < /tmp/cen_k.out) $(wc -c < /tmp/cen_k.err)"
 echo "KIN_infer_lines_out=$(grep -ac native-census-infer /tmp/cen_k.out) KIN_infer_lines_err=$(grep -ac native-census-infer /tmp/cen_k.err)"
 echo "--- [native-census-infer] watched-module outcomes, kinded rung (pre-existing stderr relay, zero minting) ---"
@@ -263,6 +271,12 @@ for pair in "v1_compiler_infer.rs:RAVENPROG|N|" "v1_compiler_emit_rust.rs:RAVENP
 done
 # the deleted spelling test must be gone from the generated code too
 grep -ac "param_node_type_expr(n: p)" "$CAND/v1_compiler_infer_resolve.rs" 2>/dev/null | sed 's/^/candidate_text_equality_must_be_0=/'
+for sym in raven_probe_kind_link measure_hit_text type_arg_kind_inhabitance ForwardedParameterKindUnresolved; do
+  files=$(grep -rlF "$sym" "$CAND" 2>/dev/null | sed "s|$CAND/||" | tr "\n" ",")
+  echo "CANDIDATE_HAS $sym in $files"
+  test -n "$files" || { echo "ABORT_CANDIDATE_MISSING $sym"; exit 47; }
+done
+
 
 echo "=== install EVERY file the round produced ==="
 test -n "$CAND_FILES" || { echo ABORT_NO_CANDIDATE_TREE; exit 48; }
@@ -304,6 +318,8 @@ python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
 grep -a native-census-infer /tmp/kin.txt | grep -a "std.measure\|std.realization" | cut -c1-400 | sed "s/^/PROG_KIN /"
 grep -a "RAVENPROG" /tmp/kin.txt | cut -c1-400 | sed "s/^/MINT_KIN /" | sort | uniq -c
+grep -ao "|K [^)]*" /tmp/kin.txt | cut -c1-70 | sort | uniq -c | sort -rn | head -30 | sed "s/^/KINDLINK /"
+grep -ao "|K [^)]*" /tmp/unk.txt | cut -c1-70 | sort | uniq -c | sort -rn | head -12 | sed "s/^/KINDLINK_UNK /"
 echo "KIN_capture_bytes=$(wc -c < /tmp/cen_k.out) $(wc -c < /tmp/cen_k.err)"
 echo "KIN_infer_lines_out=$(grep -ac native-census-infer /tmp/cen_k.out) KIN_infer_lines_err=$(grep -ac native-census-infer /tmp/cen_k.err)"
 echo "--- [native-census-infer] watched-module outcomes, kinded rung (pre-existing stderr relay, zero minting) ---"
