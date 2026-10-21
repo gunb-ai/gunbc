@@ -5,7 +5,7 @@ import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key,
-  // CLASS-SCOPED COUNTING (a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint): keyed counting
+  // CLASS-SCOPED COUNTING (a_run_id_where_a_rule_id_belongs_is_refused_at_the_row): keyed counting
   // is census_count_at_key's job; the class-only denominator belongs here because a claim that must
   // count "every row of a class, whatever the host renders the subject as" is not a guess at a key.
   census_rows_of_class,
@@ -122,26 +122,36 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
 }
 
 // (a2) THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825, folded per warm-crane-219's split).
-// Both axes were `Int`, so the probe's mint call handed the RUN's digits to the rule-id slot and the call
-// COMPILED -- the mint's RuleIsNotTheOneRequested arm then compared run digits against rule digits, a
-// question with two different upstream objects that Int answers as if they were one. The rule id now has
-// its own carrier beside the rule model (extdeps.github.deployment_protection_rule); with it in place this
-// forgery is a TypeMismatch at the callee, keyed by the argument's type. THE CLAIM IS DELIBERATELY WRITTEN
-// BEFORE THE CARRIER (RED-first): today the line compiles, the row is absent, and this claim is red. The
-// control -- which names the mint and imports everything the probe attacks but calls nothing -- must read
-// ZERO at the same key, so the row cannot be an artifact of importing the module rather than forging.
-test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint() -> Bool {
-  // CLASS-SCOPED, CONTROL-DISCRIMINATED. A keyed subject was tried first (`Primitive(Int)`) and read
-  // zero: the census keys a TypeMismatch by the ARGUMENT'S OWN shape, and `node_type_shape` renders a
-  // reference to a named Int datum by its authored name, not by the kernel word `Int` -- so pinning a
-  // literal subject string here would encode a guess about the host's rendering rather than the fact
-  // under test. The fact under test is not "some row named Int exists"; it is "the probe's forged call
-  // is refused at the mint for TYPE, and importing the mint alone is not." That is exactly what a
-  // class count read against the control establishes: the control imports the mint and every witness
-  // proxy and CALLS NOTHING, so it contributes no call-argument TypeMismatch. Any such row therefore
-  // belongs to a cross-type FORGERY, and the only cross-type call in the probe is the run id handed to
-  // the rule slot. Delete the carrier and the forged line compiles, the row vanishes, and this goes red
-  // -- which is the whole point of the RED written before the GREEN.
+// Both axes were `Int`, so feeding the RUN's digits to a rule-id slot compiled -- GitHub's own readback
+// type (EnabledDeploymentProtectionRule.id) took them as a rule's id, and the mint downstream compared
+// them digit-for-digit against the caller's claimed rule, two different upstream objects answering as
+// one. The rule id now has its own carrier beside the rule model (extdeps.github.deployment_protection_rule);
+// with it in place the probe's forged_rule_row_from_run_digits is refused AT THE RECORD for type.
+//
+// WHY THE ROW, NOT THE MINT (learned the hard way, so it is recorded rather than repeated). The first cut
+// forged the run id in the mint_accepted_rule_review requested_rule_id PARAMETER and keyed the census on
+// subject "Primitive(Int)"; it read zero, for two stacked reasons. (1) node_type_shape renders a
+// reference to a named Int datum by its AUTHORED NAME, not the kernel word Int, so the keyed subject was
+// a guess about the host's rendering. (2) More fundamentally, mint_accepted_rule_review is
+// admit_callers-confined: a foreign call is refused by the ADMISSION GATE before any argument is
+// type-checked, so a wrong type at a confined callee hides BEHIND the admission refusal -- the census
+// sees ConstructorCallAdmissionRefused (the claim above) and no type wall at all. The very mints this
+// probe seals are the wrong place to witness a TYPE refusal. The readback row is the right place: it is
+// a plain record (the wire carries its digits, so it cannot be sole_constructor-confined, exactly like
+// GitHubAppInstallationId), nothing gates it, and its id is what every downstream consumer
+// (RuleIsNotTheOneRequested first) compares against. The carrier guards the axis there.
+//
+// CLASS-SCOPED AND CONTROL-DISCRIMINATED, for the same reason: the census keys a TypeMismatch by the
+// offending expression's own shape as the host renders it, and pinning that string would test a guess.
+// The control imports the row's type, the mints and the witness proxies, WRITES NO LITERAL and CALLS
+// NOTHING, so it contributes no TypeMismatch by construction; a nonzero probe count against a zero
+// control count can therefore only be a cross-type FORGERY being refused. And the >= 1 is discriminating,
+// not merely satisfiable by anything of the class: every OTHER forgery in this probe is refused for SEAL
+// or for ADMISSION (SoleConstructorViolation, ConstructorCallAdmissionRefused -- the claims below), never
+// for TYPE; before the carrier this whole file type-checked, so the TypeMismatch class in this probe had
+// exactly one possible source, this line. Delete the carrier and forged_rule_row_from_run_digits compiles,
+// the row vanishes, and this claim goes red -- the whole point of a RED written before its GREEN.
+test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
   probe_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
 }
 

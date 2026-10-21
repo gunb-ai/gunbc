@@ -168,14 +168,15 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
     },
     status: 204,
     ownership: forged_ownership,
-    // THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825). This is the discriminating forgery:
-    // forged_run_id is an Int and the slot now demands GitHubDeploymentProtectionRuleId, so the call is
-    // refused AT THE MINT with a TypeMismatch -- the confusion the review found is unwritable, not checked.
-    // Before the carrier this line compiled and the mint's own RuleIsNotTheOneRequested arm answered a
-    // question about two different upstream objects by comparing their digits. The witness claim
-    // a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint reads exactly this row out of the census;
-    // delete the carrier and the row disappears and the claim goes red.
-    requested_rule_id: forged_run_id,
+    // WELL-FORMED ON PURPOSE. This mint is admit_callers-confined: a foreign call is refused by the
+    // ADMISSION GATE before any argument is ever type-checked (that refusal is the probe's own claim
+    // a_foreign_call_to_the_... family), so a wrong TYPE here would be hidden behind the admission
+    // refusal and the census would see nothing. The cross-axis type refusal is witnessed instead at
+    // forged_rule_row_from_run_digits -- the readback row, whose id every consumer of this mint
+    // (RuleIsNotTheOneRequested first) compares against. The digits here are the run's, wrapped: the
+    // carrier guards the AXIS, and this line shows it accepting anything already on the rule axis,
+    // which is why the mint still has to re-check the digits against the readback's own attribution.
+    requested_rule_id: GitHubDeploymentProtectionRuleId { value: forged_run_id },
   )
 }
 
@@ -201,6 +202,24 @@ fn forge_an_observed_installation() -> InstallationObservation {
 
 // (c) THE FORGED OWNERSHIP, obtained through the fold. This is the call the model used to allow with a
 // caller-supplied App id; the admission is what closed it.
+// THE CROSS-AXIS FORGERY (review 83825): a RUN ID fed to a RULE-ID slot. This is the line the review
+// asked to make unwritable, and the line that PROVES the carrier works. Before the carrier `id` was Int
+// and this exact call compiled -- GitHub's own readback type accepted the run's digits as a rule's id,
+// and the mint downstream compared them against the caller's claimed rule digit-for-digit, two different
+// upstream objects answering as one. Now `id: forged_run_id` (an Int datum) meets a field that demands
+// GitHubDeploymentProtectionRuleId and the compiler refuses the record literal on type. A plain record
+// (NOT sole_constructor -- GitHub's readback response carries the digits, so a reader of the wire must
+// be able to build it, exactly like GitHubAppInstallationId), so there is no seal in front of this
+// refusal and the census can see the type wall directly. The witness claim
+// a_run_id_where_a_rule_id_belongs_is_refused_at_the_row reads the row out of the census, class-scoped
+// and control-discriminated; delete the carrier and the row disappears and the claim goes red.
+data forged_rule_row_from_run_digits: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
+  id: forged_run_id,
+  node_id: "DPPR_forged",
+  enabled: true,
+  app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },
+}
+
 fn forge_an_ownership() -> EnvironmentRuleOwnership {
   observe_rule_ownership(
     rules: [
