@@ -1,0 +1,154 @@
+module test.claim.floor_expected_red_retirement_witness
+
+import std.types { Bool, List }
+// `any` is a free-call primitive (see v2.workflow.witness_admission, which calls it un-imported);
+// the imported helpers are the ones std.algebra actually declares.
+import std.algebra { fold_list, list_append, Empty }
+import gunbc.declined_live_tree_defect_classification { ClosureReceipt }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger { ClaimExpectation }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule, WetScheduledClaim }
+import v2.workflow.floor_expected_red {
+  RetiredExpectedRedRow,
+  floor_expected_red_retired_rows,
+  floor_expected_red_chunks,
+}
+
+// THE READER OF THE RETIREMENT CARRIER. `v2.workflow.floor_expected_red`
+// `floor_expected_red_retired_rows` records, as DATA, why each row left the ExpectedRed roster and
+// what closed it. A roster nobody reads is a comment in a `.dag` file, so this witness is the fold
+// that makes it a roster: over the live populations only (the roster's own chunks, the wet lane's
+// own schedule, the carrier's own rows — nothing hand-counted here), it refuses when
+//   1. a retired identity is STILL enrolled as ExpectedRed (the carrier and the roster disagree), or
+//   2. a retired identity is not scheduled by `local_repo_wet_schedule()` with `ExpectedToHold`
+//      (the retirement silently became "nothing runs it any more" — the defect DESIGN §4b(4) exists
+//      to prevent: a probe that greens stays enrolled as a permanent regression control), or
+//   3. a row carries an empty closure receipt (a retirement nobody closed).
+// THIS FILE IS ITSELF ON THE WET SCHEDULE, so the join runs on every dispatch of the lane — the
+// same mechanism that gives the four moved controls their tripwire. If a future retirement breaks
+// any of the three, this claim goes red on the lane and the known-red instrument names it.
+
+fn enrolled_expected_red_identities() -> List<String> {
+  fold_list(
+    xs: floor_expected_red_chunks(),
+    empty: Empty {},
+    cons: fn(acc, chunk) { list_append(left: acc, right: chunk) }
+  )
+}
+
+fn expectation_is_expected_to_hold(e: ClaimExpectation) -> Bool {
+  match e {
+    ExpectedToHold => true
+    ExpectedRed => false
+  }
+}
+
+// THE JOIN, over caller-supplied populations so the same code carries the live claim AND its
+// discriminating controls (a predicate that only ever sees the live tree cannot show it refuses).
+fn retired_rows_accounted_for_in(
+  rows: List<RetiredExpectedRedRow>,
+  enrolled: List<String>,
+  schedule: List<WetScheduledClaim>
+) -> Bool {
+  // refuse an empty carrier: a retirement record that recorded nothing is how a roster goes missing.
+  (length(xs: rows) >= 1)
+    && fold_list(
+      xs: rows,
+      empty: true,
+      cons: fn(acc, r) {
+        acc
+          && !(any(xs: enrolled, predicate: fn(id) { id == r.identity }))
+          && any(
+            xs: schedule,
+            predicate: fn(s) {
+              (witness_identity_qualified_name(identity: s.identity) == r.identity)
+                && expectation_is_expected_to_hold(e: s.expectation)
+            }
+          )
+          && any(xs: r.closure.closed_by, predicate: fn(c) { !(c == "") })
+          && !(r.closure.re_measured_at == "")
+      }
+    )
+}
+
+// THE LIVE JOIN. Every row the carrier records is de-enrolled, scheduled ExpectedToHold, and receipted.
+test fn retired_rows_are_accounted_for() -> Bool {
+  retired_rows_accounted_for_in(
+    rows: floor_expected_red_retired_rows(),
+    enrolled: enrolled_expected_red_identities(),
+    schedule: local_repo_wet_schedule()
+  )
+}
+
+// THE JOIN DISCRIMINATES, in all three of its arms, on synthetic populations — the live populations
+// cannot show refusal, so each control falsifies exactly one arm.
+fn control_row(identity: String) -> RetiredExpectedRedRow {
+  RetiredExpectedRedRow {
+    identity: identity,
+    standing_before: "synthetic",
+    why: "synthetic control row",
+    closure: ClosureReceipt {
+      closed_by: ["synthetic closure receipt"],
+      re_measured_at: "synthetic re-measurement",
+    },
+  }
+}
+
+// the shared synthetic population: one carrier row, scheduled ExpectedToHold, not enrolled.
+data control_identity: String = "test.claim.synthetic_retirement_fixture.synthetic_retired_control"
+data control_entry: String = "dag/test/claim/synthetic_retirement_fixture.dag"
+
+fn control_schedule(e: ClaimExpectation) -> List<WetScheduledClaim> {
+  [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.synthetic_retirement_fixture", function: "synthetic_retired_control" },
+      entry: control_entry,
+      function: "synthetic_retired_control",
+      expectation: e
+    },
+  ]
+}
+
+// CONTROL, arm 1: the SAME row passes when de-enrolled and REFUSES when its identity is enrolled.
+test fn the_enrolment_arm_refuses_a_still_enrolled_identity() -> Bool {
+  let row = control_row(identity: control_identity)
+  let rows = [row]
+  let scheduled = control_schedule(e: ExpectedToHold {})
+  // arm passes on the honest population
+  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: scheduled)
+  // arm refuses when the carrier's identity is still enrolled
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: [control_identity], schedule: scheduled))
+}
+
+// CONTROL, arm 2: the SAME row passes when scheduled ExpectedToHold and REFUSES when it is missing
+// from the schedule, and again when it is scheduled under the wrong expectation.
+test fn the_schedule_arm_refuses_a_missing_or_mis_expectationed_row() -> Bool {
+  let row = control_row(identity: control_identity)
+  let rows = [row]
+  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedToHold {}))
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: Empty {}))
+    && !(retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: control_schedule(e: ExpectedRed {})))
+}
+
+// CONTROL, arm 3: the SAME row passes with a receipt and REFUSES with neither closed_by nor
+// re-measurement filled in.
+test fn the_receipt_arm_refuses_an_unreceipted_row() -> Bool {
+  let row = control_row(identity: control_identity)
+  let rows = [row]
+  let scheduled = control_schedule(e: ExpectedToHold {})
+  let no_closed = RetiredExpectedRedRow {
+    identity: row.identity,
+    standing_before: row.standing_before,
+    why: row.why,
+    closure: ClosureReceipt { closed_by: Empty {}, re_measured_at: row.closure.re_measured_at },
+  }
+  let no_remeasure = RetiredExpectedRedRow {
+    identity: row.identity,
+    standing_before: row.standing_before,
+    why: row.why,
+    closure: ClosureReceipt { closed_by: row.closure.closed_by, re_measured_at: "" },
+  }
+  retired_rows_accounted_for_in(rows: rows, enrolled: Empty {}, schedule: scheduled)
+    && !(retired_rows_accounted_for_in(rows: [no_closed], enrolled: Empty {}, schedule: scheduled))
+    && !(retired_rows_accounted_for_in(rows: [no_remeasure], enrolled: Empty {}, schedule: scheduled))
+}
