@@ -2,7 +2,7 @@ module test.claim.algebra_receiver_alias_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present, Absent }
-import std.algebra { string_contains, concat }
+import std.algebra { string_contains }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_int_text }
 
