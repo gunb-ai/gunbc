@@ -1,0 +1,522 @@
+module std.predictive_claim
+
+import std.types { Bool, CommitSha, EpochMs, FilePath, Int, List, Milliseconds, NonEmptyStr }
+import std.claim_evidence { Claim, ClaimId, RecordedFact }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// DESIGN 4d: a citation grounds the factual basis, not the prediction derived from it.
+// DESIGN 4b is an independent axis: this module does not assign compiler guarantee rungs.
+// Scope is a conjunction. Narrowing adds a restriction; it cannot silently widen the old scope.
+//
+// DESIGN 3b boundary with std.claim_evidence: Claim and RecordedFact are shared identities.
+// This carrier replays a prediction's test protocol over supplied observations; its receipts do
+// not admit those observations as descriptive evidence under an EvidenceAdmissionPolicy.
+// EvidenceLink requires an inference rule, PROV entity/activity/agent, exact maximum conclusion,
+// fidelity and a whole-link relation. The historical consumers have reports and incomplete
+// ordering evidence, not that grounded provenance. Filling those dimensions with inferred IDs
+// merely to wrap a receipt would fabricate the missing evidence. No test-match-to-EvidenceSupports
+// adapter is therefore supplied. A consumer that needs descriptive evidence or readiness must
+// supply the missing grounds and inhabit EvidenceLink/EvidenceInference and the canonical
+// admission policy; it cannot use PredictiveStanding as a ClaimReadinessReceipt.
+type PredictionRestriction<S> {
+  reason: NonEmptyStr
+  admits: fn(S) -> Bool
+}
+
+type AdversarialTestingObligation {
+  owner: DeclarationRef
+  next_discriminator: NonEmptyStr
+}
+
+type PredictionObservationWindow
+  = BoundedPredictionWindow { duration: Milliseconds }
+  | ApproximatePredictionWindow { duration: Milliseconds }
+  | PredictionWindowNotRecorded
+
+type PredictionObservationWindowFold<R> {
+  bounded: fn(Milliseconds) -> R
+  approximate: fn(Milliseconds) -> R
+  unrecorded: R
+}
+
+fn prediction_observation_window_fold<R>(
+  window: PredictionObservationWindow,
+  fold: PredictionObservationWindowFold<R>,
+) -> R {
+  match window {
+    BoundedPredictionWindow { duration: duration } => fold.bounded(duration)
+    ApproximatePredictionWindow { duration: duration } => fold.approximate(duration)
+    PredictionWindowNotRecorded => fold.unrecorded
+  }
+}
+
+type Prediction<S, O> {
+  claim: Claim<DeclarationRef, DeclarationRef, O, List<PredictionRestriction<S>>, PredictionObservationWindow>
+  statement: NonEmptyStr
+  factual_basis: DeclarationRef
+  further_factual_basis: List<DeclarationRef>
+  falsifier: O
+  obligation: AdversarialTestingObligation
+}
+
+// Isolation is a property of the design, not a confidence number inferred from a match.
+// PredictionTestDiscrimination is the domain vocabulary suitable for EvidenceLink's open
+// Independence parameter when that grounded link exists. It describes the supplied test design;
+// keeping it on a protocol receipt does not establish canonical evidence admission.
+type PredictionTestDiscrimination
+  = IsolatedMechanism { isolation_evidence: DeclarationRef }
+  | ConfoundedMechanisms { first_confound: NonEmptyStr, further_confounds: List<NonEmptyStr> }
+
+type PredictionTestDiscriminationFold<R> {
+  isolated: fn(DeclarationRef) -> R
+  confounded: fn(NonEmptyStr, List<NonEmptyStr>) -> R
+}
+
+fn prediction_test_discrimination_fold<R>(
+  discrimination: PredictionTestDiscrimination,
+  fold: PredictionTestDiscriminationFold<R>,
+) -> R {
+  match discrimination {
+    IsolatedMechanism { isolation_evidence: evidence } => fold.isolated(evidence)
+    ConfoundedMechanisms { first_confound: first, further_confounds: further } => fold.confounded(first, further)
+  }
+}
+
+// Retrievability established only after the outcome does not establish pre-outcome publication.
+// Identity history records corrections/amendments without silently replacing the earlier citation.
+type PostOutcomePredictionArchive {
+  commit: CommitSha
+  artifact: FilePath
+  archive_ref: NonEmptyStr
+  identity_history: NonEmptyStr
+  report: DeclarationRef
+}
+
+// Registration records ordering and artifact-identity limitations, which EvidenceProvenance's
+// entity/activity/agent IDs and EvidenceFreshness's maximum conclusion do not express. It is not
+// a replacement provenance claim: even PreregisteredPrediction is conditional on supplied clock
+// observations, and an archive's Git identity supplies no missing PROV agent or activity witness.
+type PredictionRegistration
+  = ConversationOnly { report: DeclarationRef }
+  | CommittedPredictionWithoutWitnessedOrder { commit: CommitSha, artifact: FilePath, report: DeclarationRef }
+  | PostOutcomeArchivedPrediction { archive: PostOutcomePredictionArchive }
+  | PreregisteredPrediction {
+      commit: CommitSha,
+      declaration: DeclarationRef,
+      recorded_at: EpochMs,
+      started_at: EpochMs,
+      observed_at: EpochMs,
+    }
+
+type PredictionRegistrationFold<R> {
+  conversation_only: fn(DeclarationRef) -> R
+  committed_unwitnessed: fn(CommitSha, FilePath, DeclarationRef) -> R
+  archived_after_outcome: fn(PostOutcomePredictionArchive) -> R
+  preregistered: fn(CommitSha, DeclarationRef, EpochMs, EpochMs, EpochMs) -> R
+}
+
+fn prediction_registration_fold<R>(
+  registration: PredictionRegistration,
+  fold: PredictionRegistrationFold<R>,
+) -> R {
+  match registration {
+    ConversationOnly { report: report } => fold.conversation_only(report)
+    CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: report } =>
+      fold.committed_unwitnessed(commit, artifact, report)
+    PostOutcomeArchivedPrediction { archive: archive } => fold.archived_after_outcome(archive)
+    PreregisteredPrediction { commit: commit, declaration: declaration, recorded_at: recorded, started_at: started, observed_at: observed } =>
+      fold.preregistered(commit, declaration, recorded, started, observed)
+  }
+}
+
+// This deliberate protocol vocabulary compares an observed O to the declared expected O and
+// falsifier O. Consistency is not EvidenceSupports: the restart proxy can match while its cause
+// remains unknown. Inconclusive means neither declared outcome matched, not a decision by an
+// EvidenceAdmissionPolicy about otherwise applicable evidence. EvidenceDirection and
+// EvidenceInsufficiency remain the authority when a grounded descriptive inference is made.
+type PredictionTestVerdict
+  = ConsistentWithPrediction
+  | ContradictsPrediction
+  | PredictionTestInconclusive
+
+type PredictionTestVerdictFold<R> {
+  consistent: R
+  contradicts: R
+  inconclusive: R
+}
+
+fn prediction_test_verdict_fold<R>(verdict: PredictionTestVerdict, fold: PredictionTestVerdictFold<R>) -> R {
+  match verdict {
+    ConsistentWithPrediction => fold.consistent
+    ContradictsPrediction => fold.contradicts
+    PredictionTestInconclusive => fold.inconclusive
+  }
+}
+
+type PredictionTestReceipt<S, O> {
+  configuration: S
+  observation: RecordedFact<O>
+  source: DeclarationRef
+  registration: PredictionRegistration
+  discrimination: PredictionTestDiscrimination
+  verdict: PredictionTestVerdict
+}
+
+type SupersededPrediction<S, O> {
+  prediction: Prediction<S, O>
+  tests: List<PredictionTestReceipt<S, O>>
+  falsifying_receipt: PredictionTestReceipt<S, O>
+  added_restriction: PredictionRestriction<S>
+}
+
+type PredictiveModel<S, O> sole_constructor {
+  prediction: Prediction<S, O>
+  tests: List<PredictionTestReceipt<S, O>>
+  superseded: List<SupersededPrediction<S, O>>
+}
+
+type PredictiveClaimRefusal
+  = IndistinguishablePredictionAndFalsifier
+  | PredictionScopeExcluded
+  | PredictionRequiresNarrowing
+  | PredictionNotFalsified
+  | PredictionRevisionReused
+  | NarrowingRetainsCounterexample
+  | NarrowingHasNoRetainedSubject
+  | DuplicatePredictionObservation
+  | PredictionNotRecordedBeforeStart
+  | PredictionSnapshotPredatesItsEvidence
+  | PredictionObservationBeforeStart
+  | PredictionObservationBeyondBound
+  | PredictionWindowRequired
+
+type PredictiveModelResult<S, O>
+  = PredictiveModelAccepted { model: PredictiveModel<S, O> }
+  | PredictiveModelRefused { cause: PredictiveClaimRefusal }
+
+fn begin_predictive_model<S, O>(prediction: Prediction<S, O>) -> PredictiveModelResult<S, O> {
+  if prediction.claim.proposition == prediction.falsifier {
+    PredictiveModelRefused { cause: IndistinguishablePredictionAndFalsifier }
+  } else {
+    PredictiveModelAccepted { model: PredictiveModel { prediction: prediction, tests: [], superseded: [] } }
+  }
+}
+
+fn predictive_scope_admits<S, O>(model: PredictiveModel<S, O>, configuration: S) -> Bool {
+  all(model.prediction.claim.scope, restriction => restriction.admits(configuration))
+}
+
+fn predictive_falsifiers<S, O>(model: PredictiveModel<S, O>) -> List<PredictionTestReceipt<S, O>> {
+  model.tests |> filter(receipt => prediction_test_verdict_fold(
+    verdict: receipt.verdict,
+    fold: PredictionTestVerdictFold { consistent: false, contradicts: true, inconclusive: false },
+  ))
+}
+
+fn predictive_test_verdict<S, O>(prediction: Prediction<S, O>, observed: O) -> PredictionTestVerdict {
+  if observed == prediction.falsifier {
+    ContradictsPrediction
+  } else if observed == prediction.claim.proposition {
+    ConsistentWithPrediction
+  } else {
+    PredictionTestInconclusive
+  }
+}
+
+// This is the observation-input boundary, not a Git verifier. The recording producer must
+// supply the model read from the named immutable commit, and independent recording/start times.
+// A commit's author date is not evidence of publication time. The pure model enforces ordering
+// over those supplied observations; it cannot prove that hardware or a clock told the truth.
+// Keeping the entire committed snapshot here prevents substituting a separate current draft.
+type CommittedPredictionObservation<S, O> {
+  snapshot: PredictiveModel<S, O>
+  commit: CommitSha
+  declaration: DeclarationRef
+  recorded_at: EpochMs
+}
+
+type StartedPredictiveTest<S, O> sole_constructor {
+  committed: CommittedPredictionObservation<S, O>
+  configuration: S
+  discrimination: PredictionTestDiscrimination
+  started_at: EpochMs
+}
+
+type PredictiveTestStart<S, O>
+  = PredictiveTestStarted { test: StartedPredictiveTest<S, O> }
+  | PredictiveTestStartRefused { cause: PredictiveClaimRefusal }
+
+fn predictive_receipt_precedes_commit<S, O>(receipt: PredictionTestReceipt<S, O>, recorded_at: EpochMs) -> Bool {
+  prediction_registration_fold(registration: receipt.registration, fold: PredictionRegistrationFold {
+    conversation_only: fn(_) { true },
+    committed_unwitnessed: fn(_, _, _) { true },
+    archived_after_outcome: fn(_) { true },
+    preregistered: fn(_, _, _, _, observed) { observed < recorded_at },
+  })
+}
+
+fn start_predictive_test<S, O>(
+  committed: CommittedPredictionObservation<S, O>,
+  configuration: S,
+  discrimination: PredictionTestDiscrimination,
+  started_at: EpochMs,
+) -> PredictiveTestStart<S, O> {
+  if prediction_observation_window_fold(window: committed.snapshot.prediction.claim.bound,
+    fold: PredictionObservationWindowFold {
+      bounded: fn(duration) { duration == 0 }, approximate: fn(_) { true }, unrecorded: true,
+    },
+  ) {
+    PredictiveTestStartRefused { cause: PredictionWindowRequired }
+  } else if committed.recorded_at >= started_at {
+    PredictiveTestStartRefused { cause: PredictionNotRecordedBeforeStart }
+  } else if !all(committed.snapshot.tests, receipt => predictive_receipt_precedes_commit(receipt: receipt, recorded_at: committed.recorded_at))
+    || !all(committed.snapshot.superseded, version => all(version.tests, receipt => predictive_receipt_precedes_commit(receipt: receipt, recorded_at: committed.recorded_at))) {
+    PredictiveTestStartRefused { cause: PredictionSnapshotPredatesItsEvidence }
+  } else if count(predictive_falsifiers(model: committed.snapshot)) > 0 {
+    PredictiveTestStartRefused { cause: PredictionRequiresNarrowing }
+  } else if !predictive_scope_admits(model: committed.snapshot, configuration: configuration) {
+    PredictiveTestStartRefused { cause: PredictionScopeExcluded }
+  } else {
+    PredictiveTestStarted { test: StartedPredictiveTest {
+      committed: committed, configuration: configuration,
+      discrimination: discrimination, started_at: started_at,
+    } }
+  }
+}
+
+fn append_predictive_observation<S, O>(
+  model: PredictiveModel<S, O>,
+  configuration: S,
+  observation: RecordedFact<O>,
+  source: DeclarationRef,
+  registration: PredictionRegistration,
+  discrimination: PredictionTestDiscrimination,
+) -> PredictiveModelResult<S, O>
+  admit_callers: [
+    decl_ref(module_path: "std.predictive_claim", decl_name: "observe_predictive_test"),
+    decl_ref(module_path: "std.predictive_claim", decl_name: "record_conversation_prediction_test"),
+    decl_ref(module_path: "std.predictive_claim", decl_name: "record_committed_prediction_test"),
+    decl_ref(module_path: "std.predictive_claim", decl_name: "record_archived_prediction_test"),
+  ]
+{
+  if count(predictive_falsifiers(model: model)) > 0 {
+    PredictiveModelRefused { cause: PredictionRequiresNarrowing }
+  } else if !predictive_scope_admits(model: model, configuration: configuration) {
+    PredictiveModelRefused { cause: PredictionScopeExcluded }
+  } else if any(model.tests, receipt => receipt.observation.id == observation.id)
+    || any(model.superseded, version => any(version.tests, receipt => receipt.observation.id == observation.id)) {
+    PredictiveModelRefused { cause: DuplicatePredictionObservation }
+  } else {
+    PredictiveModelAccepted { model: PredictiveModel {
+      prediction: model.prediction,
+      tests: append(model.tests, items: [PredictionTestReceipt {
+        configuration: configuration, observation: observation, source: source,
+        registration: registration, discrimination: discrimination,
+        verdict: predictive_test_verdict(prediction: model.prediction, observed: observation.value),
+      }]),
+      superseded: model.superseded,
+    } }
+  }
+}
+
+fn observe_predictive_test<S, O>(
+  test: StartedPredictiveTest<S, O>,
+  observation: RecordedFact<O>,
+  source: DeclarationRef,
+  observed_at: EpochMs,
+) -> PredictiveModelResult<S, O> {
+  if observed_at < test.started_at {
+    PredictiveModelRefused { cause: PredictionObservationBeforeStart }
+  } else if prediction_observation_window_fold(window: test.committed.snapshot.prediction.claim.bound,
+    fold: PredictionObservationWindowFold {
+      bounded: fn(duration) { observed_at - test.started_at > duration },
+      approximate: fn(_) { true }, unrecorded: true,
+    },
+  ) {
+    PredictiveModelRefused { cause: PredictionObservationBeyondBound }
+  } else {
+    append_predictive_observation(
+      model: test.committed.snapshot, configuration: test.configuration,
+      observation: observation, source: source, discrimination: test.discrimination,
+      registration: PreregisteredPrediction {
+        commit: test.committed.commit, declaration: test.committed.declaration,
+        recorded_at: test.committed.recorded_at, started_at: test.started_at,
+        observed_at: observed_at,
+      },
+    )
+  }
+}
+
+// Historical imports have no route to the preregistered arm. Their result can still challenge a
+// claim, but can never acquire the strength of a prediction committed before the intervention.
+fn record_conversation_prediction_test<S, O>(
+  model: PredictiveModel<S, O>,
+  configuration: S,
+  observation: RecordedFact<O>,
+  report: DeclarationRef,
+  discrimination: PredictionTestDiscrimination,
+) -> PredictiveModelResult<S, O> {
+  append_predictive_observation(
+    model: model, configuration: configuration, observation: observation, source: report,
+    registration: ConversationOnly { report: report }, discrimination: discrimination,
+  )
+}
+
+// An immutable prediction artifact is more evidence than a recollection of conversation, but
+// a commit and a controller's SEL clock do not establish an independently witnessed ordering.
+fn record_committed_prediction_test<S, O>(
+  model: PredictiveModel<S, O>,
+  configuration: S,
+  observation: RecordedFact<O>,
+  commit: CommitSha,
+  artifact: FilePath,
+  report: DeclarationRef,
+  discrimination: PredictionTestDiscrimination,
+) -> PredictiveModelResult<S, O> {
+  append_predictive_observation(
+    model: model, configuration: configuration, observation: observation, source: report,
+    registration: CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: report },
+    discrimination: discrimination,
+  )
+}
+
+// Archiving an unchanged historical object is useful evidence, but cannot retroactively earn
+// the registration standing of an independently retrievable pre-intervention snapshot.
+fn record_archived_prediction_test<S, O>(
+  model: PredictiveModel<S, O>,
+  configuration: S,
+  observation: RecordedFact<O>,
+  source: DeclarationRef,
+  archive: PostOutcomePredictionArchive,
+  discrimination: PredictionTestDiscrimination,
+) -> PredictiveModelResult<S, O> {
+  append_predictive_observation(
+    model: model, configuration: configuration, observation: observation, source: source,
+    registration: PostOutcomeArchivedPrediction { archive: archive }, discrimination: discrimination,
+  )
+}
+
+// Counterexamples force a new revision with a strictly smaller scope: the old scope is preserved
+// in full, and the added predicate must exclude the observed counterexample. The killed version
+// and ALL its receipts remain in the lineage. A restriction's physical meaning remains an
+// empirical claim; excluding a point is not evidence that the new boundary generalizes.
+fn narrow_predictive_model<S, O>(
+  model: PredictiveModel<S, O>,
+  revision: ClaimId,
+  statement: NonEmptyStr,
+  restriction: PredictionRestriction<S>,
+  retained_configuration: S,
+  obligation: AdversarialTestingObligation,
+) -> PredictiveModelResult<S, O> {
+  let falsifiers = predictive_falsifiers(model: model)
+  if count(falsifiers) == 0 {
+    PredictiveModelRefused { cause: PredictionNotFalsified }
+  } else if revision == model.prediction.claim.id
+    || any(model.superseded, version => version.prediction.claim.id == revision) {
+    PredictiveModelRefused { cause: PredictionRevisionReused }
+  } else if any(falsifiers, receipt => restriction.admits(receipt.configuration)) {
+    PredictiveModelRefused { cause: NarrowingRetainsCounterexample }
+  } else if !predictive_scope_admits(model: model, configuration: retained_configuration)
+    || !restriction.admits(retained_configuration) {
+    PredictiveModelRefused { cause: NarrowingHasNoRetainedSubject }
+  } else {
+    let retired = falsifiers |> map(receipt => SupersededPrediction {
+      prediction: model.prediction, tests: model.tests,
+      falsifying_receipt: receipt, added_restriction: restriction,
+    })
+    PredictiveModelAccepted { model: PredictiveModel {
+      prediction: Prediction {
+        claim: Claim {
+          id: revision, subject: model.prediction.claim.subject,
+          target: model.prediction.claim.target, proposition: model.prediction.claim.proposition,
+          scope: append(model.prediction.claim.scope, items: [restriction]),
+          bound: model.prediction.claim.bound,
+        },
+        statement: statement, factual_basis: model.prediction.factual_basis,
+        further_factual_basis: model.prediction.further_factual_basis,
+        falsifier: model.prediction.falsifier, obligation: obligation,
+      },
+      tests: [], superseded: append(model.superseded, items: retired),
+    } }
+  }
+}
+
+// No terminal "testing fulfilled" arm exists. Surviving observations discharge a particular
+// test, never the continuing obligation to look for the next edge of a predictive claim.
+type PredictiveNextObligation
+  = AdversarialTestRequired { obligation: AdversarialTestingObligation }
+  | CounterexampleNarrowingRequired { obligation: AdversarialTestingObligation }
+
+fn predictive_next_obligation<S, O>(model: PredictiveModel<S, O>) -> PredictiveNextObligation {
+  if count(predictive_falsifiers(model: model)) > 0 {
+    CounterexampleNarrowingRequired { obligation: model.prediction.obligation }
+  } else {
+    AdversarialTestRequired { obligation: model.prediction.obligation }
+  }
+}
+
+// ClaimAssessment/claim_information_state answer the support/challenge information question.
+// These counts instead preserve prospective-test strength and falsification-driven revision
+// history: neither the four information states nor ClaimReadinessReceipt distinguishes an
+// untested narrowed revision from five surviving tests. No standing here discharges evidence
+// admission or establishes readiness; the continuing testing obligation remains a separate fact.
+type PredictiveStanding
+  = UntestedPrediction
+  | NarrowedPredictionAwaitingTest { revisions: Int }
+  | TestedPrediction {
+      preregistered_isolated_matches: Int,
+      weak_matches: Int,
+      committed_unwitnessed_matches: Int,
+      post_outcome_archived_matches: Int,
+      inconclusive: Int,
+      narrowed_revisions: Int,
+    }
+  | FalsifiedPredictionNeedsNarrowing { narrowed_revisions: Int }
+
+fn predictive_standing<S, O>(model: PredictiveModel<S, O>) -> PredictiveStanding {
+  let revisions = count(model.superseded)
+  if count(predictive_falsifiers(model: model)) > 0 {
+    FalsifiedPredictionNeedsNarrowing { narrowed_revisions: revisions }
+  } else if count(model.tests) == 0 {
+    if revisions == 0 { UntestedPrediction } else { NarrowedPredictionAwaitingTest { revisions: revisions } }
+  } else {
+    let matches = model.tests |> filter(receipt => prediction_test_verdict_fold(
+      verdict: receipt.verdict,
+      fold: PredictionTestVerdictFold { consistent: true, contradicts: false, inconclusive: false },
+    ))
+    let isolated = matches |> filter(receipt => prediction_registration_fold(
+      registration: receipt.registration,
+      fold: PredictionRegistrationFold {
+        conversation_only: fn(_) { false },
+        committed_unwitnessed: fn(_, _, _) { false },
+        archived_after_outcome: fn(_) { false },
+        preregistered: fn(_, _, _, _, _) { prediction_test_discrimination_fold(
+          discrimination: receipt.discrimination,
+          fold: PredictionTestDiscriminationFold {
+            isolated: fn(_) { true }, confounded: fn(_, _) { false },
+          },
+        ) },
+      },
+    ))
+    TestedPrediction {
+      preregistered_isolated_matches: count(isolated),
+      weak_matches: count(matches) - count(isolated),
+      committed_unwitnessed_matches: count(matches |> filter(receipt => prediction_registration_fold(
+        registration: receipt.registration,
+        fold: PredictionRegistrationFold {
+          conversation_only: fn(_) { false }, committed_unwitnessed: fn(_, _, _) { true },
+          archived_after_outcome: fn(_) { false }, preregistered: fn(_, _, _, _, _) { false },
+        },
+      ))),
+      post_outcome_archived_matches: count(matches |> filter(receipt => prediction_registration_fold(
+        registration: receipt.registration,
+        fold: PredictionRegistrationFold {
+          conversation_only: fn(_) { false }, committed_unwitnessed: fn(_, _, _) { false },
+          archived_after_outcome: fn(_) { true }, preregistered: fn(_, _, _, _, _) { false },
+        },
+      ))),
+      inconclusive: count(model.tests) - count(matches),
+      narrowed_revisions: revisions,
+    }
+  }
+}

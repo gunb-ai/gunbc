@@ -1,0 +1,25 @@
+module test.claim.namespace_reference_derived_closure_acceptance
+
+import gunbc.namespace_cut.namespace_reference_derived_closure_contract {
+  namespace_reference_derived_closure_acceptance_admissions,
+  reference_derived_closure_closing_contract_holds,
+}
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. It is
+// RED ON PURPOSE and enrolled QuarantineProbeExpectRed. The validation consumes only the
+// production-admission seam, never the controlled fixtures that prove the fold itself: today that
+// seam carries one typed unavailable status per clause, so the derived six-capability frontier
+// cannot green on zero work. All six clauses name NoDagReachableNativeOccurrenceTransportProducer.
+// The gated implementation must supply a dag-reachable parse -> occurrence-transport producer, feed
+// the real candidate producer and dependency projection over it for all six scenarios through the
+// sole-constructor assessment boundary, and leave this predicate unchanged.
+
+test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
+  reference_derived_closure_closing_contract_holds(
+    admissions: namespace_reference_derived_closure_acceptance_admissions(),
+  )
+}

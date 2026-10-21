@@ -1,0 +1,1018 @@
+module v2.workflow.rust_crate_partition
+
+import gunbc.crate_partition {
+  CompilationUnitId,
+  ModuleDagEdge,
+  ModuleId,
+  PartitionProvenance,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityCause,
+  PartitionR4ValidityVerdict,
+  SccSplit,
+  UnitGraphCycle,
+  PartitionFoldRefusalCause,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived,
+  DerivedDepPackagesOk,
+  DerivedDepPackagesUnitHasNoRow,
+  EmittedEdgeRefusal,
+  EmittedEdgesMerged,
+  EmittedEdgesRefused,
+  ExplicitPartition,
+  ExplicitPartitionParam,
+  PartitionEmittedEdgeRefused,
+  PartitionParameter,
+  PartitionPolicy,
+  ResolvePartitionOk,
+  ResolvePartitionOutcome,
+  ResolvePartitionRefusalCause,
+  ResolvePartitionRefused,
+  Stage0EmitCoreCrate,
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  UnitDepEdge,
+  assignment_owner,
+  assignment_unit_dep_edges_over,
+  derived_dep_packages,
+  merge_emitted_edges,
+  policy_partition_assignment_over,
+  resolve_partition_over,
+  stage0_module_id,
+  validate_partition_r4_over
+}
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.algebra { Empty, fold_list, length, empty_map, map_insert }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.graph {
+  CallGraph,
+  GraphEdge,
+  graph_has_multi_node_scc,
+  graph_reverse_reachable_members,
+  graph_strongly_connected_components
+}
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedEdgeProvenance,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget,
+  rust_prelude_emitted_edges
+}
+import std.disposition { RealizationDispatch }
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.witness { map_get_checked }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_present
+}
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  ModuleDag,
+  ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionFoldRefused,
+  PartitionFoldOutcome,
+  partition_fold_outcome
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol }
+
+type Stage0PartitionReceiptOutcome
+  = Stage0PartitionReceiptOk { units: List<CompilationUnit> }
+  | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
+  | Stage0PartitionReceiptFoldRefused { cause: PartitionFoldRefusalCause }
+
+data rust_crate_partition_module_bearing_unit_target: Int = 6
+
+// R3-only emit shell crate (reexport surface, NOT a partition_fold_outcome CompilationUnit): modules list
+// is the reexport bundle for render at cutover; those modules remain owned by module-bearing units
+// in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1)
+// = declared_core_target (7).
+
+data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
+data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
+data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as CompilationUnitId
+data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as CompilationUnitId
+data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as CompilationUnitId
+data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as CompilationUnitId
+data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as CompilationUnitId
+data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as CompilationUnitId
+data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as CompilationUnitId
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
+
+type Stage0ModuleDagInterfaceGrounding
+  = Stage0ModuleDagInterfaceSourceGrounded
+  | Stage0ModuleDagInterfaceUngrounded {
+      exports_map: ExportsMapNotSourceGrounded
+      type_definitions_map: TypeDefinitionsMapNotSourceGrounded
+    }
+
+type ExportsMapNotSourceGrounded {
+  capability: InterfaceGroundingCapability
+}
+
+type TypeDefinitionsMapNotSourceGrounded {
+  capability: InterfaceGroundingCapability
+}
+
+// The capability that retires this debt, as STRUCTURE rather than prose. A DeclarationRef names a
+// declaration and nothing else, so one ref could only ever pin the supply; the other half of the
+// trigger -- the population it must be sufficient for -- was a String a program could only grep.
+// Each is a field here so a reader matches on it.
+//   contents_supply   the supply whose members must carry per-module declaration contents; today a
+//                     member carries its source text and the requests its text made, and the tree
+//                     its front end normalized to read them is dropped, which is why this is still
+//                     debt.
+//   population        the derivation whose closure the contents must be complete for -- the emitted
+//                     compiler closure, not a fixture.
+// There is no host-emission field: the hand host handler the earlier supply had was deleted with
+// that supply, and the acquirer reads through the filesystem handler emitted from .dag.
+// Named by ref, not imported: v2.workflow.emitted_closure_crate_partition imports this module.
+type InterfaceGroundingCapability {
+  contents_supply: DeclarationRef
+  population: DeclarationRef
+}
+
+// Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural
+// scaffold for partition_fold_outcome only). R3 render uses Stage0PartitionCrateRow.modules +
+// reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes, which is why the
+// R3 crate rendering does NOT wait on this debt. Full Node-carrier exports are blocked on the
+// module ACQUIRER's supply carrying per-module declaration contents at closure scale; the index
+// itself cannot supply them, and this sentence used to say it could (the annotation above
+// stage0_module_interface_grounding_target records why the dissolve targets got that wrong).
+
+// Rust R4 primary refusals: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle
+// has LANDED on the home coproduct and is refused by the C realization, not by Rust — type-layout
+// cycles use ByValueTypeCycle { detail } ONLY, never SccSplit. The sentence this replaces still
+// described that arm as arriving with a rebase and instructed exhaustive PartitionR4ValidityCause
+// matches to add a fourth arm on it; both were already done.
+
+// REPOINTED TWICE, AND THE SECOND TARGET WAS WRONG IN THE SAME WAY AS THE FIRST. This debt's
+// dissolution first named v2.compiler.self_host.frontier compiler_frontier_roster, on the premise
+// that the self-host roster would eventually carry each module's exports and type definitions. It
+// never could: a roster row carried a module path and a self-host disposition and nothing else, so
+// the pointer named an authority that was not going to supply the fact even in principle.
+//
+// It was then repointed at v2.compiler.source_authority ModuleStorageIndex, reasoning that this is
+// where module identity is DERIVED at parse rather than authored. That pointer failed the same
+// test. A ModuleStorageBinding carries a module QualifiedName, a ModuleStorageProvenance and a
+// SourceRootRef; the provenance carries an Artifact, which is kind, id and file_path. So a row
+// carries a NAME, a LOCATION and a source root, and no declaration appears anywhere in that
+// closure. It cannot supply exported declaration Nodes or ModuleTypeDefinitionRows any more than a
+// roster row could.
+//
+// THE TELL, so a third repoint does not repeat it: a dissolve target is not checked by whether the
+// fact is derived at the right TIME but by whether the named authority CARRIES the right FACT.
+// Module IDENTITY derived at parse is the wrong property; what the interface maps need is module
+// CONTENTS derived at parse. The first note diagnosed exactly this and then named another
+// module-to-location authority.
+//
+// THE THIRD TARGET WAS DELETED, NOT WRONG. It was the whole-tree module-binding supply, and the
+// source-layout cutover removed that supply with every other whole-tree producer: a compile now
+// acquires the modules it was asked for (v2.compiler.module_acquisition), so the supply a
+// partition can read per-module contents from is the acquirer's, and the target names it.
+//
+// WHERE THE FACT ACTUALLY IS, and it is not missing. source_authority already parses every module:
+// module_storage_binding_from_read_prepared tokenizes and calls parse_module_prepared, and
+// module_storage_binding_from_parse_artifact hands artifact.tree to
+// module_storage_binding_from_provenance as `node:`. The module root is IN HAND at the mint site
+// and dropped there, deliberately -- module_storage_binding_authority_note earns that scope by
+// saying the binding never needed file CONTENTS, only module and path. So the projection belongs
+// at that mint site and needs no second read of the source, let alone a third.
+//
+// WHY IT IS STILL DEBT is not restated here. The operative trigger lives on the typed carrier,
+// stage0_module_dag_interface_grounding_debt_dissolve_on, because that is the declaration a
+// program can read; an annotation is never evidence that a machine claim holds (DESIGN 4c), and a
+// second prose copy of the trigger would be the §3 fork a disclaimer cannot talk its way out of.
+// What is above is the irreducible rationale for the SHAPE of that trigger -- why two earlier
+// targets were named and why both could not work -- which is what this channel is for.
+fn stage0_module_interface_grounding_target() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.compiler.module_acquisition" as NonEmptyStr,
+    decl_name: "acquire_closure_of" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn stage0_module_interface_grounding_capability() -> InterfaceGroundingCapability {
+  InterfaceGroundingCapability {
+    contents_supply: stage0_module_interface_grounding_target(),
+    population: DeclarationRef {
+      module_path: "v2.workflow.emitted_closure_crate_partition" as NonEmptyStr,
+      decl_name: "module_dag_from_dependency_facts" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  }
+}
+
+fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
+  Stage0ModuleDagInterfaceUngrounded {
+    exports_map: ExportsMapNotSourceGrounded {
+      capability: stage0_module_interface_grounding_capability()
+    },
+    type_definitions_map: TypeDefinitionsMapNotSourceGrounded {
+      capability: stage0_module_interface_grounding_capability()
+    }
+  }
+}
+
+fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
+  match stage0_module_dag_interface_grounding() {
+    Stage0ModuleDagInterfaceSourceGrounded => false
+    Stage0ModuleDagInterfaceUngrounded { exports_map: _, type_definitions_map: _ } => true
+  }
+}
+
+fn stage0_module_dag_exports_map() -> Map<ModuleId, List<Node>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
+}
+
+fn stage0_module_dag_type_definitions_map() -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
+}
+
+fn stage0_runtime_modules() -> List<String> {
+  ["v1_rt"]
+}
+
+// std_lens_verdict WAS ON THIS LIST AND IS NOT A MODULE THE PARTITION MAY OWN.
+// stage0 lib.rs does not declare it: v2.compiler.self_host.stage0_crate_layout registers
+// it as a SeedRetainedIntrinsicRegistration with has_pub_mod false, so the monolith
+// deliberately leaves it out while every partition crate carrying the row compiled it
+// through a path include. That is one file with two compilation stories, which is the
+// divergence this list must not author. Its source module std.lens_verdict no longer
+// exists -- the live authority is v2.std.lens_verdict -- and nothing in the stage0 tree
+// names crate::std_lens_verdict, so the row was answering for a module that had already
+// stopped being one. The FILE's disposition (dead source retained under an undeclared
+// reason in v2.compiler.self_host.seed_retention_frontier) is settled separately from
+// this roster, because deleting it moves the layout authority and the retention frontier
+// and this list is not where that decision lives.
+fn stage0_std_primitive_modules() -> List<String> {
+  [
+    "std_content_hash",
+    "std_coercion",
+    // std.host_text (HostText, chars) is imported by std_coercion and by seed-mirrored modules since NAMESPACE-XL
+    // wave 1 gave chars its declared home; it imports only std.types, so it sits in this lowest tier with its importers.
+    "std_host_text",
+    "extdeps_currency_currency",
+    "std_decl_ref",
+    "std_keyed_row",
+    "std_keyed_roster",
+    "std_roster_frontier",
+    "std_dissolution",
+    "std_disposition",
+    "std_error_primitives",
+    "std_emit_model",
+    "std_measure",
+    "std_decimal",
+    "std_render_repeat_string_bootstrap",
+    "std_types",
+    "std_unicode_types"
+  ]
+}
+
+// gunbc_rust_emitted_edge is here because v1_compiler_emit_core_support (v1-infer unit) carries
+// its EmittedEdge on EmitResult, and a crate:: path from that unit resolves only into a package it
+// re-exports; the module names only std_types, so the lowest unit that reaches it is this one.
+fn stage0_std_core_modules() -> List<String> {
+  stage0_std_primitive_modules()
+    |> concat([
+      "std_optional",
+      "std_algebra",
+      "std_nat",
+      "std_node",
+      "std_syntax",
+      "std_computation",
+      "std_termination",
+      "std_checked_arithmetic",
+      "std_induction",
+      "std_graph",
+      "std_unicode_scalar",
+      "extdeps_uri",
+      "extdeps_external_authority",
+      "extdeps_posix_clock_gettime",
+      "extdeps_ietf_http_semantics",
+      "std_primitive_projection",
+      "extdeps_container_oci_digest",
+      "extdeps_units_dimensionless",
+      "extdeps_units_iec_80000_13",
+      "extdeps_units_iso8601",
+      "extdeps_units_iso_80000_3",
+      "std_occurrence_identity",
+      // std.generated_provider (generated-provider demands, acquisition step) is read by v1.compiler.infer and
+      // v1.compiler.compile; it imports std.types, std.optional, std.algebra, std.decl_ref and std.occurrence_identity.
+      "std_generated_provider",
+      "std_source_annotation",
+      "std_kernel_type_name",
+      "std_target_representation",
+      "std_literal_elaboration",
+      "std_operator_realization",
+      "std_import_statement",
+      "v1_std_core",
+      "gunbc_rust_emitted_edge",
+      "gunbc_rust_emitted_crate"
+    ])
+}
+
+fn stage0_std_surface_modules() -> List<String> {
+  [
+    "std_effects",
+    "extdeps_uri_path",
+    "std_interface_summary",
+    "std_trait_derive_shape"
+  ]
+}
+
+fn stage0_extdeps_language_modules() -> List<String> {
+  [
+    "extdeps_languages_dag_emit",
+    "extdeps_languages_dag_syntax",
+    "extdeps_languages_dag_types",
+    "extdeps_languages_go_emit",
+    "extdeps_languages_go_syntax",
+    "extdeps_languages_go_types",
+    "extdeps_languages_python_emit",
+    "extdeps_languages_python_syntax",
+    "extdeps_languages_python_types",
+    "extdeps_languages_rust_capabilities",
+    "extdeps_languages_rust_emit",
+    "extdeps_languages_rust_representation",
+    "extdeps_languages_rust_syntax",
+    "extdeps_languages_rust_types"
+  ]
+}
+
+fn stage0_extdeps_modules() -> List<String> {
+  stage0_extdeps_language_modules()
+}
+
+// The corpus-owned source-to-target binding rows sit between the extdeps-languages
+// layer they cite and the coercion module that reads them, so they land in the
+// v1-infer unit: gunbc_rust_source_type_bindings references
+// extdeps_languages_rust_representation, which the extdeps-languages unit owns, and
+// is referenced by v1_compiler_coercion, which this unit owns. Named separately from
+// the v1_compiler_* pipeline modules because the layer is a different one -- the
+// grouping is physical (one crate) while the name records what the module actually is.
+fn stage0_gunbc_binding_modules() -> List<String> {
+  ["gunbc_rust_source_type_bindings", "gunbc_structural_realization_bindings"]
+}
+
+// THE INFER STAGE MOVED HERE AS ONE CRATE-INTERNAL CLOSURE. A generated mirror resolves its
+// cross-module references as crate:: paths, which resolve only within a single crate root, so a
+// module can join a partition only together with every monolith-owned module it names.
+// v1_compiler_infer -- the stage-04 root -- names the infer_* sibling stages (access, cycle,
+// lookup, method, patterns) and reaches v1_compiler_resolve (stage 03) and v1_compiler_ownership;
+// ownership in turn calls v1_compiler_emit_core_support's to_string. The regen round's
+// partition-rebuild scope refuses any changed mirror that has no owning package, so the first
+// edit to 04_infer.dag forced the whole set to take an owner together: none of them may stay
+// monolith-owned once infer is here, because the monolith is not a crate this unit may depend on.
+// emit_core_support's own references (infer_env/items/service/types in this unit, artifact and
+// languages in v1-artifact) all resolve here, so it joins as an OWNED module. The transitive
+// closure was computed over the generated mirrors and is self-contained: every crate:: reference
+// of every moved module lands in this unit or in a foundation crate it re-exports.
+//
+// v1_compiler_parse lands in this unit because v1_compiler_emit_core_support calls
+// parsed_item_carries_resource_entries on it. That module is still compiled twice from one file
+// -- now inside v1-stage0-v1-infer (owned) and inside v1-stage0-emit-core (the #[path] copy the
+// emit shell hosts rather than re-exports) -- so its reachable set is the INTERSECTION of two
+// crate roots and a name present in only one resolves in one compilation and not the other. The
+// emit-core crate's own purpose is to host that module WITHOUT COPYING SEMANTICS: the
+// alternatives were to fork the predicate into a module that cannot see the minting vocabulary it
+// is defined against, or to scatter the exclusion across the 24 call expressions in 12 functions
+// that read the emit-side type predicates. Both are the failure v1.compiler.parse's own note
+// predicts. The unit is chosen for LAYER and not convenience -- parse is a pipeline stage and
+// sits beside v1_compiler_coercion and the infer modules, not beside the artifact/languages rows
+// -- and parse is a SOURCE here: nothing in this unit is reachable from it, so the unit graph
+// gains no edge back.
+fn stage0_v1_infer_modules() -> List<String> {
+  stage0_gunbc_binding_modules()
+    |> concat([
+    "v1_compiler_parse",
+    "v1_compiler_coercion",
+    "v1_compiler_compiler_tests_rust",
+    "v1_compiler_resolve",
+    "v1_compiler_infer",
+    "v1_compiler_infer_access",
+    "v1_compiler_infer_cycle",
+    "v1_compiler_infer_emit_info",
+    "v1_compiler_infer_env",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_lookup",
+    "v1_compiler_infer_method",
+    "v1_compiler_infer_occurrence_binding",
+    "v1_compiler_infer_patterns",
+    "v1_compiler_infer_resolve",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_sigs",
+    "v1_compiler_infer_types",
+    "v1_compiler_ownership",
+    "v1_compiler_emit_core_support",
+    "v1_compiler_type_head_exposure"
+  ])
+}
+
+fn stage0_v1_artifact_modules() -> List<String> {
+  ["v1_compiler_artifact", "v1_compiler_languages"]
+}
+
+fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
+  [
+    "gunbc_rust_emitted_crate",
+    "gunbc_rust_emitted_edge",
+    "std_unicode_scalar",
+    "v1_compiler_artifact",
+    "v1_compiler_infer_env",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_types",
+    "v1_compiler_languages",
+    "v1_compiler_parse",
+    "v1_rt",
+    "v1_std_core"
+  ]
+}
+
+fn stage0_all_partitioned_modules() -> List<String> {
+  stage0_runtime_modules()
+    |> concat(stage0_std_core_modules())
+    |> concat(stage0_std_surface_modules())
+    |> concat(stage0_extdeps_modules())
+    |> concat(stage0_v1_artifact_modules())
+    |> concat(stage0_v1_infer_modules())
+}
+
+fn stage0_assign_modules_to_unit(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  modules: List<String>,
+  unit_id: CompilationUnitId
+) -> Map<ModuleId, CompilationUnitId> {
+  modules
+    |> fold(init: assignment, f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), unit_id)
+    })
+}
+
+fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  stage0_assign_modules_to_unit(
+    assignment: stage0_assign_modules_to_unit(
+      assignment: stage0_assign_modules_to_unit(
+        assignment: stage0_assign_modules_to_unit(
+          assignment: stage0_assign_modules_to_unit(
+            assignment: stage0_assign_modules_to_unit(
+              assignment: empty_map(),
+              modules: stage0_runtime_modules(),
+              unit_id: stage0_unit_runtime
+            ),
+            modules: stage0_std_core_modules(),
+            unit_id: stage0_unit_std_core
+          ),
+          modules: stage0_std_surface_modules(),
+          unit_id: stage0_unit_std_surface
+        ),
+        modules: stage0_extdeps_language_modules(),
+        unit_id: stage0_unit_extdeps_languages
+      ),
+      modules: stage0_v1_artifact_modules(),
+      unit_id: stage0_unit_v1_artifact
+    ),
+    modules: stage0_v1_infer_modules(),
+    unit_id: stage0_unit_v1_infer
+  )
+}
+
+fn stage0_interim_explicit_partition() -> ExplicitPartition {
+  ExplicitPartition { assignment: stage0_interim_explicit_assignment() }
+}
+
+fn stage0_partition_parameter() -> PartitionParameter {
+  ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
+}
+
+fn stage0_partition_provenance() -> PartitionProvenance {
+  partition_provenance_hand_explicit()
+}
+
+fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
+  ModuleDagEdge {
+    from: stage0_module_id(basename: from),
+    to: stage0_module_id(basename: to),
+  }
+}
+
+fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
+  [
+    stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_nat", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_node", to: "std_induction"),
+    stage0_module_dag_edge(from: "std_syntax", to: "std_node"),
+    stage0_module_dag_edge(from: "std_computation", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_computation", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_termination", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_induction", to: "std_checked_arithmetic"),
+    stage0_module_dag_edge(from: "std_induction", to: "std_computation"),
+    stage0_module_dag_edge(from: "std_induction", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_graph", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_measure", to: "std_decimal"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_render_repeat_string_bootstrap"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_checked_arithmetic"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_types"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_dimensionless"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iec_80000_13"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso8601"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso_80000_3"),
+    stage0_module_dag_edge(from: "std_effects", to: "std_types"),
+    stage0_module_dag_edge(from: "std_effects", to: "extdeps_ietf_http_semantics"),
+    stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_interface_summary", to: "std_disposition"),
+    stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_types"),
+    stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_scalar"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_coercion"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_types"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_unicode_types"),
+    stage0_module_dag_edge(from: "std_unicode_types", to: "std_types"),
+    stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
+    stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "extdeps_external_authority"),
+    stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "extdeps_uri"),
+    stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "std_types"),
+    stage0_module_dag_edge(from: "extdeps_ietf_http_semantics", to: "extdeps_external_authority"),
+    stage0_module_dag_edge(from: "extdeps_external_authority", to: "std_roster_frontier"),
+    stage0_module_dag_edge(from: "std_keyed_row", to: "std_types"),
+    stage0_module_dag_edge(from: "std_keyed_roster", to: "std_keyed_row"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_dissolution"),
+    stage0_module_dag_edge(from: "std_dissolution", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_dissolution", to: "std_types"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_keyed_roster"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_keyed_row"),
+    stage0_module_dag_edge(from: "extdeps_languages_dag_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_go_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_rust_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_rust_emit", to: "std_trait_derive_shape"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_types"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_occurrence_identity"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_syntax"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_types"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_syntax"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_literal_elaboration"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_source_annotation"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "std_induction"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_service", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_types", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_occurrence_binding"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "v1_compiler_infer_occurrence_binding"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_artifact"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_coercion"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_type_head_exposure"),
+    stage0_module_dag_edge(from: "v1_compiler_coercion", to: "v1_compiler_artifact"),
+    stage0_module_dag_edge(from: "v1_compiler_languages", to: "v1_compiler_artifact"),
+    stage0_module_dag_edge(from: "std_import_statement", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_algebra"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_import_statement"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_occurrence_identity"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "extdeps_languages_dag_syntax"),
+    stage0_module_dag_edge(from: "v1_compiler_parse", to: "v1_std_core"),
+    stage0_module_dag_edge(from: "gunbc_rust_emitted_edge", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_edge"),
+    stage0_module_dag_edge(from: "gunbc_rust_emitted_crate", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_crate"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "std_unicode_scalar"),
+  ]
+}
+
+data stage0_source_module_dag: ModuleDag = ModuleDag {
+    modules: stage0_all_partitioned_modules()
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges(),
+    exports: stage0_module_dag_exports_map(),
+    type_definitions: stage0_module_dag_type_definitions_map(),
+  }
+
+// The stage0 DAG the partition decides over is the source edges PLUS the edges the emitter writes
+// into every emitted module, read from the emitter's own row producer. The runtime edges this
+// derives were three hand rows in stage0_cross_unit_import_edges -- a partial second list of a
+// fact the emitter decides for every module -- and they are deleted in favour of it.
+data stage0_module_dag_merge: ModuleDagEmittedMerge = module_dag_with_emitted_edges(
+  module_dag: stage0_source_module_dag,
+  emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag)
+)
+
+type ModuleDagEmittedMerge
+  = ModuleDagEmittedMerged { module_dag: ModuleDag }
+  | ModuleDagEmittedRefused { cause: EmittedEdgeRefusal }
+
+fn module_dag_runtime_prelude_edges(module_dag: ModuleDag) -> List<EmittedEdge> {
+  module_dag.modules |> flat_map(module_id => rust_prelude_emitted_edges(module: module_id as String))
+}
+
+// The MODULE DAG's adapters onto gunbc.crate_partition, which owns every rule below over a graph's
+// modules and edges: the DAG's interface maps ride through unchanged.
+fn module_dag_with_emitted_edges(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> ModuleDagEmittedMerge {
+  match merge_emitted_edges(modules: module_dag.modules, edges: module_dag.edges, emitted: emitted) {
+    EmittedEdgesRefused { cause: cause } => ModuleDagEmittedRefused { cause: cause }
+    EmittedEdgesMerged { edges: edges } =>
+      ModuleDagEmittedMerged {
+        module_dag: ModuleDag {
+          modules: module_dag.modules,
+          edges: edges,
+          exports: module_dag.exports,
+          type_definitions: module_dag.type_definitions,
+        }
+      }
+  }
+}
+
+fn resolve_partition_outcome(parameter: PartitionParameter, module_dag: ModuleDag) -> ResolvePartitionOutcome {
+  resolve_partition_over(parameter: parameter, modules: module_dag.modules, edges: module_dag.edges)
+}
+
+fn policy_partition_assignment(
+  module_dag: ModuleDag,
+  components: List<List<String>>,
+  policy: PartitionPolicy
+) -> Map<ModuleId, CompilationUnitId> {
+  policy_partition_assignment_over(modules: module_dag.modules, components: components, policy: policy)
+}
+
+fn assignment_unit_dep_edges(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>) -> List<UnitDepEdge> {
+  assignment_unit_dep_edges_over(edges: module_dag.edges, assignment: assignment)
+}
+
+// THE RESOLVE IS ONE FACT, SO IT IS ONE BINDING. Both the receipt below and
+// stage0_partition_r4_valid need the assignment this produces, and they are two demands with a
+// shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
+// caching opportunity, and says to carry the first value rather than let the second recompute it.
+// Binding it here is the same move this change makes for stage0_module_dag_merge one declaration up.
+// The resolve carries the merged DAG it decided over, so the receipt and the re-export derivation
+// read that DAG from the resolution rather than re-matching the merge: an emitted-edge refusal is
+// answered once, here, and has no second arm downstream to exist at.
+type Stage0PartitionResolve
+  = Stage0PartitionResolved {
+      module_dag: ModuleDag
+      assignment: Map<ModuleId, CompilationUnitId>
+    }
+  | Stage0PartitionResolveRefused { cause: ResolvePartitionRefusalCause }
+
+data stage0_resolve_partition_outcome: Stage0PartitionResolve = match stage0_module_dag_merge {
+  ModuleDagEmittedRefused { cause: cause } =>
+    Stage0PartitionResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
+  ModuleDagEmittedMerged { module_dag: module_dag } =>
+    match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: module_dag) {
+      ResolvePartitionOk { assignment: assignment, provenance: _ } =>
+        Stage0PartitionResolved { module_dag: module_dag, assignment: assignment }
+      ResolvePartitionRefused { cause: cause } =>
+        Stage0PartitionResolveRefused { cause: cause }
+    }
+}
+
+data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
+  Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+    match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
+      PartitionFoldOk { units: units } =>
+        Stage0PartitionReceiptOk { units: units }
+      PartitionFoldRefused { cause: cause } =>
+        Stage0PartitionReceiptFoldRefused { cause: cause }
+    }
+  Stage0PartitionResolveRefused { cause: cause } =>
+    Stage0PartitionReceiptResolveRefused { cause: cause }
+}
+
+fn validate_partition_r4(
+  module_dag: ModuleDag,
+  components: List<List<String>>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> PartitionR4ValidityVerdict {
+  validate_partition_r4_over(edges: module_dag.edges, components: components, assignment: assignment)
+}
+
+fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
+  stage0_assign_modules_to_unit(
+    assignment: empty_map(),
+    modules: stage0_all_partitioned_modules(),
+    unit_id: stage0_unit_runtime
+  )
+}
+
+fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
+  partition_fold_outcome(
+    module_dag: stage0_source_module_dag,
+    assignment: stage0_single_crate_assignment()
+  )
+}
+
+fn compilation_unit_member_count(units: List<CompilationUnit>) -> Int {
+  units |> flat_map(unit => unit.members) |> count
+}
+
+fn stage0_partition_member_coverage_consistent(
+  left: PartitionFoldOutcome,
+  right: Stage0PartitionReceiptOutcome
+) -> Bool {
+  match left {
+    PartitionFoldOk { units: left_units } =>
+      match right {
+        Stage0PartitionReceiptOk { units: right_units } => {
+          let left_count = compilation_unit_member_count(units: left_units)
+          let right_count = compilation_unit_member_count(units: right_units)
+          left_count == right_count
+        }
+        Stage0PartitionReceiptResolveRefused { cause: _ } => false
+        Stage0PartitionReceiptFoldRefused { cause: _ } => false
+      }
+    PartitionFoldRefused { cause: _ } => false
+  }
+}
+
+fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
+  [
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_runtime,
+      package_name: "v1-stage0-runtime",
+      crate_dir: "src/v1/stage0_runtime",
+      kind: Stage0FoundationCrate,
+      modules: stage0_runtime_modules(),
+      reexport_packages: [],
+      carries_non_empty_wrappers: true
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_std_core,
+      package_name: "v1-stage0-std-core",
+      crate_dir: "src/v1/stage0_std_core",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_core_modules(),
+      reexport_packages: ["v1-stage0-runtime"],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_std_surface,
+      package_name: "v1-stage0-std-surface",
+      crate_dir: "src/v1/stage0_std_surface",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_surface_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_extdeps_languages,
+      package_name: "v1-stage0-extdeps-languages",
+      crate_dir: "src/v1/stage0_extdeps_languages",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_extdeps_language_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_artifact,
+      package_name: "v1-stage0-v1-artifact",
+      crate_dir: "src/v1/stage0_v1_artifact",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_artifact_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-languages"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_infer,
+      package_name: "v1-stage0-v1-infer",
+      crate_dir: "src/v1/stage0_v1_infer",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_infer_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-languages",
+        "v1-stage0-v1-artifact"
+      ],
+      carries_non_empty_wrappers: false
+    }
+  ]
+}
+
+fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: stage0_unit_emit_core,
+    package_name: "v1-stage0-emit-core",
+    crate_dir: "src/v1/stage0_emit_core",
+    kind: Stage0EmitCoreCrate,
+    modules: stage0_r3_emit_reexport_surface_modules(),
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
+  stage0_module_bearing_crate_rows()
+    |> concat([stage0_r3_emit_shell_crate_row()])
+}
+
+fn stage0_partition_package_names() -> List<String> {
+  stage0_partition_crate_rows() |> map(row => row.package_name)
+}
+
+fn stage0_physical_crate_count() -> Int {
+  stage0_partition_crate_rows() |> count
+}
+
+fn stage0_module_bearing_unit_count() -> Int {
+  stage0_module_bearing_crate_rows() |> count
+}
+
+fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
+  stage0_module_bearing_crate_rows()
+    |> any(row => row.modules |> any(m => m == module_basename))
+}
+
+fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
+  stage0_partition_crate_rows()
+    |> any(row => row.package_name == package_name)
+}
+
+fn stage0_partition_row_lookups_resolved() -> Bool {
+  let layered_ok = stage0_module_bearing_crate_rows()
+    |> fold(init: true, f: fn(ok, row) {
+      ok && row.reexport_packages
+        |> fold(init: true, f: fn(p_ok, pkg) {
+          p_ok && stage0_package_resolved_in_partition_rows(package_name: pkg)
+        })
+    })
+  let emit_shell_ok = stage0_r3_emit_reexport_surface_modules()
+    |> fold(init: true, f: fn(m_ok, module_basename) {
+      m_ok && stage0_module_owner_resolved_in_module_bearing_rows(module_basename: module_basename)
+    })
+  layered_ok && emit_shell_ok
+}
+
+// resolve_partition_outcome admits an assignment only through the R4 verdict, so an Ok resolve IS
+// the valid verdict; asking validate_partition_r4 again here would pay the same verdict twice.
+fn stage0_partition_r4_valid() -> Bool {
+  match stage0_resolve_partition_outcome {
+    Stage0PartitionResolved { module_dag: _, assignment: _ } => true
+    Stage0PartitionResolveRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_fold_ok() -> Bool {
+  match stage0_partition_receipt_outcome {
+    Stage0PartitionReceiptOk { units: units } =>
+      (units |> count) == stage0_module_bearing_unit_count()
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  }
+}
+
+fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
+  (left |> fold(init: true, f: fn(ok, pkg) { ok && (right |> any(p => p == pkg)) }))
+    && (right |> fold(init: true, f: fn(ok, pkg) { ok && (left |> any(p => p == pkg)) }))
+}
+
+// DRIVABLE FROM SUPPLIED INPUTS, so the detector can be exercised over a fixture carrying a
+// PLANTED disagreement, and the reason that control is needed is worth stating exactly rather than
+// generally, because the equality contract changed it.
+//
+// WHILE THE LEDGER IS NON-EMPTY the contract already catches a broken detector: a detector that
+// finds nothing yields a derived set that is missing the ledger's entries, and the
+// no_stale_ledger_entry arm reds. Measured, not assumed -- forcing the comparison to agree reds
+// BOTH the contract and this fixture guard today.
+//
+// THE HOLE IS THE FUTURE STATE, and it is why the guard is not redundant. Once the divergence is
+// repaired the ledger empties, and then a detector that finds nothing yields [] against a ledger of
+// [] -- equality holds, the contract goes green, and nothing else would be looking. That is the
+// inert lens DESIGN section 5 warns about, arriving exactly when the debt this file tracks is
+// finally paid. The guard is built now because that is when it stops being buildable from a live
+// example.
+type ReexportDisagreementScan
+  = ReexportDisagreementScanOk { packages: List<String> }
+  | ReexportDisagreementScanUnitHasNoRow { unit_id: CompilationUnitId }
+
+fn reexport_derivation_disagreements_over(
+  edges: List<UnitDepEdge>,
+  rows: List<Stage0PartitionCrateRow>
+) -> ReexportDisagreementScan {
+  rows |> fold(init: ReexportDisagreementScanOk { packages: [] }, f: fn(acc, row) {
+    match acc {
+      ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id }
+      ReexportDisagreementScanOk { packages: found } =>
+        match derived_dep_packages(edges: edges, rows: rows, row: row) {
+          DerivedDepPackagesUnitHasNoRow { unit_id: unit_id } =>
+            ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id }
+          DerivedDepPackagesOk { packages: derived } =>
+            if stage0_package_sets_agree(left: row.reexport_packages, right: derived) {
+              ReexportDisagreementScanOk { packages: found }
+            } else {
+              ReexportDisagreementScanOk { packages: found |> list_push(row.package_name) }
+            }
+        }
+    }
+  })
+}
+
+// THE DEBT POPULATION IS A NAMED ROW, AND THE CONTRACT IS EQUALITY AGAINST IT, NOT A SUBSET OF IT.
+// A one-way subset notices a NEW divergence and nothing else: when v1-stage0-v1-artifact is finally
+// repaired the derived set empties, the subset still holds, and the row keeps naming a unit that no
+// longer diverges. A stale entry then quietly re-admits that unit to diverge again with the claim
+// still green, which is the silent regression DESIGN 4b(3) forbids -- and it would falsify this
+// row's own promise that removing a package is an edit someone must make and justify.
+//
+// Equality in BOTH directions is what makes that edit forced, and the objection to equality does
+// not apply here: it is equality against this LEDGER, not against the derived set, so it does not
+// stop any lane over debt the ledger already declares. It reds in exactly one situation -- the
+// ledger disagreeing with reality -- which is the situation nobody would otherwise notice.
+//
+// A REMOVAL CARRIES A TYPED DISPOSITION (DESIGN section 5), so a repaired divergence does not just
+// vanish from the ledger: it moves to the repaired roster below, which records what repaired it and
+// is itself asserted against -- a package recorded as repaired that starts diverging again reds.
+type Stage0ReexportDivergenceRepaired {
+  package_name: String
+  repaired_by: String
+}
+
+data stage0_reexport_derivation_known_divergent_packages: List<String> = ["v1-stage0-v1-artifact"]
+
+// Empty today: no divergence has been repaired yet. It is not decoration -- the claim asserts no
+// entry here has returned to the derived set, so the roster is a regression control the moment it
+// has a row, and the edge-list derivation is what will put the first one in it.
+data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDivergenceRepaired> = []
+
+// THE REFUSAL ARM MAY NOT ANSWER []. An empty list reads as "no unit disagrees", the strongest
+// possible answer, and a partition that refused to resolve has established nothing about any unit.
+// Collapsing a refusal into the clean answer is the absorbing fallback DESIGN section 5 forbids,
+// and it is the same class this lane deleted from compilation_unit, so reintroducing it here by a
+// new road would be the symptom arriving in its own repair.
+type Stage0ReexportDisagreementsUnavailableCause
+  = Stage0ReexportPartitionResolveRefused { cause: ResolvePartitionRefusalCause }
+  | Stage0ReexportDepUnitHasNoPackageRow { unit_id: CompilationUnitId }
+
+type Stage0ReexportDerivationDisagreements
+  = Stage0ReexportDisagreementsDerived { packages: List<String> }
+  | Stage0ReexportDisagreementsUnavailable { cause: Stage0ReexportDisagreementsUnavailableCause }
+
+fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagreements {
+  match stage0_resolve_partition_outcome {
+    Stage0PartitionResolveRefused { cause: cause } =>
+      Stage0ReexportDisagreementsUnavailable {
+        cause: Stage0ReexportPartitionResolveRefused { cause: cause }
+      }
+    Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+      match reexport_derivation_disagreements_over(
+        edges: assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment),
+        rows: stage0_module_bearing_crate_rows()
+      ) {
+        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+          Stage0ReexportDisagreementsUnavailable {
+            cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
+          }
+        ReexportDisagreementScanOk { packages: packages } =>
+          Stage0ReexportDisagreementsDerived { packages: packages }
+      }
+  }
+}
+
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_source_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
+
+data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
+
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT. Its declarations -- the contents supply and the population -- are the typed fields of InterfaceGroundingCapability on the debt carrier, which is what a program reads; this text states what those declarations must be SUFFICIENT FOR, which a declaration ref cannot. THE CAPABILITY: the module acquirer's supply (v2.compiler.module_acquisition acquire_closure_of, the only producer of a compile's modules) must carry PER-MODULE DECLARATION CONTENTS projected from the tree its front end already normalizes to read each module's requests, never from a second parse. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a supply that still carries only source text retires nothing, and contents re-derived by a second in-graph parse at a scale the gate cannot pay for retire nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by that derivation and its instrument, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF NO LONGER EXISTS AS A SEPARATE TRIGGER: the hand host handler for the retired whole-tree module-binding supply was deleted with it, and the acquirer reads through the filesystem handler emitted from .dag; the CONTENTS half and the sufficiency clause above are what this row declares. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")

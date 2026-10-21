@@ -1,0 +1,32 @@
+module v2.test.claim.census_scoped_subject
+
+import std.types { Bool }
+import v2.compiler.source_root_eval {
+  NativeCensusSubjectModuleNamed,
+  NativeCensusSubjectModuleUnavailable,
+  native_census_subject_label,
+  native_census_subject_module
+}
+
+// THE SCOPED CENSUS'S SUBJECT IS DERIVED FROM ITS LABEL, never listed: the native-seven package label
+// names exactly its module, by the native lane's module <-> package correspondence read backwards.
+test fn the_native_seven_label_names_its_module() -> Bool {
+  match native_census_subject_module(label: native_census_subject_label) {
+    NativeCensusSubjectModuleNamed { module: m } => m == "v2.test.claim.parse.expression_bodied_fn_decl_parse"
+    NativeCensusSubjectModuleUnavailable { reason: _ } => false
+  }
+}
+
+// A single target names a declaration, and a subtree names many modules; neither is one subject
+// module, and the census says so instead of picking one.
+test fn a_single_target_or_subtree_label_names_no_subject_module() -> Bool {
+  let single = match native_census_subject_module(label: "//v2/test/claim/parse:a_parse_holds") {
+    NativeCensusSubjectModuleNamed { module: _ } => false
+    NativeCensusSubjectModuleUnavailable { reason: r } => r == ^native_census_subject_label_names_no_module
+  }
+  let subtree = match native_census_subject_module(label: "//v2/test/...") {
+    NativeCensusSubjectModuleNamed { module: _ } => false
+    NativeCensusSubjectModuleUnavailable { reason: r } => r == ^native_census_subject_label_names_no_module
+  }
+  single && subtree
+}

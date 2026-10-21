@@ -1,0 +1,58 @@
+module v2.test.lens_complexity.typescript_type_alias_task
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.typescript { ts_task_type_alias_emitted }
+import v2.lens.complexity { ComplexityBound, ComplexityAssessment, complexity_lens, linear_complexity }
+import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.node { Atom, ComputationNode, Edge, Loop, LoopBoundEdge, Node, Positional, Symbol, TypeNode, core_edge_label }
+import v2.std.witness { Witness }
+
+type LensComplexityClaim {
+  input: Node
+  expected_cost: SymbolicCost
+  expected_complexity: ComplexityBound
+  falsification: Diagnostic
+}
+
+data ts_task_complexity_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ts_task_complexity_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data ts_task_complexity_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: Positional, target: ts_task_type_alias_emitted() },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: ts_task_complexity_measure }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data ts_task_complexity_claim: LensComplexityClaim = LensComplexityClaim {
+  input: ts_task_complexity_input,
+  expected_cost: LinearCost { variable: SizeVariable { source: ts_task_complexity_measure } },
+  expected_complexity: linear_complexity(
+    size_var: SizeVariable { source: ts_task_complexity_measure }
+  ),
+  falsification: Diagnostic {
+    reason: ^ts_task_complexity_reason,
+    at: Textual { file: ^ts_task_complexity_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn ts_task_actual_cost() -> Witness<SymbolicCost> {
+  cost_lens(n: ts_task_complexity_input)
+}
+
+fn ts_task_actual_complexity() -> ComplexityAssessment {
+  complexity_lens(n: ts_task_complexity_input)
+}

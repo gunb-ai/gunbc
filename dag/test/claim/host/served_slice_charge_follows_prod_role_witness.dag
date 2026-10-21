@@ -1,0 +1,88 @@
+module test.claim.host.served_slice_charge_follows_prod_role_witness
+
+// The served deployment's slice charge lands on the host of the prod-role holder, not on the literal
+// srv1. The realization is supplied (the resolver is judged in test.claim.prod_role_realization_witness);
+// the inhabitance claim runs the real prod_role_realization route.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List }
+import std.measure { byte_size_count }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv2_deploy_deployment, srv2_preview_codex_feedback_deployment }
+import gunbc.live_deploy.desired { prod_role_actuated_realization_in }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_in, srv1_live_dashboard_instance, srv2_deploy_dashboard_instance }
+import gunbc.live_deploy.served_slice_charge {
+  host_served_deployment_claim,
+  host_served_deployment_claim_under,
+  served_deployment_placement_of,
+  served_deployment_slice_allowance,
+  user_work_charged_in_served_allowance,
+  attempt_worker_charged_in_served_allowance,
+  ServedDeploymentClaimResolved,
+  ServedDeploymentClaimUnmeasured,
+  ServedDeploymentNotPlaced,
+}
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_max,
+  approval_broker_slice_memory_max,
+  repository_convergence_slice_memory_max,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn roster() -> List<HostDashboardInstance> {
+  [srv1_live_dashboard_instance(), srv2_deploy_dashboard_instance()]
+}
+
+test fn moving_the_role_moves_the_charge_off_srv1() -> Bool {
+  let moved = served_deployment_placement_of(realization: prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }, instances: roster()))
+  match host_served_deployment_claim_under(host: operator_host_srv2, placement: moved) {
+    ServedDeploymentClaimResolved { memory: _ } =>
+      match host_served_deployment_claim_under(host: operator_host_srv1, placement: moved) {
+        ServedDeploymentNotPlaced => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn no_prod_role_refuses_the_charge_and_never_falls_back_to_srv1() -> Bool {
+  let none_held = served_deployment_placement_of(realization: prod_role_realization_in(selection: NoProdRole, instances: roster()))
+  match host_served_deployment_claim_under(host: operator_host_srv1, placement: none_held) {
+    ServedDeploymentClaimUnmeasured { cause: _ } => true
+    _ => false
+  }
+}
+
+// REAL ROUTE: the production switch, unsupplied, charges the holder's host.
+test fn the_real_route_charges_the_holders_host() -> Bool {
+  match host_served_deployment_claim(host: srv1_live_dashboard_instance().host_identity as HostIdentity) {
+    ServedDeploymentClaimResolved { memory: _ } => true
+    _ => false
+  }
+}
+
+// A holder in the public roster with no desired_deployment_roster row (srv2-preview) is unactuatable
+// (ProdRoleHolderUnactuatable via the real joined route): the charge is Unmeasured on its own host and
+// on srv1, never pinned to the holder's host.
+test fn the_served_allowance_stacks_attempt_worker_on_user_work() -> Bool {
+  byte_size_count(b: served_deployment_slice_allowance())
+    == byte_size_count(b: live_deploy_slice_memory_max)
+      + byte_size_count(b: approval_broker_slice_memory_max)
+      + byte_size_count(b: repository_convergence_slice_memory_max)
+      + byte_size_count(b: user_work_charged_in_served_allowance())
+      + byte_size_count(b: attempt_worker_charged_in_served_allowance())
+}
+
+test fn an_unactuatable_holder_is_never_charged() -> Bool {
+  let p = served_deployment_placement_of(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }))
+  match host_served_deployment_claim_under(host: operator_host_srv1, placement: p) {
+    ServedDeploymentClaimUnmeasured { cause: _ } =>
+      match host_served_deployment_claim_under(host: operator_host_srv2, placement: p) {
+        ServedDeploymentClaimUnmeasured { cause: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

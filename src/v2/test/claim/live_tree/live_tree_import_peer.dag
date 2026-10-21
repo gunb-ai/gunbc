@@ -1,0 +1,8 @@
+module v2.test.claim.live_tree.live_tree_import_peer
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn live_tree_peer_truth() -> Bool {
+  true
+}

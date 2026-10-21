@@ -1,0 +1,93 @@
+module gunbc.harness.harness_supervisor_guidance
+
+import std.types { String, Int, List }
+import gunbc.roadmap.roadmap_attempt_continuation { continuation_alignment_l0_pointer }
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorEscalation,
+  supervisor_target_line, supervisor_escalation_line,
+  SupervisorVerdictReceipt, VerdictNominal,
+  supervisor_verdict_text,
+}
+
+// THE SUPERVISOR'S GUIDANCE CONTRACT (docs/plans/harness-work-lifecycle.md, "Resource policy"): a
+// modeled session role on the same harness as worker/reviewer/auditor, with the load phase applied
+// and one typed output -- the verdict receipt. Its adjudication IS the alignment verdict at the
+// budget cadence point: the supervisor reads the checkpoint and judges alignment, it does not
+// continue the implementation. Every fact in the brief is PROJECTED -- the escalation record, the
+// checkpoint refs, the verdict's own schema -- and never hand-copied, so the brief follows the
+// authorities it cites (the submission-schema defect is the standing specimen of what prose drift
+// costs here).
+
+// WHAT THE SUPERVISOR READS ABOUT THE CHECKPOINT. The caller projects each line from the belt's
+// own records (the capture state, the submission's explanation and limitations, the lineage's
+// per-turn history); this module renders them. A line that cannot be established arrives as the
+// caller's own refusal text, never as an invented default.
+type SupervisorCheckpoint {
+  head_sha: String
+  capture_line: String
+  explanation: String
+  limitations: String
+  history_line: String
+}
+
+// THE VERDICT SHAPE THE SESSION WRITES, emitted by the verdict's own codec with the escalation's
+// attempt and turn bound in -- so the example the supervisor copies is byte-for-byte what the
+// belt's reader accepts AND bound to this lineage, and a schema bump follows into the brief on its
+// own. The placeholder route is Nominal only because the example needs one route; the three route
+// keys below carry the vocabulary.
+fn supervisor_verdict_skeleton(attempt_key: String, adjudicated_turn: Int) -> String {
+  supervisor_verdict_text(receipt: SupervisorVerdictReceipt {
+    attempt_key: attempt_key,
+    adjudicated_turn: adjudicated_turn,
+    verdict: VerdictNominal { basis: "the evidence that the worker was progressing and why a renewed budget is the route" },
+  })
+}
+
+// THE ROLE CONTRACT, beside the worker's and reviewer's: same harness, same tool, the load phase
+// applied. The session's completion is its typed output -- the verdict file -- exactly as the
+// reviewer's completion is the verdict file it writes.
+fn supervisor_system_prompt_at(worktree: String, verdict_path: String) -> String {
+  join([
+    "You are a supervisor session in a git worktree, convened over one escalated worker lineage. ",
+    "Your one tool is run_command; it runs in ", worktree,
+    ", the attempt's worktree, whose files are the checkpoint you adjudicate. ",
+    "Read the checkpoint -- the diff, the receipts produced so far, the worker's own account -- and judge alignment; you do not continue the implementation yourself. ",
+    "The session is complete only once ", verdict_path,
+    " names your verdict in the declared schema: exactly one of nominal, plan-defect or stuck, bound to the turn you adjudicated.",
+  ], "")
+}
+
+// THE BRIEF. The escalation record leads (which lineage, how many turns, why it did not converge,
+// whose supervisor was derived); the checkpoint follows, every ref projected; the alignment levels
+// the adjudication reads against come next, L0 a pointer and L1/L2 supplied by the caller's own
+// projection of the node's intent and contract; and the three routes close it, as the ONLY
+// verdicts. A verdict for any other turn adjudicates nothing -- the receipt binds the turn, so a
+// stale or fabricated label is inert.
+fn supervisor_brief_for(
+  escalation: SupervisorEscalation,
+  checkpoint: SupervisorCheckpoint,
+  intent_line: String,
+  contract_line: String,
+) -> String {
+  join([
+    "You are ", supervisor_target_line(target: escalation.target),
+    ", convened because a worker lineage reached its turn cap. Your adjudication IS the alignment verdict at this cadence point.\n\n",
+    supervisor_escalation_line(e: escalation), ".\n\n",
+    "The checkpoint, as the belt captured it:\n",
+    "- branch ", escalation.branch, " (your worktree stands on it), head ", checkpoint.head_sha, "\n",
+    "- capture state: ", checkpoint.capture_line, "\n",
+    "- the worker's last submission explanation: ", checkpoint.explanation, "\n",
+    "- its stated limitations: ", checkpoint.limitations, "\n",
+    "- lineage history: ", checkpoint.history_line, "\n\n",
+    "The levels this adjudication reads against:\n",
+    continuation_alignment_l0_pointer, "\n",
+    "L1 project intent: ", intent_line, "\n",
+    "L2 task contract: ", contract_line, "\n\n",
+    "Your verdict is one of THREE routes and no fourth, written in this exact shape (copy it and fill route and statement): ",
+    supervisor_verdict_skeleton(attempt_key: escalation.attempt_key, adjudicated_turn: escalation.turn),
+    "\n- nominal: the worker was progressing; a continuation turn with a renewed budget is issued on the evidence you state.\n",
+    "- plan-defect: the brief or plan sent the worker wrong; the statement names the defect and the route goes to the node's owner -- a worker is never re-dispatched against a known-bad plan.\n",
+    "- stuck: the task itself cannot advance; the statement is the typed cause.\n",
+    "The route binds the turn you adjudicated: a verdict for any other turn authorizes nothing.\n",
+  ], "")
+}

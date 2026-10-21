@@ -1,0 +1,125 @@
+{
+  "name": "rear-and-upper-posts",
+  "items": [
+    {
+      "id": "M140",
+      "rotation_degrees": [
+        90,
+        0,
+        0
+      ],
+      "minimum_xy_mm": [
+        10,
+        8
+      ]
+    },
+    {
+      "id": "G140",
+      "rotation_degrees": [
+        90,
+        90,
+        0
+      ],
+      "minimum_xy_mm": [
+        10,
+        72
+      ]
+    },
+    {
+      "id": "CU-1-1",
+      "rotation_degrees": [
+        -90,
+        0,
+        0
+      ],
+      "minimum_xy_mm": [
+        10,
+        110
+      ]
+    },
+    {
+      "id": "CU-11",
+      "rotation_degrees": [
+        -90,
+        0,
+        0
+      ],
+      "minimum_xy_mm": [
+        45,
+        110
+      ]
+    },
+    {
+      "id": "CU1-1",
+      "rotation_degrees": [
+        -90,
+        0,
+        0
+      ],
+      "minimum_xy_mm": [
+        80,
+        110
+      ]
+    },
+    {
+      "id": "CU11",
+      "rotation_degrees": [
+        -90,
+        0,
+        0
+      ],
+      "minimum_xy_mm": [
+        115,
+        110
+      ]
+    },
+    {
+      "id": "CP-1-1",
+      "rotation_degrees": [
+        0,
+        90,
+        0
+      ],
+      "minimum_xy_mm": [
+        15,
+        150
+      ]
+    },
+    {
+      "id": "CP-11",
+      "rotation_degrees": [
+        0,
+        90,
+        0
+      ],
+      "minimum_xy_mm": [
+        50,
+        150
+      ]
+    },
+    {
+      "id": "CP1-1",
+      "rotation_degrees": [
+        0,
+        90,
+        0
+      ],
+      "minimum_xy_mm": [
+        85,
+        150
+      ]
+    },
+    {
+      "id": "CP11",
+      "rotation_degrees": [
+        0,
+        90,
+        0
+      ],
+      "minimum_xy_mm": [
+        120,
+        150
+      ]
+    }
+  ]
+}

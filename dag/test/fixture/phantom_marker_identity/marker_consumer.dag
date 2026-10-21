@@ -1,0 +1,8 @@
+module test.fixture.phantom_marker_identity.marker_consumer
+
+import std.measure { Measure, One, Time }
+import std.nat { Nat }
+
+type MarkerConsumer {
+  value: Measure<Time, One, Nat>
+}

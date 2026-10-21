@@ -1,0 +1,42 @@
+module test.claim.sha1_fips_witness
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha1 { sha1_hex }
+
+fn ascii(s: String) -> List<Int> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+fn sha1_text(s: String) -> String {
+  match sha1_hex(message: ascii(s: s)) {
+    Present { value: h } => h
+    _ => ""
+  }
+}
+
+// FIPS 180-4 / RFC 3174 test vectors and git's own blob identity, each from an independent
+// implementation (sha1sum, git hash-object), so the oracle is not this module.
+test fn sha1_of_abc_matches_the_standard_vector() -> Bool {
+  sha1_text(s: "abc") == "a9993e364706816aba3e25717850c26c9cd0d89d"
+}
+
+test fn sha1_of_the_empty_message_matches() -> Bool {
+  sha1_text(s: "") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+}
+
+// The 448-bit vector forces the padding into a second block.
+test fn sha1_of_the_two_block_vector_matches() -> Bool {
+  sha1_text(s: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") == "84983e441c3bd26ebaae4aa1f95129e5e54670f1"
+}
+
+// git hash-object of the file "hello\n": the object is "blob 6\0hello\n".
+test fn sha1_of_a_git_blob_is_its_object_id() -> Bool {
+  sha1_text(s: "blob 6\u{0}hello\n") == "ce013625030ba8dba906f756967f9e9ca394464a"
+}
+
+// RED: one flipped input byte changes the digest, so the vectors above cannot pass by constancy.
+test fn sha1_of_a_one_byte_different_message_differs() -> Bool {
+  sha1_text(s: "abd") != "a9993e364706816aba3e25717850c26c9cd0d89d"
+}

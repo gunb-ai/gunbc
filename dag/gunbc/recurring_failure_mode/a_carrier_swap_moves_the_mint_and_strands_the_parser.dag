@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_carrier_swap_moves_the_mint_and_strands_the_parser
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_carrier_swap_moves_the_mint_and_strands_the_parser: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_carrier_swap_moves_the_mint_and_strands_the_parser" as NonEmptyStr,
+
+  receipts: [
+    "A carrier swap moves the MINT and strands the PARSER. INVALID STATE: one value has a producer and an inverse -- a digest and the reader of its wire form, an id and its parser, an encoder and its decoder -- and a migration retypes the producer while the inverse keeps admitting only the OLD form. The two halves are separate declarations, so nothing relates them, and the type system is satisfied on both sides: each is internally consistent with the type it names, and only their COMPOSITION is broken.",
+
+    "WHY IT IS WORSE THAN AN ORDINARY BREAK, AND THIS IS THE WHOLE ROW: the failure is READ-PATH ONLY, and the two paths exercise different halves. A write exercises the mint, which is correct. A read exercises the parser, which is not. So the system accepts work, the corpus fills with values written under the new form, and every attempt to read one refuses -- the damage accumulates during exactly the period in which everything looks healthy. A put-only smoke test is GREEN BY CONSTRUCTION and cannot detect it, which is why the usual first instrument is the one that will not fire.",
+
+    "RECEIPT, 2026-09-21, gunbc#11996, found by reading the module rather than by a red. std.fabric_storage fabric_object_ref_of was moved from the fnv1a64 structural digest onto a computed SHA-256, so fabric_object_ref_wire began serializing the sha256-prefixed wire form. Its inverse, fabric_object_ref_of_wire, read content_hash_from_structural_digest, which admits sixteen hex digits and refuses everything else. Left alone it would have refused every ref the module mints. The brief that directed the migration named the mint and did not name the inverse; neither did the module's own note, which describes ref-minting and wire-parsing as the two halves of one closed loop and still did not couple them at the point of change.",
+
+    "THE TELL, STATED SO IT CAN BE LOOKED FOR BEFORE THE READ FAILS: a migration diff that touches a producer and not its inverse, where the inverse is discoverable by name -- of_wire beside to_wire, parse beside serialize, decode beside encode. The corpus already carries the coupling as prose in the same modules; what it does not carry is a mechanism that makes changing one without the other refuse. The second tell is a round-trip claim that passes because it round-trips through the NEW form on both sides while the STORED population is in the old one -- agreement between two halves that moved together is not evidence that either matches what is already written down.",
+
+    "RUNG FOUND AT: below the ladder -- silent wrongness on the read path, with no diagnostic at the change site and a discriminating red available only from a read of a value written before the swap. ATTAINABLE CEILING: structurally guaranteed. A serializer and its parser over one carrier are an inverse PAIR, and DESIGN section 4 already names this shape -- one grammar read in both directions -- so a substrate that derived the parser from the same rows as the serializer would make the two unable to disagree, exactly as it does for emission and ingestion. NEXT-RUNG TRIGGER: the wire grammar of a carrier declared once and read in both directions -- SUFFICIENT FOR no module to be able to author a serializer and a parser that admit different languages, so a family change propagates to both halves or refuses at the declaration. MECHANICALLY PREVENTABLE is reachable sooner and is not the ceiling: a round-trip claim pinned against a SUPPLIED wire literal from the old population, rather than against a value this run just serialized, goes red when the parser is stranded.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_ref_of_wire", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_ref_wire", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.content_hash", decl_name: "parse_content_hash", field: WholeDeclaration },
+  ],
+}

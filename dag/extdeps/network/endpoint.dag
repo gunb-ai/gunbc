@@ -1,0 +1,115 @@
+module extdeps.network.endpoint
+
+import std.types { String, Bool, NonEmptyStr, Port }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.error_primitives { Ok, Err }
+import extdeps.dns.domain_name { HostName, DomainName, DomainNameParseError, domain_name_wire, parse_host_name }
+import extdeps.network.address { IpAddress, IpV4, IpV6, render_ip_address, ip_v4 }
+import extdeps.network.ipv4 { Ipv4Address, Ipv4ParseError, Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address }
+import std.host_text { chars }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc3986#section-3.2.2",
+  }
+}
+
+// A reachable host reference is a NAME or a literal ADDRESS — the two ways ssh/connect targets are
+// actually written (an ssh_host is exactly this, today a bare NonEmptyStr). Reuses the
+// already-grounded authorities: extdeps.dns.domain_name.HostName (RFC 1123, with its real label
+// constraints) for the name arm, extdeps.network.address.IpAddress for the address arm — no fresh
+// nickname. This is the leaf the transport model's `ssh_host: NonEmptyStr` grounds onto, and the
+// payload of a network Reach (extdeps.network.reach).
+
+type NetworkHost =
+    HostByName { name: HostName }
+  | HostByAddress { address: IpAddress }
+
+fn host_by_name(name: HostName) -> NetworkHost {
+  HostByName { name: name }
+}
+
+fn host_by_ipv4(addr: Ipv4Address) -> NetworkHost {
+  HostByAddress { address: ip_v4(addr: addr) }
+}
+
+fn render_network_host(host: NetworkHost) -> NonEmptyStr {
+  match host {
+    HostByName { name: n } => domain_name_wire(name: n.name) as NonEmptyStr
+    HostByAddress { address: a } => render_ip_address(addr: a)
+  }
+}
+
+// THE HOST AS A URI WRITES IT, RFC 3986 §3.2.2: `host = IP-literal / IPv4address / reg-name`, with
+// `IP-literal = "[" ( IPv6address / IPvFuture ) "]"`. A v6 address goes in brackets because the
+// authority's `:port` would otherwise be read as one more group. Any URL or `host:port` authority
+// built from a NetworkHost uses this, not render_network_host, which is the bare address text.
+fn render_uri_host(host: NetworkHost) -> NonEmptyStr {
+  match host {
+    HostByName { name: _ } => render_network_host(host: host)
+    HostByAddress { address: a } => match a {
+      IpV4 { v4: _ } => render_network_host(host: host)
+      IpV6 { v6: _ } => join(["[", render_network_host(host: host) as String, "]"], "") as NonEmptyStr
+    }
+  }
+}
+
+// A transport endpoint: a host reference paired with a port. Reuses std.types.Port (the Int-where-range(1,65535) authority) verbatim — the port bound is not re-declared here. A SocketAddress is what a connect() targets; a bare NetworkHost (no port) is the ssh-config-style reference where the port is defaulted by the protocol.
+type SocketAddress {
+  host: NetworkHost
+  port: Port
+}
+
+fn socket_address(host: NetworkHost, port: Port) -> SocketAddress {
+  SocketAddress { host: host, port: port }
+}
+
+// HOST TEXT TO A HOST, for a source that is genuinely text (an operator's input, a provider's API
+// field). A source that already holds a typed address or name builds NetworkHost directly; rendering
+// it and parsing it back would be a lossy round trip. Three readings, and the choice between them is
+// decided by the text, not tried in order:
+// - containing `:` is an IPv6 literal. v6 text parsing is unbuilt (extdeps.network.ipv6's frontier
+//   row), so it refuses with its own arm rather than being read as a name it cannot be;
+// - only ASCII digits and dots is IPv4 dotted decimal and is refused on an IPv4 error, never handed
+//   to the name parser, because RFC 1123 labels may be all-digit and `10.0.0.256` would otherwise
+//   come back as a host NAME;
+// - anything else is an RFC 1123 host name through extdeps.dns.domain_name parse_host_name.
+type NetworkHostParseRefusal
+  = NetworkHostIpv6LiteralUnparsed { raw: String }
+  | NetworkHostIpv4Malformed { raw: String, error: Ipv4ParseError }
+  | NetworkHostNameMalformed { raw: String, error: DomainNameParseError }
+
+type NetworkHostParse
+  = NetworkHostParsed { host: NetworkHost }
+  | NetworkHostRefused { refusal: NetworkHostParseRefusal }
+
+fn network_host_text_is_dotted_decimal(raw: String) -> Bool {
+  raw != "" && all(raw |> chars, c => (c >= 48 && c <= 57) || c == 46)
+}
+
+fn parse_network_host(raw: String) -> NetworkHostParse {
+  if string_contains(s: raw, pattern: ":") {
+    NetworkHostRefused { refusal: NetworkHostIpv6LiteralUnparsed { raw: raw } }
+  } else if network_host_text_is_dotted_decimal(raw: raw) {
+    match parse_ipv4_address(text: raw) {
+      Ipv4Parsed { address: a } => NetworkHostParsed { host: host_by_ipv4(addr: a) }
+      Ipv4ParseFailed { error: e } => NetworkHostRefused { refusal: NetworkHostIpv4Malformed { raw: raw, error: e } }
+    }
+  } else {
+    match parse_host_name(raw: raw) {
+      Ok { value: n } => NetworkHostParsed { host: host_by_name(name: n) }
+      Err { value: e } => NetworkHostRefused { refusal: NetworkHostNameMalformed { raw: raw, error: e } }
+    }
+  }
+}
+
+// THE REFUSAL AS ONE WORD for a receipt: the arm and the text it refused.
+fn network_host_parse_refusal_wire(refusal: NetworkHostParseRefusal) -> String {
+  match refusal {
+    NetworkHostIpv6LiteralUnparsed { raw: r } => join(["ipv6-literal-unparsed `", r, "`"], "")
+    NetworkHostIpv4Malformed { raw: r, error: _ } => join(["ipv4-malformed `", r, "`"], "")
+    NetworkHostNameMalformed { raw: r, error: _ } => join(["host-name-malformed `", r, "`"], "")
+  }
+}

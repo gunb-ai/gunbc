@@ -1,0 +1,100 @@
+module extdeps.provisioning.ubuntu_install_media_fetch
+
+import std.disposition { Disposition, Terminal }
+
+import std.types { NonEmptyStr, List, String, Bool, FilePath }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.http.client
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.provisioning.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  ubuntu_install_media_install_path,
+  ubuntu_install_media_part_path,
+  ubuntu_install_media_mirror_rows,
+  ubuntu_install_media_mirror_url,
+  ubuntu_install_media_artifacts_dir,
+  UbuntuInstallMediaMirrorRow,
+}
+import gunbc.url_file_acquisition { url_file_acquisition_handler }
+import gunbc.artifact_acquisition {
+  AcquisitionKey, ContentDigestSha256, AcquisitionSource, AcquisitionSubject, AcquisitionHandler,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
+  AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptUnreachable,
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
+  PublishFailed, VerifyMechanismFailed,
+  acquire_artifact,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
+  }
+}
+
+data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
+  reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum_verify_via_shell, http.Client.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
+}
+
+// §3 convergence note: this file verifies fetched content against Canonical's published
+// cryptographic SHA-256 digest (extdeps_external_authority_anchor above) via the Sha256Verify shape
+// - a genuine external-authority digest check, distinct from std.content_hash's fnv1a64 internal
+// structural fingerprint (dag/std/content_hash.dag, used for our own generated-artifact freshness,
+// e.g. srv3_seeded_install_media's remaster sidecar). Do not unify the two: one is a cryptographic
+// authority citation, the other is an internal identity fingerprint with no external-authority
+// meaning.
+
+// ── THE UBUNTU BINDING OVER THE SUBJECT-AGNOSTIC COMBINATOR ────────────────────────────────────
+//
+// WHAT WAS HERE, AND WHY IT IS GONE RATHER THAN KEPT BESIDE THE COMBINATOR. This module used to
+// carry the whole acquisition algorithm: a `MirrorAttempt` coproduct, a `MirrorFoldAcc`, an ordered
+// fold with early exit, and the exhaustion arms. Every step of it was subject-agnostic; only the
+// nouns were Ubuntu's. It was written a second time for Ollama model blobs and deleted with that
+// tree, and model weights needed it a third time -- so it moved to gunbc.artifact_acquisition and
+// this module became what it should always have been: a cited artifact row, its transports, and the
+// effect bindings that make them run.
+//
+// THIS IS A REPLACEMENT, NOT A REFINEMENT (DESIGN section 3). The fold is not duplicated here in a
+// thinner form and the old types are not retained for compatibility; there is one authority for the
+// algorithm and this module resolves through it.
+//
+// TWO BEHAVIOURS CHANGED, AND BOTH ARE FIXES THE COMBINATOR CARRIES FOR EVERY SUBJECT:
+//   - A subject with ZERO declared mirrors used to report "all mirrors unreachable". Nothing had
+//     been attempted, and the answer named a failure of the network -- bottom-as-answer standing in
+//     for bottom-as-ignorance. It is now `NoSourceDeclared`, checked before the fold is entered.
+//   - An installed copy that FAILS its digest used to be reported and, in the classify path, invited
+//     a re-fetch. It is now a refusal that is not fetched over: something put wrong bytes at that
+//     path, and which thing did it is worth answering before the path is reused.
+
+// The probe, the download-verify-publish attempt and the handler that binds them are the generic
+// single-file URL acquisition in gunbc.url_file_acquisition: nothing in them was specific to install
+// media, and a second single-file subject (the print runtime's pinned micromamba) needed them.
+
+// THE MIRRORS AS TRANSPORTS BOUND TO THIS SUBJECT, one of N, carrying their host identity so a
+// receipt names which one answered rather than making a reader match a URL back to a row.
+fn install_media_sources(artifact: UbuntuInstallMediaArtifactRow) -> List<AcquisitionSource> {
+  map(ubuntu_install_media_mirror_rows, m => AcquisitionSource {
+    identity: m.locator,
+    locator: SourceUrl { url: ubuntu_install_media_mirror_url(artifact: artifact, mirror: m) },
+  })
+}
+
+fn install_media_subject(artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionSubject {
+  let final_path = ubuntu_install_media_install_path(artifact: artifact)
+  AcquisitionSubject {
+    identity: final_path,
+    key: ContentDigestSha256 { hex: artifact.content_sha256 as NonEmptyStr },
+    install_path: final_path,
+    staging_path: Present { value: ubuntu_install_media_part_path(install_path: final_path) },
+    parent_directory: ubuntu_install_media_artifacts_dir(),
+    sources: install_media_sources(artifact: artifact),
+  }
+}
+
+fn install_media_fetch_reconcile(artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionOutcome {
+  acquire_artifact(subject: install_media_subject(artifact: artifact), handler: url_file_acquisition_handler)
+}

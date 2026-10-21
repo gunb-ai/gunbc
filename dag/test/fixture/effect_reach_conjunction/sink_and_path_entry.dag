@@ -1,0 +1,11 @@
+module test.fixture.effect_reach_conjunction.sink_and_path_entry
+
+import test.fixture.effect_reach_conjunction.host_sink_provider { effect_reach_fixture_reads_a_host_path }
+import test.fixture.effect_reach_conjunction.path_literal_provider { effect_reach_fixture_declared_path }
+
+// THE POSITIVE CONTROL, and it is what makes the red above a finding rather than a harness
+// artifact. It differs from `sink_only_entry` in exactly one edge: a second import whose only
+// content is a path-literal row. The read it performs is identical.
+fn effect_reach_fixture_sink_and_path_entry() -> Bool {
+  effect_reach_fixture_reads_a_host_path(target: effect_reach_fixture_declared_path)
+}

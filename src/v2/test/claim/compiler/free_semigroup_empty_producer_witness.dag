@@ -1,0 +1,303 @@
+module v2.test.claim.compiler.free_semigroup_empty_producer_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Instantiation, Node, Positional, Edge, Symbol, TypeNode, node_synthetic }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, declared_type_inhabitance, inhabitance_declaration_heads_differ, position_declared_return }
+import std.optional { Absent, Present }
+import std.types { List }
+import std.nat { Nat, Zero, Succ }
+import v2.std.cardinality {
+  CardinalityAtLeast,
+  CardinalityConstraint,
+  CardinalityBounded,
+  CardinalityImpossible,
+  cardinality_apply_law,
+  cardinality_between,
+  cardinality_concat,
+  cardinality_exact,
+  cardinality_filter,
+  cardinality_join,
+  cardinality_law_for,
+  cardinality_lower,
+  cardinality_map,
+  cardinality_proves_nonempty
+}
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_read,
+  rcf_refuses_with,
+  rcf_verdict
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FIXTURES DECLARE THE FreeMonoid/FreeSemigroup SHAPE LOCALLY (FsList/FsNonEmpty): a fixture source string
+// cannot import std.algebra on this route. The relation judged is shape-general, not FreeSemigroup-specific.
+// AN EMPTY PRODUCER AT A FreeSemigroup POSITION (gunbc.recurring_failure_mode
+// a_possibly_empty_producer_enters_a_nonempty_consumer). FreeSemigroup is the product
+// { head, tail }: its required `head` has no source in an empty producer, so the existing
+// structural relation (v2.std.inhabitance declared_type_inhabitance) must refuse it.
+data fse_return_empty_source: String = "module v2.test.fse_return_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_probe() -> FsNonEmpty<Int> { FsEmpty }\n"
+
+data fse_built_ok_source: String = "module v2.test.fse_built_ok\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\nfn fse_ok() -> FsIntNonEmpty { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
+
+data fse_formal_variant_source: String = "module v2.test.fse_formal_variant\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_call() -> Int { fse_take(xs: FsEmpty) }\n"
+
+data fse_alias_ok_source: String = "module v2.test.fse_alias_ok\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\ntype FsIntAlias = FsIntNonEmpty\n\nfn fse_alias_ok() -> FsIntAlias { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
+
+data fse_generic_ok_source: String = "module v2.test.fse_generic_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_ok() -> FsNonEmpty<Int> { FsNonEmpty { head: 1, tail: FsEmpty } }\n"
+
+data fse_let_empty_source: String = "module v2.test.fse_let_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_let() -> Int {\n  let e = FsEmpty\n  fse_take(xs: e)\n}\n"
+
+data fse_param_list_source: String = "module v2.test.fse_param_list\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_param(ys: FsList<Int>) -> Int { fse_take(xs: ys) }\n"
+
+data fse_param_nonempty_ok_source: String = "module v2.test.fse_param_nonempty_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_param(zs: FsNonEmpty<Int>) -> Int { fse_take(xs: zs) }\n"
+
+data fse_ingest: SourceRootIngest = [
+  rcf_read(source: fse_param_nonempty_ok_source, id: ^fse_param_nonempty_ok_read, unit: ^fse_param_nonempty_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/param_nonempty_ok.dag"),
+  rcf_read(source: fse_param_list_source, id: ^fse_param_list_read, unit: ^fse_param_list_cu, path: "src/v2/test/fixture/free_semigroup_empty/param_list.dag"),
+  rcf_read(source: fse_let_empty_source, id: ^fse_let_empty_read, unit: ^fse_let_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/let_empty.dag"),
+  rcf_read(source: fse_return_empty_source, id: ^fse_return_empty_read, unit: ^fse_return_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/return_empty.dag"),
+  rcf_read(source: fse_alias_ok_source, id: ^fse_alias_ok_read, unit: ^fse_alias_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/alias_ok.dag"),
+  rcf_read(source: fse_generic_ok_source, id: ^fse_generic_ok_read, unit: ^fse_generic_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/generic_ok.dag"),
+  rcf_read(source: fse_built_ok_source, id: ^fse_built_ok_read, unit: ^fse_built_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/built_ok.dag"),
+  rcf_read(source: fse_formal_variant_source, id: ^fse_formal_variant_read, unit: ^fse_formal_variant_cu, path: "src/v2/test/fixture/free_semigroup_empty/formal_b.dag"),
+]
+
+fn fse_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: fse_ingest, lm: dag_language_model())
+}
+
+fn fse_resolve(subject: String) -> Outcome<ResolvedTree> {
+  match fse_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn fse_accepted_plain(resolved: Outcome<ResolvedTree>) -> Bool {
+  match rcf_verdict(resolved: resolved) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// THE RED, declared return: `Empty` at FreeSemigroup<Int> refuses.
+test fn fse_empty_at_a_declared_free_semigroup_return_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_return_empty"), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// THE RED, argument: a nullary variant of the FreeMonoid-shaped coproduct at a nonempty-product formal
+// refuses. The `[]` LITERAL spelling is NOT exercised here: a list literal does not resolve in this
+// in-memory fixture closure (no std root), so that shape stays unexecuted on the native route.
+test fn fse_empty_variant_at_a_nonempty_product_formal_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_formal_variant"), reason: ^application_argument_does_not_inhabit)
+}
+
+// THE POSITIVE CONTROL: a constructed nonempty value is accepted.
+test fn fse_a_constructed_nonempty_value_is_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_built_ok"))
+}
+
+
+
+fn fse_ref(dotted: String) -> Node {
+  declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: dotted), occurrence_id: OccurrenceSynthetic)
+}
+
+fn fse_applied(dotted: String) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [Edge { label: Positional, target: fse_ref(dotted: dotted) }, Edge { label: Positional, target: fse_ref(dotted: "std.types.Int") }]
+  )
+}
+
+// IDENTITY, NOT SPELLING: one declaration written bare and applied has one head, so it is not decided as a mismatch.
+test fn fse_one_declaration_bare_and_applied_has_one_head_holds() -> Bool {
+  !inhabitance_declaration_heads_differ(declared: fse_applied(dotted: "p.Box"), produced: fse_ref(dotted: "p.Box"))
+}
+
+// The same last segment under two declarations is two heads.
+test fn fse_one_spelling_over_two_declarations_differs_holds() -> Bool {
+  inhabitance_declaration_heads_differ(declared: fse_ref(dotted: "p.Box"), produced: fse_applied(dotted: "q.Box"))
+}
+
+// RED: a bare generic declaration produced at its own applied position REFUSES (no widening to undecided).
+test fn fse_bare_generic_at_its_applied_self_refuses_holds() -> Bool {
+  match declared_type_inhabitance(obligation: DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^fse_box,
+    declared: fse_applied(dotted: "p.Box"),
+    produced: fse_ref(dotted: "p.Box"),
+    produced_declared_carrier: Absent,
+    application: fse_ref(dotted: "p.Box"),
+    type_variables: []
+  }) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    _ => false
+  }
+}
+
+// ALIAS POSITIVE CONTROL on the real path: a value of the declaration inhabits a transparent alias of it (return position).
+test fn fse_a_transparent_alias_and_its_declaration_inhabit_each_other_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_alias_ok"))
+}
+
+// POSITIVE CONTROL, generic: a constructed value of the generic nonempty product, its tail the generic empty variant.
+test fn fse_a_constructed_generic_nonempty_value_is_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_generic_ok"))
+}
+
+// BINDING AND OPERATION SEAMS, executed on the real route. The let RED is NON-DISCRIMINATING until
+// the declared-return / let-position solve of an open nullary-arm binder lands (routed to royal-raven-317, the
+// one instantiation route of #13964): `fn make() -> FsList<Int> { FsEmpty }` is itself refused today
+// (arrow_body_does_not_inhabit_declared_return, identical before and after #13910/#13964), so a call-result fixture cannot be
+// built yet and the let RED may refuse for that reason instead of the argument seam (a call-result RED was
+// authored, FAILED on main after #13974, and is removed until that solve lands). The PARAMETER seam below is the discriminating one: its
+// positive control (a nonempty parameter) is accepted and its RED refuses at the argument, and it needs the
+// parameter-path index of #13974 (on main a bare parameter argument is refused at resolve), so this witness
+// is ordered after #13974.
+test fn fse_empty_through_a_let_binding_at_a_nonempty_formal_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_let_empty"), reason: ^application_argument_does_not_inhabit)
+}
+
+// THE NATURAL-COUNT DOMAIN (v2.std.cardinality CardinalityConstraint): transfer functions per declared operation.
+fn fse_one() -> Nat { Succ { prev: Zero } }
+fn fse_two() -> Nat { Succ { prev: fse_one() } }
+
+fn fse_lower_is(c: CardinalityConstraint, want: Nat) -> Bool {
+  match cardinality_lower(c: c) {
+    Absent => false
+    Present { value: l } => l == want
+  }
+}
+
+test fn fse_an_exact_nonempty_literal_proves_nonempty_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_exact(count: fse_two()))
+}
+
+test fn fse_the_empty_literal_does_not_prove_nonempty_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_exact(count: Zero))
+}
+
+test fn fse_map_preserves_the_lower_bound_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_map(c: cardinality_exact(count: fse_one())))
+}
+
+// RED: filter floors the lower bound, so filter-then-require-nonempty is not proved.
+test fn fse_filter_floors_a_nonempty_lower_bound_to_zero_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_filter(c: cardinality_exact(count: fse_two())))
+}
+
+test fn fse_concat_adds_bounds_so_nonempty_with_anything_is_nonempty_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_concat(a: cardinality_exact(count: fse_one()), b: CardinalityAtLeast { lower: Zero }))
+}
+
+test fn fse_concat_of_two_possibly_empty_is_not_proved_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_concat(a: CardinalityAtLeast { lower: Zero }, b: cardinality_between(low: Zero, high: fse_one())))
+}
+
+// Branch join is the hull: one empty arm makes the join possibly empty; Impossible is the bottom.
+test fn fse_join_with_an_empty_arm_is_possibly_empty_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_join(a: cardinality_exact(count: fse_two()), b: cardinality_exact(count: Zero)))
+}
+
+test fn fse_join_with_impossible_is_the_other_side_holds() -> Bool {
+  fse_lower_is(c: cardinality_join(a: CardinalityImpossible, b: cardinality_exact(count: fse_two())), want: fse_two())
+}
+
+// A reversed range is no count at all, never a swapped range.
+test fn fse_a_reversed_range_is_impossible_holds() -> Bool {
+  match cardinality_between(low: fse_two(), high: fse_one()) {
+    CardinalityImpossible => true
+    _ => false
+  }
+}
+
+// PARAMETER-SOURCED SEAM (discriminating): a possibly-empty parameter reaches a nonempty formal through a bare
+// parameter reference. Positive control and RED differ ONLY in the parameter's declared type.
+test fn fse_a_nonempty_parameter_at_a_nonempty_formal_is_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_param_nonempty_ok"))
+}
+
+test fn fse_a_possibly_empty_parameter_at_a_nonempty_formal_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_param_list"), reason: ^application_argument_does_not_inhabit)
+}
+
+// COUNT LAWS KEYED BY OPERATION IDENTITY: an operation with a row has its law; one without has NONE (Absent,
+// typed undecidable), never a guessed bound.
+fn fse_law_proves_nonempty(operation: Symbol, operands: List<CardinalityConstraint>) -> Bool {
+  match cardinality_law_for(operation: operation) {
+    Absent => false
+    Present { value: law } =>
+      match cardinality_apply_law(law: law, operands: operands) {
+        Absent => false
+        Present { value: c } => cardinality_proves_nonempty(c: c)
+      }
+  }
+}
+
+test fn fse_append_law_proves_nonempty_when_one_side_is_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_append, operands: [cardinality_exact(count: fse_one()), CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_append_law_does_not_prove_two_possibly_empty_sides_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^list_append, operands: [CardinalityAtLeast { lower: Zero }, CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_filter_law_floors_a_nonempty_receiver_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^collection_filter_shape, operands: [cardinality_exact(count: fse_two())])
+}
+
+test fn fse_map_law_preserves_a_nonempty_receiver_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_map, operands: [cardinality_exact(count: fse_two())])
+}
+
+test fn fse_snoc_law_proves_nonempty_from_a_possibly_empty_receiver_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_snoc_item, operands: [CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_empty_constructor_law_is_exactly_zero_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^freemonoid_empty, operands: [])
+}
+
+test fn fse_an_operation_without_a_row_has_no_law_holds() -> Bool {
+  match cardinality_law_for(operation: ^fse_no_such_operation) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn fse_a_wrong_operand_arity_has_no_answer_holds() -> Bool {
+  match cardinality_law_for(operation: ^list_append) {
+    Absent => false
+    Present { value: law } =>
+      match cardinality_apply_law(law: law, operands: [cardinality_exact(count: fse_one())]) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}

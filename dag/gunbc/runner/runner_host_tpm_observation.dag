@@ -1,0 +1,97 @@
+module gunbc.runner.runner_host_tpm_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// WHETHER THIS UNIT HAS A TPM, ASKED BECAUSE REQUESTER AUTHENTICATION NEEDS A SECRET THE PUBLISHED
+// IMAGE CANNOT CARRY.
+//
+// The image sits on an NFS export the segment reads, so anything baked into it is public by
+// construction. A TPM would supply the one thing that is missing -- a secret bound to the physical
+// unit that no reader of the artifact can extract.
+
+data observation_build: NonEmptyStr = "tpm-probe-1"
+
+// ── the specification says CONNECTOR, which is not a module ────────────────────────────────────
+
+// extdeps.ampere.mt_collins_1u_product_brief RECORDS security_connector: "TPM 2.0 connector". A
+// connector is a header on the board; whether a module is seated in it is a different fact about
+// this unit. That same file already draws this distinction for Redfish -- the collateral lists it
+// and the held unit's firmware does not serve it -- and says both facts stand.
+data platform_specification: NonEmptyStr = "the 1U product brief lists a TPM 2.0 CONNECTOR among the security features; a header is not a fitted module"
+
+// ── the BMC cannot answer it ───────────────────────────────────────────────────────────────────
+
+// ASKED FIRST BECAUSE IT IS CHEAPER THAN A BOOT, and it returned nothing usable: the FRU carries
+// chassis, board and product identity with no security device field, no SDR sensor mentions a TPM,
+// and the three plausible inventory endpoints are all 404 on this firmware.
+data bmc_cannot_answer: List<NonEmptyStr> = [
+  "IPMI FRU: chassis/board/product identity only, no security device entry",
+  "IPMI SDR: no sensor naming a TPM or a security device",
+  "MegaRAC REST: /api/fru-inventory-info, /api/system-inventory and /api/hardware-info all 404",
+]
+
+// ── the first attempt would have produced a FALSE NEGATIVE ─────────────────────────────────────
+
+// THE BUILT KERNEL HAD THE TPM CORE AND THE WRONG TRANSPORT. arm64 defconfig enables CONFIG_TCG_TPM
+// and the TIS family -- the LPC/MMIO interface and the embedded SPI/I2C variants -- and leaves
+// CONFIG_TCG_CRB off. CRB is the ACPI Command Response Buffer interface, which is how a server-class
+// ARM board's firmware presents TPM 2.0.
+//
+// SO BOOTING BEFORE THAT WAS FIXED WOULD HAVE REPORTED NO TPM, and the reason would have been the
+// missing driver rather than a missing chip. That is this lane's commonest defect -- an absent
+// observation read as an absent subject -- and it was caught before the boot rather than after.
+data false_negative_avoided: NonEmptyStr = "CONFIG_TCG_CRB was off in the built kernel; the probe image enables it, so a null result is now about the hardware rather than about the driver"
+
+// ── what the host observed ─────────────────────────────────────────────────────────────────────
+
+// TWO INDEPENDENT READINGS, BECAUSE THEY FAIL DIFFERENTLY. The ACPI TPM2 table is the FIRMWARE's own
+// claim and needs no driver at all; /sys/class/tpm requires a driver to have bound. A table with no
+// device would mean a driver or transport gap; a device with no table would be surprising. Both
+// absent is the coherent reading.
+type TpmObservation {
+  acpi_tpm2_table: NonEmptyStr
+  sysfs_tpm_devices: NonEmptyStr
+  kernel_log_mentions: Int
+}
+
+data mt_collins_tpm_observation: TpmObservation = TpmObservation {
+  acpi_tpm2_table: "absent -- the firmware publishes no TPM2 table",
+  sysfs_tpm_devices: "none -- /sys/class/tpm is empty",
+  kernel_log_mentions: 0,
+}
+
+// ── what this establishes, and what it does not ────────────────────────────────────────────────
+
+// NO TPM IS AVAILABLE TO THE OPERATING SYSTEM ON THIS UNIT. That is the operative fact and it is
+// what the authentication decision turns on.
+//
+// IT DOES NOT DISTINGUISH TWO CAUSES. An absent ACPI TPM2 table is equally consistent with no module
+// seated in the connector and with a module seated but disabled in firmware setup -- UEFI commonly
+// gates this behind a security-device toggle. Separating them needs either physical inspection of
+// the header or a trip through the firmware setup menu, neither of which this probe performed.
+type TpmAvailability
+  = TpmAvailableToOs { interface: NonEmptyStr }
+  | TpmUnavailableToOs { causes_not_distinguished: List<NonEmptyStr> }
+
+data mt_collins_tpm_availability: TpmAvailability = TpmUnavailableToOs {
+  causes_not_distinguished: [
+    "no module seated in the TPM 2.0 connector the product brief describes",
+    "a module seated but disabled in firmware setup, which would also publish no ACPI TPM2 table",
+  ],
+}
+
+// ── consequence for requester authentication ───────────────────────────────────────────────────
+
+// TPM-BACKED UNIT ATTESTATION IS NOT AVAILABLE TODAY, and no amount of software changes that. The
+// envelope's signature already closes forgery -- a peer cannot ANSWER -- and what remains open is
+// proving the REQUESTER is the intended physical unit, which is precisely what a TPM would supply.
+//
+// THE OTHER TWO CANDIDATES ARE UNAFFECTED BY THIS RESULT. SOL injection uses a channel only BMC
+// credentials can reach and needs no host hardware; out-of-band enrolment needs none either. This
+// observation removes one option from the decision rather than settling it.
+data consequence: NonEmptyStr = "TPM-backed requester authentication requires hardware or firmware work on the unit before it is even possible; SOL injection and out-of-band enrolment are unaffected by this result"
+
+// AND THE PROBE OPTIONS ARE NOW DEAD WEIGHT PENDING THAT DECISION. gunbc.runner.runner_host_kernel_config
+// carries CONFIG_TCG_TPM and CONFIG_TCG_CRB as declared PROBE requirements with a stated dissolution:
+// if no TPM is to be fitted, they come out of an image whose whole claim is a closed surface.
+data probe_option_disposition: NonEmptyStr = "the TPM kernel options remain declared probe requirements; they are removed if the unit is not to have a TPM, and become production requirements if it is"

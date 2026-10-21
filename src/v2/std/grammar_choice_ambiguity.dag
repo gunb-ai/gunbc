@@ -1,0 +1,16 @@
+module v2.std.grammar_choice_ambiguity
+
+import std.algebra { FreeMonoid }
+import v2.std.node { Symbol }
+
+// GrammarChoiceAmbiguityRow is the grammar-analysis authority for FIRST-set choice overlap facts.
+// The parse stage's validation refuses on any row, so a row is a fact about a grammar a caller
+// supplied, never a residue an accepted grammar carries.
+
+type GrammarChoiceAmbiguityRow {
+  production: Symbol
+  left_first_terminals: FreeMonoid<Symbol>
+  right_first_terminals: FreeMonoid<Symbol>
+  overlap_terminals: FreeMonoid<Symbol>
+  both_nullable: Bool
+}

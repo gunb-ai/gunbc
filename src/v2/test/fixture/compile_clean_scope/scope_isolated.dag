@@ -1,0 +1,7 @@
+module v2.test.fixture.compile_clean_scope.scope_isolated
+
+// Roster member with NO import edge to scope_shared. It is the strict-subset half:
+// touching scope_shared must select scope_importer and NOT this file. Without a second
+// roster member that is genuinely unreachable, a containment assertion would pass over
+// a selector that returned the whole roster.
+data scope_isolated_marker: String = "scope_isolated"

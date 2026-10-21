@@ -1,0 +1,62 @@
+module test.claim.kernel_method_free_call_census_skip_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Bare `map`/`join` are kernel-method names (std.algebra templates), not census declarations.
+// After #13925 CallTargetOutcome consulted the whole-pool census for KernelMethodOnly, so a
+// unique decoy `fn map` in the same product typed the call as that declaration (or admission
+// refused when the owner was off-product) and the known-method bridge never ran. Private
+// projection-drift then reported function 'map'/'join' not found on corpus modules that never
+// imported those names. This fixture is isolated: the decoy is the only `map` in the pool and
+// returns Int, so a census bind cannot inhabit List<Int>. The known-method bridge can.
+
+data decoy_unique_map: String = "module kmfx.decoy\nfn map(xs: List<Int>, f: fn(Int) -> Int) -> Int { 0 }\n"
+
+data probe_kernel_methods: String = "module kmfx.probe\nfn mapped(xs: List<Int>) -> List<Int> { map(xs, x => x) }\nfn joined() -> String { join([\"a\", \"b\"], \",\") }\n"
+
+data probe_missing_name: String = "module kmfx.probe\nfn broken() -> Int { definitely_not_a_kernel_method(1) }\n"
+
+fn run_with_decoy(probe: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "kmfx_decoy.dag", content: decoy_unique_map),
+      fixture_source(path: "kmfx_probe.dag", content: probe)
+    ],
+    entry: "kmfx_probe.dag"
+  })
+}
+
+fn completed_without_blocking(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { diagnostics: rows, module_count: _, emitted_files: _, resolved_rust_functions: _, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: rows) |> count) == 0
+    FixtureCompileRefused { diagnostics: _, module_count: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn a_unique_census_map_does_not_bind_a_bare_kernel_map_call() -> Bool {
+  completed_without_blocking(o: run_with_decoy(probe: probe_kernel_methods))
+}
+
+test fn a_missing_free_call_still_refuses() -> Bool {
+  match run_with_decoy(probe: probe_missing_name) {
+    FixtureCompileRefused { diagnostics: rows, module_count: _, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: rows) |> count) > 0
+    FixtureCompileCompleted { diagnostics: _, module_count: _, emitted_files: _, resolved_rust_functions: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}

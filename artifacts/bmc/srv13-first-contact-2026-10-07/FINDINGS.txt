@@ -1,0 +1,54 @@
+srv13 first contact, 2026-10-07 (ASRock Rack ALTRAD8UD-1L2T), read from srv2.
+Each line names the capture file that carries it.
+
+BMC     192.168.1.247, MAC 9c:6b:00:e7:c9:83 (router reservation bmc-altrad8ud-1l2t-5),
+        OpenBMC 2.07.00, Redfish 1.17.0, factory credential            Managers_bmc.json, service-root.json
+BIOS    AMI Aptio, UEFI 2.06, Aptio core 2.22.1282, CPLD_MB 0.02         UpdateService_FirmwareInventory_bios_active.json, sol-after-reseat.log
+Host NIC Intel I210 Gigabit, 9C:6B:00:E7:CA:63                          sol-setup-walk.log (Advanced page)
+Redfish Bios resource exposes no Attributes: settings are not readable
+        or writable over Redfish on this build                         Systems_system_Bios.json
+Boot override targets: None Pxe Hdd Cd Diags BiosSetup Usb (no UefiShell) Systems_system.json
+SOL     enabled, ADMINISTRATOR                                          (ipmitool sol info, not captured)
+
+FACTORY DEFAULTS, Aptio Setup
+  Boot:     Hard Disk, NVME, CD/DVD, USB Device, Network, UEFI AP Built-in EFI Shell;
+            Setup Prompt Timeout 1; NumLock On; Boot Beep Disabled; Full Screen Logo Enabled   sol-setup-walk.log
+  Advanced > Network Stack Configuration:
+            Network Stack Enabled; IPv4 PXE Disabled; IPv4 HTTP Disabled;
+            IPv6 PXE Disabled; IPv6 HTTP Disabled; PXE boot wait time 0; Media detect count 1  sol-after-reseat.log
+
+PXE TEST  One-time Pxe override + ForceRestart landed in Aptio Setup, not a PXE client,
+          because every PXE/HTTP boot client is disabled by default.     sol-pxe-override.log
+          Enabling one is a Setup change; Redfish cannot make it on this build.
+
+INCIDENT  After that test the host went dark (power On, no console). The event log carries
+          "Undetermined system hardware failure" asserts from 2023-04-03, 2026-10-06 and
+          2026-10-07, mostly in pairs ~18 s apart. Operator reseated a DIMM and AC-cycled the
+          board; it then POSTed to Setup in ~100 s.                    sel-elist.txt, sol-after-reseat.log
+          Whether the paired asserts are a fault or this BMC's per-boot noise is not decided.
+
+THERMAL (2026-10-08)  The host had no CPU heatsink fitted. Redfish EventLog records "Thermal trip"
+          6-7 min after each successful power-on (23:13, 23:51 on 10-07; 23:39, 23:43 on 10-06),
+          and the trip latches: later Redfish power-ons leave the host dark (override never
+          consumed) until an AC cycle. All ten fan headers read "No Reading". The IPMI
+          "Undetermined system hardware failure" pairs are these thermal and power events.
+                                                                        redfish-eventlog.json, sdr-elist-host-dark.txt
+
+BMC 03.22.00 (pushed 2026-10-08 01:00Z, host off; member altrad8ud-1l2t_3.22.00.static.mtd.tar
+          sha256 cb8b8e72...; staged by UpdateService task, active after a Manager reset)
+          First authenticated request with the published credential: HTTP 403, Redfish
+          MessageId Base.1.16.0.PasswordChangeRequired (a wrong password is 401). Rotated by
+          gunbc.tools.bmc_onboard srv13_converge_credential into secret bmc-srv13-admin.
+                                                                        bmc-3.22.00-factory-login-403.json, bmc-push-3.22.00-response.json
+          Boot override targets unchanged (no UefiShell). Registries gain
+          BiosAttributeRegistryA3139.2.6.0, but its entry serves no body and Systems/system/Bios
+          carries no Attributes; Bios/Settings is 404.                  bmc-3.22.00/
+          With BIOS 2.06 the host reached Setup (override consumed ~50 s) and sat ~80 s: no
+          Attributes published.
+
+BIOS 4.01 (pushed 2026-10-08 02:26Z, host off; member obmc-bios-altrad8ud-1l2t-4.01.all.tar
+          sha256 33937359...)  bios_active reads 4.01. First boot after the flash took ~135 s to
+          reach Setup; the second ~85 s. ~2 min in Setup: no Attributes, registry still the
+          2.6.0 stub.                                                   bios-4.01/
+          Not yet tested: whether the BIOS uploads attributes only on leaving Setup for a boot
+          device (needs a heatsink).

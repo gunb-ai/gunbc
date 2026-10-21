@@ -1,0 +1,264 @@
+module gunbc.fleet.origin_main_revision_observe
+
+import std.types { String, Bool, FilePath, GitRef }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_eq,
+  git_object_id_wire_hex,
+}
+import gunbc.live_deploy.revision { SameRevision }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.fleet.fleet_main_revision {
+  FleetRevisionRelationObservation,
+  fleet_revision_relation_from_merge_base,
+  fleet_landed_main_ref_name,
+  ObservedRemoteRevision,
+  RemoteRevisionPresent,
+  RemoteRevisionAbsent,
+  RemoteRevisionUndecodable,
+  RemoteRevisionUnobserved,
+  converge_target_revision,
+  classify_landed_on_main,
+  RevisionLandedOnMain,
+  RevisionNotLandedOnMain,
+  RevisionLandedUnobserved,
+}
+
+// Live observation of a named remote ref: ls-remote through git.Core, decode through the
+// object-store untagged-hex decoder, three answers (present / absent / undecodable) plus
+// unobserved when the probe refuses. Production binds that to origin/main
+// (`observe_origin_main_revision`). A development instance may name a different (remote, ref);
+// skipping the comparison is the DESIGN 5 escape hatch.
+fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -> ObservedRemoteRevision {
+  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: remote, ref_name: ref_name)
+  if read.exit_code == 0 {
+    let line = trim(s: read.advertised)
+    if line == "" {
+      RemoteRevisionAbsent
+    } else {
+      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
+        Present { value: oid } => RemoteRevisionPresent { revision: oid }
+        Absent => RemoteRevisionUndecodable { advertised: line }
+      }
+    }
+  } else {
+    RemoteRevisionUnobserved {
+      cause: join([
+        "origin_main_revision_observe: ls-remote of ", ref_name as String, " on remote ", remote,
+        " refused: ", read.stderr,
+      ], ""),
+    }
+  }
+}
+
+data origin_main_revision_observe_repository_path: String = "."
+
+// The repository whose ancestry this observer inspects. `.` is the production checkout; it is a
+// declared value so a witness can point the same observation at a fixture repository.
+
+// THE EFFECTFUL HALF OF THE ANCESTRY OBSERVATION, AND THE SOLE PRODUCTION CONSTRUCTOR OF A
+// MERGE-BASE-DERIVED RELATION.
+//
+// The decidable half is a pure fold in gunbc.fleet.fleet_main_revision, and only this function may feed
+// it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
+// that fold as though those had been observed -- the fold stays public because the POLICY has to
+// be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness
+// reaching it refuses under the hermetic envelope), but authoring its inputs outside an actual
+// probe is fabricating an observation.
+//
+// THE REPOSITORY IS NAMED, NOT INHERITED. An earlier revision of this annotation said the
+// repository was "STATED RATHER THAN PARAMETERIZED" -- that git.Inspect.MergeBase took no
+// repository, so this function's precondition was that the process already sits in the right
+// checkout. That is no longer true and the sentence would now describe a shape the operation
+// refuses: MergeBase requires `repository_path`, so the fact is supplied rather than assumed.
+//
+// Why it mattered enough to change the operation: an ambient repository makes a WRONG answer
+// indistinguishable from a right one, because two checkouts can hold refs that look identical.
+// It also made the observation unwitnessable against a controlled fixture, since a witness cannot
+// relocate its own process.
+
+// THE REPOSITORY IS A PARAMETER HERE AND BOUND ONE FUNCTION BELOW, and the split exists because
+// the annotation above made a promise the signature could not keep: it said a witness could point
+// this observation at a fixture repository without relocating its process, while the repository was
+// reachable only as a module-scope constant. Naming the repository on the OPERATION removed the
+// ambient checkout; it did not give a caller any way to say WHICH repository, so the observation
+// remained exactly as unwitnessable as before, now with a note claiming otherwise.
+//
+// This is not a second policy authority and the asymmetry is the point: `_in` owns the whole
+// observation composition and the wrapper owns exactly one fact, which repository production reads.
+// Both reach the same pure fold, so a matrix run against a fixture repository exercises the real
+// observer rather than the merge-base operation alone -- the gap that let git.Inspect.MergeBase be
+// proven by record/replay while the composition above it stayed unproven.
+//
+// The alternative -- record against `.` while launching the recorder from another directory -- is
+// specifically rejected: it makes one identical operation input mean different repositories
+// depending on ambient process state, which is the ambiguity naming the repository removed.
+// THE CALLER NO LONGER TRIMS, and the reason is narrower than it looks: the trim here was INERT.
+// The operation's output binding already delivers `sha` without git's line terminator -- measured,
+// not assumed (a recorded fixture's stored sha is 40 characters, and removing the trim left the
+// whole wet matrix green). So this was a guard against a byte that never arrives, and normalization
+// now happens once inside extdeps.git.inspect merge_base_outcome, at the boundary that owns the
+// wire format. Deleting it removes a second site for one invariant; it does not close a defect,
+// and saying otherwise would credit this change with a repair it did not make.
+fn observe_fleet_revision_relation_in(
+  repository_path: String,
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  if git_object_id_eq(left: current, right: accepted) {
+    FleetRevisionRelationObservation {
+      current: current,
+      accepted: accepted,
+      relation: SameRevision,
+    }
+  } else {
+    let probe = git.Inspect.MergeBase(
+      repository_path: repository_path,
+      left: git_object_id_wire_hex(oid: current) as String as GitRef,
+      right: git_object_id_wire_hex(oid: accepted) as String as GitRef,
+      expect: OutcomeIsData,
+    )
+    fleet_revision_relation_from_merge_base(
+      current: current,
+      accepted: accepted,
+      exit_code: probe.exit_code,
+      base_hex: probe.sha as String,
+      stderr: probe.stderr,
+    )
+  }
+}
+
+// The production binding, and the ONLY place the production repository is named. Note what it does
+// NOT do: it does not re-check equality, re-decode, or re-classify. A wrapper that repeated any of
+// that would be the second authority this split was written to avoid.
+fn observe_fleet_revision_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  observe_fleet_revision_relation_in(
+    repository_path: origin_main_revision_observe_repository_path,
+    current: current,
+    accepted: accepted,
+  )
+}
+
+// THE DEPLOYED TREE'S OWN REVISION, read locally and compared to nothing: which software is acting.
+// Equality to origin/main tip is the deploy path's question (`FleetRevisionStanding`). Dispatch
+// uses landed ancestry (`launch_gate_landed`), not tip equality, so a host one merge behind
+// still admits. Unreadable HEAD still refuses: a dispatch that cannot name the code it runs
+// has no identity to bind.
+type LocalTreeRevision
+  = LocalTreeRevisionObserved { revision: GitObjectId }
+  | LocalTreeRevisionUnobserved { cause: String }
+
+fn local_tree_revision(repo: FilePath) -> LocalTreeRevision {
+  let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
+  if read.exit_code == 0 {
+    match git_object_id_from_untagged_hex(hex: trim(s: read.revision)) {
+      Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
+      Absent =>
+        LocalTreeRevisionUnobserved {
+          cause: concat("origin_main_revision_observe: HEAD is not a decodable object id: ", trim(s: read.revision)),
+        }
+    }
+  } else {
+    LocalTreeRevisionUnobserved {
+      cause: "origin_main_revision_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
+    }
+  }
+}
+
+// The revision cell of a host's convergence: three states, none collapsible. Converged
+// says the deployed tree IS the admitted revision; Drifted carries BOTH sides (the
+// membership-diff `from` ruling — a catch-up realization needs the prior, and the
+// receipt must name what it observed, not just that it disagreed); Unobserved says the
+// comparison could not be made and why — it is unobserved-GRADE for the fold, never
+// satisfied (leg-f ruling shape).
+type FleetRevisionStanding
+  = RevisionConverged { revision: GitObjectId }
+  | RevisionDrifted { desired: GitObjectId, local: GitObjectId }
+  | RevisionUnobserved { cause: String }
+
+fn observe_origin_main_revision(repo: FilePath) -> ObservedRemoteRevision {
+  observe_admitted_revision(repo: repo, remote: "origin", ref_name: fleet_landed_main_ref_name as GitRef)
+}
+
+fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) -> FleetRevisionStanding {
+  let observed = observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)
+  match converge_target_revision(observed: observed) {
+    Present { value: desired } =>
+      match local_tree_revision(repo: repo) {
+        LocalTreeRevisionObserved { revision: local } =>
+          if git_object_id_eq(left: desired, right: local) {
+            RevisionConverged { revision: desired }
+          } else {
+            RevisionDrifted { desired: desired, local: local }
+          }
+        LocalTreeRevisionUnobserved { cause } => RevisionUnobserved { cause: cause }
+      }
+    Absent =>
+      match observed {
+        RemoteRevisionUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        RemoteRevisionAbsent =>
+          RevisionUnobserved {
+            cause: join([
+              "origin_main_revision_observe: remote ", remote, " advertises no ", ref_name as String,
+            ], ""),
+          }
+        RemoteRevisionUndecodable { advertised: line } =>
+          RevisionUnobserved {
+            cause: concat("origin_main_revision_observe: advertisement is not a decodable object id: ", line),
+          }
+        RemoteRevisionPresent { revision: _ } =>
+          RevisionUnobserved {
+            cause: "origin_main_revision_observe: admitted revision projected no target (unreachable by construction)",
+          }
+      }
+  }
+}
+
+fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
+  admitted_revision_standing(repo: repo, remote: "origin", ref_name: fleet_landed_main_ref_name as GitRef)
+}
+
+type LandedOnAdmittedStanding
+  = TreeLandedOnAdmitted { local: GitObjectId, admitted: GitObjectId }
+  | TreeNotLandedOnAdmitted { local: GitObjectId, admitted: GitObjectId }
+  | TreeLandedUnobserved { cause: String }
+
+fn landed_on_admitted_standing(
+  repo: FilePath,
+  remote: String,
+  ref_name: GitRef,
+  local: GitObjectId,
+) -> LandedOnAdmittedStanding {
+  let observed = observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)
+  match observed {
+    RemoteRevisionUnobserved { cause: c } => TreeLandedUnobserved { cause: c }
+    RemoteRevisionAbsent =>
+      TreeLandedUnobserved {
+        cause: join(["origin_main_revision_observe: remote ", remote, " advertises no ", ref_name as String], ""),
+      }
+    RemoteRevisionUndecodable { advertised: line } =>
+      TreeLandedUnobserved {
+        cause: concat("origin_main_revision_observe: advertisement is not a decodable object id: ", line),
+      }
+    RemoteRevisionPresent { revision: admitted } =>
+      match classify_landed_on_main(
+        relation: observe_fleet_revision_relation_in(
+          repository_path: repo as String,
+          current: local,
+          accepted: admitted,
+        ).relation,
+      ) {
+        RevisionLandedOnMain => TreeLandedOnAdmitted { local: local, admitted: admitted }
+        RevisionNotLandedOnMain { relation: _ } =>
+          TreeNotLandedOnAdmitted { local: local, admitted: admitted }
+        RevisionLandedUnobserved { cause: c } => TreeLandedUnobserved { cause: c }
+      }
+  }
+}

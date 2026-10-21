@@ -1,0 +1,1372 @@
+module v2.std.integer
+
+import std.coercion { unicode_scalar_unfold }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item, fold_list, length, list_map, list_at_optional }
+import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
+import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root, fold_list_node }
+import v2.std.node_query { find_named_child }
+import std.integer { Signedness, Signed, Unsigned, decimal_digit_of_units, int_to_decimal_string }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import std.types { Bool, NonEmptyStr, List }
+import v2.std.machine { Byte }
+import std.machine_constraints { Compose, MachineWidth, PointerWidth }
+import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value }
+import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
+import std.bit { Word64 }
+
+type Int = GroupCompletion<Nat>
+type UInt = Nat
+
+type Representation
+  = TwosComplement
+  | OnesComplement
+  | SignMagnitude
+
+type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
+
+type Int8 = Compose<Int, MachineWidth<8>>
+type Int16 = Compose<Int, MachineWidth<16>>
+type Int32 = Compose<Int, MachineWidth<32>>
+type Int64 = Compose<Int, MachineWidth<64>>
+type Int128 = Compose<Int, MachineWidth<128>>
+
+type UInt8 = Compose<UInt, MachineWidth<8>>
+type UInt16 = Compose<UInt, MachineWidth<16>>
+type UInt32 = Compose<UInt, MachineWidth<32>>
+type UInt64 = Compose<UInt, MachineWidth<64>>
+type UInt128 = Compose<UInt, MachineWidth<128>>
+
+type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
+
+type IntegerBoundSign
+  = IntegerBoundNegative
+  | IntegerBoundNonNegative
+
+type IntegerRangeEndpoint
+  = IntegerRangeInclusiveMin
+  | IntegerRangeInclusiveMax
+
+type NonZeroDecimalDigit
+  = NonZeroD1
+  | NonZeroD2
+  | NonZeroD3
+  | NonZeroD4
+  | NonZeroD5
+  | NonZeroD6
+  | NonZeroD7
+  | NonZeroD8
+  | NonZeroD9
+
+type DecimalNonZeroMagnitude {
+  lead: NonZeroDecimalDigit
+  tail: FreeMonoid<DecimalDigit>
+}
+
+type DecimalMagnitude
+  = DecimalZero
+  | DecimalNonZero { magnitude: DecimalNonZeroMagnitude }
+
+type IntegerIntervalBound
+  = IntegerConcreteZero
+  | IntegerConcreteBound { sign: IntegerBoundSign, magnitude: DecimalNonZeroMagnitude }
+  | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
+
+type IntegerIntervalSpec {
+  inclusive_min: IntegerIntervalBound
+  inclusive_max: IntegerIntervalBound
+}
+
+fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_standard_integer_type_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_standard_integer_type_decode_invalid,
+    at: invariant_port_locus(port: ^integer_signed_i32_le_decode_invalid, invariant: ^integer_standard_integer_type_decode_invalid),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data nonzero_decimal_digit_roster: List<NonZeroDecimalDigit> = [
+  NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD5, NonZeroD6, NonZeroD7, NonZeroD8, NonZeroD9
+]
+
+fn nonzero_decimal_digit_of_positive_units(value: Int) -> NonZeroDecimalDigit {
+  fold_list(
+    xs: nonzero_decimal_digit_roster,
+    empty: NonZeroD1,
+    cons: fn(acc, d) {
+      if decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: d)) == value { d } else { acc }
+    }
+  )
+}
+
+type DecimalDigitStep {
+  digit: DecimalDigit
+  carry: Bool
+}
+
+fn decimal_digit_double(d: DecimalDigit, carry_in: Bool) -> DecimalDigitStep {
+  let doubled = (2 * decimal_digit_value(d: d)) + (if carry_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: doubled), carry: doubled >= 10 }
+}
+
+fn decimal_digit_sub_borrow(d: DecimalDigit, borrow_in: Bool) -> DecimalDigitStep {
+  let difference = decimal_digit_value(d: d) - (if borrow_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: difference + 10), carry: difference < 0 }
+}
+
+type DecimalDigitsStep {
+  digits: FreeMonoid<DecimalDigit>
+  carry: Bool
+}
+
+fn decimal_digits_double(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: false }
+    Cons { head, tail } =>
+      match decimal_digits_double(digits: tail) {
+        DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+          match decimal_digit_double(d: head, carry_in: tail_carry) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: doubled_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_sub_one(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: true }
+    Cons { head, tail } =>
+      match decimal_digits_sub_one(digits: tail) {
+        DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+          match decimal_digit_sub_borrow(d: head, borrow_in: tail_borrow) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: sub_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_to_magnitude(digits: FreeMonoid<DecimalDigit>) -> DecimalMagnitude {
+  match digits {
+    Empty => DecimalZero
+    Cons { head, tail } =>
+      if decimal_digit_value(d: head) == 0 {
+        decimal_digits_to_magnitude(digits: tail)
+      } else {
+        DecimalNonZero {
+          magnitude: DecimalNonZeroMagnitude {
+            lead: nonzero_decimal_digit_of_positive_units(value: decimal_digit_value(d: head)),
+            tail: tail
+          }
+        }
+      }
+  }
+}
+
+type NonZeroDoubleLead
+  = NonZeroDoubleStays { lead: NonZeroDecimalDigit }
+  | NonZeroDoubleOverflows { pushed: DecimalDigit }
+
+fn nonzero_decimal_digit_double_lead(lead: NonZeroDecimalDigit, carry_in: Bool) -> NonZeroDoubleLead {
+  let doubled = (2 * decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead))) + (if carry_in { 1 } else { 0 })
+  if doubled >= 10 {
+    NonZeroDoubleOverflows { pushed: decimal_digit_of_units(value: doubled) }
+  } else {
+    NonZeroDoubleStays { lead: nonzero_decimal_digit_of_positive_units(value: doubled) }
+  }
+}
+
+fn decimal_nonzero_double(m: DecimalNonZeroMagnitude) -> DecimalNonZeroMagnitude {
+  match decimal_digits_double(digits: m.tail) {
+    DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+      match nonzero_decimal_digit_double_lead(lead: m.lead, carry_in: tail_carry) {
+        NonZeroDoubleStays { lead } =>
+          DecimalNonZeroMagnitude { lead: lead, tail: doubled_tail }
+        NonZeroDoubleOverflows { pushed } =>
+          DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Cons { head: pushed, tail: doubled_tail } }
+      }
+  }
+}
+
+fn nonzero_decimal_digit_minus_borrow(lead: NonZeroDecimalDigit, borrow_in: Bool) -> DecimalDigit {
+  decimal_digit_of_units(
+    value: decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead)) - (if borrow_in { 1 } else { 0 })
+  )
+}
+
+fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
+  match decimal_digits_sub_one(digits: m.tail) {
+    DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+      decimal_digits_to_magnitude(
+        digits: Cons {
+          head: nonzero_decimal_digit_minus_borrow(lead: m.lead, borrow_in: tail_borrow),
+          tail: sub_tail
+        }
+      )
+  }
+}
+
+// THE LADDER IS ONE COMPUTATION, CARRIED. Every power of two up to the widest standard machine
+// width is a prefix of one doubling chain, so the ten interval specs (and every other demand
+// for 2^n at n <= 128) share the chain's prefix rather than each climbing it from 2^0. Authored
+// as a recursion alone, integer_pow2_magnitude(127) and integer_pow2_magnitude(63) were two
+// independent ladders whose shared prefix only a result memo could serve; the table below is
+// the std.materialization_ladder Share for that prefix -- built once per frame by the same
+// doubling the recursion performs, so index n holds exactly what the recursion returns for n.
+fn integer_pow2_ladder_loop(acc: List<DecimalNonZeroMagnitude>, last: DecimalNonZeroMagnitude, remaining: Int) -> List<DecimalNonZeroMagnitude> {
+  if remaining <= 0 {
+    acc
+  } else {
+    let next = decimal_nonzero_double(m: last)
+    integer_pow2_ladder_loop(acc: list_snoc_item(xs: acc, item: next), last: next, remaining: remaining - 1)
+  }
+}
+
+data integer_pow2_magnitude_widest_carried_exponent: Int = 128
+
+data integer_pow2_magnitudes_carried: List<DecimalNonZeroMagnitude> = integer_pow2_ladder_loop(
+  acc: [DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }],
+  last: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty },
+  remaining: integer_pow2_magnitude_widest_carried_exponent
+)
+
+// Walk the carried ladder by structure: the nth Cons holds 2^n, so reaching the target index is
+// the answer and running off the end means the exponent lies beyond what is carried, in which
+// case the chain continues from the last carried power by the same doubling. There is no index
+// lookup and therefore no miss arm inside the carried range: the table's length IS the range.
+fn integer_pow2_from_ladder(ladder: List<DecimalNonZeroMagnitude>, last: DecimalNonZeroMagnitude, exponent: Int) -> DecimalNonZeroMagnitude {
+  match ladder {
+    Cons { head: carried, tail: rest } =>
+      if exponent == 0 { carried } else { integer_pow2_from_ladder(ladder: rest, last: carried, exponent: exponent - 1) }
+    Empty => integer_pow2_beyond_ladder(from: last, remaining: exponent + 1)
+  }
+}
+
+fn integer_pow2_beyond_ladder(from: DecimalNonZeroMagnitude, remaining: Int) -> DecimalNonZeroMagnitude {
+  if remaining <= 0 { from } else { integer_pow2_beyond_ladder(from: decimal_nonzero_double(m: from), remaining: remaining - 1) }
+}
+
+fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
+  if exponent <= 0 {
+    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
+  } else {
+    integer_pow2_from_ladder(
+      ladder: integer_pow2_magnitudes_carried,
+      last: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty },
+      exponent: exponent
+    )
+  }
+}
+
+fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
+  int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
+}
+
+fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> Ordering {
+  match left {
+    Empty => match right {
+      Empty => Equal
+      Cons { head: _, tail: _ } => Less
+    }
+    Cons { head: left_head, tail: left_tail } => match right {
+      Empty => Greater
+      Cons { head: right_head, tail: right_tail } =>
+        match decimal_digit_compare(left: left_head, right: right_head) {
+          Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
+          Less => Less
+          Greater => Greater
+        }
+    }
+  }
+}
+
+fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> Ordering {
+  let left_len = 1 + length(xs: left.tail)
+  let right_len = 1 + length(xs: right.tail)
+  if left_len < right_len {
+    Less
+  } else if left_len > right_len {
+    Greater
+  } else {
+    match decimal_digit_compare(
+      left: integer_nonzero_decimal_digit_widen(digit: left.lead),
+      right: integer_nonzero_decimal_digit_widen(digit: right.lead)
+    ) {
+      Equal => decimal_digit_list_compare(left: left.tail, right: right.tail)
+      Less => Less
+      Greater => Greater
+    }
+  }
+}
+
+fn ordering_invert(ordering: Ordering) -> Ordering {
+  match ordering {
+    Less => Greater
+    Equal => Equal
+    Greater => Less
+  }
+}
+
+type StandardIntegerType
+  = Int128
+  | Int64
+  | Int32
+  | Int16
+  | Int8
+  | UInt128
+  | UInt64
+  | UInt32
+  | UInt16
+  | UInt8
+
+fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> Signedness {
+  match standard_integer_type {
+    Int128 => Signed
+    Int64 => Signed
+    Int32 => Signed
+    Int16 => Signed
+    Int8 => Signed
+    UInt128 => Unsigned
+    UInt64 => Unsigned
+    UInt32 => Unsigned
+    UInt16 => Unsigned
+    UInt8 => Unsigned
+  }
+}
+
+fn integer_standard_integer_type_width_bits(standard_integer_type: StandardIntegerType) -> Int {
+  match standard_integer_type {
+    Int128 => 128
+    Int64 => 64
+    Int32 => 32
+    Int16 => 16
+    Int8 => 8
+    UInt128 => 128
+    UInt64 => 64
+    UInt32 => 32
+    UInt16 => 16
+    UInt8 => 8
+  }
+}
+
+fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerIntervalBound {
+  match magnitude {
+    DecimalZero => IntegerConcreteZero
+    DecimalNonZero { magnitude: nonzero } =>
+      IntegerConcreteBound { sign: IntegerBoundNonNegative, magnitude: nonzero }
+  }
+}
+
+// Both signed bounds are the SAME 2^(width-1), read once as a magnitude and once
+// decremented -- one computation identity with two demands whose least common ancestor is
+// the Signed arm, so it is carried rather than re-derived. The re-derivation was not free:
+// integer_pow2_magnitude is a linear recursion of width-1 decimal doublings, so the
+// duplicate paid a whole second ladder for every machine width.
+fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> IntegerIntervalSpec {
+  match signedness {
+    Signed => {
+      let signed_pow2 = integer_pow2_magnitude(exponent: width_bits - 1)
+      integer_interval(
+        inclusive_min: integer_concrete_bound(
+          sign: IntegerBoundNegative,
+          magnitude: signed_pow2
+        ),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: signed_pow2)
+        )
+      )
+    }
+    Unsigned =>
+      integer_interval(
+        inclusive_min: integer_concrete_zero(),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits))
+        )
+      )
+  }
+}
+
+// READS THE MODULE'S OWN DATA ROWS, NEVER RE-DERIVES. This used to call
+// integer_machine_interval_spec directly, which made it a second way to compute a bound beside
+// the rows below (int8_interval_spec .. uint128_interval_spec) and, being a fn, paid the
+// decimal-doubling ladder on EVERY demand: the node decoder folds it over all ten standard
+// types per decode, so one integer-node decode re-derived 2^127 and its nine siblings. The
+// instrument that ranks it is the required floor's own demand census
+// (required_floor_cross_claim_demand.tsv, within-claim repeats = evals - claims per producer),
+// re-derived by any required-floor run rather than transcribed here. The rows carry each spec
+// once per frame; this match is the projection from the type to its row.
+fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+  match standard_integer_type {
+    Int128 => int128_interval_spec
+    Int64 => int64_interval_spec
+    Int32 => int32_interval_spec
+    Int16 => int16_interval_spec
+    Int8 => int8_interval_spec
+    UInt128 => uint128_interval_spec
+    UInt64 => uint64_interval_spec
+    UInt32 => uint32_interval_spec
+    UInt16 => uint16_interval_spec
+    UInt8 => uint8_interval_spec
+  }
+}
+
+data integer_standard_integer_type_roster: List<StandardIntegerType> = [
+  Int128, Int64, Int32, Int16, Int8,
+  UInt128, UInt64, UInt32, UInt16, UInt8
+]
+
+// One standard integer type beside the interval node its spec projects to: the decoder's
+// comparison table, built once per frame rather than once per candidate per decode.
+type StandardIntegerTypeIntervalNode {
+  standard_integer_type: StandardIntegerType
+  node: Node
+}
+
+fn integer_standard_integer_type_interval_node_row(t: StandardIntegerType) -> StandardIntegerTypeIntervalNode {
+  StandardIntegerTypeIntervalNode {
+    standard_integer_type: t,
+    node: integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: t))
+  }
+}
+
+// One enumeration of the closed set: the roster above is the only place the ten types are listed,
+// so a type added there reaches this table and the decoder without a second list to forget.
+data integer_standard_integer_type_interval_nodes: List<StandardIntegerTypeIntervalNode> = list_map(xs: integer_standard_integer_type_roster, f: fn(t) { integer_standard_integer_type_interval_node_row(t: t) })
+
+fn integer_standard_integer_type_from_node_step(
+  node: Node,
+  acc: Outcome<StandardIntegerType>,
+  candidate: StandardIntegerTypeIntervalNode
+) -> Outcome<StandardIntegerType> {
+  match acc {
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
+      if node == candidate.node {
+        Accepted { value: candidate.standard_integer_type, diagnostics: None }
+      } else {
+        acc
+      }
+  }
+}
+
+fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
+  fold_list(
+    xs: integer_standard_integer_type_interval_nodes,
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
+      )
+    },
+    cons: fn(acc, candidate) {
+      integer_standard_integer_type_from_node_step(node: node, acc: acc, candidate: candidate)
+    }
+  )
+}
+
+fn integer_pointer_width_bound_compare(
+  left_signedness: Signedness,
+  left_endpoint: IntegerRangeEndpoint,
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match left_signedness {
+    Signed => match right_signedness {
+      Signed => match left_endpoint {
+        IntegerRangeInclusiveMin => match right_endpoint {
+          IntegerRangeInclusiveMin => Equal
+          IntegerRangeInclusiveMax => Less
+        }
+        IntegerRangeInclusiveMax => match right_endpoint {
+          IntegerRangeInclusiveMin => Greater
+          IntegerRangeInclusiveMax => Equal
+        }
+      }
+      Unsigned => Less
+    }
+    Unsigned => match right_signedness {
+      Signed => Greater
+      Unsigned => match left_endpoint {
+        IntegerRangeInclusiveMin => match right_endpoint {
+          IntegerRangeInclusiveMin => Equal
+          IntegerRangeInclusiveMax => Less
+        }
+        IntegerRangeInclusiveMax => match right_endpoint {
+          IntegerRangeInclusiveMin => Greater
+          IntegerRangeInclusiveMax => Equal
+        }
+      }
+    }
+  }
+}
+
+fn integer_concrete_zero_compare_to_pointer_width(
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match right_signedness {
+    Signed => match right_endpoint {
+      IntegerRangeInclusiveMin => Greater
+      IntegerRangeInclusiveMax => Less
+    }
+    Unsigned => match right_endpoint {
+      IntegerRangeInclusiveMin => Equal
+      IntegerRangeInclusiveMax => Less
+    }
+  }
+}
+
+fn integer_concrete_bound_compare_to_pointer_width(
+  left_sign: IntegerBoundSign,
+  right_signedness: Signedness,
+  right_endpoint: IntegerRangeEndpoint
+) -> Ordering {
+  match right_signedness {
+    Signed => match right_endpoint {
+      IntegerRangeInclusiveMin => Greater
+      IntegerRangeInclusiveMax => Less
+    }
+    Unsigned => match right_endpoint {
+      IntegerRangeInclusiveMin => match left_sign {
+        IntegerBoundNegative => Less
+        IntegerBoundNonNegative => Greater
+      }
+      IntegerRangeInclusiveMax => Less
+    }
+  }
+}
+
+fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Ordering {
+  match left {
+    IntegerConcreteZero => match right {
+      IntegerConcreteZero => Equal
+      IntegerConcreteBound { sign, magnitude: _ } => match sign {
+        IntegerBoundNegative => Greater
+        IntegerBoundNonNegative => Less
+      }
+      IntegerPointerWidthBound { signedness, endpoint } =>
+        integer_concrete_zero_compare_to_pointer_width(
+          right_signedness: signedness,
+          right_endpoint: endpoint
+        )
+    }
+    IntegerConcreteBound { sign: left_sign, magnitude: left_magnitude } => match right {
+      IntegerConcreteZero => match left_sign {
+        IntegerBoundNegative => Less
+        IntegerBoundNonNegative => Greater
+      }
+      IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } => match left_sign {
+        IntegerBoundNegative => match right_sign {
+          IntegerBoundNegative => match decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude) {
+            Equal => Equal
+            Less => Greater
+            Greater => Less
+          }
+          IntegerBoundNonNegative => Less
+        }
+        IntegerBoundNonNegative => match right_sign {
+          IntegerBoundNegative => Greater
+          IntegerBoundNonNegative => decimal_nonzero_magnitude_compare(left: left_magnitude, right: right_magnitude)
+        }
+      }
+      IntegerPointerWidthBound { signedness, endpoint } =>
+        integer_concrete_bound_compare_to_pointer_width(
+          left_sign: left_sign,
+          right_signedness: signedness,
+          right_endpoint: endpoint
+        )
+    }
+    IntegerPointerWidthBound { signedness: left_signedness, endpoint: left_endpoint } =>
+      match right {
+        IntegerConcreteZero =>
+          ordering_invert(ordering: integer_concrete_zero_compare_to_pointer_width(
+            right_signedness: left_signedness,
+            right_endpoint: left_endpoint
+          ))
+        IntegerConcreteBound { sign: right_sign, magnitude: right_magnitude } =>
+          ordering_invert(ordering: integer_concrete_bound_compare_to_pointer_width(
+            left_sign: right_sign,
+            right_signedness: left_signedness,
+            right_endpoint: left_endpoint
+          ))
+        IntegerPointerWidthBound { signedness: right_signedness, endpoint: right_endpoint } =>
+          integer_pointer_width_bound_compare(
+            left_signedness: left_signedness,
+            left_endpoint: left_endpoint,
+            right_signedness: right_signedness,
+            right_endpoint: right_endpoint
+          )
+      }
+  }
+}
+
+fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Bool {
+  match integer_interval_bound_compare(left: left, right: right) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+
+fn integer_interval_bound_is_pointer_width(bound: IntegerIntervalBound) -> Bool {
+  match bound {
+    IntegerPointerWidthBound { signedness: _, endpoint: _ } => true
+    IntegerConcreteZero => false
+    IntegerConcreteBound { sign: _, magnitude: _ } => false
+  }
+}
+
+fn integer_interval_spec_is_pointer_width(spec: IntegerIntervalSpec) -> Bool {
+  integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
+fn integer_interval_spec_is_concrete(spec: IntegerIntervalSpec) -> Bool {
+  !integer_interval_bound_is_pointer_width(bound: spec.inclusive_min)
+    && !integer_interval_bound_is_pointer_width(bound: spec.inclusive_max)
+}
+
+fn integer_interval_spec_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  if integer_interval_spec_is_concrete(spec: container) {
+    integer_interval_spec_is_concrete(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else if integer_interval_spec_is_pointer_width(spec: container) {
+    integer_interval_spec_is_pointer_width(spec: contained)
+      && integer_interval_bound_less_or_equal(left: container.inclusive_min, right: contained.inclusive_min)
+      && integer_interval_bound_less_or_equal(left: contained.inclusive_max, right: container.inclusive_max)
+  } else {
+    false
+  }
+}
+fn integer_interval_spec_strictly_contains(container: IntegerIntervalSpec, contained: IntegerIntervalSpec) -> Bool {
+  integer_interval_spec_contains(container: container, contained: contained)
+    && !integer_interval_spec_contains(container: contained, contained: container)
+}
+
+fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, contained: StandardIntegerType) -> Bool {
+  integer_interval_spec_contains(
+    container: container,
+    contained: integer_standard_integer_type_interval_spec(standard_integer_type: contained)
+  )
+}
+
+fn integer_interval_spec_node_contains(container: Node, contained: Node) -> Bool {
+  match integer_standard_integer_type_from_node(node: container) {
+    Accepted { value: decoded_container, diagnostics: _ } =>
+      match integer_standard_integer_type_from_node(node: contained) {
+        Accepted { value: decoded_contained, diagnostics: _ } =>
+          integer_interval_spec_contains_decoded_node(
+            container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
+            contained: decoded_contained
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+fn integer_interval(
+  inclusive_min: IntegerIntervalBound,
+  inclusive_max: IntegerIntervalBound
+) -> IntegerIntervalSpec {
+  IntegerIntervalSpec {
+    inclusive_min: inclusive_min,
+    inclusive_max: inclusive_max
+  }
+}
+
+fn integer_concrete_zero() -> IntegerIntervalBound {
+  IntegerConcreteZero
+}
+
+fn integer_concrete_bound(
+  sign: IntegerBoundSign,
+  magnitude: DecimalNonZeroMagnitude
+) -> IntegerIntervalBound {
+  IntegerConcreteBound { sign: sign, magnitude: magnitude }
+}
+
+fn integer_pointer_width_bound(
+  signedness: Signedness,
+  endpoint: IntegerRangeEndpoint
+) -> IntegerIntervalBound {
+  IntegerPointerWidthBound { signedness: signedness, endpoint: endpoint }
+}
+
+// The machine and pointer-width intervals are CONSTANTS, not computations: each is a
+// closed application of the derivation above to one declared width, and nothing about the answer
+// varies. Authored as `fn`s they were re-derived once per witness, and a signed 128-bit derivation
+// is 127 decimal doublings over a growing digit list -- the quadratic ladder that made every
+// witness reaching a language target model pay for 2^127 again. A `data` row is not a cache: the
+// value has ONE demand identity whose least common ancestor is the module, so it is carried there
+// rather than materialized per consumer. `integer_machine_interval_spec` remains the single
+// derivation authority; these rows are its applications, never a second way to compute a bound.
+data int8_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 8)
+
+data int16_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 16)
+
+data int32_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 32)
+
+data int64_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 64)
+
+data int128_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 128)
+
+data uint8_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 8)
+
+data uint16_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 16)
+
+data uint32_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 32)
+
+data uint64_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 64)
+
+data uint128_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 128)
+
+data int_platform_interval_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
+  inclusive_max: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMax)
+)
+
+data uint_platform_interval_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
+  inclusive_max: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMax)
+)
+
+fn integer_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn integer_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {
+  match sign {
+    IntegerBoundNegative => integer_inhabitant_atom(id: ^integer_tag_bound_negative)
+    IntegerBoundNonNegative => integer_inhabitant_atom(id: ^integer_tag_bound_nonnegative)
+  }
+}
+
+fn integer_signedness_node(signedness: Signedness) -> Node {
+  match signedness {
+    Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
+    Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
+  }
+}
+
+fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
+  match endpoint {
+    IntegerRangeInclusiveMin => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_min)
+    IntegerRangeInclusiveMax => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_max)
+  }
+}
+
+// THE INT VALUE TYPE, AS A NODE. This module owns what `Int` denotes, exactly as v2.std.logic
+// bool_node owns what `Bool` denotes: a language's binding join (v2.extdeps.languages.dag
+// dag_binding_denotation) points here, and every consumer of an Int value's type -- infer's
+// literal, add and branch rules, the evaluator's primitive type -- reads this one node. Its atom
+// identity keeps the spelling `dag_binding_type_int` it carried before the authority moved here;
+// that is the identity every consumer compares against, so renaming it is a separate migration.
+fn integer_int_type_node() -> Node {
+  integer_inhabitant_atom(id: ^dag_binding_type_int)
+}
+
+// THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes
+// a magnitude as fold_list_node over integer_decimal_digit_node: each digit atom is a DecimalDigit and
+// each cons cell (and the empty tail) is a FreeMonoid<DecimalDigit>. v2.compiler.infer
+// infer_literal_payload_entries grounds an accepted int literal's magnitude payload against these,
+// so the resolved type it records for a payload node is that node's type in this authority, and not
+// the literal that carries it.
+fn integer_decimal_digit_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digit)
+}
+
+fn integer_decimal_digits_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digits)
+}
+
+fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
+  match digit {
+    D0 => integer_inhabitant_atom(id: ^integer_tag_digit_0)
+    D1 => integer_inhabitant_atom(id: ^integer_tag_digit_1)
+    D2 => integer_inhabitant_atom(id: ^integer_tag_digit_2)
+    D3 => integer_inhabitant_atom(id: ^integer_tag_digit_3)
+    D4 => integer_inhabitant_atom(id: ^integer_tag_digit_4)
+    D5 => integer_inhabitant_atom(id: ^integer_tag_digit_5)
+    D6 => integer_inhabitant_atom(id: ^integer_tag_digit_6)
+    D7 => integer_inhabitant_atom(id: ^integer_tag_digit_7)
+    D8 => integer_inhabitant_atom(id: ^integer_tag_digit_8)
+    D9 => integer_inhabitant_atom(id: ^integer_tag_digit_9)
+  }
+}
+
+fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> DecimalDigit {
+  match digit {
+    NonZeroD1 => D1
+    NonZeroD2 => D2
+    NonZeroD3 => D3
+    NonZeroD4 => D4
+    NonZeroD5 => D5
+    NonZeroD6 => D6
+    NonZeroD7 => D7
+    NonZeroD8 => D8
+    NonZeroD9 => D9
+  }
+}
+
+fn integer_decimal_nonzero_node(magnitude: DecimalNonZeroMagnitude) -> Node {
+  match magnitude {
+    DecimalNonZeroMagnitude { lead, tail } =>
+      fold_list_node(
+        xs: Cons { head: integer_nonzero_decimal_digit_widen(digit: lead), tail: tail },
+        item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
+      )
+  }
+}
+
+fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
+  match magnitude {
+    DecimalZero =>
+      fold_list_node(
+        xs: Cons { head: D0, tail: Empty },
+        item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
+      )
+    DecimalNonZero { magnitude: nonzero } => integer_decimal_nonzero_node(magnitude: nonzero)
+  }
+}
+
+fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
+  match bound {
+    IntegerConcreteZero => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        integer_named_edge(
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+    IntegerConcreteBound { sign, magnitude } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        integer_named_edge(
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_concrete)
+        ),
+        integer_named_edge(
+          name: ^integer_bound_field_sign,
+          target: integer_bound_sign_node(sign: sign)
+        ),
+        integer_named_edge(
+          name: ^integer_bound_field_magnitude,
+          target: integer_decimal_nonzero_node(magnitude: magnitude)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+    IntegerPointerWidthBound { signedness, endpoint } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        integer_named_edge(
+          name: ^integer_bound_field_kind,
+          target: integer_inhabitant_atom(id: ^integer_tag_bound_pointer_width)
+        ),
+        integer_named_edge(
+          name: ^integer_bound_field_signedness,
+          target: integer_signedness_node(signedness: signedness)
+        ),
+        integer_named_edge(
+          name: ^integer_bound_field_endpoint,
+          target: integer_range_endpoint_node(endpoint: endpoint)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      integer_named_edge(
+        name: ^integer_interval_field_inclusive_min,
+        target: integer_interval_bound_node(bound: spec.inclusive_min)
+      ),
+      integer_named_edge(
+        name: ^integer_interval_field_inclusive_max,
+        target: integer_interval_bound_node(bound: spec.inclusive_max)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+fn int_add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn int_negate(a: Int) -> Int {
+  0 - a
+}
+
+fn int_mul(a: Int, b: Int) -> Int {
+  a * b
+}
+
+fn int_compare(a: Int, b: Int) -> Ordering {
+  if a < b {
+    Less
+  } else {
+    if a == b {
+      Equal
+    } else {
+      Greater
+    }
+  }
+}
+
+fn int_is_zero(a: Int) -> Bool {
+  a == 0
+}
+
+fn int_sub(a: Int, b: Int) -> Int {
+  int_add(a: a, b: int_negate(a: b))
+}
+
+fn int_eq(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => false
+    Equal => true
+    Greater => false
+  }
+}
+
+fn int_ne(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => true
+    Equal => false
+    Greater => true
+  }
+}
+
+fn int_lt(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+}
+
+fn int_le(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+
+fn int_gt(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => false
+    Equal => false
+    Greater => true
+  }
+}
+
+fn int_ge(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Greater => true
+    Equal => true
+    Less => false
+  }
+}
+
+fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
+  if int_is_zero(a: b) {
+    Err { value: DivideByZero }
+  } else {
+    Ok { value: a / b }
+  }
+}
+
+data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
+  op: int_add,
+  identity: 0,
+  inverse: int_negate
+}
+
+data int_ordered_ring: OrderedRing<Int> = OrderedRing {
+  add: int_add,
+  sub: int_sub,
+  zero: 0,
+  negate: int_negate,
+  mul: int_mul,
+  div: int_div_result,
+  one: 1,
+  order: TotalOrder { compare: int_compare },
+  eq: int_eq,
+  ne: int_ne
+}
+fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_div_by_zero,
+    at: port_refusal_locus(at: at, port: ^integer_division_port, invariant: ^integer_div_by_zero),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_modulo_by_zero,
+    at: port_refusal_locus(at: at, port: ^integer_modulo_port, invariant: ^integer_modulo_by_zero),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if int_is_zero(a: b) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: integer_divide_by_zero_diagnostic(at: at))
+    }
+  } else {
+    Accepted { value: a / b, diagnostics: None }
+  }
+}
+
+fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if int_is_zero(a: b) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: integer_modulo_by_zero_diagnostic(at: at))
+    }
+  } else {
+    Accepted { value: a % b, diagnostics: None }
+  }
+}
+
+fn integer_char_code_to_decimal_digit_optional(c: Char) -> Optional<DecimalDigit> {
+  if c == 48 {
+    optional_present(value: D0)
+  } else if c == 49 {
+    optional_present(value: D1)
+  } else if c == 50 {
+    optional_present(value: D2)
+  } else if c == 51 {
+    optional_present(value: D3)
+  } else if c == 52 {
+    optional_present(value: D4)
+  } else if c == 53 {
+    optional_present(value: D5)
+  } else if c == 54 {
+    optional_present(value: D6)
+  } else if c == 55 {
+    optional_present(value: D7)
+  } else if c == 56 {
+    optional_present(value: D8)
+  } else if c == 57 {
+    optional_present(value: D9)
+  } else {
+    optional_absent()
+  }
+}
+
+fn integer_decimal_digits_snoc(
+  xs: FreeMonoid<DecimalDigit>,
+  digit: DecimalDigit
+) -> FreeMonoid<DecimalDigit> {
+  match xs {
+    Empty => Cons { head: digit, tail: Empty }
+    Cons { head, tail } =>
+      Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
+  }
+}
+
+fn integer_string_to_decimal_digits_step(
+  s: v2.std.text.String,
+  acc: FreeMonoid<DecimalDigit>
+) -> Optional<FreeMonoid<DecimalDigit>> {
+  match string_head(s: s) {
+    CharAbsent => optional_present(value: acc)
+    CharFound { value: c } =>
+      match integer_char_code_to_decimal_digit_optional(c: c) {
+        Present { value: d } =>
+          match string_tail(s: s) {
+            Present { value: rest } =>
+              integer_string_to_decimal_digits_step(
+                s: rest,
+                acc: integer_decimal_digits_snoc(xs: acc, digit: d)
+              )
+            Absent => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
+  integer_string_to_decimal_digits_step(s: unicode_scalar_unfold(s: s), acc: Empty)
+}
+
+fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {
+  fold_list(
+    xs: m.tail,
+    empty: decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: m.lead)),
+    cons: fn(acc, d) {
+      int_add(a: int_mul(a: acc, b: 10), b: decimal_digit_value(d: d))
+    }
+  )
+}
+
+fn integer_decimal_magnitude_to_int(m: DecimalMagnitude) -> Int {
+  match m {
+    DecimalZero => 0
+    DecimalNonZero { magnitude } =>
+      integer_decimal_nonzero_magnitude_to_int(m: magnitude)
+  }
+}
+
+fn integer_lexeme_to_int_optional(lexeme: String) -> Optional<Int> {
+  match integer_string_to_decimal_digits_optional(s: lexeme) {
+    Present { value: digits } =>
+      optional_present(
+        value: integer_decimal_magnitude_to_int(
+          m: decimal_digits_to_magnitude(digits: digits)
+        )
+      )
+    Absent => optional_absent()
+  }
+}
+
+fn integer_u8_unit_to_bit(value: Int, shift: Int) -> Bool {
+  (value / shift) % 2 == 1
+}
+
+fn integer_u8_to_byte(value: Int) -> Byte {
+  Byte {
+    bits: [
+      integer_u8_unit_to_bit(value: value, shift: 1),
+      integer_u8_unit_to_bit(value: value, shift: 2),
+      integer_u8_unit_to_bit(value: value, shift: 4),
+      integer_u8_unit_to_bit(value: value, shift: 8),
+      integer_u8_unit_to_bit(value: value, shift: 16),
+      integer_u8_unit_to_bit(value: value, shift: 32),
+      integer_u8_unit_to_bit(value: value, shift: 64),
+      integer_u8_unit_to_bit(value: value, shift: 128)
+    ]
+  }
+}
+
+fn integer_i32_modulus() -> Int {
+  int_mul(a: 65536, b: 65536)
+}
+
+fn integer_int_normalize_i32_wire_unsigned(value: Int) -> Int {
+  if value < 0 {
+    integer_int_normalize_i32_wire_unsigned(
+      value: int_add(a: value, b: integer_i32_modulus())
+    )
+  } else if value >= integer_i32_modulus() {
+    integer_int_normalize_i32_wire_unsigned(
+      value: int_add(a: value, b: int_negate(a: integer_i32_modulus()))
+    )
+  } else {
+    value
+  }
+}
+
+fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<Byte> {
+  let wire = integer_int_normalize_i32_wire_unsigned(value: value)
+  [
+    integer_u8_to_byte(value: wire % 256),
+    integer_u8_to_byte(value: (wire / 256) % 256),
+    integer_u8_to_byte(value: (wire / 65536) % 256),
+    integer_u8_to_byte(value: (wire / 16777216) % 256)
+  ]
+}
+
+fn integer_byte_bit_at(b: Byte, shift: Int) -> Int {
+  match list_at_optional(xs: b.bits, index: shift) {
+    Present { value: bit } => if bit { 1 } else { 0 }
+    Absent => 0
+  }
+}
+
+fn integer_u8_from_byte(b: Byte) -> Int {
+  int_add(
+    a: int_add(
+      a: int_add(
+        a: int_add(
+          a: int_add(
+            a: int_add(
+              a: int_add(
+                a: integer_byte_bit_at(b: b, shift: 0),
+                b: int_mul(a: 2, b: integer_byte_bit_at(b: b, shift: 1))
+              ),
+              b: int_mul(a: 4, b: integer_byte_bit_at(b: b, shift: 2))
+            ),
+            b: int_mul(a: 8, b: integer_byte_bit_at(b: b, shift: 3))
+          ),
+          b: int_mul(a: 16, b: integer_byte_bit_at(b: b, shift: 4))
+        ),
+        b: int_mul(a: 32, b: integer_byte_bit_at(b: b, shift: 5))
+      ),
+      b: int_mul(a: 64, b: integer_byte_bit_at(b: b, shift: 6))
+    ),
+    b: int_mul(a: 128, b: integer_byte_bit_at(b: b, shift: 7))
+  )
+}
+
+fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) -> Int {
+  let unsigned = int_add(
+    a: int_add(
+      a: int_add(a: b0, b: int_mul(a: 256, b: b1)),
+      b: int_mul(a: 65536, b: b2)
+    ),
+    b: int_mul(a: 16777216, b: b3)
+  )
+  if b3 >= 128 {
+    int_add(a: unsigned, b: int_negate(a: integer_i32_modulus()))
+  } else {
+    unsigned
+  }
+}
+
+fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {
+  if id == ^integer_tag_digit_0 {
+    optional_present(value: D0)
+  } else if id == ^integer_tag_digit_1 {
+    optional_present(value: D1)
+  } else if id == ^integer_tag_digit_2 {
+    optional_present(value: D2)
+  } else if id == ^integer_tag_digit_3 {
+    optional_present(value: D3)
+  } else if id == ^integer_tag_digit_4 {
+    optional_present(value: D4)
+  } else if id == ^integer_tag_digit_5 {
+    optional_present(value: D5)
+  } else if id == ^integer_tag_digit_6 {
+    optional_present(value: D6)
+  } else if id == ^integer_tag_digit_7 {
+    optional_present(value: D7)
+  } else if id == ^integer_tag_digit_8 {
+    optional_present(value: D8)
+  } else if id == ^integer_tag_digit_9 {
+    optional_present(value: D9)
+  } else {
+    optional_absent()
+  }
+}
+
+fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit> {
+  match node.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } => integer_decimal_digit_from_tag_atom(id: id)
+        Conj => optional_absent()
+        Disj => optional_absent()
+        Arrow => optional_absent()
+        Instantiation => optional_absent()
+      }
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn integer_fold_list_node_digits_optional(node: Node) -> Optional<FreeMonoid<DecimalDigit>> {
+  if is_empty_conj_root(n: node) {
+    optional_present(value: Empty)
+  } else {
+    match find_named_child(root: node, name: ^fold_list_node_head) {
+      Accepted { value: head_node, diagnostics: _ } =>
+        match integer_decimal_digit_from_node_optional(node: head_node) {
+          Present { value: digit } =>
+            match find_named_child(root: node, name: ^fold_list_node_tail) {
+              Accepted { value: tail_node, diagnostics: _ } =>
+                match integer_fold_list_node_digits_optional(node: tail_node) {
+                  Present { value: tail_digits } =>
+                    optional_present(value: Cons { head: digit, tail: tail_digits })
+                  Absent => optional_absent()
+                }
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      Rejected { diagnostics: _ } => optional_absent()
+    }
+  }
+}
+
+fn integer_decimal_magnitude_node_to_int(node: Node) -> Outcome<Int> {
+  match integer_fold_list_node_digits_optional(node: node) {
+    Present { value: digits } =>
+      outcome_accepted(
+        value: integer_decimal_magnitude_to_int(
+          m: decimal_digits_to_magnitude(digits: digits)
+        )
+      )
+    Absent =>
+      outcome_rejected(
+        d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
+      )
+  }
+}
+
+fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
+  if length(xs: bytes) == 4 {
+    match list_at_optional(xs: bytes, index: 0) {
+      Present { value: b0 } =>
+        match list_at_optional(xs: bytes, index: 1) {
+          Present { value: b1 } =>
+            match list_at_optional(xs: bytes, index: 2) {
+              Present { value: b2 } =>
+                match list_at_optional(xs: bytes, index: 3) {
+                  Present { value: b3 } =>
+                    outcome_accepted(
+                      value: integer_signed_i32_le_bytes_to_int_value(
+                        b0: integer_u8_from_byte(b: b0),
+                        b1: integer_u8_from_byte(b: b1),
+                        b2: integer_u8_from_byte(b: b2),
+                        b3: integer_u8_from_byte(b: b3)
+                      )
+                    )
+                  Absent =>
+                    outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
+                }
+              Absent =>
+                outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
+            }
+          Absent =>
+            outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
+        }
+      Absent =>
+        outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
+    }
+  } else {
+    outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
+  }
+}
+
+// THE CONTENT IDENTITY OF AN Int, at cost proportional to its digits. The digests already in the
+// corpus that take an integer are unary -- v2.std.node byte_limb_hash_peano_digest (one
+// combine_hash per unit, one shared tag for every value outside 0..255) and the byte-offset cache
+// key built on it -- so a consumer hashing arbitrary integers either paid the magnitude or
+// collided. The canonical decimal spelling is injective over Int (a leading "-" only for
+// negatives, no leading zeros), so its content atom is too.
+fn integer_int_content_digest(value: Int) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "integer-int-decimal",
+    payload: content_hash_atom(value: int_to_decimal_string(value: value) as NonEmptyStr)
+  )
+}

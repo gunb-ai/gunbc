@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.rust_lex_resolves_two_tokenizations_by_rule_order
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data rust_lex_resolves_two_tokenizations_by_rule_order: RecurringFailureMode = RecurringFailureMode {
+  identity: "rust_lex_resolves_two_tokenizations_by_rule_order" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: v2.extdeps.languages.rust rust_lex is rust_fn_add_lex_rules (emission spellings with baked spacing, plus as space-plus-space) followed by rust_extended_lex_rules (an ingest set with whitespace trivia and bare spellings). A text such as ` + ` has two tokenizations, one emission token or trivia then a bare plus then trivia, and first-match rule order picks one. The zero-ambiguity ruling forbids order deciding between readings, lexer included.",
+
+    "WHY NOT FIXED WITH ITS NEIGHBOUR: rust_ingest_lexer_missing_a_bare_operator_spelling adds the bare plus and so ADDS one more such pair. The ambiguity predates it (=, > and ; were already doubly spelled) and its repair is a separation, not a row.",
+
+    "HARM: the reading of an ingested text depends on rule order, a fact no reader of the grammar can see; a reordering silently changes token boundaries.",
+
+    "RUNG FOUND AT: 1 (both readings yield the same token class today, so no wrong program results, but nothing prevents one that would). CEILING: 4 -- one reading per text is a property of a disjoint rule set. NEXT TRIGGER: ingest and emission token sets are separate (emission consumes the grammar backward per gunbc#12878), so ingest lexing has one reading per text. OWNER: grammar program (stern-bear-500).",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_value_position_block_re_lowered_through_the_walker
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_value_position_block_re_lowered_through_the_walker: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_value_position_block_re_lowered_through_the_walker" as NonEmptyStr,
+
+  receipts: [
+    "**a value-position block re-lowered through the walker** (body lowering reads a `{ }` block in value position, such as a match arm body, first through the bottom-up fold and then again through the top-down walker, so nested arms cost three reads per level and the whole is exponential in nesting depth).",
+
+    "INVALID STATE: the fold has no case for the block, so it yields an unsealed fn_body shell that the peel cannot read; the walker then re-lowers the same block, and for a single-statement block reads the same match again through its control-form and rest arms. Per level the demand multiplies by three; depth d costs 3^d reads of the same source.",
+
+    "FOUND AT: census-infer dag src/v2 never reaching its first module (4h+ and 2h17m runs, wchar 0), because normalize runs over every file before the first per-module line. The same binary over src/v2 alone completed in about 11 minutes, so the cost was a property of the corpus shape, not of its size. Parse is linear; the shared-prefix hypothesis was falsified.",
+
+    "WHY IT SURVIVES: the interpreter memoizes pure calls, so an eval-step claim over the nest is flat on the defective code; only the emitted native program shows the growth, and an isolated parse-only block refuses before the lowering of a value is reached, so no claim at that interface is constructible.",
+
+    "RUNG: found below the ladder (a hang, no typed refusal). CURRENT: cause fixed by reading a value-position block once through the walker's own statement spine (body_lower_value_lowered); an enrolled discriminating control exists (`gunbc test //gunbc/instruments:value-position-block-nests`), and it holds only on normalize_accepted (ea3f78732ff). EXECUTED on a cgroup-bounded session (memory.max=25769803776): GREEN of that tightened control at 1d1f4cf6d17 (child_wall_ms=1104 deadline_ms=15000, both d14 nests observed=normalize_accepted, status=0 held) and again at 011458e22e3 (child_wall_ms=1084 deadline_ms=15000, same observed, host reading native_claim_child_deadline_count). RED with body_lowering_fold.dag reverted to pre-7617fdac85f1 (deadline exceeded elapsed_ms=15017 here / 15002 on srv1, exit 1). A GREEN at 716f38546cf with observed=normalize_completed is not this control: at that revision Rejected still counted as held. The class is held BELOW rung 2 by gunbc.rung_drop v1_required_lanes_withdrawn because nothing on the required path runs it (DESIGN 4b rung 2 requires the mechanism to execute and block).",
+
+    "NEXT-RUNG TRIGGER, naming the capability restored: the native compiler judges this control on the required path (that drop's trigger), SUFFICIENT FOR a recurrence to red the required job.",
+  ],
+
+  evidence: [],
+}

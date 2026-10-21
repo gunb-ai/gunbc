@@ -1,0 +1,152 @@
+module extdeps.bmc.serial_console
+
+import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.measure { ByteSize }
+import std.types { Milliseconds, NonEmptyStr, Seconds, String }
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/obmc-console"
+  }
+}
+
+data redfish_serial_interface_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/SerialInterface.json"
+  }
+}
+
+data ipmi_sol_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+type SolConsoleTransport
+  = ObmcConsoleCli
+  | RedfishSerialInterface
+  | IpmiSol
+
+type SolConsoleCaptureIntent {
+  bmc_host: NonEmptyStr
+  transport: SolConsoleTransport
+  output_path: NonEmptyStr
+}
+
+type SolConsoleCaptureOutcome
+  = CaptureRunning
+  | CaptureCompleted
+  | CaptureRefused { reason: NonEmptyStr }
+
+type SolConsoleCaptureReceipt {
+  bmc_host: NonEmptyStr
+  transport: SolConsoleTransport
+  log_path: NonEmptyStr
+  bytes_captured: ByteSize
+  duration_ms: Milliseconds
+  outcome: SolConsoleCaptureOutcome
+}
+
+fn sol_console_transport_wire(transport: SolConsoleTransport) -> NonEmptyStr {
+  match transport {
+    ObmcConsoleCli => "obmc-console"
+    RedfishSerialInterface => "redfish-serial-interface"
+    IpmiSol => "ipmi-sol"
+  }
+}
+
+fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> ExternalAuthority {
+  match transport {
+    ObmcConsoleCli => extdeps_external_authority_anchor
+    RedfishSerialInterface => redfish_serial_interface_authority
+    IpmiSol => ipmi_sol_authority
+  }
+}
+
+data sol_console_capture_bash_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.bmc.serial_console",
+    decl_name: "sol_console_capture_script",
+    field: WholeDeclaration
+  }
+}
+
+type SolConsoleSendIntent {
+  bmc_host: NonEmptyStr
+  transport: SolConsoleTransport
+  username: NonEmptyStr
+  input: String
+  settle_seconds: Seconds
+  read_timeout_seconds: Seconds
+}
+
+// The interactive ipmitool/obmc-console send is composed as a shell transport
+// (medium-as-string, IPMI_PASSWORD carried through `-E`) because host_effect_apply has
+// no binding for SolConsoleSend that reaches an interactive console without
+// concat-built runner glue. When it does, this module's concat-built transport goes,
+// and `sol_console_send_script` — the declaration this trigger names — goes with it.
+//
+// The retirement is now the trigger rather than a sentence about one: the named
+// declaration exists today, so `dissolution_status` reports this obligation PENDING
+// against the live declaration population and FIRED the moment the script is deleted.
+data sol_console_send_bash_emit_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script")
+)
+
+fn sol_console_send_script(intent: SolConsoleSendIntent) -> String {
+  let h = intent.bmc_host as String
+  let u = intent.username as String
+  let settle = to_string(intent.settle_seconds)
+  let read = to_string(intent.read_timeout_seconds)
+  let ipmi = concat(concat("ipmitool -I lanplus -H \"", h), concat("\" -U \"", concat(u, "\" -E")))
+  let feed = concat(
+    concat(concat("{ sleep ", settle), concat("; printf '%b' '", intent.input)),
+    concat(concat("'; sleep ", read), "; printf '~.\\n'; }"),
+  )
+  match intent.transport {
+    IpmiSol =>
+      concat(
+        concat("#!/usr/bin/env bash\nset -uo pipefail\n", concat(ipmi, " sol deactivate >/dev/null 2>&1 || true\n")),
+        concat(
+          concat(feed, concat(" | ", concat(ipmi, " sol activate\n"))),
+          concat("echo \"SolConsoleSendReceipt: transport=ipmi-sol host=", concat(h, " sent\"\n")),
+        ),
+      )
+    ObmcConsoleCli =>
+      concat(
+        concat("#!/usr/bin/env bash\nset -uo pipefail\n", feed),
+        concat(
+          concat(" | obmc-console-client ", h),
+          concat("\necho \"SolConsoleSendReceipt: transport=obmc-console host=", concat(h, " sent\"\n")),
+        ),
+      )
+    RedfishSerialInterface =>
+      "#!/usr/bin/env bash\necho \"SolConsoleSendRefusal: RedfishSerialInterface is a read-only serial log surface, not an interactive send path\" >&2\nexit 1\n"
+  }
+}
+
+fn sol_console_capture_script(intent: SolConsoleCaptureIntent) -> String {
+  let transport_wire = sol_console_transport_wire(transport: intent.transport)
+  concat(
+    concat(
+      concat(
+        concat(
+          concat("#!/usr/bin/env bash\nset -euo pipefail\nLOG=", intent.output_path as String),
+          "\nobmc-console-client ",
+        ),
+        intent.bmc_host as String,
+      ),
+      concat(" > \"", intent.output_path as String),
+    ),
+    concat("\" 2>&1 &\necho \"SolConsoleCaptureReceipt: transport=", transport_wire as String, " log=", intent.output_path as String, "\"\n"),
+  )
+}

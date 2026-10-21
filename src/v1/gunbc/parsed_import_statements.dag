@@ -1,0 +1,21 @@
+module v1.gunbc.parsed_import_statements
+
+import std.types { String, List }
+import std.import_statement { ParsedImportObservation }
+import v1.compiler.parse { parse_import_statement_extents }
+import v1.std.core { empty_intern_table, NewlineIndex, Token }
+
+// The host supplies the tokens and newline index from its existing source acquisition. Previously
+// this producer tokenized the source again; carrying the first value deletes that duplicate work.
+// Import boundaries still come exclusively from the parser reading its own consumption.
+
+fn parsed_import_statements(file: String, tokens: List<Token>, newline_index: NewlineIndex) -> ParsedImportObservation<Token> {
+  ParsedImportObservation {
+    tokens: tokens,
+    imports: parse_import_statement_extents(
+      tokens: tokens,
+      source_indices: map_insert(empty_map(), file, newline_index),
+      intern_table: empty_intern_table(),
+    )
+  }
+}

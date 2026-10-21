@@ -1,0 +1,285 @@
+module product.training.observation_cut
+
+import product.training.readback {
+  TrainingRunSubject, TrainingReadbackAxis,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  training_run_subject_eq,
+}
+import product.fabric.demand { ObservationReceiptRef }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+
+// FIVE INDEPENDENT READS ARE NOT A SNAPSHOT. The readback's axes are observed separately, so
+// evidence taken at different moments cannot be interpreted as simultaneous state without saying
+// so. A process seen running at 09:00 beside a terminal success written at 09:05 is not a
+// contradiction -- it is stale-but-previously-true evidence, and a fold that read the pair as
+// simultaneous would manufacture a contradiction out of ordinary staleness.
+//
+// The same cuts the other way: "terminal success and the output population is empty" is a
+// contradiction ONLY when the output enumeration happened after the successful terminal was
+// observable. Enumerated before, an empty output population is simply an earlier read.
+//
+// So a cross-axis temporal conclusion is available only from a producer that establishes the read
+// order, and in its absence the honest answer is that the relation was not observed -- never that
+// the axes agree and never that they conflict.
+
+// THE ORDER IS CARRIED BY A STAGE LADDER, AND THE LADDER IS NOT CURRENTLY A WALL. Each stage
+// consumes the previous stage's token, so the intended reading is that the only way to hold a
+// later stage is to have passed through the earlier ones -- "outputs were enumerated after
+// terminals" as a fact about which values exist rather than an assertion anyone made.
+//
+// MEASURED, AND THE CLAIM DOES NOT HOLD TODAY. Skipping a stage -- passing a SweepStarted where a
+// TerminalsEnumerated is declared -- compiles with ZERO blocking diagnostics. The cause is not
+// local to this module: a value of one PARAMETERIZED type is silently accepted where a different
+// parameterized type is declared at a direct-call argument, while the same mismatch on
+// non-generic types refuses with `type mismatch: expected 'Product(Beta)', got 'Product(Alpha)'`,
+// and a bare scalar at the same position refuses with `value does not inhabit its declared type
+// at the direct call argument`. So the check runs there and does not separate two parameterized
+// node types.
+//
+// RUNG, STATED HONESTLY RATHER THAN BY THE SHAPE'S APPEARANCE: mitigatable. The ladder makes the
+// correct order the obvious one to write and gives the sweep one place to live; it does not make
+// the wrong order unwritable, and calling this construction-over-validation would be exactly the
+// inflation that stops a class ever ranking for repair. NEXT-RUNG TRIGGER: the direct-call
+// argument inhabitance judgment separating distinct parameterized types. When that lands, this
+// ladder becomes a wall with no edit here.
+//
+// Processes are enumerated LAST deliberately: a process still running at the final read, beside a
+// terminal for the same attempt, is the one arrangement that cannot be explained by staleness.
+type SweepStarted<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+}
+
+type TerminalsEnumerated<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+  terminals: ObservationReceiptRef
+}
+
+type OutputsEnumerated<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+  terminals: ObservationReceiptRef
+  outputs: ObservationReceiptRef
+}
+
+type ManifestsEnumerated<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+  terminals: ObservationReceiptRef
+  outputs: ObservationReceiptRef
+  manifests: ObservationReceiptRef
+}
+
+type CheckpointsEnumerated<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+  terminals: ObservationReceiptRef
+  outputs: ObservationReceiptRef
+  manifests: ObservationReceiptRef
+  checkpoints: ObservationReceiptRef
+}
+
+type TrainingRunReadbackCut<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  swept: List<TrainingReadbackAxis>
+  terminals: ObservationReceiptRef
+  outputs: ObservationReceiptRef
+  manifests: ObservationReceiptRef
+  checkpoints: ObservationReceiptRef
+  processes: ObservationReceiptRef
+  composition: ObservationReceiptRef
+}
+
+fn begin_sweep<P>(subject: TrainingRunSubject<P>) -> SweepStarted<P> {
+  SweepStarted { subject: subject, swept: [] }
+}
+
+fn appended(
+  prior: List<TrainingReadbackAxis>,
+  axis: TrainingReadbackAxis,
+) -> List<TrainingReadbackAxis> {
+  [prior, [axis]].flat_map(x => x)
+}
+
+fn enumerate_terminals<P>(
+  started: SweepStarted<P>,
+  receipt: ObservationReceiptRef,
+) -> TerminalsEnumerated<P> {
+  TerminalsEnumerated {
+    subject: started.subject,
+    swept: appended(prior: started.swept, axis: TerminalReadbackAxis),
+    terminals: receipt,
+  }
+}
+
+fn enumerate_outputs<P>(
+  prior: TerminalsEnumerated<P>,
+  receipt: ObservationReceiptRef,
+) -> OutputsEnumerated<P> {
+  OutputsEnumerated {
+    subject: prior.subject,
+    swept: appended(prior: prior.swept, axis: OutputReadbackAxis),
+    terminals: prior.terminals,
+    outputs: receipt,
+  }
+}
+
+fn enumerate_manifests<P>(
+  prior: OutputsEnumerated<P>,
+  receipt: ObservationReceiptRef,
+) -> ManifestsEnumerated<P> {
+  ManifestsEnumerated {
+    subject: prior.subject,
+    swept: appended(prior: prior.swept, axis: EffectiveManifestReadbackAxis),
+    terminals: prior.terminals,
+    outputs: prior.outputs,
+    manifests: receipt,
+  }
+}
+
+fn enumerate_checkpoints<P>(
+  prior: ManifestsEnumerated<P>,
+  receipt: ObservationReceiptRef,
+) -> CheckpointsEnumerated<P> {
+  CheckpointsEnumerated {
+    subject: prior.subject,
+    swept: appended(prior: prior.swept, axis: CheckpointReadbackAxis),
+    terminals: prior.terminals,
+    outputs: prior.outputs,
+    manifests: prior.manifests,
+    checkpoints: receipt,
+  }
+}
+
+fn enumerate_processes_and_seal<P>(
+  prior: CheckpointsEnumerated<P>,
+  receipt: ObservationReceiptRef,
+  composition: ObservationReceiptRef,
+) -> TrainingRunReadbackCut<P> {
+  TrainingRunReadbackCut {
+    subject: prior.subject,
+    swept: appended(prior: prior.swept, axis: ExecutionReadbackAxis),
+    terminals: prior.terminals,
+    outputs: prior.outputs,
+    manifests: prior.manifests,
+    checkpoints: prior.checkpoints,
+    processes: receipt,
+    composition: composition,
+  }
+}
+
+// THE ORDER IS READ OFF THE SEQUENCE THE SWEEP ACTUALLY TRAVERSED. An earlier revision carried a
+// hand-written position table (terminals 0, outputs 1, ... processes 4) beside the stage ladder and
+// an annotation claiming it was derived from it. It was not: it was a SECOND ordering, free to
+// disagree with the ladder, and the disagreement would have compiled -- the cut establishing one
+// order while every comparison read another. That is the two-spellings defect this programme keeps
+// repairing, committed inside the comment that warns about it.
+//
+// Each stage now appends its own axis, so the cut carries the sequence it was built by. The
+// ordering is not asserted anywhere; it is a consequence of which stage functions ran.
+type PrecedenceScan {
+  saw_earlier: Bool
+  decided: Bool
+  earlier_first: Bool
+}
+
+fn axis_eq(a: TrainingReadbackAxis, b: TrainingReadbackAxis) -> Bool {
+  match a {
+    TerminalReadbackAxis => match b { TerminalReadbackAxis => true, OutputReadbackAxis => false, EffectiveManifestReadbackAxis => false, CheckpointReadbackAxis => false, ExecutionReadbackAxis => false }
+    OutputReadbackAxis => match b { OutputReadbackAxis => true, TerminalReadbackAxis => false, EffectiveManifestReadbackAxis => false, CheckpointReadbackAxis => false, ExecutionReadbackAxis => false }
+    EffectiveManifestReadbackAxis => match b { EffectiveManifestReadbackAxis => true, TerminalReadbackAxis => false, OutputReadbackAxis => false, CheckpointReadbackAxis => false, ExecutionReadbackAxis => false }
+    CheckpointReadbackAxis => match b { CheckpointReadbackAxis => true, TerminalReadbackAxis => false, OutputReadbackAxis => false, EffectiveManifestReadbackAxis => false, ExecutionReadbackAxis => false }
+    ExecutionReadbackAxis => match b { ExecutionReadbackAxis => true, TerminalReadbackAxis => false, OutputReadbackAxis => false, EffectiveManifestReadbackAxis => false, CheckpointReadbackAxis => false }
+  }
+}
+
+fn axis_precedes(
+  swept: List<TrainingReadbackAxis>,
+  earlier: TrainingReadbackAxis,
+  later: TrainingReadbackAxis,
+) -> Bool {
+  swept
+    .fold(
+      PrecedenceScan { saw_earlier: false, decided: false, earlier_first: false },
+      (acc, axis) =>
+        if acc.decided {
+          acc
+        } else {
+          if axis_eq(a: axis, b: earlier) {
+            PrecedenceScan { saw_earlier: true, decided: false, earlier_first: false }
+          } else {
+            if axis_eq(a: axis, b: later) {
+              PrecedenceScan { saw_earlier: acc.saw_earlier, decided: true, earlier_first: acc.saw_earlier }
+            } else {
+              acc
+            }
+          }
+        },
+    )
+    .earlier_first
+}
+
+// THE ANSWER IS THREE-VALUED, AND THE THIRD VALUE IS THE POINT. "The relation was not observed" is
+// neither "ordered" nor "not ordered": it is the absence of a producer that could establish either,
+// and collapsing it into a negative answer would let a missing sweep read as evidence that two
+// reads were unordered -- which a reconciler would then treat as licence to ignore a real conflict.
+type CrossAxisTemporalRelation
+  = ObservedInOrder { earlier: TrainingReadbackAxis, later: TrainingReadbackAxis }
+  | ObservedOutOfOrder { earlier: TrainingReadbackAxis, later: TrainingReadbackAxis }
+  | CrossAxisTemporalRelationUnobserved { reason: NonEmptyStr }
+
+// A CUT FROM ANOTHER RUN LICENSES NOTHING HERE. The cut carries its own subject precisely so that a
+// sweep of a different run cannot be borrowed to order this run's reads -- a well-formed cut whose
+// subject is foreign is the authority-substitution failure, not a usable observation.
+fn cross_axis_relation<P>(
+  cut: TrainingRunReadbackCut<P>?,
+  subject: TrainingRunSubject<P>,
+  earlier: TrainingReadbackAxis,
+  later: TrainingReadbackAxis,
+) -> CrossAxisTemporalRelation {
+  match cut {
+    none =>
+      CrossAxisTemporalRelationUnobserved { reason: "no observation cut composed these reads" }
+    Present { value: c } =>
+      if !training_run_subject_eq(left: c.subject, right: subject) {
+        CrossAxisTemporalRelationUnobserved {
+          reason: "observation cut belongs to another run",
+        }
+      } else {
+        if axis_precedes(swept: c.swept, earlier: earlier, later: later) {
+          ObservedInOrder { earlier: earlier, later: later }
+        } else {
+          ObservedOutOfOrder { earlier: earlier, later: later }
+        }
+      }
+  }
+}
+
+// THE TWO CONCLUSIONS THE CUT EXISTS TO LICENSE, each stated as its own predicate so a caller
+// cannot reconstruct one from a raw position comparison and quietly skip the subject check.
+fn output_enumeration_follows_terminal<P>(
+  cut: TrainingRunReadbackCut<P>?,
+  subject: TrainingRunSubject<P>,
+) -> CrossAxisTemporalRelation {
+  cross_axis_relation(
+    cut: cut,
+    subject: subject,
+    earlier: TerminalReadbackAxis,
+    later: OutputReadbackAxis,
+  )
+}
+
+fn execution_enumeration_follows_terminal<P>(
+  cut: TrainingRunReadbackCut<P>?,
+  subject: TrainingRunSubject<P>,
+) -> CrossAxisTemporalRelation {
+  cross_axis_relation(
+    cut: cut,
+    subject: subject,
+    earlier: TerminalReadbackAxis,
+    later: ExecutionReadbackAxis,
+  )
+}

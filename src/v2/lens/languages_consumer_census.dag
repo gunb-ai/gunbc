@@ -1,0 +1,70 @@
+module v2.lens.languages_consumer_census
+
+// THE SCANNED AUTHORITY IS AN IMPORT, NOT AN AMBIENT ACCIDENT.
+//
+// The `languages_consumer_census_*` builtins below scan the PREPARED INVENTORY -- the resolved
+// closure of whatever entry invoked them -- and they read `dag/std/languages.dag` specifically:
+// it is the authority whose `data` declarations the census counts consumers of, and the host
+// refuses outright when the inventory does not carry it.
+//
+// Nothing here used to say so. The file arrived in the closure because SOME ambiguous bare
+// reference elsewhere happened to be ranked onto `std.languages` by the proximity heuristic that
+// used to resolve ambiguity, so the census's own input was a side effect of an unrelated
+// resolution accident. When that ranking was replaced by a refusal, the file stopped arriving and
+// the census panicked -- a receipt for DESIGN's reachability-read-as-occupancy class, and the
+// reason this import is a correctness fix rather than tidying: the scan reads this module, so
+// this module declares it.
+import std.languages { NamingCase }
+import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+
+// Class-5 carve-out: these baselines are point-in-time RATCHET CEILINGS over live host scans (languages_consumer_census_*_count builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline. Authority split: baseline = ceiling snapshot; live scan = independent representation checked by ratchet_holds.
+data languages_consumer_census_data_decl_baseline: Int = 73
+data languages_consumer_census_per_language_row_baseline: Int = 66
+data languages_consumer_census_format_row_baseline: Int = 7
+
+fn languages_consumer_census_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+fn languages_consumer_census_live_data_decl_count() -> Int {
+  languages_consumer_census_data_decl_count()
+}
+
+fn languages_consumer_census_live_per_language_row_count() -> Int {
+  languages_consumer_census_per_language_row_count()
+}
+
+fn languages_consumer_census_live_format_row_count() -> Int {
+  languages_consumer_census_format_row_count()
+}
+
+fn languages_consumer_census_live_external_consumer_count(decl_name: String) -> Int {
+  languages_consumer_census_external_consumer_count(decl_name: decl_name)
+}
+
+fn languages_consumer_census_live_is_composition_only(decl_name: String) -> Bool {
+  languages_consumer_census_is_composition_only(decl_name: decl_name)
+}
+
+fn languages_consumer_census_live_has_external_consumer(decl_name: String) -> Bool {
+  languages_consumer_census_has_external_consumer(decl_name: decl_name)
+}
+
+fn languages_consumer_census_live_data_decl_ratchet_holds() -> Bool {
+  languages_consumer_census_ratchet_holds(
+    live_count: languages_consumer_census_live_data_decl_count(),
+    baseline: languages_consumer_census_data_decl_baseline
+  )
+}
+
+fn languages_consumer_census_live_per_language_row_ratchet_holds() -> Bool {
+  languages_consumer_census_ratchet_holds(
+    live_count: languages_consumer_census_live_per_language_row_count(),
+    baseline: languages_consumer_census_per_language_row_baseline
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

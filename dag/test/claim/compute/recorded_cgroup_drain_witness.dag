@@ -1,0 +1,87 @@
+module test.claim.compute.recorded_cgroup_drain_witness
+
+import std.types { Bool, String }
+import gunbc.compute.recorded_cgroup_drain {
+  RecordedCgroupPathStanding,
+  RecordedCgroupDrain,
+  RecordedPathAbsent,
+  RecordedPathPopulated,
+  RecordedPathEmpty,
+  RecordedPathUnreadable,
+  RecordedCgroupPreserve,
+  RecordedCgroupMaySeal,
+  recorded_cgroup_drain,
+  recorded_path_standing_from_events_error,
+  recorded_path_standing_from_events_body,
+}
+
+fn drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
+  recorded_cgroup_drain(path: path)
+}
+
+fn drain_may_seal(path: RecordedCgroupPathStanding) -> Bool {
+  match drain(path: path) {
+    RecordedCgroupMaySeal { detail: _ } => true
+    RecordedCgroupPreserve { detail: _ } => false
+  }
+}
+
+test fn p_populated_while_a_probe_remains_preserves() -> Bool {
+  match drain(path: RecordedPathPopulated) {
+    RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "populated 1")
+    RecordedCgroupMaySeal { detail: _ } => false
+  }
+}
+
+test fn p_prime_drained_path_seals() -> Bool {
+  drain_may_seal(path: RecordedPathEmpty) && drain_may_seal(path: RecordedPathAbsent)
+}
+
+test fn p_double_prime_and_triple_prime_and_pf_are_populated() -> Bool {
+  !drain_may_seal(path: RecordedPathPopulated)
+}
+
+test fn e_unreadable_events_preserve() -> Bool {
+  match drain(path: RecordedPathUnreadable { detail: "cgroup.events: EIO" }) {
+    RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "EIO")
+    RecordedCgroupMaySeal { detail: _ } => false
+  }
+}
+
+test fn enoent_error_text_is_absent_and_other_errors_are_not() -> Bool {
+  match recorded_path_standing_from_events_error(error: "cat: ...: ENOENT") {
+    RecordedPathUnreadable { detail: d } => string_contains(s: d, pattern: "ENOENT")
+    RecordedPathAbsent => false
+    RecordedPathPopulated => false
+    RecordedPathEmpty => false
+  }
+    && match recorded_path_standing_from_events_error(error: "cgroup.events: EACCES") {
+      RecordedPathUnreadable { detail: d } => string_contains(s: d, pattern: "EACCES")
+      RecordedPathAbsent => false
+      RecordedPathPopulated => false
+      RecordedPathEmpty => false
+    }
+}
+
+test fn drain_is_the_recorded_path_standing() -> Bool {
+  drain_may_seal(path: RecordedPathEmpty)
+    && drain_may_seal(path: RecordedPathAbsent)
+    && !drain_may_seal(path: RecordedPathPopulated)
+    && !drain_may_seal(path: RecordedPathUnreadable { detail: "EIO" })
+}
+
+test fn events_body_populated_zero_is_empty() -> Bool {
+  match recorded_path_standing_from_events_body(body: "populated 0\nfrozen 0\n") {
+    RecordedPathEmpty => true
+    RecordedPathAbsent => false
+    RecordedPathPopulated => false
+    RecordedPathUnreadable { detail: _ } => false
+  }
+}
+
+test fn later_occupancy_is_populated_not_an_invocation_compare() -> Bool {
+  match drain(path: RecordedPathPopulated) {
+    RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "populated 1")
+    RecordedCgroupMaySeal { detail: _ } => false
+  }
+}

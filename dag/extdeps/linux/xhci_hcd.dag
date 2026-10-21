@@ -1,0 +1,48 @@
+module extdeps.linux.xhci_hcd
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+
+// THE LINE A LINUX xHCI HOST CONTROLLER PRINTS WHEN ITS DRIVER BINDS, Linux v6.8. usb_add_hcd
+// (drivers/usb/core/hcd.c) logs dev_info(controller, "%s\n", hcd->product_desc), and the xHCI
+// driver's hc_driver sets .product_desc = "xHCI Host Controller" (drivers/usb/host/xhci.c). So a
+// console line from the xhci_hcd device carrying this text is the record that an xHCI controller's
+// driver -- on a PCI host, xhci-pci, which in the Ubuntu 6.8.0-71 initrd depends on
+// xhci-pci-renesas -- was loaded and bound. Its ABSENCE from a capture is not a refusal of anything
+// by itself: it is the absence of this one record, which a reader joins with other evidence.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/v6.8/drivers/usb/host/xhci.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.xhci_hcd",
+      decl_name: "linux_xhci_host_controller_product_desc",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data linux_xhci_host_controller_product_desc: NonEmptyStr = "xHCI Host Controller"
+
+// The driver name the kernel prefixes that device's lines with on a PCI host: dev_info renders
+// the bound driver's name, and xhci-pci registers its pci_driver as .name = hcd_name, with
+// hcd_name = "xhci_hcd" (drivers/usb/host/xhci-pci.c). Not the hc_driver .description "xhci-hcd".
+data linux_xhci_hcd_driver_name: NonEmptyStr = "xhci_hcd"
+
+// THE TWO MODULES A PCI xHCI CONTROLLER'S DRIVER COMES FROM, as the kernel names a loaded module
+// (drivers/usb/host/Makefile: xhci-pci.o, xhci-pci-renesas.o; a module's name is its object's
+// basename with '-' rendered '_'). xhci-pci matches any PCI xHCI by class (alias
+// pci:v*d*sv*sd*bc0Csc03i30*) and, in the Ubuntu 6.8.0-71 build, lists xhci-pci-renesas as its
+// dependency, so requesting the one loads the pair.
+data linux_xhci_pci_module_name: NonEmptyStr = "xhci_pci"
+
+data linux_xhci_pci_renesas_module_name: NonEmptyStr = "xhci_pci_renesas"

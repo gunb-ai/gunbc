@@ -1,0 +1,210 @@
+module extdeps.languages.go.primitives
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/spec#Numeric_types"
+  }
+}
+
+type GoIntegerAlgebra
+  = GoOrderedRingAlgebra
+  | GoSemiringAlgebra
+
+type GoFloatWidth
+  = GoFloat32Width
+  | GoFloat64Width
+
+type GoSpecDiscreteAlgebra
+  = GoCanonicalTwoElementBooleanAlgebra
+  | GoTerminalAlgebra
+
+type GoTargetCarrier
+  = GoBitCarrier
+  | GoByteCarrier
+  | GoWord16Carrier
+  | GoWord32Carrier
+  | GoWord64Carrier
+  | GoTerminalCarrier
+
+type GoIntegerOverflow
+  = GoModularWrapOnFixedWidth
+  | GoIntegerOverflowRefinementReservedA
+  | GoIntegerOverflowRefinementReservedB
+
+type GoSpecStringAlgebraTag
+  = GoImmutableByteSequenceMonoidAlgebra
+  | GoSpecStringAlgebraParseReserved
+
+type GoSpecStringCarrierTag
+  = GoImmutableByteSequenceCarrier
+  | GoSpecStringCarrierParseReserved
+
+type GoComplexComponentWidth
+  = GoComplex64Components
+  | GoComplex128Components
+
+type GoPrimitive
+  = GoIntegerPrimitive {
+      target_name: String
+      algebra: GoIntegerAlgebra
+      carrier: GoTargetCarrier
+
+      range_min_inclusive: String
+      range_max_inclusive: String
+      overflow: GoIntegerOverflow
+    }
+  | GoIntegerAliasPrimitive {
+      target_name: String
+      canon_name: String
+      algebra: GoIntegerAlgebra
+      carrier: GoTargetCarrier
+
+      range_min_inclusive: String
+      range_max_inclusive: String
+      overflow: GoIntegerOverflow
+    }
+  | GoFloatPrimitive {
+      target_name: String
+      width: GoFloatWidth
+    }
+  | GoComplexPrimitive {
+      target_name: String
+      component_width: GoComplexComponentWidth
+    }
+  | GoStringPrimitive {
+      target_name: String
+      algebra: GoSpecStringAlgebraTag
+      carrier: GoSpecStringCarrierTag
+    }
+  | GoBooleanPrimitive {
+      target_name: String
+      algebra: GoSpecDiscreteAlgebra
+      carrier: GoTargetCarrier
+    }
+  | GoUnitPrimitive {
+      target_name: String
+      algebra: GoSpecDiscreteAlgebra
+      carrier: GoTargetCarrier
+    }
+
+type GoIntegerRangeFact {
+  target_name: String
+  algebra: GoIntegerAlgebra
+  carrier: GoTargetCarrier
+  range_min_inclusive: String
+  range_max_inclusive: String
+}
+
+data go_int8_integer_range: GoIntegerRangeFact = {
+  target_name: "int8",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoByteCarrier,
+  range_min_inclusive: "-128",
+  range_max_inclusive: "127"
+}
+
+data go_int16_integer_range: GoIntegerRangeFact = {
+  target_name: "int16",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord16Carrier,
+  range_min_inclusive: "-32768",
+  range_max_inclusive: "32767"
+}
+
+data go_int32_integer_range: GoIntegerRangeFact = {
+  target_name: "int32",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord32Carrier,
+  range_min_inclusive: "-2147483648",
+  range_max_inclusive: "2147483647"
+}
+
+data go_int64_integer_range: GoIntegerRangeFact = {
+  target_name: "int64",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord64Carrier,
+  range_min_inclusive: "-9223372036854775808",
+  range_max_inclusive: "9223372036854775807"
+}
+
+data go_uint8_integer_range: GoIntegerRangeFact = {
+  target_name: "uint8",
+  algebra: GoSemiringAlgebra,
+  carrier: GoByteCarrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "255"
+}
+
+data go_uint16_integer_range: GoIntegerRangeFact = {
+  target_name: "uint16",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord16Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "65535"
+}
+
+data go_uint32_integer_range: GoIntegerRangeFact = {
+  target_name: "uint32",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord32Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "4294967295"
+}
+
+data go_uint64_integer_range: GoIntegerRangeFact = {
+  target_name: "uint64",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord64Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "18446744073709551615"
+}
+
+data go_spec_predeclared_primitives: List<GoPrimitive> = [
+  GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
+    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int32", algebra: GoOrderedRingAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int64", algebra: GoOrderedRingAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
+    overflow: GoModularWrapOnFixedWidth },
+
+  GoIntegerPrimitive { target_name: "uint8", algebra: GoSemiringAlgebra, carrier: GoByteCarrier,
+    range_min_inclusive: "0", range_max_inclusive: "255", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint16", algebra: GoSemiringAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "65535", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint32", algebra: GoSemiringAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint64", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoModularWrapOnFixedWidth },
+
+  GoIntegerAliasPrimitive { target_name: "byte", canon_name: "uint8", algebra: GoSemiringAlgebra,
+    carrier: GoByteCarrier, range_min_inclusive: "0", range_max_inclusive: "255",
+    overflow: GoModularWrapOnFixedWidth },
+  GoIntegerAliasPrimitive { target_name: "rune", canon_name: "int32", algebra: GoOrderedRingAlgebra,
+    carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
+    overflow: GoModularWrapOnFixedWidth },
+
+  GoFloatPrimitive { target_name: "float32", width: GoFloat32Width },
+  GoFloatPrimitive { target_name: "float64", width: GoFloat64Width },
+
+  GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
+  GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },
+
+  GoBooleanPrimitive { target_name: "bool", algebra: GoCanonicalTwoElementBooleanAlgebra,
+    carrier: GoBitCarrier },
+
+  GoStringPrimitive { target_name: "string", algebra: GoImmutableByteSequenceMonoidAlgebra,
+    carrier: GoImmutableByteSequenceCarrier }
+]
+
+data go_dag_unit_target_primitive: GoPrimitive = GoUnitPrimitive {
+  target_name: "struct{}",
+  algebra: GoTerminalAlgebra,
+  carrier: GoTerminalCarrier
+}

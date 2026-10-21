@@ -1,0 +1,5 @@
+{
+  "arm": "tp4-ctl",
+  "prompt_tokens": 22,
+  "text": " the input embedding is split along the hidden dimension. Step two: each device holds a shard of the weight matrices for the attention and MLP layers. Step three: during the forward pass, each device computes its portion of the output using"
+}

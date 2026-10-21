@@ -1,0 +1,76 @@
+module extdeps.connector.molex_mini_fit_jr
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Ampere, ampere, Micrometer, micrometer }
+import extdeps.vendor.molex { molex }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// THE 4.2 MM PITCH POWER CONNECTOR FAMILY an ATX12V 8-pin input is built on.
+//
+// The ASRock manual names an 8-pin ATX12V input but not its manufacturer or
+// header part. These family test ratings are screening candidates; they do not
+// establish the installed header, terminal, wire or PCB current capability.
+// Standard and HCS terminal figures are not interchangeable. The standard row
+// uses the primary 8-circuit / 18 AWG table; the HCS row remains unverified.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.molex.com/en-us/products/connectors/wire-to-board-connectors/mini-fit-jr-connectors"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.connector.molex_mini_fit_jr",
+      decl_name: "mini_fit_jr_family",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type MiniFitJrTerminalRating {
+  terminal_series_label: NonEmptyStr
+  wire_gauge_awg: Nat
+  rated_current_per_circuit: Ampere
+  standing: CitedFigureStanding
+}
+
+type MiniFitJrFamily {
+  family_label: NonEmptyStr
+  pitch: Micrometer
+  ratings: List<MiniFitJrTerminalRating>
+}
+
+data mini_fit_jr_current_table_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/productspecificationpdf/555/5556/PS-5556-001-001.pdf"}}
+// Rev H2 (2026-06-22), section 4.3: 7-10 circuits, 18 AWG, brass 7 A; phosphor bronze 6 A.
+// Use the lower of those two test figures for screening; actual installed terminal/header remains unidentified.
+data mini_fit_jr_standard_terminal_rating: MiniFitJrTerminalRating = MiniFitJrTerminalRating {
+  terminal_series_label: "5556/5558 8-circuit 18 AWG screening: lower material rating",
+  wire_gauge_awg: 18,
+  rated_current_per_circuit: ampere(count: 6),
+  standing: CitedToAuthority {authority:mini_fit_jr_current_table_authority},
+}
+
+data mini_fit_jr_hcs_terminal_rating: MiniFitJrTerminalRating = MiniFitJrTerminalRating {
+  terminal_series_label: "45750 high-current terminal",
+  wire_gauge_awg: 16,
+  rated_current_per_circuit: ampere(count: 13),
+  standing: TranscribedUncited {
+    read_obligation: "Open Molex PS-45750-001 and confirm 13 A max per circuit with 45750 terminals crimped to 16 AWG, plus its derating table; relayed from distributor datasheet summaries on 2026-10-04.",
+  },
+}
+
+data mini_fit_jr_family: MiniFitJrFamily = MiniFitJrFamily {
+  family_label: "Molex Mini-Fit Jr.",
+  pitch: micrometer(count: 4200),
+  ratings: [mini_fit_jr_standard_terminal_rating, mini_fit_jr_hcs_terminal_rating],
+}
+
+data mini_fit_jr_vendor_note: NonEmptyStr = "Family owner extdeps.vendor.molex; header part on the ALTRAD8UD-1L2T unread."

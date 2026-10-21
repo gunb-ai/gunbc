@@ -1,0 +1,216 @@
+module extdeps.languages.css.values
+
+import std.types { Int, String, Bool, List }
+import std.decimal { ExactDecimal, exact_decimal_wire }
+import std.optional { Optional, Absent, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-values-4"
+  }
+}
+
+// Cited upstream: W3C CSS Values and Units Module Level 4. A <length> is a magnitude PLUS a unit
+// (section 6 Distance Units): px an absolute unit, rem and ch font-relative units — so a length
+// literal like "4px" is a SERIALIZATION of that structure (DESIGN section 2, decompress the
+// string), never the stored fact. The zero-length rule (section 6.2: for a zero length the unit
+// identifier is optional) is why css_length_wire renders a zero magnitude as bare "0" regardless of
+// unit — grounded spec behavior, not a special case, and the reason authored "0" round-trips
+// byte-exact. <percentage> (section 5) rides the same wire for the register's dimension needs.
+// Forward reading (parsing a CSS value through these rows) is the NAMED later direction (DESIGN
+// section 4, one grammar both ways), not built here.
+
+type CssLengthUnit
+  = Px
+  | Rem
+  | Ch
+  | Em
+  | Vw
+  | Percent
+
+fn css_length_unit_token(u: CssLengthUnit) -> String {
+  match u {
+    Px => "px"
+    Rem => "rem"
+    Ch => "ch"
+    Em => "em"
+    Vw => "vw"
+    Percent => "%"
+  }
+}
+
+type CssLength {
+  n: Int
+  unit: CssLengthUnit
+}
+
+fn css_length_wire(l: CssLength) -> String {
+  if l.n == 0 {
+    "0"
+  } else {
+    join([to_string(l.n), css_length_unit_token(u: l.unit)], "")
+  }
+}
+
+fn css_px(n: Int) -> CssLength {
+  CssLength { n: n, unit: Px }
+}
+
+fn css_ch(n: Int) -> CssLength {
+  CssLength { n: n, unit: Ch }
+}
+
+data css_font_family_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-fonts-4/#font-family-prop"
+  }
+}
+
+// Cited upstream: W3C CSS Fonts Module Level 4, font-family property. A font-family value is a LIST
+// of families: quoted <family-name> strings (NamedFamily, e.g. 'Noto Sans') and bare
+// <generic-family> keywords (GenericFamily: serif/sans-serif/monospace/cursive/fantasy/system-ui),
+// joined by ", ". The stringly "'Noto Sans', system-ui, sans-serif" is the serialization of this
+// list, decompressed here (DESIGN section 2).
+
+type CssGenericFamily
+  = GenericSerif
+  | GenericSansSerif
+  | GenericMonospace
+  | GenericCursive
+  | GenericFantasy
+  | GenericSystemUi
+  | GenericUiMonospace
+
+fn css_generic_family_token(g: CssGenericFamily) -> String {
+  match g {
+    GenericSerif => "serif"
+    GenericSansSerif => "sans-serif"
+    GenericMonospace => "monospace"
+    GenericCursive => "cursive"
+    GenericFantasy => "fantasy"
+    GenericSystemUi => "system-ui"
+    GenericUiMonospace => "ui-monospace"
+  }
+}
+
+type CssFontFamily
+  = NamedFamily { name: String }
+  | GenericFamily { kind: CssGenericFamily }
+
+// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
+// the quote is the one parameter of the spelling. The served stylesheet uses double quotes.
+type CssStringQuote = SingleQuote | DoubleQuote
+
+fn css_string_quote_char(q: CssStringQuote) -> String {
+  match q {
+    SingleQuote => "'"
+    DoubleQuote => "\""
+  }
+}
+
+fn css_font_family_wire(f: CssFontFamily, quote: CssStringQuote) -> String {
+  match f {
+    NamedFamily { name: n } => join([css_string_quote_char(q: quote), n, css_string_quote_char(q: quote)], "")
+    GenericFamily { kind: g } => css_generic_family_token(g: g)
+  }
+}
+
+type CssFontStack {
+  families: List<CssFontFamily>
+}
+
+fn css_font_stack_wire(s: CssFontStack, quote: CssStringQuote) -> String {
+  join(map(s.families, f => css_font_family_wire(f: f, quote: quote)), ", ")
+}
+
+// <var> = var( <custom-property-name> , <declaration-value>? ) — CSS Values and Units Level 4
+// §3.10. The custom-property side of the reference is modelled here rather than in
+// extdeps.languages.css.properties, because this module already owns the value grammar the
+// reference substitutes into (§7.1 css-variables-1 puts the substitution where a <value> may
+// appear); properties.dag owns the DECLARATION (CustomProperty), which is the other side of the
+// same fact and already has its own arm. One place knows what a var reference looks like.
+type CssVarRef {
+  name: String
+}
+
+fn css_var_ref_wire(v: CssVarRef) -> String {
+  join(["var(--", v.name, ")"], "")
+}
+
+// A <number> with a fractional part (CSS Values and Units Level 4 section 4.1) is carried as an Int of
+// thousandths, so the magnitude stays exact; its wire is css_number_wire (std.decimal.exact_decimal_wire over
+// css_number_fraction_digits places) (the shortest decimal: 0.4, 0.85, 56). A fraction needing more
+// than three places is not representable and is a different Int, never a rounded one.
+data css_number_fraction_digits: Int = 3
+
+// The shortest signed decimal of a thousandths magnitude (std.decimal.exact_decimal_wire: the sign is split
+// off before the digits, which fixed_point_trimmed_wire's non-negative domain does not do).
+fn css_number_wire(milli: Int) -> String {
+  exact_decimal_wire(d: ExactDecimal { units: milli, fraction_digits: css_number_fraction_digits })
+}
+
+// A length whose magnitude may be fractional (0.4rem). css_length_wire keeps the Int-valued form.
+type CssDecimalLength {
+  milli: Int
+  unit: CssLengthUnit
+}
+
+// CSS Values 4 section 5.1: a zero <length> may drop its unit, and the served sheet writes bare 0 for
+// zero lengths. A percentage is not a <length>, so 0% keeps its unit.
+fn css_zero_drops_unit(u: CssLengthUnit) -> String {
+  match u {
+    Px => "0"
+    Rem => "0"
+    Ch => "0"
+    Em => "0"
+    Vw => "0"
+    Percent => "0%"
+  }
+}
+
+fn css_decimal_length_wire(l: CssDecimalLength) -> String {
+  if l.milli == 0 {
+    css_zero_drops_unit(u: l.unit)
+  } else {
+    join([css_number_wire(milli: l.milli), css_length_unit_token(u: l.unit)], "")
+  }
+}
+
+// <hsl()> / <hsla()> (CSS Color Level 4 §7, legacy comma syntax). A component is a literal
+// percentage, a bare number, or a var() reference: `hsl(var(--hue-moss), var(--accent-sat), 48%)`
+// is how a hue family is parameterized once and reused. Alpha present selects the hsla() spelling.
+type CssColorComponent
+  = ComponentVar { reference: CssVarRef }
+  | ComponentPercent { n: Int }
+  | ComponentNumber { n: Int }
+
+fn css_color_component_wire(c: CssColorComponent) -> String {
+  match c {
+    ComponentVar { reference: r } => css_var_ref_wire(v: r)
+    ComponentPercent { n: n } => join([to_string(n), "%"], "")
+    ComponentNumber { n: n } => to_string(n)
+  }
+}
+
+type CssHsl {
+  hue: CssColorComponent
+  saturation: CssColorComponent
+  lightness: CssColorComponent
+  alpha_milli: Optional<Int>
+}
+
+fn css_hsl_wire(c: CssHsl) -> String {
+  let channels = [
+    css_color_component_wire(c: c.hue),
+    css_color_component_wire(c: c.saturation),
+    css_color_component_wire(c: c.lightness),
+  ]
+  match c.alpha_milli {
+    Absent => join(["hsl(", join(channels, ", "), ")"], "")
+    Present { value: a } => join(["hsla(", join(concat(channels, [css_number_wire(milli: a)]), ", "), ")"], "")
+  }
+}

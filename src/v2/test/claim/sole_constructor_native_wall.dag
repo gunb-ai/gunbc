@@ -1,0 +1,291 @@
+// sole_constructor_native_wall -- HERMETIC WALL WITNESSES for
+// v2.compiler.infer infer_sole_constructor_diags.
+//
+// The wall's contract is judged over VALUES: a captured TypeDeclarationModifierChannel, a
+// constructing-module symbol, and a type path. No claim here runs ingest. The ONE real-path
+// inhabitance claim lives in src/v2/test/claim/long/sole_constructor_native_wall_red.dag.
+
+module v2.test.claim.sole_constructor_native_wall
+
+import std.algebra { Cons, Empty, empty_map, map_insert }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import std.optional { Absent, Present, optional_absent, optional_present }
+import v2.compiler.body_lowering_fold {
+  SoleConstructorModifier,
+  TypeDeclModuleModifierRows,
+  TypeDeclarationModifierChannel,
+  TypeDeclarationModifiersCaptured,
+  type_declaration_modifiers_covering_no_modules
+}
+import v2.compiler.infer { infer_coproduct_path_of_variant_arm, infer_sole_constructor_diags, infer_sole_constructor_path_diags }
+import v2.std.node_query { construct_node }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree }
+
+import v2.std.diagnostic { None, Some, diagnostics_has_reason }
+import v2.std.logic { Bool }
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
+import v2.std.symbol_index {
+  SymbolIndex,
+  VariantArmPayload,
+  empty_symbol_index,
+  symbol_index_bind_at,
+  symbol_index_insert,
+  symbol_index_mark_declared_payload,
+  symbol_index_mark_module_root
+}
+
+data wall_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 810 } }
+
+data wall_at: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^wall_construction_site } },
+  children: [],
+  occurrence_id: wall_locus
+}
+
+fn wall_module_aca() -> QualifiedName {
+  Cons { head: ^aca, tail: Empty }
+}
+
+fn wall_type_path() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^SealedRec, tail: Empty } }
+}
+
+fn wall_tree(channel: TypeDeclarationModifierChannel) -> ResolvedTree {
+  ResolvedTree {
+    root: wall_at,
+    symbol_index: empty_symbol_index(),
+    resolved_declarations: empty_symbol_index(),
+    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
+    member_kinds: no_member_declaration_kinds(),
+    type_declaration_modifiers: channel,
+    constructing_module: optional_absent()
+  }
+}
+
+fn wall_rows_empty() -> TypeDeclModuleModifierRows {
+  TypeDeclModuleModifierRows { by_name: empty_map() }
+}
+
+fn wall_rows_sealed() -> TypeDeclModuleModifierRows {
+  TypeDeclModuleModifierRows {
+    by_name: map_insert(
+      m: empty_map(),
+      key: ^SealedRec,
+      value: Cons { head: SoleConstructorModifier, tail: Empty }
+    )
+  }
+}
+
+fn wall_channel_modules(first: QualifiedName, first_rows: TypeDeclModuleModifierRows) -> TypeDeclarationModifierChannel {
+  TypeDeclarationModifiersCaptured {
+    by_module: map_insert(m: empty_map(), key: first, value: first_rows)
+  }
+}
+
+fn wall_sealed_channel() -> TypeDeclarationModifierChannel {
+  wall_channel_modules(first: wall_module_aca(), first_rows: wall_rows_sealed())
+}
+
+fn wall_open_channel() -> TypeDeclarationModifierChannel {
+  wall_channel_modules(first: wall_module_aca(), first_rows: wall_rows_empty())
+}
+
+fn wall_foreign_module() -> Symbol {
+  symbol_intern_lexeme(lexeme: "bcb")
+}
+
+fn wall_home_module() -> Symbol {
+  symbol_intern_lexeme(lexeme: "aca")
+}
+
+test fn the_wall_refuses_a_foreign_module_construction_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_foreign_module()),
+    tree: wall_tree(channel: wall_sealed_channel())
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_refused)
+  }
+}
+
+test fn the_wall_admits_construction_inside_the_declaring_module_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_home_module()),
+    tree: wall_tree(channel: wall_sealed_channel())
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+test fn the_wall_is_silent_when_the_modifier_is_absent_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_foreign_module()),
+    tree: wall_tree(channel: wall_open_channel())
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+test fn an_uncovered_declaring_module_refuses_unreadable_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_foreign_module()),
+    tree: wall_tree(
+      channel: wall_channel_modules(first: Cons { head: ^other, tail: Empty }, first_rows: wall_rows_empty())
+    )
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
+  }
+}
+
+test fn a_sealed_type_with_no_constructing_module_refuses_ownership_unreadable_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_absent(),
+    tree: wall_tree(channel: wall_sealed_channel())
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_ownership_unreadable)
+  }
+}
+
+test fn a_homonym_in_another_module_does_not_seal_this_modules_open_type_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_home_module()),
+    tree: wall_tree(
+      channel: TypeDeclarationModifiersCaptured {
+        by_module: map_insert(
+          m: map_insert(m: empty_map(), key: wall_module_aca(), value: wall_rows_empty()),
+          key: Cons { head: ^bcb, tail: Empty },
+          value: wall_rows_sealed()
+        )
+      }
+    )
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+fn wall_alias_path() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^OpenA, tail: Empty } }
+}
+
+fn wall_coproduct_path() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^OpenChoice, tail: Empty } }
+}
+
+fn wall_arm_declaring_path() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^OpenChoice, tail: Cons { head: ^OpenA, tail: Empty } } }
+}
+
+test fn an_absent_index_does_not_guess_the_coproduct_from_the_alias_spelling_holds() -> Bool {
+  match infer_coproduct_path_of_variant_arm(index: empty_symbol_index(), arm_path: wall_alias_path()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn wall_unclaimed_alias_index() -> SymbolIndex {
+  symbol_index_insert(
+    index: symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: wall_module_aca()),
+    qualified_path: wall_alias_path(),
+    resolved: wall_at
+  )
+}
+
+test fn a_module_root_parent_is_not_a_coproduct_identity_holds() -> Bool {
+  match infer_coproduct_path_of_variant_arm(index: wall_unclaimed_alias_index(), arm_path: wall_alias_path()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_chased_unique_variant_alias_names_the_coproduct_holds() -> Bool {
+  let with_module = symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: wall_module_aca())
+  let with_type = symbol_index_insert(index: with_module, qualified_path: wall_coproduct_path(), resolved: wall_at)
+  let with_arm = symbol_index_mark_declared_payload(
+    index: symbol_index_insert(index: with_type, qualified_path: wall_arm_declaring_path(), resolved: wall_at),
+    qualified_path: wall_arm_declaring_path(),
+    kind: VariantArmPayload
+  )
+  let chased = symbol_index_bind_at(
+    index: with_arm,
+    binding_path: wall_alias_path(),
+    declaring_path: wall_arm_declaring_path(),
+    resolved: wall_at
+  )
+  match infer_coproduct_path_of_variant_arm(index: chased, arm_path: wall_alias_path()) {
+    Absent => false
+    Present { value: path } => path == wall_coproduct_path()
+  }
+}
+
+fn wall_alias_construct() -> Node {
+  construct_node(
+    reference: declaration_reference_node(qn: wall_alias_path(), occurrence_id: wall_locus),
+    field_edges: [],
+    source: wall_at
+  )
+}
+
+test fn an_unclaimed_alias_construct_refuses_declaration_identity_unavailable_not_path_diag_holds() -> Bool {
+  match infer_sole_constructor_diags(
+    tree: ResolvedTree {
+      root: wall_alias_construct(),
+      symbol_index: wall_unclaimed_alias_index(),
+      resolved_declarations: wall_unclaimed_alias_index(),
+      occurrence_bindings: empty_map(), duplicate_binding_records: [],
+      module_outcomes: [], outcome_index: empty_module_outcome_index(),
+      member_kinds: no_member_declaration_kinds(),
+      type_declaration_modifiers: wall_open_channel(),
+      constructing_module: optional_present(value: wall_foreign_module())
+    }
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_declaration_identity_unavailable)
+        && !diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
+        && !diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_refused)
+  }
+}
+
+test fn a_withheld_index_refuses_declaration_identity_unavailable_not_modifiers_unreadable_holds() -> Bool {
+  match infer_sole_constructor_diags(
+    tree: ResolvedTree {
+      root: wall_alias_construct(),
+      symbol_index: empty_symbol_index(),
+      resolved_declarations: empty_symbol_index(),
+      occurrence_bindings: empty_map(), duplicate_binding_records: [],
+      module_outcomes: [], outcome_index: empty_module_outcome_index(),
+      member_kinds: no_member_declaration_kinds(),
+      type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
+      constructing_module: optional_present(value: wall_foreign_module())
+    }
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_declaration_identity_unavailable)
+        && !diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
+  }
+}
+

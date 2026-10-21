@@ -1,0 +1,683 @@
+module extdeps.systemd
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { list_length }
+import std.algebra { trim }
+import std.types { List }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,
+  HardwareThreadCount, hardware_thread_count_value,
+  milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
+}
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
+import std.host_text { chars }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
+  }
+}
+
+type SystemdUnitActiveState
+  = Active
+  | Inactive
+  | Activating
+  | Deactivating
+  | Reloading
+  | Failed
+
+data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
+  "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
+]
+
+// `MainPID` IS THE PROPERTY THAT SAYS WHICH PROCESS THE MANAGER BELIEVES IT IS SUPERVISING, and it
+// is a magnitude like the cgroup evidence beside it rather than a lifecycle word like `LoadState`,
+// which is why it joins this coproduct instead of taking its own operation the way LoadState did.
+//
+// It is read for a reason the other members cannot serve: every property here answers for the unit
+// AS THE MANAGER SEES IT, and a consumer comparing the manager's view against the cgroup's actual
+// occupants needs the manager's own nominated pid to make that comparison at all. Without it the
+// two views cannot be joined -- a reader can see that a cgroup holds four processes and that the
+// unit is active, and still not know which one systemd would signal.
+//
+// systemd answers `0` for a unit with no main process, which is not a pid; decoding that boundary
+// belongs to the consumer, because "the manager supervises nothing" and "the manager supervises pid
+// N" are different observations and this authority's job is to carry the wire value, not to decide
+// what an absent main process means for any one unit.
+type SystemdUnitProperty
+  = MemoryMax
+  | MemorySwapMax
+  | MemoryHigh
+  | CPUWeight
+  | CPUQuota
+  | CPUQuotaPerSecUSec
+  | MemoryCurrent
+  | MemoryPeak
+  | TasksMax
+  | TasksCurrent
+  | ControlGroup
+  | SliceProperty
+  | PartOf
+  | ActiveEnterTimestampMonotonic
+  | ActiveState
+  | MainPID
+  | LoadState
+  | UnitFileState
+  | SubState
+  | Result
+  | ExecMainStatus
+  | ExecStartProperty
+  | ExecStopProperty
+  | ExecStopPostProperty
+  | User
+  | WorkingDirectoryProperty
+  | RuntimeDirectoryProperty
+  | Unit
+  | NextElapseUSecMonotonic
+  | AccuracyUSec
+  | TimersMonotonic
+  // When the unit's main process started and exited, in CLOCK_MONOTONIC microseconds (systemd.exec(5)
+  // / org.freedesktop.systemd1.Service ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic).
+  // Zero when the event has not happened.
+  | ExecMainStartTimestampMonotonic
+  | ExecMainExitTimestampMonotonic
+  | NeedDaemonReload
+  | IdProperty
+  | KillModeProperty
+  | ExitTypeProperty
+  | EnvironmentProperty
+  | EnvironmentFilesProperty
+  | PassEnvironmentProperty
+  | AfterProperty
+  | WantsProperty
+  | InvocationIDProperty
+  | FragmentPathProperty
+  | StandardOutputProperty
+  | StandardErrorProperty
+  | ProtectSystemProperty
+  | ProtectHomeProperty
+  | PrivateTmpProperty
+  | ReadWritePathsProperty
+  // systemd.exec(5) BindPaths=: a space-separated list of SOURCE[:DESTINATION[:OPTIONS]] bind mounts made in the
+  // unit's own mount namespace, which is how a unit sees a private path at a name other units also use.
+  | BindPathsProperty
+  | ReadOnlyPathsProperty
+  // systemd.exec(5) InaccessiblePaths=: paths made unreachable in the unit's mount namespace.
+  | InaccessiblePathsProperty
+  | RemainAfterExitProperty
+  | RuntimeMaxSecProperty
+  | CollectModeProperty
+  | JobProperty
+  | NoNewPrivilegesProperty
+  | RestrictSUIDSGIDProperty
+  // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
+  // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
+  | DelegateProperty
+
+// THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
+//
+// systemctl's `--property=` takes the wire spelling, and a variant name is not always it -- which is
+// why systemd_unit_property_wire exists. The first repair of that defect widened the operations'
+// input to a bare NonEmptyStr and relied on every caller remembering to convert, which moved the wall
+// from the type system to caller discipline: nothing stopped the next caller passing a literal and
+// re-entering the silent empty reading that a wet run had just been spent finding (review 69084).
+//
+// THE SEAL CANNOT LIVE AT THE ARGV, AND THAT IS A MATERIALIZER FACT RATHER THAN A CHOICE. A sealed
+// one-field carrier read as `{property.wire}` was tried and withdrawn: `bind_argv_expr` binds a
+// string literal, a variable, and a string interpolation over those, and sends every other form --
+// including a FIELD ACCESS -- to ArgvExpressionUnsupported, so the two operations silently left the
+// materializable set and the enrolled argv-binding claims went red (review 69392, measured).
+//
+// The srv1 measurement that seemed to license the seal tested the wrong path. It echoed a record
+// field through a shell transport, which runs the interpreter's dispatch_shell route -- the full
+// evaluator -- while the wall that broke is the MATERIALIZER. `std.operation_argv`
+// `operation_argv_expression_residue_note` says exactly this about such operations, and the residue
+// dissolves when argv element evaluation lands, which is a separate lane.
+//
+// So the wire word is a plain NonEmptyStr and this function is its only sanctioned producer: the
+// conversion is a caller obligation rather than a construction wall, which is honestly weaker than
+// sole_constructor and is stated as such rather than implied. The trigger that would restore the
+// closed type is argv element evaluation in the materializer, and nothing less -- not a convention,
+// not a review habit, and not this comment.
+fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
+  match property {
+    MemoryMax => "MemoryMax" as NonEmptyStr
+    MemorySwapMax => "MemorySwapMax" as NonEmptyStr
+    MemoryHigh => "MemoryHigh" as NonEmptyStr
+    CPUWeight => "CPUWeight" as NonEmptyStr
+    CPUQuota => "CPUQuota" as NonEmptyStr
+    CPUQuotaPerSecUSec => "CPUQuotaPerSecUSec" as NonEmptyStr
+    MemoryCurrent => "MemoryCurrent" as NonEmptyStr
+    MemoryPeak => "MemoryPeak" as NonEmptyStr
+    TasksMax => "TasksMax" as NonEmptyStr
+    TasksCurrent => "TasksCurrent" as NonEmptyStr
+    ControlGroup => "ControlGroup" as NonEmptyStr
+    SliceProperty => "Slice" as NonEmptyStr
+    PartOf => "PartOf" as NonEmptyStr
+    ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
+    ActiveState => "ActiveState" as NonEmptyStr
+    MainPID => "MainPID" as NonEmptyStr
+    LoadState => "LoadState" as NonEmptyStr
+    UnitFileState => "UnitFileState" as NonEmptyStr
+    SubState => "SubState" as NonEmptyStr
+    Result => "Result" as NonEmptyStr
+    ExecMainStatus => "ExecMainStatus" as NonEmptyStr
+    ExecStartProperty => "ExecStart" as NonEmptyStr
+    ExecStopProperty => "ExecStop" as NonEmptyStr
+    ExecStopPostProperty => "ExecStopPost" as NonEmptyStr
+    User => "User" as NonEmptyStr
+    WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
+    RuntimeDirectoryProperty => "RuntimeDirectory" as NonEmptyStr
+    Unit => "Unit" as NonEmptyStr
+    NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
+    AccuracyUSec => "AccuracyUSec" as NonEmptyStr
+    TimersMonotonic => "TimersMonotonic" as NonEmptyStr
+    ExecMainStartTimestampMonotonic => "ExecMainStartTimestampMonotonic" as NonEmptyStr
+    ExecMainExitTimestampMonotonic => "ExecMainExitTimestampMonotonic" as NonEmptyStr
+    NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
+    IdProperty => "Id" as NonEmptyStr
+    KillModeProperty => "KillMode" as NonEmptyStr
+    ExitTypeProperty => "ExitType" as NonEmptyStr
+    EnvironmentProperty => "Environment" as NonEmptyStr
+    EnvironmentFilesProperty => "EnvironmentFiles" as NonEmptyStr
+    PassEnvironmentProperty => "PassEnvironment" as NonEmptyStr
+    AfterProperty => "After" as NonEmptyStr
+    WantsProperty => "Wants" as NonEmptyStr
+    InvocationIDProperty => "InvocationID" as NonEmptyStr
+    FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    StandardOutputProperty => "StandardOutput" as NonEmptyStr
+    StandardErrorProperty => "StandardError" as NonEmptyStr
+    ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
+    ProtectHomeProperty => "ProtectHome" as NonEmptyStr
+    PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
+    ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    BindPathsProperty => "BindPaths" as NonEmptyStr
+    ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
+    InaccessiblePathsProperty => "InaccessiblePaths" as NonEmptyStr
+    RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
+    RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
+    CollectModeProperty => "CollectMode" as NonEmptyStr
+    JobProperty => "Job" as NonEmptyStr
+    NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
+    RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    DelegateProperty => "Delegate" as NonEmptyStr
+  }
+}
+
+data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
+
+// systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
+data systemd_unit_load_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
+// THE LOAD STATE AS A CLOSED VOCABULARY, beside the active state above. systemd.unit(5) and
+// org.freedesktop.systemd1(5) (Unit.LoadState): `loaded`, `not-found`, `bad-setting`, `error`,
+// `masked`. A word outside the set is not guessed into one: the parse answers nothing and the caller
+// refuses it as unread.
+type SystemdUnitLoadState
+  = UnitLoaded
+  | UnitLoadNotFound
+  | UnitLoadBadSetting
+  | UnitLoadError
+  | UnitLoadMasked
+
+fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
+  if raw == "loaded" { Present { value: UnitLoaded } }
+  else { if raw == (systemd_unit_load_state_not_found_wire as String) { Present { value: UnitLoadNotFound } }
+  else { if raw == "bad-setting" { Present { value: UnitLoadBadSetting } }
+  else { if raw == "error" { Present { value: UnitLoadError } }
+  else { if raw == (systemd_unit_load_state_masked_wire as String) { Present { value: UnitLoadMasked } }
+  else { none } } } } }
+}
+
+data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
+
+data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemorySwapMax)
+
+data systemd_memory_high_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryHigh)
+
+data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(property: CPUWeight)
+
+// CPUQuota= IS A CEILING AND CPUWeight= IS A SHARE, AND THEY ARE NOT ALIASES.
+// systemd.resource-control(5): CPUWeight assigns a RELATIVE share against sibling cgroups and
+// guarantees no amount of anything; CPUQuota assigns an ABSOLUTE maximum of CPU time per wall
+// second. A boundary that must not be exceeded is expressible in exactly one of them, so
+// carrying only the weight -- as this vocabulary did -- left the ceiling unsayable rather than
+// merely unset.
+data systemd_cpu_quota_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuota)
+
+data systemd_cpu_quota_per_sec_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuotaPerSecUSec)
+
+data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
+
+data systemd_tasks_max_property: NonEmptyStr = systemd_unit_property_wire(property: TasksMax)
+
+data systemd_tasks_current_property: NonEmptyStr = systemd_unit_property_wire(property: TasksCurrent)
+
+// systemd.time(7) TIME SPAN NORMALIZATION, the smallest slice launch standing needs: a span is one
+// or more whitespace-separated <value><unit> parts (a bare value reads as seconds), and the units
+// below are the documented spellings for the magnitudes systemd renders timer facts in (usec
+// through hours). The result is microseconds, systemd's own internal resolution, so "60s" ==
+// "1min" becomes decidable equality instead of a string comparison. Unknown units, empty input, or
+// a malformed part refuse with Absent -- never a partial sum.
+type SystemdTimeSpanPart {
+  value: Nat
+  unit: String
+}
+
+fn systemd_time_span_unit_usec(unit: String) -> Nat? {
+  if unit == "usec" || unit == "us" {
+    let one: Nat = 1
+    Present { value: one }
+  }
+  else if unit == "msec" || unit == "ms" { Present { value: milli_per_unit() } }
+  else if unit == "seconds" || unit == "second" || unit == "sec" || unit == "s" || unit == "" {
+    Present { value: micro_per_unit() }
+  }
+  else if unit == "minutes" || unit == "minute" || unit == "min" || unit == "m" {
+    Present { value: seconds_per_minute() * micro_per_unit() }
+  }
+  else if unit == "hours" || unit == "hour" || unit == "hr" || unit == "h" {
+    Present { value: minutes_per_hour() * seconds_per_minute() * micro_per_unit() }
+  }
+  else { none }
+}
+
+fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
+  let scan = fold(chars(text: part), init: 0, f: (n, c) =>
+    if n < 0 { n } else if c >= 48 && c <= 57 { n + 1 } else { 0 - n - 1 })
+  let digits = if scan < 0 { 0 - scan - 1 } else { scan }
+  if digits == 0 {
+    none
+  } else {
+    match parse_int(s: substring(s: part, start: 0, end: digits)) {
+      Absent => none
+      Present { value: v } =>
+        if v < 0 {
+          none
+        } else {
+          match checked_int_magnitude(a: v) {
+            CheckedNatOverflow { cause: _ } => none
+            CheckedNatReady { value: n } =>
+              Present { value: SystemdTimeSpanPart { value: n, unit: substring(s: part, start: digits, end: string_length(s: part)) } }
+          }
+        }
+    }
+  }
+}
+
+// THE TYPED QUANTITY RENDERED TO SYSTEMD'S TIME-SPAN SPELLING, at the boundary and nowhere else: a
+// duration is authored as a Second and only its systemd text is a string, so no consumer parses text to
+// recover the number. Whole seconds with the `s` unit are a spelling systemd_duration_usec reads back.
+fn systemd_time_span_of_seconds(d: Second) -> NonEmptyStr {
+  join([to_string(second_count(s: d)), "s"], "") as NonEmptyStr
+}
+
+fn systemd_duration_usec(text: String) -> Microsecond? {
+  let parts = filter(split(s: trim(s: text), delimiter: " "), p => p != "")
+  if list_length(items: parts) == 0 {
+    none
+  } else {
+    let total = fold(parts, init: Present { value: 0 }, f: (acc, part) =>
+      match acc {
+        Absent => none
+        Present { value: so_far } =>
+          match systemd_time_span_split(part: part) {
+            Absent => none
+            Present { value: vu } =>
+              match systemd_time_span_unit_usec(unit: vu.unit) {
+                Absent => none
+                Present { value: mult } => Present { value: so_far + vu.value * mult }
+              }
+          }
+      })
+    match total {
+      Absent => none
+      Present { value: n } => Present { value: microsecond(count: n) }
+    }
+  }
+}
+
+// THE CONFIGURED SPELLING AND THE READBACK SPELLING ARE DIFFERENT PROPERTIES. `CPUQuota=` is the
+// configuration setting written as a percentage; `systemctl show` reports `CPUQuotaPerSecUSec`, a
+// duration of CPU time permitted per wall second. Reading CPUQuota after writing it compares against
+// a property systemd does not report.
+//
+// An UNSET quota reads back `infinity`, so CpuQuotaUnbounded is the host affirmatively reporting no
+// ceiling. CpuQuotaAbsent is an empty show value (the property was not reported). CpuQuotaUndecodable
+// is an observation failure and carries the unread text: folding it into unbounded or absent would
+// report a cell of unknown standing as a known policy state.
+type SystemdCpuQuotaPerSec
+  = CpuQuotaUnbounded
+  | CpuQuotaPerSec { usec: Microsecond }
+  | CpuQuotaAbsent
+  | CpuQuotaUndecodable { raw: String }
+
+// 100% IS ONE CPU-SECOND PER WALL SECOND. A thread count is a multiple of that unit. The seconds-to-
+// microseconds factor is std.measure micro_per_unit: the scale is a fact about the units, not about
+// systemd.
+fn systemd_cpu_quota_per_sec_of_threads(threads: HardwareThreadCount) -> Microsecond {
+  microsecond(count: hardware_thread_count_value(t: threads) * micro_per_unit())
+}
+
+fn systemd_cpu_quota_per_sec_magnitude_identity(usec: Microsecond) -> String {
+  to_string(microsecond_count(m: usec))
+}
+
+// SYSTEMD PRINTS THIS PROPERTY AS A FORMATTED TIME SPAN. Measured against systemd 255: `infinity`,
+// `100ms`, `1s`, `6s`, and past sixty CPU-seconds per wall second the compound `1min`, `1min 500ms`,
+// `1min 30s`. Fractional forms such as `1.500000s` are undecodable here because truncating them would
+// report a lower ceiling than the host has. Compound spans decode through systemd_duration_usec so
+// `60s` and `1min` are the same magnitude.
+fn parse_systemd_cpu_quota_per_sec_show(raw: String) -> SystemdCpuQuotaPerSec {
+  if trim(s: raw) == "" { CpuQuotaAbsent }
+  else if trim(s: raw) == "infinity" { CpuQuotaUnbounded }
+  else {
+    match systemd_duration_usec(text: raw) {
+      Present { value: u } => CpuQuotaPerSec { usec: u }
+      Absent => CpuQuotaUndecodable { raw: raw }
+    }
+  }
+}
+
+// COMPARABLE ARMS HAVE AN IDENTITY STRING; UNDECODABLE HAS NONE. Desired never produces Undecodable:
+// it renders through systemd_cpu_quota_per_sec_magnitude_identity of of_threads, which is total.
+// THE UNBOUNDED IDENTITY IS A NAMED CONSTANT because a DESIRED side that declares no ceiling has to
+// spell it the same way the observed side does, and reaching that spelling through the identity
+// function would hand the desired side an Optional it can never see Absent on.
+data systemd_cpu_quota_unbounded_identity: String = "infinity"
+
+fn systemd_cpu_quota_per_sec_identity(q: SystemdCpuQuotaPerSec) -> String? {
+  match q {
+    CpuQuotaUnbounded => Present { value: systemd_cpu_quota_unbounded_identity }
+    CpuQuotaPerSec { usec: u } => Present { value: systemd_cpu_quota_per_sec_magnitude_identity(usec: u) }
+    CpuQuotaAbsent => Present { value: "" }
+    CpuQuotaUndecodable { raw: _ } => none
+  }
+}
+
+type SystemdCgroupMemoryLimit
+  = MemoryLimitUnbounded
+  | MemoryLimitBytes { bytes: ByteSize }
+  | MemoryLimitAbsent
+
+fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
+  if raw == "" { MemoryLimitAbsent }
+  else { if raw == "infinity" { MemoryLimitUnbounded }
+  else { match parse_int(s: raw) {
+    Present { value: n } => MemoryLimitBytes { bytes: byte_size(count: n) }
+    Absent => MemoryLimitAbsent
+  } } }
+}
+
+fn systemd_memory_limit_wire_label(lim: SystemdCgroupMemoryLimit) -> String {
+  match lim {
+    MemoryLimitUnbounded => "infinity"
+    MemoryLimitBytes { bytes: b } => to_string(byte_size_count(b: b))
+    MemoryLimitAbsent => ""
+  }
+}
+
+type SystemdCgroupTaskLimit
+  = TaskLimitUnbounded
+  | TaskLimitCount { count: Int }
+  | TaskLimitAbsent
+
+// parse_systemd_task_limit_show mirrors parse_systemd_memory_limit_show because a systemd
+// cgroup limit shown by `systemctl show` is one wire shape — a decimal count or the literal
+// "infinity" — differing only in the magnitude it grounds into (ByteSize vs a cardinal task
+// count). 🟡 feature:task-count-measure-carrier dissolve-on: a single limit parse
+// parameterized by magnitude (the SystemdCgroupLimit<M> consolidation) with the count arm
+// grounding into a std.measure TaskCount carrier (the HardwareThreadCount shape) instead of
+// bare Int, at which point both hand parses derive from it and the flat scalar retires.
+fn parse_systemd_task_limit_show(raw: String) -> SystemdCgroupTaskLimit {
+  if raw == "" { TaskLimitAbsent }
+  else { if raw == "infinity" { TaskLimitUnbounded }
+  else { match parse_int(s: raw) {
+    Present { value: n } => TaskLimitCount { count: n }
+    Absent => TaskLimitAbsent
+  } } }
+}
+
+fn systemd_task_limit_wire_label(lim: SystemdCgroupTaskLimit) -> String {
+  match lim {
+    TaskLimitUnbounded => "infinity"
+    TaskLimitCount { count: n } => to_string(n)
+    TaskLimitAbsent => ""
+  }
+}
+
+fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
+  if raw == "active" { Present { value: Active } }
+  else { if raw == "inactive" { Present { value: Inactive } }
+  else { if raw == "activating" { Present { value: Activating } }
+  else { if raw == "deactivating" { Present { value: Deactivating } }
+  else { if raw == "reloading" { Present { value: Reloading } }
+  else { if raw == "failed" { Present { value: Failed } }
+  else { none } } } } } }
+}
+
+// WHAT `systemctl is-active` MEANS BY ITS EXIT CODE, distinct from the state word it prints.
+// systemctl(1) at systemd v255 (the Sparks' recorded major, 255.4-1ubuntu8), EXIT STATUS: 0 "unit is
+// active", 3 "unit is not active", 4 "no such unit". A unit that is not loaded -- srv8 carries the pair
+// worker unit but not the head unit, which lives on srv6 -- exits 4, and that is a definite answer
+// (nothing by that name exists to run), not a failed read. Every other code is not one this table
+// assigns to is-active, so it decodes to nothing and the caller refuses it as unread.
+type SystemctlIsActiveExit
+  = IsActiveStateReported
+  | IsActiveNoSuchUnit
+
+fn systemctl_is_active_exit(code: Int) -> SystemctlIsActiveExit? {
+  if code == 0 { Present { value: IsActiveStateReported } }
+  else { if code == 3 { Present { value: IsActiveStateReported } }
+  else { if code == 4 { Present { value: IsActiveNoSuchUnit } }
+  else { none } } }
+}
+
+fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
+  match s {
+    Active => "active"
+    Inactive => "inactive"
+    Activating => "activating"
+    Deactivating => "deactivating"
+    Reloading => "reloading"
+    Failed => "failed"
+  }
+}
+
+type SystemdUnitStatus {
+  name: NonEmptyStr
+  active_state: SystemdUnitActiveState
+}
+
+// WHERE SYSTEMD'S CLIENT BINARIES LIVE, declared once because the corpus needs two spellings of the
+// same binary and had been writing each by hand. A sudoers grant names a command by ABSOLUTE path --
+// sudo matches on the resolved path and a relative spelling in a drop-in is a policy error -- while
+// an argv handed to sudo names it BARE and lets secure_path resolve it. Those are both correct and
+// they are not two facts: they are one binary rendered for two consumers.
+//
+// Rendering them from one row is what makes them unable to disagree. Measured on srv5 and srv6
+// 2026-08-22, `command -v` reports /usr/bin for loginctl, systemctl and journalctl alike, which is
+// the ordinary filesystem-hierarchy location for a distribution-packaged systemd; a host that
+// installed systemd somewhere else would need this row and not a second spelling at the call site.
+data systemd_binary_directory: NonEmptyStr = "/usr/bin" as NonEmptyStr
+
+fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
+  join([systemd_binary_directory as String, "/", name as String], "") as NonEmptyStr
+}
+
+// THE ESCAPE SYSTEMD PUTS IN A NAME, BY ITS UPSTREAM RULE. systemd.unit(5) and systemd-escape(1):
+// a character outside the allowed set is replaced by `\xNN`, so the slice unit for `actions-runner`
+// appears on disk and in `ControlGroup` as `system-actions\x2drunner.slice`. The backslash is the
+// escape's own marker, so a component carrying one is an ESCAPED component -- which matters to any
+// consumer that must name that path to another program, because the escape is not a character every
+// transport or shell carries unchanged. This answers only "is this component escaped"; unescaping is
+// a different operation and is not modeled until something reads a name back.
+fn systemd_name_component_is_escaped(component: String) -> Bool {
+  string_contains(s: component, pattern: "\\")
+}
+
+// WHERE A SLICE'S CGROUP ACTUALLY IS, AND IT IS NOT `<mount point>/<slice name>`.
+//
+// systemd.slice(5) states the rule outright: "a slice unit named foo-bar-baz.slice is located in
+// the foo.slice/foo-bar.slice/ slice". The dashes in a slice's NAME are its path in the hierarchy,
+// not characters in a directory name -- so the cgroup of `fabric-cell-srv1-07.slice` lives at
+// `fabric.slice/fabric-cell.slice/fabric-cell-srv1.slice/fabric-cell-srv1-07.slice`, four levels
+// down, and a reader that joined the mount point to the name directly looks at a directory that
+// does not exist.
+//
+// THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
+// extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
+// named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
+// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
+// deleted with this landing; it had no consumer but the one that found the bug.
+//
+// MEASURED, NOT DERIVED FROM THE MAN PAGE ALONE: on srv1, a transient unit started with
+// `--property=Slice=gunbc-wetprobe.slice` reports `ControlGroup` as
+// `/gunbc.slice/gunbc-wetprobe.slice/wetprobe-a.service`, and `/sys/fs/cgroup/gunbc-wetprobe.slice`
+// does not exist.
+//
+// A NAME THAT IS NOT A SLICE IS REFUSED RATHER THAN GUESSED AT. `-.slice` is the root slice and has
+// no ancestors to expand; a name without the suffix is not a slice unit at all, and joining it into
+// a path would produce a directory whose meaning nobody stated.
+type SystemdSliceCgroupPath
+  = SliceCgroupPath { path: NonEmptyStr }
+  | SliceNameNotASlice { spelling: String }
+
+data systemd_slice_suffix: String = ".slice"
+
+data systemd_root_slice_name: String = "-.slice"
+
+fn systemd_slice_ancestor_names(stem: String) -> List<String> {
+  fold(split(s: stem, delimiter: "-"), init: [], f: (acc, segment) =>
+    match acc.last() {
+      Absent => [segment]
+      Present { value: prev } => concat(acc, [join([prev, "-", segment], "")])
+    })
+}
+
+fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> SystemdSliceCgroupPath {
+  let name = slice as String
+  if name == systemd_root_slice_name {
+    SliceCgroupPath { path: mount_point }
+  } else if !ends_with(s: name, suffix: systemd_slice_suffix) {
+    SliceNameNotASlice { spelling: name }
+  } else {
+    let stem = substring(s: name, start: 0, end: string_length(s: name) - string_length(s: systemd_slice_suffix))
+    if stem == "" {
+      SliceNameNotASlice { spelling: name }
+    } else {
+      SliceCgroupPath {
+        path: fold(
+          systemd_slice_ancestor_names(stem: stem),
+          init: mount_point as String,
+          f: (acc, ancestor) => join([acc, "/", ancestor, systemd_slice_suffix], ""),
+        ) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// UNIT NAMES, cited to systemd.unit(5): at most 255 characters from ASCII letters, digits, `:`,
+// `_`, `.`, `-`, and `\` (the escape character). `@` is reserved for instantiated template units
+// and is not admitted here. A service unit is stem plus `.service`; the only constructor is
+// systemd_service_unit_name, which refuses an empty stem, a disallowed character, or an overlong
+// result rather than letting a later string check guess.
+data systemd_unit_name_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/systemd.unit.5.html"
+  }
+}
+
+data systemd_unit_name_max_length: Int = 255
+
+data systemd_service_unit_suffix: String = ".service"
+
+type SystemdUnitKind = | ServiceUnit
+
+type SystemdUnitName sole_constructor {
+  stem: String
+  kind: SystemdUnitKind
+}
+
+type SystemdUnitNameAdmission
+  = SystemdUnitNameAdmitted { name: SystemdUnitName }
+  | SystemdUnitNameStemEmpty
+  | SystemdUnitNameDisallowedCharacter { stem: String, character: String }
+  | SystemdUnitNameOverlong { length: Int }
+
+type SystemdUnitNameCharWalk
+  = SystemdUnitNameCharsWalking { index: Int }
+  | SystemdUnitNameCharHit { index: Int }
+
+fn systemd_unit_name_char_admitted(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 58
+    || cp == 95
+    || cp == 46
+    || cp == 45
+    || cp == 92
+}
+
+fn systemd_unit_name_first_disallowed(stem: String) -> String? {
+  match fold(chars(text: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
+    match acc {
+      SystemdUnitNameCharHit { index: i } => SystemdUnitNameCharHit { index: i }
+      SystemdUnitNameCharsWalking { index: i } =>
+        if systemd_unit_name_char_admitted(cp: cp) {
+          SystemdUnitNameCharsWalking { index: i + 1 }
+        } else {
+          SystemdUnitNameCharHit { index: i }
+        }
+    }) {
+    SystemdUnitNameCharsWalking { index: _ } => none
+    SystemdUnitNameCharHit { index: i } => Present { value: substring(s: stem, start: i, end: i + 1) }
+  }
+}
+
+fn systemd_unit_name_wire(name: SystemdUnitName) -> NonEmptyStr {
+  match name.kind {
+    ServiceUnit => join([name.stem, systemd_service_unit_suffix], "") as NonEmptyStr
+  }
+}
+
+fn systemd_service_unit_name(stem: String) -> SystemdUnitNameAdmission {
+  if string_length(s: stem) == 0 {
+    SystemdUnitNameStemEmpty
+  } else {
+    match systemd_unit_name_first_disallowed(stem: stem) {
+      Present { value: ch } => SystemdUnitNameDisallowedCharacter { stem: stem, character: ch }
+      Absent => {
+        let n = string_length(s: stem) + string_length(s: systemd_service_unit_suffix)
+        if n > systemd_unit_name_max_length {
+          SystemdUnitNameOverlong { length: n }
+        } else {
+          SystemdUnitNameAdmitted { name: SystemdUnitName { stem: stem, kind: ServiceUnit } }
+        }
+      }
+    }
+  }
+}
+
+fn systemd_unit_name_refusal_detail(admission: SystemdUnitNameAdmission) -> String {
+  match admission {
+    SystemdUnitNameAdmitted { name: _ } => "systemd unit name was admitted"
+    SystemdUnitNameStemEmpty => "systemd unit name stem is empty"
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
+      join(["systemd unit name has a character systemd.unit(5) disallows: ", ch], "")
+    SystemdUnitNameOverlong { length: n } =>
+      join(["systemd unit name length ", to_string(n), " exceeds 255"], "")
+  }
+}
+
+// THE DIRECTORY sd_booted(3) TESTS: it exists exactly when systemd is the running service manager
+// (PID 1), which is what systemd-run needs to start a transient unit.
+data systemd_booted_runtime_dir: String = "/run/systemd/system"

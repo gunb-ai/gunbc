@@ -1,0 +1,433 @@
+module test.claim.role_singleton_convergence_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String, List, Int }
+import std.optional { Present, Absent }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
+import gunbc.live_deploy.role_singleton_convergence {
+  BrokerUnitMember, FabricUnitMember, StoreMarkerMember,
+  RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
+  HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
+  RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
+  RoleSingletonHostUnobservable, RoleSingletonDesiredRealizationRefused, RoleSingletonDesiredRosterRefused,
+  RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused,
+  RoleSingletonAdmissible, RoleSingletonInadmissible,
+  RoleSingletonReadingSource,
+  assess_over_roster, assess_spec_over_roster, assess_spec_over_roster_in, assess_spec_over_roster_over, fetch_self_report, SelfReportUnserved, SelfReportServed,
+  role_singleton_observation_of, role_singleton_convergence, classify_role_singleton_admission,
+  role_singleton_self_report_member,
+  role_singleton_refusal_detail, marker_sighting_of, MarkerSightingOf, MarkerSightingAbsent, MarkerSightingUnobservable,
+  MarkerReadBack, MarkerReadRefused,
+}
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  desired_deployment_roster, srv1_production_desired_deployment, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec,
+  prod_role_actuated_realization, prod_role_actuated_realization_in, instance_id_text, DesiredRosterDuplicateInstanceId,
+}
+import gunbc.live_deploy.spec {
+  HoldsProdRoleSingletons, HoldsNoRoleSingleton,
+  deployment_owns_the_host_approval_broker, deployment_fabric_storage_steps, deployment_spec_for,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleHolderUnactuatable, srv1_live_dashboard_instance,
+}
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, prod_role_selection, srv1_daily_workspace_deployment, srv2_preview_codex_feedback_deployment, DeploymentId }
+import gunbc.fabric.fabric_storage_placement {
+  fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict, FabricStorageMarkerExact, FabricStorageMarkerMismatched, FabricStorageMarkerReading,
+}
+import gunbc.live_deploy.member_observe { EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import gunbc.roadmap.roadmap_serve { dashboard_instance_served_json }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rows() -> List<DesiredDeployment> {
+  desired_deployment_roster()
+}
+
+fn read_on(host: String, sightings: List<RoleSingletonSighting>) -> HostRoleSingletonReading {
+  HostRoleSingletonsRead { host: host as NonEmptyStr, sightings: sightings }
+}
+
+fn decide(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>) -> RoleSingletonConvergence {
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows()), rows: rows())
+}
+
+fn complete_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
+  [
+    SightedBroker { host: host as NonEmptyStr },
+    SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: FabricUnitMember },
+    SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: StoreMarkerMember },
+  ]
+}
+
+test fn the_same_deployment_on_two_hosts_refuses() -> Bool {
+  match decide(desired: prod_role_actuated_realization(), readings: [
+    read_on(host: "srv1", sightings: complete_on(host: "srv1", d: srv1_daily_workspace_deployment)),
+    read_on(host: "srv2", sightings: complete_on(host: "srv2", d: srv1_daily_workspace_deployment)),
+  ]) {
+    RoleSingletonRefused { cause: RoleSingletonRealizedOnTwoHosts { deployment: _, hosts: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_holder_with_its_units_and_no_marker_noops() -> Bool {
+  let units = [
+    SightedBroker { host: "srv1" as NonEmptyStr },
+    SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: FabricUnitMember },
+  ]
+  match decide(desired: prod_role_actuated_realization(), readings: [
+    read_on(host: "srv1", sightings: units),
+    read_on(host: "srv2", sightings: []),
+  ]) {
+    RoleSingletonNoop => true
+    _ => false
+  }
+}
+
+test fn desired_refusals_other_than_unheld_are_not_read_as_no_prod() -> Bool {
+  match decide(desired: prod_role_actuated_realization_in(selection: NoProdRole), readings: [
+    read_on(host: "srv1", sightings: complete_on(host: "srv1", d: srv1_daily_workspace_deployment)),
+    read_on(host: "srv2", sightings: []),
+  ]) {
+    RoleSingletonRefused { cause: RoleSingletonRemovalUnimplemented { observed: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_non_holder_spec_is_refused_while_install_is_pending() -> Bool {
+  match prod_role_actuated_realization() {
+    ProdRoleRealizationRefused { cause: _ } => false
+    ProdRoleRealizedBy { holder } =>
+      match classify_role_singleton_admission(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()), desired: prod_role_actuated_realization(), decision: RoleSingletonInstall { holder: holder }) {
+        RoleSingletonInadmissible { cause: RoleSingletonStaleSpec { instance_id: _, detail: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn the_production_row_is_admissible_for_noop_when_it_holds() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
+  match spec.role_singletons {
+    HoldsNoRoleSingleton => false
+    HoldsProdRoleSingletons { holder: _ } =>
+      match classify_role_singleton_admission(spec: spec, desired: prod_role_actuated_realization(), decision: RoleSingletonNoop) {
+        RoleSingletonAdmissible { decision: RoleSingletonNoop } => true
+        _ => false
+      }
+  }
+}
+
+fn complete_srv1_empty_peers_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead {
+          host: host,
+          sightings: [
+            SightedBroker { host: host },
+            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
+          ],
+        }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+fn srv2_unobservable_peers_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead {
+          host: host,
+          sightings: [
+            SightedBroker { host: host },
+            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
+          ],
+        }
+      } else if (host as String) == (srv2 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv2 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+fn empty_srv1_unobservable_srv2_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      } else if (host as String) == (srv2 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv2 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+fn srv2_enroll_unobservable_srv1_source() -> RoleSingletonReadingSource {
+  let srv1 = srv1_production_desired_deployment().target.ssh_host
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (srv2 as String) {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      } else if (host as String) == (srv1 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv1 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+test fn the_production_assessor_over_the_real_roster_noops_when_srv1_is_complete_and_srv2_is_observable_and_empty() -> Bool {
+  any(desired_deployment_roster(), r => (r.target.ssh_host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String))
+    && match assess_over_roster(source: complete_srv1_empty_peers_source()) {
+      RoleSingletonNoop => true
+      _ => false
+    }
+    && match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: complete_srv1_empty_peers_source()) {
+      RoleSingletonAdmissible { decision: RoleSingletonNoop } => true
+      _ => false
+    }
+}
+
+test fn local_complete_srv1_and_unobservable_srv2_is_in_place_with_global_picture_unobservable() -> Bool {
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: srv2_unobservable_peers_source()) {
+    RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable } } =>
+      any(global_unobservable, h => (h as String) == (srv2 as String))
+        && !any(global_unobservable, h => (h as String) == (srv1_production_desired_deployment().target.ssh_host as String))
+    _ => false
+  }
+}
+
+test fn local_empty_srv1_and_unobservable_srv2_is_refused_as_install() -> Bool {
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: empty_srv1_unobservable_srv2_source()) {
+    RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+      (host as String) == (srv2 as String)
+    _ => false
+  }
+}
+
+fn srv2_leftover_unobservable_srv1_source() -> RoleSingletonReadingSource {
+  let srv1 = srv1_production_desired_deployment()
+  let srv2_row = srv2_deploy_desired_deployment()
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (srv2_row.target.ssh_host as String) {
+        HostRoleSingletonsRead { host: host, sightings: complete_on(host: srv2_row.target.ssh_host as String, d: srv2_row.instance.deployment) }
+      } else if (host as String) == (srv1.target.ssh_host as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: leftover on a non-holder while srv1 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+test fn leftover_singletons_on_a_non_holder_need_the_global_gate() -> Bool {
+  let spec = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      match assess_spec_over_roster(spec: spec, source: srv2_leftover_unobservable_srv1_source()) {
+        RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+          (host as String) == (srv1_production_desired_deployment().target.ssh_host as String)
+        _ => false
+      }
+  }
+}
+
+test fn a_colocated_non_holder_with_the_holder_complete_and_a_peer_unobservable_is_in_place() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      !deployment_owns_the_host_approval_broker(spec: spec)
+        && count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) == 0
+        && match assess_spec_over_roster(spec: spec, source: srv2_unobservable_peers_source()) {
+          RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable } } =>
+            any(global_unobservable, h => (h as String) == (srv2_deploy_desired_deployment().target.ssh_host as String))
+          _ => false
+        }
+  }
+}
+
+fn srv1_lab_leftover_unobservable_srv2_source() -> RoleSingletonReadingSource {
+  let lab = srv1_lab_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (lab.target.ssh_host as String) {
+        HostRoleSingletonsRead { host: host, sightings: complete_on(host: lab.target.ssh_host as String, d: lab.instance.deployment) }
+      } else if (host as String) == (srv2 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: leftover of this non-holder while a peer is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+test fn leftover_singletons_of_a_colocated_non_holder_need_the_global_gate() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      match assess_spec_over_roster(spec: spec, source: srv1_lab_leftover_unobservable_srv2_source()) {
+        RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+          (host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String)
+        _ => false
+      }
+  }
+}
+
+test fn a_roster_polluted_elsewhere_refuses_the_colocated_non_holder() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let srv2 = srv2_deploy_desired_deployment()
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      match assess_spec_over_roster_over(spec: spec, source: srv2_unobservable_peers_source(), selection: prod_role_selection, rows: concat(desired_deployment_roster(), [srv2])) {
+        RoleSingletonInadmissible { cause: RoleSingletonDesiredRosterRefused { refusal: DesiredRosterDuplicateInstanceId { instance_id } } } =>
+          instance_id == instance_id_text(id: srv2.instance.instance_id)
+        _ => false
+      }
+  }
+}
+
+test fn srv2_enroll_with_no_role_singleton_is_admitted_emitting_no_broker_or_fabric() -> Bool {
+  let spec = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      !deployment_owns_the_host_approval_broker(spec: spec)
+        && count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) == 0
+        && match assess_spec_over_roster(spec: spec, source: srv2_enroll_unobservable_srv1_source()) {
+          RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable } } =>
+            any(global_unobservable, h => (h as String) == (srv1_production_desired_deployment().target.ssh_host as String))
+          _ => false
+        }
+  }
+}
+
+test fn unobservable_srv2_and_desired_install_is_host_unobservable() -> Bool {
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: empty_srv1_unobservable_srv2_source()) {
+    RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+      (host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String)
+    _ => false
+  }
+}
+
+fn row_plans_broker_or_fabric(row: DesiredDeployment, desired: ProdRoleRealization) -> Bool {
+  let spec = deployment_spec_for(realization: desired, instance: row.instance, target: row.target, names: row.names)
+  deployment_owns_the_host_approval_broker(spec: spec) || count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) > 0
+}
+
+test fn an_unactuatable_preview_holder_is_refused_and_plans_no_broker_or_fabric() -> Bool {
+  let selection = ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }
+  let desired = prod_role_actuated_realization_in(selection: selection)
+  match desired {
+    ProdRoleRealizedBy { holder: _ } => false
+    ProdRoleRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: d } } =>
+      d == srv2_preview_codex_feedback_deployment
+        && !any(desired_deployment_roster(), r => row_plans_broker_or_fabric(row: r, desired: desired))
+        && match assess_spec_over_roster_in(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: complete_srv1_empty_peers_source(), selection: selection) {
+          RoleSingletonInadmissible { cause: RoleSingletonDesiredRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: refused } } } =>
+            refused == srv2_preview_codex_feedback_deployment
+          _ => false
+        }
+    ProdRoleRealizationRefused { cause: _ } => false
+  }
+}
+
+test fn production_fetch_self_report_is_the_executed_reader() -> Bool {
+  match fetch_self_report(row: srv2_deploy_desired_deployment()) {
+    SelfReportUnserved { cause } => cause != ""
+    SelfReportServed { peer_node: _, body: _, received_at_unix_millis: _ } => false
+  }
+}
+
+test fn the_served_instance_document_carries_the_self_report() -> Bool {
+  string_contains(s: dashboard_instance_served_json(instance: srv1_live_dashboard_instance()), pattern: role_singleton_self_report_member)
+}
+
+test fn every_marker_field_mismatch_is_named() -> Bool {
+  let m = fabric_storage_ownership_marker_spec(instance: srv1_live_dashboard_instance())
+  let exact = FabricStorageMarkerReading { path: m.path, content: m.content as String, mode: "644", owner: m.owner as String, group: m.group as String }
+  (match fabric_storage_marker_verdict(spec: m, reading: exact) { FabricStorageMarkerExact => true  FabricStorageMarkerMismatched { field: _, expected: _, observed: _ } => false })
+    && (match fabric_storage_marker_verdict(spec: m, reading: FabricStorageMarkerReading { path: m.path, content: "other", mode: "644", owner: m.owner as String, group: m.group as String }) { FabricStorageMarkerMismatched { field, expected: _, observed: _ } => (field as String) == "content"  FabricStorageMarkerExact => false })
+}
+
+test fn the_marker_readback_has_three_distinct_outcomes() -> Bool {
+  let r = srv1_production_desired_deployment()
+  let host = "srv1" as NonEmptyStr
+  let m = fabric_storage_ownership_marker_spec(instance: r.instance)
+  let exact = match marker_sighting_of(host: host, r: r, presence: EntryPresent, read_back: p => MarkerReadBack { reading: FabricStorageMarkerReading { path: p, content: m.content as String, mode: "644", owner: m.owner as String, group: m.group as String } }) {
+    MarkerSightingOf { sighting: SightedDeploymentMember { host: _, deployment: _, member: StoreMarkerMember } } => true
+    _ => false
+  }
+  let absent = match marker_sighting_of(host: host, r: r, presence: EntryAbsent, read_back: p => MarkerReadRefused { cause: "unused" }) {
+    MarkerSightingAbsent => true
+    _ => false
+  }
+  let denied = match marker_sighting_of(host: host, r: r, presence: EntryPresenceIndeterminate { cause: "permission denied" }, read_back: p => MarkerReadRefused { cause: "unused" }) {
+    MarkerSightingUnobservable { cause } => string_contains(s: cause, pattern: "permission denied")
+    _ => false
+  }
+  exact && absent && denied
+}
+
+data forged_deploy_routes_source: String = "module probe_forged_deploy_routes\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission, assess_and_admit, assess_and_admit_rostered, RoleSingletonAdmissionResult, admitted_spec }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nimport gunbc.host.host_effect { LocalShell, HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nimport gunbc.ci.ci_deploy_access { DeployAccess }\nfn forge_admission() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\nfn obtain_admission() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment()) }\nfn replay_admission(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\nfn alter_spec() -> RoleSingletonAdmissionResult { assess_and_admit_rostered(spec: deployment_spec_srv1()) }\nfn bypass_member_plan(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\nfn forge_warrant(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\nfn forge_warrant_literal(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
+
+data canonical_apply_source: String = "module probe_canonical_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(deployment: srv1_production_desired_deployment(), access: a, candidate: c)\n true }\n"
+
+data spec_to_production_apply_source: String = "module probe_spec_to_production_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci.ci_deploy_access { DeployAccess }\nfn hand(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
+
+fn forged_route_refusals(class: String, subject: String) -> Int {
+  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(forged_deploy_routes_source), wanted_class: class, wanted_subject: subject) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn admission_refusals_in(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "ConstructorCallAdmissionRefused") {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn class_refusals_in(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+test fn no_caller_supplied_spec_reaches_the_role_singleton_assessment() -> Bool {
+  class_refusals_in(source: spec_to_production_apply_source, wanted: "CallArgumentNameUnknown") >= 1
+    && admission_refusals_in(source: spec_to_production_apply_source) == 0
+}
+
+test fn an_altered_spec_is_refused_at_the_assessor_seal() -> Bool {
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "assess_and_admit_rostered") >= 1
+}
+
+test fn the_canonical_row_taking_apply_compiles_without_admission_refusal() -> Bool {
+  admission_refusals_in(source: canonical_apply_source) == 0
+}
+
+test fn no_outside_module_can_mint_a_warrant() -> Bool {
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "warrant_live_deploy_apply") >= 1
+}
+
+test fn no_outside_module_can_write_a_warrant_literal() -> Bool {
+  forged_route_refusals(class: "SoleConstructorViolation", subject: "AdmittedLiveDeployApply") >= 1
+}

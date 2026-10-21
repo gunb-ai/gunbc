@@ -1,0 +1,160 @@
+module test.claim.css_prefers_color_scheme_witness
+
+// §5 — "done means executed" for the prefers-color-scheme arm of
+// extdeps.languages.css.media_queries (Media Queries Level 5 §12.5,
+// https://www.w3.org/TR/mediaqueries-5/#prefers-color-scheme), which is the grammar the
+// gunb.ai light/dark axis is emitted through. dag/test/claim/site_gunb_ai_layout_witness
+// covers the axis's RENDERED output; this file owns the grammar itself, so a wrong wire
+// string here is caught at the layer that defines it instead of only where it is consumed.
+//
+// It is a separate module, deliberately: dag/test/claim/css_media_condition_witness.dag is
+// the pre-existing witness for this extdeps module, and it cannot currently be run at all —
+// its import chain (gunbc.site.document -> extdeps.exec -> the v2.std.* modules) fails to
+// resolve with 'unresolved import' for reasons that have nothing to do with media queries.
+// Claims added there would be real code that never executes, which is the one thing §5
+// refuses to count as evidence. Nothing here duplicates that file's pointer/width/reduced-motion
+// claims; it is the executable home for this arm until that import chain is repaired, and
+// these claims are written to move there without edits when it is.
+
+import std.algebra { string_contains }
+import std.list { duplicated_by_key }
+import gunbc.design.material { BuildRule, MediaRule, decl, serialize_rules, css_block }
+import extdeps.languages.css.properties { Color }
+import extdeps.languages.css.media_queries {
+  MediaCondition, MediaPrefersColorScheme, ColorSchemePreference,
+  SchemeLight, SchemeDark, color_scheme_preference_token,
+  media_condition_wire, css_media_rule_wire, prefers_light,
+  coarse_pointer, MediaPointer, PointerFine, MediaMaxWidth, reduced_motion,
+}
+import extdeps.languages.css.values { CssLength, Px }
+import extdeps.languages.css.selectors { root_selector, selector_subject_wire }
+
+// The whole closed value set, as the model declares it. Every claim below quantifies over
+// THIS list rather than over a count, so adding a third value here makes the coverage claim
+// demand a wire for it, and adding one silently in the extdeps sum without listing it here
+// goes red on the identity claims (Completeness is an identity join, not a count equality).
+data color_scheme_values: List<ColorSchemePreference> = [ SchemeLight, SchemeDark ]
+
+// The two tokens MQ5 §12.5 defines, from the spec text, not from the wire under test.
+data spec_scheme_tokens: List<String> = [ "light", "dark" ]
+
+// 1. Each value serializes to its own spec token inside the feature's own text, and the two
+//    are distinct. Written as a join over the model's value set against the spec's token
+//    list: a value with no token, or a token with no value, is red.
+test fn each_scheme_value_wires_to_its_spec_token() -> Bool {
+  all(color_scheme_values, v =>
+    // The value token itself is a bare keyword drawn from the spec's own list — no quotes,
+    // no parentheses, no unit — and it appears exactly once inside the feature's text.
+    is_spec_token(p: v)
+      && occurrences(
+        s: media_condition_wire(c: MediaPrefersColorScheme { preference: v }),
+        pattern: "prefers-color-scheme") == 1
+      && media_condition_wire(c: MediaPrefersColorScheme { preference: v })
+        == join(["(prefers-color-scheme: ", color_scheme_preference_token(p: v), ")"], "")
+      // MQ5 removed Media Queries Level 4's third value, no-preference. It has no arm here,
+      // so it must not be reachable through any of them.
+      && !string_contains(
+        s: media_condition_wire(c: MediaPrefersColorScheme { preference: v }),
+        pattern: "no-preference"))
+    // Distinct values, distinct text: a collapsed pair would make light and dark
+    // indistinguishable while every "contains prefers-color-scheme" check stayed green.
+    && media_condition_wire(c: prefers_light)
+      != media_condition_wire(c: MediaPrefersColorScheme { preference: SchemeDark })
+}
+
+// Membership in the spec's value list, as a fold: MQ5 §12.5's grammar is `light | dark`, so
+// a token the spec does not list must not be producible by the model.
+fn is_spec_token(p: ColorSchemePreference) -> Bool {
+  any(spec_scheme_tokens, tok => tok == color_scheme_preference_token(p: p))
+}
+
+// 2. The named row is the light condition, and it is the ONLY thing the axis needs. There is
+//    no prefers_dark row in the grammar: a dark-first page expresses dark as its
+//    unconditional values, so such a row would have no consumer (§3c). If someone adds one,
+//    this claim stays green — what catches an unused row is its missing consumer, not this
+//    test. What this claim does catch is the row drifting: a copy of prefers_light with the
+//    values swapped would make the page ask for light where it means dark.
+test fn the_named_light_row_is_the_light_condition() -> Bool {
+  prefers_light == MediaPrefersColorScheme { preference: SchemeLight }
+    && media_condition_wire(c: prefers_light) == "(prefers-color-scheme: light)"
+}
+
+// 3. The arm reaches a real stylesheet through the same route every declaration takes:
+//    gunbc.design.material.serialize_rules over a MediaRule, the serializer the site and the
+//    gunb.ai layers publish with. A wire that is right in isolation but never accepted by
+//    the publisher would otherwise pass, because nothing would be looking at it.
+test fn the_scheme_condition_reaches_a_declaration_through_material() -> Bool {
+  let decls = [ decl(prop: Color, value: "rgb(1, 2, 3)") ]
+  let sheet = serialize_rules(rules: [MediaRule {
+    condition: prefers_light,
+    selector: root_selector,
+    decls: decls,
+  }])
+  // The whole expected text is BUILT from the upstream wires the publisher itself uses
+  // (css_media_rule_wire over css_block over selector_subject_wire), with the same declaration
+  // list — never hand-typed in this file. An earlier version passed decls: [] to the needle,
+  // which renders ':root {  }' with two spaces and so could never match a populated block:
+  // the claim was red for a reason in the test, not in the code. Exactness is the point: a
+  // needle that merely resembles the output would also match a wrong one.
+  let expected = css_media_rule_wire(
+    condition: prefers_light,
+    body: css_block(selector: selector_subject_wire(s: root_selector), decls: decls))
+  string_contains(s: sheet, pattern: expected)
+}
+
+// 4. The feature name belongs to this arm alone. The module now carries four features, and
+//    a wire arm that leaked "prefers-color-scheme" into, say, the pointer condition would
+//    produce a stylesheet that silently never matches. Quantified over the module's other
+//    conditions; the scheme conditions' own text is pinned exactly by claim 1.
+data other_conditions: List<MediaCondition> = [
+  coarse_pointer,
+  MediaPointer { accuracy: PointerFine },
+  MediaMaxWidth { max: CssLength { n: 700, unit: Px } },
+  reduced_motion,
+]
+
+test fn the_feature_name_is_emitted_by_its_own_arm_only() -> Bool {
+  all(other_conditions, c =>
+    !string_contains(s: media_condition_wire(c: c), pattern: "prefers-color-scheme"))
+}
+
+// 5. BYTE-PRESERVATION of the consolidation. The three sites that used to join this text by
+//    hand (gunbc.design.theme, gunbc.design.theme_transition, gunbc.roadmap.roadmap_style) now
+//    call css_media_rule_wire. The risk of that move is a whitespace or punctuation change in
+//    the stylesheet production ships — invisible in a review diff, visible to every browser.
+//    The right-hand side here is the OLD expression, spelled from the deleted literal and the
+//    value token, NOT from the wire under test: comparing the wire to its own body would be a
+//    tautology that can never go red. Pinned for any body, with a body chosen to contain the
+//    characters a naive join mangles: colon, braces, comma.
+//    Measured where measurement was possible: gunbc.design.theme's emission was captured at
+//    1170 bytes before and after the routing and compared byte for byte. The roadmap site's
+//    module cannot be probed at all — its import closure hits the pre-existing v2.std.*
+//    failures — which is precisely why this property is claimed rather than sampled.
+data legacy_wrapper_body: String = "BODY:ANY\{css,with\}braces"
+
+fn legacy_wrapper(v: ColorSchemePreference) -> String {
+  join([
+    "@media (prefers-color-scheme: ", color_scheme_preference_token(p: v), ") { ",
+    legacy_wrapper_body,
+    " }",
+  ], "")
+}
+
+test fn the_wire_reproduces_the_hand_joined_wrapper_exactly() -> Bool {
+  all(color_scheme_values, v =>
+    css_media_rule_wire(
+      condition: MediaPrefersColorScheme { preference: v }, body: legacy_wrapper_body)
+    == legacy_wrapper(v))
+}
+
+// 6. The value set has no duplicates. Cheap, and it is the property that makes claim 1 a
+//    join rather than a pass over a padded list.
+test fn the_value_set_has_no_duplicates() -> Bool {
+  duplicated_by_key(xs: color_scheme_values,
+    key: v => color_scheme_preference_token(p: v)).length() == 0
+}
+
+// Same helper shape the other media witness uses for "exactly once" (count the splits).
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}

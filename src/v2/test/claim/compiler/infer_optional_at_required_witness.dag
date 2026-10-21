@@ -1,0 +1,341 @@
+module v2.test.claim.compiler.infer_optional_at_required_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import std.optional { Absent, Present }
+import std.nat { Succ, Zero }
+import v2.std.optional_layers { wrap_type_node_occupancy }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  declared_type_inhabitance,
+  position_declared_return
+}
+import v2.std.integer { integer_int_type_node }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.cross_tree.import_model { V2Tree, DagTree }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_refuses_with,
+  rcf_member_accepted_and_decided,
+  rcf_member_arrow,
+  rcf_verdict,
+  rcf_read_in
+}
+
+fn oar_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  rcf_read_in(tree: V2Tree, source: source, id: id, unit: unit, path: path)
+}
+
+data oar_optional_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN OPTIONAL NEVER INHABITS A REQUIRED DECLARED TYPE.
+//
+// The subject is v2.std.inhabitance declared_type_inhabitance: a produced `T?` at a declared kernel
+// type is REFUSED (inhabitance_optional_produced_at_required_declared), where it used to answer
+// UndecidableOptionalCarrier and be admitted with an advisory. The class is
+// gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared, which the seed
+// closed for v1 and which this closes on the v2 route for the declared types the relation can know
+// to be required.
+//
+// TWO GRAINS, ONE RELATION. The relation-level claims hand declared_type_inhabitance an obligation
+// and read its verdict: the refusal, and beside it every case that must NOT refuse -- the lift
+// (`T` at `T?`), optional at optional, and an optional at a declared type the relation cannot know
+// to be required (a declaration reference, which may name an alias of an optional). The route
+// claims run source text through the production front end into infer and read the same verdict
+// where a program reaches it: a declared return and a record field.
+//
+// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Before the descent fix that
+// landed with this witness (gunbc#12806, which carried gunbc#12777: v2.std.cardinality
+// connective_multiplicity answers Bounded for Occupancy) a program mentioning `T?` was refused for
+// descent before any declared-type judgment was asked (infer_descent_not_derived). The route claims
+// are therefore also that fix's real-route evidence.
+//
+// A DIRECT-CALL ARGUMENT IS NOT A ROUTE RED YET: a named call's callee is a declaration reference
+// infer does not type by its declaration (gunbc#12506), so its formals are unresolved whatever is
+// passed. The relation-level refusal covers the position; the route claim for it is owed when that
+// capability lands.
+data oar_return_bad_source: String = "module v2.test.oar_return_bad\n\nfn oar_f(x: Int?) -> Int { x }\n"
+
+data oar_lift_source: String = "module v2.test.oar_lift\n\nfn oar_f(x: Int) -> Int? { x }\n"
+
+data oar_alias_ok_source: String = "module v2.test.oar_alias_ok\n\nimport std.optional { Optional }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f(x: Optional<Int>) -> OarMaybe { x }\n"
+
+data oar_alias_bad_source: String = "module v2.test.oar_alias_bad\n\nimport std.optional { Optional, Present }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f() -> OarMaybe { Present { value: \"s\" } }\n"
+
+data oar_field_bad_source: String = "module v2.test.oar_field_bad\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int?) -> OarR { OarR { n: x } }\n"
+
+// A FN PARAMETER REFERENCED AS A RECORD FIELD VALUE, two refusing shapes and the accepted control
+// (the native route has judged no fn-body record construct's fields since gunbc#13641 until
+// v2.compiler.name_resolve marked the closure fold's record declarations).
+data oar_field_bool_source: String = "module v2.test.oar_field_bool\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Bool) -> OarR { OarR { n: x } }\n"
+
+data oar_field_ok_source: String = "module v2.test.oar_field_ok\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int) -> OarR { OarR { n: x } }\n"
+
+// A FN-BODY RECORD CONSTRUCT WITH AN ARROW-TYPED FIELD: the one relation (v2.std.inhabitance
+// declared_type_inhabitance) compares an Arrow by domain types positionally and the return, never by
+// binder name or body.
+data oar_arrow_named_ok_source: String = "module v2.test.oar_arrow_named_ok\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\nfn oar_pred(n: Int) -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
+
+data oar_arrow_named_x_source: String = "module v2.test.oar_arrow_named_x\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\nfn oar_pred(x: Int) -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
+
+data oar_arrow_lambda_ok_source: String = "module v2.test.oar_arrow_lambda_ok\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\n\n\nfn oar_mk() -> OarA { OarA { p: fn(n) { n > 0 } } }\n"
+
+data oar_arrow_nullary_source: String = "module v2.test.oar_arrow_nullary\n\ntype OarA {\n  p: fn() -> Bool\n}\n\nfn oar_pred() -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
+
+data oar_arrow_domain_bad_source: String = "module v2.test.oar_arrow_domain_bad\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\nfn oar_pred(b: Bool) -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
+
+data oar_arrow_return_bad_source: String = "module v2.test.oar_arrow_return_bad\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\nfn oar_pred(n: Int) -> Int { n }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
+
+data oar_arrow_arg_ok_source: String = "module v2.test.oar_arrow_arg_ok\n\nfn oar_pred(n: Int) -> Bool { true }\n\nfn oar_apply(f: fn(Int) -> Bool) -> Bool { f(0) }\n\nfn oar_call() -> Bool { oar_apply(f: oar_pred) }\n"
+
+data oar_arrow_arg_bad_source: String = "module v2.test.oar_arrow_arg_bad\n\nfn oar_pred(b: Bool) -> Bool { true }\n\nfn oar_apply(f: fn(Int) -> Bool) -> Bool { f(0) }\n\nfn oar_call() -> Bool { oar_apply(f: oar_pred) }\n"
+
+data oar_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: oar_optional_source, id: ^oar_optional_read, unit: ^oar_optional_cu, path: "dag/std/optional.dag"),
+  oar_read(source: oar_return_bad_source, id: ^oar_return_bad_read, unit: ^oar_return_bad_cu, path: "src/v2/test/oar_return_bad.dag"),
+  oar_read(source: oar_lift_source, id: ^oar_lift_read, unit: ^oar_lift_cu, path: "src/v2/test/oar_lift.dag"),
+  oar_read(source: oar_alias_ok_source, id: ^oar_alias_ok_read, unit: ^oar_alias_ok_cu, path: "src/v2/test/oar_alias_ok.dag"),
+  oar_read(source: oar_alias_bad_source, id: ^oar_alias_bad_read, unit: ^oar_alias_bad_cu, path: "src/v2/test/oar_alias_bad.dag"),
+  oar_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/oar_field_bad.dag"),
+  oar_read(source: oar_field_bool_source, id: ^oar_field_bool_read, unit: ^oar_field_bool_cu, path: "src/v2/test/oar_field_bool.dag"),
+  oar_read(source: oar_field_ok_source, id: ^oar_field_ok_read, unit: ^oar_field_ok_cu, path: "src/v2/test/oar_field_ok.dag"),
+  oar_read(source: oar_arrow_named_ok_source, id: ^oar_arrow_named_ok_read, unit: ^oar_arrow_named_ok_cu, path: "src/v2/test/oar_arrow_named_ok.dag"),
+  oar_read(source: oar_arrow_named_x_source, id: ^oar_arrow_named_x_read, unit: ^oar_arrow_named_x_cu, path: "src/v2/test/oar_arrow_named_x.dag"),
+  oar_read(source: oar_arrow_lambda_ok_source, id: ^oar_arrow_lambda_ok_read, unit: ^oar_arrow_lambda_ok_cu, path: "src/v2/test/oar_arrow_lambda_ok.dag"),
+  oar_read(source: oar_arrow_nullary_source, id: ^oar_arrow_nullary_read, unit: ^oar_arrow_nullary_cu, path: "src/v2/test/oar_arrow_nullary.dag"),
+  oar_read(source: oar_arrow_domain_bad_source, id: ^oar_arrow_domain_bad_read, unit: ^oar_arrow_domain_bad_cu, path: "src/v2/test/oar_arrow_domain_bad.dag"),
+  oar_read(source: oar_arrow_return_bad_source, id: ^oar_arrow_return_bad_read, unit: ^oar_arrow_return_bad_cu, path: "src/v2/test/oar_arrow_return_bad.dag"),
+  oar_read(source: oar_arrow_arg_ok_source, id: ^oar_arrow_arg_ok_read, unit: ^oar_arrow_arg_ok_cu, path: "src/v2/test/oar_arrow_arg_ok.dag"),
+  oar_read(source: oar_arrow_arg_bad_source, id: ^oar_arrow_arg_bad_read, unit: ^oar_arrow_arg_bad_cu, path: "src/v2/test/oar_arrow_arg_bad.dag")
+]
+
+fn oar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: oar_ingest, lm: dag_language_model())
+}
+
+fn oar_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match oar_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn oar_resolved_return_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_return_bad") }
+fn oar_resolved_alias_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_alias_ok") }
+fn oar_resolved_alias_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_alias_bad") }
+fn oar_resolved_lift() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_lift") }
+fn oar_resolved_field_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bad") }
+fn oar_resolved_field_bool() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bool") }
+fn oar_resolved_field_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_ok") }
+
+fn oar_resolved_arrow_named_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_named_ok") }
+fn oar_resolved_arrow_named_x() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_named_x") }
+fn oar_resolved_arrow_lambda_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_lambda_ok") }
+fn oar_resolved_arrow_nullary() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_nullary") }
+fn oar_resolved_arrow_domain_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_domain_bad") }
+fn oar_resolved_arrow_return_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_return_bad") }
+
+fn oar_resolved_arrow_arg_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_arg_ok") }
+fn oar_resolved_arrow_arg_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_arrow_arg_bad") }
+
+fn oar_optional_int() -> Node {
+  wrap_type_node_occupancy(base: integer_int_type_node(), depth: Succ { prev: Zero })
+}
+
+fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^declared_return,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: produced,
+    type_variables: type_variables
+  }
+}
+
+fn oar_refused_optional_at_required(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
+    InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceUndecidable { reason: _ } => false
+    Inhabits { homomorphism: _ } => false
+  }
+}
+
+// THE RELATION-LEVEL RED: `Int?` produced at a declared `Int` is refused, by its own reason.
+test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
+  oar_refused_optional_at_required(declared: integer_int_type_node(), produced: oar_optional_int(), type_variables: [])
+}
+
+// A BARE `Int` AT `Int?` REFUSES (ruling gunbc.design_ruling explicit_present_is_the_authoring_policy): `T?` is
+// the std.optional application, `Int` is not an instance of it, and the author writes `Present { .. }`. The
+// implicit lift this claim formerly counted is retired with the Occupancy connective.
+test fn oar_a_bare_lift_is_refused_holds() -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceUndecidable { reason: _ } => false
+    Inhabits { homomorphism: _ } => false
+  }
+}
+
+// `Int?` at `Int?` is DECIDED, no longer counted: v2.compiler.infer infer_match_generic_formal peels
+// matching Occupancy layers (gunbc#13696, optional depth one std.nat Nat), so equal depth inhabits. The
+// claim formerly asserted the counted frontier here; it is flipped to the decided verdict and keeps a
+// discriminating half, the lift above, which must stay counted.
+test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])) {
+    Inhabits { homomorphism: _ } => true
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+// THE ALIAS ROUTE, from source: `type OarMaybe = Optional<Int>` names an Optional, so a declaration reference
+// to it is decided on the real route once the alias settles -- the Optional value inhabits it, and
+// `Present { value: "s" }` is refused at the payload (not merely refused somewhere).
+test fn oar_an_optional_value_at_an_optional_alias_is_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: oar_resolved_alias_ok()) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+test fn oar_a_string_present_at_an_optional_int_alias_refuses_at_the_payload_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_alias_bad(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// A type variable instantiable at an optional is not refused at the relation (the generic formal it is).
+test fn oar_an_optional_at_a_type_variable_is_not_refused_holds() -> Bool {
+  !oar_refused_optional_at_required(
+    declared: dag_type_atom_node(identity: ^oar_type_param_t),
+    produced: oar_optional_int(),
+    type_variables: [^oar_type_param_t]
+  )
+}
+
+// THE ROUTE RED, DECLARED RETURN: `fn oar_f(x: Int?) -> Int { x }` refuses.
+test fn oar_an_optional_returned_at_a_declared_int_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_return_bad(), reason: ^inhabitance_optional_produced_at_required_declared)
+}
+
+// THE ROUTE RED, RECORD FIELD: `OarR { n: x }` with `x: Int?` at a field declared `Int` refuses.
+test fn oar_an_optional_at_a_required_record_field_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_field_bad(), reason: ^inhabitance_optional_produced_at_required_declared)
+}
+
+// THE ROUTE RED, BARE LIFT: `fn oar_f(x: Int) -> Int? { x }` refuses (explicit_present_is_the_authoring_policy).
+test fn oar_a_bare_lift_is_refused_on_the_route_holds() -> Bool {
+  match rcf_verdict(resolved: oar_resolved_lift()) {
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfInferRefused { diagnostics: _ } => true
+    RcfResolveRefused => false
+  }
+}
+
+// SECOND SHAPE, a Bool parameter at an Int field refuses (not an optional: a plain kind mismatch).
+test fn oar_a_bool_parameter_at_an_int_record_field_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_field_bool(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE POSITIVE CONTROL: an Int parameter at an Int field is accepted on the same route.
+test fn oar_an_int_parameter_at_an_int_record_field_is_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: oar_resolved_field_ok()) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// ARROW AT AN ARROW-TYPED RECORD FIELD, through the production route: named fn with the matching Arrow inhabits, ACCEPTED AND DECIDED (no counted obligation).
+test fn oar_arrow_named_ok_is_accepted_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: oar_resolved_arrow_named_ok(), member: ^oar_mk)
+}
+
+// ARROW AT AN ARROW-TYPED RECORD FIELD, through the production route: named fn, other parameter name, inhabits, ACCEPTED AND DECIDED.
+test fn oar_arrow_named_x_is_accepted_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: oar_resolved_arrow_named_x(), member: ^oar_mk)
+}
+
+// The member's own infer run (the arrow rcf_member_accepted_and_decided reads), Accepted AND carrying `reason`.
+fn oar_member_accepted_with_reason(resolved: Outcome<ResolvedTree>, member: Symbol, reason: Symbol) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rcf_member_arrow(root: tree.root, name: member) {
+        Absent => false
+        Present { value: arrow } =>
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, occurrence_bindings: tree.occurrence_bindings, duplicate_binding_records: tree.duplicate_binding_records, module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index, member_kinds: tree.member_kinds, type_declaration_modifiers: tree.type_declaration_modifiers, constructing_module: tree.constructing_module }) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: ds } => diagnostics_has_reason(d: ds, reason: reason)
+          }
+      }
+  }
+}
+
+// A LAMBDA VALUE AT AN ARROW-TYPED RECORD FIELD IS THE COUNTED FRONTIER, NOT A DECISION OF THE ARROW ARM.
+// Its own Arrow type is not derived (gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer),
+// so the construct is ACCEPTED carrying the counted `inhabitance_undecidable_argument_type_not_derived`
+// obligation (the same member run also counts formal_unresolved and generic_formal for its fresh
+// variables). The named-fn claims above assert the contrary: accepted AND decided. If a lambda's type
+// is ever derived this claim goes red and flips to the decided form; it is never deleted.
+test fn oar_arrow_lambda_ok_is_accepted_at_the_counted_frontier_holds() -> Bool {
+  oar_member_accepted_with_reason(resolved: oar_resolved_arrow_lambda_ok(), member: ^oar_mk, reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+// ARROW AT AN ARROW-TYPED RECORD FIELD, through the production route: nullary named fn inhabits, ACCEPTED AND DECIDED.
+test fn oar_arrow_nullary_is_accepted_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: oar_resolved_arrow_nullary(), member: ^oar_mk)
+}
+
+// ARROW AT AN ARROW-TYPED RECORD FIELD, through the production route: domain mismatch refuses.
+test fn oar_arrow_domain_bad_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_arrow_domain_bad(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// ARROW AT AN ARROW-TYPED RECORD FIELD, through the production route: return mismatch refuses.
+test fn oar_arrow_return_bad_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_arrow_return_bad(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE ARGUMENT ROUTE, from source: a named fn passed to an Arrow-typed formal is judged by the same
+// relation. Matching signature ACCEPTED AND DECIDED; a Bool parameter at an Int formal refuses at the argument.
+test fn oar_arrow_arg_ok_is_accepted_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: oar_resolved_arrow_arg_ok(), member: ^oar_call)
+}
+
+test fn oar_arrow_arg_bad_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_arrow_arg_bad(), reason: ^application_argument_does_not_inhabit)
+}

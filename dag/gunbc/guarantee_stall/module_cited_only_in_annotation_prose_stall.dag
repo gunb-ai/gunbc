@@ -1,0 +1,19 @@
+module gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data module_cited_only_in_annotation_prose_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a module path written only in a leading annotation is treated as a citation while DESIGN section 4c erases it from every semantic pass, so the cited-symbol check cannot refuse an absent referent and DESIGN section 3c cannot see a consumer -- measured on gunbc#10733 citing gunbc.runner.runner_guest_egress_attempt from comments and gunbc#10818 landing that module plus two siblings with no import",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "plan admission joins each newly authored module to the import graph of the change's closure and refuses a module whose only occurrences are annotation text" },
+  population: BoundedPopulation { members: [
+    "gunbc.runner.runner_guest_egress_attempt",
+    "gunbc.runner.runner_cgroup_placement_receipt",
+    "gunbc.runner.runner_guest_network_receipt",
+    "gunbc.runner.runner_host_filtered_egress",
+    "gunbc.runner.runner_cpu_bandwidth_receipt",
+  ] },
+  next_rung_trigger: climbs_when(capability: "consumption of a newly authored module is decided from the import graph at admission, sufficient that a module whose only occurrences are annotation text is refused as unconsumed rather than merged as cited. A scanner over comments does not discharge this. The specimen repair is cpu_bound_write_refused as a field of runner_cpu_bandwidth_receipt.cpu_bound_standing. The unread topology wrappers and the two folds they called are deleted together. That does not close guest_reachability; it stops asserting a close"),
+}

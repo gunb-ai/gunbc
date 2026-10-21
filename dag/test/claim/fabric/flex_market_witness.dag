@@ -1,0 +1,628 @@
+module test.claim.fabric.flex_market_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure {
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros, second, MoneyPerHour,
+  ByteSize, gibibyte, gibibyte_to_byte_size, byte_size, byte_size_count,
+}
+import extdeps.currency.currency { Usd }
+import std.decision { SelectedWithin, ValuedObjective, CostPerAcceptedUnit, NetValue }
+import product.fabric.flex_market {
+  FlexBidLevel, FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket,
+  FlexMarketQuoted, FlexMarketUnobserved,
+  FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
+  FlexMedianFound, FlexMedianEmpty, FlexMedianCurrencyMismatch,
+  FlexVramClass96, FlexVramClass48, FlexVramClassOther,
+  FlexLevelChosen, FlexLevelExplore, FlexLevelNeedsEvidence, FlexLevelSelectionRefused,
+  FlexWireOwnerPresent, FlexWireOwnerAbsent,
+  FlexOwnerLabel, FlexOurs, FlexForeign, FlexUnlabelled,
+  FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupOutbid, FlexCleanupStaleLoading,
+  FlexCleanupNotRunningDropped, FlexCleanupReleasedForValue,
+  FlexReleaseNow, FlexReleaseHoldLast, FlexReleaseHoldUntilReplacement,
+  FlexReleaseHoldCapUnreadable, FlexReleaseHoldCapUnobserved, FlexReleaseHoldCapPartial,
+  FlexReleaseHoldRateUnconverted, FlexReleaseHoldCurrencyMismatch,
+  FlexReleasePlan, flex_release_pass,
+  FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapAtLimit, FlexCapUnreadable,
+  flex_quoted_bid, flex_class_market_median, flex_choose_bid_level, flex_choose_bid_level_under,
+  flex_vram_class, flex_ownership, flex_ours_only,
+  flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead,
+  flex_held_effective_rate, flex_dollars_per_vram, FlexVramHourlyQuoted, FlexVramHourlyZeroCapacity,
+  flex_rank_entry, flex_select_owned_cards, flex_rank_policy, flex_rank_objective, flex_term_vram_hour,
+  FlexRentalSample,
+  FlexCardUnitEstablished, FlexCardUnitUnconfirmed, flex_rented_card_fungible, flex_ninfer_qwen_probe,
+}
+import gunbc.harness.harness_reasoning_wire {
+  Qwen3_8_27bOnNinfer, NemotronUltraFreeOnOpenRouter, Glm53FlashOnVllm, DeepseekV4FlashOnVllm,
+  harness_unit_tool_call_parser, harness_serving_unit_compatibility,
+  HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
+  harness_serving_unit_fungible_pairs,
+}
+import extdeps.cloud.vast_ai { VastAiCreateAskRequest, VastAiChangeBidRequest }
+import std.decimal { ExactDecimal }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The empirical coupling (sample count makes a productive-hour reading reliable) is a typed bet in
+// production, so production answers FlexLevelNeedsEvidence. These claims SUPPLY a cited ground at the
+// boundary to establish the choice, and pair it with the uncited-bet claim.
+data supplied_coupling: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: Uri { scheme: File, locator: "dag/test/claim/fabric/flex_market_witness.dag#supplied_coupling" } }
+}
+
+fn usd_hour(n: Nat) -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: n), currency: Usd }
+}
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+test fn an_empty_class_has_no_market_median() -> Bool {
+  match flex_class_market_median(floors: []) {
+    FlexMedianEmpty => true
+    FlexMedianFound { rate: _ } => false
+    FlexMedianCurrencyMismatch { left: _, right: _ } => false
+  }
+}
+
+test fn even_population_median_is_the_upper_middle_sample() -> Bool {
+  match flex_class_market_median(floors: [
+    usd_hour(n: 400000),
+    usd_hour(n: 100000),
+    usd_hour(n: 300000),
+    usd_hour(n: 200000),
+  ]) {
+    FlexMedianEmpty => false
+    FlexMedianCurrencyMismatch { left: _, right: _ } => false
+    FlexMedianFound { rate: m } => money_per_hour_micros(q: m) == 300000
+  }
+}
+
+test fn a_bid_is_the_level_of_the_median_never_below_the_floor() -> Bool {
+  let quote = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelThreeFifths }
+  match flex_quoted_bid(quote: quote, floor: usd_hour(n: 500000)) {
+    FlexBidMarketUnobserved => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+    FlexBidPriced { rate: r } => money_per_hour_micros(q: r) == 600000
+  }
+}
+
+test fn a_machine_floor_above_the_level_price_is_the_bid() -> Bool {
+  let quote = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelThreeFifths }
+  match flex_quoted_bid(quote: quote, floor: usd_hour(n: 800000)) {
+    FlexBidMarketUnobserved => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+    FlexBidPriced { rate: r } => money_per_hour_micros(q: r) == 800000
+  }
+}
+
+test fn missing_market_quote_does_not_fall_back_to_a_floor_buffer() -> Bool {
+  match flex_quoted_bid(quote: FlexMarketUnobserved, floor: usd_hour(n: 1000000)) {
+    FlexBidMarketUnobserved => true
+    FlexBidPriced { rate: _ } => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+  }
+}
+
+test fn four_fifths_and_market_levels_are_exact_ratios() -> Bool {
+  let mid = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelFourFifths }
+  let mkt = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelMarket }
+  match flex_quoted_bid(quote: mid, floor: usd_hour(n: 1)) {
+    FlexBidPriced { rate: a } =>
+      match flex_quoted_bid(quote: mkt, floor: usd_hour(n: 1)) {
+        FlexBidPriced { rate: b } =>
+          (money_per_hour_micros(q: a) == 800000) && (money_per_hour_micros(q: b) == 1000000)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn ended_row(level: FlexBidLevel, serving_s: Nat, bid: Nat) -> FlexRentalSample {
+  FlexRentalSample {
+    class: FlexVramClass48,
+    level: level,
+    bid: usd_hour(n: bid),
+    serving: second(count: serving_s),
+    ended: true,
+  }
+}
+
+test fn a_class_with_no_samples_tries_three_fifths_first() -> Bool {
+  match flex_choose_bid_level(rows: [], class: FlexVramClass48, rentals_so_far: 0, quote_currency: Usd) {
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
+    FlexLevelChosen { level: l, samples: n } =>
+      match l {
+        FlexBidLevelThreeFifths => n == 0
+        FlexBidLevelFourFifths => false
+        FlexBidLevelMarket => false
+      }
+  }
+}
+
+fn three_each() -> List<FlexRentalSample> {
+  [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+}
+
+test fn an_uncited_sample_reliability_bet_is_needs_evidence_not_a_choice() -> Bool {
+  match flex_choose_bid_level(rows: three_each(), class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
+    FlexLevelNeedsEvidence => true
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelSelectionRefused => false
+  }
+}
+
+test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
+  let cheap = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+  match flex_choose_bid_level_under(rows: cheap, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd, coupling: supplied_coupling) {
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
+    FlexLevelChosen { level: l, samples: n } =>
+      match l {
+        FlexBidLevelThreeFifths => n == 3
+        FlexBidLevelFourFifths => false
+        FlexBidLevelMarket => false
+      }
+  }
+}
+
+test fn every_fifth_rental_explores_another_level() -> Bool {
+  let cheap = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+  match flex_choose_bid_level_under(rows: cheap, class: FlexVramClass48, rentals_so_far: 5, quote_currency: Usd, coupling: supplied_coupling) {
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
+    FlexLevelExplore { level: l, best: b } =>
+      match b { FlexBidLevelThreeFifths => match l { FlexBidLevelThreeFifths => false FlexBidLevelFourFifths => true FlexBidLevelMarket => true } FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+  }
+}
+
+test fn ninety_six_gb_is_the_eighty_and_up_class() -> Bool {
+  match flex_vram_class(vram: gib(n: 80)) {
+    FlexVramClass96 => match flex_vram_class(vram: gib(n: 48)) {
+      FlexVramClass48 => true
+      FlexVramClass96 => false
+      FlexVramClassOther { vram: _ } => false
+    }
+    FlexVramClass48 => false
+    FlexVramClassOther { vram: _ } => false
+  }
+}
+
+test fn unlabelled_and_foreign_cards_are_not_ours() -> Bool {
+  let ours = flex_ownership(wire: FlexWireOwnerPresent { label: flex_owner_label_gunbc_flex }, ours: flex_owner_label_gunbc_flex)
+  let bidder = flex_ownership(wire: FlexWireOwnerPresent { label: "ctrl-bidder" as FlexOwnerLabel }, ours: flex_owner_label_gunbc_flex)
+  let pool = flex_ownership(wire: FlexWireOwnerPresent { label: "ctrl-pool" as FlexOwnerLabel }, ours: flex_owner_label_gunbc_flex)
+  let unlabeled = flex_ownership(wire: FlexWireOwnerAbsent, ours: flex_owner_label_gunbc_flex)
+  flex_ours_only(owner: ours)
+    && !flex_ours_only(owner: bidder)
+    && !flex_ours_only(owner: pool)
+    && !flex_ours_only(owner: unlabeled)
+    && match unlabeled { FlexUnlabelled => true FlexOurs { owner: _ } => false FlexForeign { label: _ } => false }
+}
+
+fn owned(
+  id: NonEmptyStr,
+  vram: ByteSize,
+  rate: Nat,
+  held: Bool,
+  running: Bool,
+  loading: Bool,
+  outbid: Bool,
+  age: Nat,
+) -> FlexOwnedCard {
+  FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex,
+    id: id,
+    vram: vram,
+    rate: usd_hour(n: rate),
+    held: held,
+    running: running,
+    loading: loading,
+    outbid: outbid,
+    loading_age: second(count: age),
+  }
+}
+
+test fn outbid_and_ten_minute_loading_are_dead() -> Bool {
+  flex_card_dead(card: owned(id: "a", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0))
+    && flex_card_dead(card: owned(id: "b", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
+    && !flex_card_dead(card: owned(id: "c", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 599))
+    && !flex_card_dead(card: owned(id: "d", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
+}
+
+test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
+  let foreign_dead = FlexOwnedCard {
+    owner: "ctrl-bidder" as FlexOwnerLabel,
+    id: "ctrl",
+    vram: gib(n: 48),
+    rate: usd_hour(n: 600000),
+    held: true,
+    running: false,
+    loading: false,
+    outbid: true,
+    loading_age: second(count: 0),
+  }
+  let actions = flex_cleanup_dead(
+    cards: [
+      owned(id: "live", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "dead", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0),
+      foreign_dead,
+    ],
+    ours: flex_owner_label_gunbc_flex,
+  )
+  (actions |> length) == 1
+    && match actions.first() {
+      Absent => false
+      Present { value: a } =>
+        match a {
+          FlexKeep { id: _ } => false
+          FlexDestroy { id: i, why: w } =>
+            (i == "dead") && match w {
+              FlexCleanupOutbid => true
+              FlexCleanupStaleLoading => false
+              FlexCleanupNotRunningDropped => false
+              FlexCleanupReleasedForValue => false
+            }
+        }
+    }
+}
+
+fn cap_over() -> FlexCapAssessment {
+  FlexCapOver { occupied: usd_hour(n: 2000000), cap: usd_hour(n: 1340000) }
+}
+
+fn cap_under() -> FlexCapAssessment {
+  FlexCapUnder { occupied: usd_hour(n: 0), cap: usd_hour(n: 1340000) }
+}
+
+fn two_running() -> List<FlexOwnedCard> {
+  [
+    owned(id: "a", vram: gib(n: 48), rate: 900000, held: false, running: true, loading: false, outbid: false, age: 0),
+    owned(id: "b", vram: gib(n: 48), rate: 600000, held: false, running: true, loading: false, outbid: false, age: 0),
+  ]
+}
+
+test fn release_never_drops_the_last_running_card() -> Bool {
+  let plan = flex_release_pass(
+    cards: [owned(id: "only", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0)],
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: true,
+    replacement_serving: true,
+  )
+  match plan.admit {
+    FlexReleaseHoldLast => (plan.actions |> length) == 0
+    _ => false
+  }
+}
+
+test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_it() -> Bool {
+  let wait = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_under(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  let now = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  match wait.admit {
+    FlexReleaseHoldUntilReplacement =>
+      ((wait.actions |> length) == 0)
+        && match now.admit {
+          FlexReleaseNow { because_over_cap: o, because_no_room: n, replacement_serving: r } =>
+            o && !n && !r && ((now.actions |> length) == 1)
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn unread_cap_does_not_authorize_a_release() -> Bool {
+  let plan = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: FlexCapUnreadable,
+    no_room: true,
+    replacement_serving: true,
+  )
+  match plan.admit {
+    FlexReleaseHoldCapUnreadable => (plan.actions |> length) == 0
+    _ => false
+  }
+}
+
+test fn a_release_pass_destroys_at_most_one_running_card() -> Bool {
+  let plan = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  (plan.actions |> length) == 1
+}
+
+test fn at_limit_without_no_room_or_replacement_releases_nothing() -> Bool {
+  let plan = flex_release_pass(
+    cards: [
+      owned(id: "a", vram: gib(n: 48), rate: 670000, held: false, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "b", vram: gib(n: 48), rate: 670000, held: false, running: true, loading: false, outbid: false, age: 0),
+    ],
+    ours: flex_owner_label_gunbc_flex,
+    cap: FlexCapAtLimit { occupied: usd_hour(n: 1340000), cap: usd_hour(n: 1340000) },
+    no_room: false,
+    replacement_serving: false,
+  )
+  match plan.admit {
+    FlexReleaseHoldUntilReplacement => (plan.actions |> length) == 0
+    _ => false
+  }
+}
+
+test fn a_zero_vram_card_is_released_before_a_usable_card() -> Bool {
+  let plan = flex_release_pass(
+    cards: [
+      owned(id: "usable", vram: gib(n: 48), rate: 900000, held: false, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "zero", vram: byte_size(count: 0), rate: 100000, held: false, running: true, loading: false, outbid: false, age: 0),
+    ],
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  match plan.actions.first() {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        FlexKeep { id: _ } => false
+        FlexDestroy { id: i, why: w } =>
+          (i == "zero") && match w {
+            FlexCleanupReleasedForValue => true
+            FlexCleanupOutbid => false
+            FlexCleanupStaleLoading => false
+            FlexCleanupNotRunningDropped => false
+          }
+      }
+  }
+}
+
+test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {
+  let raw = usd_hour(n: 1250000)
+  let effective = flex_held_effective_rate(rate: raw, held: true)
+  match flex_dollars_per_vram(rate: effective, vram: gib(n: 48)) {
+    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyQuoted { rate: ev } =>
+      match flex_dollars_per_vram(rate: raw, vram: gib(n: 48)) {
+        FlexVramHourlyZeroCapacity => false
+        FlexVramHourlyQuoted { rate: rv } =>
+          (money_amount_micro_count(m: ev.amount) < money_amount_micro_count(m: rv.amount))
+            && (money_per_hour_micros(q: effective) == 1000000)
+      }
+  }
+}
+
+test fn zero_vram_does_not_pretend_to_be_a_rate_per_byte() -> Bool {
+  match flex_dollars_per_vram(rate: usd_hour(n: 1000000), vram: byte_size(count: 0)) {
+    FlexVramHourlyZeroCapacity => true
+    FlexVramHourlyQuoted { rate: _ } => false
+  }
+}
+
+test fn unscored_ended_rentals_need_evidence_instead_of_a_market_default() -> Bool {
+  let short = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+  ]
+  match flex_choose_bid_level(rows: short, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
+    FlexLevelNeedsEvidence => true
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelSelectionRefused => false
+  }
+}
+
+data id_cheap: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_cheap")
+data id_held: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_held")
+
+fn vram_hour_micros(rate: Nat, gib: Nat) -> Int? {
+  match flex_dollars_per_vram(rate: usd_hour(n: rate), vram: gibibyte_to_byte_size(g: gibibyte(count: gib))) {
+    FlexVramHourlyZeroCapacity => none
+    FlexVramHourlyQuoted { rate: q } => Present { value: money_amount_micro_count(m: q.amount) as Int }
+  }
+}
+
+test fn forty_eight_and_ninety_six_gib_readings_are_distinct_and_nonzero() -> Bool {
+  match vram_hour_micros(rate: 1000000, gib: 48) {
+    Absent => false
+    Present { value: a } =>
+      match vram_hour_micros(rate: 1000000, gib: 96) {
+        Absent => false
+        Present { value: b } => (a > 0) && (b > 0) && (a != b) && (b < a)
+      }
+  }
+}
+
+test fn a_price_change_reverses_the_cheaper_gib_hour_card() -> Bool {
+  match vram_hour_micros(rate: 1000000, gib: 48) {
+    Absent => false
+    Present { value: cheap48 } =>
+      match vram_hour_micros(rate: 1000000, gib: 96) {
+        Absent => false
+        Present { value: cheap96 } =>
+          match vram_hour_micros(rate: 400000, gib: 48) {
+            Absent => false
+            Present { value: cheaper48 } =>
+              match vram_hour_micros(rate: 1000000, gib: 96) {
+                Absent => false
+                Present { value: dear96 } => (cheap96 < cheap48) && (cheaper48 < dear96)
+              }
+          }
+      }
+  }
+}
+
+test fn held_premium_flips_only_across_its_gap() -> Bool {
+  let held = flex_held_effective_rate(rate: usd_hour(n: 1250000), held: true)
+  match flex_dollars_per_vram(rate: held, vram: gib(n: 48)) {
+    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyQuoted { rate: hv } =>
+      match flex_dollars_per_vram(rate: usd_hour(n: 1100000), vram: gib(n: 48)) {
+        FlexVramHourlyZeroCapacity => false
+        FlexVramHourlyQuoted { rate: offer_hi } =>
+          match flex_dollars_per_vram(rate: usd_hour(n: 990000), vram: gib(n: 48)) {
+            FlexVramHourlyZeroCapacity => false
+            FlexVramHourlyQuoted { rate: offer_lo } =>
+              (money_amount_micro_count(m: hv.amount) < money_amount_micro_count(m: offer_hi.amount))
+                && (money_amount_micro_count(m: offer_lo.amount) < money_amount_micro_count(m: hv.amount))
+          }
+      }
+  }
+}
+
+test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
+  let offer = owned(id: "offer", vram: gib(n: 48), rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
+  let held = owned(id: "held", vram: gib(n: 48), rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
+  match flex_select_owned_cards(
+    entries: [
+      flex_rank_entry(id: id_cheap, label: "offer" as NonEmptyStr, card: offer),
+      flex_rank_entry(id: id_held, label: "held" as NonEmptyStr, card: held),
+    ],
+    currency: Usd,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_held)
+    _ => false
+  }
+}
+
+test fn ranking_policy_is_net_value_on_vram_hour_not_cost_per_accepted_work() -> Bool {
+  match flex_rank_policy(currency: Usd) {
+    ValuedObjective { identity: id, valuations: vs, measure: m, currency: _ } =>
+      match m {
+        CostPerAcceptedUnit { unit: _ } => false
+        NetValue =>
+          declaration_ref_eq(a: id, b: flex_rank_objective)
+            && ((vs |> count) == 1)
+            && match vs.first() {
+              Absent => false
+              Present { value: v } => declaration_ref_eq(a: v.term, b: flex_term_vram_hour.identity)
+            }
+      }
+    UniqueSurvivorRequired { identity: _ } => false
+    PreferSurvivor { identity: _, preferred: _ } => false
+  }
+}
+
+test fn zero_vram_rank_entry_declares_the_axis_gap() -> Bool {
+  let card = owned(id: "zero", vram: byte_size(count: 0), rate: 1000000, held: false, running: false, loading: false, outbid: false, age: 0)
+  let entry = flex_rank_entry(id: id_cheap, label: "zero" as NonEmptyStr, card: card)
+  ((entry.readings |> count) == 0) && ((entry.missing_inputs |> count) == 1)
+}
+
+test fn a_ninfer_qwen_catalog_unit_is_placeable_and_unconfirmed_is_not() -> Bool {
+  !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: flex_ninfer_qwen_probe())
+    && !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: FlexCardUnitEstablished { unit: Glm53FlashOnVllm })
+    && flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: Glm53FlashOnVllm })
+    && !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: FlexCardUnitUnconfirmed)
+    && !flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: NemotronUltraFreeOnOpenRouter })
+}
+
+test fn catalog_compatibility_is_not_model_id_coincidence() -> Bool {
+  (harness_serving_unit_fungible_pairs |> length) == 0
+    && match harness_serving_unit_compatibility(required: Glm53FlashOnVllm, observed: Glm53FlashOnVllm) {
+      HarnessUnitsIdentical =>
+        match harness_serving_unit_compatibility(required: Qwen3_8_27bOnNinfer, observed: Glm53FlashOnVllm) {
+          HarnessUnitsIncompatible { required: _, observed: _ } =>
+            match harness_serving_unit_compatibility(required: Qwen3_8_27bOnNinfer, observed: DeepseekV4FlashOnVllm) {
+              HarnessUnitsIncompatible { required: _, observed: _ } =>
+                match harness_serving_unit_compatibility(required: Glm53FlashOnVllm, observed: DeepseekV4FlashOnVllm) {
+                  HarnessUnitsIncompatible { required: _, observed: _ } => true
+                  HarnessUnitsIdentical => false
+                  HarnessUnitsCatalogFungible => false
+                }
+              HarnessUnitsIdentical => false
+              HarnessUnitsCatalogFungible => false
+            }
+          HarnessUnitsIdentical => false
+          HarnessUnitsCatalogFungible => false
+        }
+      HarnessUnitsCatalogFungible => false
+      HarnessUnitsIncompatible { required: _, observed: _ } => false
+    }
+}
+
+test fn vllm_parser_names_stay_on_the_catalog_unit() -> Bool {
+  match harness_unit_tool_call_parser(unit: Glm53FlashOnVllm) {
+    Absent => false
+    Present { value: _ } =>
+      match harness_unit_tool_call_parser(unit: Qwen3_8_27bOnNinfer) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+test fn a_create_ask_shape_requires_a_label() -> Bool {
+  let req = VastAiCreateAskRequest {
+    price: ExactDecimal { units: 6, fraction_digits: 1 },
+    disk: 32,
+    template_hash_id: "abc" as NonEmptyStr,
+    label: flex_owner_label_gunbc_flex as NonEmptyStr,
+  }
+  let bid = VastAiChangeBidRequest { price: ExactDecimal { units: 6, fraction_digits: 1 } }
+  (req.label as String) == (flex_owner_label_gunbc_flex as String)
+    && (req.disk == 32)
+    && (bid.price.units == 6)
+}

@@ -1,0 +1,133 @@
+module v2.test.claim.parse.parameter_refinement
+
+import v2.std.type_binder { refinement_declaration_of_node }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node }
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import v2.std.node {
+  Authored,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  node_subtree_nodes,
+  symbol_intern_lexeme
+}
+import v2.std.node_query { declared_field_from_edge }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE (v2.extdeps.languages.dag
+// dag_grammar_typed_param_expr), as v1 reads it. It PARSES; the clause lowers onto the
+// parameter's type through body_lower_kept_where_clause (the type-variant reader).
+data refined_source: String = "module probe.param_refine\n\nfn wait(seconds: Int where range(min: 1, max: 3600)) -> Int {\n  seconds\n}\n"
+data plain_source: String = "module probe.param_refine\n\nfn wait(seconds: Int) -> Int {\n  seconds\n}\n"
+data min_zero_source: String = "module probe.param_refine\n\nfn wait(seconds: Int where range(min: 0)) -> Int {\n  seconds\n}\n"
+
+fn refined_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: refined_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn refined_normalized() -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: refined_source).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn plain_normalized() -> Bool {
+  match conservation_subject_of_text(path: "probe_plain.dag", text: plain_source).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn atom_is_int(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Absent => false
+    Present { value: s } => s == symbol_intern_lexeme(lexeme: "Int")
+  }
+}
+
+fn literal_magnitude_is(n: Node, want: Int) -> Bool {
+  match dag_int_literal_magnitude_int_from_node(node: n) {
+    Accepted { value: v, diagnostics: _ } => v == want
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn node_has_authored_min(n: Node, want: Int) -> Bool {
+  fold(n.children, init: false, f: fn(acc, e) {
+    acc || match e.label {
+      Authored { name: lab } =>
+        ((lab == symbol_intern_lexeme(lexeme: "min")) && literal_magnitude_is(n: e.target, want: want))
+          || node_has_authored_min(n: e.target, want: want)
+      Positional => node_has_authored_min(n: e.target, want: want)
+      StructuralLabel { label: _ } => node_has_authored_min(n: e.target, want: want)
+    }
+  })
+}
+
+fn node_has_range_spelling(n: Node) -> Bool {
+  fold(n.children, init: false, f: fn(acc, e) {
+    acc || match e.label {
+      Authored { name: lab } =>
+        (lab == symbol_intern_lexeme(lexeme: "range")) || node_has_range_spelling(n: e.target)
+      Positional => node_has_range_spelling(n: e.target)
+      StructuralLabel { label: _ } => node_has_range_spelling(n: e.target)
+    }
+  })
+}
+
+fn named_binder_is_int_range_min(tree: Node, name: Symbol, min: Int) -> Bool {
+  fold(node_subtree_nodes(root: tree), init: false, f: fn(acc, n) {
+    acc || fold(n.children, init: false, f: fn(a, e) {
+      a || match declared_field_from_edge(e: e) {
+        Absent => false
+        Present { value: field } =>
+          (field.name == name) && match refinement_declaration_of_node(decl: field.type_node) {
+            Absent => false
+            Present { value: d } =>
+              atom_is_int(n: d.carrier)
+                && node_has_range_spelling(n: d.where_clause)
+                && node_has_authored_min(n: d.where_clause, want: min)
+          }
+      }
+    })
+  })
+}
+
+fn normalized_seconds_int_range_min(text: String, min: Int) -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: text).normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      named_binder_is_int_range_min(tree: tree.root, name: symbol_intern_lexeme(lexeme: "seconds"), min: min)
+  }
+}
+
+test fn a_refined_parameter_parses_holds() -> Bool { refined_parsed() }
+
+test fn a_refined_parameter_lowers_holds() -> Bool { refined_normalized() }
+
+test fn a_refined_parameter_seconds_is_int_where_range_min_one_holds() -> Bool {
+  normalized_seconds_int_range_min(text: refined_source, min: 1)
+}
+
+test fn an_unrefined_parameter_does_not_carry_the_where_clause_holds() -> Bool {
+  !normalized_seconds_int_range_min(text: plain_source, min: 1)
+}
+
+test fn a_parameter_range_min_zero_is_not_min_one_holds() -> Bool {
+  !normalized_seconds_int_range_min(text: min_zero_source, min: 1)
+}
+
+test fn an_unrefined_parameter_still_normalizes_holds() -> Bool { plain_normalized() }

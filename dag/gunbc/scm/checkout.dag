@@ -1,0 +1,437 @@
+module gunbc.scm.checkout
+
+import std.types { List, String, NonEmptyStr }
+
+import v2.std.node { Node, Edge, node_synthetic }
+
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  commit_at_reference,
+}
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.staging {
+  StagingRefusal,
+  StageStanding,
+  StageMatchesBase,
+  StageDiffersFromBase,
+  StageWithNoBase,
+  NoCandidateAndNoBase,
+  StageStandingRefused,
+  stage_standing,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  SemanticNodeObjectRef,
+  SemanticNodeTarget,
+  ObjectStore,
+  ScmObject,
+  StoredEdge,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
+  resolve_node_target,
+  node_target_of,
+  AuthoredSourceContent,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
+  find_authored_source_record,
+  store_object_index,
+  find_object_via,
+  authored_source_target_locator,
+  CorpusManifestEntry,
+  CorpusManifestObjectRef,
+  CorpusManifestFound,
+  CorpusManifestAbsent,
+  CorpusManifestIsAuthoredSource,
+  CorpusManifestIsSemanticNode,
+  find_corpus_manifest_record,
+  CorpusEntrySourceRefusal, CorpusEntrySourceMissing,
+  CorpusEntrySourceIsSemanticNode, CorpusEntrySourceIsCorpusManifest,
+  CorpusEntrySourceResolution, CorpusEntrySourceResolved, CorpusEntrySourceUnresolved,
+  resolve_manifest_entry_source,
+  resolve_manifest_entry_source_of,
+}
+
+// A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
+// branch. Those are facts about proposals and acceptances -- about who asked for something and who
+// agreed to it -- and fusing them into the program's identity is what forces a whole-tree snapshot
+// and a single timeline. Keeping the commit to its root is what lets two commits be compared,
+// deduplicated and reconstructed without consulting any history at all.
+type Commit {
+  root: SemanticNodeTarget
+}
+
+// AN AUTHORED SOURCE AT A PROGRAM POSITION IS ITS OWN REFUSAL, NOT A MISSING OBJECT.
+//
+// Once the store holds two kinds of object, a checkout can reach an identity that IS present and is
+// a file rather than a program. Reporting that as MissingObject would send an operator looking for
+// bytes that are right there, which is the not-applicable-rendered-as-malformed failure -- the two
+// have opposite remedies. It is also not silently skippable: reconstructing the node without that
+// child would hand back a program the commit does not name.
+// A THIRD NEGATIVE, NAMED FOR WHAT IT FOUND. A corpus manifest at a required node is not a file and
+// not an absence: it is repository inventory sitting where a program was named. Reporting it as
+// either would hand back a well-formed refusal about the wrong object kind, and only one of the
+// three has a remedy that is even the same shape.
+type CheckoutRefusal
+  = MissingObject { identity: ObjectId }
+  | ObjectIsAuthoredSource { identity: ObjectId }
+  | ObjectIsCorpusManifest { identity: ObjectId }
+
+type CheckoutOutcome
+  = CheckedOut { program: Node }
+  | CheckoutRefused { cause: CheckoutRefusal }
+
+// THE REFUSAL IS THE POINT OF THE OPERATION, not an error path bolted onto it. A checkout that could
+// not tell a complete closure from an incomplete one would satisfy its round-trip test while proving
+// nothing, so the missing-object arm is the discriminating half of the reconstruction claim. It
+// carries the exact identity that was absent: a checkout must never search for another object with
+// the same name, substitute a plausible one, or fall back to whatever the store currently holds --
+// each of those is the fabricated-plausible-output arm DESIGN section 5 forbids, and each would make
+// the program's meaning depend on the store's current population rather than on the commit.
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
+// copies the whole accumulator per child, so rebuilding one node cost O(children^2) for work that is
+// O(children) -- the cost shape DESIGN section 6 says is always fixed regardless of the realized n,
+// because "n is small here" is not a fact that stays true under reuse.
+//
+// The reverse is load-bearing, not cosmetic: these edges are handed to node_synthetic in order, and
+// under a positional discipline the order IS the program. A dropped or doubled reverse would rebuild
+// `f(x, y)` as `f(y, x)` silently.
+type CheckoutEdgeAcc {
+  edges: List<Edge>
+  refusal: CheckoutRefusal?
+}
+
+fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEdge) -> CheckoutEdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match checkout_node_target(store: store, target: stored.target) {
+        CheckoutRefused { cause: cause } =>
+          CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
+        CheckedOut { program: child } =>
+          CheckoutEdgeAcc {
+            edges: concat([Edge { label: stored.label, target: child }], acc.edges),
+            refusal: acc.refusal,
+          }
+      }
+  }
+}
+
+// A TARGET IS RESOLVED HERE, NEVER PREJUDGED. The edge states that a semantic node is REQUIRED at a
+// locator; it says nothing about whether this store satisfies that, and a graft may have supplied it
+// since the edge was written. So the target goes through the store's own three-way resolve and the
+// two negatives stay apart -- absent, or occupied by a file -- because they are different facts with
+// different remedies and only one of them can be repaired by fetching.
+//
+// This used to match on a two-armed target and route the resolved arm straight to checkout_object.
+// That arm is gone: it carried store-relative evidence inside a canonical record, and this function
+// re-resolved it anyway, which was one of the four proofs that it never belonged there.
+fn checkout_node_target(store: ObjectStore, target: SemanticNodeTarget) -> CheckoutOutcome {
+  match resolve_node_target(store: store, target: target) {
+    NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
+    NodeRecordFound(record) => checkout_record(store: store, record: record)
+  }
+}
+
+fn checkout_record(store: ObjectStore, record: ObjectRecord) -> CheckoutOutcome {
+  match fold(
+    record.children,
+    init: CheckoutEdgeAcc { edges: [], refusal: none },
+    f: fn(acc, stored) { checkout_edge_step(store: store, acc: acc, stored: stored) },
+  ) {
+    CheckoutEdgeAcc { edges: edges, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => CheckoutRefused { cause: cause }
+        Absent =>
+          CheckedOut { program: node_synthetic(kind: record.kind, children: reverse(edges)) }
+      }
+  }
+}
+
+// THE REFUSALS SURVIVE THE BRAND, AND SAYING WHY IS THE HONEST PART. A SemanticNodeObjectRef was
+// minted against an object of node kind IN SOME STORE; it does not carry WHICH store. A reference
+// minted against one store and resolved against another can therefore still find nothing, or find a
+// file -- so these two arms are a live boundary between stores rather than a wall the brand already
+// built. What the brand removes is the AUTHORING mistake: no caller can hand this function a
+// locator it never resolved to a node at all.
+fn checkout_object(store: ObjectStore, identity: SemanticNodeObjectRef) -> CheckoutOutcome {
+  match find_node_record(store: store, identity: identity.locator) {
+    NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
+    NodeRecordFound(record) => checkout_record(store: store, record: record)
+  }
+}
+
+// CHECKOUT CONSULTS THE COMMIT AND THE STORE, AND NOTHING ELSE -- not names, branches, proposals,
+// acceptances, an index, or "latest". That exclusion is the claim: a program's meaning is fixed when
+// the commit is made, so growing the store afterwards cannot change what an existing commit means.
+// A selection that stayed live would make every later contribution retroactively edit every earlier
+// agreement, which is precisely the property that makes a monotonic store unable to name a program
+// on its own.
+fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
+  checkout_node_target(store: store, target: commit.root)
+}
+
+// The rebuilt program carries OccurrenceSynthetic throughout, because occurrence identity is
+// deliberately outside the stored object: v2.std.node content_hash already folds only kind, edge
+// labels and child digests, so two parses of one program that minted different occurrence ids store
+// and reconstruct identically. Round-trip equality is therefore asserted on content identity, never
+// on occurrence provenance -- and asserting it on provenance would be asserting the one property the
+// model says must not matter.
+fn commit_of_root(root: SemanticNodeTarget) -> Commit {
+  Commit { root: root }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The checkout verb, at repository grain
+// ------------------------------------------------------------------------------------------------
+
+// TWO GRAINS OF ONE VERB, IN THE MODULE THAT OWNS IT. Above, checkout answers what a commit MEANS --
+// it reconstructs the program from the root closure. Here it answers which intrinsic commit a repository selects.
+// AT. Those are the two halves of the same operation, and putting the second in its own module would
+// have minted a second name for one verb: the module would have had to be called something that is
+// not "checkout" while being exactly checkout, which is the nicknaming DESIGN section 3 forbids.
+// Import direction was checked rather than assumed -- gunbc.scm.repository_envelope reaches
+// object_store, ancestry, target_reference, json_member and the closure carriers, and none of them
+// reach this module, so the edge added here closes no cycle.
+//
+// CHECKOUT HAS NOTHING TO SAY ABOUT ANCESTRY, AND THAT IS DERIVED RATHER THAN OMITTED. The silence
+// is stated here explicitly, because a later reader finding no mention of ancestry in a verb that
+// selects a commit would reasonably read it as an oversight and "fix" it.
+//
+// A commit's program is its ROOT CLOSURE. Ancestry is a chain over COMMITS. Those are two different
+// graphs over two different populations, and the reconstruction above walks only the first: it
+// consults the commit and the store, and nothing else. So no ancestor needs to exist, or be
+// readable, or be consistent, for a checkout to be exactly right.
+//
+// THE CONSEQUENCE IS NOT COSMETIC, AND IT HAS A WITNESS: a commit whose stated parent is missing
+// CHECKS OUT SUCCESSFULLY, while an ancestry walk from that same commit answers AncestryBrokenAt.
+// One repository, one commit, two questions, two DIFFERENT answers -- both correct, because the
+// history is truncated and the program is not. Making checkout refuse there would be inventing a
+// dependency the model does not have, and would mean a damaged history could silently cost a user
+// access to programs that are wholly intact.
+//
+// THE REFUSAL ARMS CARRY NO REPOSITORY, and that is the root-commit discipline applied one layer
+// out. Had a failed checkout answered an envelope with nothing selected, "this checkout did not
+// happen" and "this repository has nothing checked out" would share a representation -- the second
+// being an ordinary state the envelope's own header calls not an error. A caller could not then tell
+// a refused checkout from a fresh repository, which is the state-space conflation this stack has now
+// removed at three layers.
+//
+// NO Bool PREDICATE OVER THIS COPRODUCT IS EXPORTED, and that is deliberate rather than an
+// oversight. A `checkout_succeeded` convenience was written and removed before this landed: its only
+// consumer would have been the witness asserting it works, which makes it an artifact with no final
+// consumer (DESIGN section 6). The same objection was raised against a sibling helper in
+// gunbc.scm.ancestry (review 56207) and resolved the same way. Consumers match the arms, so a fourth
+// arm fails to compile at every site rather than being silently absorbed into a false.
+//
+// THE TWO REFUSALS ARE SEPARATE BECAUSE THEIR OWNERS ARE OPPOSITE. An unresolved reference is the
+// CALLER'S fact -- they named an identity this repository has no commit for. An unreconstructable
+// program is the STORE'S fact -- the repository holds the commit and has lost an object it needs.
+// One is a bad argument, the other is damage, and collapsing them would hand a user "no such commit"
+// for a commit that plainly exists in their log.
+// RECOVERING THE AUTHORED CORPUS IS NOT RECONSTRUCTING A PROGRAM, and this is where a repository
+// checkout stopped being the semantic `checkout` above.
+//
+// `checkout` reconstructs a `Node` from a semantic root and keeps that contract unchanged: it is a
+// program-level operation with a program-level subject, and it is still the right verb for anyone
+// holding a semantic root. What it CANNOT be is the repository checkout, because a repository commit
+// now freezes an authored snapshot (gunbc#10522 section 5), and reconstructing a program from it would
+// require successful semantic ingestion of every file -- so a repository holding a malformed file, or
+// source for a language this build cannot ingest, would become uncheckoutable. Freezing exactly that
+// corpus is the thing the manifest exists to make possible.
+//
+// So recovery walks manifest entries and resolves each to its authored bytes. It requires no
+// ingestion, and the value it answers is authored content per path.
+type RecoveredSourceFile {
+  path: NonEmptyStr
+  content: AuthoredSourceContent
+}
+
+// THE PER-ENTRY REFUSALS MOVED TO `object_store` AND ARE CONSUMED HERE.
+//
+// They were declared in this module because checkout was the only operation that asked whether a
+// manifest's sources resolve. Review found that COMMIT must ask the same question before it may
+// publish, so the question has two callers and therefore exactly one home -- `object_store`, which
+// owns the entry, the store and the authored-source lookup it needs. Declaring a second located-cause
+// family here would be the meaning fork DESIGN 3 forbids: one question with two answers that can
+// drift apart. What stays here is what is genuinely checkout's -- recovering CONTENT per path.
+type CorpusRecovery
+  = CorpusRecovered { files: List<RecoveredSourceFile> }
+  | CorpusRecoveryRefused { cause: CorpusEntrySourceRefusal }
+
+type CorpusRecoveryAcc {
+  files: List<RecoveredSourceFile>
+  refusal: CorpusEntrySourceRefusal?
+}
+
+fn recover_entry_step(index: Map<String, ScmObject>, acc: CorpusRecoveryAcc, entry: CorpusManifestEntry) -> CorpusRecoveryAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match resolve_manifest_entry_source_of(
+        object: find_object_via(index: index, identity: authored_source_target_locator(target: entry.source)),
+        entry: entry,
+      ) {
+        CorpusEntrySourceResolved(record) =>
+          CorpusRecoveryAcc {
+            files: concat([RecoveredSourceFile { path: entry.path, content: record.content }], acc.files),
+            refusal: acc.refusal,
+          }
+        CorpusEntrySourceUnresolved { cause: c } =>
+          CorpusRecoveryAcc { files: acc.files, refusal: Present { value: c } }
+      }
+  }
+}
+
+// THE ACCUMULATOR PREPENDS AND `recover_corpus` REVERSES ONCE -- the same cost discipline, and the
+// same load-bearing reverse, as `checkout_edge_step` above. The first writing appended with
+// `concat(acc.files, [file])`, which recopies the growing prefix on every entry and makes recovering a
+// corpus quadratic in its number of paths. DESIGN section 6 fixes a proven cost shape regardless of the
+// realized n, because "n is small here" stops being true the moment a real corpus is checked out.
+// The reverse restores manifest order, which is the order the caller writes the files back in.
+// Found by external review.
+//
+// RECOVERABILITY IS A SEPARATE QUESTION FROM SNAPSHOT DESIGNATION, and this function is where the
+// second one is answered. The mint decides only that a commit names a manifest of the required kind;
+// whether that manifest's sources are present is this observation, performed against a particular
+// store at a particular time. A found manifest establishes nothing about its entries.
+//
+// THE PER-ENTRY LOOKUP GOES THROUGH ONE DIGEST-KEYED INDEX OF THE STORE, built once here --
+// gunbc.scm.object_store store_object_index carries the measured reason (2026-09-21: the intake
+// base is 7,050 paths, and a full store scan per entry held a belt tick inside one recovery for
+// over an hour). The prepending accumulator below is the same cost discipline one level up:
+// quadratic shapes stay fixed at every n, not at the n someone first measured.
+fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> CorpusRecovery {
+  let index = store_object_index(store: store)
+  match fold(
+    entries,
+    init: CorpusRecoveryAcc { files: [], refusal: none },
+    f: fn(acc, e) { recover_entry_step(index: index, acc: acc, entry: e) },
+  ) {
+    CorpusRecoveryAcc { files: files, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => CorpusRecoveryRefused { cause: cause }
+        Absent => CorpusRecovered { files: reverse(files) }
+      }
+  }
+}
+
+// THE SNAPSHOT-KIND REFUSALS ARE SEPARATE FROM THE RECOVERY REFUSAL, because "this commit does not
+// name a snapshot" and "this snapshot's sources are not all here" have different owners: the first is
+// a fact about the commit, the second about this store's current contents. Reporting a wrong-kind
+// root as an unrecoverable corpus would name the wrong subject to whoever has to fix it.
+// `committed` IS OPTIONAL BECAUSE THE COMPARISON MAY HAVE NO RIGHT-HAND SIDE. A candidate staged in a
+// repository with nothing checked out is entirely uncommitted -- there is no base manifest, so an arm
+// requiring one would have to name a manifest that does not exist. The first writing of this arm
+// passed the candidate itself into that field, which reports "your candidate differs from itself" and
+// is a fabricated payload rather than a missing one.
+type RepositoryCheckout
+  = RepositoryCheckedOut { repository: RepositoryEnvelope, corpus: List<RecoveredSourceFile> }
+  | CheckoutReferenceUnresolved { reference: RepositoryCommitRef }
+  | CheckoutSnapshotMissingFromStore { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutSnapshotIsAuthoredSource { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutSnapshotIsSemanticNode { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusEntrySourceRefusal }
+  | CheckoutWouldDiscardStagedWork {
+      reference: RepositoryCommitRef,
+      candidate: CorpusManifestObjectRef,
+      committed: CorpusManifestObjectRef?
+    }
+  | CheckoutCandidateUnreadable { reference: RepositoryCommitRef, cause: StagingRefusal }
+
+// THIS WRITES NOTHING. It answers a NEW envelope with the selection moved, leaving its argument
+// untouched, so the verb stays a pure transform over facts the repository already holds. Persisting
+// the result is a separate operation at a boundary this module deliberately does not reach.
+//
+// The reference is the same intrinsic commit identity `log` renders and `status`
+// resolves -- so the three verbs name commits the one way, and resolution goes through
+// commit_at_reference rather than a second lookup that could drift from it.
+// MOVING THE SELECTION MUST DECIDE WHAT HAPPENS TO THE CANDIDATE, AND THE FIRST WRITING OF THIS
+// FUNCTION DECIDED IT SILENTLY.
+//
+// The staged candidate is staged AGAINST A BASE -- a manifest carries content and not the identity of
+// the commit it was prepared over, so the pairing with `checked_out` is the only thing that says what
+// it is a change TO. Moving the base without deciding about the candidate breaks that pairing, and
+// both ways of breaking it lose work:
+//
+//   carry the candidate across   commit C1 with candidate S1; check out C2; commit again. The second
+//                                commit freezes S1 ON TOP OF C2, reverting every difference between
+//                                them, and the author made no staging decision to cause it.
+//   clear the candidate across   an author with real uncommitted work checks out another commit and
+//                                the work is gone, with no refusal and no report.
+//
+// This function did the second, unconditionally, in the line that read `staged: none`.
+//
+// SO THE DECISION IS SPLIT ON WHETHER THERE IS ANYTHING TO LOSE. A candidate that matches its base is
+// carrying no work: dropping the explicit override there is a NORMALIZATION, because with no override
+// the candidate is derived from the selected base, and the value dropped denoted exactly the base it
+// was dropped from. A candidate that DIFFERS is uncommitted work, and this verb refuses rather than
+// choosing which of the two losses above to inflict.
+//
+// THE REFUSAL NAMES BOTH MANIFESTS, because "you have staged changes" without saying what they are
+// leaves the author unable to tell whether the refusal is about work they care about.
+fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
+  match stage_standing(repository: repo) {
+    StageStandingRefused { cause: c } =>
+      CheckoutCandidateUnreadable { reference: reference, cause: c }
+    StageDiffersFromBase { candidate: candidate, committed: committed } =>
+      CheckoutWouldDiscardStagedWork {
+        reference: reference,
+        candidate: candidate.root,
+        committed: Present { value: committed },
+      }
+    StageWithNoBase { candidate: candidate } =>
+      CheckoutWouldDiscardStagedWork {
+        reference: reference,
+        candidate: candidate.root,
+        committed: none,
+      }
+    StageMatchesBase { candidate: _ } => checkout_admitted(repo: repo, reference: reference)
+    NoCandidateAndNoBase => checkout_admitted(repo: repo, reference: reference)
+  }
+}
+
+fn checkout_admitted(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
+  match commit_at_reference(commits: repo.commits, reference: reference) {
+    Absent => CheckoutReferenceUnresolved { reference: reference }
+    Present { value: selected } =>
+      match find_corpus_manifest_record(store: repo.store, identity: selected.root.locator) {
+        CorpusManifestAbsent { identity: id } =>
+          CheckoutSnapshotMissingFromStore { reference: reference, root: id }
+        CorpusManifestIsAuthoredSource { identity: id } =>
+          CheckoutSnapshotIsAuthoredSource { reference: reference, root: id }
+        CorpusManifestIsSemanticNode { identity: id } =>
+          CheckoutSnapshotIsSemanticNode { reference: reference, root: id }
+        CorpusManifestFound(record) =>
+          match recover_corpus(store: repo.store, entries: record.entries) {
+            CorpusRecoveryRefused { cause: cause } =>
+              CheckoutCorpusUnrecoverable { reference: reference, cause: cause }
+            CorpusRecovered { files: files } =>
+              RepositoryCheckedOut {
+                repository: RepositoryEnvelope {
+                  store: repo.store,
+                  commits: repo.commits,
+                  commit_allocator: repo.commit_allocator,
+                  checked_out: Present { value: reference },
+                  staged: none,
+                },
+                corpus: files,
+              }
+          }
+      }
+  }
+}

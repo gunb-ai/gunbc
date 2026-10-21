@@ -1,0 +1,11 @@
+module test.fixture.phantom_marker_identity.non_applied_consumer
+
+import std.measure { Quantity, Time }
+
+type NonAppliedMarkerField {
+  value: Time
+}
+
+fn non_applied_field_as_parent(subject: NonAppliedMarkerField) -> Quantity {
+  subject.value
+}

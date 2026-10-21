@@ -1,0 +1,624 @@
+module v2.compiler.reference_site_collector
+
+import std.types { List, Map }
+
+import std.algebra { Cons, Empty, FreeMonoid, list_head, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
+
+import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
+import v2.std.integer { Int }
+import v2.std.node {
+  Disj,
+  Arrow,
+  Instantiation,
+  ComputationNode,
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  EdgeLabel,
+  StructuralLabel,
+}
+import std.optional { Absent, Optional, Present }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_node,
+}
+import v2.compiler.resolution_provenance { ReferenceSite }
+import std.occurrence_identity {
+  ReferencePosition,
+  ValuePosition
+}
+import v2.compiler.occurrence_role { reference_position_step }
+import v2.compiler.lexical_scope {
+  ChildSeesNoValues,
+  ChildSeesParentValues,
+  ChildSeesParentValuesAnd,
+  ChildSeesParentValuesAndUndecided,
+  ChildSeesParentValuesBeyondCurrentArm,
+  ChildValueScope,
+  arrow_slot,
+  arrow_slot_is_carried,
+  child_value_scope,
+  declaration_names_value,
+  module_root_bindings,
+  node_value_frame
+}
+import v2.extdeps.languages.dag {
+  dag_node_is_float_literal_atom,
+  dag_node_is_int_literal_atom,
+  dag_node_is_string_literal_atom,
+  dag_symbol_literal_name_optional,
+  dag_surface_module_header_metadata_edge,
+  namespace_graft_spine_body_optional,
+  qualified_name_from_module_node
+}
+
+// THE MENTION PRODUCER v2.compiler.resolution_provenance HAS BEEN MISSING SINCE IT WAS WRITTEN.
+// That module models one name resolved at one position answering with its target and the module
+// that contains it, and it models the dependency fold over those answers -- but nothing in the
+// corpus produced a ReferenceSite. The only constructors were five hand-authored fixture rows in
+// one witness, which makes a well-shaped module dangling in DESIGN section 3c's exact sense: a
+// declaration whose consumers are described rather than executed. This module is that producer.
+//
+// ONE COLLECTOR, TWO STAGES -- AND THAT CLAIM WAS FALSE AS FIRST WRITTEN, SO IT IS RESTATED HERE
+// RATHER THAN QUIETLY DROPPED.
+//
+// This header said "the site enumeration is here, once, and both stages consume it". It is not
+// once. v2.lens.reference_deps reference_sites_collect_node ALREADY enumerates reference sites,
+// from the PARSED tree, via ^dag_surface_qualified_name productions -- and its own dissolution note
+// describes the successor in terms that name this module's territory: "dissolves when
+// symbol_index_fill projects reference edges from the filled containment tree and non-import
+// qualified-name sites require the parsed census path". I did not find it before writing this
+// module, which is the section 6 move -- DFS the concept DAG before inventing vocabulary -- skipped
+// at the one point it mattered most.
+//
+// THE OVERLAP IS REAL BUT NARROWER THAN I FIRST WROTE, AND I CHECKED THE SECOND TIME. I claimed
+// the lens recognises "exactly the class this collector misses -- a qualified cross-module
+// reference in a body". THAT IS FALSE. The lens keys on ^dag_surface_qualified_name and the import
+// productions and NOTHING ELSE -- it carries no dot or field-access handling at all. A qualified
+// reference in a BODY parses as a field access, not a qualified-name production, so the lens misses
+// it too. What the lens does see is a qualified name in a TYPE position, where the production
+// survives.
+//
+// SO NEITHER INSTRUMENT SAW A QUALIFIED BODY REFERENCE, and the overlap between them was the
+// type-position qualified name rather than the whole qualified class. That is also why
+// warm-ibex-518's deleted parse walk was genuinely a duplicate: it keyed on the same production.
+//
+// THE CONSOLIDATION IS RULED AND IT IS NOT "CONSUME THE LENS". The authority for reference sites is
+// the collector over the tree THE RESOLVER CONSUMES -- a site must be something resolution
+// resolves, and the lens reads the parse tree. The lens is itself a declared SCAFFOLD whose own
+// dissolution names a symbol_index_fill-derived projection, so consuming its recogniser would be
+// building on a scaffold. Its disposition is repointed at this module instead.
+//
+// THE QUALIFIED CLASS NOW REACHES THIS COLLECTOR ON THE PRODUCTION ROUTE IN BODY AND PARAMETER-TYPE
+// POSITION (smart-lynx-554, gunbc#11582), AND NOT BY AN EDIT HERE. The tree was the defect: v2
+// body lowering truncated every dotted chain to an infix over its first dot, or a qualified type
+// to its first atom, so the spine this walk already folds (qualified_name_from_node) was never
+// constructed from source. Now that body_lower_dotted_reference_optional constructs it, this walk
+// emits one site per chain with the full spelling -- v2.test.claim.namespace_xl0
+// call_argument_mention_survival is the enrolled receipt. Since declaration grafting a qualified
+// FIELD type reaches this tree too, and so do a dotted callee and a qualified call argument --
+// the parse-tree lens missed those (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential).
+// On that measurement the lens's parse walker was retired and this collector is the single authority
+// for reference sites.
+// WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
+// declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
+// Named { name } edges and indexes edge.target as the declaration), so a declared name never
+// appears as a node. An Atom node is therefore a reference by construction rather than by a filter
+// that could be wrong -- there is no declaration-shaped Atom for this walk to have to exclude.
+//
+// ONE DELIBERATE EXCLUSION, AND IT IS NOT A FILTER ON ELIGIBILITY. Module-header metadata subtrees
+// carry the module's OWN qualified name, which is a declaration of position and not a mention of
+// anything. It is recognised by the SAME predicate v2.compiler.symbol_index_fill consults, never by
+// a second spelling of it.
+//
+// A SECOND EXCLUSION STOOD HERE AND WAS DELETED BY MEASUREMENT. It skipped every `_node_projection`
+// edge, on the reasoning that such an edge carries a parse projection of source already visited and
+// descending would double-count. THAT DOUBLE-COUNT WAS NEVER DEMONSTRATED, and the guard's real
+// effect was the opposite of its intent: on the tree the production ingest yields, a module's
+// content hangs under exactly those edges, so the exclusion returned ZERO sites for the whole
+// corpus while hand-built fixtures -- which carry no such edge -- stayed green. Isolated by
+// disabling the arm and re-running the same fixture. The lesson is kept here rather than in a
+// commit message because the guard looks obviously correct in isolation: a speculative exclusion
+// over a shape the author has not observed is indistinguishable from a blackout until something
+// executes against the real tree.
+
+// SPINE UNWRAPPING IS A MODULE-BOUNDARY MOVE AND IS DONE ONCE, AT THE ROOT, IN
+// module_reference_sites BELOW. It used to run on EVERY node, which was wrong for a reason worth
+// stating: namespace_graft_spine_segment_edge_optional once recognised ANY single named edge targeting
+// a Conj, not specifically a module-prefix spine segment, so applying it recursively silently dropped
+// ordinary nested declaration and field labels from the position while continuing to walk -- which
+// yields a mention recorded at a containment chain it does not sit at, and therefore resolved
+// against the wrong lexical scope. A mislocated mention is worse than a missing one: it is a
+// fabricated plausible answer (DESIGN section 5) rather than an absence someone can count.
+//
+// POSITION IS THE CONTAINMENT CHAIN OF THE MENTION, AND IT IS NOT THE INDEX'S PATH RULE.
+// v2.compiler.symbol_index_fill specialises Disj (variant paths) and Arrow (domain only) because
+// it is deciding WHERE A BINDING LIVES. This walk is deciding where a MENTION SITS, and a mention
+// in an arrow's codomain sits exactly where its containment chain says it does -- so the rule here
+// is uniform over edges: a named edge extends the position by its label, a positional edge does
+// not. The two rules agree wherever a binding and a mention coincide and differ only where the
+// index deliberately stops walking, which is the difference between the two questions rather than
+// a divergence between two answers to one question.
+// THE O(1) REJECT THAT KEEPS THIS WALK LINEAR IS INSIDE qualified_name_from_node ITSELF.
+//
+// qualified_name_from_node FOLDS AN ENTIRE SUBTREE before it can answer, and this walk then
+// descends into that same subtree -- so asking it at every Conj made the traversal quadratic in
+// nesting depth. DESIGN section 6 rules a proven cost-shape defect is always fixed regardless of
+// the realised n, so a cheap precondition is required; the question was WHERE IT LIVES.
+//
+// IT WAS WRITTEN HERE FIRST AND THAT WAS A SECOND RECOGNISER FOR ONE CONCEPT. Two places deciding
+// what a qualified-name spine looks like is section 3's nickname at the meaning layer, and the
+// failure is silent and lands on exactly this PR's subject: widen the accepted spine in
+// qualified_name and a prefilter sitting over here answers `false`, so this walk falls through to
+// the children and emits every segment of `a.b.C` as its own BARE SAME-MODULE mention -- which is
+// the cross-module class XL-0's denominator is made of, quietly turned into local noise.
+//
+// It was written here first, then moved beside that fold as a pair of Bool predicates, and is now
+// the fold's OWN FIRST STEP -- because a Bool sitting beside the Outcome was still a second surface
+// deciding the same thing, and section 2's test is net CONCEPTS rather than net files. This module
+// matches the Outcome and gets the linear behaviour for free.
+// A production identity edge (grammar_production_identity_node_projection) is
+// what a node IS, never a mention it makes -- the graft body's
+// namespace_graft_module_body marker reaches this fold as a direct child. Same
+// rule as symbol_index_fill_containment_edge and export admission.
+fn reference_sites_in_edge(
+  acc: ScopedReferenceSiteCollection,
+  position: List<EdgeLabel>,
+  issued: ReferencePosition,
+  scope: SiteScope,
+  edge: Edge
+) -> ScopedReferenceSiteCollection {
+  match edge.label {
+    Authored { name: sym } =>
+      if sym == ^grammar_production_identity_node_projection {
+        acc
+      } else {
+        reference_sites_in_node(
+          acc: acc,
+          position: list_snoc_item(xs: position, item: edge.label),
+          issued: issued,
+            scope: scope,
+          node: edge.target
+        )
+      }
+    StructuralLabel { label: _ } =>
+      // A slot resolve carries unchanged (v2.compiler.lexical_scope arrow_slot_is_carried: the declared
+      // order, the contract metadata) is never resolved, so it is not a mention and demands no module.
+      if dag_surface_module_header_metadata_edge(e: edge) || arrow_slot_is_carried(slot: arrow_slot(e: edge, ordinal: 0)) {
+        acc
+      } else {
+        reference_sites_in_node(
+          acc: acc,
+          position: list_snoc_item(xs: position, item: edge.label),
+          issued: issued,
+            scope: scope,
+          node: edge.target
+        )
+      }
+    Positional =>
+      reference_sites_in_node(
+        acc: acc,
+        position: position,
+        issued: issued,
+        scope: scope,
+        node: edge.target
+      )
+  }
+}
+
+// THE VALUE BINDERS A CHILD SEES ARE DECIDED BY v2.compiler.lexical_scope child_value_scope, from the
+// edge and its ordinals, and this walk only carries them. The ordinal advances on EVERY child, a skipped
+// production-identity edge included, because the Arrow slot table counts every preceding child; the
+// positional ordinal advances on positional children only, because the Bind slot table does.
+type SiteChildWalk {
+  acc: ScopedReferenceSiteCollection
+  ordinal: Int
+  positional_ordinal: Int
+}
+
+fn site_scope_of_child(scope: SiteScope, seen: ChildValueScope) -> SiteScope {
+  match seen {
+    ChildSeesParentValues => scope
+    ChildSeesNoValues => SiteScope { frame: empty_map(), undecided: [], roots: scope.roots, imported: scope.imported }
+    ChildSeesParentValuesAnd { names: names } =>
+      SiteScope {
+        frame: site_names_added(names: names, to: scope.frame),
+        undecided: scope.undecided,
+        roots: scope.roots,
+        imported: scope.imported
+      }
+    ChildSeesParentValuesAndUndecided { names: names } =>
+      SiteScope {
+        frame: scope.frame,
+        undecided: list_snoc_item(xs: scope.undecided, item: site_names_added(names: names, to: empty_map())),
+        roots: scope.roots,
+        imported: scope.imported
+      }
+    ChildSeesParentValuesBeyondCurrentArm { names: names } =>
+      SiteScope {
+        frame: site_names_added(names: names, to: scope.frame),
+        undecided: list_init(xs: scope.undecided),
+        roots: scope.roots,
+        imported: scope.imported
+      }
+  }
+}
+
+fn site_names_added(names: List<Symbol>, to: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold_list(xs: names, empty: to, cons: fn(acc, name) { map_insert(m: acc, key: name, value: name) })
+}
+
+fn reference_sites_in_children(
+  acc: ScopedReferenceSiteCollection,
+  position: List<EdgeLabel>,
+  issued: ReferencePosition,
+  scope: SiteScope,
+  node: Node
+) -> ScopedReferenceSiteCollection {
+  let frame = node_value_frame(n: node)
+  fold(node.children, init: SiteChildWalk { acc: acc, ordinal: 0, positional_ordinal: 0 }, f: fn(walk, edge) {
+    SiteChildWalk {
+      acc: reference_sites_in_edge(
+        acc: walk.acc,
+        position: position,
+        // ONE STEP OF THE SOLE POSITION AUTHORITY, taken as the walk descends: the issuer gets the
+        // parent, the edge and the walk's own ordinal -- the same three facts child_value_scope is
+        // handed one line below -- and decides the child's position from the slot table, then the
+        // marker, then the inherited answer. The collector passes facts and decides nothing.
+        issued: reference_position_step(inherited: issued, parent: node, edge: edge, ordinal: walk.ordinal),
+        scope: site_scope_of_child(
+          scope: scope,
+          seen: child_value_scope(frame: frame, edge: edge, ordinal: walk.ordinal, positional_ordinal: walk.positional_ordinal)
+        ),
+        edge: edge
+      ),
+      ordinal: walk.ordinal + 1,
+      positional_ordinal: match edge.label {
+        Positional => walk.positional_ordinal + 1
+        Authored { name: _ } => walk.positional_ordinal
+        StructuralLabel { label: _ } => walk.positional_ordinal
+      }
+    }
+  }).acc
+}
+
+fn collection_snoc_site(
+  acc: ScopedReferenceSiteCollection,
+  scope: SiteScope,
+  position: ReferencePosition,
+  site: ReferenceSite
+) -> ScopedReferenceSiteCollection {
+  ScopedReferenceSiteCollection {
+    sites: list_snoc_item(
+    xs: acc.sites,
+    item: ScopedReferenceSite {
+      site: site,
+      position: position,
+      head: site_head_binding(scope: scope, spelling: site.spelling)
+    }
+  ),
+    unreadable_roots: acc.unreadable_roots
+  }
+}
+
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED. A walk that built a list per node and concatenated
+// on the way up is the copied-accumulator cost shape DESIGN section 6 rules is always fixed
+// regardless of the realised n, so the single list is carried down and snoc'd at the two emit
+// points. Every recursion below therefore takes `acc` and returns the same list grown.
+// A DOTTED MENTION IS ONE SITE, NOT ONE PER SEGMENT. `qualified_name_from_node` accepts only the
+// fold-list-of-atoms shape an authored qualified spelling has, so a Conj it accepts IS the mention
+// and its segment atoms are that mention's spelling rather than mentions of their own. Descending
+// after emitting would count `a.b.C` four times.
+//
+// AN INT LITERAL ATOM CARRIES A VALUE, NOT A NAME: the resolver's own atom arm short-circuits it
+// before any lookup, so admitting it here would manufacture an unbound mention the resolver never
+// asks about.
+fn reference_sites_in_node(
+  acc: ScopedReferenceSiteCollection,
+  position: List<EdgeLabel>,
+  issued: ReferencePosition,
+  scope: SiteScope,
+  node: Node
+) -> ScopedReferenceSiteCollection {
+  match qualified_name_from_node(root: node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      if is_empty(xs: qn) {
+        reference_sites_in_children(
+          acc: acc,
+          position: position,
+          issued: issued,
+            scope: scope,
+          node: node
+        )
+      } else {
+        collection_snoc_site(
+          acc: acc,
+          scope: scope,
+          position: issued,
+            site: ReferenceSite { position: position, spelling: qn }
+        )
+      }
+    Rejected { diagnostics: _ } =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          match dag_symbol_literal_name_optional(node: node) {
+            Present { value: _ } => acc
+            Absent =>
+          if dag_node_is_int_literal_atom(node: node) {
+            acc
+          } else if dag_node_is_float_literal_atom(node: node) {
+            acc
+          } else if dag_node_is_string_literal_atom(node: node) {
+            acc
+          } else {
+            collection_snoc_site(
+              acc: acc,
+              scope: scope,
+              position: issued,
+                    site: ReferenceSite {
+                position: position,
+                spelling: Cons { head: sym, tail: Empty }
+              }
+            )
+          }
+          }
+        TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+      }
+  }
+}
+
+type UnreadableModuleRoot {
+  locus: Locus
+}
+
+// The collector's answer is the pair, never the sites alone, so a caller cannot take the population
+// without also taking what was lost producing it. That is the shape section 5 asks for: the refusal
+// travels WITH the result rather than beside it where it can be ignored.
+// THERE IS NO IMPORT ARM, AND THE REASON IS A MEASUREMENT THAT REVERSED THE ORIGINAL DESIGN.
+//
+// This module carried one: import mentions were classified into a second `import_sites` list,
+// threaded through the walk on an `inside_import` flag. It was built to fix a real defect -- a
+// spelling match could not tell an import mention from a use, and this collector's own witness
+// once read GREEN ON AN IMPORT LINE. THE FIX WAS AIMED AT A CONDITION THAT DOES NOT EXIST ON THIS
+// ROUTE. Import statements are consumed before the normalized tree this collector walks, so the
+// production identities the classifier keyed on never appear, the arm could not be inhabited by
+// any input, and nothing read it. Measured: an import-only spelling in the fixture reaches neither
+// list (v2.test.claim.namespace_xl0.call_argument_mention_survival).
+//
+// AN UNINHABITABLE ARM IS A DECORATION, WHICH IS THE RULE THIS PR APPLIES ONE FILE OVER AND FAILED
+// TO APPLY HERE. dag/std/repair_input_origin declines to mint a KernelMinted arm on exactly this
+// ground -- an arm with no producer is permanently uninhabited, and DESIGN section 4b calls that a
+// decoration rather than a weak wall, worse than absent because it gets cited as coverage. Section
+// 3c is the same verdict from the consumption side: a declaration whose consumer cannot be named
+// is dangling, and it is red however well modeled it is. The earlier defence -- that a consumer
+// walking a PARSE tree would want the classification -- named no consumer and no trigger, which is
+// precisely what section 3c refuses to accept as a frontier.
+//
+// IF A PARSE-TREE CONSUMER EVER LANDS IT REBUILDS THIS, and that is the cheaper direction: the
+// classifier was four production identities and a threaded Bool, while an uninhabitable arm is
+// carried, reviewed and cited for as long as it stands.
+type ReferenceSiteCollection {
+  sites: FreeMonoid<ReferenceSite>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+fn empty_reference_site_collection() -> ReferenceSiteCollection {
+  ReferenceSiteCollection { sites: Empty, unreadable_roots: Empty }
+}
+
+fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bool {
+  is_empty(xs: collection.unreadable_roots)
+}
+
+// WHAT THE LEXICAL FRAMES AT A SITE SAY ABOUT ITS HEAD, decided where the site is emitted because the frames
+// are only known there. A dotted spelling `h.f` is a projection off `h` -- and names no module -- when `h` is
+// bound by an enclosing binder or by a module-level declaration that names a value, exactly as resolution
+// reads it (v2.compiler.resolve resolve_dotted_path_reading: BoundInFrame and a value BoundAtRoot project,
+// ScopeUnbound reads a declaration path).
+//
+// FOUR ANSWERS, BECAUSE THERE ARE THREE THINGS THE WALK CAN KNOW. It knows a head IS bound (the first two
+// arms), knows it is NOT bound (the last), and for the names a construct introduces whose binder-ness or kind
+// needs the resolution namespace it knows neither: a match arm's pattern atom may name a payload constructor
+// instead of binding, and an imported name may name a type, a namespace or a value, and only the module
+// that exports it says which. HeadBindingUndecided is that third state. Answering it `unbound` would probe a
+// module for a name resolution binds as a value (and, for a requester whose tree may not import the probed
+// one, deny a valid program); answering it `bound` would hide a module reference whose head is a
+// constructor. So only HeadLexicallyUnbound can be a module reference, and it is the only answer under which
+// module acquisition probes storage; an undecided head requests nothing. That is a refusal to guess, not a
+// claim: a spelling that did need its module and was never requested refuses at resolution, naming the
+// spelling. HeadLexicallyUnbound is likewise not a claim that the head names a module.
+// FOUR ANSWERS, and they are all the same question: what a VALUE FRAME says about this head. Frame /
+// root / undecided / unbound. There is deliberately NO fifth "not a value position" answer -- that
+// would fold the position fact into the binding fact, and the two are read apart by the consumers
+// (acquisition asks the binding alone, the roster asks both). Position is its OWN FIELD on the site,
+// so a mention at a non-value position keeps its honest binding reading instead of being silenced by
+// a variant, and no consumer can mistake "not a value" for "not a candidate" or the other way round.
+// Reporting a non-value mention as HeadLexicallyUnbound AND ACTING ON THAT alone is the defect this
+// stops -- a free-name reading is what made a roster sweep emit `import std.host_text { chars }` for a
+// module that binds `chars` itself (gunbc#14338); the fix is that the position now travels with the
+// site so a consumer cannot act on the binding reading alone.
+type SiteHeadBinding
+  = HeadBoundInFrame
+  | HeadBoundAtRootValue
+  | HeadBindingUndecided
+  | HeadLexicallyUnbound
+
+// ONE SITE, TWO ORTHOGONAL FACTS, each issued by its own authority and neither derived from the other:
+//   position -- where the mention sits relative to the value layer, issued SOLELY by
+//              v2.compiler.occurrence_role reference_position_step as the walk descends (which consults
+//              v2.compiler.lexical_scope arrow_slot for the codomain, the one position no marker carries);
+//   head     -- what a value frame says about the head, decided here from the frame the SAME walk
+//              carries from v2.compiler.lexical_scope child_value_scope.
+// A consumer that needs "may this name be free?" must ask BOTH: a non-value position is not a free
+// name however unbound its head reads.
+type ScopedReferenceSite {
+  site: ReferenceSite
+  position: ReferencePosition
+  head: SiteHeadBinding
+}
+
+// The collection with each site's head classification attached. ReferenceSiteCollection below is its
+// projection, so the sites, their positions and their order are the same fact in both.
+type ScopedReferenceSiteCollection {
+  sites: FreeMonoid<ScopedReferenceSite>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+fn empty_scoped_reference_site_collection() -> ScopedReferenceSiteCollection {
+  ScopedReferenceSiteCollection { sites: Empty, unreadable_roots: Empty }
+}
+
+fn scoped_reference_site_collection_is_total(collection: ScopedReferenceSiteCollection) -> Bool {
+  is_empty(xs: collection.unreadable_roots)
+}
+
+fn reference_site_collection_of(scoped: ScopedReferenceSiteCollection) -> ReferenceSiteCollection {
+  ReferenceSiteCollection {
+    sites: list_map(xs: scoped.sites, f: fn(s) { s.site }),
+    unreadable_roots: scoped.unreadable_roots
+  }
+}
+
+// The names in scope at a site, by how much the walk knows of each. `frame` is the value binders the
+// enclosing Arrows and `let`s introduce (v2.compiler.lexical_scope child_value_scope) and `roots` the
+// module-level declarations that name a value: those heads ARE bound. `undecided` is the pattern atoms of the
+// enclosing match arms, one layer per arm, innermost last, and `imported` the names the module imports, both
+// names a construct introduces that the walk cannot classify: those heads MAY be bound. The arms are layers
+// because a `let` that ends its arm's binders (v2.compiler.lexical_scope bind_carries_arm_scope_exit) leaves
+// only the innermost one, while the arms around the match still enclose the rest of the function.
+// `imported` is module-level, so a type-role edge keeps it as it keeps `roots`, while a type scope holds no
+// arm's binder.
+type SiteScope {
+  frame: Map<Symbol, Symbol>
+  undecided: List<Map<Symbol, Symbol>>
+  roots: Map<Symbol, Symbol>
+  imported: Map<Symbol, Symbol>
+}
+
+// THE BINDING FACT ALONE: what a value frame says about this head. It does NOT consult the position --
+// position travels as its own field on the site (tidy-ant-251's D3 ruling), because folding the two
+// into one variant let a consumer mistake "not a value position" for "not a candidate" and widen
+// module acquisition for an imported qualified tag. A consumer that asks "may this name be free?" must
+// read BOTH fields; a consumer that asks "is this head bound?" reads this one.
+fn site_head_binding(scope: SiteScope, spelling: QualifiedName) -> SiteHeadBinding {
+  match spelling {
+    Cons { head: head, tail: _ } =>
+      if map_contains_key(m: scope.frame, key: head) {
+        HeadBoundInFrame
+      } else if map_contains_key(m: scope.roots, key: head) {
+        HeadBoundAtRootValue
+      } else if site_head_is_undecided(scope: scope, head: head) {
+        HeadBindingUndecided
+      } else {
+        HeadLexicallyUnbound
+      }
+    Empty => HeadLexicallyUnbound
+  }
+}
+
+fn site_head_is_undecided(scope: SiteScope, head: Symbol) -> Bool {
+  map_contains_key(m: scope.imported, key: head)
+    || fold_list(xs: scope.undecided, empty: false, cons: fn(acc, layer) { acc || map_contains_key(m: layer, key: head) })
+}
+
+// The module-level declarations that name a value, from the producer resolution builds its root frame
+// from (v2.compiler.lexical_scope module_root_bindings), kept by the predicate resolution applies to the
+// declaration a root head names (declaration_names_value).
+fn module_root_value_names(root: Node) -> Map<Symbol, Symbol> {
+  fold(module_root_bindings(root: root), init: empty_map(), f: fn(acc, b) {
+    if declaration_names_value(declaration: b.declaration) {
+      map_insert(m: acc, key: b.name, value: b.name)
+    } else {
+      acc
+    }
+  })
+}
+
+// THE SPINE IS ONE WRAPPER PER SEGMENT, SO ONE UNWRAP WAS WRONG BY length(module_qn) - 1.
+//
+// v2.compiler.namespace_graft namespace_graft_fold_spine folds the module's qualified name and
+// wraps ONCE PER SEGMENT. Unwrapping a single level left the remaining wrappers standing, and the
+// generic named-edge rule below then walked them as ordinary containment -- re-appending those very
+// segments to a position that already carried them, so a mention in `a.b.c` was recorded at
+// `a.b.c.b.c`. A mislocated mention is a fabricated plausible answer (DESIGN section 5), and it
+// changes which lexical scope the resolver walks, so it is worse than an absent one.
+//
+// THE SPINE ENDS WHERE THE PRODUCER MARKED IT. v2.extdeps.languages.dag
+// namespace_graft_spine_body_optional descends the single-Named-Conj chain only when it ends at the
+// body namespace_graft_build_body_conj stamped, so neither a one-declaration module body nor a
+// declaration that happens to have that shape is eaten. The segment count this walk used to consume
+// was derived from the qualified name read off the same shape, which is circular for a grafted root.
+fn module_spine_unwrapped(root: Node) -> Node {
+  match namespace_graft_spine_body_optional(node: root) {
+    Present { value: body } => body
+    Absent => root
+  }
+}
+
+fn module_reference_sites(
+  acc: ScopedReferenceSiteCollection,
+  root: Node,
+  imported: List<Symbol>
+) -> ScopedReferenceSiteCollection {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      reference_sites_in_node(
+        acc: acc,
+        position: list_map(xs: module_qn, f: fn(segment) { Authored { name: segment } }),
+        // The ROOT has no parent, so its position is decided by no step: ValuePosition is the fold's
+        // initial answer, which the issuer itself owns (reference_position_step is transparent for a
+        // nameless edge) -- the collector supplies the seed only because a fold needs one.
+        issued: ValuePosition,
+        scope: SiteScope {
+          frame: empty_map(),
+          undecided: [],
+          roots: module_root_value_names(root: root),
+          imported: site_names_added(names: imported, to: empty_map())
+        },
+        node: module_spine_unwrapped(root: root)
+      )
+    Rejected { diagnostics: _ } =>
+      ScopedReferenceSiteCollection {
+        sites: acc.sites,
+        unreadable_roots: list_snoc_item(
+          xs: acc.unreadable_roots,
+          item: UnreadableModuleRoot { locus: node_locus(node: root) }
+        )
+      }
+  }
+}
+
+// `imported` is the names the module's imports bind (v2.compiler.normalized_tree NormalizedTree
+// import_bindings), which the tree under `root` does not carry: they are what a head can be bound by that no
+// frame and no root declaration says.
+fn collect_scoped_module_reference_sites(
+  root: Node,
+  imported: List<Symbol>
+) -> ScopedReferenceSiteCollection {
+  module_reference_sites(acc: empty_scoped_reference_site_collection(), root: root, imported: imported)
+}
+
+// The two plain collectors project the head away (reference_site_collection_of), so no consumer of either
+// can observe which imports they were given, and they are given none.
+fn collect_module_reference_sites(root: Node) -> ReferenceSiteCollection {
+  reference_site_collection_of(scoped: collect_scoped_module_reference_sites(root: root, imported: []))
+}
+
+fn collect_reference_sites(roots: FreeMonoid<Node>) -> ReferenceSiteCollection {
+  reference_site_collection_of(scoped: fold_list(
+    xs: roots,
+    empty: empty_scoped_reference_site_collection(),
+    cons: fn(acc, root) {
+      module_reference_sites(acc: acc, root: root, imported: [])
+    }
+  ))
+}

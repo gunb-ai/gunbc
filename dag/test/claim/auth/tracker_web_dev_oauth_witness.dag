@@ -1,0 +1,351 @@
+module test.claim.auth.tracker_web_dev_oauth_witness
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+
+
+import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
+import std.measure { second_count }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
+import std.keyed_roster { KeyedRosterBuilt }
+import std.roster_frontier { PathSubject, frontier_rows_keyed_roster_build }
+import extdeps.google.workspace { RegisteredWebClient }
+import gunbc.auth.google_workspace_admin_convergence {
+  workspace_identity_admin_obligations, workspace_admin_assess, WorkspaceIdentityBinding, BasicSignInOnly,
+}
+import gunbc.auth.google_workspace_login {
+  GoogleLoginEnvironmentTest, GoogleLoginEnvironmentProd, TrackerWebOauthClientBound, TrackerWebOauthClientUnbound,
+}
+import gunbc.auth.oidc_deployment_config {
+  oidc_secret_from_file_standing, OidcSecretFileMissing, OidcConfigFieldStringUnavailable, oidc_config_env_var,
+}
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_test_oauth_client_binding, tracker_web_test_workspace_identity_binding,
+  tracker_web_oidc_serve_placement, tracker_web_oidc_serve_standing,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcServeConfigured, TrackerWebOidcConsoleReadbackUnsatisfied,
+  tracker_web_oidc_config_document,
+  tracker_web_test_lab_redirect_uri, tracker_web_test_oauth_client_secret_host_path,
+  tracker_web_test_oidc_config_host_path,
+  tracker_web_oauth_standing_for_environment,
+  tracker_web_instance_environment, tracker_web_test_target_owned_domain,
+  tracker_web_test_oauth_client_secret_ref,
+  tracker_web_test_auth_platform_client_assessment,
+  tracker_web_test_registered_web_client_console_readback,
+  tracker_web_test_console_readback_observed_at_epoch,
+  tracker_web_test_console_readback_valid_until_epoch,
+  tracker_web_test_console_readback_observed_at,
+  tracker_web_test_console_readback_valid_until,
+  tracker_web_test_console_readback_unix_int,
+  tracker_web_test_console_observed_redirect_uris,
+  tracker_web_unassigned_redirects,
+  tracker_web_test_srv2_redirect_uri,
+  tracker_web_oauth_frontier_rows,
+}
+import gunbc.live_deploy.emit {
+  apply_step_effects, apply_oidc_config_steps_at,
+  apply_oidc_fragments, compose_host_script_decide_steps, compose_host_script_mutate_steps,
+  oidc_readback_refused_poison,
+  live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
+  LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_oidc_unit_env_at, LiveDeployOidcEnvAdmitted, LiveDeployOidcEnvRefused,
+}
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact, ComposeOwned }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id, srv2_deploy_dashboard_id }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import std.optional { Present, Absent }
+
+fn witness_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha }
+}
+
+test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
+  match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_lab_id) {
+    TrackerWebOidcServeReady { config: cfg } =>
+      let body = tracker_web_oidc_config_document(cfg: cfg)
+      string_contains(s: body, pattern: tracker_web_test_lab_redirect_uri as String)
+        && string_contains(s: body, pattern: tracker_web_test_oauth_client_secret_host_path as String)
+        && string_contains(s: body, pattern: "client_secret_file")
+        && !string_contains(s: body, pattern: "\"client_secret\":")
+    _ => false
+  }
+}
+
+test fn production_serve_unit_emits_without_an_observer_clock() -> Bool {
+  match live_deploy_serve_unit_emission(
+    spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
+    revision: witness_revision(),
+    now_epoch: Absent,
+  ) {
+    LiveDeployServeUnitEmitted { file } =>
+      !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
+  match live_deploy_serve_unit_emission(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    revision: witness_revision(),
+    now_epoch: Absent,
+  ) {
+    LiveDeployServeUnitOidcReadbackRefused { cause } =>
+      string_contains(s: cause as String, pattern: "observer clock unreadable")
+    LiveDeployServeUnitEmitted { file: _ } => false
+  }
+}
+
+test fn production_serve_unit_carries_no_oidc_env() -> Bool {
+  match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_live_id) {
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => true
+    _ => false
+  }
+    && match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
+      Present { value: GoogleLoginEnvironmentProd } => true
+      _ => false
+    }
+    && match tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmentProd) {
+      TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
+      TrackerWebOauthClientBound { binding: _ } => false
+    }
+    && match live_deploy_serve_unit_emission(
+      spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
+      revision: witness_revision(),
+      now_epoch: claim_oidc_now(),
+    ) {
+      LiveDeployServeUnitEmitted { file } =>
+        !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+    }
+}
+
+test fn lab_serve_unit_carries_oidc_env() -> Bool {
+  match tracker_web_instance_environment(instance_id: srv1_dashboard_lab_id) {
+    Present { value: GoogleLoginEnvironmentTest } => true
+    _ => false
+  }
+    && match live_deploy_serve_unit_emission(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      revision: witness_revision(),
+      now_epoch: claim_oidc_now(),
+    ) {
+      LiveDeployServeUnitEmitted { file } =>
+        string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+    }
+}
+
+test fn admin_obligation_redirect_uris_equal_the_binding() -> Bool {
+  let binding = tracker_web_test_workspace_identity_binding()
+  let b = tracker_web_test_oauth_client_binding()
+  match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
+    Absent => false
+    Present { value: ob } =>
+      match ob.desired {
+        RegisteredWebClient { redirect_uris: uris } =>
+          all(uris, x => any(b.redirect_uris, y => x == y)) && all(b.redirect_uris, x => any(uris, y => x == y))
+        _ => false
+      }
+  }
+}
+
+test fn missing_client_secret_file_refuses_with_typed_cause() -> Bool {
+  match oidc_secret_from_file_standing(standing: OidcSecretFileMissing { path: "/etc/gunbc-oidc/missing" }) {
+    OidcConfigFieldStringUnavailable { cause: c } =>
+      string_contains(s: c, pattern: "client_secret_file") && string_contains(s: c, pattern: "does not exist")
+    _ => false
+  }
+}
+
+test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
+  match tracker_web_oidc_serve_placement(instance_id: srv2_deploy_dashboard_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: id } => (id as String) == (srv2_deploy_dashboard_id as String)
+    _ => false
+  }
+    && any(tracker_web_unassigned_redirects(), u =>
+      (u.environment == GoogleLoginEnvironmentTest) && ((u.uri as String) == (tracker_web_test_srv2_redirect_uri as String))
+    )
+    && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
+      KeyedRosterBuilt { rows: roster } =>
+        any(roster, kr => match kr.row_key {
+          PathSubject { path: p } => p == "gunbc-dash-18082.service"
+          _ => false
+        })
+      _ => false
+    }
+}
+
+test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
+  let observed_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_observed_at)
+  let until_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_valid_until)
+  iso8601_utc_text(unix: observed_unix) == "2026-10-11T04:00:00Z"
+    && iso8601_utc_text(unix: until_unix) == "2026-11-10T04:00:00Z"
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: s } => (second_count(s: s) as Int) == observed_unix
+    }
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: s } => (second_count(s: s) as Int) == until_unix
+    }
+    && match tracker_web_test_registered_web_client_console_readback() {
+      Absent => false
+      Present { value: r } => r.observed_at_epoch == observed_unix && r.valid_until_epoch == until_unix
+    }
+}
+
+test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Bool {
+  let base = tracker_web_test_workspace_identity_binding()
+  let drifted = WorkspaceIdentityBinding {
+    customer: base.customer,
+    project: base.project,
+    client: base.client,
+    top_org_unit: base.top_org_unit,
+    redirect_uris: ["https://example.invalid/auth/google/callback" as NonEmptyStr],
+    desired_revision: base.desired_revision,
+  }
+  match workspace_identity_admin_obligations(binding: drifted, discovery: BasicSignInOnly).first() {
+    Absent => false
+    Present { value: ob } =>
+      match tracker_web_test_registered_web_client_console_readback() {
+        Absent => false
+        Present { value: receipt } => match workspace_admin_assess(
+          goal: ob,
+          receipt: receipt,
+          admitted_admins: [workspace_operator_principal()],
+          now_epoch: receipt.observed_at_epoch,
+        ) {
+          GoalDiverged { deviations: _ } => true
+          _ => false
+        }
+      }
+  }
+}
+
+test fn console_readback_is_independent_and_expires() -> Bool {
+  let b = tracker_web_test_oauth_client_binding()
+  let observed = tracker_web_test_console_observed_redirect_uris
+  (b.environment == GoogleLoginEnvironmentTest)
+    && (tracker_web_test_oauth_client_secret_ref.version as String) == "1"
+    && all(observed, x => any(b.redirect_uris, y => x == y))
+    && all(b.redirect_uris, x => any(observed, y => x == y))
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: now } => match tracker_web_test_auth_platform_client_assessment(now_epoch: now) {
+        GoalSatisfied { evidence: _ } => true
+        _ => false
+      }
+    }
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: until } => match tracker_web_test_auth_platform_client_assessment(now_epoch: until) {
+        GoalAssessmentRefused { cause: _ } => true
+        _ => false
+      }
+    }
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: now } => match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: now) {
+        TrackerWebOidcServeConfigured { config: _ } => true
+        _ => false
+      }
+    }
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: until } => match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: until) {
+        TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => true
+        _ => false
+      }
+    }
+    && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
+      KeyedRosterBuilt { rows: roster } =>
+        any(roster, kr => match kr.row_key {
+          PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
+          _ => false
+        })
+      _ => false
+    }
+}
+
+test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let effects = apply_empty_host_effects(spec: spec)
+  match filter(spec.steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      ComposeOwned { kind: OidcConfigArtifact } => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  }).first() {
+    Absent => false
+    Present { value: step } =>
+      let sh = pipeline_steps_text(steps: apply_step_effects(principal: fleet_posix_ci_runner_principal(), step: step, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()))
+      string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
+        && string_contains(s: sh, pattern: "0600")
+        && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
+  }
+}
+
+test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } =>
+      let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+      let fragments = apply_oidc_fragments(spec: spec, oidc_now: Present { value: until })
+      let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
+      string_contains(s: sh, pattern: oidc_readback_refused_poison)
+        && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
+        && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
+  }
+}
+
+test fn lab_apply_oidc_refuses_without_an_observer_clock() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let fragments = apply_oidc_fragments(spec: spec, oidc_now: Absent)
+  let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
+  string_contains(s: sh, pattern: oidc_readback_refused_poison)
+    && string_contains(s: sh, pattern: "observer clock unreadable")
+    && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
+}
+
+test fn lab_serve_unit_emission_refuses_when_console_readback_expired() -> Bool {
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } => match live_deploy_serve_unit_emission_at(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      revision: witness_revision(),
+      now_epoch: until,
+    ) {
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
+      LiveDeployServeUnitEmitted { file: _ } => false
+    }
+  }
+}
+
+test fn lab_oidc_unit_env_refuses_when_console_readback_expired() -> Bool {
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } => match live_deploy_oidc_unit_env_at(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      now_epoch: until,
+    ) {
+      LiveDeployOidcEnvRefused { cause: _ } => true
+      LiveDeployOidcEnvAdmitted { directives: _ } => false
+    }
+  }
+}
+
+test fn production_spec_has_no_oidc_config_artifact() -> Bool {
+  !any(selected_deployment_spec(row: srv1_production_desired_deployment()).steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      ComposeOwned { kind: OidcConfigArtifact } => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  })
+}

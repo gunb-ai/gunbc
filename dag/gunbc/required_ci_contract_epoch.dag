@@ -1,0 +1,385 @@
+module gunbc.required_ci_contract_epoch
+
+import std.types { NonEmptyStr, String, List, Int }
+import std.contract_identity { ContractEpoch }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.optional { Absent, Present }
+import std.algebra { list_append, list_map, fold_list, list_head, skip, length }
+import gunbc.emitted_subject_build_gate {
+  EmittedSubjectBuildRow,
+  EmittedSubjectExecutionContract,
+  emitted_subject_build_rows,
+  emitted_subject_build_label_text,
+  emitted_subject_execution_contract,
+  memory_step_bound,
+  MemoryStepBound,
+  MemoryStepTripUnbound,
+  MemoryStepTripBound,
+  native_product_reuse_env_value,
+}
+import gunbc.host.memory_envelope {
+  MemoryEnvelopeContract,
+  MemoryEnvelopeRequirement,
+  EnvelopeSlotRequired,
+  EnvelopeNotRequested,
+  EnvelopeRequirementUnreadable,
+  memory_envelope_required_ci_contract,
+}
+import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
+import gunbc.source_layout {
+  LayoutNamespaceRoot,
+  LayoutTree,
+  layout_default_tree,
+  layout_governed_roots,
+  layout_namespace_roots,
+  layout_tree_directory,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
+import std.measure { byte_size_count }
+
+// THE REQUIRED CI CONTRACT'S DECLARED EFFECTIVE EPOCH, in one place, because both sides of the
+// comparison must read the SAME authority or the comparison is between two independently writable
+// answers rather than between an observation and a requirement.
+//
+// WHY THIS IS ITS OWN MODULE AND NOT A ROW IN EITHER CONSUMER. Two modules need this value for
+// opposite reasons: gunbc.witness.compiler_gate_workflow EMITS it into the workflow the required run
+// executes, so the epoch is observable at the exact commit that ran; gunbc.fleet.fleet_revision_acceptance
+// REQUIRES it, so fleet admission can refuse a contract whose obligations were revised under an
+// unchanged name. Putting the value in either consumer would make the other import its peer for a
+// single datum and would give the emitting side authority over what the judging side requires --
+// which is the layer inversion §3 names, and would also make the epoch trivially self-satisfying.
+//
+// WHAT MOVES THIS VALUE. The epoch is a digest of required_ci_obligation_rows after canonicalizing
+// by identity. Each payload is a value the executing fold is handed: the required context name, the
+// product-reuse env and fault-experiment skip/run tokens the subject step emits, the memory
+// requirement and slot sizes plus the effective per-step trip (memory_step_bound over the fleet
+// cgroup-ownership fact), the layout default tree / governed roots / namespace roots
+// repository_storage_layout is handed, and the declared refusal classes parse_population begins
+// with. Adding, removing, or changing those values moves the digest; permuting a list whose order
+// is not semantic does not; a duplicated identity refuses. Do NOT digest the workflow text, env-var
+// names, why-text, or a Bool that names a behaviour the executing path does not read. refuse_oom /
+// refuse_swap stay out until the retained CLI evaluates memory_envelope_verdict. The preimage is a
+// tagged encoding (string / int / list / record) so list boundaries cannot collide with commas.
+//
+// THE HONEST RUNG. A cross-epoch admission is MECHANICALLY PREVENTED by the production join that
+// compares this required value against the observed one. Materiality of the hashed VALUES is
+// derived from those executing authorities. Materiality of what the folds DO with those values
+// (the walk, the parse, OOM/swap refusal in the host mirror) remains the folds themselves —
+// declared-version diligence until acceptance can derive contract materiality from the contract's
+// own surface. Classifying a new step as an obligation row is the residual manual question.
+
+// THE REQUIRED CONTEXT NAME, one spelling. gunbc.witness.compiler_gate_workflow's job id,
+// gunbc.witness.witness_floor_workflow_job_id, and gunbc.repo.repo_ruleset desired_required_contexts
+// all read this. A second literal "v2-bootstrap" beside it is the nickname this module exists to
+// close (operator-approved name, 2026-10-10).
+data required_ci_context_name: NonEmptyStr = "v2-bootstrap" as NonEmptyStr
+
+// ONE ROW PER OBLIGATION, NEVER PER STEP. The arm is the identity class; the payload is the
+// semantic contract the executing authority discharges. Two rows of one singleton class are a
+// duplicated identity, not two obligations.
+type RequiredCiEmittedSubjectObligation {
+  row: EmittedSubjectBuildRow
+  execution: EmittedSubjectExecutionContract
+}
+
+type RequiredCiObligation
+  = RequiredContextObligation { name: NonEmptyStr }
+  | EmittedSubjectObligation { subject: RequiredCiEmittedSubjectObligation }
+  | MemoryEnvelopeObligation { contract: MemoryEnvelopeContract, step_bound: MemoryStepBound }
+  | SourceLayoutObligation { default_tree: LayoutTree, governed_roots: List<String>, namespace_roots: List<LayoutNamespaceRoot> }
+  | PopulationParseObligation { classes: List<RefusalClass> }
+
+type RequiredCiCanonicalization
+  = RequiredCiCanonical { rows: List<RequiredCiObligation> }
+  | RequiredCiDuplicateIdentity { identity: NonEmptyStr }
+
+type RequiredCiContractEpochDerivation
+  = RequiredCiEpochDerived { epoch: ContractEpoch }
+  | RequiredCiObligationIdentityDuplicated { identity: NonEmptyStr }
+  | RequiredCiMemoryRequirementUnreadable { raw: String }
+
+fn required_ci_emitted_subject_obligations() -> List<RequiredCiEmittedSubjectObligation> {
+  list_map(xs: emitted_subject_build_rows(), f: fn(row) {
+    RequiredCiEmittedSubjectObligation { row: row, execution: emitted_subject_execution_contract }
+  })
+}
+
+fn required_ci_obligation_rows() -> List<RequiredCiObligation> {
+  list_append(
+    left: [RequiredContextObligation { name: required_ci_context_name }],
+    right: list_append(
+      left: list_map(xs: required_ci_emitted_subject_obligations(), f: fn(subject) {
+        EmittedSubjectObligation { subject: subject }
+      }),
+      right: [
+        MemoryEnvelopeObligation {
+          contract: memory_envelope_required_ci_contract(),
+          step_bound: memory_step_bound(ownership: gunbc_runner_slot_job_cgroup_ownership),
+        },
+        SourceLayoutObligation {
+          default_tree: layout_default_tree(),
+          governed_roots: layout_governed_roots(),
+          namespace_roots: layout_namespace_roots(),
+        },
+        PopulationParseObligation { classes: parse_population_declared_refusal_classes() },
+      ],
+    ),
+  )
+}
+
+fn required_ci_encode_str(s: String) -> String {
+  concat(concat("s", concat(to_string(string_length(s: s)), ":")), s)
+}
+
+fn required_ci_encode_int(n: Int) -> String {
+  concat(concat("i", to_string(n)), ";")
+}
+
+fn required_ci_encode_list(encoded_elems: List<String>) -> String {
+  concat(concat("l", concat(to_string(length(xs: encoded_elems)), ":")), join(encoded_elems, ""))
+}
+
+fn required_ci_encode_field(name: String, encoded_value: String) -> String {
+  concat(required_ci_encode_str(s: name), encoded_value)
+}
+
+fn required_ci_encode_record(fields: List<String>) -> String {
+  concat(concat("r", concat(to_string(length(xs: fields)), ":")), join(fields, ""))
+}
+
+fn required_ci_sorted_strings(xs: List<String>) -> List<String> {
+  sort_by(xs, fn(s) { s })
+}
+
+fn required_ci_layout_tree_digest(tree: LayoutTree) -> String {
+  required_ci_encode_str(s: layout_tree_directory(tree: tree))
+}
+
+fn required_ci_namespace_root_digest(root: LayoutNamespaceRoot) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "namespace", encoded_value: required_ci_encode_str(s: root.namespace)),
+    required_ci_encode_field(name: "tree", encoded_value: required_ci_layout_tree_digest(tree: root.tree)),
+    required_ci_encode_field(name: "elides", encoded_value: if root.elides_namespace { "t" } else { "f" }),
+  ])
+}
+
+fn required_ci_layout_policy_digest(default_tree: LayoutTree, governed_roots: List<String>, namespace_roots: List<LayoutNamespaceRoot>) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "default_tree", encoded_value: required_ci_layout_tree_digest(tree: default_tree)),
+    required_ci_encode_field(
+      name: "governed_roots",
+      encoded_value: required_ci_encode_list(
+        encoded_elems: list_map(xs: required_ci_sorted_strings(xs: governed_roots), f: fn(s) { required_ci_encode_str(s: s) })
+      )
+    ),
+    required_ci_encode_field(
+      name: "namespace_roots",
+      encoded_value: required_ci_encode_list(
+        encoded_elems: list_map(
+          xs: sort_by(namespace_roots, fn(root) { root.namespace }),
+          f: fn(root) { required_ci_namespace_root_digest(root: root) }
+        )
+      )
+    ),
+  ])
+}
+
+fn required_ci_refusal_class_digest(c: RefusalClass) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "drop", encoded_value: required_ci_encode_str(s: c.drop)),
+    required_ci_encode_field(name: "cause", encoded_value: required_ci_encode_str(s: c.cause)),
+    required_ci_encode_field(
+      name: "keys",
+      encoded_value: required_ci_encode_list(
+        encoded_elems: list_map(xs: required_ci_sorted_strings(xs: c.keys), f: fn(k) { required_ci_encode_str(s: k) })
+      )
+    ),
+  ])
+}
+
+fn required_ci_parse_population_digest(classes: List<RefusalClass>) -> String {
+  required_ci_encode_list(
+    encoded_elems: list_map(
+      xs: sort_by(classes, fn(c) { required_ci_refusal_class_digest(c: c) }),
+      f: fn(c) { required_ci_refusal_class_digest(c: c) }
+    )
+  )
+}
+
+fn required_ci_execution_digest(contract: EmittedSubjectExecutionContract) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "reuse", encoded_value: required_ci_encode_str(s: native_product_reuse_env_value(contract: contract))),
+    required_ci_encode_field(name: "fault_skip", encoded_value: required_ci_encode_str(s: contract.fault_experiment_skip)),
+    required_ci_encode_field(name: "fault_run", encoded_value: required_ci_encode_str(s: contract.fault_experiment_run)),
+  ])
+}
+
+fn required_ci_requirement_digest(requirement: MemoryEnvelopeRequirement) -> String {
+  match requirement {
+    EnvelopeSlotRequired =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "slot_required")),
+      ])
+    EnvelopeNotRequested =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "not_requested")),
+      ])
+    EnvelopeRequirementUnreadable { raw: raw } =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "unreadable")),
+        required_ci_encode_field(name: "raw", encoded_value: required_ci_encode_str(s: raw)),
+      ])
+  }
+}
+
+fn required_ci_memory_digest(contract: MemoryEnvelopeContract, step_bound: MemoryStepBound) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "requirement", encoded_value: required_ci_requirement_digest(requirement: contract.requirement)),
+    required_ci_encode_field(name: "memory_max", encoded_value: required_ci_encode_int(n: byte_size_count(b: contract.memory_max))),
+    required_ci_encode_field(name: "memory_swap_max", encoded_value: required_ci_encode_int(n: byte_size_count(b: contract.memory_swap_max))),
+    required_ci_encode_field(name: "step_trip", encoded_value: match step_bound {
+      MemoryStepTripUnbound =>
+        required_ci_encode_record(fields: [
+          required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "unbound")),
+        ])
+      MemoryStepTripBound { bytes: bytes } =>
+        required_ci_encode_record(fields: [
+          required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "bound")),
+          required_ci_encode_field(name: "bytes", encoded_value: required_ci_encode_int(n: byte_size_count(b: bytes))),
+        ])
+    }),
+  ])
+}
+
+fn required_ci_obligation_identity_text(row: RequiredCiObligation) -> String {
+  match row {
+    RequiredContextObligation { name: _ } => "required_context_name"
+    EmittedSubjectObligation { subject: subject } =>
+      concat("emitted_subject_built_and_started\t", emitted_subject_build_label_text(row: subject.row))
+    MemoryEnvelopeObligation { contract: _, step_bound: _ } => "memory_envelope"
+    SourceLayoutObligation { default_tree: _, governed_roots: _, namespace_roots: _ } => "source_layout_check"
+    PopulationParseObligation { classes: _ } => "population_parse"
+  }
+}
+
+fn required_ci_obligation_payload_digest(row: RequiredCiObligation) -> String {
+  match row {
+    RequiredContextObligation { name: name } => required_ci_encode_str(s: name as String)
+    EmittedSubjectObligation { subject: subject } =>
+      required_ci_execution_digest(contract: subject.execution)
+    MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+      required_ci_memory_digest(contract: contract, step_bound: step_bound)
+    SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+      required_ci_layout_policy_digest(default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots)
+    PopulationParseObligation { classes: classes } =>
+      required_ci_parse_population_digest(classes: classes)
+  }
+}
+
+fn required_ci_obligation_line(row: RequiredCiObligation) -> String {
+  required_ci_encode_record(fields: [
+    required_ci_encode_field(name: "id", encoded_value: required_ci_encode_str(s: required_ci_obligation_identity_text(row: row))),
+    required_ci_encode_field(name: "payload", encoded_value: required_ci_obligation_payload_digest(row: row)),
+  ])
+}
+
+fn required_ci_reject_duplicates(remaining: List<RequiredCiObligation>, previous: String?) -> String? {
+  match list_head(xs: remaining) {
+    Absent => Absent
+    Present { value: row } =>
+      let id = required_ci_obligation_identity_text(row: row)
+      match previous {
+        Absent => required_ci_reject_duplicates(remaining: skip(xs: remaining, n: 1), previous: Present { value: id })
+        Present { value: prev } =>
+          if prev == id {
+            Present { value: id }
+          } else {
+            required_ci_reject_duplicates(remaining: skip(xs: remaining, n: 1), previous: Present { value: id })
+          }
+      }
+  }
+}
+
+fn required_ci_canonicalize(rows: List<RequiredCiObligation>) -> RequiredCiCanonicalization {
+  let sorted = sort_by(rows, fn(r) { required_ci_obligation_identity_text(row: r) })
+  match required_ci_reject_duplicates(remaining: sorted, previous: Absent) {
+    Absent => RequiredCiCanonical { rows: sorted }
+    Present { value: id } => RequiredCiDuplicateIdentity { identity: id as NonEmptyStr }
+  }
+}
+
+fn required_ci_obligation_digest_text(rows: List<RequiredCiObligation>) -> String {
+  fold_list(xs: rows, empty: "", cons: fn(acc, row) { concat(acc, required_ci_obligation_line(row: row)) })
+}
+
+fn required_ci_requirement_unreadable_raw(requirement: MemoryEnvelopeRequirement) -> String? {
+  match requirement {
+    EnvelopeRequirementUnreadable { raw: raw } => Present { value: raw }
+    EnvelopeSlotRequired => Absent
+    EnvelopeNotRequested => Absent
+  }
+}
+
+fn required_ci_unreadable_requirement(rows: List<RequiredCiObligation>) -> String? {
+  fold_list(
+    xs: rows,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: raw } => Present { value: raw }
+        Absent =>
+          match row {
+            MemoryEnvelopeObligation { contract: contract, step_bound: _ } =>
+              required_ci_requirement_unreadable_raw(requirement: contract.requirement)
+            RequiredContextObligation { name: _ } => Absent
+            EmittedSubjectObligation { subject: _ } => Absent
+            SourceLayoutObligation { default_tree: _, governed_roots: _, namespace_roots: _ } => Absent
+            PopulationParseObligation { classes: _ } => Absent
+          }
+      }
+    }
+  )
+}
+
+fn required_ci_contract_epoch_of(rows: List<RequiredCiObligation>) -> RequiredCiContractEpochDerivation {
+  match required_ci_unreadable_requirement(rows: rows) {
+    Present { value: raw } => RequiredCiMemoryRequirementUnreadable { raw: raw }
+    Absent =>
+      match required_ci_canonicalize(rows: rows) {
+        RequiredCiCanonical { rows: sorted } =>
+          RequiredCiEpochDerived {
+            epoch: serialize_content_hash(hash: content_hash_of_value(value: required_ci_obligation_digest_text(rows: sorted) as NonEmptyStr)) as ContractEpoch
+          }
+        RequiredCiDuplicateIdentity { identity: identity } =>
+          RequiredCiObligationIdentityDuplicated { identity: identity }
+      }
+  }
+}
+
+data required_ci_contract_epoch_derivation: RequiredCiContractEpochDerivation = required_ci_contract_epoch_of(
+  rows: required_ci_obligation_rows()
+)
+
+fn required_ci_contract_epoch_is_derived() -> Bool {
+  match required_ci_contract_epoch_derivation {
+    RequiredCiEpochDerived { epoch: _ } => true
+    RequiredCiObligationIdentityDuplicated { identity: _ } => false
+    RequiredCiMemoryRequirementUnreadable { raw: _ } => false
+  }
+}
+
+fn required_ci_contract_epoch_yaml_value() -> String {
+  match required_ci_contract_epoch_derivation {
+    RequiredCiEpochDerived { epoch: epoch } => epoch as String
+    RequiredCiObligationIdentityDuplicated { identity: identity } =>
+      concat("REFUSED-duplicate-identity:", identity as String)
+    RequiredCiMemoryRequirementUnreadable { raw: raw } =>
+      concat("REFUSED-unreadable-memory-requirement:", raw)
+  }
+}
+
+// The env member name the workflow authority emits and the exact-commit reader looks up. It is
+// declared here beside the value because the KEY and the VALUE are one fact about how this epoch is
+// carried: a reader looking up a key the emitter does not write, or an emitter writing a key no
+// reader looks up, is the same fork in two directions.
+data required_ci_contract_epoch_env_key: NonEmptyStr = "GUNBC_REQUIRED_CI_CONTRACT_EPOCH" as NonEmptyStr

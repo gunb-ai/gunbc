@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.reference_reader_without_postfix_handling_drops_call_sites
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data reference_reader_without_postfix_handling_drops_call_sites: RecurringFailureMode = RecurringFailureMode {
+  identity: "reference_reader_without_postfix_handling_drops_call_sites" as NonEmptyStr,
+  receipts: [
+    "**a reference reader with no postfix handling silently omits the callee and argument sites of a dotted call, and Accepts** (INVALID STATE: a site enumerator that recognises a qualified name only where one grammar production survives -- here ^dag_surface_qualified_name and the import productions on the PARSE tree -- returns a site set with no member for `a.b.f(x: a.b.v)`, because a dotted call parses as a postfix chain and its argument sits inside the call suffix; nothing in the reader's answer distinguishes 'no references here' from 'references here in a shape I do not read').",
+    "HARM. The reader's population was the reference half of a dependency census and a closure walk (v2.lens.reference_deps reference_file_census, reference_closure_bfs_parsed_walk). Every module reached only through a dotted call or a qualified call argument contributed no edge, so the census under-counted and the closure could omit a module that a body actually calls -- a smaller, plausible answer, never a refusal.",
+    "DISTINGUISHING FACTS, against the neighbours that look like it. dotted_reference_truncated_at_v2_body_lowering truncated the NORMALIZED tree, so every reader of that tree lost the tail; this row is a READER defect over an intact tree -- the parse tree carried the whole call, and the sibling reader over the normalized tree (v2.compiler.reference_site_collector collect_reference_sites) saw both sites. call_expression_erased_at_v2_body_lowering likewise dropped call contents from the tree itself. The discriminator is two readers over the same source: if one sees the site and the other does not, the defect is in the reader, not the tree.",
+    "RECEIPT (2026-10-01, bold-crane-252). claim_batch over v2.test.claim.namespace_xl0.qualified_site_enumerator_differential, fixture `fn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }`, with each half of the agreement cells negated in turn: negating the parse-walker half turned both new cells GREEN and negating the collector half left them RED, so the walker returned neither spelling and the collector returned both. The two pre-existing cells (qualified parameter type, qualified field type) agreed.",
+    "REPAIR, landed in the same change: the parse walker reference_sites_from_parsed_module and its census and closure consumers were deleted rather than given a postfix arm (replacement migration, DESIGN section 3) -- the collector over the tree the resolver consumes is the one authority for reference sites, and v2.lens.module_graph dependency_resolution_facts_live (import facts plus collector-derived edges) is the one edge producer. The cells were kept as collector exact-site-set regression controls.",
+    "RUNG FOUND AT: outside the ladder -- silent wrongness. The reader Accepted with an incomplete site set.",
+    "CEILING: structurally guaranteed. Whether a reader's site set covers every reference position the grammar can produce is decidable against the grammar's rows. Current rung: mechanically preventable -- the exact-site-set cells in qualified_site_enumerator_differential red if the collector loses either call site or gains an extra one, for that one fixture shape.",
+    "NEXT-RUNG TRIGGER, naming the capability: reference sites enumerated from the grammar's own relation rows read forward (the forward body producer, v2.compiler.body_producer_forward) so that a reference position has no reader-local recogniser in which a postfix arm can be absent, for EVERY reference position the grammar produces, not this fixture's two."
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.reference_site_collector", decl_name: "collect_reference_sites", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential", decl_name: "collector_sees_exactly_the_dotted_callee_site_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential", decl_name: "collector_sees_exactly_the_call_argument_site_holds", field: WholeDeclaration },
+  ],
+}

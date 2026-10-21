@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_convergence_precondition_decided_after_the_binary_swap
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_convergence_precondition_decided_after_the_binary_swap: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_convergence_precondition_decided_after_the_binary_swap" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: live_deploy tree convergence has a precondition that is decidable from the object source before any host mutation (the source's git partial-clone standing: extensions.partialClone, remote.*.promisor, remote.*.partialclonefilter; shallow is observed and does not refuse without a specimen), but the apply Decide phase admits that source by path shape only. The first execution of the transfer is gunbc-tree-sync.service ExecStart after Mutate has already installed /opt/gunbc/bin/gunbc.",
+
+    "HARM, srv1-live, 2026-10-14 21:00Z: apply of 4242613b installed the new binary, then tree-sync refused (UserSessionAbsent -- wrap_refusal_after_host_script_proceed_mutation). The tree stayed at 08d0768bfed. Operator recovery ran repository_converge_owner_wet with object_source=/tmp/gunbc-deploy-4242613b and refused twice before any ref moved: srv1 packaged git 1:2.43.0-1ubuntu7.3 printed upload-pack 'lazy fetching disabled' then 'could not fetch <oid> from promisor remote'; pack-objects died. git-upload-pack(1) documents that default as GIT_NO_LAZY_FETCH internally set to 1. The new binary over the old tree fails to compile the serve entries, so roadmap, fabric storage and the tailnet door crash-loop. A correct loud refusal at the started unit still leaves the host broken. The 87cf694f apply would have done the same again.",
+
+    "DISTINGUISHING FACT FROM wrap_refusal_after_host_script_proceed_mutation: both are decide-after-mutate on the same apply, and 4242613b is a shared specimen. wrap_refusal's subject is wrap standing (UserSessionAbsent / UncappedSystemSlice) classified from the STARTED unit's cgroup after slice-control Mutate; its next-rung trigger is a Decide over the unit's modeled Slice=. This class's subject is the object source's ability to serve objects, readable from git config / rev-parse on the path GUNBC_TREE_SRC will name, with no unit start required. Climbing wrap_refusal does not refuse a promisor checkout; climbing this class does not classify wrap standing. Same geometry, different subject, different trigger -- not the same row.",
+
+    "DISTINGUISHING FACT FROM a_deploy_that_observes_its_own_service_cannot_repair_it: that class is health observation blocking repair. This class is a git serving-capability admission that ran after the binary swap. The crash-loop is a consequence of the swap-then-refuse order, not of observing /healthz.",
+
+    "RECOGNITION RULE: apply Mutate includes the serve-binary install; later tree-sync or an operator ExecStart of repository_converge_wet refuses git fetch with upload-pack lazy-fetch / promisor / pack-objects died; the target HEAD is still the previous revision.",
+
+    "RUNG FOUND AT: mitigatable -- the fetch refuses with git's own fatal and the apply does not fabricate convergence, but the binary is already swapped. CEILING: structurally guaranteed once apply Decide inspects the same $PWD expansion written as GUNBC_TREE_SRC (apply_tree_src_expansion_var / apply_object_source_pwd_serve_decide_command) before any Mutate, and a supplied promisor standing cannot reach compose_host_script MutateStepsAdmitted. NEXT-RUNG TRIGGER: those Decide steps are in the production apply script and a promisor $PWD fails them before the binary install.",
+
+    "CONSUMPTION: extdeps.git.partial_clone object_source_serve_admission / observe_object_source_serve; gunbc.live_deploy.repository_convergence_placement convergence_operands_for; gunbc.live_deploy.emit apply_object_source_serve_fragments. Claims: test.claim.live_deploy.object_source_serve_witness, test.claim.repository_convergence_placement_witness, inhabitance test.claim.live_deploy.object_source_serve_real_execution.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.git.partial_clone", decl_name: "object_source_serve_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.live_deploy.emit", decl_name: "apply_object_source_serve_fragments", field: WholeDeclaration },
+  ],
+}

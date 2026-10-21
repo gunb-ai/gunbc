@@ -1,0 +1,5 @@
+module test.fixture.demand_closure.behind_gate
+
+import std.types { Int }
+
+fn demand_closure_behind_gate_value() -> Int { 3 }

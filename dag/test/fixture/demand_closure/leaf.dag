@@ -1,0 +1,8 @@
+module test.fixture.demand_closure.leaf
+
+import std.types { Int }
+import test.fixture.demand_closure.shared { demand_closure_shared_value }
+
+fn demand_closure_leaf_value() -> Int {
+  demand_closure_shared_value() + 1
+}

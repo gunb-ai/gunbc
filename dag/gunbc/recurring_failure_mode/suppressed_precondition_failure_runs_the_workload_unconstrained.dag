@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data suppressed_precondition_failure_runs_the_workload_unconstrained: RecurringFailureMode = RecurringFailureMode {
+  identity: "suppressed_precondition_failure_runs_the_workload_unconstrained" as NonEmptyStr,
+
+  receipts: [
+    "**a precondition that establishes the ENVIRONMENT a workload runs in fails, its diagnostic is discarded, and the workload proceeds in the unconstrained world while every observable it produces is identical to the constrained one** (INVALID STATE: a run reported as bounded -- capped, sandboxed, flag-carrying, quota-bearing -- when the operation that was to bound it refused. The workload's own output cannot discriminate, because a limit that is never approached and a limit that was never applied produce the same bytes, the same exit code and the same duration.)",
+
+    "WHY IT IS NOT `control_plane_acknowledgement_minted_as_effect`, whose DISTINGUISHING FACTS exclude it in as many words: that class requires that every precondition genuinely HELD and that no diagnostic fires, and calls the defect a category substitution rather than a missing validation. Here the precondition did NOT hold and the diagnostic DID fire -- it was thrown away. Nor is it `absorbing_fallback`: nothing widened and no plausible value was substituted. The failure arm was not taken at all, so there is no arm to inspect.",
+
+    "WHY IT SURVIVES: the suppression is usually incidental rather than considered -- a `2>/dev/null` reaching one command further than intended, a `|| true`, an ignored non-zero in the middle of a pipeline -- so there is no moment at which an author decides to proceed unbounded. And the next N steps all succeed, loudly and correctly, which reads as confirmation.",
+
+    "THE DISCRIMINATOR IS OBSERVABILITY, NOT CARE, and it is what makes readback mandatory rather than prudent. Ask: if this precondition had failed, would anything in the subject's own output differ? Where the answer is no, the exit status of the setting call is a CONTROL-side fact and the only subject-side fact is a read of the realized environment -- the kernel's membership, the receiving process's view of the flag, the mount's actual options. Reading back the DESIRED value is not enough and not what is meant: `cgroup.procs` containing the pid is the kernel's own answer about membership, whereas the write returning 0 is the request.",
+
+    "EVIDENCE, EXECUTED, 2026-09-19 on srv1 (a shared 502 GiB host carrying six live CI runner slots and 400+ sessions). A probe intended to verify that a cgroup memory receipt survives an OOM kill placed its child with `echo $PID > $CG/cgroup.procs` inside a block carrying `2>/dev/null`. The write failed EPERM -- a pid cannot be moved ACROSS a delegation boundary, from `session-N.scope` into a cgroup under `user@1000.service` -- so the 256 MiB cap was never applied and an unbounded allocation loop ran free. The shape was repeated once before it was noticed. The host went from roughly 315 GiB available to 29 GiB. Measured aftermath: no collateral damage -- the only OOM kill in the window was a correctly-capped earlier probe with `constraint=CONSTRAINT_MEMCG`, and all six runner slots stayed loaded/active/running -- but the absence of harm was luck, not construction.",
+
+    "THE SAME CLASS IS ALREADY NAMED ELSEWHERE IN THIS REPOSITORY'S OPERATING GUIDANCE, which is the argument that it generalises past cgroups: `ctrl-build` prints `forwarding env: ...` on every remote dispatch precisely because a forwarded build flag that never reached rustc produces a GREEN BUILD THAT PROVES NOTHING, and the standing instruction is to STOP if it says `(none)`. Same invalid state, different environment knob: the subject cannot tell you whether the flag arrived, so the harness must report the realized environment separately.",
+
+    "RUNG: found BELOW the ladder -- nothing refuses, nothing counts, and the run reports success. CEILING 2, mechanically preventable, at the harness rather than in the substrate: a helper that establishes an environment can REFUSE to start the workload until it has read the realized environment back, which makes the unconstrained run unreachable through that helper. It cannot climb to 3 or 4 for hand-written shell, because a shell author can always write the unverified form directly.",
+
+    "NEXT-RUNG TRIGGER: a single modelled supervisor that owns environment establishment for measurement runs -- create the cgroup, SPAWN the child into it (never move it), read back membership and the realized limits, and only then exec the workload -- so that measurement runs reach the environment through a route that cannot skip the readback. The floor-memory qualification supervisor is the first consumer; until it exists this row is consumed by author diligence only, which this receipt is the evidence is insufficient.",
+
+    "REVIEW TELL: `2>/dev/null`, `|| true`, or an unchecked exit status on any call that sets a limit, joins a cgroup, forwards a variable, mounts, or drops a privilege; a measurement whose write-up states the cap it intended rather than the cap it read back; and a harness that reports what it REQUESTED of the environment in the same breath as what it MEASURED of the subject.",
+  ],
+
+  evidence: [],
+}

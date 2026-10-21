@@ -1,0 +1,8 @@
+module gunbc.plan_registry_batch_d
+
+import gunbc.plan { Plan }
+import gunbc.plans.interpreter_kernel_d { interpreter_kernel_d_plan }
+
+data batch_d_plans: List<Plan> = [
+  interpreter_kernel_d_plan
+]

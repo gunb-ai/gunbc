@@ -1,0 +1,105 @@
+module gunbc.rung_drop.source_root_ingest_gate_rung_drop
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// THE FLOOR CUT OWED THIS DECLARATION AND FILED NONE. Recorded 2026-08-21 against the cut of
+// 2026-08-15, not against any change since.
+//
+// WHY IT WAS MISSED, which is the part worth keeping: nobody deleted this gate. It was re-homed
+// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci.ci_materialization
+// Receipt 6 records that re-homing as what dropped the declared floor resolve count from 3 to 1 --
+// and the cadence was deleted outright three weeks later. That is why the gate is absent from the
+// cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers.
+//
+// WHY THE TEMPORARY RUNG IS OFF THE LADDER RATHER THAN LOW ON IT. The class is not a guarantee
+// that fell a step; it is an OPERATION that lost its only route. There is nothing to mitigate,
+// because nothing can be attempted. Placing it on the ladder would imply a residual guarantee
+// that does not exist. Same shape as the regen-cut producer declaration in DESIGN.
+//
+// WHAT THIS IS NOT: a missing integration. Everything the gate composes is built and believed
+// correct -- four invocation sites, the composing gate, the admission roster, and a cost receipt
+// that measured it twice. It needs a caller, which makes it the cheapest item on the re-add queue.
+//
+// THE COUPLING, so the passenger error is not committed a second time: re-adding the falsifier
+// cadence does NOT restore this gate. The cadence is being re-derived from first principles rather
+// than restored, so nothing inherits by having once ridden along, and closing the cadence row does
+// not close this one.
+//
+// EVIDENCE GRADE, because this is a claim about an absence: the invocation sites, the callers, the
+// scheduling arm below and the three absent files were each read directly. "No other scheduler
+// exists" rests entirely on .github/workflows holding exactly two files, which is checkable in one
+// command and is the whole basis. No execution was attempted. The day a third workflow lands, this
+// row can become false with nobody having touched it.
+//
+// DECLARED 2026-08-28 IN gunbc.instruments.ci_gates AND ROSTERED NOWHERE UNTIL THIS FILE.
+// It was read by that module's SourceRootIngestGate arm, which refused with this row's own rendering.
+//
+// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority), NOT RETIRED: the
+// restoration trigger above did NOT fire -- no live workflow reaches the gate, because the gate, its
+// three transports, the host manifest stubs and the seed bin that fed them were DELETED. Whole-
+// repository ingest was abolished on purpose: a compile reads the modules it requested and nothing
+// else, and no compiler API takes a whole-repository ingest. What supersedes the gate is the cutover's
+// own required steps, and the three of them cover the gate's subjects as follows (each claim of the
+// population, by the check that now holds its subject):
+//
+//   program_assembly real_ingest (roots parse; validate_module_roots accepts) -- the layout check
+//     holds that every governed file sits at the position its module name derives and that no two
+//     files claim one name, and the population parse holds that every governed file front-ends. Both
+//     run as steps of the one required job, over the same file population the deleted claim sampled.
+//   self_host compiler_closure_emit_from_ingest (the closure's scoped ingest parses, its receipt
+//     describes the carrier, an overflow is never an empty ingest) -- the read-set receipt on native
+//     closure emission: the acquirer holds the read set equal to the requested closure exactly, so a
+//     closure cannot be silently short, wider, or empty. The inline-list cap and the elision arm it
+//     guarded no longer exist, because there is no manifest to elide.
+//   self_host compiler_closure_ingest_boundary_witness (the exact-cap boundary of the inline
+//     manifest) -- NO RESIDUAL SUBJECT: the cap was a property of the host manifest carrier, which is
+//     deleted; the read-set receipt has no cap to sit at.
+//   explicit_witness_admission source_root_ingest_gate_admitted_witness (the gate is an admitted
+//     explicit witness) -- NO RESIDUAL SUBJECT: its subject was the gate's own admission, deleted with
+//     the gate and its Gate-coproduct arm.
+//   self_host crate_layout_witness (the emitted crate's partition properties) -- NOT COVERED by any of
+//     the three: the two native closure emissions build the emitted crates, so a partition that does
+//     not compile is refused, but the witness's own assertions about the partition are evaluated by
+//     no required step. That subject goes to gunbc.rung_drop v1_required_lanes_withdrawn, named
+//     explicitly, and the witness stays marker-enrolled for the day the native compiler judges the
+//     population that drop describes. (Its stale transport exclusion was removed with the transports.)
+//
+// THE DECLARATION BELOW IS KEPT AS THE HISTORY OF WHAT WAS LOST: previous rung, temporary rung, reason
+// and population are the 2026-08-28 reading, and the trigger names modules that no longer exist
+// because the ruling ended the row rather than the trigger. The rung-drop declaration renderer takes
+// this row as a live specimen of the typed arm, so the declaration stays whole.
+
+data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
+  identity: "source_root_ingest_gate" as NonEmptyStr,
+
+  subject: "v2.workflow.source_root_ingest_gate",
+
+  declared: "2026-08-28",
+
+  standing: Superseded {
+    ruling: "the operator ruling of 2026-10-11 on the source layout cutover (the ruling that abolished whole-repository ingest): a compile reads and retains only the modules it requests, no compiler API takes a whole-repository ingest, and the dead gate family was deleted rather than scheduled. The restoration trigger did NOT fire -- no live workflow reaches the gate. Superseding authority: the layout check, the population parse and the read-set receipt on native closure emission, each a required step of the witnesses job; the per-claim coverage is in the annotation above" as NonEmptyStr,
+    decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (delete the family; name the cutover's own required steps as the superseding authority; send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
+  },
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
+    population: [
+    "v2.workflow.source_root_ingest_gate",
+    "v2.workflow.source_root_ingest_transport",
+    "v2.workflow.compiler_closure_ingest_transport",
+    "v2.workflow.module_binding_supply_transport",
+    "src/v1/stage0/src/bin/discover_owned_data.rs",
+    "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
+    "src/v2/test/claim/program_assembly/real_ingest.dag",
+    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag",
+    "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag",
+    "src/v2/test/claim/self_host/crate_layout_witness.dag"
+    ],
+    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
+  }
+}

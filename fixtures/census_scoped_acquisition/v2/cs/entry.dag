@@ -1,0 +1,7 @@
+module v2.cs.entry
+
+import v2.cs.ok { ok_value }
+import v2.cs.broken { broken_value }
+import v2.cs.missing { missing_value }
+
+data entry_value: Int = ok_value

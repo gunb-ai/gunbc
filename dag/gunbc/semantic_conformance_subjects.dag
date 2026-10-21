@@ -1,0 +1,71 @@
+module gunbc.semantic_conformance_subjects
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.semantic_conformance {
+  PrimarySemanticAuthority, AuthoredExpectedOutcome,
+  ExpectedOutcome, ExpectsRefusal,
+  BehaviorSubject, BehaviorSubjectIdentity, ContractFacet, RefusalBehaviorFacet,
+}
+
+// THE FIRST AUTHORED PRODUCTION SUBJECT, ordered by the XL-N manager 2026-08-29: cross-module
+// closed-coproduct exhaustiveness. The authority is the authored language contract, not any
+// implementation's behavior: a match over a closed coproduct with no catch-all must cover every
+// variant, and the acceptance path must refuse a non-exhaustive one with a diagnostic that names
+// the omitted variants -- across a module boundary exactly as within one, because the coproduct's
+// closure is a property of its declaration, not of who can see it. THE OCCASION IS A MEASURED SEED
+// DEFECT: main's seed checker currently fails to fire on the cross-module shape (under repair in a
+// separate lane), so v1's answer on these fixtures is exactly the observation this lane's central
+// rule refuses to promote -- a supplementary probe, and here a probe known to be wrong, which is
+// the cleanest demonstration available of why a value copied from v1 is not an expected value.
+// This subject is what proves the NATIVE compiler does not inherit the seed's blindness.
+
+// The retained consumer whose contract this facet belongs to is the acceptance path itself:
+// every retained consumer of evaluation relies on the floor's refusal behavior, and the compile
+// entry is the declaration that owns it.
+data cross_module_exhaustiveness_subject_identity: BehaviorSubjectIdentity = BehaviorSubjectIdentity {
+  retained_consumer: decl_ref(module_path: "v2.compiler.compile", decl_name: "compile"),
+  facet: RefusalBehaviorFacet,
+}
+
+// FIXTURE SOURCES, AS DATA. The provider declares a closed three-variant coproduct; the consumer
+// imports it across a module boundary and matches only two variants with no catch-all. The
+// expected outcome is a refusal carrying the v2 non-exhaustiveness identity; the contract requires
+// the diagnostic to name the omitted variant, and that requirement lives in the authority
+// statement because the diagnostic identity is one fact and its payload obligation is another.
+data cross_module_exhaustiveness_provider_fixture: String = "module fixture.exhaustiveness.provider\n\ntype TriState = | Alpha | Beta | Gamma\n"
+
+data cross_module_exhaustiveness_incomplete_consumer_fixture: String = "module fixture.exhaustiveness.consumer\n\nimport fixture.exhaustiveness.provider { TriState, Alpha, Beta, Gamma }\nimport std.types { Bool }\n\nfn is_alpha(t: TriState) -> Bool {\n  match t {\n    Alpha => true\n    Beta => false\n  }\n}\n"
+
+// CONTROL ONE: the same consumer with all three arms must be ACCEPTED -- without it, a checker
+// that refuses every cross-module match would satisfy the incomplete fixture.
+data cross_module_exhaustiveness_complete_consumer_fixture: String = "module fixture.exhaustiveness.consumer\n\nimport fixture.exhaustiveness.provider { TriState, Alpha, Beta, Gamma }\nimport std.types { Bool }\n\nfn is_alpha(t: TriState) -> Bool {\n  match t {\n    Alpha => true\n    Beta => false\n    Gamma => false\n  }\n}\n"
+
+// CONTROL TWO: the provider grows a fourth variant with NO consumer edit, and the previously
+// complete consumer must go red -- the add-one-variant direction is the one that decides whether
+// exhaustiveness is judged against the provider's CURRENT declaration or against a stale memory
+// of it.
+data cross_module_exhaustiveness_widened_provider_fixture: String = "module fixture.exhaustiveness.provider\n\ntype TriState = | Alpha | Beta | Gamma | Delta\n"
+
+data cross_module_exhaustiveness_authority_statement: NonEmptyStr = "A match over a closed coproduct with no catch-all must cover every variant of the provider's CURRENT declaration, across module boundaries exactly as within one; the refusal must carry the infer_match_non_exhaustive identity and name each omitted variant. Acceptance of the incomplete consumer fixture, or continued acceptance of the complete consumer after the provider widens, is a NativeV2Defect at the compiler floor." as NonEmptyStr
+
+// NO DIFFERENTIAL RECORD IS AUTHORED HERE, deliberately: a record is a measurement, and running
+// the fixtures through the native acceptance path is the released lane's work. What model-work
+// publishes is the subject -- the authority, the expectation, and fixtures whose discriminating
+// structure is itself witnessed. v1's observation on these fixtures, when taken, enters a record
+// as LegacyRun and nothing else; the seed's known blindness on this shape makes it a
+// LegacyV1Defect candidate, never a judge.
+data cross_module_exhaustiveness_subject: BehaviorSubject = BehaviorSubject {
+  subject_id: cross_module_exhaustiveness_subject_identity,
+  authority: AuthoredExpectedOutcome {
+    statement: cross_module_exhaustiveness_authority_statement,
+  },
+  authority_producer: decl_ref(
+    module_path: "gunbc.semantic_conformance_subjects",
+    decl_name: "cross_module_exhaustiveness_authority_statement"
+  ),
+  expected: ExpectsRefusal {
+    diagnostic_identity: "infer_match_non_exhaustive" as NonEmptyStr,
+  },
+  supplementary: [],
+}

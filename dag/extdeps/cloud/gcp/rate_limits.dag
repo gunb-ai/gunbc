@@ -1,0 +1,27 @@
+module extdeps.cloud.gcp.rate_limits
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+
+// Google Cloud per-API request quotas the corpus consumes, per project, as published on each API's
+// quota page: IAM credentials, IAM admin and Service Usage at 60 per minute, Secret Manager and
+// STS at 1,000 per minute. Each scope is its own pool because Google meters them separately.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/docs/quotas/view-manage"
+  }
+}
+
+data gcp_iam_credentials_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "gcp" as NonEmptyStr, scope: "iam_credentials" as NonEmptyStr, requests: 60, period: PerMinute }
+data gcp_iam_admin_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "gcp" as NonEmptyStr, scope: "iam_admin" as NonEmptyStr, requests: 60, period: PerMinute }
+data gcp_service_usage_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "gcp" as NonEmptyStr, scope: "service_usage" as NonEmptyStr, requests: 60, period: PerMinute }
+data gcp_secret_manager_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "gcp" as NonEmptyStr, scope: "secret_manager" as NonEmptyStr, requests: 1000, period: PerMinute }
+data gcp_sts_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "gcp" as NonEmptyStr, scope: "sts" as NonEmptyStr, requests: 1000, period: PerMinute }
+
+data gcp_rate_limits: List<UpstreamRateLimit> = [
+  gcp_iam_credentials_rate_limit, gcp_iam_admin_rate_limit, gcp_service_usage_rate_limit, gcp_secret_manager_rate_limit, gcp_sts_rate_limit,
+]

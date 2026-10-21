@@ -1,0 +1,623 @@
+module gunbc.live_deploy.apply_receipt
+
+import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, GitRef }
+import product.host_identity { HostIdentity }
+import std.algebra { trim }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_kv, json_string, json_object, json_array, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  actions_run_binding_json,
+  actions_run_binding_of_member,
+  ActionsRunBindingDecoded, ActionsRunBindingUnreadable,
+  json_required_string_member,
+  JsonStringMemberFound, JsonStringMemberRefused,
+  actions_run_binding_identity_text,
+  actions_variable_read,
+  ActionsVariablePresent, ActionsVariableAbsent,
+}
+
+// THE DASHBOARD TRANSACTION'S TYPED RECEIPT. gunbc.live_deploy.apply live_deploy_apply_prod_role_wet
+// observes the candidate, decides the target, applies, gates on readiness and reads the digest back
+// -- and then flattens all of it to ProcessExit, so the workflow that dispatched it could name no
+// revision it installed, no tree it verified, no transaction it belonged to. This receipt is minted
+// by the receipted entry (live_deploy_apply_prod_role_transaction_wet) around that same composition: the
+// fold is reused, not re-implemented, and what is added is the expected revision the operator typed
+// (RLM_EXPECTED_REVISION), the candidate's root-tree object identity, the fleet plan/apply
+// provenance the dispatch named, and one independent readiness observation taken AFTER the apply
+// returned.
+// 
+// THE PLAN HASH IS PROVENANCE HERE, NOT ELIGIBILITY. R is the shared safety key across the four
+// runs; the plan and apply run identities ride on this receipt so the final join cannot pair an
+// arbitrary fleet transaction with an arbitrary dashboard transaction, but nothing about a plan
+// hash decides whether this deploy may proceed -- that stays with the candidate observation
+// the existing fold already performs, and with per-member identity on the host. There is no
+// target-decision field on this receipt.
+// 
+// THE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD,
+// and it is the one spelling of that object the fleet portability wall admits
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
+// and '}'), so the candidate side and the deployed side
+// (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
+// the same way.
+data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v4"
+
+type LiveDeployRoleSingletonDisposition
+  = RoleSingletonsNoop
+  | RoleSingletonsInPlace { global_unobservable: List<String> }
+  | RoleSingletonsInstalled { deployment: String, host: String }
+  | RoleSingletonsRefusedBeforeApply { detail: String }
+
+fn live_deploy_role_singleton_disposition_text(d: LiveDeployRoleSingletonDisposition) -> String {
+  match d {
+    RoleSingletonsNoop => "noop"
+    RoleSingletonsInPlace { global_unobservable } => join(["in_place:", join(global_unobservable, ",")], "")
+    RoleSingletonsInstalled { deployment, host } => join(["installed:", deployment, "@", host], "")
+    RoleSingletonsRefusedBeforeApply { detail } => join(["refused:", detail], "")
+  }
+}
+
+fn live_deploy_role_singleton_disposition_json(d: LiveDeployRoleSingletonDisposition) -> JsonValue {
+  match d {
+    RoleSingletonsNoop => json_object(members: [json_kv(key: "disposition", value: json_string(s: "noop"))])
+    RoleSingletonsInPlace { global_unobservable } => json_object(members: [
+      json_kv(key: "disposition", value: json_string(s: "in_place")),
+      json_kv(key: "global_unobservable", value: json_array(elements: global_unobservable |> map(h => json_string(s: h)))),
+    ])
+    RoleSingletonsInstalled { deployment, host } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "installed")), json_kv(key: "deployment", value: json_string(s: deployment)), json_kv(key: "host", value: json_string(s: host))])
+    RoleSingletonsRefusedBeforeApply { detail } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "refused")), json_kv(key: "detail", value: json_string(s: detail))])
+  }
+}
+
+type LiveDeployDispositionDecode
+  = DispositionDecoded { disposition: LiveDeployRoleSingletonDisposition }
+  | DispositionUnreadable { reason: String }
+
+fn live_deploy_role_singleton_disposition_of_member(doc: JsonValue) -> LiveDeployDispositionDecode {
+  match json_object_unique_member(v: doc, key: "role_singleton_disposition") {
+    JsonMemberAbsent => DispositionUnreadable { reason: "role_singleton_disposition is missing" }
+    JsonMemberDuplicated { count: c } => DispositionUnreadable { reason: join(["role_singleton_disposition appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => DispositionUnreadable { reason: "the receipt document is not an object at role_singleton_disposition" }
+    JsonMemberFound { value: d } => match json_required_string_member(doc: d, key: "disposition") {
+      JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
+      JsonStringMemberFound { value: kind } =>
+        if kind == "noop" { DispositionDecoded { disposition: RoleSingletonsNoop } }
+        else if kind == "in_place" {
+          match json_object_unique_member(v: d, key: "global_unobservable") {
+            JsonMemberAbsent => DispositionUnreadable { reason: "role_singleton_disposition.in_place is missing global_unobservable" }
+            JsonMemberDuplicated { count: _ } => DispositionUnreadable { reason: "role_singleton_disposition.in_place duplicates global_unobservable" }
+            JsonMemberNotAnObject => DispositionUnreadable { reason: "role_singleton_disposition is not an object" }
+            JsonMemberFound { value: JsonArray { elements } } =>
+              DispositionDecoded { disposition: RoleSingletonsInPlace { global_unobservable: elements |> flat_map(e => match e { JsonString { value: s } => [s]  _ => [] }) } }
+            JsonMemberFound { value: _ } => DispositionUnreadable { reason: "role_singleton_disposition.global_unobservable is not an array" }
+          }
+        }
+        else if kind == "refused" {
+          match json_required_string_member(doc: d, key: "detail") {
+            JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
+            JsonStringMemberFound { value: detail } => DispositionDecoded { disposition: RoleSingletonsRefusedBeforeApply { detail: detail } }
+          }
+        } else if kind == "installed" {
+          match json_required_string_member(doc: d, key: "deployment") {
+            JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
+            JsonStringMemberFound { value: dep } => match json_required_string_member(doc: d, key: "host") {
+              JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
+              JsonStringMemberFound { value: host } =>
+                DispositionDecoded { disposition: RoleSingletonsInstalled { deployment: dep, host: host } }
+            }
+          }
+        } else { DispositionUnreadable { reason: join(["live-deploy receipt role_singleton_disposition is not one of noop|in_place|installed|refused: ", kind], "") } }
+    }
+  }
+}
+
+fn live_deploy_apply_receipt_artifact_name_for(instance_id: String) -> String {
+  join(["live-deploy-", instance_id, "-receipt"], "")
+}
+
+fn live_deploy_apply_receipt_dir_for(instance_id: String) -> String {
+  join(["target/", live_deploy_apply_receipt_artifact_name_for(instance_id: instance_id)], "")
+}
+
+fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
+  join([live_deploy_apply_receipt_dir_for(instance_id: instance_id), "/live_deploy_receipt.json"], "")
+}
+
+// THE PATH IS RELATIVE TO THE DEPLOYING CHECKOUT. A CI transaction writes it in the workflow
+// runner's workspace and the fleet-converge job uploads that directory as a GitHub Actions
+// artifact (gunbc.ci.ci_spec gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
+// the same relative path on the operator's machine — the record of the LATEST local apply for that
+// instance_id (Filesystem.Write overwrites). Those are different filesystems: a local apply cannot
+// overwrite the uploaded CI artifact.
+
+data rlm_plan_run_id_env_name: String = "RLM_PLAN_RUN_ID"
+data rlm_apply_run_id_env_name: String = "RLM_APPLY_RUN_ID"
+data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
+data rlm_plan_artifact_hash_env_name: String = "RLM_PLAN_ARTIFACT_HASH"
+
+type LiveDeployFleetProvenance {
+  plan_run_id: String
+  apply_run_id: String
+  plan_artifact_hash: String
+  plan_receipt_identity: String
+  apply_receipt_identity: String
+}
+
+type LiveDeployFleetProvenanceInputs {
+  plan_run_id: String
+  apply_run_id: String
+  plan_artifact_hash: String
+}
+
+type LiveDeployFleetProvenanceRead
+  = FleetProvenancePresent { inputs: LiveDeployFleetProvenanceInputs }
+  | FleetProvenanceAbsent { variable: String, detail: String }
+
+fn read_live_deploy_fleet_provenance() -> LiveDeployFleetProvenanceRead {
+  match actions_variable_read(name: rlm_plan_run_id_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } => FleetProvenanceAbsent { variable: v, detail: d }
+    ActionsVariablePresent { value: plan_run_id } =>
+      match actions_variable_read(name: rlm_apply_run_id_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } => FleetProvenanceAbsent { variable: v, detail: d }
+        ActionsVariablePresent { value: apply_run_id } =>
+          match actions_variable_read(name: rlm_plan_artifact_hash_env_name) {
+            ActionsVariableAbsent { variable: v, detail: d } => FleetProvenanceAbsent { variable: v, detail: d }
+            ActionsVariablePresent { value: hash } =>
+              FleetProvenancePresent {
+                inputs: LiveDeployFleetProvenanceInputs {
+                  plan_run_id: plan_run_id,
+                  apply_run_id: apply_run_id,
+                  plan_artifact_hash: hash,
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE target_decision FIELD AND ITS LABEL WERE DELETED 2026-09-07 (operator ruling). They recorded
+// the verdict of the deploy ordering gate -- proceed / terminal-no-op / refused -- and that gate is
+// gone, so the field had no referent left. A field whose only reachable value is a constant is dead
+// data, not a receipt.
+
+// ONE RECEIPT, TWO PROVENANCE ARMS. Fleet plan/apply run identities, RLM expected revision, and
+// the Actions run binding exist only on the dashboard transaction. Operator-local apply has none
+// of those; inventing an ActionsRunBinding would be a fabricated observation. v3 of this schema
+// required them at the top level and is refused at decode, not mapped.
+
+type LiveDeployApplyProvenance
+  = FleetTransactionProvenance {
+      run: ActionsRunBinding
+      expected_revision: String
+      fleet: LiveDeployFleetProvenance
+    }
+  | OperatorLocalApply {
+      host: HostIdentity
+      principal: NonEmptyStr
+    }
+
+data live_deploy_apply_provenance_kind_fleet: String = "fleet_transaction"
+data live_deploy_apply_provenance_kind_local: String = "operator_local"
+
+type LiveDeployApplyOutcome
+  = LiveDeployApplyConverged
+  | LiveDeployApplyNotConverged { reason: String }
+
+type LiveDeployReadinessOutcome
+  = LiveDeployReadinessObserved { revision: String, surface: String }
+  | LiveDeployReadinessRefused { detail: String }
+
+type LiveDeployApplyReceipt {
+  target: String
+  instance_id: String
+  candidate_revision: String
+  candidate_surface_identity: String
+  candidate_tree_oid: String
+  apply_outcome: LiveDeployApplyOutcome
+  role_singleton_disposition: LiveDeployRoleSingletonDisposition
+  readiness: LiveDeployReadinessOutcome
+  provenance: LiveDeployApplyProvenance
+  completed_at: String
+}
+
+fn live_deploy_apply_outcome_text(o: LiveDeployApplyOutcome) -> String {
+  match o {
+    LiveDeployApplyConverged => "converged"
+    LiveDeployApplyNotConverged { reason: r } => join(["not_converged:", r], "")
+  }
+}
+
+fn live_deploy_readiness_text(o: LiveDeployReadinessOutcome) -> String {
+  match o {
+    LiveDeployReadinessObserved { revision: r, surface: s } => join(["observed:", r, ":", s], "")
+    LiveDeployReadinessRefused { detail: d } => join(["refused:", d], "")
+  }
+}
+
+fn live_deploy_apply_provenance_identity_text(p: LiveDeployApplyProvenance) -> String {
+  match p {
+    FleetTransactionProvenance { run, expected_revision, fleet } =>
+      join([
+        live_deploy_apply_provenance_kind_fleet, "|",
+        actions_run_binding_identity_text(binding: run), "|", expected_revision, "|",
+        fleet.plan_run_id, "|", fleet.apply_run_id, "|", fleet.plan_artifact_hash, "|",
+        fleet.plan_receipt_identity, "|", fleet.apply_receipt_identity,
+      ], "")
+    OperatorLocalApply { host, principal } =>
+      join([live_deploy_apply_provenance_kind_local, "|", host as String, "|", principal as String], "")
+  }
+}
+
+fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String {
+  join([
+    r.target, "|", r.instance_id, "|",
+    r.candidate_revision, "|", r.candidate_surface_identity, "|", r.candidate_tree_oid, "|",
+    live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
+    live_deploy_role_singleton_disposition_text(d: r.role_singleton_disposition), "|",
+    live_deploy_readiness_text(o: r.readiness), "|",
+    live_deploy_apply_provenance_identity_text(p: r.provenance), "|",
+    r.completed_at,
+  ], "")
+}
+
+fn live_deploy_apply_receipt_identity_hex(r: LiveDeployApplyReceipt) -> String {
+  content_hash_tagged_structural(
+    tag: "live-deploy-apply-receipt-v4" as NonEmptyStr,
+    payload: content_hash_atom(value: live_deploy_apply_receipt_identity_text(r: r) as NonEmptyStr),
+  ).digest as String
+}
+
+fn live_deploy_apply_outcome_json(o: LiveDeployApplyOutcome) -> JsonValue {
+  match o {
+    LiveDeployApplyConverged => json_object(members: [json_kv(key: "outcome", value: json_string(s: "converged"))])
+    LiveDeployApplyNotConverged { reason: r } =>
+      json_object(members: [
+        json_kv(key: "outcome", value: json_string(s: "not_converged")),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+  }
+}
+
+fn live_deploy_readiness_json(o: LiveDeployReadinessOutcome) -> JsonValue {
+  match o {
+    LiveDeployReadinessObserved { revision: r, surface: s } =>
+      json_object(members: [
+        json_kv(key: "outcome", value: json_string(s: "observed")),
+        json_kv(key: "revision", value: json_string(s: r)),
+        json_kv(key: "surface", value: json_string(s: s)),
+      ])
+    LiveDeployReadinessRefused { detail: d } =>
+      json_object(members: [
+        json_kv(key: "outcome", value: json_string(s: "refused")),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+fn live_deploy_fleet_json(fleet: LiveDeployFleetProvenance) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "plan_run_id", value: json_string(s: fleet.plan_run_id)),
+    json_kv(key: "apply_run_id", value: json_string(s: fleet.apply_run_id)),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: fleet.plan_artifact_hash)),
+    json_kv(key: "plan_receipt_identity", value: json_string(s: fleet.plan_receipt_identity)),
+    json_kv(key: "apply_receipt_identity", value: json_string(s: fleet.apply_receipt_identity)),
+  ])
+}
+
+fn live_deploy_apply_provenance_json(p: LiveDeployApplyProvenance) -> JsonValue {
+  match p {
+    FleetTransactionProvenance { run, expected_revision, fleet } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: live_deploy_apply_provenance_kind_fleet)),
+        json_kv(key: "run", value: actions_run_binding_json(binding: run)),
+        json_kv(key: "expected_revision", value: json_string(s: expected_revision)),
+        json_kv(key: "fleet", value: live_deploy_fleet_json(fleet: fleet)),
+      ])
+    OperatorLocalApply { host, principal } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: live_deploy_apply_provenance_kind_local)),
+        json_kv(key: "host", value: json_string(s: host as String)),
+        json_kv(key: "principal", value: json_string(s: principal as String)),
+      ])
+  }
+}
+
+fn live_deploy_apply_receipt_json(r: LiveDeployApplyReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: live_deploy_apply_receipt_schema)),
+    json_kv(key: "target", value: json_string(s: r.target)),
+    json_kv(key: "instance_id", value: json_string(s: r.instance_id)),
+    json_kv(key: "candidate_revision", value: json_string(s: r.candidate_revision)),
+    json_kv(key: "candidate_surface_identity", value: json_string(s: r.candidate_surface_identity)),
+    json_kv(key: "candidate_tree_oid", value: json_string(s: r.candidate_tree_oid)),
+    json_kv(key: "apply_outcome", value: live_deploy_apply_outcome_json(o: r.apply_outcome)),
+    json_kv(key: "role_singleton_disposition", value: live_deploy_role_singleton_disposition_json(d: r.role_singleton_disposition)),
+    json_kv(key: "readiness", value: live_deploy_readiness_json(o: r.readiness)),
+    json_kv(key: "provenance", value: live_deploy_apply_provenance_json(p: r.provenance)),
+    json_kv(key: "completed_at", value: json_string(s: r.completed_at)),
+    json_kv(key: "receipt_identity", value: json_string(s: live_deploy_apply_receipt_identity_hex(r: r))),
+  ])
+}
+
+type LiveDeployApplyReceiptDecode
+  = LiveDeployApplyReceiptDecoded { receipt: LiveDeployApplyReceipt }
+  | LiveDeployApplyReceiptUnreadable { reason: String }
+
+type LiveDeployOutcomeDecode
+  = OutcomeDecoded { outcome: LiveDeployApplyOutcome }
+  | OutcomeUnreadable { reason: String }
+
+fn live_deploy_apply_outcome_of_member(doc: JsonValue) -> LiveDeployOutcomeDecode {
+  match json_object_unique_member(v: doc, key: "apply_outcome") {
+    JsonMemberAbsent => OutcomeUnreadable { reason: "apply_outcome is missing" }
+    JsonMemberDuplicated { count: c } => OutcomeUnreadable { reason: join(["apply_outcome appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => OutcomeUnreadable { reason: "the receipt document is not an object at apply_outcome" }
+    JsonMemberFound { value: inner } =>
+      match json_required_string_member(doc: inner, key: "outcome") {
+        JsonStringMemberRefused { reason: r } => OutcomeUnreadable { reason: join(["apply_outcome: ", r], "") }
+        JsonStringMemberFound { value: label } =>
+          match label {
+            "converged" => OutcomeDecoded { outcome: LiveDeployApplyConverged }
+            "not_converged" =>
+              match json_required_string_member(doc: inner, key: "reason") {
+                JsonStringMemberRefused { reason: r } => OutcomeUnreadable { reason: join(["apply_outcome: ", r], "") }
+                JsonStringMemberFound { value: reason } => OutcomeDecoded { outcome: LiveDeployApplyNotConverged { reason: reason } }
+              }
+            _ => OutcomeUnreadable { reason: join(["apply_outcome is unknown: ", label], "") }
+          }
+      }
+  }
+}
+
+type LiveDeployReadinessDecode
+  = ReadinessDecoded { readiness: LiveDeployReadinessOutcome }
+  | ReadinessUnreadable { reason: String }
+
+fn live_deploy_readiness_of_member(doc: JsonValue) -> LiveDeployReadinessDecode {
+  match json_object_unique_member(v: doc, key: "readiness") {
+    JsonMemberAbsent => ReadinessUnreadable { reason: "readiness is missing" }
+    JsonMemberDuplicated { count: c } => ReadinessUnreadable { reason: join(["readiness appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => ReadinessUnreadable { reason: "the receipt document is not an object at readiness" }
+    JsonMemberFound { value: inner } =>
+      match json_required_string_member(doc: inner, key: "outcome") {
+        JsonStringMemberRefused { reason: r } => ReadinessUnreadable { reason: join(["readiness: ", r], "") }
+        JsonStringMemberFound { value: label } =>
+          match label {
+            "observed" =>
+              match json_required_string_member(doc: inner, key: "revision") {
+                JsonStringMemberRefused { reason: r } => ReadinessUnreadable { reason: join(["readiness: ", r], "") }
+                JsonStringMemberFound { value: revision } =>
+                  match json_required_string_member(doc: inner, key: "surface") {
+                    JsonStringMemberRefused { reason: r } => ReadinessUnreadable { reason: join(["readiness: ", r], "") }
+                    JsonStringMemberFound { value: surface } =>
+                      ReadinessDecoded { readiness: LiveDeployReadinessObserved { revision: revision, surface: surface } }
+                  }
+              }
+            "refused" =>
+              match json_required_string_member(doc: inner, key: "detail") {
+                JsonStringMemberRefused { reason: r } => ReadinessUnreadable { reason: join(["readiness: ", r], "") }
+                JsonStringMemberFound { value: detail } => ReadinessDecoded { readiness: LiveDeployReadinessRefused { detail: detail } }
+              }
+            _ => ReadinessUnreadable { reason: join(["readiness outcome is unknown: ", label], "") }
+          }
+      }
+  }
+}
+
+type LiveDeployFleetFieldsDecode
+  = FleetFieldsDecoded { fleet: LiveDeployFleetProvenance }
+  | FleetFieldsUnreadable { reason: String }
+
+fn live_deploy_fleet_fields_of_object(inner: JsonValue) -> LiveDeployFleetFieldsDecode {
+  match json_required_string_member(doc: inner, key: "plan_run_id") {
+    JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+    JsonStringMemberFound { value: plan_run_id } =>
+      match json_required_string_member(doc: inner, key: "apply_run_id") {
+        JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+        JsonStringMemberFound { value: apply_run_id } =>
+          match json_required_string_member(doc: inner, key: "plan_artifact_hash") {
+            JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+            JsonStringMemberFound { value: hash } =>
+              match json_required_string_member(doc: inner, key: "plan_receipt_identity") {
+                JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+                JsonStringMemberFound { value: plan_rid } =>
+                  match json_required_string_member(doc: inner, key: "apply_receipt_identity") {
+                    JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+                    JsonStringMemberFound { value: apply_rid } =>
+                      FleetFieldsDecoded {
+                        fleet: LiveDeployFleetProvenance {
+                          plan_run_id: plan_run_id, apply_run_id: apply_run_id, plan_artifact_hash: hash,
+                          plan_receipt_identity: plan_rid, apply_receipt_identity: apply_rid,
+                        },
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type LiveDeployProvenanceDecode
+  = ProvenanceDecoded { provenance: LiveDeployApplyProvenance }
+  | ProvenanceUnreadable { reason: String }
+
+fn live_deploy_operator_local_of_object(inner: JsonValue) -> LiveDeployProvenanceDecode {
+  match json_required_string_member(doc: inner, key: "host") {
+    JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+    JsonStringMemberFound { value: host } =>
+      if host == "" {
+        ProvenanceUnreadable { reason: "provenance.host is empty" }
+      } else {
+        match json_required_string_member(doc: inner, key: "principal") {
+          JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+          JsonStringMemberFound { value: principal } =>
+            if principal == "" {
+              ProvenanceUnreadable { reason: "provenance.principal is empty" }
+            } else {
+              ProvenanceDecoded {
+                provenance: OperatorLocalApply { host: host as HostIdentity, principal: principal as NonEmptyStr },
+              }
+            }
+        }
+      }
+  }
+}
+
+fn live_deploy_fleet_transaction_of_object(inner: JsonValue) -> LiveDeployProvenanceDecode {
+  match actions_run_binding_of_member(doc: inner, key: "run") {
+    ActionsRunBindingUnreadable { reason: r } => ProvenanceUnreadable { reason: join(["provenance.run: ", r], "") }
+    ActionsRunBindingDecoded { binding: run } =>
+      match json_required_string_member(doc: inner, key: "expected_revision") {
+        JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+        JsonStringMemberFound { value: expected } =>
+          match json_object_unique_member(v: inner, key: "fleet") {
+            JsonMemberAbsent => ProvenanceUnreadable { reason: "provenance.fleet is missing" }
+            JsonMemberDuplicated { count: _ } => ProvenanceUnreadable { reason: "provenance.fleet is duplicated" }
+            JsonMemberNotAnObject => ProvenanceUnreadable { reason: "provenance is not an object at fleet" }
+            JsonMemberFound { value: fleet_doc } =>
+              match live_deploy_fleet_fields_of_object(inner: fleet_doc) {
+                FleetFieldsUnreadable { reason: r } => ProvenanceUnreadable { reason: r }
+                FleetFieldsDecoded { fleet } =>
+                  ProvenanceDecoded {
+                    provenance: FleetTransactionProvenance { run: run, expected_revision: expected, fleet: fleet },
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn live_deploy_provenance_of_member(doc: JsonValue) -> LiveDeployProvenanceDecode {
+  match json_object_unique_member(v: doc, key: "provenance") {
+    JsonMemberAbsent => ProvenanceUnreadable { reason: "provenance is missing" }
+    JsonMemberDuplicated { count: c } => ProvenanceUnreadable { reason: join(["provenance appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => ProvenanceUnreadable { reason: "the receipt document is not an object at provenance" }
+    JsonMemberFound { value: inner } =>
+      match json_required_string_member(doc: inner, key: "kind") {
+        JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+        JsonStringMemberFound { value: kind } =>
+          if kind == live_deploy_apply_provenance_kind_fleet {
+            live_deploy_fleet_transaction_of_object(inner: inner)
+          } else if kind == live_deploy_apply_provenance_kind_local {
+            live_deploy_operator_local_of_object(inner: inner)
+          } else {
+            ProvenanceUnreadable { reason: join(["provenance.kind is not fleet_transaction|operator_local: ", kind], "") }
+          }
+      }
+  }
+}
+
+fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      LiveDeployApplyReceiptUnreadable { reason: join(["live-deploy receipt is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != live_deploy_apply_receipt_schema {
+            LiveDeployApplyReceiptUnreadable { reason: join(["live-deploy receipt schema is not ", live_deploy_apply_receipt_schema, ": ", schema], "") }
+          } else {
+                match json_required_string_member(doc: doc, key: "target") {
+                  JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                  JsonStringMemberFound { value: target } =>
+                    match json_required_string_member(doc: doc, key: "instance_id") {
+                      JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                      JsonStringMemberFound { value: instance_id } =>
+                        match json_required_string_member(doc: doc, key: "candidate_revision") {
+                          JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                          JsonStringMemberFound { value: candidate } =>
+                            match json_required_string_member(doc: doc, key: "candidate_surface_identity") {
+                              JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                              JsonStringMemberFound { value: surface } =>
+                                match json_required_string_member(doc: doc, key: "candidate_tree_oid") {
+                                  JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                  JsonStringMemberFound { value: tree_oid } =>
+                                            match live_deploy_apply_outcome_of_member(doc: doc) {
+                                              OutcomeUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                              OutcomeDecoded { outcome: apply_outcome } =>
+                                                match live_deploy_role_singleton_disposition_of_member(doc: doc) {
+                                                DispositionUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                                DispositionDecoded { disposition: role_singleton_disposition } =>
+                                                match live_deploy_readiness_of_member(doc: doc) {
+                                                  ReadinessUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                                  ReadinessDecoded { readiness: readiness } =>
+                                                    match live_deploy_provenance_of_member(doc: doc) {
+                                                      ProvenanceUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                                      ProvenanceDecoded { provenance: provenance } =>
+                                                        match json_required_string_member(doc: doc, key: "completed_at") {
+                                                          JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                                          JsonStringMemberFound { value: completed_at } => {
+                                                        let receipt = LiveDeployApplyReceipt {
+                                                          target: target,
+                                                          instance_id: instance_id,
+                                                          candidate_revision: candidate,
+                                                          candidate_surface_identity: surface,
+                                                          candidate_tree_oid: tree_oid,
+                                                          apply_outcome: apply_outcome,
+                                                          role_singleton_disposition: role_singleton_disposition,
+                                                          readiness: readiness,
+                                                          provenance: provenance,
+                                                          completed_at: completed_at,
+                                                        }
+                                                        match json_required_string_member(doc: doc, key: "receipt_identity") {
+                                                          JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
+                                                          JsonStringMemberFound { value: claimed } =>
+                                                            if claimed != live_deploy_apply_receipt_identity_hex(r: receipt) {
+                                                              LiveDeployApplyReceiptUnreadable { reason: "live-deploy receipt identity does not match its members" }
+                                                            } else {
+                                                              LiveDeployApplyReceiptDecoded { receipt: receipt }
+                                                            }
+                                                        }
+                                                          }
+                                                        }
+                                                    }
+                                                }
+                                                }
+                                            }
+                                }
+                            }
+                        }
+                    }
+                }
+          }
+      }
+  }
+}
+
+fn read_live_deploy_apply_receipt_at(path: String) -> LiveDeployApplyReceiptDecode {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    LiveDeployApplyReceiptUnreadable { reason: join(["live-deploy receipt could not be read at ", path, ": ", read.error], "") }
+  } else {
+    live_deploy_apply_receipt_decode(raw: read.content)
+  }
+}
+
+// THE CANDIDATE ROOT TREE, read from the deploying checkout by the same colon form the deployed
+// side uses, so the two identities are the same object read the same way.
+type CandidateTreeOidObservation
+  = CandidateTreeOidObserved { oid_hex: String }
+  | CandidateTreeOidUnobservable { detail: String }
+
+data candidate_root_tree_ref: String = "HEAD:"
+
+fn observe_candidate_root_tree_oid(repo: String) -> CandidateTreeOidObservation {
+  let read = git.Core.RevParseInRepo(repo: repo as FilePath, target: candidate_root_tree_ref as GitRef)
+  if read.exit_code != 0 {
+    CandidateTreeOidUnobservable { detail: join(["git rev-parse HEAD: exited ", to_string(read.exit_code), ": ", read.stderr], "") }
+  } else {
+    match git_object_id_from_untagged_hex(hex: trim(s: read.revision)) {
+      Absent => CandidateTreeOidUnobservable { detail: join(["git rev-parse HEAD: printed no object id: ", trim(s: read.revision)], "") }
+      Present { value: oid } => CandidateTreeOidObserved { oid_hex: git_object_id_wire_hex(oid: oid) as String }
+    }
+  }
+}

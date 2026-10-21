@@ -1,0 +1,60 @@
+module v2.test.std_source_position.source_line_col
+
+import std.algebra { FreeMonoid, fold_list }
+import v2.std.source_position { SourceLineCol, source_line_col_at_byte, source_line_col_in, source_newline_byte_offsets, source_position_index }
+
+// MULTIBYTE BEFORE THE LOCUS, the case a character-indexed helper gets wrong. `\u{00e9}` is two
+// UTF-8 bytes, so in "a\u{00e9} x" the `x` is at byte 4: byte column 5. A code-point walk says 4.
+test fn a_multibyte_character_shifts_the_byte_column() -> Bool {
+  let at = source_line_col_at_byte(text: "a\u{00e9} x", offset: 4)
+  at.line == 1 && at.byte_column.value == 5
+}
+
+// Across a newline that follows multibyte text: "\u{00e9}\u{000a}ab" puts `b` at byte 4, line 2,
+// byte column 2. A code-point walk places the newline at index 1 instead of 2 and still answers
+// line 2 -- but at column 3, so the column is what discriminates.
+test fn a_newline_after_multibyte_text_starts_the_next_line_at_its_byte() -> Bool {
+  let at = source_line_col_at_byte(text: "\u{00e9}\u{000a}ab", offset: 4)
+  at.line == 2 && at.byte_column.value == 2
+}
+
+// The newline byte itself belongs to the line it ends.
+test fn the_newline_byte_is_on_the_line_it_ends() -> Bool {
+  let at = source_line_col_at_byte(text: "ab\u{000a}c", offset: 2)
+  at.line == 1 && at.byte_column.value == 3
+}
+
+// THE INDEX IS THE SWEEP, ANSWERED ONCE PER TEXT. Every offset of a multi-line text with multibyte
+// characters, blank lines and a trailing newline, located through ONE index, must equal the
+// reference: newlines strictly before the offset counted, column from the byte after the last one.
+// Seven lines makes the strides 4, 2, 1, so every branch of the search is taken.
+test fn one_index_locates_every_offset_as_the_sweep_does() -> Bool {
+  let text = "ab\u{000a}\u{00e9}\u{000a}\u{000a}xyz\u{000a}q\u{000a}\u{00e9}\u{00e9}\u{000a}"
+  let index = source_position_index(text: text)
+  let newlines = source_newline_byte_offsets(text: text)
+  index.line_count == 7 && fold_list(xs: every_offset(), empty: true, cons: fn(ok, offset) {
+    let at = source_line_col_in(index: index, offset: offset)
+    let expected = fold_list(xs: newlines, empty: ReferenceLine { line: 1, start: 0 }, cons: fn(acc, nl) {
+      if nl < offset { ReferenceLine { line: acc.line + 1, start: nl + 1 } } else { acc }
+    })
+    ok && at.line == expected.line && at.byte_column.value == offset - expected.start + 1
+  })
+}
+
+// A text with no newline is one line, and an empty text still has line 1 at byte 0.
+test fn a_text_without_newlines_is_one_line() -> Bool {
+  let one = source_line_col_in(index: source_position_index(text: "abc"), offset: 2)
+  let empty = source_position_index(text: "")
+  let first = source_line_col_in(index: empty, offset: 0)
+  one.line == 1 && one.byte_column.value == 3 && empty.line_count == 1 && first.line == 1 && first.byte_column.value == 1
+}
+
+type ReferenceLine {
+  line: Int
+  start: Int
+}
+
+// Every byte offset of the 18-byte text above.
+fn every_offset() -> FreeMonoid<Int> {
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+}

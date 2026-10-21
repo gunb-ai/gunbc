@@ -1,0 +1,75 @@
+module v2.std.host_run
+
+import std.types { List }
+import v2.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  diagnostics_singleton,
+  rejected_with_pending
+}
+import v2.std.machine { Byte }
+import v2.std.host_transport { ByteString }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.text { String }
+import v2.std.witness { Witness, Holds, Violates }
+
+
+type BuildLog {
+  lines: List<String>
+}
+
+type ExitOk {
+  code: Int
+}
+
+type HostExit {
+  outcome: Outcome<Witness<ExitOk>>
+}
+
+type HostRunStdout {
+  bytes: ByteString
+}
+
+type HostLogicalRun {
+  stdout: HostRunStdout
+}
+
+type EmitHostRunReceipt {
+  target: TargetModel
+  source_text: String
+  exit: HostExit
+  logical_run: Outcome<HostLogicalRun>
+  stderr_bytes: ByteString
+  build_log: BuildLog
+  compile_skipped: Bool
+}
+
+fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outcome<HostLogicalRun> {
+  match exit.outcome {
+    Accepted { value: exit_witness, diagnostics: ds } =>
+      match exit_witness {
+        Holds { value: _ } =>
+          Accepted {
+            value: HostLogicalRun {
+              stdout: HostRunStdout { bytes: stdout_bytes }
+            },
+            diagnostics: ds
+          }
+        Violates { diagnostic: d } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: ds,
+              rejected: diagnostics_singleton(d: d)
+            )
+          }
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+type ValueDiff<A> {
+  expected: A
+  actual: A
+}

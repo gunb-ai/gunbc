@@ -1,0 +1,129 @@
+module extdeps.tools
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { FilePath, NonEmptyStr }
+import extdeps.tools.gnu_coreutils
+import extdeps.rust.rustup { rustup_install_url }
+import extdeps.package_managers.brew   { brew_install_url }
+import extdeps.package_managers.apt { apt_installed_bin_path }
+import extdeps.version { VersionConstraint }
+import extdeps.exec.program { ProgramIdentity }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools"
+  }
+}
+
+type InstallSource
+  = SourceCoreutils
+  | SourceRustup
+  | SourceBrew { formula: NonEmptyStr }
+  | SourceApt { package: NonEmptyStr, bin_dir: FilePath }
+  | SourceGitHubRelease {
+      repo: NonEmptyStr
+      tag: NonEmptyStr
+      asset_aarch64: NonEmptyStr
+      asset_x86_64: NonEmptyStr
+      install_path: NonEmptyStr
+    }
+
+type CliTool {
+  program: ProgramIdentity
+  min_version: VersionConstraint?
+  installable_via: List<InstallSource>
+}
+
+fn one_hint(source: InstallSource) -> String {
+  match source {
+    SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
+    SourceRustup => concat("install rustup from ", rustup_install_url)
+    SourceBrew { formula: f } => concat("brew install ", f)
+    SourceApt { package: p, bin_dir: _ } => concat("apt install ", p)
+    SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
+      concat(
+        concat(concat(concat("install ", p as String), " from github.com/"), r as String),
+        concat("/releases/tag/", t as String),
+      )
+  }
+}
+
+fn install_hint(sources: List<InstallSource>) -> String {
+  sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
+}
+
+// THE APT PACKAGE, STRUCTURALLY, BESIDE THE SENTENCE. one_hint renders every InstallSource as
+// PROSE for a human, and until now that was the only thing that read the variants -- so a caller
+// that wanted to ACT on an install source had nothing to read and would have re-authored the
+// package name beside the tool. This is the same fold, asked for the value rather than the wording,
+// and it is what lets a convergence consume `installable_via` instead of carrying a second package
+// row that could disagree with it (§3).
+//
+// IT IS OPTIONAL AND NOT A DEFAULT. installable_via is a LIST and a tool may legitimately carry no
+// apt source at all -- websocat is a GitHub release, rustfmt comes from rustup, the coreutils tools
+// come with the system -- so "no apt package" is a real and correct answer, not a failure of this
+// function. Absent is returned rather than a fabricated package name, and the CALLER names the tool
+// in its refusal, because the caller is what knows why it wanted one. A default here would be the
+// §5 fabricated-plausible-output arm: `apt install <binary name>` is right often enough to look
+// correct and wrong exactly where the package and the binary differ (mosquitto_pub from
+// mosquitto-clients, busybox from busybox-static -- both already in this corpus).
+//
+// FIRST MATCH WINS and the order is the roster's. No tool in the corpus declares two apt sources;
+// if one ever does, the row is expressing a choice this fold cannot make and the roster is where
+// that belongs.
+fn apt_package_of(tool: CliTool) -> NonEmptyStr? {
+  fold_list(
+    xs: tool.installable_via,
+    empty: none,
+    cons: fn(acc, source) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match source {
+            SourceApt { package: p, bin_dir: _ } => Present { value: p }
+            SourceCoreutils => none
+            SourceRustup => none
+            SourceBrew { formula: _ } => none
+            SourceGitHubRelease {
+              repo: _, tag: _, asset_aarch64: _, asset_x86_64: _, install_path: _
+            } => none
+          }
+      }
+    },
+  )
+}
+
+// WHERE THE PACKAGE PUTS THE BINARY IS A FACT ABOUT THE PACKAGE, STATED ON THE ROW. A reader
+// that probes an apt-acquired tool by path must probe the path the package installs, and that is
+// not always /usr/bin: nfct (Ubuntu package `nfct`, from the conntrack-tools project) ships at
+// /usr/sbin/nfct. The directory used to be a
+// single constant every probe assumed, so an sbin tool read absent after a successful install and
+// no row could say otherwise. Each SourceApt now states its bin_dir, and this fold derives the
+// path from it. Absent means the tool declares no apt source -- the caller refuses rather than
+// guessing a directory, and nothing here searches PATH or tries a second directory.
+fn apt_binary_path_of(tool: CliTool) -> FilePath? {
+  fold_list(
+    xs: tool.installable_via,
+    empty: none,
+    cons: fn(acc, source) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match source {
+            SourceApt { package: _, bin_dir: d } =>
+              Present { value: apt_installed_bin_path(bin_dir: d, binary: tool.program.invocation) }
+            SourceCoreutils => none
+            SourceRustup => none
+            SourceBrew { formula: _ } => none
+            SourceGitHubRelease {
+              repo: _, tag: _, asset_aarch64: _, asset_x86_64: _, install_path: _
+            } => none
+          }
+      }
+    },
+  )
+}
+

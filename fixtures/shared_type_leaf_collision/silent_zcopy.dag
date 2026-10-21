@@ -1,0 +1,10 @@
+module stlc.silent_copy
+
+// This declarer is last-write on leaf Mark because the filename sorts after silent_share.dag.
+type Mark
+  = Off
+  | On
+
+fn hold_copy() -> Int {
+  0
+}

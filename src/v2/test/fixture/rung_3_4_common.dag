@@ -1,0 +1,88 @@
+module v2.test.fixture.rung_3_4_common
+
+import v2.std.node { Authored }
+
+import v2.std.witness { Holds, Violates, Witness }
+import v2.extdeps.languages.rust { rust_target_model_staging }
+
+data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
+
+fn rung34_algebra_evidence_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^rung34_algebra_evidence_axis },
+        target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
+  Holds {
+    value: v2.std.cardinality.TerminationProof {
+      non_increasing: [],
+      strict: v2.std.cardinality.RankingComponent { measured: ^rung34_inferred_descent_symbol }
+    }
+  }
+}
+
+fn rung34_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction {
+      lookup: fn(n) {
+        Present {
+          value: claim_inferred_facts_from_nodes(
+            resolved: n,
+            algebra: rung34_algebra_evidence_node(),
+            descent: rung34_descent_witness()
+          )
+        }
+      }
+    }
+  }
+}
+
+fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^rung34_roundtrip_module_axis },
+        target: fixture_subject
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: claim,
+    context: eval_context(),
+    tree: rung34_inferred_tree(root: evaluator_input),
+    evaluator_pin: ^eval_evaluator_pin
+  )
+}
+
+fn rung34_roundtrip_run(claim: TestClaim, fixture_subject: Node) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim(
+    subject: rung34_test_claim_subject(
+      claim: claim,
+      evaluator_input: rung34_roundtrip_input(fixture_subject: fixture_subject)
+    )
+  )
+}
+
+fn rung34_emit_vs_eval_run(
+  claim: TestClaim,
+  fixture_subject: Node
+) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: rung34_test_claim_subject(claim: claim, evaluator_input: fixture_subject),
+    target: rung34_emit_host_rust_target_model
+  )
+}

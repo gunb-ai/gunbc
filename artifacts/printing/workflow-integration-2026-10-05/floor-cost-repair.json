@@ -1,0 +1,134 @@
+{
+  "merged_main": "676ac151879162b6457890a7861f3bda55b0bcad",
+  "preceding_ci_run": 37265831315,
+  "preceding_ci_failure": "Three over-cost witnesses; two also exceeded enrolment margin; zero unexpected assertion failures.",
+  "validation": "Fresh merged-source compiler and claim_batch; hermetic; 18 fast boundary witnesses plus real approval integration; exit 0.",
+  "floor_eval_step_limit": 72300,
+  "witnesses": [
+    {
+      "function": "approval_subject_changes_with_device_bytes_version_or_attempt",
+      "cpu_ms": 15,
+      "wall_ms": 15,
+      "eval_steps": 11004
+    },
+    {
+      "function": "completed_or_idle_job_needs_nonblocking_error",
+      "cpu_ms": 27,
+      "wall_ms": 28,
+      "eval_steps": 18691
+    },
+    {
+      "function": "unknown_errors_and_incomplete_reports_remain_refused",
+      "cpu_ms": 11,
+      "wall_ms": 11,
+      "eval_steps": 7517
+    },
+    {
+      "function": "help_exit_one_needs_the_actual_supported_version_banner",
+      "cpu_ms": 0,
+      "wall_ms": 0,
+      "eval_steps": 112
+    },
+    {
+      "function": "partial_telemetry_does_not_count_as_a_complete_observation",
+      "cpu_ms": 3,
+      "wall_ms": 3,
+      "eval_steps": 2611
+    },
+    {
+      "function": "durable_claim_is_bound_to_approval_identity",
+      "cpu_ms": 0,
+      "wall_ms": 0,
+      "eval_steps": 27
+    },
+    {
+      "function": "two_printer_plan_decodes",
+      "cpu_ms": 23,
+      "wall_ms": 23,
+      "eval_steps": 14888
+    },
+    {
+      "function": "object_is_not_a_fleet",
+      "cpu_ms": 0,
+      "wall_ms": 0,
+      "eval_steps": 129
+    },
+    {
+      "function": "empty_fleet_is_refused",
+      "cpu_ms": 0,
+      "wall_ms": 0,
+      "eval_steps": 143
+    },
+    {
+      "function": "unknown_printer_is_refused",
+      "cpu_ms": 18,
+      "wall_ms": 18,
+      "eval_steps": 13198
+    },
+    {
+      "function": "floating_credential_version_is_refused",
+      "cpu_ms": 21,
+      "wall_ms": 21,
+      "eval_steps": 14695
+    },
+    {
+      "function": "non_right_angle_rotation_is_refused",
+      "cpu_ms": 21,
+      "wall_ms": 21,
+      "eval_steps": 14620
+    },
+    {
+      "function": "negative_position_is_refused",
+      "cpu_ms": 21,
+      "wall_ms": 21,
+      "eval_steps": 14530
+    },
+    {
+      "function": "fractional_rotation_is_refused",
+      "cpu_ms": 21,
+      "wall_ms": 21,
+      "eval_steps": 14292
+    },
+    {
+      "function": "absent_support_free_member_is_refused",
+      "cpu_ms": 22,
+      "wall_ms": 22,
+      "eval_steps": 14830
+    },
+    {
+      "function": "duplicate_attempt_is_refused",
+      "cpu_ms": 22,
+      "wall_ms": 22,
+      "eval_steps": 14820
+    },
+    {
+      "function": "duplicate_part_is_refused",
+      "cpu_ms": 25,
+      "wall_ms": 25,
+      "eval_steps": 16635
+    },
+    {
+      "function": "duplicate_printer_is_refused",
+      "cpu_ms": 22,
+      "wall_ms": 22,
+      "eval_steps": 14741
+    },
+    {
+      "function": "validate_approval_identity",
+      "cpu_ms": 2983,
+      "wall_ms": 2992,
+      "eval_steps": 3115957
+    }
+  ],
+  "source_sha256": {
+    "dag/gunbc/fleet/printer_operator_approval.dag": "18eb699774c8488fd95878459b30186b10f5cbc0593acc29c9d34de3718498dd",
+    "dag/test/claim/printer_operator_approval_witness_test.dag": "b525bdc7b5cd5fa1f60a0310481f1311f39470d679472e18c33b9b63d06094f6",
+    "dag/test/claim/print_batch_plan_witness_test.dag": "5207b9fddf6948a746bedbf4c7c8f6c14ad51375c37b005a26b25a67ff906be9",
+    "dag/test/claim/printer_batch_workflow_validation.dag": "c8cd60dac47b1f5879bb8e89f351862b3a0acabd35dd57cb23b7334574fc6d2c"
+  },
+  "limits": [
+    "Full floor and generated lanes not rerun locally on this revision; remote CI pending.",
+    "Cryptographic integration is consumed by validate_preparation, outside fast floor.",
+    "No live printer operations."
+  ]
+}

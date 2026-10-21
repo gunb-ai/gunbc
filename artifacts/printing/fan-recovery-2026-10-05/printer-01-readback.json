@@ -1,0 +1,102 @@
+{
+  "project_sha256": "ed798ec75828e111b3a45686e0681dc93ee2203c1eb06593af78b5410c13d83a",
+  "objects": [
+    "M140"
+  ],
+  "seconds": 10247,
+  "grams": 44.2,
+  "paths": {
+    "bounds": [
+      2.472,
+      10.472,
+      0.2,
+      176.312,
+      169.528,
+      42.0
+    ],
+    "arcs": 27502,
+    "extrusion": {
+      "Brim": 182.06255999999976,
+      "Support": 82.19087999999988,
+      "Outer wall": 1505.976359999966,
+      "Inner wall": 4504.704859999928,
+      "Bottom surface": 550.3941999999959,
+      "Internal solid infill": 4185.285489999359,
+      "Sparse infill": 2092.675939999868,
+      "Support interface": 97.6461000000002,
+      "Overhang wall": 12.543220000000016,
+      "Bridge": 23.607619999999972,
+      "Internal Bridge": 836.979330000005,
+      "Top surface": 721.0223100000011
+    },
+    "supports": {
+      "M140": 179.83697999999964
+    },
+    "object_bounds": {
+      "outside-object": [
+        2.472,
+        10.472,
+        0.2,
+        169.528,
+        169.528,
+        0.2
+      ],
+      "M140": [
+        6.21,
+        14.21,
+        0.2,
+        176.312,
+        165.79,
+        42.0
+      ]
+    }
+  },
+  "support_fraction": 0.01215518078871873,
+  "warnings": [
+    {
+      "msg": "bed_temperature_too_high_than_filament",
+      "level": "3",
+      "error_code": "1000C001"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "2",
+      "error_code": "10018003"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "3",
+      "error_code": "1000C003"
+    }
+  ],
+  "support_geometry_sha256": "65b67d76256e7e9df11e2676013f5c3a1830724a5cf845f31cf2d2233c426b59",
+  "cad_binding": {
+    "cad_manifest_sha256": "9f83b0170215e5f5b1ede75e07c1bce1fae463db3e1db42f7d92ea35b4144d1a",
+    "steps": {
+      "M140": "871b2020ac50aefad2b7dabeaf8a968c8913679e248070d31843d500d85e4e7f"
+    },
+    "placements": [
+      {
+        "id": "M140",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_um": [
+          14000,
+          6000
+        ]
+      }
+    ],
+    "pack_program_sha256": "be74a4ebf922a30351923e0b7448bacf167d24945cd9c21ce2d519fa87877784"
+  },
+  "source_project_sha256": "0bee9c539fbbc54df7cfd8c6ba2f32d450c37e9391b2d06d15743db22d987cc7",
+  "profile_sha256": {
+    "machine": "9dec6ea4e57bb3fcdff48c4b22a061459baebbce55d60cbedcb03afe68c6d5ab",
+    "filament": "1f6178d40844c64d089ae1d3fbbcfb0eede5f0cd6bb1eed36eae2c17be66b64a",
+    "process": "db2a5059c19afbc9987733add30bb309955051300734c2689a6d9f018a533f01"
+  },
+  "orca_archive_sha256": "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba",
+  "reader_program_sha256": "907fa65614db6cd280653bef0ee82d27c9a79fe37f6075055ec7f83abf59373a"
+}

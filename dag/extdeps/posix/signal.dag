@@ -1,0 +1,204 @@
+module extdeps.posix.signal
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/kill.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.signal",
+      decl_name: "posix.Signal",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// TerminateProcess sends SIGTERM only. The reaper's bound is at the CALLER (residual
+// reap only ever names a pid it read out of an inactive unit's own cgroup.procs, per
+// gunbc.host.host_hygiene_reaper_remediate) rather than at the signal — this service does not
+// widen to SIGKILL, does not accept an arbitrary signal name, and does not accept a
+// process group or -1/0 pid, which is the shape that turns "kill one pid" into "kill
+// everything the caller can reach".
+service posix.Signal {
+  operation TerminateProcess {
+    requires none
+    input { pid: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["kill", "-TERM", "{pid}"] }
+    exit {
+      0 => Unit
+      nonzero => String "kill -TERM failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic posix.Signal.TerminateProcess"
+    }
+  }
+}
+
+// THE LINUX SIGNAL NUMBERS FOR THE STANDARD SIGNALS, by the name systemd reports them under
+// ($EXIT_STATUS when $EXIT_CODE is killed or dumped: the name without its SIG prefix). signal(7),
+// "Standard signals": the numbering below is the one shared by x86, ARM and most other Linux
+// architectures (the table's middle column); alpha, sparc, mips and parisc number some of these
+// differently, and no host this repository runs on is one of them. A name not listed is refused
+// with Absent rather than guessed -- including the realtime signals, which have no fixed number.
+data linux_signal_numbers_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/signal.7.html"
+  }
+}
+
+// The closed set of names, so a misspelled or unlisted signal has no constructor. The inhabitant
+// roster is linux_standard_signals. The name fact is linux_standard_signal_wire_name (systemd
+// $EXIT_STATUS spelling, no SIG prefix). The number fact is linux_standard_signal_number
+// (signal(7) generic-architecture column). Reverse lookups fold the roster over those facts.
+type LinuxStandardSignal
+  = SignalHup
+  | SignalInt
+  | SignalQuit
+  | SignalIll
+  | SignalTrap
+  | SignalAbrt
+  | SignalBus
+  | SignalFpe
+  | SignalKill
+  | SignalUsr1
+  | SignalSegv
+  | SignalUsr2
+  | SignalPipe
+  | SignalAlrm
+  | SignalTerm
+  | SignalStkflt
+  | SignalChld
+  | SignalCont
+  | SignalStop
+  | SignalTstp
+  | SignalTtin
+  | SignalTtou
+  | SignalUrg
+  | SignalXcpu
+  | SignalXfsz
+  | SignalVtalrm
+  | SignalProf
+  | SignalWinch
+  | SignalIo
+  | SignalPwr
+  | SignalSys
+
+data linux_standard_signals: List<LinuxStandardSignal> = [
+  SignalHup, SignalInt, SignalQuit, SignalIll, SignalTrap, SignalAbrt, SignalBus, SignalFpe,
+  SignalKill, SignalUsr1, SignalSegv, SignalUsr2, SignalPipe, SignalAlrm, SignalTerm, SignalStkflt,
+  SignalChld, SignalCont, SignalStop, SignalTstp, SignalTtin, SignalTtou, SignalUrg, SignalXcpu,
+  SignalXfsz, SignalVtalrm, SignalProf, SignalWinch, SignalIo, SignalPwr, SignalSys,
+]
+
+fn linux_standard_signal_first_where(
+  pred: fn(LinuxStandardSignal) -> Bool,
+) -> LinuxStandardSignal? {
+  fold(linux_standard_signals, init: none, f: (acc, s) => match acc {
+    Present { value: found } => Present { value: found }
+    Absent => if pred(s) { Present { value: s } } else { none }
+  })
+}
+
+fn linux_standard_signal_wire_name(signal: LinuxStandardSignal) -> String {
+  match signal {
+    SignalHup => "HUP"
+    SignalInt => "INT"
+    SignalQuit => "QUIT"
+    SignalIll => "ILL"
+    SignalTrap => "TRAP"
+    SignalAbrt => "ABRT"
+    SignalBus => "BUS"
+    SignalFpe => "FPE"
+    SignalKill => "KILL"
+    SignalUsr1 => "USR1"
+    SignalSegv => "SEGV"
+    SignalUsr2 => "USR2"
+    SignalPipe => "PIPE"
+    SignalAlrm => "ALRM"
+    SignalTerm => "TERM"
+    SignalStkflt => "STKFLT"
+    SignalChld => "CHLD"
+    SignalCont => "CONT"
+    SignalStop => "STOP"
+    SignalTstp => "TSTP"
+    SignalTtin => "TTIN"
+    SignalTtou => "TTOU"
+    SignalUrg => "URG"
+    SignalXcpu => "XCPU"
+    SignalXfsz => "XFSZ"
+    SignalVtalrm => "VTALRM"
+    SignalProf => "PROF"
+    SignalWinch => "WINCH"
+    SignalIo => "IO"
+    SignalPwr => "PWR"
+    SignalSys => "SYS"
+  }
+}
+
+fn linux_standard_signal_number(signal: LinuxStandardSignal) -> Int {
+  match signal {
+    SignalHup => 1
+    SignalInt => 2
+    SignalQuit => 3
+    SignalIll => 4
+    SignalTrap => 5
+    SignalAbrt => 6
+    SignalBus => 7
+    SignalFpe => 8
+    SignalKill => 9
+    SignalUsr1 => 10
+    SignalSegv => 11
+    SignalUsr2 => 12
+    SignalPipe => 13
+    SignalAlrm => 14
+    SignalTerm => 15
+    SignalStkflt => 16
+    SignalChld => 17
+    SignalCont => 18
+    SignalStop => 19
+    SignalTstp => 20
+    SignalTtin => 21
+    SignalTtou => 22
+    SignalUrg => 23
+    SignalXcpu => 24
+    SignalXfsz => 25
+    SignalVtalrm => 26
+    SignalProf => 27
+    SignalWinch => 28
+    SignalIo => 29
+    SignalPwr => 30
+    SignalSys => 31
+  }
+}
+
+fn linux_standard_signal_of_name(name: String) -> LinuxStandardSignal? {
+  linux_standard_signal_first_where(pred: s => linux_standard_signal_wire_name(signal: s) == name)
+}
+
+fn linux_standard_signal_of_number(n: Int) -> LinuxStandardSignal? {
+  linux_standard_signal_first_where(pred: s => linux_standard_signal_number(signal: s) == n)
+}
+
+fn linux_standard_signal_render(n: Int) -> String {
+  match linux_standard_signal_of_number(n: n) {
+    Present { value: s } => join(["SIG", linux_standard_signal_wire_name(signal: s)], "")
+    Absent => join(["signal ", to_string(n)], "")
+  }
+}

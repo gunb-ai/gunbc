@@ -1,0 +1,161 @@
+module extdeps.github.org_admin_auth
+
+import std.types { NonEmptyStr, Timestamp, String, Int, EpochSecs }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// GitHub's credential and endpoint documentation are the authority for these shapes. This module
+// describes the interface only: browser, device-flow, REST, and gh are realizations elsewhere.
+data credential_types_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/github-credential-types" }
+}
+
+data runner_groups_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/rest/actions/self-hosted-runner-groups" }
+}
+
+data actions_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/rest/actions/permissions" }
+}
+
+data installation_token_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app" }
+}
+
+// The installation access token endpoint and the App JWT bounds are facts of GitHub's API
+// (installation_token_citation): the JWT is signed RS256 with the App's private key, its `iat` may
+// be backdated up to 60 s for clock skew, its `exp` may be at most 10 minutes after issue, and the
+// POST returns a token valid for one hour. Modeled here so the workflow step that mints one names
+// the endpoint through the citation rather than spelling a URL.
+data github_app_installation_access_token_url_prefix: String = "https://api.github.com/app/installations/"
+
+fn github_app_installation_access_token_url(installation_id: Int) -> String {
+  join([github_app_installation_access_token_url_prefix, to_string(installation_id), "/access_tokens"], "")
+}
+
+data github_app_jwt_backdate_seconds: Int = 60
+
+data github_app_jwt_lifetime_seconds: Int = 540
+
+// THE APP JWT'S CLAIMS, as installation_token_citation states them: iss is the App id, iat is
+// backdated for clock skew, exp is within ten minutes of issue. ONE authority for the claim SHAPE:
+// github_app_jwt_claims_json_of spells the JSON once over rendered values, and both producers go
+// through it -- gunbc.github_effect_perform with the numbers themselves, and gunbc.ci.ci_spec's shell
+// preludes with printf placeholders their runtime `date +%s` fills (those preludes compute the
+// clock in the step that signs, so they cannot take a number from here; the shape and both bounds
+// they still can).
+fn github_app_jwt_claims_json_of(iat: String, exp: String, iss: String) -> String {
+  join(["\{\"iat\":", iat, ",\"exp\":", exp, ",\"iss\":\"", iss, "\"}"], "")
+}
+
+fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: EpochSecs) -> String {
+  github_app_jwt_claims_json_of(
+    iat: to_string(now_epoch_secs - github_app_jwt_backdate_seconds),
+    exp: to_string(now_epoch_secs + github_app_jwt_lifetime_seconds),
+    iss: to_string(app_id),
+  )
+}
+
+data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }
+}
+
+type OrgAdminCredentialKind
+  = FineGrainedPersonalAccessToken
+  | ClassicPersonalAccessToken
+  | GitHubAppInstallationAccessToken
+  | OAuthAppUserAccessToken
+
+type OrgActionsCapability
+  = RunnerGroupsRead
+  | RunnerGroupsWrite
+  | RunnerGroupRepositoriesRead
+  | RunnerGroupRepositoriesWrite
+  | OrganizationRunnerRegistrationTokenCreate
+  | OrganizationActionsPolicyRead
+  | OrganizationActionsPolicyWrite
+
+type OrgAdminPermissionGrant
+  = FineGrainedOrganizationSelfHostedRunnersRead
+  | FineGrainedOrganizationSelfHostedRunnersWrite
+  | FineGrainedOrganizationAdministrationRead
+  | FineGrainedOrganizationAdministrationWrite
+  | ClassicAdminOrg
+
+type CredentialAcquisition
+  = HumanWebAcquired
+  | OAuthWebOrDeviceAuthorization
+  | ProgrammaticallyMintedFromGitHubAppKey
+
+type CredentialLifetime
+  = ConfigurablePersonalTokenLifetime { expires_at: Timestamp? }
+  | LongLivedOAuthToken { expires_at: Timestamp? }
+  | RenewableOAuthToken { expires_at: Timestamp }
+  | OneHourInstallationToken { expires_at: Timestamp }
+
+type CredentialRevocationSurface
+  = PersonalTokenSettingsOrOrganizationPolicy
+  | OAuthAuthorizationOrApplication
+  | GitHubAppInstallationOrPrivateKey
+
+type OrgAdminCredentialShape {
+  kind: OrgAdminCredentialKind
+  grants: List<OrgAdminPermissionGrant>
+  acquisition: CredentialAcquisition
+  lifetime: CredentialLifetime
+  revocation: CredentialRevocationSurface
+}
+
+fn grant_supports(grant: OrgAdminPermissionGrant, capability: OrgActionsCapability) -> Bool {
+  match grant {
+    FineGrainedOrganizationSelfHostedRunnersRead =>
+      any([RunnerGroupsRead, RunnerGroupRepositoriesRead], c => c == capability)
+    FineGrainedOrganizationSelfHostedRunnersWrite => any([
+      RunnerGroupsRead,
+      RunnerGroupsWrite,
+      RunnerGroupRepositoriesRead,
+      RunnerGroupRepositoriesWrite,
+      OrganizationRunnerRegistrationTokenCreate
+    ], c => c == capability)
+    FineGrainedOrganizationAdministrationRead => capability == OrganizationActionsPolicyRead
+    FineGrainedOrganizationAdministrationWrite =>
+      any([OrganizationActionsPolicyRead, OrganizationActionsPolicyWrite], c => c == capability)
+    ClassicAdminOrg => true
+  }
+}
+
+fn credential_supports(shape: OrgAdminCredentialShape, capability: OrgActionsCapability) -> Bool {
+  any(shape.grants, g => grant_supports(grant: g, capability: capability))
+}
+
+data org_actions_converge_capabilities: List<OrgActionsCapability> = [
+  RunnerGroupsRead,
+  RunnerGroupsWrite,
+  RunnerGroupRepositoriesRead,
+  RunnerGroupRepositoriesWrite,
+  OrganizationRunnerRegistrationTokenCreate,
+  OrganizationActionsPolicyRead,
+  OrganizationActionsPolicyWrite
+]
+
+fn credential_supports_org_actions_converge(shape: OrgAdminCredentialShape) -> Bool {
+  all(org_actions_converge_capabilities, c => credential_supports(shape: shape, capability: c))
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.org_admin_auth",
+      decl_name: "OrgAdminCredentialShape",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.org_admin_auth.credential_types_citation,
+  further_citations: [
+    extdeps.github.org_admin_auth.runner_groups_citation,
+    extdeps.github.org_admin_auth.actions_permissions_citation,
+    extdeps.github.org_admin_auth.installation_token_citation,
+    extdeps.github.org_admin_auth.oauth_flow_citation
+  ]
+}

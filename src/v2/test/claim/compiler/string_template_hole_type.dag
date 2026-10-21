@@ -1,0 +1,126 @@
+module v2.test.claim.compiler.string_template_hole_type
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree, fmi_list_peers }
+import v2.test.claim.body_let_annotation { bla_source }
+import v2.test.claim.type_param_binder_frame { tpb_artifact }
+import v2.compiler.program_assembly { IngestAssembly, assemble_program_from_ingest_located }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.diagnostic { Accepted, ByteRange, Locus, NodeLocus, Rejected, Textual, WholeFile, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONE REAL-PATH CLAIM FOR STRING TEMPLATES (XL-2 PR2b), and it is the RED control: source text in,
+// through the production assembly route -- lexer, parse, normalize (where the template is rewritten to
+// a concat chain, v2.compiler.body_lowering_fold body_lower_string_template), then infer. NO IMPLICIT
+// to_string (DESIGN section 4, the coercion law): a hole is one operand of the bare roster `concat`,
+// whose one carrier M takes the template's text, so an Int hole cannot inhabit it and the template
+// REFUSES at that argument -- typed, and located AT THE HOLE (DESIGN section 5): the refused
+// application is a lowering member whose recorded cause is the hole, and that cause resolves through the
+// parse's span index to the hole's bytes. A non-text value reaches a template only through a named,
+// declared conversion written at the hole. Every other template claim supplies its input
+// (v2.test.claim.body_lowering.string_template).
+//
+// The fixture's own text (braces escaped here so this module's literals stay plain):
+//   fn f(a: Int) -> String { "x{a}y" }
+//   data k: String = "k"
+//   data s: String = "a{k}b"
+// The data initializer rides in the same module: normalize folds a data initializer's children BEFORE the
+// template reader runs, and a template that was not read raw lost its holes (the hole's expression
+// wrapper was lowered away), leaving concat("a","b") with no reference to k.
+data sth_int_hole: String = "module p\n\ndata k: String = \"k\"\n\ndata s: String = \"a\{k\}b\"\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
+
+// RED, LOCATED AT THE HOLE: an Int hole is not converted; it refuses at the concat argument, as an
+// authored concat("x", a) with a: Int does, and the refusal's node resolves through the parse's span
+// index to the hole `a` -- byte 88 of sth_int_hole, inside the template -- not to a generated node
+// with no authored position (body_lowering_fold body_lower_string_template_part_source).
+// One assembly, read once: assemble_program_from_ingest_located returns the span index it recorded
+// beside the program, so the locus is resolved against the same parse that infer refused -- no second
+// parse of the fixture.
+fn sth_assembly() -> IngestAssembly {
+  assemble_program_from_ingest_located(
+    ingest: Cons { head: bla_source(src: sth_int_hole, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu), tail: fmi_list_peers() },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: `data s` is lowered by the real normalize, and its hole `k` must SURVIVE as
+// a reference to p.k -- one for the data row; the Int hole's `a` is a parameter reference, so it is not
+// counted. A template folded children-first would reduce this to zero.
+fn sth_k_references(tree: Node) -> Int {
+  fold(node_subtree_nodes(root: tree), init: 0, f: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } => if qualified_name_to_dotted_string(qn: p) == "p.k" { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+// The same assembly as the Int-hole claim (a pure producer, shared across claims), read for what normalize
+// kept: the data initializer's hole reference.
+test fn a_data_initializer_template_keeps_its_hole() -> Bool {
+  match sth_assembly().program {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => sth_k_references(tree: tree.root) >= 1
+  }
+}
+
+test fn an_int_hole_refuses_at_the_hole() -> Bool {
+  let assembly = sth_assembly()
+  match assembly.program {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          (diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit)
+            && sth_locus_starts_within(index: assembly.spans, at: diagnostics_fatal(d: d).at, start: 88, end: 89)
+      }
+  }
+}
+
+fn sth_textual_starts_within(locus: Locus, start: Int, end: Int) -> Bool {
+  match locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: _ } => (s >= start) && (s < end)
+        WholeFile => false
+      }
+    _ => false
+  }
+}
+
+// The refused application is a lowering member: its occurrence was allocated at normalize and
+// records the hole that caused it. The authored occurrence a reader is pointed at is that cause.
+fn sth_authored_cause_optional(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: cause } => Present { value: cause.occurrence }
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrencePending { caused_by: cause } => Present { value: cause }
+    OccurrenceSynthetic => Absent
+  }
+}
+
+fn sth_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
+  match at {
+    NodeLocus { anchor: a } =>
+      match sth_authored_cause_optional(node: a.at) {
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: index, id: id) {
+            Present { value: locus } => sth_textual_starts_within(locus: locus, start: start, end: end)
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}

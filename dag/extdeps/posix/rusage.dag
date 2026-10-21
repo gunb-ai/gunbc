@@ -1,0 +1,83 @@
+module extdeps.posix.rusage
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/getrusage.html"
+  }
+}
+
+// getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE: ru_maxrss is POSIX's peak resident set size,
+// and it is the interface the corpus uses where the process's own address space is the subject.
+//
+// IT IS NOT THE SAME QUANTITY AS LINUX /proc/self/status VmHWM WHEN THE PROCESS WAS SPAWNED. Linux
+// seeds ru_maxrss at exec from the high-water of the address space the exec replaced, so a process
+// spawned from a large parent (and a child reaped by wait4 from one) reports the PARENT's peak.
+// VmHWM belongs to the mm the exec created and is not inherited. An earlier version of this note
+// called the two the same quantity and VmHWM a mere transport; that was wrong exactly in this case,
+// and the repository reads VmHWM on Linux for it (gunbc.recurring_failure_mode
+// a_child_peak_resident_inherits_the_predecessor_address_space). Whether ru_maxrss is inherited on
+// other hosts is unverified here; a reader of ru_maxrss owns showing its subject was not spawned
+// from a larger process.
+//
+// THE UNIT IS THE OTHER DIVERGENCE, and it is a specification-level fact: POSIX defines ru_maxrss's
+// meaning and DOES NOT SPECIFY ITS UNIT. Implementations differ legitimately and permanently, which
+// is why RusageMaxrssUnit is an open question this module refuses to answer, answered instead by
+// extdeps.linux.rusage and extdeps.darwin.rusage each for their own implementation. A conversion
+// that assumed either unit would be wrong by a factor of 1024, silently, in the direction that
+// looks plausible.
+
+type RusageWho
+  = RusageSelf
+  | RusageChildren
+
+fn rusage_who_label(w: RusageWho) -> NonEmptyStr {
+  match w {
+    RusageSelf => "RUSAGE_SELF"
+    RusageChildren => "RUSAGE_CHILDREN"
+  }
+}
+
+// The two arms are not a preference and not a portability workaround — they are the two answers conforming implementations actually give, and the corpus must carry both because it runs on both. MaxrssKibibytes is what Linux returns; MaxrssBytes is what the BSD-derived kernels including Darwin return. Anything reading ru_maxrss without pairing it to a unit is off by 1024x on one of the two, and in the dangerous direction: a Linux value misread as bytes UNDERSTATES peak residency by three orders of magnitude, so a budget derived from it would look comfortable on a host about to be OOM-killed.
+type RusageMaxrssUnit
+  = MaxrssBytes
+  | MaxrssKibibytes
+
+fn maxrss_to_byte_size(raw: Int, unit: RusageMaxrssUnit) -> ByteSize {
+  match unit {
+    MaxrssBytes => byte_size(raw)
+    MaxrssKibibytes => byte_size(raw * 1024)
+  }
+}
+
+type RusageMaxrssObservation {
+  who: RusageWho
+  raw_value: Int
+  unit: RusageMaxrssUnit
+}
+
+fn rusage_maxrss_bytes(obs: RusageMaxrssObservation) -> ByteSize {
+  maxrss_to_byte_size(raw: obs.raw_value, unit: obs.unit)
+}
+
+fn rusage_maxrss_is_positive(obs: RusageMaxrssObservation) -> Bool {
+  obs.raw_value > 0
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.rusage",
+      decl_name: "RusageWho",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.posix.rusage.extdeps_external_authority_anchor,
+  further_citations: []
+}

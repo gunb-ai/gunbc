@@ -1,0 +1,176 @@
+module extdeps.common_paper.cloud_service_agreement
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedUnderOpenLicense, SpecificationDocumentDate }
+import extdeps.uri { Uri, Https }
+
+// THE ONE PINNED EXTERNAL CONTRACT AUTHORITY (M2 compliance spine, rank 2). Warranty, indemnity,
+// IP, confidentiality, payment, liability, dispute and termination terms do not DERIVE from any
+// compliance model this repository carries, so the agreement a provider-use sanction requires is
+// a CITED UPSTREAM, not something authored here. This module cites it; it does not sign it, and
+// nothing in it commits any party to a contractual term.
+//
+// WHAT THE UPSTREAM ACTUALLY IS, in its own names. The Common Paper Cloud Service Agreement (CSA)
+// is two components: a COVER PAGE the parties complete and sign, and the STANDARD TERMS, hosted
+// online and incorporated into the Cover Page by reference. The Cover Page carries the Key Terms
+// (the Order Form and the Framework Terms) and every Variable - Subscription Period, Fees,
+// General Cap Amount, Governing Law, an optional Pilot Period, and any modifications to the
+// Standard Terms, which upstream requires be made by addendum on the Cover Page and never by
+// editing the Standard Terms themselves. Every capitalized word that is not a Cover Page Variable
+// is defined in the Standard Terms, sections 1 (Service) through 13 (Definitions).
+//
+// WHAT THIS MODULE MODELS, AND WHAT IT DELIBERATELY DOES NOT (DESIGN section 3: interface,
+// realization and policy are three facts). The subject here is the STANDARD TERMS at one posted
+// version: the fixed, publicly hosted, independently versioned document. That is the only part of
+// the agreement that is an upstream fact. The Cover Page is where every commercial position lives -
+// which cap amount, which governing law, whether a Pilot Period exists and what is modified during
+// it - and each of those is a workflow-layer decision the operator takes, not a property of the
+// standard. Modeling a cap number or an accepted deviation here would be the policy-into-extdeps
+// layer inversion section 3 names, and choosing one is outside this module's authority.
+//
+// THE VERSION IS PINNED AND THE PIN IS STABLE BY THE UPSTREAM'S OWN RULE. The v2.1 page states
+// that the Version 2.1 Standard Terms remain hosted at their page unchanged, and that any future
+// change is issued under a new version number on a different page; the index page adds that new
+// versions do not change agreements that incorporate prior versions. So the anchor locator IS the
+// version identity: a new version is a new row with a new anchor, never an edit to this one, and
+// a consumer citing common_paper_csa_v2_1 cites the same text on every future read.
+//
+// READ 2026-09-12 by this session, without credentials: all three cited locators - the anchor,
+// the index page, and the version-history page - answered HTTP 200. One typed read receipt per
+// locator, each with its byte count and content digest, is a gunbc-layer observation and lives in
+// gunbc.specification_citation_read_provenance, not on this record. The release date carried here
+// is the v2.1 page's self-declaration; the version-history page dates it one day earlier, and that
+// discrepancy is recorded on its receipt rather than resolved here.
+//
+// WHY THE CREDIBLE ALTERNATIVE, extdeps.bonterms.cloud_terms bonterms_cloud_terms_v1_0, LOST.
+// Both texts were read by this session on 2026-09-12 (receipts in
+// gunbc.specification_citation_read_provenance), and on the brief's structural criteria they tie:
+// both are CC BY 4.0, both are a signed Cover Page incorporating hosted standard terms by
+// reference, both carry their version in the document's own title and definitions. The
+// discriminators are three things the two TEXTS say differently:
+//
+// 1. WHERE THE PILOT TERMS LIVE. Common Paper's Cover Page carries an optional Pilot Period as a
+//    Variable - its length, a Fee for Pilot Period, and a section for modifications that apply
+//    only to the Pilot Period - in addition to the Subscription Period, which starts automatically
+//    when the pilot ends. Bonterms Section 21 (Trials and Betas) fixes the pilot terms inside the
+//    Standard Terms: evaluation-only use for a period designated on the Order or 30 days, no
+//    warranty, indemnity, SLA or Support, and liability not to exceed US$1,000, with trials and
+//    betas governed as one clause. Every pilot term this fabric will need to set - fee, cap, which
+//    warranties apply - is a commercial position the operator takes on the Cover Page (see above).
+//    Under Common Paper that position is a Cover Page entry; under Bonterms it is an Additional
+//    Term amending Section 21, which is exactly the accepted-deviation class the compliance spine
+//    must escalate rather than author. That is the advantage, not merely a difference: under
+//    Bonterms this fabric would inherit a US$1,000 pilot cap and a no-warranty, no-indemnity,
+//    no-SLA pilot position as a silent standard-term default nobody in this repository chose or
+//    escalated; under Common Paper the same position has to be written on a Cover Page, where it
+//    is visible as a commercial decision. A standard that forces a commercial position into the
+//    open beats one that supplies it by default, and it is what lets a downstream deviation list
+//    be honest about which positions were taken.
+//
+// 2. WHETHER THE POSTED TEXT DECLARES ITSELF FIXED. The Common Paper v2.1 page states that these
+//    Version 2.1 Standard Terms remain hosted on that page and any future change is issued under a
+//    new version number on a different page; the index page adds that new versions do not affect
+//    agreements incorporating prior versions. The Bonterms v1.0 page carries its version in its
+//    title and definitions but no statement about whether the text at its locator stays fixed.
+//    That is a statement about what the page says, not a claim that Bonterms would alter a posted
+//    version; a DeclarationRef citing a locator is only as stable as what the publisher commits to,
+//    and one publisher commits in the text and the other does not.
+//
+// 3. WHETHER TRAINING USE OF CUSTOMER DATA IS ADDRESSED. Common Paper Section 1.6 (Machine
+//    Learning) governs use of Usage Data and Customer Content to develop, train or enhance models,
+//    with aggregation and de-identification conditions. The Bonterms v1.0 text contains no
+//    provision on the use of Customer Data for model training (its only use of "training" is in
+//    the definition of professional services). The routes provider_admission gates carry inference
+//    work, so a standard that is silent on that question leaves the term to be authored downstream.
+//
+// Version currency (2.1 released 2024 against 1.0 with a 2022 copyright) is a fact about the two
+// documents and is not itself one of the reasons.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/2.1/",
+  }
+}
+
+data common_paper_csa_standard_terms_v2_1_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data common_paper_csa_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/",
+  }
+}
+
+data common_paper_csa_version_history_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/versions",
+  }
+}
+
+// ONE TYPE PER POSTED VERSION. Upstream posts each version under its own number and never edits
+// a posted one, so a version is a construction here, not a free label: a consumer cannot cite
+// "2.2" until a row for it exists with its own anchor. Spelled as a unit type plus an alias rather
+// than a one-variant coproduct because the v1 seed reads a single-variant coproduct as a type
+// alias and exports no constructor for it (std.decl_ref records the same measurement); the alias
+// becomes the coproduct the day a second version is pinned.
+type CommonPaperCsaVersion2_1 {}
+
+type CommonPaperCsaVersion = CommonPaperCsaVersion2_1
+
+data common_paper_csa_title: NonEmptyStr = "Common Paper Cloud Service Agreement Standard Terms"
+
+data common_paper_csa_v2_1_version_label: NonEmptyStr = "2.1"
+
+data common_paper_csa_v2_1_released: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2024,
+  month: 11,
+  day: 5,
+}
+
+data common_paper_csa_v2_1_publication_status: DocumentPublicationStatus = PubliclyPublishedUnderOpenLicense {
+  license: "CC BY 4.0",
+}
+
+type CommonPaperCloudServiceAgreementStandardTerms {
+  title: NonEmptyStr
+  version: CommonPaperCsaVersion
+  version_label: NonEmptyStr
+  released: SpecificationDocumentDate
+  publication_status: DocumentPublicationStatus
+  standard_terms: ExternalAuthority
+}
+
+// THE DECLARATION A PROVIDER-USE SANCTION CITES. product.fabric.provider_admission
+// RouteScopeSanction.requires_agreement and ProviderUseScope.agreement are DeclarationRefs, and
+// this row is what they are supposed to name; admit_provider_use compares the two by
+// declaration_ref_eq and refuses RequiredAgreementAuthorityAbsent when the scope presents any
+// other agreement. The executing consumer is test.claim.fabric.common_paper_csa_agreement_witness,
+// which runs both arms against this exact reference.
+data common_paper_csa_v2_1: CommonPaperCloudServiceAgreementStandardTerms = CommonPaperCloudServiceAgreementStandardTerms {
+  title: common_paper_csa_title,
+  version: CommonPaperCsaVersion2_1 {},
+  version_label: common_paper_csa_v2_1_version_label,
+  released: common_paper_csa_v2_1_released,
+  publication_status: common_paper_csa_v2_1_publication_status,
+  standard_terms: common_paper_csa_standard_terms_v2_1_authority,
+}
+
+data common_paper_csa_v2_1_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.common_paper.cloud_service_agreement",
+  decl_name: "common_paper_csa_v2_1",
+  field: WholeDeclaration,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: common_paper_csa_v2_1_ref,
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    common_paper_csa_index_authority,
+    common_paper_csa_version_history_authority,
+  ],
+}

@@ -1,0 +1,1022 @@
+module test.claim.serving_caller_backlog_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation_first }
+import product.fabric.execution { ReservationRef }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import gunbc.serving.caller_backlog {
+  LogicalWorkId, CallerBacklogSnapshot, empty_caller_backlog, waiting_record, encode_waiting, decode_waiting,
+  DurableWaitingPersisted, DurablePhasePersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
+  DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable, DurablePersistPayloadUnencodable,
+  DurablePersistUnknownWork, DurablePersistDuplicate,
+  WaitingWireEncoded, WaitingWireUnencodable,
+  DurableResumedWaiting, DurableResumedTerminal, DurableResumeUnknownWork,
+  DurableResumeStoreUnreadable, DurableResumePayloadUndecodable, DurableResumeWorkMismatch,
+  DurableCancelled, DurableCancelAlreadyTerminal, DurableCancelUnknownWork,
+  DurableCancelStoreRefused, DurableCancelKeyNotSlotAddressable,
+  DurableAttemptCommitted, DurableAttemptFenceRefused, DurableAttemptNotWaiting,
+  DurableAttemptUnknownWork, DurableAttemptStoreRefused, DurableAttemptKeyNotSlotAddressable,
+  persist_waiting_durable, resume_waiting_durable, cancel_work_durable, commit_attempt_durable, ComputeCellFence,
+  DispatchTurnKey, logical_work_id_of, WorkIdDerived, WorkIdKeyNotOctets,
+  note_recovery_durable,
+  WorkCancelled, WorkCompleted, WorkWaiting, WorkRecoveryBoundExceeded,
+  RecoveryEvent, RecoveryProbe, RecoveryRequest,
+}
+import std.nat { Nat }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.replica_endpoint_launch { replica_endpoint_launch }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
+import gunbc.serving.turn_admission { BatchQualityTolerant }
+import std.measure { Measure, Count, One }
+import product.capacity.pool { Pool }
+import product.capacity.event_chain { PartitionId }
+import product.capacity.pool_events { SeatRequest }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
+import std.resource_release_law { QuiescenceRequired }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }
+import gunbc.harness.harness_seat {
+  harness_settle_caller_turn, PlacementRound, HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, HarnessSeatReference, HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
+}
+import gunbc.serving.caller_backlog {
+  SeatRef, DurableCancelled,
+  DurableRebindUnknownWork, DurableRebindStoreRefused, DurableRebindKeyNotSlotAddressable,
+}
+import std.algebra { length }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.budget { MoneyAccount, MoneyLease }
+
+// Persist, overwrite the slot bytes independently, resume through a freshly minted root handle.
+// If resume returned the in-memory persist record it would keep reservation A / generation 2 and
+// fail against the bytes Filesystem.Read just observed. Enrolled on local_repo_wet_schedule
+// (exclusion LocalRepoWetLane, floor_route_gap DirWithTemplate). Not on the required witnesses
+// job (self-host / v2-native-cli); the floor's local-repo wet lane is the executing consumer.
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_caller_backlog.XXXXXX").path
+}
+
+test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let persist_root = root_path as NonEmptyStr
+  let work = "logical-work-a" as LogicalWorkId
+  let reservation_written = "grant-work-a" as ReservationRef
+  let persisted = persist_waiting_durable(
+    root: persist_root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    seat: seat_of(reservation: reservation_written),
+    generation: 2,
+  )
+  let persist_record = match persisted {
+    DurableWaitingPersisted { record: r } => Present { value: r }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let disk_record = waiting_record(
+    work: work,
+    seat: seat_of(reservation: "grant-work-b" as ReservationRef),
+    generation: 9,
+  )
+  let disk_payload = match encode_waiting(record: disk_record) {
+    WaitingWireEncoded { payload: p } => p as String
+    WaitingWireUnencodable { reason: _ } => ""
+  }
+  let slot = cas_file_slot_path(root: persist_root, key: work as NonEmptyStr, generation: cas_generation_first())
+  let planted = Filesystem.Write(path: slot, content: disk_payload as String)
+  let bytes = Filesystem.Read(path: slot)
+  let from_bytes = if bytes.success {
+    decode_waiting(payload: bytes.content as NonEmptyStr)
+  } else {
+    none
+  }
+  let resume_root = root_path as NonEmptyStr
+  let resumed = resume_waiting_durable(root: resume_root, work: work)
+  let resume_matches_bytes = match resumed {
+    DurableResumedWaiting { record: r } =>
+      match from_bytes {
+        Absent => false
+        Present { value: expected } =>
+          (r.work as String) == (expected.work as String)
+            && res_text(seat: r.seat) == res_text(seat: expected.seat)
+            && r.generation == expected.generation
+            && res_text(seat: r.seat) != (reservation_written as String)
+            && r.generation != 2
+      }
+    DurableResumedTerminal { phase: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let not_the_persist_snapshot = match persist_record {
+    Absent => false
+    Present { value: in_memory } =>
+      match resumed {
+        DurableResumedWaiting { record: r } =>
+          res_text(seat: r.seat) != res_text(seat: in_memory.seat)
+            && r.generation != in_memory.generation
+        DurableResumedTerminal { phase: _ } => false
+        DurableResumeUnknownWork => false
+        DurableResumeStoreUnreadable { detail: _ } => false
+        DurableResumePayloadUndecodable => false
+        DurableResumeWorkMismatch => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted.success
+    && bytes.success
+    && bytes.content == (disk_payload as String)
+    && resume_matches_bytes
+    && not_the_persist_snapshot
+    && removed.success
+}
+
+test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let cancel_work = "logical-work-cancel" as LogicalWorkId
+  let commit_work = "logical-work-commit" as LogicalWorkId
+  let reservation = "grant-work-a" as ReservationRef
+  let cancel_persist = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: cancel_work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let commit_persist = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: commit_work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let cancel_snap = match cancel_persist {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let commit_snap = match commit_persist {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let cancelled = match cancel_snap {
+    Absent => false
+    Present { value: snap } =>
+      match cancel_work_durable(root: root, snapshot: snap, work: cancel_work) {
+        DurableCancelled { record: r } =>
+          match r.phase {
+            WorkCancelled => true
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkRecoveryBoundExceeded { deficit: _ } => false
+          }
+        DurableCancelAlreadyTerminal { phase: _ } => false
+        DurableCancelUnknownWork => false
+        DurableCancelStoreRefused { detail: _ } => false
+        DurableCancelKeyNotSlotAddressable { work: _ } => false
+      }
+  }
+  let account = MoneyAccount {
+    account: "caller-backlog",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
+      entries: [],
+    },
+    leases: [MoneyLease { reference: reservation, generation: 2 }],
+  }
+  let committed = match commit_snap {
+    Absent => false
+    Present { value: snap } =>
+      match commit_attempt_durable(root: root, snapshot: snap, fence: ComputeCellFence { account: account, presented: 2 }, work: commit_work) {
+        DurableAttemptCommitted { record: r } =>
+          match r.phase {
+            WorkCompleted => true
+            WorkWaiting => false
+            WorkCancelled => false
+            WorkRecoveryBoundExceeded { deficit: _ } => false
+          }
+        DurableAttemptFenceRefused => false
+        DurableAttemptNotWaiting { phase: _ } => false
+        DurableAttemptUnknownWork => false
+        DurableAttemptStoreRefused { detail: _ } => false
+        DurableAttemptKeyNotSlotAddressable { work: _ } => false
+      }
+  }
+  let resume_root = root_path as NonEmptyStr
+  let cancel_resumed = match resume_waiting_durable(root: resume_root, work: cancel_work) {
+    DurableResumedTerminal { phase: p } =>
+      match p {
+        WorkCancelled => true
+        WorkWaiting => false
+        WorkCompleted => false
+        WorkRecoveryBoundExceeded { deficit: _ } => false
+      }
+    DurableResumedWaiting { record: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let commit_resumed = match resume_waiting_durable(root: resume_root, work: commit_work) {
+    DurableResumedTerminal { phase: p } =>
+      match p {
+        WorkCompleted => true
+        WorkWaiting => false
+        WorkCancelled => false
+        WorkRecoveryBoundExceeded { deficit: _ } => false
+      }
+    DurableResumedWaiting { record: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let garbage = Filesystem.Write(
+    path: cas_file_slot_path(root: root, key: "logical-work-bad" as NonEmptyStr, generation: cas_generation_first()),
+    content: "not-a-record",
+  )
+  let undecodable = match resume_waiting_durable(root: resume_root, work: "logical-work-bad" as LogicalWorkId) {
+    DurableResumePayloadUndecodable => true
+    DurableResumedWaiting { record: _ } => false
+    DurableResumedTerminal { phase: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumeWorkMismatch => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  cancelled && committed && cancel_resumed && commit_resumed && garbage.success && undecodable && removed.success
+}
+
+test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-recovery" as LogicalWorkId
+  let reservation = "grant-work-a" as ReservationRef
+  let bound = 3
+  let persisted = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let snap0 = match persisted {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let after_probe = match snap0 {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistIdempotent { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+        DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
+      }
+  }
+  let after_fail = match after_probe {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: r }
+        DurableWaitingPersisted { record: r } => Present { value: r }
+        DurablePersistIdempotent { record: r } => Present { value: r }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+        DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
+      }
+  }
+  let resume_root = root_path as NonEmptyStr
+  let resumed = resume_waiting_durable(root: resume_root, work: work)
+  let history_held = match resumed {
+    DurableResumedWaiting { record: r } =>
+      length(r.recovery) == 2
+        && (match r.recovery.first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryProbe => e.succeeded  RecoveryRequest => false }
+        })
+        && (match r.recovery.skip(n: 1).first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryRequest => !e.succeeded  RecoveryProbe => false }
+        })
+    DurableResumedTerminal { phase: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let resumed_snap = match resumed {
+    DurableResumedWaiting { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurableResumedTerminal { phase: _ } => none
+    DurableResumeUnknownWork => none
+    DurableResumeStoreUnreadable { detail: _ } => none
+    DurableResumePayloadUndecodable => none
+    DurableResumeWorkMismatch => none
+  }
+  let bound_trips = match resumed_snap {
+    Absent => false
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } =>
+          match r.phase {
+            WorkRecoveryBoundExceeded { deficit: d } => d.requests_failed >= 1
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkCancelled => false
+          }
+        DurableWaitingPersisted { record: _ } => false
+        DurablePersistIdempotent { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  match after_fail { Present { value: _ } => true  Absent => false }
+    && history_held
+    && bound_trips
+    && removed.success
+}
+
+// In-memory PersistIdempotent is not durable success. A second persist_waiting_durable against
+// a snapshot that already holds the waiting record must observe the CAS slot: matching bytes
+// are DurablePersistIdempotent; a deleted slot is written, not reported idempotent.
+test fn persist_idempotent_observes_the_slot_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-idempotent" as LogicalWorkId
+  let reservation = "grant-idempotent" as ReservationRef
+  let first = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let snap = match first {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let confirmed = match snap {
+    Absent => false
+    Present { value: s } =>
+      match persist_waiting_durable(root: root, snapshot: s, work: work, seat: seat_of(reservation: reservation), generation: 2) {
+        DurablePersistIdempotent { record: r } => (r.work as String) == (work as String)
+        DurableWaitingPersisted { record: _ } => false
+        DurablePhasePersisted { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let slot = cas_file_slot_path(root: root, key: work as NonEmptyStr, generation: cas_generation_first())
+  let deleted = Filesystem.Delete(path: slot)
+  let rewritten = match snap {
+    Absent => false
+    Present { value: s } =>
+      match persist_waiting_durable(root: root, snapshot: s, work: work, seat: seat_of(reservation: reservation), generation: 2) {
+        DurableWaitingPersisted { record: r } => (r.work as String) == (work as String)
+        DurablePersistIdempotent { record: _ } => false
+        DurablePhasePersisted { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  match snap { Present { value: _ } => true  Absent => false }
+    && confirmed
+    && deleted.success
+    && rewritten
+    && removed.success
+}
+
+fn wet_account(reservation: ReservationRef, generation: Int) -> MoneyAccount {
+  MoneyAccount {
+    account: "caller-backlog",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
+      entries: [],
+    },
+    leases: [MoneyLease { reference: reservation, generation: generation }],
+  }
+}
+
+// Cancel writes WorkCancelled. A later commit_attempt_durable that still holds the waiting
+// snapshot must observe the cancelled slot, refuse, and leave the durable phase cancelled.
+test fn stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-stale-commit" as LogicalWorkId
+  let reservation = "grant-stale-commit" as ReservationRef
+  let first = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let waiting = match first {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let cancelled = match waiting {
+    Absent => false
+    Present { value: snap } =>
+      match cancel_work_durable(root: root, snapshot: snap, work: work) {
+        DurableCancelled { record: r } =>
+          match r.phase {
+            WorkCancelled => true
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkRecoveryBoundExceeded { deficit: _ } => false
+          }
+        DurableCancelAlreadyTerminal { phase: _ } => false
+        DurableCancelUnknownWork => false
+        DurableCancelStoreRefused { detail: _ } => false
+        DurableCancelKeyNotSlotAddressable { work: _ } => false
+      }
+  }
+  let stale_commit = match waiting {
+    Absent => false
+    Present { value: snap } =>
+      match commit_attempt_durable(
+        root: root,
+        snapshot: snap,
+        fence: ComputeCellFence { account: wet_account(reservation: reservation, generation: 2), presented: 2 },
+        work: work,
+      ) {
+        DurableAttemptNotWaiting { phase: p } =>
+          match p {
+            WorkCancelled => true
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkRecoveryBoundExceeded { deficit: _ } => false
+          }
+        DurableAttemptCommitted { record: _ } => false
+        DurableAttemptFenceRefused => false
+        DurableAttemptUnknownWork => false
+        DurableAttemptStoreRefused { detail: _ } => false
+        DurableAttemptKeyNotSlotAddressable { work: _ } => false
+      }
+  }
+  let still_cancelled = match resume_waiting_durable(root: root, work: work) {
+    DurableResumedTerminal { phase: p } =>
+      match p {
+        WorkCancelled => true
+        WorkWaiting => false
+        WorkCompleted => false
+        WorkRecoveryBoundExceeded { deficit: _ } => false
+      }
+    DurableResumedWaiting { record: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  cancelled && stale_commit && still_cancelled && removed.success
+}
+
+// Store-owned recovery: a stale waiting snapshot must not truncate a newer history, and must
+// not revive a terminal bound-exceeded record.
+test fn stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let hist_work = "logical-work-stale-history" as LogicalWorkId
+  let term_work = "logical-work-stale-terminal" as LogicalWorkId
+  let reservation = "grant-stale-recovery" as ReservationRef
+  let bound = 1
+  let hist_persist = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: hist_work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let hist_waiting = match hist_persist {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let after_probe = match hist_waiting {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: hist_work,
+        event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+        bound: 5,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: r }
+        DurableWaitingPersisted { record: r } => Present { value: r }
+        DurablePersistIdempotent { record: r } => Present { value: r }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+        DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
+      }
+  }
+  let stale_append = match hist_waiting {
+    Absent => false
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: hist_work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: 5,
+      ) {
+        DurablePhasePersisted { record: r } => length(r.recovery) == 2
+        DurableWaitingPersisted { record: r } => length(r.recovery) == 2
+        DurablePersistIdempotent { record: r } => length(r.recovery) == 2
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let history_kept = match resume_waiting_durable(root: root, work: hist_work) {
+    DurableResumedWaiting { record: r } => length(r.recovery) == 2
+    DurableResumedTerminal { phase: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let term_persist = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: term_work,
+    seat: seat_of(reservation: reservation),
+    generation: 2,
+  )
+  let term_waiting = match term_persist {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let bound_hit = match term_waiting {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: term_work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistIdempotent { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+        DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
+      }
+  }
+  let stale_revive = match term_waiting {
+    Absent => false
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: term_work,
+        event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+        bound: bound,
+      ) {
+        DurablePersistRefusedTerminal { phase: p } =>
+          match p {
+            WorkRecoveryBoundExceeded { deficit: _ } => true
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkCancelled => false
+          }
+        DurablePhasePersisted { record: _ } => false
+        DurableWaitingPersisted { record: _ } => false
+        DurablePersistIdempotent { record: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let still_terminal = match resume_waiting_durable(root: root, work: term_work) {
+    DurableResumedTerminal { phase: p } =>
+      match p {
+        WorkRecoveryBoundExceeded { deficit: _ } => true
+        WorkWaiting => false
+        WorkCompleted => false
+        WorkCancelled => false
+      }
+    DurableResumedWaiting { record: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  match after_probe { Present { value: _ } => true  Absent => false }
+    && stale_append
+    && history_kept
+    && match bound_hit { Present { value: _ } => true  Absent => false }
+    && stale_revive
+    && still_terminal
+    && removed.success
+}
+
+// A real dispatch node id carries a slash (node://session-x). The id derived from it must be a
+// valid slot key: persist succeeds and a fresh resume recovers the same work. Under the earlier
+// raw-JSON derivation this persists as DurablePersistKeyNotSlotAddressable.
+test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let key = DispatchTurnKey { dispatch_node: "node://session-x" as NonEmptyStr, ordinal: 3 }
+  let ok = match logical_work_id_of(key: key) {
+    WorkIdKeyNotOctets { observed: _ } => false
+    WorkIdDerived { work: work } =>
+      !(work as String).contains("/")
+        && (match persist_waiting_durable(
+          root: root,
+          snapshot: empty_caller_backlog,
+          work: work,
+          seat: seat_of(reservation: "grant-slash" as ReservationRef),
+          generation: 1,
+        ) {
+          DurableWaitingPersisted { record: _ } => true
+          DurablePhasePersisted { record: _ } => false
+          DurablePersistIdempotent { record: _ } => false
+          DurablePersistRefusedTerminal { phase: _ } => false
+          DurablePersistStoreRefused { detail: _ } => false
+          DurablePersistKeyNotSlotAddressable { work: _ } => false
+          DurablePersistPayloadUnencodable { reason: _ } => false
+          DurablePersistUnknownWork => false
+          DurablePersistDuplicate => false
+        })
+        && (match resume_waiting_durable(root: root, work: work) {
+          DurableResumedWaiting { record: r } => (r.work as String) == (work as String)
+          DurableResumedTerminal { phase: _ } => false
+          DurableResumeUnknownWork => false
+          DurableResumeStoreUnreadable { detail: _ } => false
+          DurableResumePayloadUndecodable => false
+          DurableResumeWorkMismatch => false
+        })
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  ok && removed.success
+}
+
+fn claim_pool() -> Pool<Count, One> {
+  harness_seat_pool_root(partition: "claim-partition" as PartitionId, ceiling: 2)
+}
+
+fn claim_request(reference: String, at: Int) -> SeatRequest {
+  SeatRequest { reference: reference as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: 600 }
+}
+
+fn claim_policy() -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: 600, release_law: QuiescenceRequired }
+}
+
+fn claim_acquire(store: FabricStorageBinding, partition: PartitionId, reference: String, at: Int) -> LeaseGrant? {
+  match fabric_seat_acquire(store: store, partition: partition, root: claim_pool(), actor: "claim-witness" as NonEmptyStr,
+    request: claim_request(reference: reference, at: at), policy: claim_policy(), attempts: 3, budget: 4096) {
+    SeatGranted { grant: g, generation: _, attempts_used: _ } => Present { value: g }
+    other => none
+  }
+}
+
+fn claim_refused(c: HarnessSeatClaim) -> Bool {
+  match c { HarnessSeatClaimed => false  HarnessSeatClaimRefused { detail: _ } => true }
+}
+
+fn claim_taken(c: HarnessSeatClaim) -> Bool {
+  match c { HarnessSeatClaimed => true  HarnessSeatClaimRefused { detail: _ } => false }
+}
+
+// TWO RETRIES OF ONE WORK OVER A REAL SEAT PARTITION: retry A acquires a seat and claims the record; retry B
+// acquires its own seat while A's is still current and its claim is refused, so only A reaches the execution
+// side of HarnessSeatBound. After A's seat is released, a later retry C may claim (the prior grant is retired).
+// The mutation that skips the predecessor proof lets B claim, and this reads RED.
+test fn only_one_of_two_retries_claims_the_seat_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-claim" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let partition = "claim-partition" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
+      match claim_acquire(store: store, partition: partition, reference: "seat-a", at: 100) {
+        Absent => false
+        Present { value: ga } => match claim_acquire(store: store, partition: partition, reference: "seat-b", at: 101) {
+          Absent => false
+          Present { value: gb } => {
+            let a = harness_claim_seat(hold: hold, grant: ga, store: store, partition: partition)
+            let b = harness_claim_seat(hold: hold, grant: gb, store: store, partition: partition)
+            let released = fabric_seat_release(store: store, partition: partition, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 102, attempts: 3, budget: 4096)
+            match claim_acquire(store: store, partition: partition, reference: "seat-c", at: 103) {
+              Absent => false
+              Present { value: gc } => {
+                let c = harness_claim_seat(hold: hold, grant: gc, store: store, partition: partition)
+                claim_taken(c: a) && claim_refused(c: b) && claim_taken(c: c)
+              }
+            }
+          }
+        }
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  ok && cleaned.success
+}
+
+fn completion_fixture(ordinal: Nat, acquired_at_offset: Int, release_before: Bool) -> String {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let state_root = dir.path as NonEmptyStr
+  let turn = HarnessCallerTurn { dispatch_node: "completion-node" as NonEmptyStr, ordinal: ordinal, state_root: state_root }
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+      WorkIdKeyNotOctets { observed: _ } => "setup: work id"
+      WorkIdDerived { work: work } => match harness_now_epoch() {
+        Absent => "setup: clock"
+        Present { value: now } => {
+          let store = FabricStorageLocalFiles { root: fabric }
+          let partition = "claim-partition" as PartitionId
+          let hold = HarnessCallerHold { work: work, root: state_root }
+          let persisted = persist_waiting_durable(root: state_root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
+          match claim_acquire(store: store, partition: partition, reference: "seat-completion", at: now + acquired_at_offset) {
+            Absent => "setup: acquire"
+            Present { value: g } => match harness_claim_seat(hold: hold, grant: g, store: store, partition: partition) {
+              HarnessSeatClaimRefused { detail: d } => join(["setup: claim refused: ", d], "")
+              HarnessSeatClaimed => {
+                let released = if release_before {
+                  seat_release_wire(r: fabric_seat_release(store: store, partition: partition, root: claim_pool(), reference: "seat-completion" as NonEmptyStr, reason: "done" as NonEmptyStr, at: now, attempts: 3, budget: 4096))
+                } else { "kept" }
+                match harness_complete_with_grant(turn: turn, presented: g, store: store) {
+                  HarnessCallerTurnCompleted { record: _ } => "completed"
+                  HarnessCallerCompletionRefused { detail: _ } => "refused"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    other => "setup: fabric root"
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  if cleaned.success { observed } else { "setup: cleanup" }
+}
+
+// PRODUCTION COMPLETION OVER A REAL PARTITION (review 5516084074). A grant acquired now, still current in the
+// partition, completes the work. A grant acquired long ago is expired by the clock read AT COMPLETION: a fence
+// time copied from the acquisition (granted_at) would call it unexpired, so that mutation reads RED. A grant
+// whose seat was released in the partition is refused though the bound grant value still looks valid: a
+// current-grant taken from the bound grant instead of the partition read would admit it, so that mutation reads RED.
+test fn completion_admits_a_current_grant_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 1, acquired_at_offset: 0, release_before: false) == "completed"
+}
+
+test fn completion_refuses_a_grant_expired_by_the_observed_clock_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 2, acquired_at_offset: -100000, release_before: false) == "refused"
+}
+
+test fn completion_refuses_a_grant_the_partition_has_released_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 3, acquired_at_offset: 0, release_before: true) == "refused"
+}
+
+// CROSS-CARD FAILOVER OVER TWO REAL PARTITIONS (review 5518160079). A work whose seat was on card A may be retried
+// on card B. The record carries the partition its reservation lives in, so retirement is proved in A's partition
+// (not the new seat's) and the record then moves {A, a} to {B, b} in one compare-and-set. scenario 1: A's seat is
+// live, so B's claim refuses. scenario 2: A's seat released, so exactly one of two retries claims B and the record
+// names B. scenario 3: a record cancelled while on A cannot be revived on B. Reading the new seat's partition for
+// the predecessor (the former behaviour) cannot see A's acquisition and so refuses B in scenario 2.
+fn failover_fixture(scenario: Int) -> String {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-failover" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let card_a = "card-a" as PartitionId
+      let card_b = "card-b" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
+      match claim_acquire(store: store, partition: card_a, reference: "seat-a", at: 100) {
+        Absent => "setup: acquire a"
+        Present { value: ga } => match harness_claim_seat(hold: hold, grant: ga, store: store, partition: card_a) {
+          HarnessSeatClaimRefused { detail: d } => join(["setup: claim a refused: ", d], "")
+          HarnessSeatClaimed => match claim_acquire(store: store, partition: card_b, reference: "seat-b1", at: 101) {
+            Absent => "setup: acquire b1"
+            Present { value: gb1 } => match claim_acquire(store: store, partition: card_b, reference: "seat-b2", at: 102) {
+              Absent => "setup: acquire b2"
+              Present { value: gb2 } =>
+                if scenario == 1 {
+                  if claim_refused(c: harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)) { "b refused while a is live" } else { "b claimed over a live seat" }
+                } else if scenario == 2 {
+                  let released = fabric_seat_release(store: store, partition: card_a, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 103, attempts: 3, budget: 4096)
+                  let first = harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)
+                  let second = harness_claim_seat(hold: hold, grant: gb2, store: store, partition: card_b)
+                  let after = resume_waiting_durable(root: root, work: work)
+                  if claim_taken(c: first) && claim_refused(c: second) && (match after { DurableResumedWaiting { record: r } => part_text(seat: r.seat) == "card-b" && res_text(seat: r.seat) == "seat-b1"  other => false }) { "exactly one retry claimed b" } else { "wrong claim outcome" }
+                } else {
+                  let cancelled = cancel_work_durable(root: root, snapshot: empty_caller_backlog, work: work)
+                  let released = fabric_seat_release(store: store, partition: card_a, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 103, attempts: 3, budget: 4096)
+                  if (match cancelled { DurableCancelled { record: _ } => true  other => false }) && claim_refused(c: harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)) { "cancelled record not revived on b" } else { "cancelled record revived or not cancelled" }
+                }
+            }
+          }
+        }
+      }
+    }
+    other => "setup: fabric root"
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  if cleaned.success { observed } else { "setup: cleanup" }
+}
+
+test fn a_live_seat_on_card_a_refuses_a_claim_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 1) == "b refused while a is live"
+}
+
+test fn a_released_seat_on_card_a_admits_exactly_one_claim_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 2) == "exactly one retry claimed b"
+}
+
+test fn a_record_cancelled_on_card_a_is_not_revived_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 3) == "cancelled record not revived on b"
+}
+
+fn settle_bound(grant: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessSeatBinding {
+  let replica = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "settle-witness" as NonEmptyStr }
+  HarnessSeatBound {
+    url: "http://127.0.0.1:1",
+    grant: grant,
+    partition: partition,
+    ceiling: 2,
+    replica_wire: "settle-witness",
+    launch: replica_endpoint_launch(replica: replica, endpoint: "127.0.0.1:1" as NonEmptyStr, process_start_field: "1.0" as NonEmptyStr),
+    store: store,
+    model: "settle-model" as NonEmptyStr,
+    unit: DeepseekV4FlashOnVllm,
+    class: BatchQualityTolerant,
+    seat: HarnessSeatReference { attempt: "a" as NonEmptyStr, offer_key: "k" as NonEmptyStr, stamped_at: 100, round: 1, head: "h" as NonEmptyStr },
+  }
+}
+
+// TWO ACQUIRED SEATS FOR ONE HOLD THROUGH THE REAL SETTLE ROUTE (review 5518160079, no double execution): both
+// HarnessSeatBound outcomes cross harness_settle_caller_turn; only the one whose claim the durable record admits
+// is returned bound, and the other comes back refused (its seat released). If settle skipped the claim, both
+// would reach the worker turn and this reads RED.
+test fn only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-settle" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let partition = "claim-partition" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
+      let placed = PlacementRound { done: none, excluded: [] as List<String>, notes: [] as List<String>, retryable: false, ready: 2, recovery: [] as List<RecoveryEvent> }
+      match claim_acquire(store: store, partition: partition, reference: "seat-s1", at: 100) {
+        Absent => false
+        Present { value: g1 } => match claim_acquire(store: store, partition: partition, reference: "seat-s2", at: 101) {
+          Absent => false
+          Present { value: g2 } => {
+            let first = harness_settle_caller_turn(hold: hold, placed: placed, outcome: settle_bound(grant: g1, store: store, partition: partition))
+            let second = harness_settle_caller_turn(hold: hold, placed: placed, outcome: settle_bound(grant: g2, store: store, partition: partition))
+            (match first { HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => true  other => false })
+              && (match second { HarnessSeatRefused { detail: _ } => true  other => false })
+          }
+        }
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  ok && cleaned.success
+}
+
+fn seat_of(reservation: ReservationRef) -> SeatRef? { Present { value: SeatRef { partition: "part-w" as PartitionId, reservation: reservation } } }
+
+fn res_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.reservation as String }
+}
+
+fn part_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.partition as String }
+}

@@ -1,0 +1,242 @@
+module extdeps.sudo.nopasswd_decision
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.optional { Present, Absent }
+import std.algebra { trim, length, list_at_optional }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.shell.exec { ProcessObservation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.sudo.elevation { sudo_list_command_as, sudo_version_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+// SUDO'S OWN DECISION FOR ONE (PRINCIPAL, RUN-AS, ARGV), asked rather than reconstructed, INCLUDING THE
+// AUTHENTICATION IT WILL REQUIRE. The earlier reader (extdeps.sudo.nopasswd_execute_probe_check_op
+// sudo_nopasswd_grant_list_admits_probe) parsed the text of `sudo -n -l` line by line, which cannot see
+// the RUN-AS of an entry or the ORDER of entries (last match wins). `sudo -n -ll -u RUNAS ARGV...`
+// (sudo_list_command_as) has sudo evaluate both and never executes the command.
+//
+// LISTING IS PERMISSION, NOT PASSWORDLESSNESS. RECORDED EXTERNAL FACT (§4d), executed by the review's
+// side chat against real sudo 1.9.16p2 in an isolated chroot over synthetic sudoers
+// `Defaults listpw=any, timestamp_timeout=0` + `probe ALL=(root) NOPASSWD: /usr/bin/false, PASSWD: /usr/bin/true`:
+// `sudo -n -l -u root /usr/bin/true` exited 0 printing `/usr/bin/true`, while `sudo -n -u root /usr/bin/true`
+// exited 1 "a password is required". `listpw` governs authentication for LISTING, not execution; the
+// same holds with a later PASSWD override and with listpw=never. So an exit 0 that names the argv is
+// never coverage by itself. The long form prints the selected entry's effective options; the recorded
+// reading is `Options: !authenticate` for the genuine NOPASSWD entry and `Options: authenticate` for the
+// PASSWD one on that version.
+//
+// SECOND RECORDED VERSION, Sudo version 1.9.15p5 (Ubuntu noble's package, 1.9.15p5-3ubuntu5.24.04.4). Three
+// observations, each with its own place:
+// (1) NOPASSWD and Denied arms, observed on srv1 by session bright-moth-475 on 2026-10-19 (read-only listings,
+//     nothing executed). The production-shape read is ghrunner listing its own grants, as the plan runs it:
+//     `sudo -n -u ghrunner sudo -n -ll -u root /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge`
+//     exited 0 printing `Options: !authenticate` in the layout above; the same self-listing for `/usr/bin/true`
+//     exited 1 with empty stdout. Corroboration, a separate read: `sudo -n -ll -U ghrunner -u root <the install argv>`
+//     run as root gave identical stdout.
+// (2) PASSWD arm and listpw facts, executed by session sunny-gull-750 on 2026-10-19 against real sudo 1.9.15p5
+//     in a debootstrap noble chroot on a BuildBuddy remote runner (not a fleet host), over the same synthetic
+//     sudoers as the 1.9.16p2 record, listing principal `probe` via su: `sudo -n -ll -u root /usr/bin/true` exited 0
+//     printing `Options: authenticate` and `/usr/bin/false` printed `Options: !authenticate`, both in the layout above;
+//     `sudo -n -l -u root /usr/bin/true` exited 0 while `sudo -n -u root /usr/bin/true` exited 1 "a password is required",
+//     with listpw=any and with listpw=never. The listing is permission, not passwordlessness, on this version too.
+// The list below is one row per recorded version; a version is added only with its own recorded output.
+//
+// THE ANSWER HAS ONE COVERAGE ARM (§5). Admits: exit 0, a sudo version inside the SUPPORTED RANGE, exactly
+// one listed entry (two means precedence is not established), whose run-as covers the query, that
+// lists the exact argv, and whose options carry `!authenticate`. NeedsPassword: the same reading with
+// the `authenticate` option. Denied: exit 1 (documented for a command the policy does not permit; the
+// stderr is carried). Unobserved: everything else -- an unspawned program, any other status, an
+// unreadable or out-of-range version, an output that does not parse into exactly that shape, and an
+// absent binary (typed as its own cause, never a missing grant). Authentication by omission is NOT assumed.
+type SudoDecisionQuery {
+  runas: NonEmptyStr
+  argv: List<NonEmptyStr>
+}
+
+type SudoDecision
+  = SudoDecisionAdmits
+  | SudoDecisionNeedsPassword
+  | SudoDecisionDenied { reason: String }
+  | SudoDecisionUnobserved { cause: NonEmptyStr }
+
+// THE VERSION THE LISTING WAS READ UNDER: a premise of the reading, part of the subject identity.
+type SudoVersionRead
+  = SudoVersionObserved { banner: NonEmptyStr }
+  | SudoVersionUnobserved { cause: NonEmptyStr }
+
+// THE LITERALS OF THE RECORDED LONG-LISTING INTERPRETATION. Each is an external fact about one sudo
+// family and changes only with a recorded output.
+data sudo_supported_version_banners: List<String> = ["Sudo version 1.9.16p2", "Sudo version 1.9.15p5"]
+data sudo_listing_entry_marker: String = "Sudoers entry:"
+data sudo_listing_runas_label: String = "RunAsUsers:"
+data sudo_listing_options_label: String = "Options:"
+data sudo_listing_no_authenticate_token: String = "!authenticate"
+data sudo_listing_authenticate_token: String = "authenticate"
+data sudo_listing_run_as_any: String = "ALL"
+
+type SudoListingReading
+  = SudoListingUnauthenticated
+  | SudoListingAuthenticated
+  | SudoListingUnparsed { cause: NonEmptyStr }
+
+fn sudo_decision_command(query: SudoDecisionQuery) -> ArgvCommand {
+  sudo_list_command_as(user: query.runas, command: map(query.argv, w => w as String))
+}
+
+fn sudo_decision_displayed_command(query: SudoDecisionQuery) -> String {
+  join(map(query.argv, w => w as String), " ")
+}
+
+fn sudo_decision_binary_absent(query: SudoDecisionQuery) -> SudoDecision {
+  match query.argv.first() {
+    Present { value: program } =>
+      SudoDecisionUnobserved { cause: join(["binary ", program as String, " is not present, so sudo's decision for it was not asked"], "") as NonEmptyStr }
+    Absent =>
+      SudoDecisionUnobserved { cause: "the query names no command" as NonEmptyStr }
+  }
+}
+
+fn sudo_decision_exit_cause(code: Int, stderr: String) -> NonEmptyStr {
+  join(["sudo -n -ll exited ", to_string(code), ": ", trim(s: stderr)], "") as NonEmptyStr
+}
+
+fn sudo_version_from_run(outcome: ProcessRunOutcome) -> SudoVersionRead {
+  match outcome {
+    ProcessNotSpawned { program: p, cause: why } =>
+      SudoVersionUnobserved { cause: join(["sudo -V was not run (", p as String, "): ", why as String], "") as NonEmptyStr }
+    ProcessRan { observation: o } =>
+      if o.exit_code == 0 {
+        match split(s: o.stdout, delimiter: "\n").first() {
+          Present { value: first } =>
+            if length(xs: trim(s: first)) == 0 {
+              SudoVersionUnobserved { cause: "sudo -V printed an empty first line" as NonEmptyStr }
+            } else {
+              SudoVersionObserved { banner: trim(s: first) as NonEmptyStr }
+            }
+          Absent => SudoVersionUnobserved { cause: "sudo -V printed nothing" as NonEmptyStr }
+        }
+      } else {
+        SudoVersionUnobserved { cause: join(["sudo -V exited ", to_string(o.exit_code)], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn sudo_version_supported(banner: NonEmptyStr) -> Bool {
+  any(xs: sudo_supported_version_banners, predicate: b => b == (banner as String))
+}
+
+fn sudo_decision_from_run(query: SudoDecisionQuery, version: SudoVersionRead, outcome: ProcessRunOutcome) -> SudoDecision {
+  match outcome {
+    ProcessNotSpawned { program: p, cause: why } =>
+      SudoDecisionUnobserved { cause: join(["sudo was not run (", p as String, "): ", why as String], "") as NonEmptyStr }
+    ProcessRan { observation: o } => sudo_decision_from_observation(query: query, version: version, observation: o)
+  }
+}
+
+// THE VALUES OF EVERY LINE THAT STARTS WITH LABEL (a line starts with the label exactly when splitting on
+// the label leaves two pieces and the first is blank).
+fn sudo_listing_field_values(lines: List<String>, label: String) -> List<String> {
+  flat_map(lines, l => {
+    let pieces = split(s: l, delimiter: label)
+    if length(xs: pieces) == 2 {
+      match pieces.first() {
+        Present { value: before } =>
+          if length(xs: trim(s: before)) == 0 {
+            match list_at_optional(xs: pieces, index: 1) {
+              Present { value: after } => [trim(s: after)]
+              Absent => []
+            }
+          } else { [] }
+        Absent => []
+      }
+    } else { [] }
+  })
+}
+
+fn sudo_listing_tokens(value: String) -> List<String> {
+  map(split(s: value, delimiter: ","), t => trim(s: t))
+}
+
+fn sudo_listing_unparsed(why: String) -> SudoListingReading {
+  SudoListingUnparsed { cause: concat("sudo -n -ll output not understood: ", why) as NonEmptyStr }
+}
+
+// THE EFFECTIVE AUTHENTICATION OF THE ONE SELECTED ENTRY, or why it is not established.
+fn sudo_listing_reading(query: SudoDecisionQuery, stdout: String) -> SudoListingReading {
+  let lines = map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
+  let entries = length(xs: sudo_listing_field_values(lines: lines, label: sudo_listing_entry_marker))
+  if entries != 1 {
+    sudo_listing_unparsed(why: concat("expected exactly one listed entry, found ", to_string(entries)))
+  } else {
+    let runas_values = sudo_listing_field_values(lines: lines, label: sudo_listing_runas_label)
+    let option_values = sudo_listing_field_values(lines: lines, label: sudo_listing_options_label)
+    if length(xs: runas_values) != 1 {
+      sudo_listing_unparsed(why: "the entry does not carry exactly one run-as line")
+    } else {
+      if !any(xs: flat_map(runas_values, v => sudo_listing_tokens(value: v)), predicate: t => t == (query.runas as String) || t == sudo_listing_run_as_any) {
+        sudo_listing_unparsed(why: "the entry's run-as does not cover the queried account")
+      } else {
+        if !any(xs: lines, predicate: l => l == sudo_decision_displayed_command(query: query)) {
+          sudo_listing_unparsed(why: "the entry does not list the exact argv")
+        } else {
+          if length(xs: option_values) != 1 {
+            sudo_listing_unparsed(why: "the entry does not carry exactly one options line")
+          } else {
+            let tokens = flat_map(option_values, v => sudo_listing_tokens(value: v))
+            let negated = any(xs: tokens, predicate: t => t == sudo_listing_no_authenticate_token)
+            let required = any(xs: tokens, predicate: t => t == sudo_listing_authenticate_token)
+            if negated && required {
+              sudo_listing_unparsed(why: "the options both require and waive authentication")
+            } else {
+              if negated {
+                SudoListingUnauthenticated
+              } else {
+                if required {
+                  SudoListingAuthenticated
+                } else {
+                  sudo_listing_unparsed(why: "the options state no authentication requirement")
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn sudo_decision_from_listing(query: SudoDecisionQuery, version: SudoVersionRead, stdout: String) -> SudoDecision {
+  match version {
+    SudoVersionUnobserved { cause: why } =>
+      SudoDecisionUnobserved { cause: concat("the long listing cannot be read without the sudo version: ", why as String) as NonEmptyStr }
+    SudoVersionObserved { banner: banner } =>
+      if sudo_version_supported(banner: banner) {
+        match sudo_listing_reading(query: query, stdout: stdout) {
+          SudoListingUnauthenticated => SudoDecisionAdmits
+          SudoListingAuthenticated => SudoDecisionNeedsPassword
+          SudoListingUnparsed { cause: why } => SudoDecisionUnobserved { cause: why }
+        }
+      } else {
+        SudoDecisionUnobserved { cause: join(["the long-listing reading is recorded only for the supported sudo versions; this host reports ", banner as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn sudo_decision_from_observation(query: SudoDecisionQuery, version: SudoVersionRead, observation: ProcessObservation) -> SudoDecision {
+  if observation.exit_code == 0 {
+    sudo_decision_from_listing(query: query, version: version, stdout: observation.stdout)
+  } else {
+    if observation.exit_code == 1 {
+      SudoDecisionDenied { reason: trim(s: observation.stderr) }
+    } else {
+      SudoDecisionUnobserved { cause: sudo_decision_exit_cause(code: observation.exit_code, stderr: observation.stderr) }
+    }
+  }
+}

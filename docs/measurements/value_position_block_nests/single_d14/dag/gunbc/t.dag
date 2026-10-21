@@ -1,0 +1,33 @@
+module gunbc.t
+
+fn f(value: Int) -> Int? {
+  match g(value: value, key: "k1") { Absent => none Present { value: v1 } => {
+  match g(value: value, key: "k2") { Absent => none Present { value: v2 } => {
+  match g(value: value, key: "k3") { Absent => none Present { value: v3 } => {
+  match g(value: value, key: "k4") { Absent => none Present { value: v4 } => {
+  match g(value: value, key: "k5") { Absent => none Present { value: v5 } => {
+  match g(value: value, key: "k6") { Absent => none Present { value: v6 } => {
+  match g(value: value, key: "k7") { Absent => none Present { value: v7 } => {
+  match g(value: value, key: "k8") { Absent => none Present { value: v8 } => {
+  match g(value: value, key: "k9") { Absent => none Present { value: v9 } => {
+  match g(value: value, key: "k10") { Absent => none Present { value: v10 } => {
+  match g(value: value, key: "k11") { Absent => none Present { value: v11 } => {
+  match g(value: value, key: "k12") { Absent => none Present { value: v12 } => {
+  match g(value: value, key: "k13") { Absent => none Present { value: v13 } => {
+  match g(value: value, key: "k14") { Absent => none Present { value: v14 } => {
+  Present { value: 1 }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+}

@@ -1,0 +1,209 @@
+module gunbc.runner.runner_microvm_attempt
+
+import gunbc.runner.runner_microvm_attempt_identity {
+  AttemptSegmentRefusal, AttemptSegmentEmpty, AttemptSegmentIsRelativeMarker, AttemptSegmentContainsSeparator, AttemptSegmentResult, AttemptSegmentAccepted, AttemptSegmentRefused, AttemptSegment, attempt_segment, attempt_segment_refusal_text, MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt, runner_microvm_attempt_unit_name,
+}
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
+import gunbc.fabric.fabric_cell_converge {
+  fabric_cell_attempt_root_path, fabric_cell_slice_name,
+}
+import gunbc.fabric.fabric_required_build_cell {
+  RequiredBuildCellSnapshot, FabricCellShape, FabricCellShapeBuild,
+  FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape, members_owned,
+}
+
+data runner_microvm_attempt_disposition: ConstructionMechanism = SingleAuthority
+
+// A GUEST IS RESOURCES BELONGING TO ONE OWNED ATTEMPT, NOT A VM AT A FIXED PATH.
+//
+// gunbc.runner.runner_microvm_boot_probe deliberately runs OUTSIDE the fabric-cell path: one probe
+// rootfs, one probe config, both at paths derived from the executor's home. That was correct for
+// answering "does this image boot" and it is the wrong shape for running a job, which a review of
+// the microVM lane stated directly: changing the guest command from "print version" to "start
+// runner" is not the integration. A runner started that way executes inside a VM that no
+// reservation owns, whose storage no attempt accounts for, and whose exit releases nothing.
+//
+// THE THREE BINDINGS THAT MAKE A GUEST THE ATTEMPT'S, rather than merely concurrent with it:
+//
+//   STORAGE   every writable file the guest touches lives under the attempt root, so a second
+//             attempt cannot inherit bytes the first wrote and cleanup has ONE subtree to prove
+//             empty rather than a fixed path shared by every attempt that ever ran.
+//   BOUNDARY  the VMM runs in the cell's slice, so the guest's CPU, memory and task consumption is
+//             accounted to the cell that was reserved -- a VM outside the slice is invisible to
+//             every limit the cell carries and to every observation that reads them.
+//   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted. That verdict is
+//             gunbc.product.fabric.sanitation's CellReadiness, derived from host readbacks by
+//             gunbc.runner.runner_microvm_lifecycle and held across incarnations by
+//             gunbc.runner.runner_microvm_cell_readiness; this module owns no second release verdict.
+//
+// A guest missing any one of these is refused rather than downgraded, because each failure is
+// silent in production: unbound storage looks like a working VM until two attempts collide,
+// unbound accounting looks like a working VM until the host runs out of memory, and unproven
+// teardown looks like a working VM until a leaked VMM outlives its cell.
+fn runner_microvm_attempt_dir(attempt: MicroVmAttempt) -> String {
+  join([
+    fabric_cell_attempt_root_path(slot: attempt.slot),
+    "/",
+    attempt.attempt_id.value as String,
+  ], "")
+}
+
+fn runner_microvm_attempt_rootfs_path(attempt: MicroVmAttempt) -> String {
+  join([runner_microvm_attempt_dir(attempt: attempt), "/rootfs.ext4"], "")
+}
+
+fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
+  join([runner_microvm_attempt_dir(attempt: attempt), "/vm-config.json"], "")
+}
+
+// THE JAILER'S CHROOT BASE IS ATTEMPT-OWNED. A shared /run/jail is a prior-resource collision
+// across attempts; the attempt directory is already the storage isolation this module owns.
+fn runner_microvm_attempt_jail_base(attempt: MicroVmAttempt) -> String {
+  join([runner_microvm_attempt_dir(attempt: attempt), "/jail"], "")
+}
+
+// Slice= IS THE BINDING, AND IT IS THE ONE THAT CANNOT BE ADDED AFTERWARDS. A process placed in a
+// slice at start lives under that slice's limits for its whole life; moving a running VMM into a
+// cgroup later is a different operation with different guarantees and no atomicity. So the property
+// travels with the launch or the launch is wrong.
+fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
+  NamedUnitSetting {
+    property: SliceProperty,
+    value: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
+  }
+}
+
+// THE ATTEMPT UNIT'S LIFETIME IS BOUND TO THE SLOT UNIT THAT SUPERVISES IT, and without this the
+// controller's stop reaches nothing.
+//
+// The VMM does not run inside the controller's service cgroup: it is a SEPARATE transient service
+// unit (systemd-run), placed in the CELL's slice so its memory and tasks are charged to the
+// reservation rather than to the controller. That placement is correct and stays. What it means is
+// that KillMode=control-group on gunbc-microvm-slot@<slot>.service reaches only the processes in
+// THAT unit's control group and does not cross into a transient unit living under another slice --
+// so stopping the slot unit left the guest running, with Restart=no meaning nothing came back to
+// reap it. Every path that ends the controller without its own teardown -- systemctl stop, an OOM
+// kill, a crash, systemd's final SIGKILL after TimeoutStopSec -- leaked a VMM (external review of
+// gunbc#12011; PartOf appears nowhere else in this corpus, so no lifetime edge existed).
+//
+// PartOf IS ONE-WAY IN THE DIRECTION THIS NEEDS: stopping the slot unit stops this attempt unit,
+// while this attempt unit exiting does NOT stop the slot unit -- the controller must outlive its
+// guest to read the teardown back.
+//
+// WHAT PartOf ALONE MAY NOT COVER, AND IT IS NOT YET SETTLED. systemd.unit(5) propagates PartOf on
+// a STOP OR RESTART of the listed unit, which is a stop JOB. A controller that is OOM-killed,
+// crashes, or is SIGKILLed by systemd after TimeoutStopSec does not issue one -- its unit enters
+// inactive or failed on its own -- so the propagation this row installs may not fire for exactly
+// three of the four paths the note above lists. BindsTo= is the directive that also stops the
+// dependent when the listed unit enters inactive for ANY reason, and it is the SAME DIRECTION as
+// PartOf when written here, on the attempt unit: the slot unit going away stops the attempt, and
+// the attempt exiting still does not stop the slot unit. An earlier revision of this annotation
+// claimed BindsTo "would take the controller down with the guest"; that describes BindsTo written
+// on the SLOT unit pointing at the attempt, which is the opposite direction and not what is
+// proposed. The claim was wrong and is retracted here.
+//
+// THIS IS NOT REPAIRED BY ASSERTION. gunbc.runner.runner_microvm_stop_propagation_probe settles it by
+// running both arms against a stand-in -- an explicit `systemctl stop` of the supervisor, and a
+// kill of the supervisor's main process standing in for the OOM and crash paths -- and reading the
+// stand-in's ActiveState after each. If the kill arm leaves the stand-in active, PartOf is
+// insufficient for those paths and this row gains BindsTo; if both arms stop it, PartOf is enough
+// and that is recorded rather than assumed.
+//
+// THE ALTERNATIVE REPAIR IS REFUSED: moving the VMM into the controller's slice would make one
+// cgroup reach it, and would charge the guest's 28 GiB to the controller instead of to the cell's
+// reservation, discarding the accounting gunbc.runner.runner_microvm_attempt exists to keep. Separate
+// slices, bound lifetimes.
+fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
+  NamedUnitSetting {
+    property: PartOf,
+    value: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: attempt.slot) as String),
+  }
+}
+
+// THE CELL MUST BE OWNED BEFORE A GUEST MAY USE IT, and this is a REFUSAL rather than a warning.
+// gunbc.fabric.fabric_required_build_cell already decides ownership over cell members; this consumes that
+// verdict instead of re-deriving one, because a second ownership opinion is a second authority for
+// the fact the cell layer exists to hold.
+type MicroVmCellBinding
+  = VmBoundToOwnedCell {
+      attempt: MicroVmAttempt
+      rootfs_path: String
+      vm_config_path: String
+      unit_name: NonEmptyStr
+      slice_property: SystemdRunProperty
+    }
+  | VmUnboundCellNotOwned { cause: String }
+
+// THE BINDER CONSUMES THE RESERVATION SNAPSHOT, NOT A Bool AND NOT members_owned.
+//
+// `cell_owned: Bool` was the wrong grain and this module's own header asked for better: the caller
+// could manufacture the conclusion while the callee independently derived every path and the slice
+// from a separately supplied slot. That is the substitution shape a review of #10581 found in the
+// secret-access lane -- admission names one subject, execution obtains another, readback confirms
+// the one execution chose -- and it is worth naming here because it recurs whenever a decision and
+// its consequence are carried by two different values.
+//
+// members_owned would ALSO have been too weak, and this is the correction that came from review
+// rather than from me. It proves the observed cell members are OURS; it does not prove this cell is
+// presently reserved for the exact Work the VM is about to run. RequiredBuildCellSnapshot is sealed
+// and already joins the stronger facts -- canonical slot, held reservation, exact demand/offer
+// relation, admitted observation, shape and ownership -- so consuming it closes two substitutions at
+// once: a caller cannot assert ownership, and cannot present a reservation for slot A while
+// building the VM against slot B.
+//
+// THE SLOT IS READ OUT OF THE SNAPSHOT'S OWN SHAPE, which is what makes the second guarantee real.
+// Taking a RunnerSlotIdentity parameter beside the snapshot would reopen exactly the gap the
+// snapshot was consumed to close.
+fn bind_microvm_to_cell(snapshot: RequiredBuildCellSnapshot) -> MicroVmCellBinding {
+  match fabric_cell_shape(members: snapshot.cell_members) {
+    FabricCellShapeIncomplete =>
+      VmUnboundCellNotOwned {
+        cause: "the reserved cell's members do not form a complete shape, so no attempt root is addressable",
+      }
+    FabricCellShaped { shape: shape } =>
+      match microvm_attempt_of_snapshot(snapshot: snapshot, shape: shape) {
+        MicroVmAttemptRefused { refusal: r } =>
+          VmUnboundCellNotOwned { cause: attempt_segment_refusal_text(r: r) }
+        MicroVmAttemptAccepted { attempt: attempt } =>
+          bind_owned_attempt(attempt: attempt, owned: members_owned(members: snapshot.cell_members))
+      }
+  }
+}
+
+// THE ATTEMPT IDENTITY IS THE FABRIC'S, NOT A NAME A CALLER CHOSE. #10628 closed path traversal by
+// requiring a safe segment, and "safe pathname" is a different fact from "this is the attempt the
+// fabric reserved" -- the goal is one fresh VM PER JOB owned by the execution attempt, not merely
+// uniquely named storage. The segment is derived from the reservation's own work key and generation,
+// so two attempts of the same work at different generations are different directories and an
+// attempt cannot be named into a reservation it does not hold.
+fn microvm_attempt_of_snapshot(snapshot: RequiredBuildCellSnapshot, shape: FabricCellShape) -> MicroVmAttemptResult {
+  microvm_attempt(
+    slot: shape.attempt_root.slot,
+    attempt_id: join([snapshot.work.key as String, "-", to_string(snapshot.generation)], ""),
+  )
+}
+
+fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBinding {
+  if owned {
+    VmBoundToOwnedCell {
+      attempt: attempt,
+      rootfs_path: runner_microvm_attempt_rootfs_path(attempt: attempt),
+      vm_config_path: runner_microvm_attempt_vm_config_path(attempt: attempt),
+      unit_name: runner_microvm_attempt_unit_name(attempt: attempt),
+      slice_property: runner_microvm_attempt_slice_property(attempt: attempt),
+    }
+  } else {
+    VmUnboundCellNotOwned {
+      cause: join([
+        "the fabric cell for ",
+        runner_slot_instance_name(slot: attempt.slot),
+        " is not owned, so no guest may consume it; a VM launched here would run outside every limit the cell carries",
+      ], ""),
+    }
+  }
+}

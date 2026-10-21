@@ -1,0 +1,81 @@
+module test.claim.unicode_scalar_from_code_point_witness
+
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { CodePointOutOfRange, SurrogateCodePoint, ascii_lowercase, ascii_uppercase, ascii_uppercase_first, from_code_point, not_unicode_scalar_code_point }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.unicode.scalar from_code_point is PARTIAL over Int and its refusal is typed by cause. The
+// positive control and each refusal arm are separate claims so a red names which one moved.
+
+test fn from_code_point_spells_a_scalar() -> Bool {
+  match from_code_point(cp: 65) {
+    Ok { value: s } => s == "A"
+    Err { value: _ } => false
+  }
+}
+
+test fn from_code_point_RED_a_surrogate_refuses_as_surrogate() -> Bool {
+  match from_code_point(cp: 55296) {
+    Ok { value: _ } => false
+    Err { value: SurrogateCodePoint { code_point: cp } } => cp == 55296
+    Err { value: CodePointOutOfRange { code_point: _ } } => false
+  }
+}
+
+test fn from_code_point_RED_past_the_last_scalar_refuses_as_out_of_range() -> Bool {
+  match from_code_point(cp: 1114112) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: cp } } => cp == 1114112
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
+}
+
+test fn from_code_point_spells_a_non_ascii_scalar() -> Bool {
+  match from_code_point(cp: 233) {
+    Ok { value: s } => s == "\u{e9}"
+    Err { value: _ } => false
+  }
+}
+
+test fn from_code_point_spells_the_last_scalar() -> Bool {
+  match from_code_point(cp: 1114111) {
+    Ok { value: s } => s != ""
+    Err { value: _ } => false
+  }
+}
+
+test fn not_unicode_scalar_code_point_names_the_refused_value_for_each_cause() -> Bool {
+  (not_unicode_scalar_code_point(n: SurrogateCodePoint { code_point: 55296 }) == 55296)
+    && (not_unicode_scalar_code_point(n: CodePointOutOfRange { code_point: 1114112 }) == 1114112)
+}
+
+// THE ASCII CASE FOLDS are string rewrites (no Int -> Char crossing), so a non-letter is untouched.
+test fn ascii_lowercase_folds_letters_and_leaves_the_rest() -> Bool {
+  ascii_lowercase(s: "AbC-1_Z\u{e9}") == "abc-1_z\u{e9}"
+}
+
+test fn ascii_uppercase_folds_letters_and_leaves_the_rest() -> Bool {
+  ascii_uppercase(s: "aBc-1_z\u{e9}") == "ABC-1_Z\u{e9}"
+}
+
+test fn ascii_uppercase_first_folds_only_the_first_letter() -> Bool {
+  (ascii_uppercase_first(s: "word") == "Word") && (ascii_uppercase_first(s: "") == "") && (ascii_uppercase_first(s: "1ab") == "1ab")
+}
+
+test fn from_code_point_RED_a_negative_int_refuses_as_out_of_range() -> Bool {
+  match from_code_point(cp: 0 - 1) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: n } } => n == 0 - 1
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
+}
+
+test fn from_code_point_RED_a_wrapping_int_never_spells_the_low_scalar() -> Bool {
+  match from_code_point(cp: 4294967361) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: n } } => n == 4294967361
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
+}

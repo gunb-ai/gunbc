@@ -1,0 +1,11 @@
+module gunbc.instruments.infer_semantics_witness_transport
+
+import gunbc.instruments.host_prelude { run_witness_bin }
+
+fn run_infer_semantics_witness() -> Bool {
+  run_witness_bin(
+    var_name: "INFER_SEMANTICS_WITNESS",
+    bin_name: "infer_semantics_witness",
+    args: []
+  )
+}

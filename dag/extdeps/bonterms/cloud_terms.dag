@@ -1,0 +1,72 @@
+module extdeps.bonterms.cloud_terms
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedUnderOpenLicense }
+import extdeps.uri { Uri, Https }
+
+// THE CREDIBLE ALTERNATIVE TO THE PINNED CONTRACT STANDARD, cited as its own upstream because it
+// is an independently governed, independently versioned document (DESIGN section 3, external
+// upstream decomposition) - it may not be a row inside the Common Paper module, and a comparison
+// that names it must name a declaration that exists. This module is a subject anchor only: it
+// carries what the document says about itself and nothing about why it was or was not pinned.
+// The selection argument lives with the pin, at extdeps.common_paper.cloud_service_agreement.
+//
+// WHAT THE UPSTREAM SAYS ABOUT ITSELF, read 2026-09-12 (the dated receipt lives in
+// gunbc.specification_citation_read_provenance). The page titles the document "Bonterms Cloud
+// Terms (Version 1.0)"; the Definitions section defines "Bonterms Cloud Terms" as "these Bonterms
+// Cloud Terms (Version 1.0)"; the parties complete and execute a Cover Page that incorporates the
+// terms by reference and specifies the Key Terms and any Additional Terms; the footer reads
+// "(c) 2022 Bonterms. Free to use under CC BY 4.0." The page carries a copyright year and no
+// release date, so no release date is transcribed here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "bonterms.com/forms/bonterms-cloud-terms-v1",
+  }
+}
+
+data bonterms_cloud_terms_v1_0_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+type BontermsCloudTermsVersion1_0 {}
+
+type BontermsCloudTermsVersion = BontermsCloudTermsVersion1_0
+
+data bonterms_cloud_terms_title: NonEmptyStr = "Bonterms Cloud Terms"
+
+data bonterms_cloud_terms_v1_0_version_label: NonEmptyStr = "1.0"
+
+data bonterms_cloud_terms_v1_0_publication_status: DocumentPublicationStatus = PubliclyPublishedUnderOpenLicense {
+  license: "CC BY 4.0",
+}
+
+type BontermsCloudTerms {
+  title: NonEmptyStr
+  version: BontermsCloudTermsVersion
+  version_label: NonEmptyStr
+  publication_status: DocumentPublicationStatus
+  terms: ExternalAuthority
+}
+
+data bonterms_cloud_terms_v1_0: BontermsCloudTerms = BontermsCloudTerms {
+  title: bonterms_cloud_terms_title,
+  version: BontermsCloudTermsVersion1_0 {},
+  version_label: bonterms_cloud_terms_v1_0_version_label,
+  publication_status: bonterms_cloud_terms_v1_0_publication_status,
+  terms: bonterms_cloud_terms_v1_0_authority,
+}
+
+data bonterms_cloud_terms_v1_0_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.bonterms.cloud_terms",
+  decl_name: "bonterms_cloud_terms_v1_0",
+  field: WholeDeclaration,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: bonterms_cloud_terms_v1_0_ref,
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

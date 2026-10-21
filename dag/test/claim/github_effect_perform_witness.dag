@@ -1,0 +1,272 @@
+module test.claim.github_effect_perform_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.integer { UInt8 }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets, JwsEncoded, JwsEncodeNotOctets }
+import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
+import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
+import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
+import extdeps.transports.rest {
+  RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestExchangeCommitAmbiguous,
+}
+import gunbc.runner.runner_jit_perform {
+  JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched,
+}
+import gunbc.github_effect_perform {
+  jit_mint_performance_of_generate, jit_mint_generate_gate, JitMintDecidedBeforeGenerate,
+  JitMintReceived, JitMintStepNotSucceeded, GenerateJitConfigStep,
+  JitMintAppKeyNotCustodied, lifecycle_controller_app,
+  PublisherTokenMint, PublisherTokenMinted, PublisherTokenNotMinted,
+  PublisherJwtStaged, PublisherJwtReady, PublisherJwtNotReady,
+  publisher_key_unreadable, publisher_installation_token_refused, publisher_jwt_after_removal,
+  stage_sign_and_remove_publisher_key, AppJwtSigned, AppJwtUnsigned,
+  heal_publisher_installation_token_permissions, publication_helper_installation_token_permissions,
+  controller_key_write_refusal, stage_key_file, ControllerKeyStaged, ControllerKeyNotStaged,
+}
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemPermissionDenied }
+import std.algebra { string_contains }
+import gunbc.auth.github_apps { gunbai_bot_declared }
+import test.claim.github_app_registry { dispatched, runner_grant }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RFC 7515 appendix A's header differs from ours only in alg; this golden is base64url of
+// {"alg":"RS256","typ":"JWT"} computed outside this tree (`base64 | tr '+/' '-_' | tr -d =`), so a
+// padded, standard-alphabet or re-ordered header goes red.
+data rs256_jwt_header_b64url: String = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
+
+test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool {
+  match jws_rs256_signing_input(payload_json: "x") {
+    JwsEncodeNotOctets { observed: _ } => false
+    JwsEncoded { text: jws_signing_text } => starts_with(s: jws_signing_text, prefix: concat(rs256_jwt_header_b64url, "."))
+  }
+}
+
+// 0xFB 0xFF is "+/8=" in the standard alphabet and "-_8" in base64url: one input that goes red for
+// the wrong alphabet AND for kept padding, which are the two ways a signature segment is mis-encoded.
+test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
+  match jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) {
+    JwsSignatureNotOctets { observed: _ } => false
+    JwsSerialized { jwt: jwt } => (jwt as String) == "h.p.-_8"
+  }
+}
+
+// THE REFUSAL ARM, AND IT IS REACHABLE RATHER THAN DECORATIVE -- which is the whole reason the
+// signature half folds where the UTF-8 half constructs. A signature crosses the key custody
+// boundary from an EXTERNAL signer (a host CLI, an HSM), so nothing in this repository has
+// established that its members are octets, and 256 is a value such a realization can hand back.
+// This arm also CONSUMES the observed member: without it that field would be a declaration no
+// executing consumer reads (DESIGN section 3c), and the refusal would be locatable in principle
+// only.
+test fn witness_a_non_octet_signature_member_refuses_and_names_what_was_observed() -> Bool {
+  match jws_compact_serialization(signing_input: "h.p", signature: [251, 256]) {
+    JwsSerialized { jwt: _ } => false
+    JwsSignatureNotOctets { observed: o } => o == 256
+  }
+}
+
+test fn witness_app_jwt_claims_backdate_iat_bound_exp_and_name_the_app() -> Bool {
+  github_app_jwt_claims_json(app_id: 2653532, now_epoch_secs: 1000)
+    == "\{\"iat\":940,\"exp\":1540,\"iss\":\"2653532\"}"
+}
+
+// BOTH OpenSSL RENDERINGS decode to the same octets; a refusal from the process, a missing
+// separator and a non-hex digit each refuse rather than yielding a guessed signature.
+test fn witness_openssl_hex_signature_decodes_both_renderings_and_refuses_the_rest() -> Bool {
+  let v3 = match openssl_signature_of(exit_code: 0, stdout: "RSA-SHA2-256(stdin)= 0aff\n", stderr: "") {
+    OpensslSigned { octets: o } => o == [10, 255]
+    OpensslSignRefused { exit_code: _, detail: _ } => false
+  }
+  let v1 = match openssl_signature_of(exit_code: 0, stdout: "(stdin)= 0aff", stderr: "") {
+    OpensslSigned { octets: o } => o == [10, 255]
+    OpensslSignRefused { exit_code: _, detail: _ } => false
+  }
+  let failed = match openssl_signature_of(exit_code: 1, stdout: "", stderr: "Could not open file") {
+    OpensslSignRefused { exit_code: 1, detail: _ } => true
+    _ => false
+  }
+  let unseparated = match openssl_signature_of(exit_code: 0, stdout: "0aff", stderr: "") {
+    OpensslSignRefused { exit_code: _, detail: _ } => true
+    OpensslSigned { octets: _ } => false
+  }
+  let not_hex = match openssl_signature_of(exit_code: 0, stdout: "(stdin)= zz", stderr: "") {
+    OpensslSignRefused { exit_code: _, detail: _ } => true
+    OpensslSigned { octets: _ } => false
+  }
+  v3 && v1 && failed && unseparated && not_hex
+}
+
+data created_body: JitConfigCreatedBody = JitConfigCreatedBody {
+  runner: JitConfigCreatedRunner { id: 4242 },
+  encoded_jit_config: "ZmFrZS1qaXQtY29uZmln",
+}
+
+// THE GENERATE STEP'S THREE ANSWERS, supplied rather than fetched (DESIGN §3: this witness is about
+// the decision, and the dispatch fixture is test.claim.github_app_registry's, not re-derived here).
+// A 201 delivers bound to the dispatched attempt with the registration id; a 409 GitHub decided is
+// a not-created refusal; a POST that never answered is commit-ambiguous and is NOT a refusal,
+// because GitHub may have created the registration.
+test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered() -> Bool {
+  let d = dispatched(owned: true, perms: runner_grant)
+  let delivered = match jit_mint_performance_of_generate(dispatch: d, outcome: RestAnswered { answer: created_body }) {
+    JitMintReceived { delivery: JitCredentialBoundToAttempt { bound: b } } =>
+      (b.credential.encoded as String) == "ZmFrZS1qaXQtY29uZmln" && b.runner_id == 4242
+    _ => false
+  }
+  let conflicted = match jit_mint_performance_of_generate(
+    dispatch: d,
+    outcome: RestRefused { refusal: RestStatusRefused { status: 409, body: "Already exists" } },
+  ) {
+    JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: _ } } => true
+    _ => false
+  }
+  let ambiguous = match jit_mint_performance_of_generate(
+    dispatch: d,
+    outcome: RestRefused { refusal: RestTransportRefused { cause: "connection reset" } },
+  ) {
+    JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: RestExchangeCommitAmbiguous { detail: _ } } => true
+    _ => false
+  }
+  delivered && conflicted && ambiguous
+}
+
+// THE KEY IS ONE APP'S, AND THIS IS THE RED FOR IT. The shared dispatch fixture is built on
+// gunbai_bot_declared while the controller's key is gunbai_ci_declared's, so an AUTHORIZED dispatch
+// for the wrong App refuses before any I/O -- no key read, no request. Without this the custody
+// guard would be a wall nothing executes: dropping it while the key still points at the CI App's
+// pem would leave every other witness green (review 68748).
+test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
+  match jit_mint_generate_gate(dispatch: dispatched(owned: true, perms: runner_grant)) {
+    JitMintDecidedBeforeGenerate { performance: JitMintAppKeyNotCustodied { app: a } } => a == gunbai_bot_declared && a != lifecycle_controller_app
+    _ => false
+  }
+}
+
+// A REFUSED DISPATCH PERFORMS NOTHING: no key is read and no request is sent, and the refusal the
+// plan reached is what comes back. This executes the real perform function, which reaches no
+// effect on this arm: the gate perform_organization_jit_mint matches on decides it before any token
+// is presented.
+test fn witness_a_refused_dispatch_performs_no_mint() -> Bool {
+  match jit_mint_generate_gate(dispatch: dispatched(owned: false, perms: runner_grant)) {
+    JitMintDecidedBeforeGenerate { performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } } => true
+    _ => false
+  }
+}
+
+fn publisher_not_minted_cause_starts_with(m: PublisherTokenMint, prefix: String) -> Bool {
+  match m {
+    PublisherTokenNotMinted { cause: c } => starts_with(s: c, prefix: prefix)
+    PublisherTokenMinted { token: _ } => false
+  }
+}
+
+// THE PUBLISHER MINT'S DECISIONS, supplied rather than fetched (the JIT precedent above). The perform
+// function cannot run before merge, so what is established here is each refusal's typed cause and
+// that no refusal carries a token; the route is the perform function's call into these folds.
+test fn witness_secret_manager_403_refuses_the_publisher_mint_with_no_token() -> Bool {
+  publisher_not_minted_cause_starts_with(
+    m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: "denied" }),
+    prefix: "HealPublisherAppKeyUnreadable: HTTP 403",
+  )
+}
+
+test fn witness_installation_token_answer_other_than_created_refuses_with_no_token() -> Bool {
+  publisher_not_minted_cause_starts_with(
+    m: publisher_installation_token_refused(refusal: RestStatusRefused { status: 422, body: "bad repo" }),
+    prefix: "HealPublisherInstallationTokenRefused: HTTP 422",
+  ) && publisher_not_minted_cause_starts_with(
+    m: publisher_installation_token_refused(refusal: RestTransportRefused { cause: "reset" }),
+    prefix: "HealPublisherInstallationTokenRefused: transport",
+  )
+}
+
+test fn witness_jws_signing_refusal_refuses_the_publisher_mint_and_removal_failure_wins_over_a_signed_jwt() -> Bool {
+  let unsigned = match publisher_jwt_after_removal(signed: AppJwtUnsigned { detail: "openssl refused" }, removed: true, removal_error: "") {
+    PublisherJwtNotReady { cause: c } => starts_with(s: c, prefix: "HealPublisherAppJwtUnsigned: openssl refused")
+    PublisherJwtReady { jwt: _ } => false
+  }
+  let stuck_key = match publisher_jwt_after_removal(signed: AppJwtUnsigned { detail: "x" }, removed: false, removal_error: "busy") {
+    PublisherJwtNotReady { cause: c } => c == "HealPublisherAppKeyNotRemoved: busy"
+    PublisherJwtReady { jwt: _ } => false
+  }
+  unsigned && stuck_key
+}
+
+// THE KEY FILE IS GONE ON THE REFUSAL ARM. This executes the real stage/sign/remove function with a
+// key openssl cannot sign with: the staged file must not survive the refusal.
+test fn witness_the_staged_key_file_is_removed_when_signing_refuses() -> Bool {
+  let path = "/tmp/gunbc_publisher_key_witness.pem"
+  let staged = stage_sign_and_remove_publisher_key(key: "not a pem" as Secret, key_path: path)
+  let after = Filesystem.Read(path: path)
+  let refused = match staged {
+    PublisherJwtNotReady { cause: _ } => true
+    PublisherJwtReady { jwt: _ } => false
+  }
+  refused && !after.success
+}
+
+test fn heal_installation_token_permissions_are_contents_write_only() -> Bool {
+  let p = heal_publisher_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn publication_helper_installation_token_permissions_add_pull_requests_write() -> Bool {
+  let p = publication_helper_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Present { value: v } => v == "write"
+      Absent => false
+    }
+}
+
+
+data ck_removed: FilesystemDelete = FilesystemDeleted { path: "k" }
+data ck_absent: FilesystemDelete = FilesystemDeleteTargetAbsent { path: "k" }
+data ck_refused: FilesystemDelete = FilesystemDeleteRefused { path: "k", kind: FilesystemPermissionDenied, error: "denied" }
+
+// Observations only: a cleanup that removed a file reports a removal, never "the partial file".
+test fn a_failed_key_write_whose_cleanup_removed_a_file_reports_the_observation() -> Bool {
+  let c = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_removed)
+  string_contains(s: c, pattern: "cleanup: a file was removed") && string_contains(s: c, pattern: "pre-clear: the path was absent") && !string_contains(s: c, pattern: "partial")
+}
+
+// Absence at cleanup is not "no file was created": the claim is not made.
+test fn an_absent_path_at_cleanup_does_not_claim_nothing_was_created() -> Bool {
+  let c = controller_key_write_refusal(write_error: "no dir", before: ck_absent, after: ck_absent)
+  string_contains(s: c, pattern: "cleanup: the path was absent") && !string_contains(s: c, pattern: "no file was created")
+}
+
+// A cleanup refusal is unconfirmed residue whatever the pre-clear saw; it asserts no origin.
+test fn a_cleanup_refusal_is_unconfirmed_residue_for_every_preclear_observation() -> Bool {
+  let a = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_refused)
+  let r = controller_key_write_refusal(write_error: "exists", before: ck_refused, after: ck_refused)
+  string_contains(s: a, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: a, pattern: "requires cleanup")
+    && string_contains(s: r, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: r, pattern: "pre-clear: removal was refused")
+    && !string_contains(s: a, pattern: "pre-existing") && !string_contains(s: r, pattern: "pre-existing")
+}
+
+// THE PRODUCTION PATH, REAL FILESYSTEM: stage_key_file (the function stage_controller_app_key calls)
+// against paths whose write must fail. A missing parent leaves the path absent at cleanup; /proc/self
+// cannot be removed and exists, so the cleanup is refused. The supplied-outcome tests above fix the
+// cause text per observation; they do NOT cover a dropped cleanup call, and a mid-write partial file
+// cannot be authored, so that is deferred (lost_boot_key_staging_partial_write_frontier).
+test fn a_real_filesystem_write_refusal_names_what_became_of_the_path() -> Bool {
+  (match stage_key_file(key: "k" as Secret, key_path: "/tmp/gunbc_ck_no_such_parent/x/key" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyUnstaged") && string_contains(s: c, pattern: "cleanup: the path was absent")
+    ControllerKeyStaged { key: _ } => false
+  }) && (match stage_key_file(key: "k" as Secret, key_path: "/proc/self" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyResidueUnconfirmed")
+    ControllerKeyStaged { key: _ } => false
+  })
+}

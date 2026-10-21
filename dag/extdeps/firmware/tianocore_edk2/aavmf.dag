@@ -1,0 +1,77 @@
+module extdeps.firmware.tianocore_edk2.aavmf
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
+import extdeps.firmware.tianocore_edk2.subject { TianoCoreEdk2, tianocore_edk2_implementation }
+
+// AAVMF: EDK II's ArmVirtPkg built for QEMU's `virt` machine (ArmVirtQemu), as Debian and Ubuntu
+// package it in `qemu-efi-aarch64`. The name is the packager's (AArch64 Virtual Machine Firmware),
+// kept as spelled because it is the name on the host's filesystem; the implementation it builds is
+// extdeps.firmware.tianocore_edk2.subject, carried as a field rather than restated.
+//
+// TWO IMAGES, TWO ROLES (the pflash convention QEMU's virt machine documents): the CODE image is the read-only firmware volume
+// mapped as the first pflash unit, and the VARS image is the TEMPLATE for a per-VM variable store --
+// a VM writes its variables into its own copy of it, never into the installed template. The
+// secure-boot variants (AAVMF_CODE.secboot.fd / AAVMF_VARS.ms.fd) are not modeled: nothing here
+// boots with Secure Boot enforced.
+//
+// THE DIGESTS ARE OF THE FILES INSIDE THE PACKAGE, not only of the archive, because the file is what
+// QEMU maps: an archive digest verifies a download, a file digest verifies what a host carries.
+// Read 2026-09-30 by fetching the archive named below from ports.ubuntu.com, checking it against the
+// Packages index SHA256, unpacking it with dpkg-deb -x and hashing each file with sha256sum.
+// AAVMF_CODE.fd is a symlink to AAVMF_CODE.no-secboot.fd in this build; the digest is of the target.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "ports.ubuntu.com/ubuntu-ports/dists/noble-updates/main/binary-arm64/Packages.gz",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.tianocore_edk2.aavmf",
+      decl_name: "aavmf_2024_02_ubuntu_noble",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// A file's path is its path inside the package; a root-extracting consumer reads <root><path>.
+type AavmfFirmwareFile {
+  path: FilePath
+  sha256: NonEmptyStr
+}
+
+type AavmfDistributionBuild {
+  implementation: TianoCoreEdk2
+  upstream_version: NonEmptyStr
+  archive: UbuntuArchiveBinaryPackage
+  code: AavmfFirmwareFile
+  vars_template: AavmfFirmwareFile
+}
+
+data aavmf_2024_02_ubuntu_noble: AavmfDistributionBuild = AavmfDistributionBuild {
+  implementation: tianocore_edk2_implementation,
+  upstream_version: "edk2-stable202402",
+  archive: UbuntuArchiveBinaryPackage {
+    package: "qemu-efi-aarch64",
+    version: "2024.02-2ubuntu0.9",
+    architecture: "all",
+    filename: "pool/main/e/edk2/qemu-efi-aarch64_2024.02-2ubuntu0.9_all.deb",
+    sha256: "50d7c5f780f215db81677e08d21e681b61295ffe9040429cff9d9c2a0d03fe3d",
+  },
+  code: AavmfFirmwareFile {
+    path: "/usr/share/AAVMF/AAVMF_CODE.fd",
+    sha256: "4a4cb7f6d8106bb2a7dd8c763fab14b1810152136fc4304e5b728f0043e84f12",
+  },
+  vars_template: AavmfFirmwareFile {
+    path: "/usr/share/AAVMF/AAVMF_VARS.fd",
+    sha256: "b3b855c5a80310168051164986855692d1bdb06e67619856177965cd87c6774f",
+  },
+}

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.module_cited_only_in_annotation_prose
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFailureMode {
+  identity: "module_cited_only_in_annotation_prose" as NonEmptyStr,
+
+  receipts: [
+    "**a module named only in annotation prose is not cited, so it can be absent from the tree while the citing module lands, and it can land while remaining unconsumed** (INVALID STATE: an Accepted program writes a dotted module path inside a leading `//` block and a reader treats that as the DESIGN section 3 citation. DESIGN section 4c erases annotations before every semantic pass, so the name is not a `DeclarationRef`, not an import, and not a consumer. THE TWO HARMS ARE ONE MECHANISM SEEN FROM TWO ENDS. At the citing end, gunbc#10733 merged `gunbc.runner.runner_host_filtered_egress` while its annotations named `gunbc.runner.runner_guest_egress_attempt`, a module the repository did not contain -- the cited-symbol check could not fire because it never saw the text. At the cited end, gunbc#10818 then added that module and two siblings as files nobody imported, which is DESIGN section 3c dangling: a declaration whose only route is a human reading a comment.",
+
+    "WHY IT IS NOT [[unlanded_citation_indistinguishable_at_the_citing_end]]. That row is about a CANONICAL ROW citing an identity that has not landed, usually inside an `authored: String`. The citing end here is an ANNOTATION, which is a different carrier: a String in a data row is still a semantic value the harvest can miss, but an annotation is erased by construction and cannot become a citation by being spelled more carefully. The three admissible forms that row ranks -- PR-plus-openness, description, never a bare unresolving identity -- are all still prose. They do not enroll a consumer.",
+
+    "WHY IT IS NOT [[unbacked_execution_claim]] origin 2. That origin is a citation of a SYMBOL that died when a prose-row became an annotation. Here the named thing is a MODULE that may or may not exist; the defect is that the spelling never entered the import graph either way.",
+
+    "THE REPAIR IS TYPED CONSUMPTION, not a better comment. Import the declaration and fold it. After gunbc#10921 `cpu_bound_write_refused` is a field of `gunbc.runner.runner_cpu_bandwidth_receipt` `cpu_bound_standing`. The unread topology wrappers and the two `fn`s they called are deleted together: a fold nobody calls is the same class as a data row nobody reads. That deletion does not close `guest_reachability` or `egress_outcome`; it stops asserting they were closed. Those receipts were unconsumed under #10818's unread folds as well. A second `DeclarationRef` row that only restates those imports is another prose-grade citation of the same class. A witness that only folds the receipt constants cannot go red on a real divergence and is not coverage.",
+
+    "RUNG FOUND AT: mitigatable. The required cited-symbol check is live for typed `DeclarationRef` literals and does not apply to annotations; review reading is containment after the fact. CEILING: structurally guaranteed for every typed citation, in one step, because the existing check covers a `DeclarationRef` the moment it is authored -- the same ceiling [[unlanded_citation_indistinguishable_at_the_citing_end]] names for typed row-to-row citation. It is not structurally impossible: source can still write a module path in a comment. NEXT-RUNG TRIGGER, a capability and not an artifact: consumption of a newly authored module is decided from the import graph at admission, sufficient that a module whose only occurrences are annotation text is refused as unconsumed rather than merged as cited. A scanner over comments is a heuristic and is not this trigger.",
+
+    "RECOGNITION RULE: when a review or a PR body says a module is cited, ask whether any import or `DeclarationRef` names it. If the only hits are inside `//`, it is not cited.)",
+  ],
+
+  evidence: [],
+}

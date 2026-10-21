@@ -1,0 +1,127 @@
+module gunbc.runner.runner_revision_job_unit
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { nat_to_decimal_string }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, ServiceType, ExecMode, ServiceUser, ServiceSlice, WorkingDirectory,
+  Environment, ExecStart, Restart, TimeoutStopSec, NotInstallable, systemd_instance_name_specifier,
+}
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_slot_allocation { revision_job_slots }
+import gunbc.runner.runner_microvm_slot_unit {
+  microvm_controller_owner, microvm_controller_slice_unit_name, microvm_locus_execstart, microvm_slot_lifecycle_intent,
+  microvm_slot_unit_timeout_stop_sec,
+}
+import gunbc.runner.runner_unit_file { runner_unit_teardown_directives }
+
+// THE REVISION JOB'S HOST FACTS, DECLARED ONCE: which image the host admits, where it is installed,
+// where the job keeps its state, and the one unit that runs a job. Everything the install steps
+// (gunbc.host.host_effect_realize), the unit text and the start grant (gunbc.runner.runner_host_grants)
+// render comes from here, so the pin the unit hands the job and the pin the installer verifies cannot
+// be two facts.
+//
+// THE PIN. This is the SHA-256 of the installed rootfs (revision-job.ext4), the identity
+// verify_revision_job_image compares and the job refuses to run without. It is an IDENTITY BINDING --
+// the installed bytes are the bytes a CI build produced and a reviewer pinned -- not a correctness
+// oracle and not a reproducibility claim (gunbc.recurring_failure_mode guest_image_digest_is_a_one_build_receipt).
+// Changing the image is changing this row: the installed directory is named by it, so a new image
+// installs beside the old one and the unit points at exactly one.
+//
+// STANDING: the value below is the build receipt (build-receipt.txt) of a revision_job_image_build run on
+// main; the by-hand srv1 build it replaced is retired. What remains is dispatching
+// microvm_controller_install with workspace_image_run_id and with revision_job_image_run_id set to the run
+// that produced this digest: any other run's artifact refuses at "revision-job rootfs digest", which is
+// fail-closed and correct. The producing run is a receipt and lives with the commit that set this value
+// (git log -S on the digest), not in this annotation.
+data revision_job_image_pinned_sha256: NonEmptyStr = "5c658ba6294668ab47319a3da20c896958e6977ab5155063ed1e8b362f24cf92" as NonEmptyStr
+
+// The image is BUILT by the revision_job_image_build workflow mode (gunbc.revision_job_image_delivery)
+// and DOWNLOADED here, relative to the deploying checkout, exactly as the workspace image is: transport
+// is not admission, the installer verifies the installed copies against the pin.
+data revision_job_image_staging_root: String = "target/revision-job-image-artifact"
+
+fn revision_job_installed_image_root(release_dir: String) -> String {
+  join([release_dir, "/images/revision-job/", revision_job_image_pinned_sha256 as String], "")
+}
+
+fn revision_job_installed_kernel(release_dir: String) -> String { concat(revision_job_installed_image_root(release_dir: release_dir), "/vmlinux") }
+fn revision_job_installed_rootfs(release_dir: String) -> String { concat(revision_job_installed_image_root(release_dir: release_dir), "/rootfs.ext4") }
+fn revision_job_installed_toolchain(release_dir: String) -> String { concat(revision_job_installed_image_root(release_dir: release_dir), "/toolchain") }
+
+// STATE. The root and the receipt store are root-owned; the spec directory is the operator's, because
+// the spec is the request (repository, commit, tree, claims) and the job re-derives and verifies every
+// field of it (decode_revision_job_spec, then the exact-tree check) rather than trusting the writer.
+// The operator-owned spec directory (briansrls, 0755) adds no new path to root on srv1: uid 1000
+// already holds sudo there. The repository a spec may name is authored (revision_job_admitted_repositories),
+// and the root unit still stages the tree itself; unprivileged staging is the declared terminal shape,
+// with its trigger (before any spec names a commit not on main) stated at that row.
+data revision_job_state_root: String = "/var/lib/gunbc/revision-job"
+data revision_job_spec_dir: String = "/var/lib/gunbc/revision-job/spec"
+data revision_job_receipt_store: String = "/var/lib/gunbc/revision-job/receipts"
+
+fn revision_job_instance_dir(instance: String) -> String { join([revision_job_state_root, "/", instance], "") }
+fn revision_job_cache_dir(instance: String) -> String { concat(revision_job_instance_dir(instance: instance), "/cache") }
+fn revision_job_work_dir(instance: String) -> String { concat(revision_job_instance_dir(instance: instance), "/work") }
+fn revision_job_spec_path(instance: String) -> String { join([revision_job_spec_dir, "/", instance, ".env"], "") }
+
+data revision_job_runner_unit_template_name: NonEmptyStr = "gunbc-revision-job-runner@.service" as NonEmptyStr
+
+fn revision_job_runner_unit_path() -> NonEmptyStr {
+  concat("/etc/systemd/system/", revision_job_runner_unit_template_name as String) as NonEmptyStr
+}
+
+fn revision_job_runner_unit_instance_name(slot_instance: String) -> NonEmptyStr {
+  join(["gunbc-revision-job-runner@", slot_instance, ".service"], "") as NonEmptyStr
+}
+
+data revision_job_entry_file: String = "dag/gunbc/runner/runner_revision_job_main.dag"
+data revision_job_entry_function: String = "revision_job_main"
+
+// THE GUEST'S vCPU COUNT IS THE LARGE WORKSPACE PROFILE'S, read from its owner rather than copied
+// (gunbc.workspace_allocation workspace_profile_vcpus), typed as the hardware thread count it is, and
+// rendered to text only where the unit's Environment line needs it. Firecracker's admission
+// (firecracker_vcpu_count_admission) still refuses an out-of-range value at launch.
+// TRIGGER: the first measured claim-set run's receipt; the row changes to what that run supports.
+fn revision_job_vcpus() -> HardwareThreadCount {
+  hardware_thread_count(count: workspace_profile_vcpus(profile: LargeWorkspace))
+}
+
+// THE UNIT RUNS AS root FROM THE ROOT-OWNED LOCUS for the reasons the slot controller's does
+// (gunbc.runner.runner_microvm_slot_unit): systemd-run into the cell's slice, jailer, cgroup writes.
+// It is not installable and never enabled: one start is one job, Restart=no, so a refused job stays
+// refused until its receipt has been read. It lives in the controller slice, whose charge is already
+// on the host (the authored-slot charge in gunbc.runner.runner_slot_allocation).
+fn revision_job_runner_unit_file(release_dir: String) -> SystemdUnitFile {
+  let instance = systemd_instance_name_specifier
+  ServiceUnitFile {
+    unit: [Description { text: join(["gunbc hermetic revision job (", instance, ")"], "") as NonEmptyStr }],
+    service: concat([
+      ServiceType { mode: ExecMode },
+      ServiceUser { name: microvm_controller_owner },
+      ServiceSlice { name: microvm_controller_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_SLOT=", instance], "") as NonEmptyStr },
+      Environment { assignment: concat("GUNBC_REVISION_JOB_SPEC=", revision_job_spec_path(instance: instance)) as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_RELEASE_DIR=", release_dir], "") as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_IMAGE_DIR=", revision_job_installed_image_root(release_dir: release_dir)], "") as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_IMAGE_SHA256=", revision_job_image_pinned_sha256 as String], "") as NonEmptyStr },
+      Environment { assignment: concat("GUNBC_REVISION_JOB_CACHE_DIR=", revision_job_cache_dir(instance: instance)) as NonEmptyStr },
+      Environment { assignment: concat("GUNBC_REVISION_JOB_WORK_DIR=", revision_job_work_dir(instance: instance)) as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_STORE_ROOT=", revision_job_receipt_store], "") as NonEmptyStr },
+      Environment { assignment: join(["GUNBC_REVISION_JOB_VCPUS=", nat_to_decimal_string(value: hardware_thread_count_value(t: revision_job_vcpus()))], "") as NonEmptyStr },
+      ExecStart { command: microvm_locus_execstart(release_dir: release_dir, entry: revision_job_entry_file, function: revision_job_entry_function) },
+      Restart { policy: "no" as NonEmptyStr },
+    ], concat(
+      runner_unit_teardown_directives(intent: microvm_slot_lifecycle_intent()),
+      [TimeoutStopSec { duration: microvm_slot_unit_timeout_stop_sec() as NonEmptyStr }],
+    )),
+    install: NotInstallable,
+  }
+}
+
+// The instance names a host carries a job unit for: the revision-job slots on that host.
+fn revision_job_host_instances(host: String) -> List<String> {
+  map(filter(revision_job_slots, s => (s.host as String) == host), s => runner_slot_instance_name(slot: s))
+}

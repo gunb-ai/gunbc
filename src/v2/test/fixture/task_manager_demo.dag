@@ -1,0 +1,292 @@
+module v2.test.fixture.task_manager_demo
+
+
+type TaskId {
+  identity: Symbol
+}
+
+type TaskStatus
+  = Open
+  | InProgress
+  | Done
+
+type Task {
+  id: TaskId,
+  title: String,
+  status: TaskStatus
+}
+
+fn create_task(title: String) -> Task {
+  Task {
+    id: TaskId { identity: ^task_id_seed },
+    title: title,
+    status: Open
+  }
+}
+
+fn update_status(id: TaskId, status: TaskStatus) -> Task {
+  Task {
+    id: id,
+    title: "",
+    status: status
+  }
+}
+
+fn list_tasks() -> FreeMonoid<Task> {
+  Empty
+}
+
+data backend_host: UriHost = UriHost {
+  spelling: "backend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data backend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: backend_host,
+    port: Absent
+  }
+}
+
+data frontend_host: UriHost = UriHost {
+  spelling: "frontend.local",
+  grammar: rfc3986_host_abnf
+}
+
+data frontend_address: NetworkAddress = NetworkAddress {
+  authority: UriAuthority {
+    userinfo: Absent,
+    host: frontend_host,
+    port: Absent
+  }
+}
+
+data backend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: ^rust_backend_endpoint },
+  address: backend_address,
+  language: LanguageRef { identity: ^rust_language },
+  framework: NoFramework
+}
+
+data frontend_endpoint: Endpoint = Endpoint {
+  identity: EndpointRef { identity: ^react_frontend_endpoint },
+  address: frontend_address,
+  language: LanguageRef { identity: ^typescript_language },
+  framework: HostedByFramework { framework: FrameworkRef { identity: ^react_framework } }
+}
+
+data create_task_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data create_task_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
+  facts: create_task_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: create_task },
+    effect: Http
+  }
+}
+
+data update_status_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data update_status_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
+  facts: update_status_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: update_status },
+    effect: Http
+  }
+}
+
+data list_tasks_facts: WireContractFacts = WireContractFacts {
+  from: EndpointRef { identity: ^react_frontend_endpoint },
+  to: EndpointRef { identity: ^rust_backend_endpoint },
+  exchange: RequestReply,
+  settlement: ImmediateSettlement,
+  consistency: NoReplicaConvergence
+}
+
+data list_tasks_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
+  facts: list_tasks_facts,
+  bind: CoordinationBind {
+    bind: BindRef { identity: list_tasks },
+    effect: Http
+  }
+}
+
+data task_manager_deployment: DeploymentUnit = DeploymentUnit {
+  endpoints: [backend_endpoint, frontend_endpoint],
+  wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
+}
+
+data tasks_table_spelling: String = "tasks"
+
+type TaskManagerTaskField
+  = TaskFieldId
+  | TaskFieldTitle
+  | TaskFieldStatus
+
+type TaskManagerSqlProjectableScalar
+  = ProjectTaskId
+  | ProjectString
+  | ProjectTaskStatus
+
+type TaskManagerSqlScalarDispatch
+  = MappedProjectable { scalar: TaskManagerSqlProjectableScalar }
+  | UnmappedDomainScalar { anchor: Node }
+
+data task_manager_task_field_catalog: List<TaskManagerTaskField> = [
+  TaskFieldId,
+  TaskFieldTitle,
+  TaskFieldStatus
+]
+
+data task_manager_sql_projection_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn task_manager_task_fields_to_sql_columns(
+  fields: List<TaskManagerTaskField>
+) -> Outcome<List<SqlColumnDefinition>> {
+  fold(
+    fields,
+    init: outcome_accepted(value: std.algebra.Empty),
+    f: fn(acc, field) {
+      append_outcome_value(
+        acc: acc,
+        child: task_manager_task_field_to_sql_column_definition(field: field),
+        policy: task_manager_sql_projection_policy
+      )
+    }
+  )
+}
+
+fn task_manager_task_field_column_spelling(field: TaskManagerTaskField) -> String {
+  match field {
+    TaskFieldId => "id"
+    TaskFieldTitle => "title"
+    TaskFieldStatus => "status"
+  }
+}
+
+fn task_manager_task_field_scalar(field: TaskManagerTaskField) -> TaskManagerSqlProjectableScalar {
+  match field {
+    TaskFieldId => ProjectTaskId
+    TaskFieldTitle => ProjectString
+    TaskFieldStatus => ProjectTaskStatus
+  }
+}
+
+fn task_manager_not_null_column_constraints() -> SqlColumnConstraints {
+  SqlColumnConstraints { not_null: true }
+}
+
+fn task_manager_absent_column_default() -> SqlColumnDefault {
+  SqlColumnDefaultAbsent
+}
+
+fn task_manager_sql_identifier(name: String) -> SqlIdentifier {
+  SqlRegularIdentifier { name: name }
+}
+
+fn task_manager_projectable_scalar_to_sql_data_type(
+  scalar: TaskManagerSqlProjectableScalar
+) -> Outcome<SqlDataType> {
+  match scalar {
+    ProjectTaskId => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectString => outcome_accepted(value: SqlTypeCharacterLargeObject)
+    ProjectTaskStatus => outcome_accepted(value: SqlTypeCharacterLargeObject)
+  }
+}
+
+fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^task_manager_unmapped_domain_scalar,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+fn task_manager_sql_data_type_for_scalar(
+  dispatch: TaskManagerSqlScalarDispatch
+) -> Outcome<SqlDataType> {
+  match dispatch {
+    MappedProjectable { scalar } =>
+      task_manager_projectable_scalar_to_sql_data_type(scalar: scalar)
+    UnmappedDomainScalar { anchor } =>
+      task_manager_reject_unmapped_domain_scalar(node: anchor)
+  }
+}
+
+fn task_manager_task_field_to_sql_data_type(
+  field: TaskManagerTaskField
+) -> Outcome<SqlDataType> {
+  task_manager_sql_data_type_for_scalar(
+    dispatch: MappedProjectable {
+      scalar: task_manager_task_field_scalar(field: field)
+    }
+  )
+}
+
+fn task_manager_sql_column_definition(
+  name: String,
+  data_type: SqlDataType
+) -> SqlColumnDefinition {
+  SqlColumnDefinition {
+    name: task_manager_sql_identifier(name: name),
+    data_type: data_type,
+    constraints: task_manager_not_null_column_constraints(),
+    column_default: task_manager_absent_column_default()
+  }
+}
+
+fn task_manager_task_field_to_sql_column_definition(
+  field: TaskManagerTaskField
+) -> Outcome<SqlColumnDefinition> {
+  bind_outcome(
+    o: task_manager_task_field_to_sql_data_type(field: field),
+    f: fn(data_type) {
+      outcome_accepted(value: task_manager_sql_column_definition(
+        name: task_manager_task_field_column_spelling(field: field),
+        data_type: data_type
+      ))
+    }
+  )
+}
+
+fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
+  bind_outcome(
+    o: task_manager_task_fields_to_sql_columns(fields: task_manager_task_field_catalog),
+    f: fn(columns) {
+      outcome_accepted(value: SqlTableDefinition {
+        name: task_manager_sql_identifier(name: tasks_table_spelling),
+        columns: columns,
+        primary_key: optional_present(value: [
+          task_manager_sql_identifier(
+            name: task_manager_task_field_column_spelling(field: TaskFieldId)
+          )
+        ]),
+        table_constraints: []
+      })
+    }
+  )
+}
+
+fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation> {
+  bind_outcome(
+    o: task_to_sql_table_definition(),
+    f: fn(table) {
+      outcome_accepted(value: SqlCreateTable { table: table })
+    }
+  )
+}

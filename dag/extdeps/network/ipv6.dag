@@ -1,0 +1,140 @@
+module extdeps.network.ipv6
+
+import std.types { Int, String, Bool, NonEmptyStr, List, range }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.numeric.base16 { int_to_lower_hex }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc4291",
+  }
+}
+
+// Reading: RFC 4291 section 2.5.3 owns the loopback address; ipv6_is_loopback is that rule (::1) as code, so the function is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.ipv6", decl_name: "ipv6_is_loopback", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ipv6_text_representation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc5952",
+  }
+}
+
+// Structured IPv6 address (RFC 4291 §2.5): eight 16-bit groups. The group is the grounded unit — a
+// 0..65535 bound modeled with the same `Int where range` refinement std.types.Port uses (reuses the
+// bound idiom, not a fresh nickname), parallel to extdeps.network.ipv4's octet.
+//
+// RENDER IS BUILT, PARSE IS STAGED. render_ipv6_address is RFC 5952's canonical text, so
+// extdeps.network.address render_ip_address is total and no consumer carries a dead absent arm for a
+// v6 host. Parsing v6 TEXT is still unbuilt: zero fleet sources hand us v6 text, and
+// extdeps.network.endpoint parse_network_host refuses a v6 literal with a typed arm rather than
+// guessing. The frontier row below dissolves when parse_ipv6_address lands.
+
+data ipv6_text_codec_staged_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
+    reason: "Ipv6Address has an RFC 5952 render but no parse yet; extdeps.network.endpoint parse_network_host refuses v6 literal text with NetworkHostIpv6LiteralUnparsed until parse_ipv6_address lands",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address")),
+  )
+]
+
+type Hextet = Int where range(min: 0, max: 65535)
+
+type Ipv6Address {
+  group1: Hextet
+  group2: Hextet
+  group3: Hextet
+  group4: Hextet
+  group5: Hextet
+  group6: Hextet
+  group7: Hextet
+  group8: Hextet
+}
+
+fn ipv6_address(
+  group1: Hextet, group2: Hextet, group3: Hextet, group4: Hextet,
+  group5: Hextet, group6: Hextet, group7: Hextet, group8: Hextet,
+) -> Ipv6Address {
+  Ipv6Address {
+    group1: group1, group2: group2, group3: group3, group4: group4,
+    group5: group5, group6: group6, group7: group7, group8: group8,
+  }
+}
+
+fn ipv6_is_loopback(addr: Ipv6Address) -> Bool {
+  addr.group1 == 0 && addr.group2 == 0 && addr.group3 == 0 && addr.group4 == 0
+    && addr.group5 == 0 && addr.group6 == 0 && addr.group7 == 0 && addr.group8 == 1
+}
+
+// RFC 5952 §4, THE CANONICAL TEXT. §4.1 no leading zeros in a group; §4.3 lowercase hex; §4.2.1 `::`
+// shortens as much as possible, so it takes the LONGEST run of zero groups; §4.2.2 it never stands
+// for a single zero group; §4.2.3 on a tie the FIRST run is shortened. One renderer, so one address
+// has one spelling everywhere it is written (an ssh argv, a known_hosts host field, a receipt).
+type Ipv6GroupAt {
+  index: Int
+  value: Hextet
+}
+
+type Ipv6ZeroRun {
+  start: Int
+  len: Int
+}
+
+type Ipv6ZeroScan {
+  best: Ipv6ZeroRun
+  current: Ipv6ZeroRun
+}
+
+fn ipv6_groups(addr: Ipv6Address) -> List<Ipv6GroupAt> {
+  [
+    Ipv6GroupAt { index: 0, value: addr.group1 }, Ipv6GroupAt { index: 1, value: addr.group2 },
+    Ipv6GroupAt { index: 2, value: addr.group3 }, Ipv6GroupAt { index: 3, value: addr.group4 },
+    Ipv6GroupAt { index: 4, value: addr.group5 }, Ipv6GroupAt { index: 5, value: addr.group6 },
+    Ipv6GroupAt { index: 6, value: addr.group7 }, Ipv6GroupAt { index: 7, value: addr.group8 },
+  ]
+}
+
+// Strictly longer replaces the best, so an equal later run never displaces an earlier one (§4.2.3).
+fn ipv6_longest_zero_run(groups: List<Ipv6GroupAt>) -> Ipv6ZeroRun {
+  let scan = fold(groups, init: Ipv6ZeroScan { best: Ipv6ZeroRun { start: 0, len: 0 }, current: Ipv6ZeroRun { start: 0, len: 0 } }, f: (acc, g) =>
+    if g.value == 0 {
+      let cur = if acc.current.len == 0 { Ipv6ZeroRun { start: g.index, len: 1 } } else { Ipv6ZeroRun { start: acc.current.start, len: acc.current.len + 1 } }
+      Ipv6ZeroScan { best: if cur.len > acc.best.len { cur } else { acc.best }, current: cur }
+    } else {
+      Ipv6ZeroScan { best: acc.best, current: Ipv6ZeroRun { start: 0, len: 0 } }
+    })
+  scan.best
+}
+
+fn ipv6_group_text(g: Ipv6GroupAt) -> String {
+  int_to_lower_hex(n: g.value)
+}
+
+fn render_ipv6_address(addr: Ipv6Address) -> NonEmptyStr {
+  let groups = ipv6_groups(addr: addr)
+  let run = ipv6_longest_zero_run(groups: groups)
+  if run.len < 2 {
+    join(map(groups, g => ipv6_group_text(g: g)), ":") as NonEmptyStr
+  } else {
+    let left = filter(groups, g => g.index < run.start)
+    let right = filter(groups, g => g.index >= run.start + run.len)
+    join([
+      join(map(left, g => ipv6_group_text(g: g)), ":"),
+      "::",
+      join(map(right, g => ipv6_group_text(g: g)), ":"),
+    ], "") as NonEmptyStr
+  }
+}

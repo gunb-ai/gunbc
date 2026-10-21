@@ -1,0 +1,10 @@
+module fixtures.free_call_pool_binding.closure_offchain
+
+// ARM C -- ACCEPTED, off-chain definer. Requires the second root:
+//   --source-root fixtures/free_call_pool_binding
+//   --source-root fixtures/free_call_pool_binding_offchain
+import fixtures.free_call_pool_binding.subject_offchain { subject_offchain_use }
+
+fn plain_offchain() -> Int {
+  subject_offchain_use()
+}

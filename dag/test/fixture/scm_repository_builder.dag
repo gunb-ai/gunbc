@@ -1,0 +1,350 @@
+module test.fixture.scm_repository_builder
+
+// BUILDING A REPOSITORY BY THE OPERATIONS THAT ACTUALLY BUILD ONE, FOR EVERY CLAIM THAT NEEDS ONE.
+//
+// This was authored inside the merge_base witness and then needed verbatim by the squash_merge
+// witness. Copying it would have put one construction rule in two files and let them drift -- and the
+// drift would be invisible, because each copy would go on passing its own claims while the two
+// fixtures quietly stopped describing the same repository. That is the redundancy DESIGN section 2
+// names, so the builder moved here and both witnesses read it.
+//
+// NOTHING HERE FORGES A COMMIT. Every row is produced by store_authored_source,
+// store_corpus_manifest and mint_repository_commit, so a fixture cannot construct a repository the
+// real operations could not produce -- which is what makes a claim over one of these scenes evidence
+// about the product rather than about the fixture.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store,
+  CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
+}
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+  commit_at_reference,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
+}
+import gunbc.scm.intake { IntakeRevision, CaptureWork }
+import gunbc.scm.squash_merge {
+  squash_merge,
+  SquashMerged,
+  SquashMergeBaseRefused,
+  SquashMergeConflicted,
+  SquashMergeRootMissing,
+  SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode,
+  SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
+  SquashMergeAllocatorInvalid,
+}
+import gunbc.scm.write_spine {
+  StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
+  StageManifestLocatorCollision,
+  stage_source_at_path,
+  commit_staged_capture, StagedCapture, StagedCaptureCommitted, StagedCaptureWithoutBase, StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
+  candidate_record, CandidateRecordIs, CandidateRecordRefused,
+}
+import gunbc.scm.object_store {
+  path_unique_of_record, path_unique_with_path_removed, store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
+}
+
+// THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
+// RATHER THAN RESTATES: a setup step that failed must stop the claim, never hand it a substitute
+// specimen. Here the hazard is sharper than usual, because a fixture that silently declined to record
+// an integration would leave a repository in which the consumed join CORRECTLY finds nothing -- and
+// the refusal control would go green while asserting the opposite of what it claims to test.
+type MbBuild
+  = MbBuilt { repository: RepositoryEnvelope, at: RepositoryCommitRef? }
+  | MbSetupFailed
+
+fn mb_start() -> MbBuild {
+  MbBuilt {
+    repository: RepositoryEnvelope {
+      store: empty_store(),
+      commits: [],
+      commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+      checked_out: none,
+      staged: none,
+    },
+    at: none,
+  }
+}
+
+// THE FIXTURE STAGES THROUGH THE PRODUCTION VERB, AND THIS BODY USED TO BE A HAND COPY OF IT.
+//
+// When this builder was written there was no `add`, so it performed the staging itself: read the
+// candidate entries, store the source, filter the path out, append the new pairing, store the manifest.
+// `gunbc.scm.write_spine.stage_source_at_path` now does exactly that, and leaving both would be one
+// construction rule in two places -- the same drift hazard that moved this builder out of the
+// merge_base witness in the first place, except worse, because the copy that drifts here is the one
+// every scene is built from. Every claim over one of these scenes is therefore now evidence about the
+// verb an author actually invokes.
+//
+// THE SETUP-FAILURE COLLAPSE IS THE FIXTURE'S OWN RULE AND NOT A WIDENING OF THE VERB'S. The verb keeps
+// its four refusals apart; a fixture has exactly one thing to do with any of them, which is to stop and
+// hand the claim no specimen.
+fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match stage_source_at_path(repository: repository, path: path as NonEmptyStr, text: text) {
+        StageCandidateRefused { cause: _ } => MbSetupFailed
+        StageSourceLocatorCollision { identity: _ } => MbSetupFailed
+        StageManifestLocatorCollision { identity: _ } => MbSetupFailed
+        Staged { repository: staged, manifest: _, source: _ } =>
+          MbBuilt { repository: staged, at: at }
+      }
+  }
+}
+
+// THE COMMIT STEP DELIBERATELY DOES NOT DELEGATE TO `commit_staged`, and the difference is one field.
+// The production verb CONSUMES the stage -- it advances the checkout and clears `staged`, so the next
+// candidate is inherited from the new base. This fixture leaves `staged` pointing at the tip's root,
+// because `mb_at` re-points both together to model a branch point, and that pairing is what the merge
+// scenes are built on. The two describe the same CORPUS by different routes; delegating would silently
+// re-scene every claim already standing on this builder, which is a migration and not a cleanup.
+fn mb_commit(build: MbBuild, message: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_repository_commit(
+            repository: repository,
+            root: CorpusManifestTarget { locator: candidate.locator },
+            message: message,
+            parent: at,
+          ) {
+            RepositoryCommitMinted { repository: minted, reference: reference } =>
+              MbBuilt {
+                repository: RepositoryEnvelope {
+                  store: minted.store,
+                  commits: minted.commits,
+                  commit_allocator: minted.commit_allocator,
+                  checked_out: Present { value: reference },
+                  staged: Present { value: candidate },
+                },
+                at: Present { value: reference },
+              }
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            RepositoryCommitMintRootMissing { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
+            RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// THE INTAKE STEPS: the staged manifest frozen as an intake base (a root commit) or as an advance of
+// the cursor's line, through the production intake mints and nothing else. The cursor and the stage
+// move to the new commit exactly as mb_commit moves them; a refusal is a broken fixture.
+fn mb_settle(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> MbBuild {
+  match commit_at_reference(commits: repository.commits, reference: reference) {
+    Absent => MbSetupFailed
+    Present { value: c } =>
+      MbBuilt {
+        repository: RepositoryEnvelope {
+          store: repository.store,
+          commits: repository.commits,
+          commit_allocator: repository.commit_allocator,
+          checked_out: Present { value: reference },
+          staged: Present { value: c.root },
+        },
+        at: Present { value: reference },
+      }
+  }
+}
+
+fn mb_intake_base(build: MbBuild, message: String, revision: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, revision: revision) {
+            IntakeBaseMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            IntakeBaseAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            IntakeBaseRootRefused { cause: _ } => MbSetupFailed
+            IntakeBaseLineExists { base: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+fn mb_intake_advance(build: MbBuild, message: String, from: IntakeRevision, to: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match at {
+        Absent => MbSetupFailed
+        Present { value: parent } =>
+          match repository.staged {
+            Absent => MbSetupFailed
+            Present { value: candidate } =>
+              match mint_intake_advance(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, parent: parent, from: from, to: to) {
+                IntakeAdvanceMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+                IntakeAdvanceAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+                IntakeAdvanceParentMissing { parent: _ } => MbSetupFailed
+                IntakeAdvanceRootRefused { cause: _ } => MbSetupFailed
+                IntakeAdvanceDoesNotMove { revision: _ } => MbSetupFailed
+                IntakeAdvanceDiscontinuous { parent: _, line: _ } => MbSetupFailed
+                IntakeAdvanceRevisionAlreadyPlaced { commits: _ } => MbSetupFailed
+                IntakeAdvanceLineAlreadyAdvanced { commit: _ } => MbSetupFailed
+              }
+          }
+      }
+  }
+}
+
+// A CAPTURE: the staged manifest frozen through the production capture verb, recording the unit of
+// work it captured (gunbc.scm.write_spine commit_staged_capture). The cursor and the stage then move
+// to the new commit exactly as mb_commit leaves them.
+fn mb_capture(build: MbBuild, message: String, work: CaptureWork) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_staged_capture(repository: repository, message: message, work: work) {
+        StagedCaptureWithoutBase => MbSetupFailed
+        StagedCaptureCommitted(staged) =>
+          match staged {
+            StagedCommitMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            StagedCommitCandidateRefused { cause: _ } => MbSetupFailed
+            StagedCommitNothingToFreeze => MbSetupFailed
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            StagedCommitSourceUnrecoverable { cause: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// A DELETION STAGED THE WAY THE BELT'S CAPTURE STAGES ONE: the candidate's entries with exactly one
+// path removed (gunbc.scm.object_store path_unique_with_path_removed), stored as the new stage.
+fn mb_remove(build: MbBuild, path: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match candidate_record(repository: repository) {
+        CandidateRecordRefused { cause: _ } => MbSetupFailed
+        CandidateRecordIs(subject) =>
+          match subject.base {
+            Absent => MbSetupFailed
+            Present { value: record } =>
+              match store_path_unique_manifest(store: repository.store, unique: path_unique_with_path_removed(unique: path_unique_of_record(base: record), path: path as NonEmptyStr)) {
+                UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+                UniqueManifestStored { store: stored, manifest } =>
+                  MbBuilt {
+                    repository: RepositoryEnvelope {
+                      store: stored,
+                      commits: repository.commits,
+                      commit_allocator: repository.commit_allocator,
+                      checked_out: repository.checked_out,
+                      staged: Present { value: manifest },
+                    },
+                    at: at,
+                  }
+              }
+          }
+      }
+  }
+}
+
+// MOVING THE CURSOR AND THE STAGE TOGETHER, because a branch point is both. Re-pointing `at` without
+// re-pointing the stage would leave the next commit's content derived from the OTHER lineage's tip,
+// which would build a fixture nobody could reach and quietly change what the claims are about.
+fn mb_at(build: MbBuild, target: RepositoryCommitRef) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: target) {
+        Absent => MbSetupFailed
+        Present { value: c } =>
+          MbBuilt {
+            repository: RepositoryEnvelope {
+              store: repository.store,
+              commits: repository.commits,
+              commit_allocator: repository.commit_allocator,
+              checked_out: Present { value: target },
+              staged: Present { value: c.root },
+            },
+            at: Present { value: target },
+          }
+      }
+  }
+}
+
+// AN INTEGRATED COMMIT IS NOW OBTAINED BY MERGING, BECAUSE IT CAN NO LONGER BE DECLARED.
+//
+// `mb_commit` used to take a `CommitIntegration`, so a scene could assert `SquashIntegrated { S1 }`
+// about a commit no merge had produced. That was convenient and it was the fixture-side face of the
+// production hole review found: membership of a source standing in for authority over the merge that
+// consumed it. The generic mint no longer accepts an integration, so this verb runs the REAL
+// `squash_merge` and the scene's integrated commit is one the merge authority actually admitted.
+//
+// This is stronger evidence than the old scene, not weaker: the consumed-source claims below now read
+// a receipt written by the operation they are about, so a `squash_merge` that stopped recording its
+// source would fail them instead of leaving them green against a hand-written row. The refusal arms
+// collapse to `MbSetupFailed` because a scene that cannot be built is a broken fixture, not a result.
+fn mb_squash(
+  build: MbBuild,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  message: String,
+) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match squash_merge(
+        repository: repository,
+        target: target,
+        source: source,
+        message: message,
+      ) {
+        SquashMerged { repository: merged, reference: reference } =>
+          mb_at(
+            build: MbBuilt { repository: merged, at: Present { value: reference } },
+            target: reference,
+          )
+        SquashMergeBaseRefused { refusal: _ } => MbSetupFailed
+        SquashMergeConflicted { conflicts: _ } => MbSetupFailed
+        SquashMergeRootMissing { root: _ } => MbSetupFailed
+        SquashMergeRootIsAuthoredSource { root: _ } => MbSetupFailed
+        SquashMergeRootIsSemanticNode { root: _ } => MbSetupFailed
+        SquashMergeSourceUnrecoverable { cause: _ } => MbSetupFailed
+        SquashMergeResultLocatorCollision { identity: _ } => MbSetupFailed
+        SquashMergeAllocatorInvalid => MbSetupFailed
+      }
+  }
+}
+
+fn mb_head(build: MbBuild) -> RepositoryCommitRef? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: _, at: at } => at
+  }
+}
+
+fn mb_root_of(build: MbBuild, reference: RepositoryCommitRef) -> ObjectId? {
+  match build {
+    MbSetupFailed => none
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_at_reference(commits: repository.commits, reference: reference) {
+        Absent => none
+        Present { value: c } => Present { value: c.root.locator }
+      }
+  }
+}

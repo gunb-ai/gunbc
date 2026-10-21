@@ -1,0 +1,53 @@
+module v2.extdeps.formats.json
+
+import v2.std.grammar { GrammarSchema }
+
+// Renamed from JsonValue (P3a-1 self-fork collapse): extdeps.languages.json.emit owns JsonValue for
+// production JSON emission. This v2-tree grammar-schema witness carrier keeps a distinct name until
+// format-unification lands.
+
+type JsonSchemaCarrierValue
+  = JsonNull
+  | JsonBool { value: Bool }
+  | JsonNumber { lexeme: String }
+  | JsonString { value: String }
+  | JsonArray { elements: List<JsonSchemaCarrierValue> }
+  | JsonObject { members: Map<String, JsonSchemaCarrierValue> }
+
+type JsonNumberLeadingMinusOptionalPrefixWitness {}
+
+type JsonNumberIntegerLexemeWitness
+  = JsonNumberIntegerZeroWitness
+  | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness
+
+type JsonNumberFracDecimalPointSeparatorWitness {}
+type JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness {}
+
+type JsonNumberExpEOrCapitalEMarkerWitness {}
+type JsonNumberExpSignOptionalPlusOrMinusWitness {}
+type JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness {}
+
+type JsonNumberLexemeFacts {
+  leading_minus_optional_prefix: JsonNumberLeadingMinusOptionalPrefixWitness,
+  integer_lexeme: JsonNumberIntegerLexemeWitness,
+  frac_decimal_point_separator: JsonNumberFracDecimalPointSeparatorWitness,
+  frac_requires_at_least_one_digit_after_point: JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness,
+  exp_e_or_capital_e_marker: JsonNumberExpEOrCapitalEMarkerWitness,
+  exp_sign_optional_plus_or_minus: JsonNumberExpSignOptionalPlusOrMinusWitness,
+  exp_requires_at_least_one_digit_after_marker: JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness,
+}
+
+type JsonObjectMemberNamesUniqueWithinObjectWitness {}
+
+type JsonObjectUniqueNameProfileEnforcedAsMustWitness {}
+
+type JsonUniqueNameProfileFacts {
+  member_names_unique_within_object: JsonObjectMemberNamesUniqueWithinObjectWitness,
+  unique_name_profile_enforced_as_must: JsonObjectUniqueNameProfileEnforcedAsMustWitness,
+}
+
+type JsonDocument {
+  grammar_schema: GrammarSchema,
+  unique_names: JsonUniqueNameProfileFacts,
+  value: JsonSchemaCarrierValue,
+}

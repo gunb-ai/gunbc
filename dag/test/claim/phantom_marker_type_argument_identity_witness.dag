@@ -1,0 +1,305 @@
+module test.claim.phantom_marker_type_argument_identity_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr, brand }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Distinct zero-payload variants used as type arguments are distinct declared
+// identities, even though neither carries a runtime value.  This fixture drives
+// the real Rust emitter and requires both identities to remain writable in the
+// projection.  The pre-fix emitter rendered both arguments as `()`, so the two
+// includes were absent and this witness was red.  The excludes keep a future
+// position-dependent collapse from satisfying the positive strings beside an
+// erased spelling.
+
+fn w_distinct_phantom_markers_remain_distinct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_identity\n\ntype Quantity = Time | Memory\n\ntype Measure<Q> {\n  count: Int\n}\n\ntype DistinctMeasures {\n  time: Measure<Time>\n  memory: Measure<Memory>\n}\n",
+    "src/phantom_marker_identity.rs",
+    ["Measure<Time>", "Measure<Memory>"],
+    ["Measure<()>"]
+  )
+}
+
+test fn distinct_phantom_markers_do_not_render_identically() -> Bool {
+  w_distinct_phantom_markers_remain_distinct()
+}
+
+// The same applied-argument decision must survive every outer type renderer.
+// These five uniquely named declarations exercise alias RHS, record field,
+// parameter, return, and top-level data positions.
+
+fn w_outer_positions_share_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_outer_positions\n\ntype Quantity = Time | Memory\n\ntype Measure<Q> { count: Int }\n\ntype AliasPosition = Measure<Time>\n\ntype FieldPosition { field: Measure<Time> }\n\nfn parameter_position(value: Measure<Time>) -> Int { value.count }\n\nfn return_position() -> Measure<Time> { Measure { count: 0 } }\n\ndata data_position: Measure<Time> = Measure { count: 0 }\n",
+    "src/phantom_marker_outer_positions.rs",
+    ["AliasPosition", "FieldPosition", "parameter_position", "return_position", "data_position", "Measure<Time>"],
+    ["Measure<()>"]
+  )
+}
+
+test fn every_outer_renderer_preserves_the_same_marker_argument() -> Bool {
+  w_outer_positions_share_marker_identity()
+}
+
+// A bare unit variant in a type position is not thereby an applied argument.
+// The broad all-type-surface predicate changes this use-line to the direct ZST
+// marker import, making this control red and exposing the former 70-file cut.
+
+fn w_non_applied_variant_keeps_value_import() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_non_applied\n\nimport std.measure { Time }\n\ntype NonApplied {\n  value: Time\n}\n",
+    "src/phantom_marker_non_applied.rs",
+    ["std_measure::Quantity"],
+    []
+  )
+}
+
+test fn non_applied_unit_variant_does_not_become_marker_import() -> Bool {
+  w_non_applied_variant_keeps_value_import()
+}
+
+// Both consumers are in one closure and bind the same leaf spelling to
+// different declarations.  The marker consumer must read its own module env;
+// a closure-global env selecting the plain record loses the marker identity.
+
+fn w_marker_module_uses_its_own_type_environment() -> Bool {
+  let entry = "module phantom_marker_module_context\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_consumer { PlainConsumer }\n\ntype Both { marker: MarkerConsumer, plain: PlainConsumer }\n"
+  compile_dag_rust_emit_check(
+    entry,
+    "src/test_fixture_phantom_marker_identity_marker_consumer.rs",
+    ["Measure<Time"],
+    ["Quantity::\\\{Time}"]
+  )
+}
+
+fn w_plain_module_uses_its_own_type_environment() -> Bool {
+  let entry = "module phantom_marker_module_context\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_consumer { PlainConsumer }\n\ntype Both { marker: MarkerConsumer, plain: PlainConsumer }\n"
+  compile_dag_rust_emit_check(
+    entry,
+    "src/test_fixture_phantom_marker_identity_plain_consumer.rs",
+    ["PlainBox<Time>"],
+    ["std_measure::Quantity"]
+  )
+}
+
+test fn module_context_not_global_context_decides_marker_identity() -> Bool {
+  w_marker_module_uses_its_own_type_environment()
+    && w_plain_module_uses_its_own_type_environment()
+}
+
+// The unrelated record deliberately shares the leaf SharedMarker with the
+// marker provider in the same closure.  Its resolved declaration identity,
+// not last-segment equality, determines that it is an ordinary type argument.
+
+test fn declaration_identity_wins_over_same_leaf_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_identity_over_spelling\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_provider { PlainBox, Time }\n\ntype Subject { marker: MarkerConsumer, plain: PlainBox<Time> }\n",
+    "src/phantom_marker_identity_over_spelling.rs",
+    ["PlainBox<Time>"],
+    ["std_measure::Time"]
+  )
+}
+
+// Position is recomputed at each immediate parent edge.  In
+// Outer<Inner<Time>>, Time qualifies from the Inner edge, not transitively from
+// Outer, while the applied head Inner is never mistaken for its own argument.
+
+test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_nested\n\ntype Quantity = Time | Memory\n\ntype Inner<Q> { value: Int }\n\ntype Outer<T> { value: Int }\n\ntype Nested { value: Outer<Inner<Time>> }\n",
+    "src/phantom_marker_nested.rs",
+    ["Inner<Time>"],
+    ["Inner<()>"]
+  )
+}
+
+// Root and applied-child positions share one alias renderer, so both must live
+// in this one module: the valid applied use deliberately makes the Time marker
+// declaration available and prevents the bare alias from passing merely because
+// its wrong marker spelling happened to be unbound.
+test fn alias_root_does_not_borrow_applied_child_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_alias_position\n\ntype Quantity = Time | Memory\n\ntype Box<Q> { value: Int }\n\ntype AppliedAlias = Box<Time>\ntype BareAlias = Time\n\nfn bare_alias_as_parent(value: BareAlias) -> Quantity { value }\n",
+    "src/phantom_marker_alias_position.rs",
+    ["pub type AppliedAlias = Rc<Box<Time>>", "pub type BareAlias =", "-> Quantity"],
+    ["pub type AppliedAlias = Rc<Box<()>>", "pub type BareAlias = Time", "pub type BareAlias = Memory"]
+  )
+}
+
+// HONESTY WITNESS, NOT A COMPILED-TARGET DISCRIMINATOR. The source model accepts
+// a non-applied unit-variant field at its parent Quantity boundary, and the
+// positional emitter preserves that authored/value spelling rather than silently
+// substituting the distinct phantom marker struct. compile_dag_rust_emit_check
+// stops at emitted text; it does not invoke rustc. Consequently this row proves
+// the modeled parent relation reaches emission and proves the spelling decision,
+// but it MUST NOT be cited as evidence that the emitted crate compiles.
+test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_non_applied_parent_honesty\n\nimport test.fixture.phantom_marker_identity.non_applied_consumer { NonAppliedMarkerField, non_applied_field_as_parent }\n\ntype Subject { value: NonAppliedMarkerField }\n",
+    "src/test_fixture_phantom_marker_identity_non_applied_consumer.rs",
+    ["pub value: Time", "-> Quantity", "Quantity::\{Time}"],
+    ["pub use crate::std_measure::\{Time}"]
+  )
+}
+
+// CEILING, NOT A RUNG DROP. The meaning-level two-arm discriminator is authorable
+// and has been executed: the broad classifier substitutes a marker struct and
+// rustc reports E0308 at the parent boundary; the positional classifier exposes
+// the unsupported non-applied projection and rustc reports E0573.
+// compile_dag_rust_emit_check and compile_dag_multi_module_fixture stop at emitted
+// text, which is what pins this class at SourceToEmittedTextHonestyOnly.
+//
+// ONE STALE SENTENCE RETIRED. What stood here saying emitted_closure_compile_host
+// offers no fixture-callable operation is removed because it became false:
+// fixture_closure_rustc_verdict takes a fixture source, emits its closure and hands
+// it to rustc, and pairs already ride it.
+//
+// THE DISCRIMINATOR NAMED ABOVE IS STILL OUTSTANDING, AND A FIXTURE PAIR CANNOT
+// DISCHARGE IT. Its two arms are the BROAD and the POSITIONAL classifier -- two
+// COMPILER behaviours over ONE source -- so the variable between them is
+// emit_rust's classification, not any text a fixture can author. Two fixture files
+// vary the SOURCE and hold the compiler fixed, which is the opposite axis. No
+// number of them reaches this row's arms. That is a defect in the trigger below as
+// much as a gap in coverage: a route that only compiles authored fixtures can never
+// satisfy a condition whose arms differ by compiler behaviour, so the capability
+// this row is waiting for includes compiler variance and not merely a callable
+// rustc route. Recorded, deliberately not repaired here: rewriting the trigger is a
+// change to what this row demands, and it belongs to whoever takes the climb rather
+// than to a change that merely built beside it.
+//
+// WHAT WAS ADDED IS SEPARATE COVERAGE, NOT THAT DISCRIMINATOR.
+// fixtures/fixture_closure_rustc/phantom_marker_applied_probe.dag and
+// phantom_marker_non_applied_probe.dag are a POSITION pair: one identity in the
+// ruled applied-argument position, whose emitted crate compiles, against the same
+// identity in a non-applied position, whose emitted crate rustc refuses with a
+// located E0308. They establish that the emitted-crate route reaches rustc for this
+// subject and that the non-applied projection is refused there. They do NOT
+// establish the broad-versus-positional distinction, and both declare their markers
+// LOCALLY, so they do not exercise the imported-marker construction that
+// emit_specific_import_block decides -- which is where those classifiers diverge.
+// Cited as coverage of the position question only.
+//
+// AN OBSERVATION THAT IS NOT A CONCLUSION. The refusal that pair measured, E0308 at
+// the parent boundary with a marker struct standing where the return wanted the
+// coproduct, matches the signature this row attributes to the BROAD arm. It is not
+// evidence that the shipped classifier is broad: the construction is local rather
+// than imported, so it is not the arm this row describes. It is written down
+// because it is the kind of coincidence that becomes a false memory once nobody can
+// find where it came from.
+//
+// The carrier below makes the enrollment standing, currently enrolled boundary,
+// trigger, and routed owner separately readable facts, so an executed scratch
+// discriminator cannot be mistaken for enrolled coverage.
+type PhantomMarkerMeaningDiscriminatorEnrollmentStanding
+  = MeaningDiscriminatorExecutedNotEnrolled
+  | MeaningDiscriminatorEnrolled
+
+type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
+  = SourceToEmittedTextHonestyOnly
+  | EmittedCrateMeaningDiscriminator
+
+// RESPONSIBILITY FOR AN OUTSTANDING OBLIGATION MUST SURVIVE CLOSURE OF ITS CURRENT
+// OWNER, THROUGH DISCHARGE OR VALID TRANSFER. This row first named
+// node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the capability
+// it owed existing -- a next-rung trigger nobody was accountable for, the untracked
+// stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was then
+// repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A LONGER
+// FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the repair, so
+// it closes when that lane finishes -- possibly the same morning. The defect in both
+// was allowing ACTIVE RESPONSIBILITY to end while the obligation remained
+// undischarged and untransferred, with nothing in this file changing at the moment it
+// became false; the closed owner can remain a perfectly valid HISTORICAL reference.
+//
+// AN EARLIER REVISION OPENED "THE OWNER MUST OUTLIVE EVERY SESSION, AND A NODE
+// IDENTITY CANNOT", and concluded that a citation whose referent has a lifecycle dies
+// when that lifecycle ends. Both are withdrawn on the same ground as the paragraph
+// below: outliving is not the requirement, surviving responsibility is, and an owner
+// that discharges or transfers before closing satisfies it. They are named because
+// this repair had already corrected the test below while leaving the RULE that
+// introduced it standing -- a framing sentence is precisely what the search terms of
+// a fix cannot contain.
+//
+// THE TEST THIS FIELD MUST PASS, stated so the next repoint is decidable rather than
+// a matter of who is awake: AFTER THE LIFECYCLE TRANSITION, DOES EVERY STILL-
+// UNDISCHARGED OBLIGATION RETAIN AN ACCOUNTABLE OWNER OR A VALID TRANSFER? A
+// session's or work item's CURRENT `in_progress` STATUS DOES NOT ESTABLISH THAT
+// PROPERTY, and its closure is safe for this obligation only when the obligation is
+// discharged or responsibility validly transferred. The first repoint was ratified
+// on the status check, which answers a different question.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID A LANE SESSION AND THE MANAGER SESSION FAIL
+// THE TEST BY CONSTRUCTION, AND THAT NO LONGER FOLLOWS: an owner that discharges the
+// obligation before closing, or transfers it to a successor that accepts it, ends
+// cleanly. The failure is closure WITHOUT discharge or valid transfer -- not being a
+// session, and not being closable. A closed owner remains a perfectly valid
+// HISTORICAL reference; only ACTIVE RESPONSIBILITY is at risk when a lifecycle ends.
+//
+// SO THE OWNER IS A STANDING AUTHORITY THAT NAMES THE CAPABILITY, NOT A NODE.
+// `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
+// route this trigger is waiting on -- it enumerates that host's declarations and
+// owns their growth obligations. A trigger is retired BY ITS TRIGGER AND BY NOTHING
+// ELSE, and a trigger whose owner has ceased to exist WITHOUT DISCHARGING OR
+// TRANSFERRING IT is retired by nothing at all.
+//
+// AND THAT SYMBOL HAS ITS OWN RETIREMENT CONDITION, WHICH IS WHY NAMING IT WAS NOT
+// BY ITSELF ENOUGH. An earlier revision of this block said the owner is accountable
+// "for as long as the route exists". THAT WAS FALSE AS WRITTEN: the owner is a
+// SeedGrowthJustification whose trigger retires the host once the emission and cargo
+// effects are modeled, and which expressly admits a PARTIAL migration -- so
+// "host effects migrate -> the owner retires -> this discriminator is owned by
+// nobody" was reachable. THIS IS THE SECOND TIME THIS FIELD HAS NAMED AN OWNER THAT
+// COULD END BEFORE THE OBLIGATION: first a session lifetime (`node://adhoc-...`,
+// which reached DONE with the capability unbuilt), then an ARTIFACT lifetime here.
+// The defect moved rather than being fixed, which is why the repair is not a third
+// spelling of the owner.
+//
+// EXISTING SYMBOL, RELEVANT SUBJECT AND DURABLE RESPONSIBILITY ARE THREE DIFFERENT
+// FACTS. Naming a symbol in a `NonEmptyStr` establishes the first two and cannot
+// establish the third, because a citation does not transfer an obligation and a
+// module split does not carry one automatically. The third fact has to be taken on
+// IN THE OWNER'S OWN TEXT, so it now is: that justification's trigger carries an
+// explicit clause stating it may not retire -- in whole, or in the partial shape it
+// invites -- while this discriminator obligation is undischarged and untransferred,
+// and requiring either discharge or a named successor. The forbidden outcome it
+// names is silent retirement.
+//
+// WHAT THAT CLAUSE DELIBERATELY DOES NOT LICENSE: keeping an obsolete host alive so
+// that an owner string stays resolvable. If the host dissolves and nobody has taken
+// the obligation, the obligation moves. Preserving dead Rust to anchor a citation
+// would be the worst reading of this repair and is refused in both files.
+//
+// THE SYMBOL IS CITED RATHER THAN THE MODULE, per DESIGN section 3. A module
+// citation is durable against closure but not against the module being split or its
+// obligations restructured, so this field names
+// `emitted_closure_compile_seed_growth_justification` -- the single declaration in
+// that module, and the one carrying the growth obligation for this route's host. If
+// that module is ever split, the citation follows the obligation rather than the
+// filename.
+//
+// AND THE OWNER'S PROSE INSTABILITY IS NOT AN OWNERSHIP OBJECTION, said out loud
+// because a reader who knows that file will otherwise wonder. That module's
+// CI-shape paragraph has turned over four times in five days, which is why this
+// change repairs a stale sentence in it rather than adding a fifth turnover note.
+// That is instability of an EXPLANATION about a CI job. Ownership of the route is a
+// different property, and it has not moved: the module names the fixture-closure
+// route throughout and carries its growth obligations. An unstable explanation
+// inside an authority does not make the authority the wrong owner; it makes that
+// paragraph a failure-mode instance, which is where it is now filed.
+type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
+
+type PhantomMarkerMeaningDiscriminatorCeiling {
+  standing: PhantomMarkerMeaningDiscriminatorEnrollmentStanding
+  enrolled_boundary: PhantomMarkerMeaningDiscriminatorEnrolledBoundary
+  next_rung_trigger: DissolutionCondition
+  route_owner: PhantomMarkerMeaningDiscriminatorRouteOwner
+}
+
+data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscriminatorCeiling = PhantomMarkerMeaningDiscriminatorCeiling {
+  standing: MeaningDiscriminatorExecutedNotEnrolled,
+  enrolled_boundary: SourceToEmittedTextHonestyOnly,
+  next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
+  route_owner: "gunbc.emitted_closure_compile_seed_growth emitted_closure_compile_seed_growth_justification" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+}

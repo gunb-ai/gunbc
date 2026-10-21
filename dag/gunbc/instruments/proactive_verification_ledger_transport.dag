@@ -1,0 +1,32 @@
+module gunbc.instruments.proactive_verification_ledger_transport
+
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.proactive_verification_ledger {
+  FamilyVerificationLedgerRow,
+  VerificationExecutionShape,
+  ClaimWitness,
+  ledger_executable_family_rows
+}
+import gunbc.instruments.host_prelude { ClaimRun, run_gunbc_claims }
+import std.algebra { fold_list }
+
+fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
+  match row.execution {
+    ClaimWitness { entry: e, function: f } =>
+      run_gunbc_claims(
+        source_roots: witness_layer_roots,
+        claims: [ClaimRun { entry: e, function: f }]
+      )
+    FalsifierPredictOnlyBatch => false
+    CompileCleanGate => false
+    RequiredRegenGate => false
+  }
+}
+
+fn run_executable_ledger_rows() -> Bool {
+  fold_list(
+    xs: ledger_executable_family_rows(),
+    empty: true,
+    cons: fn(acc, row) { acc && run_family_ledger_row(row: row) }
+  )
+}

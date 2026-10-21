@@ -1,0 +1,5 @@
+module probe.brc.imported_record_consumer
+
+import probe.brc.alias_home { BrcAliasId }
+
+type BrcImportedCarrier { id: BrcRecordId }

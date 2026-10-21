@@ -1,0 +1,1468 @@
+module gunbc.compiler_frontend_program_status
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  witness_cadence_has_scheduled_route,
+}
+import gunbc.compiler_frontend_program_interlock {
+  ProgramMilestone,
+  SelfHostWholeCorpusPopulationDerived,
+  SelfHostCargoPhaseEnrolled,
+  SelfHostRatchetObservationEnrolled,
+  SelfHostRatchetGateEnrolled,
+  NamespaceWaveAdmissionEnrolled,
+  NamespaceBaselineObservationComplete,
+  NamespaceFirstSemanticWave,
+  NamespaceFixForwardComplete,
+  NamespaceGrammarRetired,
+  SelfHostCorpusEmitsCleanly,
+  SelfHostEmittedContractsHeld,
+  SelfHostEmitterProducesEveryRetainedArtifact,
+  SelfHostSuccessorPromotionAdmitted,
+  SelfHostNativeRouteRequiredLane,
+  SelfHostSeedRetirement,
+  milestone_label,
+  milestone_prerequisites,
+}
+import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
+import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
+import gunbc.self_host_behavioral_equivalence_receipt {
+  BehavioralEquivalenceSeriesEmpty,
+  BehavioralEquivalenceSeriesInvalid,
+  BehavioralEquivalenceLatest,
+  current_behavioral_equivalence_standing,
+}
+import gunbc.self_host_compile_phase_frontier {
+  CompilePhaseFrontierEmpty,
+  CompilePhaseFrontierValidated,
+  CompilePhaseFrontierInvalid,
+  current_compile_phase_frontier_standing,
+  self_host_compile_phase_ratchet_enrolment,
+}
+import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import v2.workflow.legacy_baseline_capture {
+  CaptureAvailable,
+  CaptureBlocked,
+  legacy_baseline_capture_capability,
+  capture_blocked_reason,
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  persisted_legacy_baseline_outstanding,
+}
+import gunbc.namespace_cut.namespace_cut_stage {
+  NamespaceCutStage,
+  StageF0,
+  StageXL0Denominator,
+  StageXL1BaselineCapture,
+  StageXL2RootDeletionRehearsal,
+  StageXL3DeclaringIdentitySpelling,
+  StageXL4ReferenceDerivedGraph,
+  StageAct0ActivationGate,
+  StageXL5Waves,
+  StageXL6AtomicCutover,
+  StageXL7GrammarDeletion,
+  namespace_cut_stages,
+  namespace_cut_stage_label,
+  stage_prerequisites,
+  act0_release_milestones,
+  StageDeliveryEvidenceKind,
+  StageDeliveryReceipt,
+  RehearsalInstrumentDelivered,
+  ReferenceGraphInstrumentDelivered,
+  stage_delivery_kind_outstanding,
+  held_stage_delivery_receipts,
+  activation_receipts_outstanding,
+  held_activation_receipts,
+}
+import gunbc.namespace_cut.namespace_cut_subject_roster {
+  subjects_deleted_at,
+  subject_probe_list,
+  probe_render,
+}
+
+// WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
+// which milestone precedes which -- and that relation is a closed, pure fact with no dependency on
+// any mechanism. This module carries an OBSERVATION over the corpus, so it must import the
+// mechanisms whose populations it reads. Fusing the two would put every one of those mechanisms
+// into the import closure of both plan carriers that cite the interlock, which today cite it for
+// the ordering alone. The two facts also move on different clocks: the relation changes when an
+// operator rules on sequencing, the observation changes whenever a population does.
+
+// THE ONE FAILURE THIS FILE IS BUILT NOT TO COMMIT. DESIGN section 4b names a status ledger's
+// "DONE" as rung inflation -- a carrier claiming a state it has not earned -- and calls it worse
+// than sitting low, because an inflated class never ranks for climbing. A progress carrier is the
+// single most likely artifact in this repository to commit it. So no milestone here is ticked.
+// Its standing is DERIVED from a population the corpus itself carries, or it is NotDerivable.
+//
+// NotDerivable IS A RESULT, not a failure to report. A milestone nobody can currently answer names
+// a missing instrument, and naming twelve of them is the report that cannot be obtained today. The
+// state this file must never produce is a milestone that reads pending when in truth nothing could
+// ever answer it, or one that reads clear because a pull request merged. A MERGED PR IS NOT A
+// MILESTONE, and no arm below consults one.
+type MilestoneStandingClass
+  = ClassClear
+  | ClassOutstanding
+  | ClassNotDerivable
+
+// EVIDENCE IS MINTED FROM A POPULATION, NEVER AUTHORED. `sole_constructor` means no module but this
+// one can build a MilestoneEvidence, so a consumer cannot hand itself a zero-outstanding evidence
+// value and read Clear off it. Inside this module the mint takes the outstanding LIST rather than a
+// count, which is DESIGN section 5's oracle rule: completeness is an identity join, and a count
+// would go green the moment two rows moved in opposite directions.
+//
+// WHAT THIS DOES NOT CLAIM, stated at the grain the seal actually holds. `sole_constructor` closes
+// forgery of the RECORD; it does not close a caller handing the mint an empty list, and the mint is
+// exported because the witness beside this module needs to author both a clear and an outstanding
+// fixture population -- an unexported mint would have forced a test-only construction path, which
+// DESIGN section 5 calls an escape hatch wearing a better name. So what is structurally guaranteed
+// is narrower than "Clear cannot be wrong": it is that NO MilestoneStanding EXISTS WITHOUT A NAMED
+// SUBJECT AND AN OBSERVED POPULATION -- there is no spelling of a bare tick. The rung for the
+// standings themselves is MECHANICALLY PREVENTABLE, and the mechanism is the witness, which asserts
+// the live outstanding identities by name and reds if an arm stops reading its population.
+// NEXT-RUNG TRIGGER: a mint that consumes the producing declaration itself rather than a list a
+// caller derived, at which point the empty-literal spelling stops existing at all.
+type MilestoneEvidence sole_constructor {
+  subject: NonEmptyStr
+  outstanding: List<String>
+}
+
+fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> MilestoneEvidence {
+  MilestoneEvidence { subject: subject, outstanding: outstanding }
+}
+
+// THE MISSING INSTRUMENTS ARE A CLOSED VOCABULARY, NOT A SENTENCE PER MILESTONE, and the reason is
+// the question this carrier could not answer in its first cut. Reporting twelve NotDerivable rows
+// each carrying its own prose tells a reader that twelve things are unanswerable; it cannot tell
+// them whether that is TWELVE problems or THREE. Those are different programs: if one missing
+// measurement is awaited by five milestones, that shared demand is worth seeing and nothing named it,
+// and if the twelve need twelve instruments that is a much worse world someone has to know about.
+// A shared fact gets a shared carrier (DESIGN section 3), and the grouping is then DERIVED rather
+// than counted by hand.
+//
+// WHAT THIS GROUPING DOES AND DOES NOT ESTABLISH, stated at exactly its strength because an
+// earlier revision of this block overclaimed in the direction the four-way partition below was
+// added to close. It establishes DIRECT REQUIREMENT MEMBERSHIP: how many milestone standings
+// currently await each instrument, so shared demand is visible instead of scattered across twelve
+// prose rows. It does NOT establish that satisfying one instrument ALONE changes any milestone's
+// standing (singleton sufficiency is not derived -- see the join below), nor comparative leverage,
+// nor the best next dispatch, nor the ABSENCE of simultaneous outstanding work, nor ownership.
+// The honest program-level reading is: OBSERVABILITY DOMINATES CURRENT ADMISSION, WHILE KNOWN
+// PREREQUISITE WORK COEXISTS WITH MISSING OBSERVATIONS. An earlier revision of this paragraph said
+// the program "is not labour-constrained" and that "the right next dispatch is an instrument"; both
+// were read off a fold that had discarded its known blockers, and neither follows from what this
+// module computes even now that it keeps them.
+// That distinction is invisible on a ledger, which renders every such row as "pending" and invites
+// a reader to hear "in progress".
+// THREE ROWS RETIRED BY DELIVERY, ONE SPLIT, ONE ADDED (F-0, 2026-08-29). RequiredCiPhaseRoster,
+// NamespaceWaveAdmissionWall and NamespaceStepSubjectRoster are DELETED because the instruments
+// now exist -- gunbc.required_ci_phase_roster, the wave-admission phase it enrols (landed #9365
+// and until now still reported here as unbuilt: this carrier's own stale reading was the rung
+// inflation in the opposite direction, a built wall reported absent), and
+// gunbc.namespace_cut.namespace_cut_subject_roster. Their awaiting milestones are now DERIVED from those
+// carriers below. What SelfHostCargoPhaseEnrolled still awaits is narrower than the roster and
+// gets its own row: the roster carries phase identity and lane, not whether a phase executes
+// cargo. DeclaringIdentitySpellingCensus is awaited by the stage chain (XL-3), not by any
+// milestone -- stages_awaiting joins it.
+type MissingInstrument
+  = PhaseCargoExecutionFact
+  | DeclaringIdentitySpellingCensus
+  | ResolverBoundDeclaringIdentity
+  | ExactOccurrenceResidualCensus
+  | PersistedBehavioralReceipt
+  | PersistedPromotionOutcome
+  | LiveTreeCompilePhaseMeasurement
+  | SeedDeletionObservation
+
+fn missing_instrument_label(i: MissingInstrument) -> String {
+  match i {
+    PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
+    ResolverBoundDeclaringIdentity => "the v2 resolver answering a qualified reference with an EXACT declaring identity by execution -- the binding's declaration containment path, not a leaf and not the authored spelling -- so that v2.compiler.repair_input_origin_roster derives RepairInputDeclared.declaring from that binding rather than from carrier_declaration_ref's spelling arm (XL-0's population; the roster producer itself exists and answers)"
+    DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
+    ExactOccurrenceResidualCensus => concat("the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population): the typed import strip (std.import_statement strip_import_statements) applied to a throwaway tree, then the v2 production route -- ingest, graft, normalize, RESOLVE -- over every stripped module, its resolve refusals joined to occurrence identity where an id is minted and to module + path + locus structure where it is synthetic (the residual's ids are mixed, majority synthetic over the whole tree; a wave keyed on occurrence identity alone would cover a minority and report success on the rest). Its known necessary prerequisites are the typed list xl2_prerequisites -- not an exhaustive set -- rendered here from their standings: ", render_xl2_prerequisites())
+    PersistedBehavioralReceipt => "a persisted behavioral-equivalence receipt (the taker exists; the series is empty or refused until one is appended)"
+    PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
+    SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
+    LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
+  }
+}
+
+// XL-2'S PREREQUISITES ARE ONE TYPED LIST, NOT PROSE INSIDE AN INSTRUMENT LABEL. The label used to
+// carry them as a paragraph, and two of its clauses went stale in place (the whole-tree census
+// "never reaches resolve" after gunbc#11738 made it resolve; the argument half "open" on a premise
+// gunbc#12108 measured to be false). A standing that is a field on an arm is read and rendered;
+// a standing inside a sentence is only re-read. Each arm names its OWNING CAPABILITY as a
+// DeclarationRef -- the discriminating claim that executes it -- so the citation wall refuses a
+// renamed or deleted owner instead of leaving the arm reading as delivered. The standings are
+// authored against those owners with their evidence; they are not re-executed here, because
+// re-running another module's claims from a production carrier is the layer inversion DESIGN
+// section 3 names (gunbc#11457). The owners run on the required floor under their own prefixes.
+type Xl2Prerequisite
+  = PlainCallArgumentReferenceVisibility
+  | IfArmCallArgumentReferenceVisibility
+  | BareFieldTypeVisibility
+  | WholeTreeResolveCensus
+  | ResolveOccurrenceCompleteness
+  | OperatorExpressionLoweredWhole
+  | OptionalAccessorLocatedRefusal
+  | MatchOnCallScrutineeNavigation
+  | CompoundCallArgumentValueLowering
+  | StrippedTreeRehearsalComposition
+  | BlockStatementReferenceVisibility
+  | LoweringOccurrenceProjection
+  | ListLiteralElementVisibility
+  | LambdaArgumentValueLowering
+  | CaretSymbolOperandLowering
+  | AsCastOperandLowering
+  | ElseLessIfStatementLowering
+  | WildcardMatchArmResolution
+  | QualifiedFieldTypeVisibility
+  | MatchEveryArmLowered
+  | EnclosingExpressionLoweredWhole
+  | DataInitializerMatchScrutineeLowering
+  | MatchArmStatementBodyLowering
+  | ServiceModuleLowering
+  | UsesClauseCarrier
+
+type Xl2PrerequisiteEvidence {
+  pr: Int
+  merge_sha: NonEmptyStr
+  measured_at: NonEmptyStr
+}
+
+// Delivered carries its owner, a MERGED sha, and its QUALIFICATION -- what the delivery does not
+// establish -- as a required field, because a delivery rendered without its limit is the rung
+// inflation this list exists to stop. A qualification may bound a delivery; it may never carry an
+// undelivered part of it: a capability delivered in part is TWO arms, the delivered part and the
+// outstanding part, so xl2_prerequisite_is_delivered and xl2_prerequisites_outstanding cannot
+// disagree with any qualification. An outstanding arm has no owner capability yet, which is what
+// outstanding means; it names what TRACKS the gap instead -- the rostered failure mode or the red
+// wall -- cited by symbol so the citation wall refuses it once that row is deleted. No standing
+// cites an open PR.
+type Xl2PrerequisiteStanding
+  = PrerequisiteDelivered { owner: DeclarationRef, evidence: Xl2PrerequisiteEvidence, qualification: NonEmptyStr }
+  | PrerequisiteOutstanding { tracked_by: DeclarationRef, why: NonEmptyStr }
+
+data xl2_prerequisites: List<Xl2Prerequisite> = [
+  PlainCallArgumentReferenceVisibility,
+  IfArmCallArgumentReferenceVisibility,
+  BareFieldTypeVisibility,
+  WholeTreeResolveCensus,
+  ResolveOccurrenceCompleteness,
+  OperatorExpressionLoweredWhole,
+  OptionalAccessorLocatedRefusal,
+  MatchOnCallScrutineeNavigation,
+  CompoundCallArgumentValueLowering,
+  StrippedTreeRehearsalComposition,
+  BlockStatementReferenceVisibility,
+  LoweringOccurrenceProjection,
+  ListLiteralElementVisibility,
+  LambdaArgumentValueLowering,
+  CaretSymbolOperandLowering,
+  AsCastOperandLowering,
+  ElseLessIfStatementLowering,
+  WildcardMatchArmResolution,
+  QualifiedFieldTypeVisibility,
+  MatchEveryArmLowered,
+  EnclosingExpressionLoweredWhole,
+  DataInitializerMatchScrutineeLowering,
+  MatchArmStatementBodyLowering,
+  ServiceModuleLowering,
+  UsesClauseCarrier,
+]
+
+fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
+  match p {
+    PlainCallArgumentReferenceVisibility => "plain call-argument references reach resolve/denominator grain"
+    IfArmCallArgumentReferenceVisibility => "call-argument and bare-name references inside an if-arm reach resolve"
+    BareFieldTypeVisibility => "BARE field-position type names reach the containment tree"
+    WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
+    ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
+    OperatorExpressionLoweredWhole => "an operator expression is lowered whole, so every operand reaches resolve"
+    MatchOnCallScrutineeNavigation => "a match whose scrutinee is a call has its arms navigated, not refused"
+    CompoundCallArgumentValueLowering => "a NON-list, NON-lambda compound call-argument value (nested call, record literal, parenthesised group) is lowered as a value, not refused as unread -- list-valued and lambda-valued arguments are ListLiteralElementVisibility and LambdaArgumentValueLowering"
+    OptionalAccessorLocatedRefusal => "the Optional operand accessor carries a located refusal instead of answering Absent"
+    StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
+    BlockStatementReferenceVisibility => "no statement of a brace body is silently dropped: a statement followed by another reaches resolve or refuses its module located"
+    ListLiteralElementVisibility => "every element of a list literal reaches resolve on every route"
+    LambdaArgumentValueLowering => "an inline lambda as a call argument lowers to a function value whose parameters bind and whose body's references reach resolve"
+    CaretSymbolOperandLowering => "a caret symbol `^sym` has a lowered form on every route, distinct from a reference, instead of refusing as an unread operand or reading as its `^` token"
+    AsCastOperandLowering => "an `as` cast `e as T` has a lowered form on every route, so its operand and its target type both reach resolve"
+    ElseLessIfStatementLowering => "an else-less statement `if` (an early-return guard) lowers with the rest of the statement spine as its else, so every later statement reaches resolve"
+    WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
+    QualifiedFieldTypeVisibility => "a QUALIFIED field-position type name reaches the census, so field position is established as a whole, not only for bare names"
+    LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
+    UsesClauseCarrier => "a fn declaring a `uses` clause reaches the census instead of refusing its module at lowering"
+    MatchEveryArmLowered => "a match lowers every arm, the third and later arms included, in source order"
+    EnclosingExpressionLoweredWhole => "an expression that contains a match or if (an operator, call or record around the block) lowers to itself with the block as one part, not to the block alone or its scrutinee"
+    DataInitializerMatchScrutineeLowering => "a match in a data initializer reads its scrutinee from the scrutinee position, not from an arm"
+    MatchArmStatementBodyLowering => "a match arm whose body is a statement block lowers the whole block, not its first expression"
+    ServiceModuleLowering => "a module declaring a service lowers through normalize, so the references of every one of its declarations reach the census"
+  }
+}
+
+fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
+  match p {
+    PlainCallArgumentReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_is_reachable_by_the_collector_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
+      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility, compound argument values CompoundCallArgumentValueLowering." as NonEmptyStr,
+    }
+    IfArmCallArgumentReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "e74e345a93" as NonEmptyStr },
+      qualification: "if-arms lower through the statement authority (v2.compiler.body_lowering_fold body_lower_if_arm_lowered), so an undeclared name used as a call argument in a then arm, an else arm or a nested if-arm, or as a bare name in an arm, refuses at resolve at its own atom; the declared controls (declared_call_arguments_in_if_arms_resolve, a_let_block_in_an_if_arm_resolves, a_match_in_an_if_arm_resolves) resolve. Bounded to arms whose statements lower: an else-less statement `if` is ElseLessIfStatementLowering, and a match inside an arm now reaches resolve, where a wildcard arm resolves since gunbc#12297 (WildcardMatchArmResolution)." as NonEmptyStr,
+    }
+    BareFieldTypeVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
+      evidence: Xl2PrerequisiteEvidence { pr: 11574, merge_sha: "b705d17c45" as NonEmptyStr, measured_at: "b705d17c45" as NonEmptyStr },
+      qualification: "BARE field types only. The QUALIFIED form is its own row, QualifiedFieldTypeVisibility (v2.test.claim.declaring_identity_spelling.production_ingest a_qualified_field_type_mention_reaches_the_census_holds); together the two establish field position at reach grain." as NonEmptyStr,
+    }
+    WholeTreeResolveCensus => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.native_census.whole_tree_census_resolve", decl_name: "census_unbound_module_is_resolve_refused_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 11738, merge_sha: "c6b4e7ed2c" as NonEmptyStr, measured_at: "c6b4e7ed2c" as NonEmptyStr },
+      qualification: "the SourceRootEvalDriver's census-resolve mode (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs, run_census_resolve) resolves every module of the tree it is given; it runs over the live tree, not a stripped one (that composition is StrippedTreeRehearsalComposition). Its verdicts on the whole tree come from the CI floor: a 7 GB BuildBuddy runner page-thrashes on it." as NonEmptyStr,
+    }
+    ResolveOccurrenceCompleteness => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.native_census.whole_tree_census_resolve", decl_name: "census_two_independent_refusals_both_reach_the_census_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12116, merge_sha: "d759da1c50" as NonEmptyStr, measured_at: "d759da1c50" as NonEmptyStr },
+      qualification: "every independent failure chain reaches census-resolve as one row, two refusals inside ONE declaration both reach the census, and a refused Bind binder marks its body incomplete (v2.test.claim.resolve.resolve_walk_population walk_refused_prerequisite_marks_incomplete_holds). NOT claimed: a Stage0 whole-tree fixed point -- main carries pre-existing Stage0 drift (30 files, pinned at 1f76eef) owned by the stage0-regen-coverage lane adhoc-1b5279ad-913. A module refused at parse or normalize is reported file-refused with completeness unavailable, not resolved." as NonEmptyStr,
+    }
+    OperatorExpressionLoweredWhole => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal", decl_name: "an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12145, merge_sha: "ada85b9452" as NonEmptyStr, measured_at: "ada85b9452" as NonEmptyStr },
+      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor's located refusal is its own arm (OptionalAccessorLocatedRefusal, since delivered by gunbc#12780). Its two collateral regressions, MatchOnCallScrutineeNavigation and CompoundCallArgumentValueLowering, are delivered by gunbc#12173 as their own arms." as NonEmptyStr,
+    }
+    MatchOnCallScrutineeNavigation => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12173, merge_sha: "bc61f22b53" as NonEmptyStr, measured_at: "9ce9082ef7" as NonEmptyStr },
+      qualification: "gunbc#12173 reads a match scrutinee through v2.compiler.body_lowering_fold body_lower_value_lowered, so a match whose scrutinee is a call has its arms navigated and an undeclared name in the scrutinee refuses at resolve at its atom. Its positive controls landed in gunbc#12194 (9ce9082ef7): a_call_match_scrutinee_resolves, a_multi_line_call_match_scrutinee_resolves and a_match_with_a_call_scrutinee_nested_in_an_arm_resolves. A match exhaustive only through a wildcard arm refused at resolve at `_` until gunbc#12297 (WildcardMatchArmResolution)." as NonEmptyStr,
+    }
+    CompoundCallArgumentValueLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12173, merge_sha: "bc61f22b53" as NonEmptyStr, measured_at: "9ce9082ef7" as NonEmptyStr },
+      qualification: "NARROWED, not the broad arm: gunbc#12173 lowers a call argument as a value, so an undeclared name in a nested call (named or positional), a record literal or a parenthesised group argument refuses at resolve at its own atom, with declared_names_inside_nested_call_and_record_arguments_resolve as the control; gunbc#12194 (9ce9082ef7) added the parenthesised call-operand pair. NOT claimed here: a list-valued argument, a lambda-valued argument and a caret-symbol value, each its own arm (ListLiteralElementVisibility, LambdaArgumentValueLowering, CaretSymbolOperandLowering), since delivered by gunbc#12208, gunbc#12210 and gunbc#12420." as NonEmptyStr,
+    }
+    OptionalAccessorLocatedRefusal => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.parameter_slot_refusal", decl_name: "an_unread_parameter_slot_refuses_the_declaration"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12780, merge_sha: "de028fb0ec" as NonEmptyStr, measured_at: "de028fb0ec" as NonEmptyStr },
+      qualification: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand records its trigger MET: no caller of OperandRefRead maps a refusal to Absent. The route was closed in steps. gunbc#12245 (56f13fc2f7) fixed four part-for-whole readers. gunbc#12615 (7f144278c5) made the first-match readers three-valued. gunbc#12725 (3feb0559c5) made the reify route carry an operand refusal. gunbc#12754 (414782c6fe) reads an else part by its first production. gunbc#12780 closed the binder chain: a binder is read as a NAME (body_lower_binder_name_behind_shell_optional) and never through the operand reader, and each parameter slot is read or refused as body_lowering_reason_parameter_unlowered, where lowering used to filter an unread slot out of the domain. NOT claimed, and stated by the row as its one remaining non-propagating arm: v2.lens.complexity_accumulator_copy reads a refused operand as its raw capture, whole. That is a lens reading, never a part and never Absent, and it is not a lowering route." as NonEmptyStr,
+    }
+    StrippedTreeRehearsalComposition => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl2_rehearsal_census", decl_name: "xl2_residual_control_is_reported_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12097, merge_sha: "1d4fa51a3d" as NonEmptyStr, measured_at: "1d4fa51a3d" as NonEmptyStr },
+      qualification: "delivered at COMPOSITION grain: v2.workflow.namespace_xl2_rehearsal_census composes the import strip and the census-resolve observation (the completeness decision is v2.workflow.namespace_xl2_completeness), built and exercised through its seven controls in v2.test.claim.namespace_xl2_rehearsal_census. The exact-base acquisition (subject read, tree-id recompute) does not exist yet and no native label exists yet (its closure would not build either: emit defect in extdeps.posix.shell_command_language, clever-fox-364 plan): no whole-tree rehearsal has run and no residual has been taken, so this is not the rehearsal instrument's delivery." as NonEmptyStr,
+    }
+    BlockStatementReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "e74e345a93" as NonEmptyStr },
+      qualification: "delivered as a LOCATED REFUSAL, not as lowering: a body `1` then `2` on the next line is no longer accepted with the `2` dropped -- a statement followed by another refuses its module at normalize, located, in a fn body, in an if-arm and after a let (a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize, a_statement_after_a_let_followed_by_another_refuses_at_normalize), while a let followed by its body resolves. The silent drop is closed; the refused module's references reach the census as a file refusal before resolve, not as resolved references." as NonEmptyStr,
+    }
+    ListLiteralElementVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.list_literal_value_lowering", decl_name: "a_list_argument_is_not_its_first_element_or_a_truncation"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12208, merge_sha: "575fc486ad" as NonEmptyStr, measured_at: "575fc486ad" as NonEmptyStr },
+      qualification: "delivered by the MQ-1 list-literal slice. gunbc.recurring_failure_mode.list_literal_has_no_lowered_form records it CLIMBED: one producer, v2.compiler.body_lowering_fold body_lower_list_literal, is reached from body_lower_primary_expr through the shared value reader body_lower_value_lowered. So call arguments, data initializers, let values, operands and scrutinees all lower a list whole, as one flat FreeMonoid introduction with its elements in order. Each element lowers whole, or refuses at the element (body_lowering_reason_list_element_unlowered). An undeclared name inside a list reaches resolve (a_named_list_argument_reaches_resolve), and every element is conserved (v2.test.claim.namespace_xl0.reference_conservation a_list_literal_call_argument_conserves_every_element_holds). This arm previously cited a stale duplicate row, list_literal_elements_dropped_at_v2_body_lowering, which still said no fix had merged; this PR deletes that row in favour of the canonical one." as NonEmptyStr,
+    }
+    LambdaArgumentValueLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.value_position_whole_read", decl_name: "an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12210, merge_sha: "c2c064faa0" as NonEmptyStr, measured_at: "c2c064faa0" as NonEmptyStr },
+      qualification: "delivered by the MQ-1 function-value slice, not by XL-2; the lane gunbc#12198 carried only the shape control. gunbc.recurring_failure_mode.lambda_has_no_lowered_function_value_form records the class CLIMBED: every function value in value position (`x => body`, `(a, b) => body`, a fn literal) lowers through one producer, v2.compiler.body_lowering_fold body_lower_function_value, to the Arrow a generic named fn lowers to, whose parameters v2.compiler.resolve resolve_arrow_node scopes for the body. So a lambda argument's parameter resolves (a_lambda_argument_whose_body_uses_its_parameter_resolves), and an undeclared name in its body refuses at its own atom. An unreadable shape or body refuses located. NOT claimed, and residue outside this class per the row: emitting a generic Arrow refuses (translate_reason_generic_arrow_not_rendered)." as NonEmptyStr,
+    }
+    CaretSymbolOperandLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_caret_symbol_operand_resolves_without_lookup"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12420, merge_sha: "aa3b461215" as NonEmptyStr, measured_at: "aa3b461215" as NonEmptyStr },
+      qualification: "delivered by the MQ-1 symbol-literal slice, not by XL-2: gunbc#12617 (39a0093399) recorded the handoff on gunbc.recurring_failure_mode.caret_symbol_has_no_lowered_form, leaving the caret refused located as body_lowering_reason_caret_symbol_not_lowered, which was sufficient for XL-2 because a caret is a literal the namespace cut cannot break. MQ-1 PR-2 (gunbc#12420) then lowered seq(`^`, name) to a symbol literal (std.syntax LitSymbol) that v2.compiler.resolve resolve_atom returns whole without lookup, retired the refusal, and the row records its trigger REACHED with its controls enrolled (v2.test.claim.body_lowering.caret_symbol_value_lowering). NOT claimed: the literal's TYPE, which stays on infer's GroundingNotDerived frontier (gunbc.symbol_identity_census symbol_nominality_next_rung_trigger (a))." as NonEmptyStr,
+    }
+    AsCastOperandLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_as_cast_operand_resolves"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12315, merge_sha: "696a77dee7" as NonEmptyStr, measured_at: "696a77dee7" as NonEmptyStr },
+      qualification: "gunbc.recurring_failure_mode.as_cast_has_no_lowered_form records its trigger MET: `e as T` lowers to a typed cast node, Transform[coerce, e] with a <cast-target> edge to T (v2.compiler.body_lowering_fold body_lower_cast_node), so no reader answers `x as T` with `x`. v2.compiler.resolve resolve_type_role_target binds T in the type-role frame, and an undeclared T refuses unbound at T (v2.test.claim.body_cast_node bcn_undeclared_target_refuses_at_q). Delivered at the grain this arm names: the operand and the target both reach resolve. NOT claimed, and residue the row states: on the infer path, a cast INTO a refinement (`lit as NonEmptyStr`) and a cast from a refinement to its carrier (`x as Int` from `x: Pos`) refuse, loud and typed, until v2.std.coercion decides those crossings. The literal-to-NonEmptyStr census modules are therefore measured Accepted through RESOLVE only." as NonEmptyStr,
+    }
+    ElseLessIfStatementLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_else_less_if_guard_resolves"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12713, merge_sha: "2e95e66d25" as NonEmptyStr, measured_at: "2e95e66d25" as NonEmptyStr },
+      qualification: "delivered for the EARLY-RETURN GUARD, which is what the arm names: gunbc#12607 (1021d9fbfe) made a return lower only as a function body's tail and refuse located everywhere else, and gunbc#12713 lowers a statement-form else-less `if` heading a tail spine, whose arm ends in a return, to Branch(c, arm, rest of the spine) (v2.compiler.body_lowering_fold body_lower_guard_branch), so every statement after the guard reaches resolve; gunbc.recurring_failure_mode.else_less_if_statement_has_no_lowered_form records its trigger MET. NOT claimed, and still refused LOCATED as body_lowering_reason_else_less_if_unlowered: an else-less `if` whose arm falls through with no return, one that is the last statement, and one outside a tail spine (v2.test.claim.namespace_xl0.return_tail_position)." as NonEmptyStr,
+    }
+    WildcardMatchArmResolution => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.wildcard_arm_resolve", decl_name: "a_match_exhaustive_through_a_wildcard_arm_resolves"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12297, merge_sha: "0579afae7f" as NonEmptyStr, measured_at: "0579afae7f" as NonEmptyStr },
+      qualification: "delivered at RESOLVE grain: v2.compiler.resolve resolve_pattern_node_walk recognizes `_` at every pattern depth, so resolve no longer emits a spurious unbound row at `_`; an undeclared name in a wildcard arm's body is still the sole refusal at its own atom (an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom). Since gunbc#12597 (6571276ce4) the wildcard has a DISTINCT LOWERED FORM: v2.compiler.body_lowering_fold body_lower_pattern_atom_form lowers an authored `_`, bare or as a constructor field's target, to v2.std.node_query wildcard_pattern_identity at its own occurrence, recognised at symbol grain by one recogniser. NOT claimed: gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name stays OPEN -- that form is still an Atom, and the row's trigger is a typed pattern carrier in which no pattern form shares a spelling with any name." as NonEmptyStr,
+    }
+    QualifiedFieldTypeVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_qualified_field_type_mention_reaches_the_census_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12033, merge_sha: "10e01b1169" as NonEmptyStr, measured_at: "14d58480c9" as NonEmptyStr },
+      qualification: "delivered SILENTLY and found by execution, not by a fix aimed at it: the row that tracked it asserted the ABSENCE and was red on main 14d58480c9 with nothing restating it. Attributed by stage on the row's own two-module fixtures (a scratch probe, not committed): the parse holds the token, the normalized tree holds the whole qualified spine, and v2.compiler.reference_site_collector collect_reference_sites emits exactly one site for it, as for the qualified parameter-type control. The landing cited is the one whose change the probe points at -- gunbc#12033 lowers record fields into declared field identities, whose field type is read by the same body_lower_type_expr_lowered_optional a parameter type is -- located by git log -S and NOT re-executed at its parent, so it is the likely flip, not a measured one. Claimed at REACH grain: the mention reaches the census; whether it BINDS is the second fact the neighbouring rows leave to declaration grafting." as NonEmptyStr,
+    }
+    LoweringOccurrenceProjection => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "dotted_spine_segments_keep_their_own_occurrence_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12314, merge_sha: "b40c7f6067" as NonEmptyStr, measured_at: "7db0c8f768" as NonEmptyStr },
+      qualification: "delivered at the grain the tracking row's NEXT-RUNG TRIGGER names: the reference-position share of `locus_erased` reads zero on each site's controlled fixture. THE ROUTE THAT EXECUTES IT: `gunbc run` over a scratch ProcessExit entry that calls the three committed claims v2.test.claim.namespace_xl0.reference_conservation constructor_tags_keep_their_own_occurrence_holds, binders_and_labels_are_role_excluded_not_locus_erased_holds and dotted_spine_segments_keep_their_own_occurrence_holds, run at the head that landed this arm, all true. The same entry run with v2.std.qualified_name qualified_name_spine_of_atoms rebuilding every segment synthetic (the loss this prerequisite names) reads all three false, so the claims discriminate on the real route. STATUS OF ENROLLMENT, bounded: the required floor does not evaluate witnesses (gunbc.rung_drop v1_required_lanes_withdrawn), so these claims are not re-executed on merge; this arm is a measured reading at the cited revision, not a gate, and the claims stay as the regression controls DESIGN section 4b keeps. The sites: constructor tags (v2.std.node_query construct_tag_edge, gunbc#12305, 6c3c84f7f3) and dotted-spine segments (v2.std.qualified_name qualified_name_spine_of_atoms, gunbc#12314, b40c7f6067). NOT claimed: binders, field names, argument labels and module-header segments are OUT of the capability (counted role_excluded and header_channel); modules that refuse at normalize (ServiceModuleLowering, UsesClauseCarrier) and transport files that fail v2 parse reach no census, so the corpus-wide figure is the stratified census's (v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census), not this fixture claim." as NonEmptyStr,
+    }
+    MatchEveryArmLowered => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_arm_list_structure", decl_name: "a_four_arm_match_lowers_exactly_four_arms"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12383, merge_sha: "8ebd8b671d" as NonEmptyStr, measured_at: "8ebd8b671d" as NonEmptyStr },
+      qualification: "the arm list is read by the one comma-list reader, so a match lowers every arm in source order with each pattern keeping its own body (the_arms_keep_source_order_and_each_pattern_keeps_its_own_body), and a malformed later arm refuses rather than shortening the list (a_malformed_third_arm_refuses_rather_than_shortening_the_list); the MatchLaterArm accepted drop is retired (gunbc.recurring_failure_mode.match_arms_after_the_second_are_dropped_at_v2_body_lowering, rostered by gunbc#12309, 15bcbfa95e). Bounded to the arm LIST: what an arm's body and a data initializer's scrutinee lower to are MatchArmStatementBodyLowering and DataInitializerMatchScrutineeLowering." as NonEmptyStr,
+    }
+    EnclosingExpressionLoweredWhole => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.enclosing_expression_structure", decl_name: "an_operand_beside_a_match_lowers_as_the_operator_over_both_operands"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12436, merge_sha: "d28bf20f0e" as NonEmptyStr, measured_at: "d28bf20f0e" as NonEmptyStr },
+      qualification: "two links repaired in v2.compiler.body_lowering_fold: the body walker descends only through what does not change the expression, so a control form is lowered as the whole value only where it IS the value; and a primary whose capture is already lowered core substrate is that node, so the primary reducer no longer answers a lowered match with its scrutinee atom. `t && match w {..}` lowers as the operator over both operands and `h(a: match .., b: s)` as the call over every argument, on the value reader and on the body walker (a_call_with_a_match_argument_lowers_as_the_call_over_every_argument, the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands, the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument); this closes the `call(..) && match g(..) {..}` operand-collapse route. Delivers the trigger capability of gunbc.recurring_failure_mode.expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering (rostered by gunbc#12309, 15bcbfa95e). NOT claimed: body_lower_operand_ref_optional's own first-match fallback, which is its own arm (OptionalAccessorLocatedRefusal, since delivered by gunbc#12780)." as NonEmptyStr,
+    }
+    DataInitializerMatchScrutineeLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "v2.compiler.body_lowering_fold reads a match scrutinee from its grammar position (the binary_expr after `match`) rather than the first binary_expr found in the match subtree, so a data initializer's scrutinee, folded bottom-up before its declaration is dispatched, is no longer read from the first arm; the same match as a fn body lowers identically (the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds), and a spine not headed by `match` refuses as match_arm_navigation_refused. Delivers the trigger capability of gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the scrutinee position: an expression enclosing the match is EnclosingExpressionLoweredWhole." as NonEmptyStr,
+    }
+    MatchArmStatementBodyLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "a match arm's body is read from the right of its `=>` and a statement body lowers through the statement authority body_lower_stmt_spine that fn bodies and if-arms already use, so `X =>` then `let t = v` then `e` lowers to the let binding with its continuation instead of to `v`. Delivers the trigger capability of gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the arm body: the arm list is MatchEveryArmLowered." as NonEmptyStr,
+    }
+    ServiceModuleLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "full_door_admits_a_service_whose_members_lower_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 13833, merge_sha: "7c9319cbaf" as NonEmptyStr, measured_at: "4ff78bc650" as NonEmptyStr },
+      qualification: "a service whose members have carriers lowers on census and full normalize; ServiceSetAside and RealizationMemberSetAside have no producer. Executed at 4ff78bc650: full-door service-lowering admission; declared/undeclared argv-hole controls; declared/undeclared REST path-list-hole controls. No body-field-hole or method/verb/TLS/response-format value-validation guarantee is claimed. These executions remain off the required merge path (gunbc.rung_drop v2_native_route_off_the_merge_path). A record-field `from` tail still produces interface_member_unmodeled (record-field residue, not a service member)." as NonEmptyStr,
+    }
+    UsesClauseCarrier => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.uses_clause_has_no_carrier", decl_name: "uses_clause_has_no_carrier"),
+      why: "fns with a `uses` clause refuse at lowering: v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional refuses each one on the full and census arms, located at the clause, as body_lowering_reason_uses_clause_unmodeled (gunbc#12816, c95f906f0f), so the module refuses at normalize and its references miss the XL-2 census. Tracked by gunbc.recurring_failure_mode.uses_clause_has_no_carrier; this arm states the refusal only and claims no resolution." as NonEmptyStr,
+    }
+  }
+}
+
+fn xl2_prerequisite_is_delivered(p: Xl2Prerequisite) -> Bool {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => true
+    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
+  }
+}
+
+fn xl2_prerequisites_outstanding() -> List<Xl2Prerequisite> {
+  xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p) == false)
+}
+
+fn render_xl2_prerequisite(p: Xl2Prerequisite) -> String {
+  match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner, evidence, qualification } =>
+      concat("[DELIVERED gunbc#", concat(to_string(value: evidence.pr),
+      concat(" merge ", concat(evidence.merge_sha as String,
+      concat(" measured_at ", concat(evidence.measured_at as String,
+      concat(", owner ", concat(owner.module_path as String, concat(" ", concat(owner.decl_name as String,
+      concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", qualification as String)))))))))))))
+    PrerequisiteOutstanding { tracked_by, why } =>
+      concat("[OUTSTANDING, tracked by ", concat(tracked_by.module_path as String, concat(" ", concat(tracked_by.decl_name as String,
+      concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", why as String)))))))
+  }
+}
+
+// What the list is NOT, stated once beside it so no arm is read as covering it. (a) Kernel
+// canonical leaves (Bool, Int, ...) resolve with NO import through v2.compiler.resolve
+// resolved_reference_identity (ResolvedToKernelSymbol), so deleting the import root cannot make
+// them refuse: they are OUTSIDE the cut's observable population, and the absence of a residual row
+// for them is not coverage. (b) The native requalification walls -- import hygiene (sleek-cat-104)
+// and the diagnostic.dag field-read (gunbc#12033 step 2) -- are a separate axis: they decide
+// whether the native route re-qualifies, not whether the rehearsal's residual is observable.
+fn render_xl2_prerequisites() -> String {
+  concat(
+    fold(xl2_prerequisites, init: "", f: fn(acc, p) { concat(acc, concat("\n      - ", render_xl2_prerequisite(p: p))) }),
+    "\n      NOT in the observable population: kernel canonical leaves (e.g. Bool) resolve with no import via v2.compiler.resolve resolved_reference_identity, so no residual for them is not coverage. A SEPARATE AXIS from these prerequisites: the native requalification walls (import hygiene, sleek-cat-104; diagnostic.dag field-read, gunbc#12033 step 2). The Step-0 canary (v2.workflow.namespace_step0_candidate_run) is not this instrument: its carrier is a per-bucket histogram differential (gunbc.namespace_cut.namespace_step0_canary_v2 Step0HistogramDifferential) and cannot carry an exact occurrence residual.")
+}
+
+// AN INSTRUMENT THAT IS MISSING AND ONE THAT IS REFUSED ARE DIFFERENT STATES WITH DIFFERENT
+// REMEDIES, and collapsing them was this carrier's own state-space conflation (warm-hawk-909,
+// 2026-08-26, joining this carrier against a measurement another lane took the same evening).
+// "Missing instrument" reads as ABSENCE -- go and build it. The most-awaited row on this list
+// is not absent: a whole-corpus compile is REFUSED, on budget, by a named authority whose refusal
+// is CORRECT. The remedy for the first is to write the tool; the remedy for the second is to make
+// the thing affordable, and no amount of the first produces the second.
+//
+// SO THE OBSTACLE IS A SEPARATE AXIS FROM THE INSTRUMENT. A refusal names its authority as a
+// DeclarationRef rather than prose, so the ingestion-time citation wall resolves it on every
+// required run and a renamed or deleted authority REFUSES here instead of leaving this row reading
+// as current.
+//
+// WHAT IS DELIBERATELY NOT CARRIED HERE: the measurement behind the refusal. The authority is
+// named; the numbers are read from whatever re-derives them. A figure copied into this carrier
+// would be a measurement with no producer, which is the debt this repository bankrupted a directory
+// over two days ago.
+//
+// A SECOND CORRECTION TO THIS SAME ARM, AND IT IS WHY THE ROW NO LONGER MENTIONS ROUTING AT ALL. A
+// prior revision said remote is the default route, so a memory-bound job is sent automatically to
+// the smallest available machine. That is TRUE OF CONSUMER SESSIONS AND FALSE HERE: the gunbc shim
+// at /usr/local/ctrl-build-shims/gunbc routes the heavy subcommands remotely, but carries an
+// explicit gunbc-checkout guard that execs the real local binary instead, because in a gunbc-dev
+// session gunbc is the SUBJECT under development rather than a pinned tool. So a whole-corpus
+// compile started from this repository was never being routed away in the first place, and the
+// routing story was an explanation for something that is not happening. How the authority's
+// SIGKILL receipts came to be taken remains unestablished, and this row does not guess -- it states
+// what the predicate is a function of and what would settle it. (Found by reading the shim, one
+// message after the resource itself was corrected; the arm has now been wrong twice for the same
+// underlying reason, which is that it kept explaining a refusal rather than reporting it.)
+//
+// AND THE RESOURCE IS NAMED EXPLICITLY, because getting it wrong is what nearly landed in this arm.
+// A first cut of this row attributed the refusal to a per-entry WALL-CLOCK cost shape another lane
+// had measured the same evening. That was authority substitution: the timing fact lives in one
+// carrier, the admission is governed by another, and NEITHER CLAIMS ANY RELATION BETWEEN THEM. The
+// admission compares HOST MEMORY against a measured peak demand; its receipts are SIGKILLs, and the
+// authority says in its own words that the build succeeded and the compile died. The arrow may even
+// run the other way -- sharing a closure across entries holds MORE resident at once -- so repairing
+// the timing could make the memory worse. The word "budget" carried two resources and the arm was
+// being written by someone who had not checked which (retracted and corrected 2026-08-26, the
+// correction found by the lane that took the timing measurement).
+// A THIRD ARM, ADDED 2026-08-28 BECAUSE THE SECOND ONE BECAME FALSE AND THE FIRST WOULD HAVE HIDDEN
+// THAT. The WholeCorpusEmissionBoard row asserted a refusal and named the one thing that would
+// settle it: "it has not been attempted on one whose budget it admits ... THE FALSIFICATION MUST
+// RECORD EXIT STATUS AND PEAK RESIDENT SET TOGETHER". That falsification has now been performed and
+// the refusal did not hold. Collapsing the row to NotBuilt would have been correct about the remedy
+// and would have ERASED the execution that established it -- it would render identically to seven
+// instruments nobody has ever attempted, and the next reader would have no way to know the refusal
+// story had been TESTED rather than forgotten. So the state is its own arm: still unbuilt, but
+// unbuilt for a reason that has been measured rather than assumed.
+//
+// THIS ARM MUST NOT BE READ AS PROGRESS TOWARD THE MILESTONE. Falsifying an obstacle removes an
+// EXPLANATION; it does not produce a board. The milestone stays NotDerivable and its cause stays
+// needs(WholeCorpusEmissionBoard) -- which is exactly why the obstacle axis and the standing axis
+// are separate. A carrier where clearing an obstacle moved a milestone would let the removal of an
+// excuse render as the delivery of an instrument, which is the rung inflation DESIGN section 4b
+// names as worse than sitting low.
+type InstrumentObstacle
+  = NotBuilt
+  | RefusedByAuthority { authority: DeclarationRef, why: NonEmptyStr }
+  | NotBuiltRefusalFalsified { authority: DeclarationRef, falsified_by: NonEmptyStr }
+
+fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
+  match i {
+    PhaseCargoExecutionFact => NotBuilt
+    DeclaringIdentitySpellingCensus => NotBuilt
+    ResolverBoundDeclaringIdentity => NotBuilt
+    ExactOccurrenceResidualCensus => NotBuilt
+    PersistedBehavioralReceipt => NotBuilt
+    PersistedPromotionOutcome => NotBuilt
+    SeedDeletionObservation => NotBuilt
+    LiveTreeCompilePhaseMeasurement => RefusedByAuthority {
+      authority: decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission"),
+      why: "TWO CONDITIONS STAND BETWEEN THIS MILESTONE AND ITS EVIDENCE, AND THE ROW LEADS WITH THE BINDING ONE, because a trigger naming a capability that is not what blocks gets SATISFIED WHILE THE CAPABILITY STAYS DEAD -- the mirror of the 4b(3) failure where a trigger names less than it restores. (1) BINDING: no receipt exists in the required runners' COMPARISON EPOCH, so a live population has nothing it may legally be compared against; the frontier's own series fold refuses a cross-epoch comparison without a reclassified predecessor, and that refusal is correct. (2) ENABLING, and not the same fact: taking such a receipt means measuring a whole-closure entry, which this authority refuses on budget. The instrument that would take it (gunbc.instruments.emission_entry_instrument measure_entry_emission) EXISTS AND RUNS -- the refusal is about the execution surface, not a missing tool -- and the receipts behind it live on this authority and on gunbc.host.host_budget_source memory_stall_refusal, not transcribed here. Delivering a cgroup-limited runner alone therefore does NOT retire this row: it makes the measurement takeable and leaves the epoch condition standing. THE ENABLING CONDITION NOW CARRIES AN EXECUTED RECEIPT RATHER THAN A PREDICTION, AND A TRIGGER WITH A RECEIPT OF ITS OWN ARM FIRING IS A DIFFERENT OBJECT FROM A TRIGGER SOMEONE WROTE DOWN. Run 2026-09-01, subject sha 792d6e3466370092eca414ee28627e2625aa3519 (main), working tree clean on the runner, entry `src/v2/compiler/compile.dag` and its import closure, one remote dispatch with a source-built `gunbc` and `cssl_assemble`, BuildBuddy invocation 60464991-e450-4268-8ca0-97bb5b3f3eb3, runner 6 cores / 7 GiB / NO cgroup memory.max. The BUILD succeeded (rc=0, 5m00s); the MEASURE refused, rc=101, `HostBudgetUnreadable`, no population produced. THE EXIT CODE IS THE FINDING AND NOT A DETAIL. rc=101 IS NOT rc=137. The 137 receipts this authority carries came from runs where a budget was DECLARED to get past the arm on a machine that could not honour it -- the declaration converts a typed refusal into a twenty-minute silent SIGKILL, which is `GUNBC_MEMORY_BUDGET_BYTES` behaving as the escape hatch DESIGN 5 forbids. This run declared nothing, so the arm fired as designed: seconds, typed, located, and naming in its own text the receipt it exists to prevent. From outside both outcomes read as `the measurement failed`; they are opposites -- one is the safety mechanism working and the other is the safety mechanism defeated through its own hatch. WHAT THE RUN THEREFORE MEASURED IS THE RUNNER, NOT THE TREE, and the operator-facing consequence is that the current diagnostic population for this entry is NOT MEASURABLE on any executor reachable from here -- not unknown through neglect. THE CAPABILITY IS UNCHANGED BY THIS RECEIPT AND IS RESTATED SO NO LOOKALIKE SATISFIES IT, AND THE HARD CAP IS NAMED SINGULARLY BECAUSE THE DISJUNCTION ADMITS THE EXECUTOR THIS ROW EXISTS TO EXCLUDE: the enabling condition is an executor exposing a finite, readable cgroup `memory.max` above the closure's modeled demand with headroom, with `memory.current`, `memory.peak` and `memory.events` observable. `memory.high` MAY BE RECORDED AS RECLAIM-THROTTLE TELEMETRY BUT DOES NOT SATISFY THE HARD-CAP CONDITION -- it is a throttle a process may exceed, so it is not a bound on what the process may allocate and therefore not proof the process cannot be killed; a runner admitted on `memory.high` alone can still rc=137, which is the outcome this condition is written to make impossible. No environment-only request substitutes for an observed limit: not a bigger unbounded machine, and not a declared budget. AND THE ACCEPTANCE HALF, because a condition without one is retired by a lookalike receipt: the receipt must IDENTIFY THE OBSERVED HARD-CAP SOURCE AS `memory.max`. `HostBudgetResolved` by itself is insufficient, and `GUNBC_MEMORY_BUDGET_BYTES` is never a substitute. THIS NARROWING IS ABOUT THE TERMINAL MEASUREMENT AND IMPEACHES NOTHING UPSTREAM: gunbc.whole_corpus_compile_admission deliberately resolves `memory.high` as a PLANNING ceiling and compares demand against that throttle, which is correct at its own declared rung. The defect is borrowing a planning admission as proof of hard containment. AND SATISFYING THIS CONDITION CLOSES ONLY THIS ONE: condition (1), the comparison epoch, stands after the executor exists -- the runner makes the measurement TAKEABLE and does not produce the in-epoch receipt the ratchet separately requires. AND THE LIVE ARM ITSELF IS NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate -- the live measured population joined to the latest receipt through the frontier's own fold and ratchet -- BUILT, WITNESSED at twelve witnesses already enrolled under the required floor's test.claim.self_host_ prefix, and PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on any defect. 'We chose not to fund this' and 'we cannot do this' are different states with different remedies, and reporting the second where the first is true is the same inflation in the other direction. WHEN THAT PR IS UNPARKED IT MUST CONSUME THE COVERAGE JUDGMENT RATHER THAN RE-DERIVE IT: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the PRECONDITION of the live gate's population question -- a regression comparison against a receipt that does not describe this tree is meaningless. One module answering the precondition and another consuming it is composition; the live gate growing its own tree-identity comparison is the section 3 fork." as NonEmptyStr
+    }
+  }
+}
+
+fn instrument_obstacle_label(o: InstrumentObstacle) -> String {
+  match o {
+    NotBuilt => "UNBUILT"
+    RefusedByAuthority { authority: _, why: _ } => "REFUSED"
+    NotBuiltRefusalFalsified { authority: _, falsified_by: _ } => "UNBUILT (refusal falsified)"
+  }
+}
+
+fn instrument_obstacle_detail(o: InstrumentObstacle) -> String {
+  match o {
+    NotBuilt => "no such measurement is taken or persisted; the remedy is to build it"
+    RefusedByAuthority { authority: _, why } => why
+    NotBuiltRefusalFalsified { authority: _, falsified_by: f } => f
+  }
+}
+
+// AN EMPTY INSTRUMENT LIST WOULD BE TWO STATES IN ONE SPELLING -- "needs nothing" and "we did not
+// work out what it needs" -- so the two are separate arms and the first carries a non-empty list by
+// construction. DerivableOnlyViaPrerequisites is a REAL and different answer: the milestone has no
+// measurement of its own, and building an instrument for it would be building the wrong thing.
+type Underivability
+  = MissingInstruments { first: MissingInstrument, rest: List<MissingInstrument> }
+  | DerivableOnlyViaPrerequisites
+
+fn underivability_instruments(u: Underivability) -> List<MissingInstrument> {
+  match u {
+    MissingInstruments { first, rest } => concat([first], rest)
+    DerivableOnlyViaPrerequisites => []
+  }
+}
+
+fn needs(i: MissingInstrument) -> Underivability {
+  MissingInstruments { first: i, rest: [] }
+}
+
+type MilestoneStanding
+  = Clear { evidence: MilestoneEvidence }
+  | Outstanding { evidence: MilestoneEvidence }
+  | NotDerivable { why: NonEmptyStr, cause: Underivability }
+
+// THE ONLY ROUTE TO Clear. It is a fold over an observed population and takes no other input, so
+// "clear" cannot be said about a milestone without naming the population it is clear OF.
+fn standing_from_evidence(e: MilestoneEvidence) -> MilestoneStanding {
+  if count(e.outstanding) == 0 {
+    Clear { evidence: e }
+  } else {
+    Outstanding { evidence: e }
+  }
+}
+
+fn standing_class(s: MilestoneStanding) -> MilestoneStandingClass {
+  match s {
+    Clear { evidence: _ } => ClassClear
+    Outstanding { evidence: _ } => ClassOutstanding
+    NotDerivable { why: _, cause: _ } => ClassNotDerivable
+  }
+}
+
+fn standing_class_label(c: MilestoneStandingClass) -> String {
+  match c {
+    ClassClear => "CLEAR"
+    ClassOutstanding => "OUTSTANDING"
+    ClassNotDerivable => "NOT-DERIVABLE"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DERIVATIONS.
+//
+// THE ADMISSION TEST FOR WRITING ONE, and it is the trigger-sufficiency rule applied to a status
+// carrier: an arm may derive a standing only where the population it reads IS the milestone's
+// definition, not a necessary condition of it. A population that is necessary and not sufficient
+// must return NotDerivable, because an empty necessary population yields Clear and Clear then means
+// something weaker than the milestone's own label. That is the same shape as a restoration trigger
+// naming less than the capability it restores: satisfied while the thing stays undone.
+// ---------------------------------------------------------------------------------------------
+
+// DEFINITIONAL, quoting the interlock's own label: "no EmitterProducedDivergentRegistration
+// remains -- the emitter can produce every artifact the seed retains, the CLI entry point
+// included". Intentional absence from the shipped CLI is not a retained artifact the emitter
+// failed to produce; this milestone therefore reads only the divergent-artifact authority.
+fn emitter_retained_artifact_outstanding() -> List<String> {
+  emitter_produced_divergent_registrations
+    |> map(row => concat("stage0-divergent:", row.basename))
+}
+
+// DEFINITIONAL for the OBSERVATION half only. The milestone is that the ratchet runner is enrolled
+// as something that runs; `std.witness_admission` is the single authority for whether a cadence has
+// a scheduled route, and `emit_subject_clean_frontier` is the single authority for which cadence
+// the runner declares. This module consults them rather than minting a second "does anything run
+// this" vocabulary beside them.
+//
+// IT DOES NOT REACH THE GATE HALF, which is why S4b stays NotDerivable below: one cadence row
+// cannot distinguish "taken and persisted" from "merge-blocking", so deriving both from it would
+// let enrolling an observation read as enrolling a gate -- the fused-variant defect the interlock
+// was split four times to remove, committed by its reader instead.
+fn ratchet_observation_outstanding(cadence: WitnessConsumerCadence) -> List<String> {
+  if witness_cadence_has_scheduled_route(cadence: cadence) {
+    []
+  } else {
+    ["gunbc.instruments.emit_subject_clean_ratchet: declared cadence has no scheduled route"]
+  }
+}
+
+// The declared deletion subjects of one stage, at probe-identity grain.
+fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
+  subjects_deleted_at(stage: stage)
+    |> flat_map(s => subject_probe_list(s: s))
+    |> map(p => probe_render(p: p))
+}
+
+// THE WAVE-ADMISSION MILESTONE READS ITS DROP ROW, SINCE 2026-09-19. Until the deletion it read
+// phase-roster membership (the wall landed as the required namespace-wave-admission phase in
+// #9365, 2026-08-26, and the derivation could not silently outrun the executor because every
+// required run joined the host enum against the roster in both directions). The 2026-09-19
+// operator ruling deleted the phase outright -- its consumed-row bookkeeping refused every
+// merge_group run on a clean floor (run 35461710214) -- so the roster can no longer answer the
+// milestone's question at all: there is no NamespaceWaveAdmissionPhase to enrol. The population
+// is now the standing of gunbc.rung_drop namespace_wave_admission_wall_removed itself: while the
+// drop stands the wall is unenrolled and the milestone is outstanding at the drop's identity;
+// a replacement wall that satisfies the drop's restoration trigger retires the row and clears
+// it. Same strength as the native-route arm beside it -- a hand-authored standing field, joined
+// to nothing that observes a lane -- and that is stated rather than rounded up.
+// THE BLOCKED ARM IS OUTSTANDING, NOT NOT-DERIVABLE, since F-0: the capability fold IS the
+// milestone's readable population while a capture cannot complete -- each blocked reason is a
+// named, observed piece of outstanding work, and reporting it unanswerable hid real known
+// work behind the missing-instrument label. The AVAILABLE arm reads the persist outstanding
+// fold: v2.workflow.legacy_baseline_persisted_observation holds a capture by its own
+// GitObjectId, never a receipts roster. Production pin stays PreCutBaseUnpinned until ACT-0
+// names B; the AVAILABLE arm is outstanding until then. That is not ACT-0's BaselineCaptureReceipt.
+// THE THREE DELETION MILESTONES, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
+// grain, stated at exactly that strength. gunbc.namespace_cut.namespace_cut_subject_roster carries every
+// authority scheduled to disappear as string-identity probes (not authored citations, which
+// would refuse at ingestion the moment a wave deletes a target -- the old absence-is-not-a-
+// population limit, solved by moving resolution to run time). The outstanding population is
+// the probe identities of the subjects each stage deletes; a wave retires a row WITH ITS
+// TYPED DISPOSITION as it deletes the subject, so Clear is reached by row retirement. What
+// this fold does NOT verify is that a retired row's declarations are really gone -- that
+// verification is the roster's own live observation instrument
+// (gunbc.namespace_cut.namespace_cut_subject_observation subject_roster_report), which resolves every probe
+// against the tree and reports PRESENT/ABSENT/UNOBSERVABLE per identity. Rung: mechanically
+// preventable at best, and only while that instrument executes; a row pruned without its
+// subject dying is invisible to this fold alone.
+// A standing drop's outstanding population, parameterized on the row so both arms are authorable
+// at fixture grain. A standing drop is outstanding at its own identity, and a retired drop is
+// empty. Rung, stated honestly: this reads the drop row's hand-authored standing field and joins
+// nothing that observes the lane. A row flipped to Retired reads Clear whether or not the
+// capability it tracks is back in the required roster. It is review diligence at best until that
+// join exists.
+fn standing_rung_drop_outstanding(drop: RungDrop) -> List<String> {
+  match drop.standing {
+    Standing => [drop.identity as String]
+    Retired { trigger_fired: _ } => []
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => []
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => if dissolved_is_admissible(drop: drop) { [] } else { [drop.identity as String] }
+  }
+}
+
+fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
+  match m {
+    SelfHostWholeCorpusPopulationDerived =>
+      match current_compile_phase_frontier_standing() {
+        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase population derived from the latest validated frontier receipt" as NonEmptyStr,
+          outstanding: if latest.board.partition_complete { [] } else { latest.unplaced_identities }
+        ))
+        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
+          outstanding: ["frontier receipt series is empty"]
+        ))
+        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase frontier validation" as NonEmptyStr,
+          outstanding: [reason as String]
+        ))
+      }
+    SelfHostCargoPhaseEnrolled =>
+      NotDerivable {
+        why: "gunbc.required_ci_phase_roster now carries phase identity and lane ownership, but WHETHER A PHASE EXECUTES CARGO is a fact about its host body that the roster does not model, and deriving this milestone from mere phase existence would let any phase's enrolment read as the cargo phase's. Derivable once the roster carries a per-phase cargo-execution fact." as NonEmptyStr,
+        cause: needs(i: PhaseCargoExecutionFact)
+      }
+    SelfHostRatchetObservationEnrolled =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "self-host S4a: ratchet enrolled as an observation" as NonEmptyStr,
+          outstanding: ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence)
+        )
+      )
+    SelfHostRatchetGateEnrolled =>
+      NotDerivable {
+        why: "THIS MILESTONE CLAIMS A MERGE-BLOCKING GATE AGAINST S2'S IDENTITY-GRAIN POPULATION, and until 2026-09-01 it rendered Clear whenever the PERSISTED RECEIPT SERIES validated. Those are different facts. phase_board_series_ratchet folds authored receipts against each other, so what the enrolled witness blocks a merge on is the COHERENCE OF THE SERIES -- an incoherent receipt, a broken prefix link, an unadmitted regression left open. Nothing in it reads the tree being merged, so a regression introduced by the diff under judgment is invisible to it and the merge is blocked on nothing that measures the change. Rendering Clear there was DESIGN 4b(1) rung inflation on the compiler's own self-description, and the inflated class never ranks for climbing. WHAT SURVIVES AND IS REPORTED ELSEWHERE: the series ratchet is real, executes on the required floor, and its standing is carried by SelfHostWholeCorpusPopulationDerived and SelfHostCorpusEmitsCleanly, both of which say RECEIPT in their subject. WHAT IS MISSING is the join to the live tree: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage is the typed judgment that decides it, it refuses rather than widens when the tree under judgment is unobserved, and it is wired to nothing that gates. Derivable once a board measured on the tree under judgment can be supplied to it." as NonEmptyStr,
+        cause: needs(i: LiveTreeCompilePhaseMeasurement)
+      }
+    NamespaceWaveAdmissionEnrolled =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: the wave-admission wall enrolled as a required-ci phase (the phase was deleted by operator ruling 2026-09-19; the outstanding population is the drop row's standing)" as NonEmptyStr,
+          outstanding: standing_rung_drop_outstanding(drop: namespace_wave_admission_wall_removed)
+        )
+      )
+    NamespaceBaselineObservationComplete =>
+      match legacy_baseline_capture_capability() {
+        CaptureBlocked { phase: p, cause: c } =>
+          standing_from_evidence(
+            e: observe_outstanding(
+              subject: "namespace Step 0.5 / XL-1: baseline capture against the current pre-cut base" as NonEmptyStr,
+              outstanding: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c })
+            )
+          )
+        CaptureAvailable =>
+          standing_from_evidence(
+            e: observe_outstanding(
+              subject: "namespace Step 0.5 / XL-1: baseline capture against the current pre-cut base" as NonEmptyStr,
+              outstanding: persisted_legacy_baseline_outstanding()
+            )
+          )
+      }
+    NamespaceFirstSemanticWave =>
+      NotDerivable {
+        why: "a wave is an EXACT CORPUS REWRITE while the legacy semantic root still exists, so its population is the occurrence and import-declaration residual an XL-2 rehearsal produces -- not a root-authority probe. gunbc.namespace_cut.namespace_cut_subject_roster deliberately assigns no subject to XL-5 for that reason, and deriving this milestone from that empty set would fold to CLEAR and report a wave nobody has run as complete. Derivable once the rehearsal residual has a producer this module can read." as NonEmptyStr,
+        cause: needs(i: ExactOccurrenceResidualCensus)
+      }
+    NamespaceFixForwardComplete =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: host/emit machinery, repoints and fix-forward subjects" as NonEmptyStr,
+          outstanding: stage_subject_outstanding(stage: StageXL6AtomicCutover)
+        )
+      )
+    NamespaceGrammarRetired =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: grammar and parse deletion subjects, LAST" as NonEmptyStr,
+          outstanding: stage_subject_outstanding(stage: StageXL7GrammarDeletion)
+        )
+      )
+    SelfHostCorpusEmitsCleanly =>
+      match current_compile_phase_frontier_standing() {
+        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: error diagnostics in the latest validated whole-corpus compile-phase receipt (coded and codeless)" as NonEmptyStr,
+          outstanding: latest.raw_error_diagnostic_identities
+        ))
+        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
+          outstanding: ["frontier receipt series is empty"]
+        ))
+        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: whole-corpus compile-phase frontier validation" as NonEmptyStr,
+          outstanding: [reason as String]
+        ))
+      }
+    SelfHostEmittedContractsHeld =>
+      match current_behavioral_equivalence_standing() {
+        BehavioralEquivalenceLatest { latest: _, outstanding } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: rows of the latest deliberately taken behavioral-equivalence receipt, identity-joined to the behavioral transport roster" as NonEmptyStr,
+          outstanding: outstanding
+        ))
+        BehavioralEquivalenceSeriesEmpty =>
+          NotDerivable {
+            why: "no behavioral-equivalence receipt is persisted: the taker exists (gunbc test //gunbc/instruments:self-host-behavioral-equivalence) but nothing has been measured, and an unmeasured standing is not an observation that failed. Derivable once the first receipt is appended to gunbc.self_host_behavioral_equivalence_receipt self_host_behavioral_equivalence_receipts." as NonEmptyStr,
+            cause: needs(i: PersistedBehavioralReceipt)
+          }
+        BehavioralEquivalenceSeriesInvalid { reason } =>
+          NotDerivable {
+            why: concat("the behavioral-equivalence receipt series has no admissible latest receipt: ", reason as String) as NonEmptyStr,
+            cause: needs(i: PersistedBehavioralReceipt)
+          }
+      }
+    SelfHostEmitterProducesEveryRetainedArtifact =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "self-host: emitter produces every retained artifact" as NonEmptyStr,
+          outstanding: emitter_retained_artifact_outstanding()
+        )
+      )
+    SelfHostSuccessorPromotionAdmitted =>
+      NotDerivable {
+        why: "v2.compiler.self_host.promotion_admission admit_promotion is a decision procedure over a SelfHostCandidate; whether it has ever returned a promotion for a real candidate is a run fact and no carrier holds one. Derivable once an admitted PromotionOutcome over a named candidate is persisted -- which is also the point at which the procedure stops being an inert mechanism." as NonEmptyStr,
+        cause: needs(i: PersistedPromotionOutcome)
+      }
+    SelfHostNativeRouteRequiredLane =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "self-host: the native route as a required lane (retirement of gunbc.rung_drop v2_native_route_off_the_merge_path)" as NonEmptyStr,
+          outstanding: standing_rung_drop_outstanding(drop: v2_native_route_off_the_merge_path)
+        )
+      )
+    SelfHostSeedRetirement =>
+      NotDerivable {
+        why: "the irreversible step. Its completion -- the v1 seed families absent from the tree -- is observable, but no instrument observes it; the hand-written seed rosters are necessary and not sufficient, since emptying an authored roster would read Clear while the seed stood. Authorization is separate and stays with its prerequisites. Derivable once the seed-deletion observation exists." as NonEmptyStr,
+        cause: needs(i: SeedDeletionObservation)
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// STARTABILITY: THE PREREQUISITE CLOSURE, FAIL-CLOSED.
+//
+// A milestone is startable when every direct prerequisite is CLEAR. The load-bearing arm is the
+// third one: if any prerequisite is NotDerivable, startability is NOT "blocked" and NOT "ready" --
+// it is NotDerivable too. Collapsing an unanswerable prerequisite into "blocked" would report a
+// missing instrument as ordinary pending work, and collapsing it into "ready" would authorize work
+// on a precondition nobody has measured. The prerequisites are the interlock's DIRECT edges, so
+// this walks one level; the transitive reading is obtained by asking about the prerequisites in
+// turn, and is deliberately not restated here (DESIGN section 2).
+//
+// StartabilityNotDerivable CARRIES BOTH POPULATIONS, and the first cut of this type did not.
+// It computed the outstanding prerequisites, then discarded them whenever an unanswerable one was
+// also present. The admission PRIORITY was right and stays right -- unknown evidence fails closed,
+// so a mixed milestone is not authorized to start. What was wrong was treating an admission verdict
+// as a planning report: a KNOWN outstanding prerequisite is already proof that "every prerequisite
+// is clear" is false, and an additional unknown one means the COMPLETE blocker set is not derivable,
+// never that the observed blocker stopped existing. Three live milestones are mixed today, so the
+// discarded half was not hypothetical -- it was three of the fourteen rows this carrier exists to
+// report. The defect is the one DESIGN names as the answer usually living in a DISCARDED PAYLOAD:
+// `blocking` was bound on the line above the arm that dropped it.
+//
+// The consequence it produced is the reason this is recorded at length rather than just fixed. A
+// reader of the previous shape saw "blocked on work in flight: 0" and concluded that nothing in the
+// program waits on another lane. That is FALSE and this carrier asserted it. Zero BlockedOnPrereq
+// means only zero OUTSTANDING-ONLY cases; it never meant zero outstanding dependencies. Preserving
+// both lists is what makes the true reading -- observability DOMINATES admission while labour
+// dependencies COEXIST -- the one the report can state.
+//
+// WHAT THIS CARRIER STILL MAY NOT SAY, since the repair invites the next overclaim: it reports that
+// prerequisite work is OUTSTANDING. It cannot say whether anyone currently owns or is executing
+// that work. Neither this module nor the interlock carries ownership, so "waits on another lane"
+// remains outside its authority in both directions.
+// ---------------------------------------------------------------------------------------------
+type Startability
+  = StartablePrerequisitesClear
+  | BlockedOnPrerequisites { blocking: List<String> }
+  | StartabilityNotDerivable { unanswerable: List<String>, blocking: List<String> }
+
+fn prerequisite_names_by_class(m: ProgramMilestone, want: MilestoneStandingClass) -> List<String> {
+  fold(milestone_prerequisites(m: m), init: [], f: fn(acc, p) {
+    if standing_class_label(c: standing_class(s: milestone_status(m: p)))
+       == standing_class_label(c: want) {
+      concat(acc, [milestone_label(m: p)])
+    } else {
+      acc
+    }
+  })
+}
+
+// THE CLASSIFICATION IS PARAMETERIZED ON ITS TWO POPULATIONS rather than reading the graph, for
+// the same reason standing_census is: over the live graph alone, three of this function's four
+// outcomes have no authorable input. BLOCKED-KNOWN-ONLY in particular is inhabited by no milestone
+// today, so a witness restricted to the live roster could never exhibit it -- and a check whose RED
+// cannot be produced is the decoration DESIGN 4b rules worse than absent. Split this way the RED is
+// authorable at the FIXTURE boundary, which is the boundary that decides (4b), so all four arms
+// carry executing evidence.
+fn startability_from_populations(unanswerable: List<String>, blocking: List<String>) -> Startability {
+  if count(unanswerable) > 0 {
+    StartabilityNotDerivable { unanswerable: unanswerable, blocking: blocking }
+  } else {
+    if count(blocking) > 0 {
+      BlockedOnPrerequisites { blocking: blocking }
+    } else {
+      StartablePrerequisitesClear
+    }
+  }
+}
+
+fn milestone_startability(m: ProgramMilestone) -> Startability {
+  startability_from_populations(
+    unanswerable: prerequisite_names_by_class(m: m, want: ClassNotDerivable),
+    blocking: prerequisite_names_by_class(m: m, want: ClassOutstanding))
+}
+
+// The four-way DIRECT-PREREQUISITE partition, and it is four rather than three because the
+// coproduct's third arm carries two independent facts. Rendering only the coproduct's arity would
+// mechanically reproduce the information loss the arm above was just repaired to stop: a summary
+// printing "not derivable 8" hides that three of those eight are ALREADY BLOCKED on a named,
+// observed prerequisite and only five are genuinely unknown. The match is exhaustive over
+// Startability AND descends into the arm that carries the distinction -- the pairing DESIGN names
+// as total-at-the-level-examined-and-blind-one-level-down, which an exhaustive outer match cannot
+// show you is missing.
+type StartabilityClass
+  = ClassStartable
+  | ClassBlockedKnownOnly
+  | ClassNotDerivableOnly
+  | ClassBlockedAndNotFullyDerivable
+
+fn startability_class(s: Startability) -> StartabilityClass {
+  match s {
+    StartablePrerequisitesClear => ClassStartable
+    BlockedOnPrerequisites { blocking: _ } => ClassBlockedKnownOnly
+    StartabilityNotDerivable { unanswerable: _, blocking } =>
+      if count(blocking) == 0 { ClassNotDerivableOnly } else { ClassBlockedAndNotFullyDerivable }
+  }
+}
+
+fn startability_class_label(c: StartabilityClass) -> String {
+  match c {
+    ClassStartable => "STARTABLE"
+    ClassBlockedKnownOnly => "BLOCKED-KNOWN-ONLY"
+    ClassNotDerivableOnly => "NOT-DERIVABLE-ONLY"
+    ClassBlockedAndNotFullyDerivable => "BLOCKED-AND-NOT-FULLY-DERIVABLE"
+  }
+}
+
+fn startability_label(s: Startability) -> String {
+  match s {
+    StartablePrerequisitesClear => "startable"
+    BlockedOnPrerequisites { blocking } =>
+      concat("blocked on ", join_names(names: blocking))
+    StartabilityNotDerivable { unanswerable, blocking } =>
+      if count(blocking) == 0 {
+        concat("startability not derivable -- unanswerable prerequisite: ", join_names(names: unanswerable))
+      } else {
+        concat("startability not derivable -- unanswerable prerequisite: ",
+        concat(join_names(names: unanswerable),
+        concat("; AND ALREADY BLOCKED ON: ", join_names(names: blocking))))
+      }
+  }
+}
+
+fn join_names(names: List<String>) -> String {
+  fold(names, init: "", f: fn(acc, n) {
+    if acc == "" { n } else { concat(acc, concat("; ", n)) }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REPORT. The operator's question is "where are we", and the point of this entry point is that
+// it is a question they can RUN rather than a paragraph someone maintains:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/compiler_frontend_program_status.dag --function where_are_we \
+//     --arg out=/tmp/program-standing.txt
+//
+// Every line is recomputed from the populations above on every invocation. Nothing in it is stored,
+// so there is no spelling in which this report can be stale with respect to the tree that produced
+// it -- which is the whole difference between this and the status ledger it replaces.
+//
+// THE REPORT IS WRITTEN RATHER THAN RETURNED, for the reason `gunbc.instruments.emit_subject_clean_ratchet`
+// already records at its own surface: `gunbc run` maps a returned value to an exit STATUS and has
+// no value-printing verb, so a String-returning entry is refused by the host rather than printed.
+//
+// AND THE EXIT STATUS ANSWERS ONE QUESTION THAT IS NOT THE ONE A READER EXPECTS: could the standing
+// be derived and written. A report full of OUTSTANDING and NotDerivable exits SUCCESS, because
+// those ARE the answer and they belong in the artifact a human reads. What exits FAILURE is being
+// unable to produce the report at all. Collapsing those would make the CI-visible channel say
+// "the program is not done", which is a fact nobody needs a gate for, while hiding the one thing a
+// gate can usefully catch -- that the instrument itself stopped working.
+// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
+// THE SHARED-DEMAND QUESTION, DERIVED. "Which milestone standings directly await this instrument"
+// is a join over the arms above rather than a fact anyone should author, so the answer moves when
+// the arms move. IT IS NOT THE UNBLOCKING QUESTION and must not be read as one: a milestone may
+// require several instruments conjunctively, so appearing in this list never means that delivering
+// this instrument alone would move it. SelfHostRatchetGateEnrolled is the live proof -- it requires
+// the whole-corpus board AND the ratchet's gate-enrolment fact, and the gate-enrolment fact alone
+// moves NOTHING. Deriving singleton sufficiency would mean asking, per instrument, whether the
+// milestone becomes derivable with every OTHER current fact held fixed; that is a stronger carrier
+// and is deliberately not built here rather than approximated by this count.
+// ---------------------------------------------------------------------------------------------
+data all_missing_instruments: List<MissingInstrument> = [
+  PhaseCargoExecutionFact,
+  DeclaringIdentitySpellingCensus,
+  ResolverBoundDeclaringIdentity,
+  ExactOccurrenceResidualCensus,
+  PersistedBehavioralReceipt,
+  PersistedPromotionOutcome,
+  LiveTreeCompilePhaseMeasurement,
+  SeedDeletionObservation,
+]
+
+fn missing_instrument_eq(a: MissingInstrument, b: MissingInstrument) -> Bool {
+  missing_instrument_label(i: a) == missing_instrument_label(i: b)
+}
+
+fn milestone_missing_instruments(m: ProgramMilestone) -> List<MissingInstrument> {
+  match milestone_status(m: m) {
+    Clear { evidence: _ } => []
+    Outstanding { evidence: _ } => []
+    NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+  }
+}
+
+// Conditional await remains for instruments whose citing arm is not live on every standing.
+// PersistedLegacyBaselineObservation retired: the persist producer exists and the baseline
+// milestone reads its outstanding fold directly.
+data conditionally_awaited_instruments: List<MissingInstrument> = []
+
+fn milestones_awaiting(i: MissingInstrument) -> List<String> {
+  fold(program_milestones, init: [], f: fn(acc, m) {
+    if any(milestone_missing_instruments(m: m), other => missing_instrument_eq(a: other, b: i)) {
+      concat(acc, [milestone_label(m: m)])
+    } else {
+      acc
+    }
+  })
+}
+
+fn render_instruments(u: Underivability) -> String {
+  match u {
+    DerivableOnlyViaPrerequisites =>
+      "none of its own -- derivable exactly when its prerequisites are"
+    MissingInstruments { first: _, rest: _ } =>
+      join_names(names: underivability_instruments(u: u) |> map(i => missing_instrument_label(i: i)))
+  }
+}
+
+data program_milestones: List<ProgramMilestone> = [
+  SelfHostWholeCorpusPopulationDerived,
+  SelfHostCargoPhaseEnrolled,
+  SelfHostRatchetObservationEnrolled,
+  SelfHostRatchetGateEnrolled,
+  NamespaceWaveAdmissionEnrolled,
+  NamespaceBaselineObservationComplete,
+  NamespaceFirstSemanticWave,
+  NamespaceFixForwardComplete,
+  NamespaceGrammarRetired,
+  SelfHostCorpusEmitsCleanly,
+  SelfHostEmittedContractsHeld,
+  SelfHostEmitterProducesEveryRetainedArtifact,
+  SelfHostSuccessorPromotionAdmitted,
+  SelfHostNativeRouteRequiredLane,
+  SelfHostSeedRetirement,
+]
+
+fn standing_detail(s: MilestoneStanding) -> String {
+  match s {
+    Clear { evidence } =>
+      concat("no outstanding member of: ", evidence.subject)
+    Outstanding { evidence } =>
+      concat("outstanding: ", join_names(names: evidence.outstanding))
+    NotDerivable { why, cause } =>
+      concat("missing instrument: ", concat(render_instruments(u: cause), concat(" -- ", why)))
+  }
+}
+
+fn milestone_report_line(m: ProgramMilestone) -> String {
+  let s = milestone_status(m: m)
+  concat("- [",
+  concat(standing_class_label(c: standing_class(s: s)),
+  concat("] ",
+  concat(milestone_label(m: m),
+  concat("\n    ", concat(standing_detail(s: s),
+  concat("\n    ", startability_label(s: milestone_startability(m: m)))))))))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE NAMESPACE-XL STAGE CHAIN, RENDERED WITH THE SAME VOCABULARY AS THE MILESTONES. The chain
+// itself (variants, labels, serial prerequisites, the ACT-0 receipt gate) is
+// gunbc.namespace_cut.namespace_cut_stage's; this section derives a STANDING per stage from the same
+// populations the milestone arms read, and where a stage IS a milestone's own question the arm
+// DELEGATES to milestone_status rather than spelling the derivation twice (DESIGN section 3).
+//
+// The derivations, stated so a reader knows which population moves each row:
+//   F-0    -- delegation to NamespaceWaveAdmissionEnrolled: the stage IS the wall-enrolment
+//             milestone's own question, and the milestone reads the drop row since 2026-09-19.
+//   XL-0   -- the unrealized-observation-rule population: the denominator stage stays
+//             outstanding while some subject's pulse cannot be taken (today: every host Rust
+//             probe, which awaits a host-item observation authority).
+//   XL-1   -- delegation to NamespaceBaselineObservationComplete.
+//   XL-2   -- NotDerivable: the rehearsal residual cannot be produced on the v2 route while
+//             calls, arguments and field-position types never reach resolve (an undercount by
+//             construction is not a census), so the delivery receipt has no honest producer yet.
+//   XL-3   -- NotDerivable: no carrier censuses occurrences not spelled at their declaring
+//             identity, and fabricating a population would be worse than naming the gap.
+//   XL-4   -- the reference-graph digest read out of ACT-0's receipt carrier.
+//   ACT-0  -- the full required-receipt set (all four kinds outstanding today).
+//   XL-5/6/7 -- delegation to the three deletion milestones.
+// ---------------------------------------------------------------------------------------------
+// ACT-0'S TWO FACTS, AND THIS FUNCTION DERIVES ONLY THE SECOND.
+//
+// "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
+// alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
+// is this: the interlock triple clear AND every activation receipt held against the pinned base.
+// The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
+// until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
+// stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
+//
+// A NOT-DERIVABLE MILESTONE IN THE TRIPLE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
+// an unanswerable milestone's name into an outstanding list would report an unknown as ordinary
+// pending work, which is the state-space conflation the startability classifier above exists to
+// prevent -- committed at standing grain instead. So the unanswerable half is checked first and
+// carries the union of the causes, and the receipts are only reached once the triple can answer.
+fn act0_release_milestone_names(want: MilestoneStandingClass) -> List<String> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    if standing_class_label(c: standing_class(s: milestone_status(m: m)))
+       == standing_class_label(c: want) {
+      concat(acc, [milestone_label(m: m) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn act0_release_instruments() -> List<MissingInstrument> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    concat(acc, match milestone_status(m: m) {
+      Clear { evidence: _ } => []
+      Outstanding { evidence: _ } => []
+      NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+    })
+  })
+}
+
+fn act0_release_standing() -> MilestoneStanding {
+  let unanswerable = act0_release_milestone_names(want: ClassNotDerivable)
+  match unanswerable |> first {
+    Present { value: _ } =>
+      match act0_release_instruments() |> first {
+        Present { value: i } =>
+          NotDerivable {
+            why: concat(
+              "ACT-0 may not be judged releasable: a release milestone is itself unanswerable -- ",
+              concat(join_names(names: unanswerable),
+              ". The activation receipts are not reached, because a gate cannot be reported as merely awaiting receipts while one of its release conditions has no producer.")
+            ) as NonEmptyStr,
+            cause: MissingInstruments { first: i, rest: [] }
+          }
+        Absent =>
+          NotDerivable {
+            why: "ACT-0 may not be judged releasable: a release milestone is unanswerable through its own prerequisites, which name no instrument of their own." as NonEmptyStr,
+            cause: DerivableOnlyViaPrerequisites
+          }
+      }
+    Absent =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "ACT-0 RELEASE: the interlock triple clear and every activation receipt held against the pinned base" as NonEmptyStr,
+          outstanding: concat(
+            act0_release_milestone_names(want: ClassOutstanding),
+            activation_receipts_outstanding(held: held_activation_receipts))
+        )
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// XL-2'S STANDING: THE DELIVERY AUTHORITY DECIDES FIRST, AND THE CAPABILITY LITERAL CLASSIFIES
+// ONLY THE UNDELIVERED STATE. Two earlier cuts of this arm got that order wrong in two ways. The
+// first returned NotDerivable outright, so the stage could never leave that class. The second
+// routed through a supplied producer standing but let the Unavailable branch IGNORE the roster,
+// so xl2_stage_standing(rehearsal_producer_standing(), D) was NotDerivable for EVERY roster D --
+// including one holding an honest RehearsalInstrumentDelivered receipt -- and recovery depended
+// on someone remembering to edit an authored literal. That is two authorities answering one
+// question with a permanent winner (DESIGN section 3), and the witness pinned the veto (side-chat
+// review on gunbc#11735, twice).
+//
+// The order now: a StageDeliveryReceipt of the rehearsal kind means the instrument EXISTS AND WAS
+// DISCRIMINATED, which is the whole of what this stage owes, so a held receipt is Clear whatever
+// the literal says -- the literal cannot veto delivery. With delivery outstanding, the literal
+// says which kind of outstanding: no honest producer -> NotDerivable naming the capability;
+// producer established -> Outstanding. XL-4's kind and ACT-0's activation receipts establish
+// nothing here: the fold keys on the rehearsal kind, and an activation receipt is a different
+// type that cannot be passed. The literal is an honest temporary statement of a missing
+// capability and nothing more; it is retired (flipped to Available) by the change that lands
+// the producer, and a delivery landing before that edit still clears the stage.
+//
+// WHAT EXECUTION CAN AND CANNOT DISCRIMINATE HERE, stated so the witness is not read one rung
+// high. The live roster is empty today, so on the live route a constant NotDerivable with the
+// same why and cause is value-identical to this decision -- exactly as a constant Outstanding
+// with the same evidence would be for XL-4's arm. What the witness establishes is the
+// supplier-consumer algebra: the live standing equals this decision over the live roster, and
+// this same decision over the live roster PLUS a rehearsal receipt is Clear without any change to
+// the literal. Disconnecting the roster from the decision (the Unavailable branch ignoring
+// `held` again) fails that second assertion.
+// ---------------------------------------------------------------------------------------------
+type RehearsalProducerStanding
+  = RehearsalProducerUnavailable { why: NonEmptyStr, cause: Underivability }
+  | RehearsalProducerAvailable
+
+fn xl2_stage_standing(producer: RehearsalProducerStanding, held: List<StageDeliveryReceipt>) -> MilestoneStanding {
+  let evidence = observe_outstanding(
+    subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
+    outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held)
+  )
+  match standing_from_evidence(e: evidence) {
+    Clear { evidence: e } => Clear { evidence: e }
+    Outstanding { evidence: e } =>
+      match producer {
+        RehearsalProducerUnavailable { why, cause } => NotDerivable { why: why, cause: cause }
+        RehearsalProducerAvailable => Outstanding { evidence: e }
+      }
+    NotDerivable { why, cause } => NotDerivable { why: why, cause: cause }
+  }
+}
+
+// TODAY'S ANSWER, and the only place it is authored. It classifies the UNDELIVERED state only; a
+// held rehearsal receipt clears the stage without this being edited (see above).
+fn rehearsal_producer_standing() -> RehearsalProducerStanding {
+  RehearsalProducerUnavailable {
+    why: "XL-2 is the ROOT-DELETION REHEARSAL: the cut executed in a throwaway tree, its failure roster captured as the census, delivered as an instrument DISCRIMINATED ONCE on the production route. No honest producer of that residual exists today: a roster taken now is a strict undercount presented as the census (DESIGN section 4b(1), the shape review 64925 refused on XL-4). What blocks the producer is the typed list xl2_prerequisites, rendered on missing_instrument_label ExactOccurrenceResidualCensus from each arm's own standing, and it is deliberately not restated here. THE MISSING DELIVERABLE, NAMED: (1) the exact-base acquisition (a subject read that re-derives the git tree id in .dag and refuses a mismatch, with the seed prep that only materializes bytes; the exact-base entry run_xl2_rehearsal_at / xl2_rehearse_vector of the earlier cut was removed with the move to v2.workflow and returns through this), (2) a native label that executes the whole-tree rehearsal (the posix shell emit defect, clever-fox-364's plan, blocks the native closure build), (3) the RehearsalInstrumentDelivered receipt that flips this literal. Delivering every prerequisite does NOT flip this literal: the prerequisites are necessary, the producer is a separate deliverable, and this literal is retired only by the change that lands it. Startability is the chain axis and stays separate: XL-2 is chain-startable off XL-1 while its own standing is NotDerivable. The base-pinned execution remains ACT-0's RehearsalFailureRosterDigest either way." as NonEmptyStr,
+    cause: needs(i: ExactOccurrenceResidualCensus)
+  }
+}
+
+fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
+  match s {
+    StageF0 => milestone_status(m: NamespaceWaveAdmissionEnrolled)
+    StageXL0Denominator =>
+      NotDerivable {
+        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR: source-declaration carriers whose DECLARING identity is what answered each mention. The producer EXISTS and ANSWERS on the production route -- v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots is total and non-empty over a production-ingested fixture and carries the cross-module mention (gunbc#11582; re-run rather than trust: v2.test.claim.namespace_xl0.cross_module_reference_resolution, v2.test.claim.namespace_xl0.call_argument_mention_survival). THIS ARM READ CLEAR OFF THAT FOR ONE HEAD AND THAT WAS RUNG INFLATION (review 67708): the roster's RepairInputDeclared.declaring is derived from the authored SPELLING (v2.compiler.resolution_provenance resolve_reference_provenance confirms the index hit and rebuilds the declaration from the path; carrier_declaration_ref drops an owner prefix), while the roster's own `declaring` is still that spelling. THE RESOLVER HALF OF THIS CAPABILITY LANDED (gunbc#12048, fierce-wren-487): v2.compiler.resolve now decides ResolvedReferenceIdentity = ResolvedToKernelSymbol or ResolvedToDeclaration carrying a path, and mints every module-level reference through resolved_reference_node, so a qualified reference IS answered with its exact declaring containment path by execution, and the interim refusal resolve_reason_qualified_target_identity_unrepresentable that this arm previously cited is DELETED -- it is no longer what holds XL-0 open. The roster module's own frontier row (repair_input_declared_binding_frontier_dissolve_on) says the spelling-derived identity becomes a second authority the moment the roster produces on the production route, which is now. A denominator whose declaring identities are spelled rather than bound is not the population this stage is defined by (DESIGN section 3, one authority; section 4b(1), the reported rung equals the executed evidence). ResolverBoundDeclaringIdentity is a TWO-CONJUNCT capability and only the first conjunct is landed, so the instrument stays NotBuilt and this arm stays NotDerivable: what remains is the SECOND conjunct -- v2.compiler.repair_input_origin_roster deriving RepairInputDeclared.declaring from the resolved tree's ResolvedToDeclaration path instead of from resolve_reference_provenance's spelling rebuild (carrier_declaration_ref). That is the dissolution the roster module's own frontier row already names. The collector-side capability (the dotted-reference lowering) is landed and is not what is missing either. The base-pinned execution remains ACT-0's DenominatorRosterDigest either way." as NonEmptyStr,
+        cause: needs(i: ResolverBoundDeclaringIdentity)
+      }
+    StageXL1BaselineCapture =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-1: the capture-and-disposition transaction is CAPABLE of succeeding" as NonEmptyStr,
+          outstanding: capture_blocked_reason(c: legacy_baseline_capture_capability())
+        )
+      )
+    StageXL2RootDeletionRehearsal =>
+      xl2_stage_standing(producer: rehearsal_producer_standing(), held: held_stage_delivery_receipts)
+    StageXL3DeclaringIdentitySpelling =>
+      NotDerivable {
+        why: "the spelling census producer exists (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest) over the production ingest route. Frontiers are separate capabilities: BARE value outside a call, parameter reference, and BARE type name in PARAMETER position reach; BARE type name in FIELD position does not (not a qualification fact -- measured by v2.test.claim.declaring_identity_spelling.production_ingest field_vs_parameter); names inside calls are missing (body-lowering, eager-raven / #11207); QUALIFIED/dotted references WITHOUT a call or brace suffix now reach the production-route tree as one qualified-name spine (the gap was body lowering, not qualification -- gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering, smart-lynx-554 2026-09-18); whether this census joins them to a declaring identity is to be re-measured by its own producer, and a dotted CALLEE stays with the call class. A qualified field type is absent for ONE remaining reason -- the declaration never reaches the containment tree (grafting) -- now that qualification no longer hides a mention (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential). kernel Int has no corpus declaration. IdentityUnbound on a same-module ingest census row is an index-path probe, not a compiler fact -- enrolled control v2.test.claim.provenance.cross_file_provenance cfp_own_module_site binds on resolve_reference_provenance. Derivable once the producer answers over qualified mentions; restoring dotted will not restore bare field types. The producer landed with #11201 in gunbc#11461; what remains UNBUILT is the capability the instrument label names, not the producer file." as NonEmptyStr,
+        cause: needs(i: DeclaringIdentitySpellingCensus)
+      }
+    StageXL4ReferenceDerivedGraph =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-4: the reference-graph instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts)
+        )
+      )
+    StageAct0ActivationGate => act0_release_standing()
+    StageXL5Waves => milestone_status(m: NamespaceFirstSemanticWave)
+    StageXL6AtomicCutover => milestone_status(m: NamespaceFixForwardComplete)
+    StageXL7GrammarDeletion => milestone_status(m: NamespaceGrammarRetired)
+  }
+}
+
+fn stage_missing_instruments(s: NamespaceCutStage) -> List<MissingInstrument> {
+  match stage_status(s: s) {
+    Clear { evidence: _ } => []
+    Outstanding { evidence: _ } => []
+    NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+  }
+}
+
+// The stage half of the shared-demand join, so an instrument awaited only by a stage (XL-3's
+// spelling census) is visible in the instrument report rather than reading as dead.
+fn stages_awaiting(i: MissingInstrument) -> List<String> {
+  fold(namespace_cut_stages, init: [], f: fn(acc, s) {
+    if any(stage_missing_instruments(s: s), other => missing_instrument_eq(a: other, b: i)) {
+      concat(acc, [namespace_cut_stage_label(s: s) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+// STARTABILITY IS THE CHAIN EDGE, AND ONLY THE CHAIN EDGE. It used to union a stage's chain
+// predecessors with interlock milestone prerequisites, which existed for exactly one stage --
+// ACT-0 -- and made "may begin collecting activation evidence" wait on the whole self-host
+// interlock. That conflated ACT-0's two facts; the release condition now lives in
+// act0_release_standing above, at STANDING grain where it belongs, and this fold reads one edge
+// kind. Same fail-closed law as the milestone classifier, through the same
+// startability_from_populations.
+fn stage_prerequisite_names_by_class(s: NamespaceCutStage, want: MilestoneStandingClass) -> List<String> {
+  fold(stage_prerequisites(s: s), init: [], f: fn(acc, p) {
+    if standing_class_label(c: standing_class(s: stage_status(s: p)))
+       == standing_class_label(c: want) {
+      concat(acc, [namespace_cut_stage_label(s: p) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn stage_startability(s: NamespaceCutStage) -> Startability {
+  startability_from_populations(
+    unanswerable: stage_prerequisite_names_by_class(s: s, want: ClassNotDerivable),
+    blocking: stage_prerequisite_names_by_class(s: s, want: ClassOutstanding))
+}
+
+fn stage_report_line(s: NamespaceCutStage) -> String {
+  let st = stage_status(s: s)
+  concat("- [",
+  concat(standing_class_label(c: standing_class(s: st)),
+  concat("] ",
+  concat(namespace_cut_stage_label(s: s) as String,
+  concat("\n    ", concat(standing_detail(s: st),
+  concat("\n    ", startability_label(s: stage_startability(s: s)))))))))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REPORT DENOMINATES ITSELF, AND THIS EXISTS BECAUSE ITS ABSENCE COST SOMETHING MEASURABLE.
+//
+// The report rendered one row per milestone and left the COUNTING to whoever read it. That is an
+// invitation, not a hazard: the author of this carrier eyeballed its output and reported "five
+// startable, nine not derivable" to three separate audiences over one evening, when every run this
+// session produced -- six of them, spanning three structural changes -- read six and eight,
+// identically. The figures were never true at any moment. A downstream planner had already acted on
+// them.
+//
+// NOTHING IN THE CONSTRUCTION COULD HAVE CAUGHT IT, WHICH IS THE POINT. The standings were derived,
+// the witnesses were green, the carrier was correct. The defect sat one layer ABOVE the
+// construction, in the prose that reports it -- the one channel a derived carrier does not cover.
+// So "count more carefully" is not the remedy; no amount of care removes an invitation. The remedy
+// is that the report states the counts IT derives, so a reader quoting a figure quotes a derived
+// one and the miscount has nowhere to enter (DESIGN section 5: construction over validation).
+//
+// THE FOLD IS PARAMETERIZED ON ITS POPULATION rather than reaching for `program_milestones`
+// directly, so its behaviour is checkable against a controlled fixture whose input and expected
+// counts are authored independently. Folded only over the live roster it could be checked only
+// against a transcription of that same roster -- the change detector DESIGN's oracle rule rejects.
+type StandingRow {
+  standing: MilestoneStandingClass
+  startability: StartabilityClass
+}
+
+type StandingCensus {
+  milestones: Int
+  clear: Int
+  outstanding: Int
+  not_derivable: Int
+  startable: Int
+  blocked_known_only: Int
+  not_derivable_only: Int
+  blocked_and_not_fully_derivable: Int
+}
+
+// THE CENSUS FOLDS OVER CLASSIFIED ROWS, NOT OVER MILESTONES, and this second split is the one the
+// first cut got wrong while believing it had a controlled fixture. Parameterizing the SELECTION of
+// live milestones controls MEMBERSHIP; it does not control STATE. Every standing still came from
+// milestone_status over the live tree, so a "fixture" naming two real milestones and asserting one
+// OUTSTANDING and one NOT-DERIVABLE was a live snapshot pin wearing a fixture's clothes -- and its
+// closing move, the day the emitter or the CI phase roster legitimately moved, was to edit the
+// expected figures or swap in different live milestones. That is the same backward-running contract
+// deleted from the anti-inflation witness one commit earlier, surviving in the arm that was cited
+// as proof the census had an independent oracle (review on #9388).
+//
+// Split here, a fixture authors the ROWS directly -- states and all -- so the census's counting
+// behaviour is exercised over inputs no tree state can move, and the live arm asserts only the
+// partition LAW. Progress cannot red either.
+fn standing_census_from_rows(rows: List<StandingRow>) -> StandingCensus {
+  StandingCensus {
+    milestones: count(rows),
+    clear: count(rows |> filter(r => standing_class_label(c: r.standing) == "CLEAR")),
+    outstanding: count(rows |> filter(r => standing_class_label(c: r.standing) == "OUTSTANDING")),
+    not_derivable: count(rows |> filter(r => standing_class_label(c: r.standing) == "NOT-DERIVABLE")),
+    startable: count(rows |> filter(r => startability_class_label(c: r.startability) == "STARTABLE")),
+    blocked_known_only: count(rows |> filter(r => startability_class_label(c: r.startability) == "BLOCKED-KNOWN-ONLY")),
+    not_derivable_only: count(rows |> filter(r => startability_class_label(c: r.startability) == "NOT-DERIVABLE-ONLY")),
+    blocked_and_not_fully_derivable: count(rows |> filter(r => startability_class_label(c: r.startability) == "BLOCKED-AND-NOT-FULLY-DERIVABLE")),
+  }
+}
+
+fn milestone_row(m: ProgramMilestone) -> StandingRow {
+  StandingRow {
+    standing: standing_class(s: milestone_status(m: m)),
+    startability: startability_class(s: milestone_startability(m: m)),
+  }
+}
+
+fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
+  standing_census_from_rows(rows: ms |> map(m => milestone_row(m: m)))
+}
+
+fn program_standing_census() -> StandingCensus {
+  standing_census(ms: program_milestones)
+}
+
+fn census_line(c: StandingCensus) -> String {
+  concat("milestones ",
+  concat(to_string(value: c.milestones),
+  concat("\n\nstanding\n  clear ", concat(to_string(value: c.clear),
+  concat("\n  outstanding ", concat(to_string(value: c.outstanding),
+  concat("\n  not-derivable ", concat(to_string(value: c.not_derivable),
+  concat("\n\ndirect prerequisites\n  startable ", concat(to_string(value: c.startable),
+  concat("\n  blocked, all blockers known ", concat(to_string(value: c.blocked_known_only),
+  concat("\n  startability not derivable, no known blocker ", concat(to_string(value: c.not_derivable_only),
+  concat("\n  BLOCKED AND blocker set not fully derivable ", to_string(value: c.blocked_and_not_fully_derivable))))))))))))))))
+}
+
+fn instrument_report_line(i: MissingInstrument) -> String {
+  let waiting = concat(milestones_awaiting(i: i), stages_awaiting(i: i))
+  let obstacle = missing_instrument_obstacle(i: i)
+  concat("- (",
+  concat(to_string(value: count(waiting)),
+  concat(") [",
+  concat(instrument_obstacle_label(o: obstacle),
+  concat("] ",
+  concat(missing_instrument_label(i: i),
+  concat("\n    ", concat(instrument_obstacle_detail(o: obstacle),
+  concat("\n    awaited by: ", join_names(names: waiting))))))))))
+}
+
+fn report() -> String {
+  concat("compiler frontend program -- milestone standing, derived\n\n",
+  concat(concat(census_line(c: program_standing_census()), "\n\n"),
+  concat(
+    fold(program_milestones, init: "", f: fn(acc, m) {
+      concat(acc, concat(milestone_report_line(m: m), "\n"))
+    }),
+  concat("\nnamespace cut stages (gunbc.namespace_cut.namespace_cut_stage, serial; standings derived)\n\n",
+  concat(
+    fold(namespace_cut_stages, init: "", f: fn(acc, s) {
+      concat(acc, concat(stage_report_line(s: s), "\n"))
+    }),
+  concat("\nmissing instruments, by how many milestones and stages AWAIT each\n\n",
+    fold(all_missing_instruments, init: "", f: fn(acc, i) {
+      concat(acc, concat(instrument_report_line(i: i), "\n"))
+    })
+  ))))))
+}
+
+fn where_are_we(out: String) -> ProcessExit {
+  if out == "" {
+    exit_failure(reason: "where_are_we: --arg out=<path> is required — the standing is written, not printed")
+  } else {
+    if Filesystem.Write(path: out, content: report()).success {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("where_are_we: the standing was derived and could not be written to ", out))
+    }
+  }
+}

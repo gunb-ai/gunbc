@@ -1,0 +1,57 @@
+module gunbc.rung_drop.unimported_bare_provider_gate_admits_kernel_method_names_untyped
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED COVERAGE FRONTIER of the unimported-bare-provider gate's non-declaration classification
+// (gunbc#12951, calm-boar-904 ruling 2026-10-03). The gate now admits a bare call name that
+// `v1.compiler.infer_method` `bare_call_non_declaration_binding` says the compiler can bind
+// without a declaration. For a builtin or empty-collection constructor that is exact: the compiler
+// binds those by name. For a name admitted ONLY by the kernel-method roster it is an over-admission
+// before typecheck, because the compiler binds the method only when the first argument's inferred
+// type carries that kernel profile. A call on another receiver is a genuine unresolved call. In a
+// TYPED file typecheck still refuses it at the method-existence wall; in a file the run judges but
+// does not type, this gate was the only check and no longer reports it.
+//
+// COUNTED, NOT ASSERTED: every gate run prints
+// `[floor-phase] phase=unimported-bare-provider-frontier judged_files=N suppressed_builtin=B
+// suppressed_kernel_method_only=K` (`v1_compiler.cli_run` `unimported_bare_provider_judgment`), so
+// growth in K is visible per run. Measured over the whole pool at the change (6,821 judged files),
+// K was 205 across five names; the producer is the ignored census test on the probe branch
+// `calm-pike-525/bare-call-predicate-census`, `suppressed_rows_over_the_real_pool`.//
+// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority, epoch C2), NOT RETIRED:
+// the restoration trigger above did NOT fire. The gate, its debt roster and the seed's
+// `unimported_bare_provider_gate` were DELETED as the plan directs ("once the required native steps
+// enforce R1"), and the gate had no executing route since the floor lane was deleted on 2026-10-09, so
+// the frontier it declared was already counted by nothing. What supersedes it is the native route's own
+// refusal: a bare name is not requestable (R1), the acquirer reads a module only because a request
+// names it, and the v2 resolver refuses a name no import or qualification reaches. That judgment has
+// NO kernel-method roster to admit a spelling by, so the frontier this row declared does not exist on
+// it. The population it covers is every module a cut-over compile route reaches (R11); a bare call
+// outside that population is judged by no required step, and that subject goes to
+// gunbc.rung_drop v1_required_lanes_withdrawn, named explicitly. The declaration below is kept whole as
+// the history of what was lost.
+data unimported_bare_provider_gate_admits_kernel_method_names_untyped: RungDrop = RungDrop {
+  identity: "unimported_bare_provider_gate_admits_kernel_method_names_untyped" as NonEmptyStr,
+
+  subject: "bare calls to a kernel-method name (filter, any, contains, skip, is_empty, ...) on a receiver without that kernel profile, in a file that declares imports and that the run judges but does not typecheck: the unimported-bare-provider gate admits the name by the kernel-method roster and no longer reports an out-of-closure declarer",
+
+  declared: "2026-10-03",
+
+  standing: Superseded {
+    ruling: "the plan gunbc.plans.source_layout_authority, section 5 epoch C2 (operator-approved rulings R1-R11): delete the inert debt roster, its gate and the seed's unimported_bare_provider_gate once the required native steps enforce R1. The restoration trigger did NOT fire -- the gate had no executing route and was deleted. Superseding authority: the v2 resolver's refusal of an unbound name on every cut-over compile route, reached through the acquirer's request-only reading; the per-subject coverage is in the annotation above" as NonEmptyStr,
+    decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (name the cutover's own required steps as the superseding authority, and send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
+  },
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "receiver-typed judgment of kernel-method calls: either the gate judges post-typecheck call semantics for typed files, or method resolution is receiver-typed before typecheck" },
+    population: [
+      "every (file, name) pair the gate suppresses as kernel-method-only, counted per run as suppressed_kernel_method_only on the unimported-bare-provider-frontier phase line",
+    ],
+    restoration_trigger: "the unimported-bare-provider gate decides a kernel-method name by the RECEIVER's type and not by spelling, for every file it judges: either it judges post-typecheck call semantics for typed files and the untyped judged population is empty, or method resolution is receiver-typed before typecheck. Observed at retirement: the frontier phase line reports suppressed_kernel_method_only=0 on a required run while a fixture calling filter on a non-profiled receiver outside its closure is reported, and this row retires in the same change."
+  }
+}

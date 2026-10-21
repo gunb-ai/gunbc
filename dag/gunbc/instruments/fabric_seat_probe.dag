@@ -1,0 +1,189 @@
+module gunbc.instruments.fabric_seat_probe
+
+import std.types { String, Bool, Int, NonEmptyStr, FilePath }
+import std.durable_compare_and_set { cas_generation_count }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { Measure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io
+import extdeps.tools.hostname
+import extdeps.tools.sleep
+import product.capacity.pool { NoReplenishment, pool_of }
+import product.capacity.event_chain { PartitionId, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.pool_events {
+  SeatRequest, PoolFolded, PoolFoldRefused, pool_fold, SeatProposed, SeatRefused, propose_acquire,
+}
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.harness.harness_seat { harness_turn_request,
+  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
+  HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
+  AnyAdmittedModel,
+}
+import gunbc.serving.turn_admission { InteractiveQualitySensitive, serving_co_tenancy_class_wire }
+import gunbc.harness.harness_cli { harness_seat_policy, harness_cli_admission }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
+import gunbc.fabric.fabric_event_log {
+  SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, seat_acquisition_wire,
+  PartitionReadOk, PartitionReadRefused, event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused,
+  event_log_append, event_log_refusal_wire,
+}
+
+// TWO LIVE RECEIPTS FOR THE SEAT TRANSACTION ON THE PLACED EVENT LOG.
+//
+// fabric_seat_probe: the harness path end to end on this host -- bind a seat on a serving group
+// through the real placement, write the grant to a receipt file, release. Run as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_seat_probe.dag --function fabric_seat_probe \
+//     --arg receipt=<file to write>
+//
+// IT PROBES THE QUALITY-SENSITIVE POOL, and the choice is the conservative one rather than an
+// arbitrary one: that pool has a ceiling of one, so a probe run against it exercises the compare-
+// and-set race this instrument exists to observe, and it cannot itself land beside a turn somebody
+// is reading. A probe on the tolerant pool would usually just find headroom and prove nothing. The
+// receipt now records the class and the model the placement bound, because with two classes and two
+// routes "which seat did I get" is no longer answered by the partition name alone.
+//
+// fabric_seat_collision_probe: the contention the operator asked for -- a one-seat pool on a probe
+// partition at a caller-named fabric DB endpoint, one acquisition per run, so two hosts started
+// together from the same head produce exactly one grant and one typed full (or a stale that
+// re-folds into a full). Run on each host as
+//
+//   gunbc run ... --entry dag/gunbc/instruments/fabric_seat_probe.dag \
+//     --function fabric_seat_collision_probe --arg endpoint=<fabric DB endpoint> \
+//     --arg partition=<name> --arg receipt=<file to write>
+
+fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
+  let host = os.Hostname.ReadShort()
+  let short = if host.success { trim(s: host.value) } else { "" }
+  let stamp = match harness_now_epoch() { Absent => "no-clock"  Present { value: n } => to_string(n) }
+  let binding = harness_bind_seat(short_hostname: short, class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: OpenAiChatCompletionsShape, inputs: ["seat-probe"], actor: join(["seat-probe:", short], "") as NonEmptyStr, attempt: join(["seat-probe:", short, "@", stamp], "") as NonEmptyStr, policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
+  match binding {
+    HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
+    HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => exit_failure(reason: "seat probe: an any-model bind answered with a hosted binding, which harness_requirement_placement never yields")
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => exit_failure(reason: "seat probe: an any-model bind answered with the operator endpoint, which holds no seat; the probe's class is refused by its quality floor")
+    HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, replica_wire: gw, launch: launch, store: _, model: m, unit: _, class: c, seat: _ } => {
+      let line = join([
+        "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
+        " class=", serving_co_tenancy_class_wire(c: c) as String, " model=", m as String,
+        " partition=", p as String, " url=", u,
+        " reference=", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(cas_generation_count(g: g.fence.generation)),
+        " granted_at=", to_string(g.granted_at), " expires_at=", to_string(g.expires_at), "\n",
+      ], "")
+      let seat_release = harness_release_seat(binding: binding, reason: "seat-probe complete" as NonEmptyStr)
+      let w = Filesystem.Write(path: receipt as String, content: join([line, harness_seat_release_wire(r: seat_release), "\n"], ""))
+      match seat_release {
+        HarnessHostedCredentialRemoved => exit_failure(reason: "seat probe: a fleet seat release answered as a hosted credential removal")
+        HarnessSeatReleased { partition: _ } => if w.success { ExitSuccess } else { exit_failure(reason: join(["seat probe: receipt write failed: ", w.error], "")) }
+        HarnessSeatReleaseRefused { detail: d } => exit_failure(reason: join(["seat probe: granted but release refused: ", d], ""))
+      }
+    }
+  }
+}
+
+fn fabric_seat_collision_probe(endpoint: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
+  let host = os.Hostname.ReadShort()
+  let short = if host.success { trim(s: host.value) } else { "unknown" }
+  let store = FabricStorageServed { endpoint: endpoint }
+  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment, release_law: QuiescenceRequired)
+  match harness_now_epoch() {
+    Absent => exit_failure(reason: "collision probe: clock unreadable")
+    Present { value: now } => {
+      let outcome = fabric_seat_acquire(
+        store: store,
+        partition: (partition as String) as PartitionId,
+        root: pool,
+        actor: join(["collision-probe:", short], "") as NonEmptyStr,
+        request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 },
+        policy: LeasePolicy { maximum_duration_seconds: 120, release_law: QuiescenceRequired },
+        attempts: 3,
+        budget: 256,
+      )
+      let w = Filesystem.Write(path: receipt as String, content: join(["host=", short, " ", seat_acquisition_wire(a: outcome), "\n"], ""))
+      match outcome {
+        SeatGranted { grant: _, generation: _, attempts_used: _ } => ExitSuccess
+        SeatFull { wire: _, attempts_used: _ } => ExitSuccess
+        SeatContended { attempts: n } => exit_failure(reason: join(["collision probe: contended after ", to_string(n)], ""))
+        SeatAcquireRefused { step: s, reason: why, attempts_used: _ } => exit_failure(reason: join(["collision probe: refused at ", s, ": ", why], ""))
+        SeatStoreRefused { cause: c, attempts_used: _ } => exit_failure(reason: join(["collision probe: refused by the fabric DB: ", event_log_refusal_wire(cause: c)], ""))
+      }
+    }
+  }
+}
+
+// THE FORCED COLLISION: read and propose now, hold the proposal until a shared start second, then
+// append. Two hosts given the same start second push against the same observed head within the
+// same second, so exactly one append is admitted and the other is STALE by the store's own
+// verdict; the stale side then re-folds through the ordinary transaction, which lands on full.
+// The hold is a bounded sequence of one-second sleeps that ends when the clock reaches the start
+// second, never a spin.
+fn wait_until_epoch(go_at: Int, max_seconds: Nat) -> Bool {
+  let reached = fold(nat_range_inclusive(lo: 1, hi: max_seconds), init: false, f: (done, _i) =>
+    if done { true } else {
+      match harness_now_epoch() {
+        Absent => true
+        Present { value: now } => if now >= go_at { true } else { let _s = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)  false }
+      }
+    })
+  reached
+}
+
+fn fabric_seat_collision_probe_at(endpoint: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr, go_at: NonEmptyStr) -> ProcessExit {
+  match parse_int(s: go_at as String) {
+    Absent => exit_failure(reason: "collision-at: go_at is not an integer")
+    Present { value: go } => fabric_seat_collision_probe_from(endpoint: endpoint, partition: partition, receipt: receipt, go_at: go)
+  }
+}
+
+fn fabric_seat_collision_probe_from(endpoint: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr, go_at: Int) -> ProcessExit {
+  let host = os.Hostname.ReadShort()
+  let short = if host.success { trim(s: host.value) } else { "unknown" }
+  let store = FabricStorageServed { endpoint: endpoint }
+  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment, release_law: QuiescenceRequired)
+  let pid = (partition as String) as PartitionId
+  let actor = join(["collision-probe:", short], "") as NonEmptyStr
+  match event_log_read_partition(store: store, partition: pid, budget: 256) {
+    PartitionReadRefused { cause: c } => exit_failure(reason: join(["collision-at: read refused: ", event_log_refusal_wire(cause: c)], ""))
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: _, newest_first_so_far: _ } => exit_failure(reason: "collision-at: chain incomplete")
+        ChainBudgetExhausted { at: _ } => exit_failure(reason: "collision-at: chain budget exhausted")
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: pool, oldest_first: xs) {
+            PoolFoldRefused { at_event: _, wire: w } => exit_failure(reason: join(["collision-at: fold refused: ", w], ""))
+            PoolFolded { pool: folded, generation: g } =>
+              match harness_now_epoch() {
+                Absent => exit_failure(reason: "collision-at: clock unreadable")
+                Present { value: now } =>
+                  match propose_acquire(pool: folded, generation: g, head: head, partition: pid, actor: actor, request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 }) {
+                    SeatRefused { wire: w } => {
+                      let w1 = Filesystem.Write(path: receipt as String, content: join(["host=", short, " proposal refused before the race: ", w, "\n"], ""))
+                      ExitSuccess
+                    }
+                    SeatProposed { event: e, expected_head: x } => {
+                      let _ready = wait_until_epoch(go_at: go_at, max_seconds: 600)
+                      match event_log_append(store: store, partition: pid, event: e, expected: x) {
+                        EventAppendRefused { cause: c } => exit_failure(reason: join(["collision-at: append refused: ", event_log_refusal_wire(cause: c)], ""))
+                        EventAppended { id: h } => {
+                          let w2 = Filesystem.Write(path: receipt as String, content: join(["host=", short, " admitted first-push head=", h as String, "\n"], ""))
+                          ExitSuccess
+                        }
+                        EventAppendStale { expected: _, observed: _ } => {
+                          let after = fabric_seat_acquire(store: store, partition: pid, root: pool, actor: actor,
+                            request: SeatRequest { reference: join([short, "@", to_string(now), "-retry"], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 },
+                            policy: LeasePolicy { maximum_duration_seconds: 120, release_law: QuiescenceRequired }, attempts: 3, budget: 256)
+                          let w3 = Filesystem.Write(path: receipt as String, content: join(["host=", short, " STALE on first push, then ", seat_acquisition_wire(a: after), "\n"], ""))
+                          ExitSuccess
+                        }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

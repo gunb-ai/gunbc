@@ -1,0 +1,392 @@
+module std.operator_realization
+import std.optional { Absent, Optional, Present }
+
+
+import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce }
+import std.algebra { collection_concat_shape, collection_count_shape }
+
+// OPERATOR REALIZATION BY EXACT OPERAND STRUCTURE (DESIGN section 4b, the floor: an operator is
+// admitted by algebra inhabitance, but what it RENDERS AS is a fact about the operand's declaration
+// and the target, never about the operator's spelling).
+//
+// The seed emitter rendered every binary operator as the host operator token. That is correct
+// exactly when the operand realizes as a host value with that operator -- a machine integer, a
+// float, a bool -- and wrong for every structural declaration: a Peano coproduct has no host `<`,
+// and rustc's E0369 on `Rc<Nat> < Rc<Nat>` was the emitter re-deciding, from the operator's
+// spelling alone, a question the operand's declaration already answers. The decision is keyed on
+// the operand's exact DeclarationRef and has four outcomes:
+//   HostOperator           the operand realizes natively on the target; the host token is the op.
+//   StructuralEquality     equality on a structural declaration: derived structurally (the target's
+//                          structural equality over the declaration's own constructors).
+//   StructuralComparison   an ordering on a structural declaration: a call to the declaration's
+//                          DECLARED comparison, whose result is tested against std.algebra Ordering.
+//   Refused                a host-only operator (arithmetic) on a structural operand that declares
+//                          no operation for it, or an operand whose identity is unknown at the site.
+//                          Typed and located: the line stops (DESIGN section 5), it does not emit a
+//                          token rustc will refuse later under a code nobody joins back to the site.
+//
+// Arithmetic on a structural declaration is deliberately NOT realized by this decision. A Peano
+// quotient with a typed zero-divisor outcome is a DECLARED OPERATION the source calls by name
+// (v2.std.nat nat_div_rem); an infix `/` that silently became that call would hide the outcome the
+// operation exists to expose. So the source spells structural arithmetic as calls, and this
+// decision refuses the infix form on structural operands.
+
+// THE OPERAND'S DECLARATION AS READ AT INFERENCE, carried on the typed tree (the ExprBinOp node)
+// so emission consumes it and never re-reads identity with a weaker env. Inference reads a
+// parameter's type reference in the function's own scope, where the reference's ident binding is
+// live; the emitter's scope is the module env, where that binding is gone and a by-name read can
+// only answer the module-visible homonym (measured: `a < b` with a: v2.std.nat.Nat emitted the host
+// `<` because the emitter read std.nat.Nat, which realizes natively). decl_file is the declaration's
+// own file -- the key v1.compiler.coercion's native-realization decision is made on.
+// THE DECLARATION AND ITS PROVENANCE, not the declaration and a second spelling of it. This carried
+// a `decl_file: String` beside the DeclarationRef -- one identity in two representations, the second
+// of which a consumer then handed to a roster that substring-matched it. The provenance is what the
+// realization gate actually needs, and it can say `there is no declaration` in a way a path never
+// could.
+type OperandDeclaration {
+  declaration: DeclarationRef
+  provenance: TypeDeclarationProvenance
+}
+
+type OperandRealization
+  = HostNumericOperand
+  | HostRealizedOperand { reason: HostRealizationReason }
+  | StructuralOperand { declaration: DeclarationRef }
+  | OperandIdentityUnavailable { facts: OperandShapeFacts }
+
+// AN OPERAND THAT REALIZES AS A HOST VALUE BY CONSTRUCTION, without a declaration to ask: the type
+// the parser mints for a kernel literal or a builtin's result (a `<kernel:...>` file, not a
+// declaration in the corpus), a generic type parameter (the host bound carries the operator), a
+// host container (Vec/HashMap realize the container and its comparisons), and a type node inference
+// SYNTHESIZED with no authored name at all. Each is a decidable arm, named so that "no identity"
+// never stands in for "host by construction".
+//
+// THE UNNAMED ARM IS A DISCRIMINATOR, NOT A CATCH-ALL, and it was measured before it was written.
+// A structural declaration is reached by a NAME -- that is what a declaration reference is -- so a
+// resolved type node whose authored name is empty is not a reference to one; it is a node inference
+// built for a field access or a match-arm binder over a generic coproduct (measured: v2.compiler.02_parse
+// parse_current_position, `t.start + 1` where t binds the value of Optional<T>, is the whole
+// unnamed-operand population of the v2 closure under an arithmetic operator). Refusing there would
+// refuse an operand nothing suggests is structural. What still refuses is the case the refusal is
+// FOR: a type node that DOES name a declaration whose identity the caller could not resolve.
+//
+// THE HOST TEXT CARRIER is the type the target's type renderer realizes as its native string (on
+// Rust, v1.compiler.emit_rust is_host_text_carrier_type: the String spelling whose declaration is not
+// a structural FreeMonoid<Char>). The operator decision reads the SAME predicate the renderer reads,
+// so an operand rendered as a host String is judged as one: its ordering is the host string's, which
+// is the interpreter's (Value::Str, Value::Str) arm exactly -- byte-lexicographic over UTF-8. Before
+// this arm the corpus String reached the ordering operators as an unreadable declaration and refused
+// (extdeps.standards.rfc_5280 x509_validity_at, over the String alias Timestamp), while `==` on the
+// same operand passed by operator class: one operand, two answers about whether it has a host
+// realization.
+type HostRealizationReason
+  = KernelMintedType
+  | GenericTypeParameter
+  | HostContainer
+  | UnnamedSynthesizedType
+  | HostTextCarrier
+
+// AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
+// declaration. Equality and the connectives do not depend on the declaration at all: every
+// structural declaration realizes equality structurally and every host value realizes it natively,
+// and on the target these are one token (the emitted enum derives PartialEq), so `==`/`!=`/`&&`/
+// `||`/`??` on such an operand are the host token by construction -- the same bytes a known
+// declaration would produce. Ordering and arithmetic DO depend on the declaration (a declared
+// comparison, or a refusal), so on an unreadable declaration they refuse, carrying the facts below.
+// Measured on the v1 closure (XL-0N regen18, 50 sites / 139 refusals): every unreadable-declaration
+// operand in the seed is under `==` or `!=` -- field-access and method-return type nodes inference
+// synthesizes without a span -- and none is under an ordering or arithmetic operator.
+//
+// WHAT THE CALLER SAW when it could not read the operand's declaration -- carried on the refusal so
+// a miss returns the shape, not a token rustc refuses later under E0369 (DESIGN section 5: a failure
+// arm refuses, never widens; the seed's host-token fallback here was the absorbing arm that hid this
+// lane's own defect behind an ordinary-looking `<`).
+// THE REFUSAL PAYLOAD. This record is emitted when identity could NOT be recovered, so what it
+// reports is the most specific thing there is to say about an unresolved reference -- which is
+// exactly the case DESIGN section 3 allows a position for, since no symbol exists to name. It
+// carries the provenance rather than a bare path so that `no declaration exists` and `a kernel mint`
+// read as themselves in the diagnostic instead of as an empty string and a pseudo-path.
+// The provenance rendered for a human reading the refusal. Three states, three renderings: an
+// absent identity says so instead of printing an empty backtick pair, and a kernel mint names the
+// minted type instead of printing a pseudo-path that looks like a file.
+fn provenance_label(p: TypeDeclarationProvenance) -> String {
+  match p {
+    CorpusDeclared { decl_file: f } => concat("declared in `", f, "`")
+    KernelMinted { minted_name: nm } => concat("kernel-minted `", nm, "`")
+    DeclarationIdentityAbsent => "no declaration identity"
+  }
+}
+
+type OperandShapeFacts {
+  authored_name: String
+  connective: String
+  child_count: Int
+  resolved: Bool
+  provenance: TypeDeclarationProvenance
+}
+
+// A structural declaration's declared ordering: the comparison to call and the Ordering declaration
+// whose variants its result is tested against. Keyed on the carrier's exact DeclarationRef.
+type StructuralOrderingBinding {
+  carrier: DeclarationRef
+  compare: DeclarationRef
+  ordering: DeclarationRef
+}
+
+type StructuralOrderingLookup
+  = StructuralOrderingFound { row: StructuralOrderingBinding }
+  | StructuralOrderingAbsent
+  | StructuralOrderingAmbiguous { row_count: Int }
+
+fn structural_ordering_for(rows: List<StructuralOrderingBinding>, carrier: DeclarationRef) -> StructuralOrderingLookup {
+  let matching = rows |> filter(r => declaration_ref_eq(a: r.carrier, b: carrier))
+  let n = matching |> count
+  if n == 0 {
+    StructuralOrderingAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => StructuralOrderingFound { row: row }
+      Absent => StructuralOrderingAbsent
+    }
+  } else {
+    StructuralOrderingAmbiguous { row_count: n }
+  }
+}
+
+// A CONNECTIVE ON A STRUCTURAL OPERAND REFUSES, typed and located (review 57746). Inference
+// constrains only the RESULT of && / || to Bool, so a Peano-shaped operand under `&&` is authorable,
+// and it must not receive the host token. There is no declared-connective row family: it existed
+// for exactly one carrier, v2.std.logic's structural `Bool = True | False`, and the Bool de-fork
+// (gunbc.defork_type_name_census ResolvedByDeletingV2) retired that declaration -- std.types Bool
+// realizes natively, so its operands reach the fold as host operands and never ask for a row. A
+// family with no rows would have been an authority no carrier consumes (DESIGN section 3c).
+
+// The test an ordering operator performs on a comparison's result, grounded on std.algebra
+// Ordering = Less | Equal | Greater: `<` is `== Less`, `>` is `== Greater`, `<=` is `!= Greater`,
+// `>=` is `!= Less`. Non-ordering operators have no test.
+type OrderingTest
+  = OrderingIs { variant: NonEmptyStr }
+  | OrderingIsNot { variant: NonEmptyStr }
+
+fn ordering_test_for(op: BinOp) -> OrderingTest? {
+  match op {
+    Lt => Present { value: OrderingIs { variant: "Less" as NonEmptyStr } }
+    Gt => Present { value: OrderingIs { variant: "Greater" as NonEmptyStr } }
+    Le => Present { value: OrderingIsNot { variant: "Greater" as NonEmptyStr } }
+    Ge => Present { value: OrderingIsNot { variant: "Less" as NonEmptyStr } }
+    Add => none
+    Sub => none
+    Mul => none
+    Div => none
+    Mod => none
+    Eq => none
+    Ne => none
+    And => none
+    Or => none
+    NullCoalesce => none
+  }
+}
+
+// THE ONLY GLYPH TABLE, AND IT IS A RENDERING FACT. The refusal carriers above hold the BinOp
+// coproduct itself, never a spelling, so nothing downstream can compare operators by string. A
+// spelling is required exactly once -- at the human-readable message boundary -- which is where
+// this table sits. Corpus check before keeping it (review 57758 asked whether the parser or the
+// emitter already owns one): no BinOp-to-glyph producer exists anywhere in the tree; v1's
+// compile.dag renders the VARIANT NAME ("Add"), and glyph recognition happens in the tokenizer
+// against token kinds, not against a .dag row. So this is the first authority for the mapping, not
+// a second one.
+fn binop_label(op: BinOp) -> String {
+  match op {
+    Add => "+"
+    Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    Eq => "=="
+    Ne => "!="
+    Lt => "<"
+    Gt => ">"
+    Le => "<="
+    Ge => ">="
+    And => "&&"
+    Or => "||"
+    NullCoalesce => "??"
+  }
+}
+
+// OPERAND DEMAND -- WHICH OPERANDS AN OPERATOR ACTUALLY ASKS FOR, DECLARED ONCE.
+//
+// This is the fact that was missing, and its absence is filed as gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses: OperatorRealization above names WHO
+// evaluates an operator without naming WHAT is evaluated, so each realization improvised. The
+// interpreter demanded both operands before dispatching; the Rust emitter rendered the host token,
+// which demands the right operand only conditionally. One accepted program, two behaviours --
+// `false && Filesystem.Write(...)` wrote the file under one arm and not the other, and the filed
+// row's red (`n != 0 && (100 / n) > 1` at n = 0) refused under one arm and returned false in the
+// other. Neither arm was wrong about a fact it consulted; there was no fact to consult.
+//
+// THE VALUE IS DERIVED, NOT CHOSEN. std.logic classical_and is `match a { False => False  True => b }`
+// and classical_or is its dual: a match arm is demanded only when its scrutinee selects it, so the
+// logical connectives of the corpus's own logic authority ask for their right operand only under one
+// left value, and every other operator is a function of both. This fold restates that reading over
+// the BinOp vocabulary so that BOTH realizations read one row; it does not mint a second semantics.
+//
+// WHY `deciding` IS THE LEFT VALUE AND NOT A VARIANT PER CONNECTIVE: And and Or differ in exactly
+// that value and in nothing else, so a variant each would be one concept spelled twice (DESIGN
+// section 2). A consumer short-circuits when the left value is NOT `deciding`, and the same arm
+// serves both connectives.
+//
+// NULL-COALESCING GETS ITS OWN ARM BECAUSE ITS CONDITION IS A DIFFERENT QUESTION, and folding it
+// into `deciding` would be the meaning fork DESIGN section 3 names: `a ?? b` demands `b` on the
+// CARDINALITY of the left operand, not on a Bool value of it, which is the same distinction the
+// note above operator_realization_for already draws for this operator. It is carried here and not
+// omitted because it has exactly the divergence this type exists to close, measured the same way:
+// the interpreter's eval_binop evaluates both operands at the call site before selecting, while
+// extdeps.languages.rust.emit rust_null_coalesce_template renders `{0}.unwrap_or_else(|| {1})`,
+// whose closure body is demanded only when the left is absent. Declaring it and leaving the
+// interpreter eager would be a row its own realization contradicts, so it is repaired here too.
+type OperandDemand
+  = DemandsBothOperands
+  | DemandsRightOnlyWhenLeftIs { deciding: Bool }
+  | DemandsRightOnlyWhenLeftIsAbsent
+
+fn operand_demand(op: BinOp) -> OperandDemand {
+  match op {
+    And => DemandsRightOnlyWhenLeftIs { deciding: true }
+    Or => DemandsRightOnlyWhenLeftIs { deciding: false }
+    Add => DemandsBothOperands
+    Sub => DemandsBothOperands
+    Mul => DemandsBothOperands
+    Div => DemandsBothOperands
+    Mod => DemandsBothOperands
+    Eq => DemandsBothOperands
+    Ne => DemandsBothOperands
+    Lt => DemandsBothOperands
+    Gt => DemandsBothOperands
+    Le => DemandsBothOperands
+    Ge => DemandsBothOperands
+    NullCoalesce => DemandsRightOnlyWhenLeftIsAbsent
+  }
+}
+
+type OperatorRealizationRefusal
+  = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: BinOp }
+  | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
+  | OperandIdentityUnavailableAt { operator: BinOp, facts: OperandShapeFacts }
+
+type OperatorRealization
+  = HostOperator
+  | StructuralEquality { declaration: DeclarationRef }
+  | StructuralComparison { declaration: DeclarationRef, binding: StructuralOrderingBinding, test: OrderingTest }
+  | OperatorRealizationRefused { cause: OperatorRealizationRefusal }
+
+fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> String {
+  match cause {
+    NoStructuralOperationDeclared { declaration: d, operator: o } =>
+      concat(
+        "operator realization: host operator `", binop_label(op: o), "` on structural operand ",
+        d.module_path as String, ".", d.decl_name as String,
+        " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation"
+      )
+    StructuralOrderingDuplicated { declaration: d, row_count: n } =>
+      concat(
+        "operator realization: structural ordering for ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
+      )
+    OperandIdentityUnavailableAt { operator: o, facts: f } =>
+      concat(
+        "operator realization: host operator `", binop_label(op: o), "` on an operand whose declaration could not be read",
+        " (authored `", f.authored_name, "`, connective ", f.connective, ", children ", to_string(value: f.child_count),
+        ", resolved ", if f.resolved { "yes" } else { "no" }, ", provenance ", provenance_label(p: f.provenance), ")"
+      )
+  }
+}
+
+// THE DECISION, arm by arm, each stating what it is keyed on.
+//
+// NULL-COALESCING never reaches this fold from the Rust emitter: emit_typed_bin_op answers it from
+// emit_null_coalesce before asking for a realization, because its operand is an Optional carrier and
+// the question is cardinality, not operand structure. Its arm here is the fold's totality over the
+// closed BinOp vocabulary, not a second decision about it.
+//
+// LOGICAL CONNECTIVES on a structural operand REFUSE. Inference types `&&`/`||` as returning Bool
+// without constraining its OPERANDS to be one (v1.compiler.types infer_binop_type_node: the And and
+// Or arms name only the result), so `a && b` with a Peano-shaped `a` is authorable, and the host
+// token would be emitted for it. A blanket refusal once cost false refusals, because v2.std.logic
+// declared a structural `Bool` that most of the corpus named as its ordinary Bool, and a row family
+// admitted that one carrier's connectives on the host. The Bool de-fork retired that declaration:
+// the only Bool is std.types Bool, which realizes natively and reaches this fold as a host operand,
+// so no structural carrier has host connectives and the refusal is exact. The former
+// structural_connective_stall row in gunbc.guarantee_stall stays retired: its trigger was a wall
+// under structural connectives, and the wall now holds with no admission list at all.
+//
+// AN OPERAND WHOSE DECLARATION COULD NOT BE READ is not a widen and not a guess: it decides by
+// operator class, below.
+fn operator_realization_for(
+  op: BinOp,
+  operand: OperandRealization,
+  ordering_rows: List<StructuralOrderingBinding>
+) -> OperatorRealization {
+  match operand {
+    HostNumericOperand => HostOperator
+    HostRealizedOperand { reason: _ } => HostOperator
+    OperandIdentityUnavailable { facts: f } =>
+      match op {
+        Eq => HostOperator
+        Ne => HostOperator
+        And => HostOperator
+        Or => HostOperator
+        NullCoalesce => HostOperator
+        Lt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Gt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Le => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Ge => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Add => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Sub => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Mul => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Div => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Mod => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+      }
+    StructuralOperand { declaration: d } =>
+      match op {
+        Eq => StructuralEquality { declaration: d }
+        Ne => StructuralEquality { declaration: d }
+        Lt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Gt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Le => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Ge => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        And => structural_arithmetic_refusal(op: op, declaration: d)
+        Or => structural_arithmetic_refusal(op: op, declaration: d)
+        NullCoalesce => HostOperator
+        Add => structural_arithmetic_refusal(op: op, declaration: d)
+        Sub => structural_arithmetic_refusal(op: op, declaration: d)
+        Mul => structural_arithmetic_refusal(op: op, declaration: d)
+        Div => structural_arithmetic_refusal(op: op, declaration: d)
+        Mod => structural_arithmetic_refusal(op: op, declaration: d)
+      }
+  }
+}
+
+fn structural_arithmetic_refusal(op: BinOp, declaration: DeclarationRef) -> OperatorRealization {
+  OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: declaration, operator: op } }
+}
+
+// An ordering operator on a structural operand: the declared comparison, or the refusal. Reached
+// only from the four ordering arms above, so an op with no ordering test is a refusal here too --
+// that arm is unreachable by construction, not a wildcard.
+fn structural_ordering_realization(op: BinOp, declaration: DeclarationRef, ordering_rows: List<StructuralOrderingBinding>) -> OperatorRealization {
+  match ordering_test_for(op: op) {
+    Absent => structural_arithmetic_refusal(op: op, declaration: declaration)
+    Present { value: test } =>
+      match structural_ordering_for(rows: ordering_rows, carrier: declaration) {
+        StructuralOrderingFound { row: row } => StructuralComparison { declaration: declaration, binding: row, test: test }
+        StructuralOrderingAbsent => structural_arithmetic_refusal(op: op, declaration: declaration)
+        StructuralOrderingAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralOrderingDuplicated { declaration: declaration, row_count: n } }
+      }
+  }
+}

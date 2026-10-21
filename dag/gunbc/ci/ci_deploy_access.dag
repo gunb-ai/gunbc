@@ -1,0 +1,395 @@
+module gunbc.ci.ci_deploy_access
+
+import std.algebra { trim }
+
+import std.types { NonEmptyStr, List, String, Bool }
+import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_refusal_reason }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect }
+import std.effects { ExecuteEffect }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_posix_accounts {
+  GroundedPosixPrincipal,
+  PosixSudoGrant,
+  FleetAccountCiRunner,
+  FleetAccountOperator,
+  ci_runner_sudoers_install_binaries,
+  ci_runner_sudo_binaries,
+  ci_runner_sudo_binary_path,
+  ci_runner_sudo_binary_probe,
+  fleet_posix_principal,
+  grounded_posix_principal_name,
+  fleet_apt_get_binary_path,
+  posix_sudo_grant_to_effect_grant,
+}
+import gunbc.host.host_effect {
+  HostEffect,
+  ReadEffectivePosixPrincipal,
+  SudoNopasswdExecuteProbe,
+  SudoNopasswdGrantListProbe,
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+}
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+  NopasswdExecuteCheck,
+  NopasswdGrantListCheck,
+}
+import gunbc.ci.ci_deploy_target_host {
+  DeployTargetHostProof,
+  deploy_target_proof,
+  deploy_target_host_preflight_block,
+}
+
+type PrivilegedCommand {
+  grant: PosixSudoGrant
+}
+
+type DeployAccess {
+  principal: GroundedPosixPrincipal
+  host: ComputeHost
+  transport: HostEffectTransport
+  privileged_commands: List<PrivilegedCommand>
+}
+
+type DeployAccessActor {
+  observed_name: NonEmptyStr
+  sudo_granted: Bool
+}
+
+type DeployAuthorizationQuery {
+  expected_principal: NonEmptyStr
+  envelope: Envelope
+}
+
+data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame }
+
+// Wave C (shell-intent-emit-realization-design.md): deploy-preflight is an AUTHORIZATION QUERY —
+// the deploy frame requires the current principal to hold Execute grants over privileged command
+// paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user).
+// Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant
+// (never a parallel grant vocabulary). Observation and typed-effect execution live in
+// gunbc.ci.ci_deploy_access_observe / gunbc.host.host_effect_realize at the runtime-present realization
+// edge: present binaries use sudo.NopasswdExecuteProbe.Check; package-managed binaries that may not
+// exist yet use sudo.NopasswdGrantList.Read plus an exact NOPASSWD-row check for the roster path. A
+// successful list query alone is not authorization evidence. The duplicate in-script
+// gunbc.ci_deploy_access_emit path is deleted; gunbc.ci.ci_deploy_sudoers remains the roster-derived
+// sudoers materialization.
+
+data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
+
+data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
+
+data deploy_preflight_shell_header: String = "set -eu"
+
+data deploy_access_apt_get_binary_path: NonEmptyStr = fleet_apt_get_binary_path
+
+fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
+  PrivilegedCommand {
+    grant: PosixSudoGrant {
+      command_path: deploy_access_apt_get_binary_path,
+      probe: NopasswdExecuteCheck { check_argv: "--help" },
+    }
+  }
+}
+
+fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
+  PrivilegedCommand { grant: g }
+}
+
+// THE COMMANDS A LIVE-DEPLOY APPLY SPENDS UNDER `sudo -n`, whoever runs it: the deploy roster
+// (gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binaries), which the drop-in grants the CI runner
+// principal for exactly this script. Built from the binaries, as the install scope below is.
+fn live_deploy_spent_privileged_commands() -> List<PrivilegedCommand> {
+  map(
+    ci_runner_sudo_binaries,
+    b => PrivilegedCommand {
+      grant: PosixSudoGrant {
+        command_path: ci_runner_sudo_binary_path(b: b),
+        probe: ci_runner_sudo_binary_probe(b: b),
+      }
+    }
+  )
+}
+
+// THE PRE-INSTALL SCOPE OF A DEPLOY WHOSE SCRIPT INSTALLS THE DROP-IN FIRST. The principal, host and
+// transport are unchanged; only the demanded commands narrow, to exactly what the install spends
+// (gunbc.fleet.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
+// rather than filtered from the principal's roster, so a principal whose roster lacks visudo or
+// install still has them demanded and still refuses before mutation -- a filter would have answered
+// an empty demand, and an empty demand is a permit.
+fn deploy_access_sudoers_install_scope(access: DeployAccess) -> DeployAccess {
+  DeployAccess {
+    principal: access.principal,
+    host: access.host,
+    transport: access.transport,
+    privileged_commands: map(
+      ci_runner_sudoers_install_binaries,
+      b => PrivilegedCommand {
+        grant: PosixSudoGrant {
+          command_path: ci_runner_sudo_binary_path(b: b),
+          probe: ci_runner_sudo_binary_probe(b: b),
+        }
+      }
+    ),
+  }
+}
+
+fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
+  map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
+}
+
+// srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
+fn ci_deploy_srv1_local_access() -> DeployAccess {
+  let principal = fleet_posix_ci_runner_principal()
+  DeployAccess {
+    principal: principal,
+    host: srv1_host,
+    transport: LocalShell,
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
+  }
+}
+
+data ci_deploy_srv1_access: DeployAccess = ci_deploy_srv1_local_access()
+
+fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
+  let principal = fleet_posix_operator_principal()
+  DeployAccess {
+    principal: principal,
+    host: srv1_host,
+    transport: SshShell { ssh_host: operator_host_srv1 as NonEmptyStr },
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
+  }
+}
+
+data ci_deploy_srv1_operator_access: DeployAccess = ci_deploy_srv1_operator_ssh_access()
+
+// THE OPERATOR ON THE HOST ITSELF. The SSH operator access above runs the emitted script on srv1
+// from wherever the login shell lands, so its relative paths -- the checkout's target/release
+// binary, the source tree it syncs -- resolve against nothing in particular. `gunbc converge --mode
+// deploy` runs on srv1 from the checkout being deployed, so the transport is LocalShell exactly as
+// the CI path's is, and only the principal differs: the operator rather than the runner account.
+//
+// ITS DEMAND IS WHAT ITS APPLY SPENDS, NOT WHAT THE OPERATOR IS GRANTED. privileged_commands is the
+// demand the gate and the preamble's post-install roster probe read, and the apply this access emits
+// is the same script the CI access emits, so it spends the same `sudo -n` commands:
+// live_deploy_spent_privileged_commands. Projected from the operator's own grant roster it was
+// hostnamectl alone (gunbc.fleet.fleet_posix_accounts fleet_posix_operator_sudo_grants, held there
+// by the 2026-08-13 operator ruling), so once the emitter read this access instead of a constant CI
+// one, the probe that refuses before any other mutation would have checked one command and let the
+// apply spend the rest unprobed. The GRANT side is unchanged: the drop-in renders each principal's
+// own sudo_grants (gunbc.ci.ci_deploy_sudoers deploy_sudoers_dropin_lines_for), so the operator is
+// granted nothing new, and whether it may spend the roster is the host fact the probe reads.
+fn ci_deploy_srv1_operator_local_shell_access() -> DeployAccess {
+  DeployAccess {
+    principal: fleet_posix_operator_principal(),
+    host: srv1_host,
+    transport: LocalShell,
+    privileged_commands: live_deploy_spent_privileged_commands(),
+  }
+}
+
+data ci_deploy_srv1_operator_local_access: DeployAccess = ci_deploy_srv1_operator_local_shell_access()
+
+fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
+  concat(
+    concat(grounded_posix_principal_name(p: access.principal) as String, " ALL=(ALL) NOPASSWD: "),
+    cmd.grant.command_path
+  )
+}
+
+fn deploy_target_proof_from_access(access: DeployAccess) -> DeployTargetHostProof {
+  deploy_target_proof(host: access.host.identity, transport: access.transport)
+}
+
+fn deploy_target_host_preflight_script(access: DeployAccess) -> String {
+  let proof = deploy_target_proof_from_access(access: access)
+  concat(
+    concat(concat(deploy_preflight_shell_header, "\n"), deploy_target_host_preflight_block(proof: proof)),
+    ""
+  )
+}
+
+fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr) -> DeployAccess {
+  DeployAccess {
+    principal: access.principal,
+    host: access.host,
+    transport: SshShell { ssh_host: ssh_host },
+    privileged_commands: access.privileged_commands,
+  }
+}
+
+fn deploy_access_projected_grants(access: DeployAccess) -> List<Grant> {
+  map(
+    access.principal.sudo_grants,
+    g => posix_sudo_grant_to_effect_grant(g: g)
+  )
+}
+
+fn deploy_access_grant_envelope(access: DeployAccess) -> Envelope {
+  Envelope {
+    frame: deploy_access_frame,
+    grants: deploy_access_projected_grants(access: access),
+  }
+}
+
+fn deploy_access_authorization_query(access: DeployAccess) -> DeployAuthorizationQuery {
+  DeployAuthorizationQuery {
+    expected_principal: grounded_posix_principal_name(p: access.principal),
+    envelope: deploy_access_grant_envelope(access: access),
+  }
+}
+
+fn deploy_access_read_principal_effect() -> HostEffect {
+  ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} }
+}
+
+fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
+  match cmd.grant.probe {
+    NopasswdExecuteCheck { check_argv: check } =>
+      SudoNopasswdExecuteProbe {
+        probe: SudoNopasswdExecuteProbeShape {
+          command_path: cmd.grant.command_path,
+          check_argv: check,
+        }
+      }
+    NopasswdGrantListCheck =>
+      SudoNopasswdGrantListProbe {
+        probe: cmd.grant.command_path as SudoNopasswdGrantListProbeShape
+      }
+  }
+}
+
+fn deploy_access_grant_admits_probe(
+  access: DeployAccess,
+  cmd: PrivilegedCommand
+) -> AccessDecision {
+  let grant = posix_sudo_grant_to_effect_grant(g: cmd.grant)
+  admit_effect(
+    env: deploy_access_grant_envelope(access: access),
+    verb: verb_of_effect_shape(shape: ExecuteEffect),
+    target: grant.root
+  )
+}
+
+data deploy_access_preflight_shell_disposition: Disposition = Terminal {
+  reason: "deploy_access_preflight_script dissolved (Wave B): deploy-preflight is an authorization query + typed effect-plan, not a concat shell script. Authority: deploy_access_authorization_query + deploy_access_preflight_plan; observation: gunbc.ci.ci_deploy_access_observe."
+}
+
+data deploy_access_preflight_plan_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci.ci_deploy_access_observe",
+    decl_name: "deploy_access_preflight_plan",
+    field: WholeDeclaration
+  }
+}
+
+fn deploy_access_privileged_fixture_actor(access: DeployAccess) -> DeployAccessActor {
+  DeployAccessActor {
+    observed_name: grounded_posix_principal_name(p: access.principal),
+    sudo_granted: true,
+  }
+}
+
+data deploy_access_unprivileged_fixture_principal: NonEmptyStr = "nobody"
+
+fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
+  DeployAccessActor { observed_name: deploy_access_unprivileged_fixture_principal, sudo_granted: false }
+}
+
+fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
+  let head = concat(
+    concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
+    concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
+  )
+  match access.privileged_commands.first() {
+    Absent => head
+    Present { value: sample } => concat(head, deploy_access_sudoers_line(access: access, cmd: sample))
+  }
+}
+
+fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
+  let expected = grounded_posix_principal_name(p: access.principal)
+  if actor.observed_name != expected {
+    access_policy_refusal(
+      profile: "deploy-access", subject: actor.observed_name, action: "execute", object: expected,
+      reason: concat(
+          concat(
+            concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
+            expected
+          ),
+          concat(" actual=", actor.observed_name)
+        ),
+    )
+  } else {
+    if actor.sudo_granted {
+      Permit
+    } else {
+      access_policy_refusal(profile: "deploy-access", subject: actor.observed_name, action: "execute", object: expected, reason: deploy_access_sudo_miss_reason(access: access))
+    }
+  }
+}
+
+fn deploy_access_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
+  }
+}
+
+fn deploy_access_principal_line(success: Bool, stdout: String) -> NonEmptyStr? {
+  if !success {
+    none
+  } else {
+    let line = trim(stdout)
+    if line == "" { none } else { Present { value: line as NonEmptyStr } }
+  }
+}
+
+fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
+  match access.transport {
+    LocalShell => true
+    SshShell { ssh_host: _ } => false
+    FleetSsh { target: _, context: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+  }
+}
+
+fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
+  concat(
+    "deploy-access-preflight: PASS principal=",
+    grounded_posix_principal_name(p: access.principal) as String
+  )
+}
+
+fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
+  grounded_principal_privileged_commands(
+    p: fleet_posix_ci_runner_principal()
+  )
+}
+
+// EVERY ACCESS THAT APPLIES A DEPLOYMENT, AS ONE ROSTER. A host-shared resource whose content is a
+// function of who deploys to that host -- /etc/sudoers.d/gunbc-deploy -- is derived from this list
+// filtered by host, never from the one access that happens to be running, so applying any
+// deployment through any access renders the same bytes (gunbc.ci.ci_deploy_sudoers
+// deploy_sudoers_dropin_body). A new access is a row here; one left out is a principal whose grants
+// the next apply through another access would delete.
+fn deploy_access_roster() -> List<DeployAccess> {
+  [
+    ci_deploy_srv1_access,
+    ci_deploy_srv1_operator_access,
+    ci_deploy_srv1_operator_local_access,
+  ]
+}
+
+fn deploy_accesses_on_host(host: ComputeHost) -> List<DeployAccess> {
+  filter(xs: deploy_access_roster(), predicate: a => (a.host.identity as String) == (host.identity as String))
+}

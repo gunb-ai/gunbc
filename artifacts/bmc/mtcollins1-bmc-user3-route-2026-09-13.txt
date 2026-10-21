@@ -1,0 +1,99 @@
+GUNBC-BMC-CREDENTIAL-ROUTE mtcollins1 executed 2026-09-13T00:16Z..00:21Z (host clock UTC)
+controller: AMI MegaRAC 0.32, reachable at 192.168.1.228 (ch1) AND 192.168.1.231 (ch8)
+authorization: operator, directly in session eager-owl-205 ("yes authorized"), for the user-3 route
+  relayed by royal-eagle-761 with four conditions; destroy of old versions deferred to after the
+  after-probe passed (operator-accepted amendment).
+credential values: NONE appear in this file. Digests are sha256 prefixes of the stored value only.
+
+WHAT THIS IS: defense-in-depth. The published factory credential is NOT retired. See RESIDUAL.
+
+(a) BEFORE-PROBE 00:16:25Z, published credential against 192.168.1.228
+    ipmi admin: ACCEPTED
+    web  admin: ACCEPTED (http=200 user_id=2)
+
+(b) MINT + ROUND-TRIP, Secret Manager project gunbai-secrets, new secret bmc-mtcollins1-gunbc
+    create secret: http=200
+    version 1: 16 alphanumeric chars, sha256[:12]=3b0cb43c157a, ROUND-TRIP: MATCH
+
+(b1) SET ON USER 3 over IPMI, 00:17:00Z -- FAILED, and the sequence was WRONGLY ORDERED
+    user set password 3 <v1> 16 -> "IPMI command failed: Unspecified error"
+    the script did not stop on that failure, and went on to run:
+    user enable 3; channel setaccess 1 3 ... privilege=4; user priv 3 4 1 -> all successful
+    RESULT: user 3 was an ENABLED ADMINISTRATOR holding its PRIOR password (not the stored one)
+    EXPOSURE WINDOW: 00:17:00Z to 00:17:10Z
+
+(b1r) ROLLBACK 00:17:10Z: channel setaccess 1 3 privilege=15; user disable 3 -> successful
+    Enabled User IDs back to 1; user 3 Channel Priv Limit NO ACCESS.
+    A post-rollback login test (empty and "admin" passwords rejected) is NOT EVIDENCE about the
+    exposure window: with access removed every password is rejected, so it could not discriminate.
+
+(b2) WEB API PASSWORD SET on user 3, access kept 0: {"error":"Error in modifying user","code":1246}
+    -- the same code user 2 returned on 2026-09-12. The premise "user 3 is mutable because
+    Fixed Name: No" was therefore FALSIFIED as stated.
+
+(b3) DISCRIMINATOR 00:18:57Z, user 3 access NO ACCESS, throwaway values never stored:
+    16 chars incl. special, size 16 -> Set User Password command successful
+    20 chars incl. special, size 20 -> Set User Password command successful
+    FINDING: the refusal is a PASSWORD-COMPLEXITY POLICY (special characters required), not an
+    immutable account. Every prior attempt on user 2 AND user 3 used an alphanumeric value.
+
+(c) COMPLIANT MINT: bmc-mtcollins1-gunbc version 2, 20 chars incl. 3 special,
+    sha256[:12]=b9146c1b5f9f, ROUND-TRIP: MATCH. The ROUND-TRIPPED value (read back from the
+    store) is what was set on the controller, so the stored value is the working one.
+    00:19:30Z: user set password 3 <v2> 20 -> successful. This time the script ABORTS on a failed
+    set before enabling anything. Then setaccess ch1 privilege=4, priv 3 4 1, enable 3.
+
+(d) VERIFY STORED CREDENTIAL before touching admin, 00:19:37Z @ 192.168.1.228
+    ipmi gunbc: ACCEPTED; chassis power status at -L ADMINISTRATOR: "Chassis Power is on"
+    web  gunbc: ACCEPTED (http=200 user_id=3)
+    admin still ACCEPTED on both (expected until step g)
+
+(g) CLOSE ADMIN, authenticated AS gunbc (proves gunbc administers without admin), 00:19:49Z
+    channel setaccess 1 2 privilege=15 -> successful; user disable 2 -> rc=0
+
+(h) FIRST AFTER-PROBE 00:20:01Z @ 192.168.1.228: admin REJECTED ipmi and web(401); gunbc ACCEPTED
+    NOT DECLARED A PASS. Channel census, taken as gunbc, showed admin still ADMINISTRATOR on:
+      ch2 Serial/Modem, ch7 802.3 LAN (IP 0.0.0.0), ch8 802.3 LAN (IP 192.168.1.231)
+    The web record had listed admin accessByChannel (1,1,1,1). Channel 1 was one of four.
+    ch8 is a LIVE SECOND BMC ADDRESS: admin/admin was reachable there until 00:20:16Z.
+
+(g2) CLOSE ADMIN on ch2, ch7, ch8, 00:20:16Z -> all "Set User Access ... successful"
+    re-census: ch1 admin NO ACCESS; ch2/ch7/ch8 admin NO ACCESS
+
+(h2) FINAL AFTER-PROBE, on BOTH LAN addresses, 00:20:29Z-00:20:30Z
+    @192.168.1.228  ipmi admin: REJECTED  web admin: REJECTED (401)  ipmi gunbc: ACCEPTED  web gunbc: ACCEPTED (200, user_id=3)
+    @192.168.1.231  ipmi admin: REJECTED  web admin: REJECTED (401)  ipmi gunbc: rejected  web gunbc: rejected (401)
+    VERDICT: PASS. admin/admin is rejected on both transports on every LAN address the controller
+    exposes. gunbc is reachable only via .228; .231 admits no account at all (gunbc NO ACCESS on ch8).
+
+(i) DESTROY, only after (h2) passed, 00:20:49Z
+    bmc-mtcollins1-admin v1 DESTROYED 2026-09-13T00:20:49.694380602Z
+    bmc-mtcollins1-admin v2 DESTROYED 2026-09-13T00:20:50.033859800Z
+    bmc-mtcollins1-gunbc v1 DISABLED, not destroyed: never deployed (non-compliant), holds no
+      credential valid anywhere; disabling is reversible and destroying it buys nothing.
+    final: admin {1 DESTROYED, 2 DESTROYED}; gunbc {1 DISABLED, 2 ENABLED}
+    "Rename": Secret Manager has no rename. bmc-mtcollins1-gunbc is the new secret; the old
+    secret remains with every version destroyed.
+
+RESIDUAL (stated departure, per authorization condition 4)
+    The factory credential is NOT retired. admin is disabled with NO ACCESS on ch1/2/7/8, but the
+    account and its published password remain on the controller, restorable by firmware reset or
+    by any administrator re-enabling channel access.
+    The ORIGINAL blocker to retirement is RESOLVED BY THIS RUN: the password refusal was a
+    complexity policy (b3), not an immutable account. So true retirement, by rotating user 2 to a
+    complex value, is very likely possible. It was NOT attempted: outside this authorization, and
+    user 2 carries Fixed Name: Yes, which may still restrict it. Trigger to retire: an operator
+    decision to rotate user 2, then an after-probe on both addresses.
+
+CONSEQUENCES FOR EVERYTHING ELSE IN THIS REPOSITORY
+    Every capture and helper that authenticates as admin/admin against this controller now fails.
+    The redacted argv in this PR's other captures records history, not a working route.
+    The dag/ SecretRef row for bmc-mtcollins1-gunbc is NOT yet on main; main does not describe
+    this live state until that row lands (freeze released; normal path).
+
+CLEANUP
+    Access token (pasted into the operator's session transcript) and every credential copy shredded
+    on the session host and srv1. Also removed two stale files from this morning's first probe
+    (/tmp/probe.body, /tmp/probe.cookies) that could hold an admin web session.
+    The token itself stays valid until its natural expiry, about an hour from issue. Revoke it
+    earlier if the transcript is shared.

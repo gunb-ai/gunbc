@@ -1,0 +1,133 @@
+module extdeps.container.docker_ce
+
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv }
+import extdeps.access.posix { FileMode, PermissionBits }
+import extdeps.posix.shell_command_language { posix_single_quote }
+
+import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
+import std.decl_ref { decl_ref }
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.docker.com/engine/install/ubuntu/",
+  }
+}
+
+type DockerCeAptRepo {
+  keyring_url: NonEmptyStr
+  keyring_path: NonEmptyStr
+  keyring_fingerprint: NonEmptyStr
+  repo_base: NonEmptyStr
+  suite: NonEmptyStr
+  component: NonEmptyStr
+  arch: NonEmptyStr
+}
+
+// Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests.
+data docker_ce_apt_repo_noble_arm64: DockerCeAptRepo = DockerCeAptRepo {
+  keyring_url: "https://download.docker.com/linux/ubuntu/gpg",
+  keyring_path: "/etc/apt/keyrings/docker.gpg",
+  keyring_fingerprint: "9DC858229FC7DD38854AE2D88D81803C0EBFCD88",
+  repo_base: "https://download.docker.com/linux/ubuntu",
+  suite: "noble",
+  component: "stable",
+  arch: "arm64",
+}
+
+data docker_ce_packages: List<NonEmptyStr> = [
+  "docker-ce",
+  "docker-ce-cli",
+  "containerd.io",
+  "docker-buildx-plugin",
+  "docker-compose-plugin",
+  "docker-ce-rootless-extras",
+]
+
+fn docker_ce_apt_source_line(repo: DockerCeAptRepo) -> String {
+  join(
+    [
+      "deb [arch=", repo.arch as String, " signed-by=", repo.keyring_path as String, "] ",
+      repo.repo_base as String, " ", repo.suite as String, " ", repo.component as String,
+    ],
+    "",
+  )
+}
+
+// The docker-ce apt-repo bootstrap — install the keyrings dir, curl+dearmor the cited
+// download.docker.com gpg key, write the deb source line, apt-get update, apt-get
+// install docker-ce and docker-ce-rootless-extras — is rendered as a POSIX shell
+// provisioning sequence (medium-as-string). The DockerCeAptRepo row and the
+// docker_ce_packages list stay the typed authority, cited to
+// docs.docker.com/engine/install/ubuntu. Rootless runtime setup for the de-privileged
+// job user is then the ctrl install-actions-runner.sh handler, which needs
+// docker-ce-rootless-extras present first — the prerequisite this script satisfies.
+//
+// It dissolves when host_effect_apply binds an AptRepoEnsure plus PackageInstall effect
+// without the shell leaf, at which point `docker_ce_repo_install_script` is deleted.
+data docker_ce_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "extdeps.container.docker_ce",
+    decl_name: "docker_ce_repo_install_script",
+  )
+)
+
+// THE KEYRINGS DIRECTORY'S MODE, as the install guide (extdeps_external_authority_anchor) states it:
+// `install -m 0755 -d /etc/apt/keyrings`. It is rendered through extdeps.tools.gnu_coreutils, whose
+// operand states the set-id bits, rather than copied as the guide's four digits.
+data docker_ce_keyrings_directory_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: true, write: false, execute: true },
+  other: PermissionBits { read: true, write: false, execute: true },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+// Elevate each simple command before shell quoting; pipes and redirections belong to the
+// surrounding shell, so gpg and tee still consume stdin while sudo refuses without prompting.
+fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyStr>) -> String {
+  join(
+    [
+      "set -e",
+      join(
+        map(
+          sudo_elevate_argv(command: coreutils_install_directory_argv(mode: docker_ce_keyrings_directory_mode, path: "/etc/apt/keyrings")),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
+      join(["curl -fsSL ", repo.keyring_url as String, " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")], ""),
+      join(
+        map(
+          sudo_elevate_argv(command: ["chmod", "a+r", repo.keyring_path as String]),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
+      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'DockerKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
+      join(["echo '", docker_ce_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/docker.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"], ""),
+      join(
+        map(
+          sudo_elevate_argv(command: ["apt-get", "update", "-q"]),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
+      join(
+        map(
+          sudo_elevate_argv(command: append(["apt-get", "install", "-y", "-q"], items: map(packages, p => p as String))),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
+      "",
+    ],
+    "\n",
+  )
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "object": "bin/orca-slicer",
+    "missing": [
+      "libSM.so.6",
+      "libICE.so.6"
+    ],
+    "exit_code": 0
+  },
+  {
+    "object": "lib/orca-runtime/libz.so.1.3",
+    "missing": [],
+    "exit_code": 0
+  },
+  {
+    "object": "lib/orca-runtime/libmspack.so.0.1.0",
+    "missing": [],
+    "exit_code": 0
+  },
+  {
+    "object": "lib/orca-runtime/libexpat.so.1.9.1",
+    "missing": [],
+    "exit_code": 0
+  },
+  {
+    "object": "lib/orca-runtime/liblzma.so.5.4.5",
+    "missing": [],
+    "exit_code": 0
+  }
+]

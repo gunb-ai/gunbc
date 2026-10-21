@@ -1,0 +1,23 @@
+module fixture.closure.rustc_shell_multi_field_projection_probe
+
+import std.types { Bool, String }
+
+// THE CONTROL FOR shell_single_field_projection_probe.dag, DIFFERING IN ONE AUTHORED THING: this
+// output block declares TWO fields where that one declares one. Everything else -- the service, the
+// operation's input, the argv, the absence of an exit block, the first channel -- is identical, so a
+// green here against a red there locates the refusal at the projection's arity and at nothing else.
+//
+// WHAT IT PROVES POSITIVELY: at two fields v1.compiler.emit_rust emit_shell_return emits
+// `Ok((output.status.success(), stdout.clone()))` and the emitted method satisfies its own declared
+// `Result<(bool, String), Box<dyn Error>>`. So the Result convention is not missing from the emitter
+// -- it is selected by an arity test, which is the defect.
+service fixture.MultiFieldProjection {
+  operation TwoFieldExitSuccess {
+    input { word: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    transport shell { argv: ["echo", word] }
+  }
+}

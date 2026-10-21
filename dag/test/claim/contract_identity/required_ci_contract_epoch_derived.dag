@@ -1,0 +1,345 @@
+module test.claim.contract_identity.required_ci_contract_epoch_derived
+
+import std.types { Bool, String, List }
+import std.optional { Present, Absent }
+import std.measure { byte_size }
+import std.algebra { Cons, list_reverse, list_map, length }
+import gunbc.instrument_targets { v2_native_frontier_label }
+import gunbc.emitted_subject_build_gate {
+  EmittedSubjectBuildRow,
+  EmittedSubjectExecutionContract,
+  emitted_subject_execution_contract,
+  MemoryStepTripBound,
+}
+import gunbc.host.memory_envelope { MemoryEnvelopeContract, EnvelopeRequirementUnreadable }
+import gunbc.parse_population_refusals { RefusalClass }
+import gunbc.source_layout { LayoutTreeV2 }
+import gunbc.required_ci_contract_epoch {
+  required_ci_context_name,
+  required_ci_contract_epoch_derivation,
+  required_ci_contract_epoch_is_derived,
+  required_ci_contract_epoch_yaml_value,
+  required_ci_contract_epoch_of,
+  required_ci_obligation_rows,
+  required_ci_obligation_digest_text,
+  required_ci_emitted_subject_obligations,
+  RequiredContextObligation,
+  EmittedSubjectObligation,
+  MemoryEnvelopeObligation,
+  SourceLayoutObligation,
+  PopulationParseObligation,
+  RequiredCiEmittedSubjectObligation,
+  RequiredCiObligation,
+  RequiredCiEpochDerived,
+  RequiredCiObligationIdentityDuplicated,
+  RequiredCiMemoryRequirementUnreadable,
+}
+
+fn production_epoch_text() -> String {
+  required_ci_contract_epoch_yaml_value()
+}
+
+fn derived_epoch_text(rows: List<RequiredCiObligation>) -> String? {
+  match required_ci_contract_epoch_of(rows: rows) {
+    RequiredCiEpochDerived { epoch: epoch } => Present { value: epoch as String }
+    RequiredCiObligationIdentityDuplicated { identity: _ } => Absent
+    RequiredCiMemoryRequirementUnreadable { raw: _ } => Absent
+  }
+}
+
+test fn the_required_context_name_is_v2_bootstrap() -> Bool {
+  (required_ci_context_name as String) == "v2-bootstrap"
+}
+
+test fn production_rows_derive_an_epoch() -> Bool {
+  required_ci_contract_epoch_is_derived()
+    && match required_ci_contract_epoch_derivation {
+      RequiredCiEpochDerived { epoch: epoch } => (epoch as String) == production_epoch_text()
+      RequiredCiObligationIdentityDuplicated { identity: _ } => false
+      RequiredCiMemoryRequirementUnreadable { raw: _ } => false
+    }
+}
+
+test fn permuting_obligation_rows_leaves_the_epoch_equal() -> Bool {
+  match derived_epoch_text(rows: list_reverse(xs: required_ci_obligation_rows())) {
+    Present { value: epoch } => epoch == production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn dropping_an_obligation_row_moves_the_epoch() -> Bool {
+  match required_ci_obligation_rows() {
+    Cons { head: _, tail: rest } =>
+      match derived_epoch_text(rows: rest) {
+        Present { value: epoch } => epoch != production_epoch_text()
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn adding_an_obligation_row_moves_the_epoch() -> Bool {
+  let extra = EmittedSubjectObligation {
+    subject: RequiredCiEmittedSubjectObligation {
+      row: EmittedSubjectBuildRow { label: v2_native_frontier_label(), step_id: "extra_subject" },
+      execution: emitted_subject_execution_contract,
+    }
+  }
+  match derived_epoch_text(rows: Cons { head: extra, tail: required_ci_obligation_rows() }) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn changing_a_payload_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation {
+          contract: MemoryEnvelopeContract {
+            requirement: contract.requirement,
+            memory_max: contract.memory_max,
+            memory_swap_max: byte_size(1),
+          },
+          step_bound: step_bound,
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn changing_declared_parse_refusals_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      PopulationParseObligation { classes: classes } =>
+        PopulationParseObligation {
+          classes: Cons { head: RefusalClass { drop: "probe", cause: "probe", keys: ["probe"] }, tail: classes }
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn a_duplicated_identity_refuses() -> Bool {
+  match required_ci_obligation_rows() {
+    Cons { head: first, tail: rest } =>
+      match required_ci_contract_epoch_of(rows: Cons { head: first, tail: Cons { head: first, tail: rest } }) {
+        RequiredCiObligationIdentityDuplicated { identity: _ } =>
+          required_ci_contract_epoch_is_derived()
+        RequiredCiEpochDerived { epoch: _ } => false
+        RequiredCiMemoryRequirementUnreadable { raw: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn the_context_name_is_an_obligation_row() -> Bool {
+  any(required_ci_obligation_rows(), row =>
+    match row {
+      RequiredContextObligation { name: name } => (name as String) == (required_ci_context_name as String)
+      EmittedSubjectObligation { subject: _ } => false
+      MemoryEnvelopeObligation { contract: _, step_bound: _ } => false
+      SourceLayoutObligation { default_tree: _, governed_roots: _, namespace_roots: _ } => false
+      PopulationParseObligation { classes: _ } => false
+    })
+}
+
+test fn aliases_are_not_the_hashed_payload() -> Bool {
+  let text = required_ci_obligation_digest_text(rows: required_ci_obligation_rows())
+  !string_contains(s: text, pattern: "GUNBC_MEMORY_ENVELOPE_REQUIRED")
+    && !string_contains(s: text, pattern: "check-layout")
+    && !string_contains(s: text, pattern: "parse-population")
+    && !string_contains(s: text, pattern: "Checkout")
+}
+
+test fn the_emitted_subject_obligations_are_the_gate_rows() -> Bool {
+  length(xs: required_ci_emitted_subject_obligations()) == 2
+}
+
+test fn permuting_governed_roots_leaves_the_epoch_equal() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation {
+          default_tree: default_tree,
+          governed_roots: list_reverse(xs: governed_roots),
+          namespace_roots: namespace_roots,
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch == production_epoch_text()
+    Absent => false
+  }
+}
+
+fn parse_rows_with_keys(keys: List<String>) -> List<RequiredCiObligation> {
+  list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      PopulationParseObligation { classes: _ } =>
+        PopulationParseObligation {
+          classes: [RefusalClass { drop: "probe", cause: "probe", keys: keys }]
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+    }
+  })
+}
+
+test fn comma_joined_refusal_keys_are_not_the_same_epoch() -> Bool {
+  match derived_epoch_text(rows: parse_rows_with_keys(keys: ["dag:a.dag", "dag:b.dag"])) {
+    Present { value: two } =>
+      match derived_epoch_text(rows: parse_rows_with_keys(keys: ["dag:a.dag,dag:b.dag"])) {
+        Present { value: one } => two != one
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn changing_layout_default_tree_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      SourceLayoutObligation { default_tree: _, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation {
+          default_tree: LayoutTreeV2 {},
+          governed_roots: governed_roots,
+          namespace_roots: namespace_roots,
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn changing_fault_experiment_tokens_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      EmittedSubjectObligation { subject: subject } =>
+        EmittedSubjectObligation {
+          subject: RequiredCiEmittedSubjectObligation {
+            row: subject.row,
+            execution: EmittedSubjectExecutionContract {
+              build_fresh: subject.execution.build_fresh,
+              fault_experiment_skip: "other_skip",
+              fault_experiment_run: subject.execution.fault_experiment_run,
+            },
+          }
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn changing_memory_step_bound_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      MemoryEnvelopeObligation { contract: contract, step_bound: _ } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: MemoryStepTripBound { bytes: byte_size(1) } }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn unreadable_memory_requirement_does_not_derive_an_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation {
+          contract: MemoryEnvelopeContract {
+            requirement: EnvelopeRequirementUnreadable { raw: "slot_required" },
+            memory_max: contract.memory_max,
+            memory_swap_max: contract.memory_swap_max,
+          },
+          step_bound: step_bound,
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match required_ci_contract_epoch_of(rows: changed) {
+    RequiredCiMemoryRequirementUnreadable { raw: raw } => raw == "slot_required"
+    RequiredCiEpochDerived { epoch: _ } => false
+    RequiredCiObligationIdentityDuplicated { identity: _ } => false
+  }
+}
+
+fn parse_rows_with_classes(classes: List<RefusalClass>) -> List<RequiredCiObligation> {
+  list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      PopulationParseObligation { classes: _ } => PopulationParseObligation { classes: classes }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+    }
+  })
+}
+
+test fn tied_refusal_class_permutation_leaves_the_epoch_equal() -> Bool {
+  let a = RefusalClass { drop: "d", cause: "c", keys: ["k1"] }
+  let b = RefusalClass { drop: "d", cause: "c", keys: ["k2"] }
+  match derived_epoch_text(rows: parse_rows_with_classes(classes: [a, b])) {
+    Present { value: forward } =>
+      match derived_epoch_text(rows: parse_rows_with_classes(classes: [b, a])) {
+        Present { value: reverse } => forward == reverse
+        Absent => false
+      }
+    Absent => false
+  }
+}

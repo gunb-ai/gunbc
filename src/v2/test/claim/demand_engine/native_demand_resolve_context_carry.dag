@@ -1,0 +1,135 @@
+module v2.test.claim.demand_engine.native_demand_resolve_context_carry
+
+import v2.compiler.source_root_eval {
+  NativeDemandRun,
+  NativeDemandStepResult,
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolution,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneModuleResolved,
+  NativeLaneUniverseModule,
+  NativeTestContext,
+  native_demand_prepare_ok,
+  native_demand_prepare_refused,
+  native_demand_resolved_tree,
+  native_demand_run_transition_count,
+  native_demand_schedule_universe_step,
+  native_demand_tested_tree_input,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.judgment_contract { DeclaredInput }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ndc_a_source: String = "module v2.ndc.a\n\nimport std.types { Bool }\n\nfn a_value(p: Bool) -> Bool { p }\n"
+
+data ndc_b_source: String = "module v2.ndc.b\n\nimport std.types { Bool }\n\nfn b_value(p: Bool) -> Bool { p }\n"
+
+fn ndc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+data ndc_ingest: SourceRootIngest = [
+  ndc_read(source: ndc_a_source, id: ^ndc_a_cu, path: "dag/ndc_a.dag"),
+  ndc_read(source: ndc_b_source, id: ^ndc_b_cu, path: "dag/ndc_b.dag")
+]
+
+fn ndc_compiler() -> DeclaredInput {
+  native_demand_tested_tree_input(tree: "ndc-probe")
+}
+
+fn ndc_modules() -> List<NativeLaneUniverseModule> {
+  [
+    NativeLaneUniverseModule { module: "v2.ndc.a", path: ^ndc_a_cu, declarations: [] },
+    NativeLaneUniverseModule { module: "v2.ndc.b", path: ^ndc_b_cu, declarations: [] }
+  ]
+}
+
+fn ndc_resolved(resolution: NativeLaneModuleResolution) -> Bool {
+  match resolution {
+    NativeLaneModuleResolved { resolved: _ } => true
+    NativeLaneModuleContextRowsDecided { rows: _ } => false
+    NativeLaneModuleResolveRowsDecided { rows: _ } => false
+  }
+}
+
+fn ndc_engine_resolved(run: NativeDemandRun, module: String) -> Bool {
+  match native_demand_resolved_tree(engine: run.engine, module: module, compiler: ndc_compiler()) {
+    Absent => false
+    Present { value: resolution } => ndc_resolved(resolution: resolution)
+  }
+}
+
+fn ndc_closure_index_present(context: NativeTestContext) -> Bool {
+  match context.resolution {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: shared, diagnostics: _ } =>
+      match shared.closure_declarations {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// THE DRAIN RETURNS THE CONTEXT IT ENDED WITH. A drain that drops the update still returns the
+// ingest context, whose closure_declarations field is Absent. A drain that carries it returns
+// Present after the first accepted resolve. Restoring the drop makes
+// two_module_drain_leaves_the_closure_index_present_holds red and leaves the verdict claims green.
+fn ndc_schedule_step() -> Optional<NativeDemandStepResult> {
+  match native_test_context_from_ingest(ingest: ndc_ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      if ndc_closure_index_present(context: context) {
+        optional_absent()
+      } else {
+        optional_present(value: native_demand_schedule_universe_step(
+          modules: ndc_modules(),
+          context: context,
+          refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+          compiler: ndc_compiler()
+        ))
+      }
+  }
+}
+
+test fn two_module_drain_leaves_the_closure_index_present_holds() -> Bool {
+  match ndc_schedule_step() {
+    Absent => false
+    Present { value: step } => ndc_closure_index_present(context: step.context)
+  }
+}
+
+test fn two_module_drain_resolves_both_modules_holds() -> Bool {
+  match ndc_schedule_step() {
+    Absent => false
+    Present { value: step } =>
+      ndc_engine_resolved(run: step.run, module: "v2.ndc.a")
+        && ndc_engine_resolved(run: step.run, module: "v2.ndc.b")
+  }
+}
+
+test fn two_module_drain_prepare_counts_are_two_ok_zero_refused_holds() -> Bool {
+  match ndc_schedule_step() {
+    Absent => false
+    Present { value: step } =>
+      (native_demand_prepare_ok(run: step.run) == 2)
+        && (native_demand_prepare_refused(run: step.run) == 0)
+        && (native_demand_run_transition_count(run: step.run) == 6)
+  }
+}

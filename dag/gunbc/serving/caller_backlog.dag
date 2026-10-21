@@ -1,0 +1,1311 @@
+module gunbc.serving.caller_backlog
+
+import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs, brand }
+import std.nat { Nat, Zero, Succ }
+import std.optional { Present, Absent }
+import std.algebra { length }
+import extdeps.languages.json.emit {
+  JsonKeyValue, JsonValue, JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString,
+  json_array, json_bool, json_int, json_kv, json_object, json_string, serialize_json,
+}
+import extdeps.languages.json.parse {
+  FieldAbsent, FieldMalformed, FieldRead, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field, json_field_bool, json_field_int, json_field_nat, json_field_string, parse_json_document,
+}
+import product.fabric.execution { ReservationRef }
+import product.capacity.event_chain { PartitionId }
+import product.fabric.budget { MoneyAccount, fence_admits }
+import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceAhead, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { bytes_qualified_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, UrlSafe }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
+  CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
+}
+import gunbc.durable_cas_file_store {
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_key_is_slot_addressable,
+}
+
+// ── THE BACKLOG IS THE CALLER'S, AND IT IS A PERSISTED SNAPSHOT, NEVER A ROUTER QUEUE ─────────
+//
+// gunbc.serving.caller_retry_contract names the seven properties a durable caller backlog owes.
+// This module is the executing basis: one logical-work record, persisted before any offer,
+// resumed from the snapshot after a controller dies, fenced by the fabric money-lease generation
+// (product.fabric.budget fence_admits), cancelled only into a terminal phase, and bounded across
+// the WHOLE recovery history so a succeeding probe cannot reset a failing request series.
+//
+// THERE IS NO ROUTER-LOCAL QUEUE. gunbc.serving.router_realization forbids MaintainAuthoritativeBindingLedger;
+// waiting work lives on this snapshot, which a controller restart reloads. A synthetic nudge
+// (re-persist, re-offer) is not required for the same logical work to be waiting again.
+
+type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
+
+// THE WORK KEY IS THE CALLER'S, SUPPLIED, AND SURVIVES A PROCESS RESTART. A harness turn is named
+// by the dispatch node that owns it and the turn's ordinal within that dispatch; a per-process
+// minted subject (harness_turn_subject) is not a key because a restarted process mints a new one.
+// The id is the base64url (std.encoding, RFC 4648 section 5 alphabet: no slash, so it is a
+// valid durable slot key for any node id such as node://session-x) of the UTF-8 JSON array
+// [dispatch_node, ordinal]; JSON is injective over (string, int) and base64 over bytes, so
+// distinct keys never share an id.
+type DispatchTurnKey {
+  dispatch_node: NonEmptyStr
+  ordinal: Nat
+}
+
+type WorkIdDerivation
+  = WorkIdDerived { work: LogicalWorkId }
+  | WorkIdKeyNotOctets { observed: Int }
+
+fn logical_work_id_of(key: DispatchTurnKey) -> WorkIdDerivation {
+  match bytes_qualified_octets(b: utf8_encode_bytes(s: serialize_json(v: json_array(elements: [json_string(s: key.dispatch_node as String), json_int(n: key.ordinal as Int)])))) {
+    QualifiedOctetsRefused { observed: o } => WorkIdKeyNotOctets { observed: o }
+    QualifiedOctetsReady { value: sealed } =>
+      WorkIdDerived { work: base64_encode(octets: sealed, variant: UrlSafe) as LogicalWorkId }
+  }
+}
+
+type RecoveryBoundDeficit {
+  probes_succeeded: Nat
+  requests_failed: Nat
+}
+
+type CallerWorkPhase
+  = WorkWaiting
+  | WorkCompleted
+  | WorkCancelled
+  | WorkRecoveryBoundExceeded { deficit: RecoveryBoundDeficit }
+
+type RecoveryKind
+  = RecoveryProbe
+  | RecoveryRequest
+
+type RecoveryEvent {
+  kind: RecoveryKind
+  succeeded: Bool
+}
+
+// THE SEAT AUTHORITY A RESERVATION IS READ FROM: a seat's grant lives in one partition of the seat authority
+// (one per serving card), so a reservation alone cannot say where its retirement is proved. The record carries
+// both, and a rebind names both as the predecessor it replaces, so a failover from card A to card B proves A's
+// seat retired in A's partition and then moves the record from {A, a} to {B, b} in one compare-and-set.
+type SeatRef {
+  partition: PartitionId
+  reservation: ReservationRef
+}
+
+// A work with no seat yet holds NO seat: the record's `seat` is absent, never a placeholder reservation, so
+// "unplaced" is a presence fact the type carries (§3b cardinality/absence) rather than a string convention.
+fn seat_refs_agree(held: SeatRef?, expected: SeatRef?) -> Bool {
+  match held {
+    Absent => match expected { Absent => true  Present { value: _ } => false }
+    Present { value: h } => match expected {
+      Absent => false
+      Present { value: e } => (h.reservation as String) == (e.reservation as String) && (h.partition as String) == (e.partition as String)
+    }
+  }
+}
+
+type CallerWorkRecord {
+  work: LogicalWorkId
+  seat: SeatRef?
+  generation: Int
+  phase: CallerWorkPhase
+  recovery: List<RecoveryEvent>
+}
+
+type CallerBacklogSnapshot {
+  records: List<CallerWorkRecord>
+}
+
+data empty_caller_backlog: CallerBacklogSnapshot = CallerBacklogSnapshot { records: [] as List<CallerWorkRecord> }
+
+fn logical_work_eq(a: LogicalWorkId, b: LogicalWorkId) -> Bool {
+  a as String == b as String
+}
+
+fn records_for(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> List<CallerWorkRecord> {
+  filter(snapshot.records, r => logical_work_eq(a: r.work, b: work))
+}
+
+type CallerRecordLookup
+  = CallerRecordFound { record: CallerWorkRecord }
+  | CallerRecordAbsent
+  | CallerRecordDuplicated
+
+fn lookup_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerRecordLookup {
+  let found = records_for(snapshot: snapshot, work: work)
+  if length(found) == 0 {
+    CallerRecordAbsent
+  } else if length(found) == 1 {
+    match found.first() {
+      Absent => CallerRecordAbsent
+      Present { value: record } => CallerRecordFound { record: record }
+    }
+  } else {
+    CallerRecordDuplicated
+  }
+}
+
+fn replace_record(snapshot: CallerBacklogSnapshot, next: CallerWorkRecord) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot {
+    records: concat(
+      filter(snapshot.records, r => !logical_work_eq(a: r.work, b: next.work)),
+      [next],
+    ),
+  }
+}
+
+fn waiting_record(work: LogicalWorkId, seat: SeatRef?, generation: Int) -> CallerWorkRecord {
+  CallerWorkRecord {
+    work: work,
+    seat: seat,
+    generation: generation,
+    phase: WorkWaiting,
+    recovery: [] as List<RecoveryEvent>,
+  }
+}
+
+// Persist BEFORE offer: a turn that is not on the snapshot cannot be offered. Persist is
+// idempotent for an already-waiting identity (duplicate suppression) and refuses a cancelled or
+// bound-exceeded identity (cancellation is terminal; a bound is not a licence to start over).
+type PersistStanding
+  = WaitingPersisted { record: CallerWorkRecord }
+  | PersistIdempotent { record: CallerWorkRecord }
+  | PersistRefusedTerminal { phase: CallerWorkPhase }
+  | PersistRefusedDuplicate
+
+fn persist_waiting(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  seat: SeatRef?,
+  generation: Int,
+) -> PersistStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => WaitingPersisted { record: waiting_record(work: work, seat: seat, generation: generation) }
+    CallerRecordDuplicated => PersistRefusedDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting => PersistIdempotent { record: head }
+        WorkCompleted => PersistRefusedTerminal { phase: head.phase }
+        WorkCancelled => PersistRefusedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => PersistRefusedTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_persist(snapshot: CallerBacklogSnapshot, standing: PersistStanding) -> CallerBacklogSnapshot {
+  match standing {
+    WaitingPersisted { record: r } => replace_record(snapshot: snapshot, next: r)
+    PersistIdempotent { record: _ } => snapshot
+    PersistRefusedTerminal { phase: _ } => snapshot
+    PersistRefusedDuplicate => snapshot
+  }
+}
+
+type OfferStanding
+  = OfferedAfterPersist { record: CallerWorkRecord }
+  | OfferRefusedUnpersisted
+  | OfferRefusedPhase { phase: CallerWorkPhase }
+  | OfferRefusedDuplicate
+
+fn offer_persisted(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> OfferStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => OfferRefusedUnpersisted
+    CallerRecordDuplicated => OfferRefusedDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting => OfferedAfterPersist { record: head }
+        WorkCompleted => OfferRefusedPhase { phase: head.phase }
+        WorkCancelled => OfferRefusedPhase { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => OfferRefusedPhase { phase: head.phase }
+      }
+  }
+}
+
+// Resume reads the DURABLE snapshot. An empty in-memory view after a controller restart is not
+// a lost turn: the same logical work is still waiting, and no second persist is required.
+type ResumeStanding
+  = ResumedWaiting { record: CallerWorkRecord }
+  | ResumedTerminal { phase: CallerWorkPhase }
+  | ResumeUnknownWork
+  | ResumeDuplicateWork
+
+fn resume_from_snapshot(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> ResumeStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => ResumeUnknownWork
+    CallerRecordDuplicated => ResumeDuplicateWork
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting => ResumedWaiting { record: head }
+        WorkCompleted => ResumedTerminal { phase: head.phase }
+        WorkCancelled => ResumedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => ResumedTerminal { phase: head.phase }
+      }
+  }
+}
+
+type ControllerView {
+  memory: CallerBacklogSnapshot
+  durable: CallerBacklogSnapshot
+}
+
+fn view_after_controller_restart(durable: CallerBacklogSnapshot) -> ControllerView {
+  ControllerView { memory: empty_caller_backlog, durable: durable }
+}
+
+fn resume_after_restart(view: ControllerView, work: LogicalWorkId) -> ResumeStanding {
+  resume_from_snapshot(snapshot: view.durable, work: work)
+}
+
+// THE SLOT PAYLOAD IS RFC 8259 JSON. encode_waiting builds a JsonValue for CallerWorkRecord and
+// serialize_json emits it (extdeps.languages.json.emit); decode_waiting parses with
+// parse_json_document (extdeps.languages.json.parse) and reads members through json_field_*.
+// generation here is product.fabric.budget MoneyLease.generation (Int), not
+// std.durable_compare_and_set CasGeneration (the slot's version). Tabs and newlines in work
+// or reservation ids are JSON-escaped, not a private refusal class.
+
+fn encode_phase(phase: CallerWorkPhase) -> JsonValue {
+  match phase {
+    WorkWaiting => json_object(members: [json_kv(key: "kind", value: json_string(s: "waiting"))])
+    WorkCompleted => json_object(members: [json_kv(key: "kind", value: json_string(s: "completed"))])
+    WorkCancelled => json_object(members: [json_kv(key: "kind", value: json_string(s: "cancelled"))])
+    WorkRecoveryBoundExceeded { deficit: d } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "recovery_bound_exceeded")),
+        json_kv(key: "probes_succeeded", value: json_int(n: d.probes_succeeded as Int)),
+        json_kv(key: "requests_failed", value: json_int(n: d.requests_failed as Int)),
+      ])
+  }
+}
+
+fn encode_recovery_event(event: RecoveryEvent) -> JsonValue {
+  let kind = match event.kind {
+    RecoveryProbe => "probe"
+    RecoveryRequest => "request"
+  }
+  json_object(members: [
+    json_kv(key: "kind", value: json_string(s: kind)),
+    json_kv(key: "succeeded", value: json_bool(b: event.succeeded)),
+  ])
+}
+
+// A held seat is written as its two members; an absent seat writes neither, so absence stays absence on the wire.
+fn encode_seat_members(seat: SeatRef?) -> List<JsonKeyValue> {
+  match seat {
+    Absent => [] as List<JsonKeyValue>
+    Present { value: held } => [
+      json_kv(key: "reservation", value: json_string(s: held.reservation as String)),
+      json_kv(key: "partition", value: json_string(s: held.partition as String)),
+    ]
+  }
+}
+
+fn encode_waiting_value(record: CallerWorkRecord) -> JsonValue {
+  json_object(members: concat(concat([
+    json_kv(key: "work", value: json_string(s: record.work as String)),
+  ], encode_seat_members(seat: record.seat)), [
+    json_kv(key: "generation", value: json_int(n: record.generation)),
+    json_kv(key: "phase", value: encode_phase(phase: record.phase)),
+    json_kv(key: "recovery", value: json_array(elements: fold(record.recovery, init: [] as List<JsonValue>, f: (acc, e) => concat(acc, [encode_recovery_event(event: e)])))),
+  ]))
+}
+
+type WaitingWire
+  = WaitingWireEncoded { payload: NonEmptyStr }
+  | WaitingWireUnencodable { reason: NonEmptyStr }
+
+fn encode_waiting(record: CallerWorkRecord) -> WaitingWire {
+  let work_s = record.work as String
+  let seat_empty = match record.seat {
+    Absent => false
+    Present { value: held } => (held.reservation as String) == "" || (held.partition as String) == ""
+  }
+  if work_s == "" {
+    WaitingWireUnencodable { reason: "logical work id is empty" as NonEmptyStr }
+  } else if seat_empty {
+    WaitingWireUnencodable { reason: "seat reservation or partition is empty" as NonEmptyStr }
+  } else {
+    let text = serialize_json(v: encode_waiting_value(record: record))
+    if text == "" {
+      WaitingWireUnencodable { reason: "json emit produced an empty payload" as NonEmptyStr }
+    } else {
+      WaitingWireEncoded { payload: text as NonEmptyStr }
+    }
+  }
+}
+
+fn required_json_string(obj: JsonValue, key: String) -> String? {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: s } => if s == "" { none } else { Present { value: s } }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_int(obj: JsonValue, key: String) -> Int? {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: n } => Present { value: n }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_nat(obj: JsonValue, key: String) -> Nat? {
+  match json_field_nat(obj: obj, key: key) {
+    FieldRead { value: n } => Present { value: n }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_bool(obj: JsonValue, key: String) -> Bool? {
+  match json_field_bool(obj: obj, key: key) {
+    FieldRead { value: b } => Present { value: b }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_object(obj: JsonValue, key: String) -> JsonValue? {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } =>
+      match v {
+        JsonObject { members: _ } => Present { value: v }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+      }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn decode_phase(obj: JsonValue) -> CallerWorkPhase? {
+  match json_field_string(obj: obj, key: "kind") {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: kind } =>
+      if kind == "waiting" {
+        Present { value: WorkWaiting }
+      } else if kind == "completed" {
+        Present { value: WorkCompleted }
+      } else if kind == "cancelled" {
+        Present { value: WorkCancelled }
+      } else if kind == "recovery_bound_exceeded" {
+        match required_json_nat(obj: obj, key: "probes_succeeded") {
+          Absent => none
+          Present { value: probes } =>
+            match required_json_nat(obj: obj, key: "requests_failed") {
+              Absent => none
+              Present { value: requests } =>
+                Present {
+                  value: WorkRecoveryBoundExceeded {
+                    deficit: RecoveryBoundDeficit { probes_succeeded: probes, requests_failed: requests },
+                  },
+                }
+            }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn decode_recovery_event(v: JsonValue) -> RecoveryEvent? {
+  match required_json_string(obj: v, key: "kind") {
+    Absent => none
+    Present { value: kind } =>
+      match required_json_bool(obj: v, key: "succeeded") {
+        Absent => none
+        Present { value: succeeded } =>
+          if kind == "probe" {
+            Present { value: RecoveryEvent { kind: RecoveryProbe, succeeded: succeeded } }
+          } else if kind == "request" {
+            Present { value: RecoveryEvent { kind: RecoveryRequest, succeeded: succeeded } }
+          } else {
+            none
+          }
+      }
+  }
+}
+
+fn decode_recovery_events(obj: JsonValue) -> List<RecoveryEvent>? {
+  match json_field(obj: obj, key: "recovery") {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } =>
+          fold(
+            es,
+            init: Present { value: [] as List<RecoveryEvent> },
+            f: (acc, e) =>
+              match acc {
+                Absent => none
+                Present { value: xs } =>
+                  match decode_recovery_event(v: e) {
+                    Absent => none
+                    Present { value: event } => Present { value: concat(xs, [event]) }
+                  }
+              },
+          )
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+type SeatDecoded
+  = SeatDecodedAbsent
+  | SeatDecodedPresent { seat: SeatRef }
+  | SeatDecodedMalformed
+
+fn decode_seat(obj: JsonValue) -> SeatDecoded {
+  match json_field_string(obj: obj, key: "reservation") {
+    FieldAbsent => match json_field_string(obj: obj, key: "partition") {
+      FieldAbsent => SeatDecodedAbsent
+      FieldRead { value: _ } => SeatDecodedMalformed
+      FieldMalformed { cause: _ } => SeatDecodedMalformed
+    }
+    FieldMalformed { cause: _ } => SeatDecodedMalformed
+    FieldRead { value: r } => match required_json_string(obj: obj, key: "partition") {
+      Absent => SeatDecodedMalformed
+      Present { value: part } => if r == "" { SeatDecodedMalformed } else {
+        SeatDecodedPresent { seat: SeatRef { partition: part as PartitionId, reservation: r as ReservationRef } }
+      }
+    }
+  }
+}
+
+fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
+  match required_json_string(obj: obj, key: "work") {
+    Absent => none
+    Present { value: work_s } =>
+      match decode_seat(obj: obj) {
+        SeatDecodedMalformed => none
+        SeatDecodedAbsent => decode_waiting_rest(obj: obj, work_s: work_s, seat: none)
+        SeatDecodedPresent { seat: held } => decode_waiting_rest(obj: obj, work_s: work_s, seat: Present { value: held })
+      }
+  }
+}
+
+fn decode_waiting_rest(obj: JsonValue, work_s: String, seat: SeatRef?) -> CallerWorkRecord? {
+  match required_json_int(obj: obj, key: "generation") {
+            Absent => none
+            Present { value: generation } =>
+              match required_json_object(obj: obj, key: "phase") {
+                Absent => none
+                Present { value: phase_obj } =>
+                  match decode_phase(obj: phase_obj) {
+                    Absent => none
+                    Present { value: phase } =>
+                      match decode_recovery_events(obj: obj) {
+                        Absent => none
+                        Present { value: recovery } =>
+                          Present {
+                            value: CallerWorkRecord {
+                              work: work_s as LogicalWorkId,
+                              seat: seat,
+                              generation: generation,
+                              phase: phase,
+                              recovery: recovery,
+                            },
+                          }
+                      }
+                  }
+              }
+  }
+}
+
+fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
+  match parse_json_document(s: payload as String) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } => decode_waiting_value(obj: v)
+  }
+}
+
+type DurablePersistStanding
+  = DurableWaitingPersisted { record: CallerWorkRecord }
+  | DurablePhasePersisted { record: CallerWorkRecord }
+  | DurablePersistIdempotent { record: CallerWorkRecord }
+  | DurablePersistRefusedTerminal { phase: CallerWorkPhase }
+  | DurablePersistStoreRefused { detail: NonEmptyStr }
+  | DurablePersistKeyNotSlotAddressable { work: LogicalWorkId }
+  | DurablePersistPayloadUnencodable { reason: NonEmptyStr }
+  | DurablePersistUnknownWork
+  | DurablePersistDuplicate
+
+fn persist_waiting_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_idempotent_on_store"),
+  ]
+{
+  let key = record.work as NonEmptyStr
+  match encode_waiting(record: record) {
+    WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
+    WaitingWireEncoded { payload: payload } =>
+      match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: _ } => DurableWaitingPersisted { record: record }
+            CasPreconditionFailed { expected: _, observed: observed } =>
+              match observed {
+                CasReadableAbsent => DurablePersistStoreRefused {
+                  detail: "store reported the slot absent after refusing the write" as NonEmptyStr
+                }
+                CasReadablePresent { version: held } =>
+                  if held.value == payload {
+                    DurablePersistIdempotent { record: record }
+                  } else {
+                    DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+                  }
+              }
+            CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
+              detail: "file compare-and-set refused the persist" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+fn persist_waiting_idempotent_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable"),
+  ]
+{
+  let key = record.work as NonEmptyStr
+  match encode_waiting(record: record) {
+    WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
+    WaitingWireEncoded { payload: payload } =>
+      if !cas_key_is_slot_addressable(key: key) {
+        DurablePersistKeyNotSlotAddressable { work: record.work }
+      } else {
+        match observe_cas_slot_state(root: root, key: key) {
+          CasObservedUnreadable { cause: c } => DurablePersistStoreRefused {
+            detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
+          }
+          CasObservedReadable { readable: readable } =>
+            match readable {
+              CasReadableAbsent => persist_waiting_on_store(root: root, record: record)
+              CasReadablePresent { version: held } =>
+                if held.value == payload {
+                  DurablePersistIdempotent { record: record }
+                } else {
+                  DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+                }
+            }
+        }
+      }
+  }
+}
+
+type DurableSlotObservation
+  = DurableSlotPresent { record: CallerWorkRecord, generation: CasGeneration }
+  | DurableSlotAbsent
+  | DurableSlotUnreadable { detail: NonEmptyStr }
+  | DurableSlotUndecodable
+  | DurableSlotWorkMismatch
+  | DurableSlotKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn observe_durable_record(root: NonEmptyStr, work: LogicalWorkId) -> DurableSlotObservation {
+  let key = work as NonEmptyStr
+  if !cas_key_is_slot_addressable(key: key) {
+    DurableSlotKeyNotSlotAddressable { work: work }
+  } else {
+    match observe_cas_slot_state(root: root, key: key) {
+      CasObservedUnreadable { cause: c } => DurableSlotUnreadable {
+        detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
+      }
+      CasObservedReadable { readable: readable } =>
+        match readable {
+          CasReadableAbsent => DurableSlotAbsent
+          CasReadablePresent { version: held } =>
+            match decode_waiting(payload: held.value) {
+              Absent => DurableSlotUndecodable
+              Present { value: record } =>
+                if logical_work_eq(a: record.work, b: work) {
+                  DurableSlotPresent { record: record, generation: held.generation }
+                } else {
+                  DurableSlotWorkMismatch
+                }
+            }
+        }
+    }
+  }
+}
+
+fn singleton_snapshot(record: CallerWorkRecord) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot { records: [record] }
+}
+
+fn persist_derived_phase(
+  root: NonEmptyStr,
+  generation: CasGeneration,
+  record: CallerWorkRecord,
+) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "rebind_reservation_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "note_recovery_durable"),
+  ]
+{
+  let key = record.work as NonEmptyStr
+  match encode_waiting(record: record) {
+    WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
+    WaitingWireEncoded { payload: payload } =>
+      match admit_cas_attempt_for_derived_payload(
+        key: key,
+        expected: ExpectSlotGeneration { generation: generation },
+        proposed: payload,
+      ) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: _ } => DurablePhasePersisted { record: record }
+            CasPreconditionFailed { expected: _, observed: observed } =>
+              match observed {
+                CasReadableAbsent => DurablePersistStoreRefused {
+                  detail: "store reported the slot absent after refusing the write" as NonEmptyStr
+                }
+                CasReadablePresent { version: held } =>
+                  if held.value == payload {
+                    DurablePersistIdempotent { record: record }
+                  } else {
+                    DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+                  }
+              }
+            CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
+              detail: "file compare-and-set refused the persist" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+fn persist_waiting_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  seat: SeatRef?,
+  generation: Int,
+) -> DurablePersistStanding {
+  match persist_waiting(snapshot: snapshot, work: work, seat: seat, generation: generation) {
+    WaitingPersisted { record: r } => persist_waiting_on_store(root: root, record: r)
+    PersistIdempotent { record: r } => persist_waiting_idempotent_on_store(root: root, record: r)
+    PersistRefusedTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
+    PersistRefusedDuplicate => DurablePersistDuplicate
+  }
+}
+
+type DurableResumeStanding
+  = DurableResumedWaiting { record: CallerWorkRecord }
+  | DurableResumedTerminal { phase: CallerWorkPhase }
+  | DurableResumeUnknownWork
+  | DurableResumeStoreUnreadable { detail: NonEmptyStr }
+  | DurableResumePayloadUndecodable
+  | DurableResumeWorkMismatch
+
+fn resume_standing_of(record: CallerWorkRecord) -> DurableResumeStanding {
+  match record.phase {
+    WorkWaiting => DurableResumedWaiting { record: record }
+    WorkCompleted => DurableResumedTerminal { phase: record.phase }
+    WorkCancelled => DurableResumedTerminal { phase: record.phase }
+    WorkRecoveryBoundExceeded { deficit: _ } => DurableResumedTerminal { phase: record.phase }
+  }
+}
+
+fn resume_waiting_durable(root: NonEmptyStr, work: LogicalWorkId) -> DurableResumeStanding {
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableResumeUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableResumeStoreUnreadable { detail: d }
+    DurableSlotUndecodable => DurableResumePayloadUndecodable
+    DurableSlotWorkMismatch => DurableResumeWorkMismatch
+    DurableSlotKeyNotSlotAddressable { work: _ } => DurableResumeStoreUnreadable {
+      detail: "work id is not a slot-addressable CAS key" as NonEmptyStr
+    }
+    DurableSlotPresent { record: r, generation: _ } => resume_standing_of(record: r)
+  }
+}
+
+// Ready supply oscillating (2 -> 0 -> 1 -> 2) does not expire a waiting turn and does not mint a
+// new identity. apply_ready_supply_law is the transition: ExpireWaitingOnZeroSupply drops the
+// waiting record at ready == 0; KeepWaitingAcrossZeroSupply is the admitted law and keeps it.
+// offer_against_ready_supply is what a controller does with that reading: zero supply is not
+// unpersisted work, it is waiting with no replica ready to take it.
+type ReadyOffer
+  = SupplyReady { record: CallerWorkRecord }
+  | SupplyAbsentWaiting { record: CallerWorkRecord }
+  | SupplyUnknownWork
+  | SupplyTerminal { phase: CallerWorkPhase }
+  | SupplyDuplicate
+
+fn offer_against_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> ReadyOffer {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => SupplyUnknownWork
+    CallerRecordDuplicated => SupplyDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting =>
+          if ready == 0 {
+            SupplyAbsentWaiting { record: head }
+          } else {
+            SupplyReady { record: head }
+          }
+        WorkCompleted => SupplyTerminal { phase: head.phase }
+        WorkCancelled => SupplyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => SupplyTerminal { phase: head.phase }
+      }
+  }
+}
+
+type ReadySupplyLaw
+  = KeepWaitingAcrossZeroSupply
+  | ExpireWaitingOnZeroSupply
+
+fn drop_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot {
+    records: filter(snapshot.records, r => !logical_work_eq(a: r.work, b: work)),
+  }
+}
+
+fn apply_ready_supply_law(
+  law: ReadySupplyLaw,
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> CallerBacklogSnapshot {
+  match offer_against_ready_supply(snapshot: snapshot, work: work, ready: ready) {
+    SupplyReady { record: _ } => snapshot
+    SupplyAbsentWaiting { record: _ } =>
+      match law {
+        KeepWaitingAcrossZeroSupply => snapshot
+        ExpireWaitingOnZeroSupply => drop_record(snapshot: snapshot, work: work)
+      }
+    SupplyUnknownWork => snapshot
+    SupplyTerminal { phase: _ } => snapshot
+    SupplyDuplicate => snapshot
+  }
+}
+
+fn apply_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> CallerBacklogSnapshot {
+  apply_ready_supply_law(law: KeepWaitingAcrossZeroSupply, snapshot: snapshot, work: work, ready: ready)
+}
+
+fn waiting_survives_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  supplies: List<Nat>,
+) -> ResumeStanding {
+  let still = fold(supplies, init: snapshot, f: (acc, n) => apply_ready_supply(snapshot: acc, work: work, ready: n))
+  resume_from_snapshot(snapshot: still, work: work)
+}
+
+type AttemptCommit
+  = AttemptCommitted { record: CallerWorkRecord }
+  | AttemptFenceRefused
+  | AttemptNotWaiting { phase: CallerWorkPhase }
+  | AttemptUnknownWork
+  | AttemptDuplicate
+
+// THE FENCE IS A SUM OVER THE TWO SHAPES OF HOLDER, NOT TWO COMMIT FOLDS. A compute cell is fenced
+// by the money account's lease generation; a serving seat is not a money-settling cell
+// (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
+// product.capacity.lease LeaseGrant: the replica presents its LeaseFence (grant identity and generation),
+// fence_verdict must find it current, the grant must be the work's reservation, and unexpired at `at`.
+// CONSUMERS (§3c): SeatLeaseFence and logical_work_id_of/DispatchTurnKey are consumed by the harness
+// serving seat (gunbc.harness.harness_seat harness_complete_caller_turn, harness_caller_admit), which
+// builds the fence from the grant it reads out of the seat partition at completion.
+type AttemptFence
+  = ComputeCellFence { account: MoneyAccount, presented: Int }
+  | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
+
+// The generation a replica presents lives in its fence, once: the compute-cell arm carries it
+// beside the account, the seat arm carries it as the holder's LeaseFence.
+fn attempt_fence_generation(fence: AttemptFence) -> Int {
+  match fence {
+    ComputeCellFence { account: _, presented: g } => g
+    SeatLeaseFence { grant: _, holder: h, at: _ } => cas_generation_count(g: h.generation)
+  }
+}
+
+fn attempt_fence_admits(fence: AttemptFence, reservation: ReservationRef) -> Bool {
+  match fence {
+    ComputeCellFence { account: a, presented: g } => fence_admits(a: a, reference: reservation, presented: g)
+    SeatLeaseFence { grant: g, holder: h, at: now } =>
+      (g.reference as String) == (reservation as String)
+        && !lease_grant_expired_at(grant: g, at: now)
+        && (match fence_verdict(current: g.fence, presented: h) {
+          FenceCurrent => true
+          FenceObsolete { presented: _, current: _ } => false
+          FenceAhead { presented: _, current: _ } => false
+          FenceForeignGrant { presented: _, current: _ } => false
+        })
+  }
+}
+
+// Attempt fencing is attempt_fence_admits over the grant's reservation and the
+// generation the replica presents. A resumed old replica presenting a superseded generation
+// cannot commit. Completing through this fold is recovered completion: the same logical work,
+// the current generation, one terminal Completed phase — a second commit sees AttemptNotWaiting.
+fn commit_attempt(
+  snapshot: CallerBacklogSnapshot,
+  fence: AttemptFence,
+  work: LogicalWorkId,
+) -> AttemptCommit {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => AttemptUnknownWork
+    CallerRecordDuplicated => AttemptDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting =>
+          if !(match head.seat {
+            Absent => false
+            Present { value: held } => attempt_fence_admits(fence: fence, reservation: held.reservation)
+          }) {
+            AttemptFenceRefused
+          } else {
+            AttemptCommitted {
+              record: CallerWorkRecord {
+                work: head.work,
+                seat: head.seat,
+                generation: attempt_fence_generation(fence: fence),
+                phase: WorkCompleted,
+                recovery: head.recovery,
+              },
+            }
+          }
+        WorkCompleted => AttemptNotWaiting { phase: head.phase }
+        WorkCancelled => AttemptNotWaiting { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => AttemptNotWaiting { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_commit(snapshot: CallerBacklogSnapshot, standing: AttemptCommit) -> CallerBacklogSnapshot {
+  match standing {
+    AttemptCommitted { record: r } => replace_record(snapshot: snapshot, next: r)
+    AttemptFenceRefused => snapshot
+    AttemptNotWaiting { phase: _ } => snapshot
+    AttemptUnknownWork => snapshot
+    AttemptDuplicate => snapshot
+  }
+}
+
+type CancelStanding
+  = CancelledWaiting { record: CallerWorkRecord }
+  | CancelAlreadyTerminal { phase: CallerWorkPhase }
+  | CancelUnknownWork
+  | CancelDuplicate
+
+fn cancel_work(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CancelStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => CancelUnknownWork
+    CallerRecordDuplicated => CancelDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting =>
+          CancelledWaiting {
+            record: CallerWorkRecord {
+              work: head.work,
+              seat: head.seat,
+              generation: head.generation,
+              phase: WorkCancelled,
+              recovery: head.recovery,
+            },
+          }
+        WorkCompleted => CancelAlreadyTerminal { phase: head.phase }
+        WorkCancelled => CancelAlreadyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => CancelAlreadyTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_cancel(snapshot: CallerBacklogSnapshot, standing: CancelStanding) -> CallerBacklogSnapshot {
+  match standing {
+    CancelledWaiting { record: r } => replace_record(snapshot: snapshot, next: r)
+    CancelAlreadyTerminal { phase: _ } => snapshot
+    CancelUnknownWork => snapshot
+    CancelDuplicate => snapshot
+  }
+}
+
+type DurableCancelStanding
+  = DurableCancelled { record: CallerWorkRecord }
+  | DurableCancelAlreadyTerminal { phase: CallerWorkPhase }
+  | DurableCancelUnknownWork
+  | DurableCancelStoreRefused { detail: NonEmptyStr }
+  | DurableCancelKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn cancel_work_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+) -> DurableCancelStanding {
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableCancelUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableCancelStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableCancelStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableCancelStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match cancel_work(snapshot: singleton_snapshot(record: held), work: work) {
+        CancelUnknownWork => DurableCancelUnknownWork
+        CancelDuplicate => DurableCancelStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        CancelAlreadyTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+        CancelledWaiting { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableCancelled { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableCancelled { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableCancelled { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableCancelUnknownWork
+            DurablePersistDuplicate => DurableCancelStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+// A RESERVATION IS PER ATTEMPT, THE WORK IS NOT. A seat reference is unique over the pool's whole
+// history, so every placement of the same logical work after a released seat is granted under a
+// new reference. The record takes that reference here, from WorkWaiting only: a cancelled,
+// completed or bound-exceeded record is never revived by a later grant, and a commit presenting
+// the PREVIOUS reservation after a rebind meets attempt_fence_admits against the new one and
+// refuses. After the rebind record.reservation IS the current grant reference, so the work-to-grant
+// relation lives in this record once and no reader parses it out of a reference string.
+type RebindStanding
+  = ReservationRebound { record: CallerWorkRecord }
+  | RebindRefusedTerminal { phase: CallerWorkPhase }
+  | RebindPredecessorMismatch { held: SeatRef? }
+  | RebindUnknownWork
+  | RebindDuplicate
+
+// THE REBIND IS A CLAIM, NOT A REPLACEMENT. It names the reservation it expects to replace and is admitted
+// only when the record still holds exactly that one, so two retries of one work cannot both rebind from
+// the same predecessor: the second meets the first's reservation and refuses. Whether a bound
+// predecessor's grant is retired is the seat authority's fact, read by the caller before it names that
+// predecessor as expected; the record only guarantees that the claim is taken once per predecessor.
+fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: SeatRef?, next: SeatRef) -> RebindStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => RebindUnknownWork
+    CallerRecordDuplicated => RebindDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting =>
+          if seat_refs_agree(held: head.seat, expected: expected) {
+            ReservationRebound {
+              record: CallerWorkRecord {
+                work: head.work,
+                seat: Present { value: next },
+                generation: head.generation,
+                phase: WorkWaiting,
+                recovery: head.recovery,
+              },
+            }
+          } else {
+            RebindPredecessorMismatch { held: head.seat }
+          }
+        WorkCompleted => RebindRefusedTerminal { phase: head.phase }
+        WorkCancelled => RebindRefusedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => RebindRefusedTerminal { phase: head.phase }
+      }
+  }
+}
+
+type DurableRebindStanding
+  = DurableReservationRebound { record: CallerWorkRecord }
+  | DurableRebindRefusedTerminal { phase: CallerWorkPhase }
+  | DurableRebindPredecessorMismatch { held: SeatRef? }
+  | DurableRebindUnknownWork
+  | DurableRebindStoreRefused { detail: NonEmptyStr }
+  | DurableRebindKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn rebind_reservation_durable(
+  root: NonEmptyStr,
+  work: LogicalWorkId,
+  expected: SeatRef?,
+  next: SeatRef,
+) -> DurableRebindStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_claim_seat"),
+  ]
+{
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableRebindUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableRebindStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableRebindStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableRebindStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, expected: expected, next: next) {
+        RebindUnknownWork => DurableRebindUnknownWork
+        RebindPredecessorMismatch { held: h } => DurableRebindPredecessorMismatch { held: h }
+        RebindDuplicate => DurableRebindStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        RebindRefusedTerminal { phase: p } => DurableRebindRefusedTerminal { phase: p }
+        ReservationRebound { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableReservationRebound { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableReservationRebound { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableReservationRebound { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableRebindRefusedTerminal { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableRebindStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableRebindStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableRebindUnknownWork
+            DurablePersistDuplicate => DurableRebindStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+type DurableAttemptStanding
+  = DurableAttemptCommitted { record: CallerWorkRecord }
+  | DurableAttemptFenceRefused
+  | DurableAttemptNotWaiting { phase: CallerWorkPhase }
+  | DurableAttemptUnknownWork
+  | DurableAttemptStoreRefused { detail: NonEmptyStr }
+  | DurableAttemptKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn commit_attempt_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  fence: AttemptFence,
+  work: LogicalWorkId,
+) -> DurableAttemptStanding {
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableAttemptUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableAttemptStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableAttemptStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableAttemptStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match commit_attempt(
+        snapshot: singleton_snapshot(record: held),
+        fence: fence,
+        work: work,
+      ) {
+        AttemptUnknownWork => DurableAttemptUnknownWork
+        AttemptDuplicate => DurableAttemptStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        AttemptFenceRefused => DurableAttemptFenceRefused
+        AttemptNotWaiting { phase: p } => DurableAttemptNotWaiting { phase: p }
+        AttemptCommitted { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableAttemptCommitted { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableAttemptCommitted { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableAttemptCommitted { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableAttemptNotWaiting { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableAttemptStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableAttemptUnknownWork
+            DurablePersistDuplicate => DurableAttemptStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+fn is_failed_request(event: RecoveryEvent) -> Bool {
+  event.kind == RecoveryRequest && !event.succeeded
+}
+
+fn recovery_event_count(events: List<RecoveryEvent>, pred: fn(RecoveryEvent) -> Bool) -> Nat {
+  fold(filter(events, pred), init: Zero, f: (acc, _) => Succ { prev: acc })
+}
+
+fn recovery_bound_deficit(events: List<RecoveryEvent>) -> RecoveryBoundDeficit {
+  RecoveryBoundDeficit {
+    probes_succeeded: recovery_event_count(events: events, pred: e => e.kind == RecoveryProbe && e.succeeded),
+    requests_failed: recovery_event_count(events: events, pred: e => is_failed_request(event: e)),
+  }
+}
+
+fn recovery_deficit_text(deficit: RecoveryBoundDeficit) -> NonEmptyStr {
+  join([
+    "recovery bound exhausted across the logical work's whole history; probes succeeded: ",
+    to_string(deficit.probes_succeeded as Int),
+    "; requests failed: ",
+    to_string(deficit.requests_failed as Int),
+    "; probe success is not a request completion and does not reset the bound",
+  ], "") as NonEmptyStr
+}
+
+type RecoveryStanding
+  = RecoveryNoted { record: CallerWorkRecord }
+  | RecoveryBoundExceeded { record: CallerWorkRecord }
+  | RecoveryUnknownWork
+  | RecoveryAlreadyTerminal { phase: CallerWorkPhase }
+  | RecoveryDuplicate
+
+fn note_recovery(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  event: RecoveryEvent,
+  bound: Nat,
+) -> RecoveryStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => RecoveryUnknownWork
+    CallerRecordDuplicated => RecoveryDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting => {
+          let next_events = concat(head.recovery, [event])
+          let next_phase = if length(next_events) >= bound && is_failed_request(event: event) {
+            WorkRecoveryBoundExceeded { deficit: recovery_bound_deficit(events: next_events) }
+          } else {
+            WorkWaiting
+          }
+          let next = CallerWorkRecord {
+            work: head.work,
+            seat: head.seat,
+            generation: head.generation,
+            phase: next_phase,
+            recovery: next_events,
+          }
+          match next_phase {
+            WorkRecoveryBoundExceeded { deficit: _ } => RecoveryBoundExceeded { record: next }
+            WorkWaiting => RecoveryNoted { record: next }
+            WorkCompleted => RecoveryNoted { record: next }
+            WorkCancelled => RecoveryNoted { record: next }
+          }
+        }
+        WorkCompleted => RecoveryAlreadyTerminal { phase: head.phase }
+        WorkCancelled => RecoveryAlreadyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => RecoveryAlreadyTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_recovery(snapshot: CallerBacklogSnapshot, standing: RecoveryStanding) -> CallerBacklogSnapshot {
+  match standing {
+    RecoveryNoted { record: r } => replace_record(snapshot: snapshot, next: r)
+    RecoveryBoundExceeded { record: r } => replace_record(snapshot: snapshot, next: r)
+    RecoveryUnknownWork => snapshot
+    RecoveryAlreadyTerminal { phase: _ } => snapshot
+    RecoveryDuplicate => snapshot
+  }
+}
+
+fn note_recovery_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  event: RecoveryEvent,
+  bound: Nat,
+) -> DurablePersistStanding {
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurablePersistUnknownWork
+    DurableSlotUnreadable { detail: d } => DurablePersistStoreRefused { detail: d }
+    DurableSlotUndecodable => DurablePersistStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurablePersistStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurablePersistKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match note_recovery(
+        snapshot: singleton_snapshot(record: held),
+        work: work,
+        event: event,
+        bound: bound,
+      ) {
+        RecoveryUnknownWork => DurablePersistUnknownWork
+        RecoveryDuplicate => DurablePersistDuplicate
+        RecoveryAlreadyTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
+        RecoveryNoted { record: next } => persist_derived_phase(root: root, generation: g, record: next)
+        RecoveryBoundExceeded { record: next } => persist_derived_phase(root: root, generation: g, record: next)
+      }
+  }
+}
+
+// Retriability is a typed arm, not a shared process-exit status. Waiting work comes back;
+// cancellation, completion, and a surfaced recovery deficit are terminal.
+type CallerRetryDisposition
+  = RetryComeBack { work: LogicalWorkId }
+  | RetryTerminal { work: LogicalWorkId, cause: NonEmptyStr }
+
+fn caller_retry_disposition(record: CallerWorkRecord) -> CallerRetryDisposition {
+  match record.phase {
+    WorkWaiting => RetryComeBack { work: record.work }
+    WorkCompleted => RetryTerminal { work: record.work, cause: "logical work already completed" as NonEmptyStr }
+    WorkCancelled => RetryTerminal { work: record.work, cause: "cancellation is terminal" as NonEmptyStr }
+    WorkRecoveryBoundExceeded { deficit: d } => RetryTerminal { work: record.work, cause: recovery_deficit_text(deficit: d) }
+  }
+}
+
+data persist_before_offer_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
+data retriable_refusal_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "caller_retry_disposition")
+data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "resume_waiting_durable")
+data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
+data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
+data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable")
+data no_double_execution_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable")
+// No double execution is the COMPOSITION of two folds, neither of which alone refuses a second attempt: the claim
+// (rebind_reservation_durable, sealed to harness_claim_seat, which refuses while the predecessor seat is not retired
+// in the seat authority) admits one attempt, and commit_attempt_durable admits one completion under the fenced grant.
+data no_double_execution_claim_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_claim_seat")
+
+data persist_before_offer_basis: NonEmptyStr = declaration_ref_display_key(ref: persist_before_offer_basis_ref) as NonEmptyStr
+data retriable_refusal_basis: NonEmptyStr = declaration_ref_display_key(ref: retriable_refusal_basis_ref) as NonEmptyStr
+data stable_turn_identity_basis: NonEmptyStr = declaration_ref_display_key(ref: stable_turn_identity_basis_ref) as NonEmptyStr
+data idempotent_retry_basis: NonEmptyStr = declaration_ref_display_key(ref: idempotent_retry_basis_ref) as NonEmptyStr
+data no_expiry_on_long_wait_basis: NonEmptyStr = declaration_ref_display_key(ref: no_expiry_on_long_wait_basis_ref) as NonEmptyStr
+data durable_cancellation_basis: NonEmptyStr = declaration_ref_display_key(ref: durable_cancellation_basis_ref) as NonEmptyStr
+data no_double_execution_basis: NonEmptyStr = join([declaration_ref_display_key(ref: no_double_execution_claim_basis_ref), " + ", declaration_ref_display_key(ref: no_double_execution_basis_ref)], "") as NonEmptyStr
+
+data caller_backlog_basis_refs: List<DeclarationRef> = [
+  persist_before_offer_basis_ref,
+  retriable_refusal_basis_ref,
+  stable_turn_identity_basis_ref,
+  idempotent_retry_basis_ref,
+  no_expiry_on_long_wait_basis_ref,
+  durable_cancellation_basis_ref,
+  no_double_execution_claim_basis_ref,
+  no_double_execution_basis_ref,
+]

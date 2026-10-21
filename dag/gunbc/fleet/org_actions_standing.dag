@@ -1,0 +1,152 @@
+module gunbc.fleet.org_actions_standing
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.error_primitives { Never }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.goal_assessment { GoalAssessment, assess_by_deviations }
+
+// ORG ACTIONS SETTINGS AS AN ASSESSED SURFACE (operator direction 2026-08-30: "we need
+// to connect the org github settings via fleet converge - basically this is all
+// unmodeled right now"). The org's runner-group access policy decides which repositories
+// reach the fleet, and until then it lived only in the GitHub settings UI - actuated by
+// hand, observed by nobody. This module declares the DESIRED state, the shape of one
+// observed group, and the assessment; the observer is gunbc.fleet.org_actions_inspection,
+// and write authority is a typed dissolution row below, not prose.
+//
+// An earlier per-repository standing (settings read vs behavioral receipt vs unobserved, over a
+// frozen refused-read literal) was deleted with the rebind onto std.goal_assessment: once a live
+// observer existed, it answered the same two questions as the assessment with no production
+// consumer, so it would have stood as a second authority for one fact.
+
+// ---------------------------------------------------------------------------------------------
+// Desired state - fleet policy.
+// ---------------------------------------------------------------------------------------------
+
+type RepoRunnerAccess {
+  repository: NonEmptyStr
+  must_reach_fleet: Bool
+  reason: NonEmptyStr
+}
+
+data access_gunbc: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc",
+  must_reach_fleet: true,
+  reason: "the public witness floor runs on [self-hosted, linux, arm64]",
+}
+
+data access_gunbc_private: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc-private",
+  must_reach_fleet: true,
+  reason: "the private witness roster moved to the fleet 2026-08-30 (hosted-minutes pool exhausted; the business dogfoods its own runners)",
+}
+
+data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_private]
+
+// The public-fork trap stays closed as policy: whatever group serves these repositories
+// must NOT allow public repositories unless a hardened, isolated runner class exists for
+// them - the tenant-isolation program owns that question, not a settings toggle.
+data desired_allows_public_repositories: Bool = false
+
+// ---------------------------------------------------------------------------------------------
+// Observation - one row per runner group, as gunbc.fleet.org_actions_inspection reads it.
+// ---------------------------------------------------------------------------------------------
+
+// The read observation preserves the GROUP grain the upstream stores (review 57611: a
+// flattened admitted set plus one org-wide public flag loses WHICH group admits which
+// repository, so with multiple groups the public-fork answer could be fabricated from a
+// non-serving group's flag). One row per observed group, carrying its own public flag
+// and its own repository list - the joined group -> repository -> public-access
+// relationship, lossless.
+type ObservedGroupAccess {
+  group_name: NonEmptyStr
+  allows_public_repositories: Bool
+  repositories: List<NonEmptyStr>
+}
+
+fn observed_admits(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> Bool {
+  fold(groups, init: false, f: fn(acc, g) {
+    acc || count(filter(g.repositories, x => x == repository)) >= 1
+  })
+}
+
+fn exposing_groups_for(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> List<ObservedGroupAccess> {
+  filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == repository)) >= 1)
+}
+
+// THE ASSESSMENT, BOUND TO std.goal_assessment. This replaced a local Converged/Diverged/Refused
+// diff whose refused arm answered a question the assessor is never asked: an unread settings
+// surface is an OBSERVATION refusal, owned by gunbc.fleet.org_actions_inspection's observer, and
+// inspect_goal guarantees this function only ever sees a completed read. So the input here is the
+// group rows themselves, not an observation coproduct with an arm this function would have to
+// invent an answer for.
+//
+// Each deviation names its repository and carries both sides, where the diff it replaced carried
+// two counts: a count says that something drifted and not what, and the remedy is per repository.
+type OrgActionsGoal {
+  access: List<RepoRunnerAccess>
+  allows_public_repositories: Bool
+}
+
+data desired_org_actions_goal: OrgActionsGoal = OrgActionsGoal {
+  access: desired_repo_access,
+  allows_public_repositories: desired_allows_public_repositories,
+}
+
+type OrgActionsDeviation
+  = RepoAdmissionDiverges { repository: NonEmptyStr, observed_admitted: Bool, desired: Bool }
+  | RepoPublicExposureDiverges { repository: NonEmptyStr, exposing_groups: List<NonEmptyStr> }
+
+// What agreement was established over: the rows compared. It is the evidence rather than a label,
+// because a satisfied verdict over zero desired rows would be vacuous and this is where it shows.
+type OrgActionsAgreement { repositories_checked: Int }
+
+fn admission_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  flat_map(goal.access, r => {
+    let admitted = observed_admits(groups: groups, repository: r.repository)
+    if admitted == r.must_reach_fleet { [] } else {
+      [RepoAdmissionDiverges { repository: r.repository, observed_admitted: admitted, desired: r.must_reach_fleet }]
+    }
+  })
+}
+
+// Exposure is per repository over the group join: only a group that ADMITS the repository can
+// expose it, so a non-serving group's flag neither convicts nor acquits.
+fn exposure_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  if goal.allows_public_repositories { [] } else {
+    flat_map(goal.access, r => {
+      let exposing = exposing_groups_for(groups: groups, repository: r.repository)
+      if count(exposing) == 0 { [] } else {
+        [RepoPublicExposureDiverges { repository: r.repository, exposing_groups: map(exposing, g => g.group_name) }]
+      }
+    })
+  }
+}
+
+fn assess_org_actions(
+  goal: OrgActionsGoal,
+  observed: List<ObservedGroupAccess>,
+) -> GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never> {
+  assess_by_deviations(
+    evidence: OrgActionsAgreement { repositories_checked: count(goal.access) },
+    deviations: concat(admission_deviations(goal: goal, groups: observed), exposure_deviations(goal: goal, groups: observed)),
+  )
+}
+
+fn admitted_wire(admitted: Bool) -> String {
+  if admitted { "admitted" } else { "not_admitted" }
+}
+
+fn org_actions_deviation_text(d: OrgActionsDeviation) -> String {
+  match d {
+    RepoAdmissionDiverges { repository, observed_admitted, desired } =>
+      join(["admission:", repository as String, ":observed=", admitted_wire(admitted: observed_admitted), ",desired=", admitted_wire(admitted: desired)], "")
+    RepoPublicExposureDiverges { repository, exposing_groups } =>
+      join(["public_exposure:", repository as String, ":groups=", join(map(exposing_groups, g => g as String), "|")], "")
+  }
+}
+
+// Write authority, as a typed dissolution row (not prose). The located deviations
+// (RepoAdmissionDiverges, RepoPublicExposureDiverges) are the deliverable while apply stays
+// gated, because a settings surface converged by silent overwrite would erase an operator's
+// deliberate UI change.
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_inspection and consumes assess_org_actions through std.goal_assessment inspect_goal in the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")

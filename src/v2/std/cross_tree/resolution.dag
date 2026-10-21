@@ -1,0 +1,130 @@
+module v2.std.cross_tree.resolution
+import v2.std.qualified_name { QualifiedName }
+import v2.std.cross_tree.import_model { CoFundamental, CrossTreeAdmitted, CrossTreeDenied, CrossTreeImport, DagTree, LessFundamental, MoreFundamental, SourceRootRef, SourceRootSet, TreeFundamentalityOrder, V2Tree, cross_tree_import_admitted, source_root_ref_eq, source_root_set_contains }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert, map_lookup }
+import std.types { Map }
+import std.optional { Absent, Present }
+
+// WHICH SOURCE TREE EACH MODULE WAS READ FROM, KEYED BY MODULE. Every import's cross-tree gate asks
+// it twice (the importer and the target), once per import of every module, so it is one map read per
+// question; a list folded per question made the gate modules x imports x modules over a whole tree.
+// A module bound to two DIFFERENT trees is ambiguous and stays so; binding it again to the same tree
+// changes nothing. That judgment is made once, at insert, so lookup only reads it.
+type SourceRootIndex {
+  by_module: Map<QualifiedName, SourceRootLookup>
+}
+
+fn source_root_index_empty() -> SourceRootIndex {
+  SourceRootIndex { by_module: empty_map() }
+}
+
+fn source_root_index_insert(
+  index: SourceRootIndex,
+  module: QualifiedName,
+  root: SourceRootRef
+) -> SourceRootIndex {
+  SourceRootIndex {
+    by_module: map_insert(
+      m: index.by_module,
+      key: module,
+      value: match map_lookup(m: index.by_module, key: module) {
+        Absent => SourceRootResolved { root: root }
+        Present { value: SourceRootResolved { root: prev } } =>
+          if source_root_ref_eq(a: prev, b: root) {
+            SourceRootResolved { root: prev }
+          } else {
+            SourceRootAmbiguous
+          }
+        Present { value: SourceRootAmbiguous } => SourceRootAmbiguous
+        Present { value: SourceRootAbsent } => SourceRootResolved { root: root }
+      }
+    )
+  }
+}
+
+type SourceRootLookup
+  = SourceRootResolved { root: SourceRootRef }
+  | SourceRootAbsent
+  | SourceRootAmbiguous
+
+fn source_root_index_lookup(
+  index: SourceRootIndex,
+  module: QualifiedName
+) -> SourceRootLookup {
+  match map_lookup(m: index.by_module, key: module) {
+    Present { value: found } => found
+    Absent => SourceRootAbsent
+  }
+}
+
+fn tree_fundamentality_order(
+  from_tree: SourceRootRef,
+  to_tree: SourceRootRef
+) -> TreeFundamentalityOrder {
+  match from_tree {
+    V2Tree =>
+      match to_tree {
+        V2Tree => CoFundamental
+        DagTree => MoreFundamental
+      }
+    DagTree =>
+      match to_tree {
+        V2Tree => LessFundamental
+        DagTree => CoFundamental
+      }
+  }
+}
+
+fn source_root_set_insert(
+  roots: FreeMonoid<SourceRootRef>,
+  r: SourceRootRef
+) -> FreeMonoid<SourceRootRef> {
+  if source_root_set_contains(roots: roots, r: r) {
+    roots
+  } else {
+    Cons { head: r, tail: roots }
+  }
+}
+
+data cross_tree_module_path_interim: String = ""
+
+type CrossTreeEdgeDecision
+  = EdgeNormalResolution
+  | EdgeCrossAdmitted
+  | EdgeCrossDenied
+  | EdgeCrossAmbiguous
+
+fn cross_tree_edge_decision(
+  index: SourceRootIndex,
+  from_qn: QualifiedName,
+  to_qn: QualifiedName,
+  active_roots: SourceRootSet
+) -> CrossTreeEdgeDecision {
+  match source_root_index_lookup(index: index, module: from_qn) {
+    SourceRootAbsent => EdgeNormalResolution
+    SourceRootAmbiguous => EdgeCrossAmbiguous
+    SourceRootResolved { root: from_tree } =>
+      match source_root_index_lookup(index: index, module: to_qn) {
+        SourceRootAbsent => EdgeNormalResolution
+        SourceRootAmbiguous => EdgeCrossAmbiguous
+        SourceRootResolved { root: to_tree } =>
+          if source_root_ref_eq(a: from_tree, b: to_tree) {
+            EdgeNormalResolution
+          } else {
+            match cross_tree_import_admitted(
+              edge: CrossTreeImport {
+                from_tree: from_tree,
+                from_module: cross_tree_module_path_interim,
+                to_tree: to_tree,
+                to_module: cross_tree_module_path_interim
+              },
+              roots: active_roots,
+              order: tree_fundamentality_order(from_tree: from_tree, to_tree: to_tree)
+            ) {
+              CrossTreeAdmitted => EdgeCrossAdmitted
+              CrossTreeDenied { reason: _ } => EdgeCrossDenied
+            }
+          }
+      }
+  }
+}

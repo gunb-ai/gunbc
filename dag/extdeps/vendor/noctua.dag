@@ -1,0 +1,31 @@
+module extdeps.vendor.noctua
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.noctua.at"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.noctua",
+      decl_name: "noctua",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Rascom Computerdistribution Ges.m.b.H. trades as Noctua; the legal name is the one the company
+// files under, per the vendor-grounding rule that a Vendor names a real entity rather than a
+// brand nickname.
+data noctua: Vendor<Hardware> = Vendor { legal_name: "Rascom Computerdistribution Ges.m.b.H." }

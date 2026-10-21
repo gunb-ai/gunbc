@@ -1,0 +1,57 @@
+module test.claim.serving.session_store_witness
+
+import std.measure { token_count, token_count_value }
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import gunbc.serving.turn_admission {
+  ServingSessionRecord, NoSessionRecord, SessionRecord, TurnReuseRead, TurnReuseUnread,
+  ServingSessionResidency, ReusedAtTurn, MustReconstruct, TokenPrefixBroken, ResidencyUnread,
+  serving_session_standing, HostTierUnread, GpuPrefixUnread,
+}
+import gunbc.serving.session_store {
+  serving_session_entry_after_request, serving_session_record_for_request, CachedTokensObserved, CachedTokensUnobserved, CachedTokensNotANumber, ServingSessionEntry,
+}
+
+fn l1() -> NonEmptyStr { "L1" as NonEmptyStr }
+
+fn after_round_one() -> ServingSessionEntry {
+  serving_session_entry_after_request(launch: l1(), turn: "t1" as NonEmptyStr, reading: CachedTokensObserved { cached_tokens: token_count(count: 512) }, inputs_and_reply: ["sys", "user", "assistant-1"])
+}
+
+fn standing_of(record: ServingSessionRecord) -> ServingSessionResidency {
+  serving_session_standing(record: record, current_launch: l1(), host: HostTierUnread, gpu: GpuPrefixUnread)
+}
+
+test fn an_append_only_next_request_reads_reused_at_the_recorded_turn() -> Bool {
+  match standing_of(record: serving_session_record_for_request(entry: Present { value: after_round_one() }, next_inputs: ["sys", "user", "assistant-1", "tool-result"])) {
+    ReusedAtTurn { cached_tokens: n, launch: _, turn: t } => token_count_value(t: n) == 512 && (t as String) == "t1"
+    _ => false
+  }
+}
+
+test fn a_broken_prefix_reads_must_reconstruct_never_warm() -> Bool {
+  (match standing_of(record: serving_session_record_for_request(entry: Present { value: after_round_one() }, next_inputs: ["sys", "USER-EDITED", "assistant-1", "tool-result"])) {
+     MustReconstruct { cause: TokenPrefixBroken } => true
+     _ => false
+   })
+    && (match standing_of(record: serving_session_record_for_request(entry: Present { value: after_round_one() }, next_inputs: ["sys", "user"])) {
+          MustReconstruct { cause: TokenPrefixBroken } => true
+          _ => false
+        })
+}
+
+test fn an_unobserved_cached_tokens_is_unread_not_zero() -> Bool {
+  let e = serving_session_entry_after_request(launch: l1(), turn: "t2" as NonEmptyStr, reading: CachedTokensUnobserved { cause: CachedTokensNotANumber }, inputs_and_reply: ["a"])
+  match standing_of(record: serving_session_record_for_request(entry: Present { value: e }, next_inputs: ["a", "b"])) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+test fn no_entry_is_no_session_record() -> Bool {
+  match serving_session_record_for_request(entry: Absent, next_inputs: ["a"]) {
+    NoSessionRecord => true
+    _ => false
+  }
+}

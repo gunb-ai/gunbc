@@ -1,0 +1,121 @@
+module v2.std.network
+
+import std.optional {
+  Optional
+}
+import v2.std.text { String }
+import std.nat { Nat }
+
+type Rfc3986AbnfProduction {
+  name: String,
+  expression: String,
+}
+
+data rfc3986_scheme_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "scheme",
+  expression: "ALPHA *( ALPHA / DIGIT / plus / hyphen / dot )",
+}
+
+data rfc3986_userinfo_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "userinfo",
+  expression: "*( unreserved / pct-encoded / sub-delims / colon )",
+}
+
+data rfc3986_host_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "host",
+  expression: "IP-literal / IPv4address / reg-name",
+}
+
+data rfc3986_port_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "port",
+  expression: "*DIGIT",
+}
+
+data rfc3986_path_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "path",
+  expression: "path-abempty / path-absolute / path-noscheme / path-rootless / path-empty",
+}
+
+data rfc3986_query_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "query",
+  expression: "*( pchar / slash / question )",
+}
+
+data rfc3986_fragment_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "fragment",
+  expression: "*( pchar / slash / question )",
+}
+
+type UriScheme {
+  normalized: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriUserInfo {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriHost {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriPort {
+  value: std.nat.Nat,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriAuthority {
+  userinfo: Optional<UriUserInfo>,
+  host: UriHost,
+  port: Optional<UriPort>,
+}
+
+type UriPath {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriHierPart
+  = UriHierAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriHierPathAbsolute { path: UriPath }
+  | UriHierPathRootless { path: UriPath }
+  | UriHierPathEmpty
+
+type UriQuery {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type UriFragment {
+  spelling: String,
+  grammar: Rfc3986AbnfProduction,
+}
+
+type Url {
+  scheme: UriScheme,
+  hier_part: UriHierPart,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
+}
+
+type UriRelativePart
+  = UriRelativeAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriRelativePathAbsolute { path: UriPath }
+  | UriRelativePathNoScheme { path: UriPath }
+  | UriRelativePathEmpty
+
+type UriRelativeReference {
+  relative_part: UriRelativePart,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
+}
+
+type UriReference
+  = UriReferenceAbsolute { uri: Url }
+  | UriReferenceRelative { relative: UriRelativeReference }
+
+type NetworkAddress {
+  authority: UriAuthority,
+}

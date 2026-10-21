@@ -1,0 +1,37 @@
+module extdeps.linux.neighbour
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/networking/arp.html",
+  }
+}
+
+// Linux neighbour unreachability detection, the states `ip neigh` prints. include/uapi/linux/neighbour.h
+// NUD_* flags; REACHABLE is one closed variant, not a free string.
+type NeighbourNudState
+  = NudNone
+  | NudIncomplete
+  | NudReachable
+  | NudStale
+  | NudDelay
+  | NudProbe
+  | NudFailed
+  | NudNoArp
+  | NudPermanent
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.neighbour",
+      decl_name: "NeighbourNudState",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

@@ -1,0 +1,85 @@
+module test.claim.host.sessions_slice_cpu_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.algebra { non_empty_append, non_empty_singleton, non_empty_to_list }
+import std.measure { byte_size, hardware_thread_count, hardware_thread_count_value }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.host.host_converge {
+  SliceControlCaps,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  SliceControlUnit, SessionsSliceControl, UncappedSliceControl,
+  SliceControlPlan, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  SessionsSliceCpuQuotaDerived, SessionsSliceCpuQuotaRefused,
+  slice_control_plan_for,
+  slice_control_plan_of,
+}
+import gunbc.host.host_axis_caps { slice_control_converge_stmts_for_unit }
+import gunbc.shell_command_text { shell_command_text_of_stmts }
+
+// Every claim is a function of declared rows; nothing reads the live tree.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_capped_sessions(u: SliceControlUnit) -> Bool {
+  match u {
+    SessionsSliceControl { caps: c, cpu_quota: t } => (c.unit as String) == "sessions.slice" && hardware_thread_count_value(t: t) > 0
+    UncappedSliceControl { caps: _ } => false
+  }
+}
+
+fn is_uncapped_broker(u: SliceControlUnit) -> Bool {
+  match u {
+    UncappedSliceControl { caps: c } => (c.unit as String) == "gunbc-approval-broker.slice"
+    SessionsSliceControl { caps: _, cpu_quota: _ } => false
+  }
+}
+
+fn plan_is_refused(p: SliceControlPlan) -> Bool {
+  match p {
+    SliceControlPlanRefused { cause: _ } => true
+    SliceControlPlanNotOwed => false
+    SliceControlPlanDerived { units: _ } => false
+  }
+}
+
+// THE INHABITANCE CLAIM: srv1's real derivation reaches the sessions arm with a positive share and
+// the broker stays uncapped; srv3 (no sessions reservation, no broker) owes no slice control.
+test fn srv1_sessions_slice_is_owed_its_derived_cpu_cap() -> Bool {
+  (match slice_control_plan_for(host: operator_host_srv1) {
+    SliceControlPlanDerived { units: us } => any(non_empty_to_list(xs: us), u => is_capped_sessions(u: u)) && any(non_empty_to_list(xs: us), u => is_uncapped_broker(u: u))
+    SliceControlPlanNotOwed => false
+    SliceControlPlanRefused { cause: _ } => false
+  })
+    && (match slice_control_plan_for(host: operator_host_srv3) {
+      SliceControlPlanNotOwed => true
+      SliceControlPlanDerived { units: _ } => false
+      SliceControlPlanRefused { cause: _ } => false
+    })
+}
+
+fn fixture_sessions_caps() -> SliceControlCaps {
+  SliceControlCaps { unit: "sessions.slice" as NonEmptyStr, memory_max: byte_size(137438953472), memory_high: byte_size(120259084288) }
+}
+
+fn fixture_broker_caps() -> SliceControlCaps {
+  SliceControlCaps { unit: "gunbc-approval-broker.slice" as NonEmptyStr, memory_max: byte_size(17179869184), memory_high: byte_size(15032385536) }
+}
+
+// The CPU set-property follows MemoryHigh inside the one revert, at the supplied share (32 threads
+// -> 3200%); an uncapped unit carries none.
+test fn the_sessions_cpu_cap_is_set_after_the_single_revert() -> Bool {
+  let text = shell_command_text_of_stmts(stmts: slice_control_converge_stmts_for_unit(u: SessionsSliceControl { caps: fixture_sessions_caps(), cpu_quota: hardware_thread_count(count: 32) }))
+  string_contains(s: text, pattern: "CPUQuota=3200%")
+    && string_contains(s: text, pattern: "MemoryHigh=")
+    && !string_contains(s: shell_command_text_of_stmts(stmts: slice_control_converge_stmts_for_unit(u: UncappedSliceControl { caps: fixture_broker_caps() })), pattern: "CPUQuota")
+}
+
+// RED: a sessions unit whose CPU share cannot be derived refuses the WHOLE member before any mutate,
+// even beside a derivable broker; the broker alone, which owes no CPU, still derives.
+test fn a_sessions_slice_without_a_derivable_cap_refuses_the_member() -> Bool {
+  let refused = SessionsSliceCpuQuotaRefused { cause: "fixture: allocation refused" }
+  plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_append(left: non_empty_singleton(item: fixture_broker_caps()), right: non_empty_singleton(item: fixture_sessions_caps())) }, cpu: refused))
+    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_singleton(item: fixture_broker_caps()) }, cpu: refused))
+    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_singleton(item: fixture_sessions_caps()) }, cpu: SessionsSliceCpuQuotaDerived { threads: hardware_thread_count(count: 32) }))
+    && plan_is_refused(p: slice_control_plan_of(control: SliceControlRefused { cause: "memory half refused" }, cpu: SessionsSliceCpuQuotaDerived { threads: hardware_thread_count(count: 32) }))
+}

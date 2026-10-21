@@ -1,0 +1,149 @@
+module gunbc.serving.rented_host_grant
+
+import std.types { String, Bool, List, NonEmptyStr, Timestamp }
+import std.optional { Present, Absent }
+import std.content_hash { content_hash_of_value }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Execute }
+import std.scoped_authorization {
+  ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
+  AuthorizationRequest, AuthorizationScope, AuthorizedAction, AttemptIdentity,
+  AuthorizationDecision, AuthorizationPermitted, AuthorizationRefused,
+  authorize, authorization_refusal_reason,
+}
+import product.fabric.work { identity_frame }
+import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.fleet.fleet_host_key_enrollment { known_host_row_field }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
+
+// WHO MAY BE REACHED OVER SSH IS AN OPERATOR GRANT, NOT A CODE PATH. The qualification of a rented node
+// opens an operator-key SSH leg to a host the fleet has never seen, so reaching it is a privileged effect
+// (gunbc.auth.privileged_effect_census rented_host_ssh_effect) whose pattern is SELECTED, not chosen at the
+// call site (gunbc.auth.authorization_pattern_selection select_authorization_pattern yields the operator
+// approval pattern for it). The operator's approval is a std.scoped_authorization ScopedAuthorization over
+// THIS subject, which is the whole public RentedHostAccessDeclaration (it holds no private key), host-key trust
+// anchor included: bound to one attempt, expiring, scoped to Execute on this node's position, and carrying
+// an intent hash over the exact subject. The private key is never a value in it; the key stays in the
+// operator's ssh-agent and the grant names only its public fingerprint.
+type RentedHostSubject {
+  declaration: RentedHostAccessDeclaration
+}
+
+fn rented_host_subject(declaration: RentedHostAccessDeclaration) -> RentedHostSubject {
+  RentedHostSubject { declaration: declaration }
+}
+
+data rented_host_ssh_action: AuthorizedAction = "ssh-exec" as AuthorizedAction
+
+fn rented_host_scope(subject: RentedHostSubject) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "rented-host-ssh" }, path: [subject.declaration.node as String] },
+    action: rented_host_ssh_action,
+  }
+}
+
+fn rented_host_intent(subject: RentedHostSubject) -> NonEmptyStr {
+  let d = subject.declaration
+  join([
+    identity_frame(label: "node", value: d.node as String),
+    identity_frame(label: "endpoint", value: known_hosts_host_field(address: d.address) as String),
+    identity_frame(label: "principal", value: d.principal as String),
+    identity_frame(label: "fingerprint", value: d.operator_key_fingerprint as String),
+    identity_frame(label: "host_key_endpoint", value: known_host_row_field(k: d.host_key)),
+    identity_frame(label: "host_key_type", value: d.host_key.key_type),
+    identity_frame(label: "host_key_public", value: d.host_key.public_key_base64),
+    identity_frame(label: "host_key_sha256", value: d.host_key.sha256_fingerprint),
+  ], "") as NonEmptyStr
+}
+
+fn rented_host_request(escalation_id: NonEmptyStr, subject: RentedHostSubject, attempt: AttemptIdentity) -> AuthorizationRequest<RentedHostSubject> {
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: [rented_host_scope(subject: subject)],
+    subject: subject,
+    purpose: join(["open an operator-key SSH leg to rented node ", subject.declaration.node as String, " as ", subject.declaration.principal as String], "") as NonEmptyStr,
+    attempt: attempt,
+    intent_hash: content_hash_of_value(value: rented_host_intent(subject: subject)),
+    destructive: false,
+  }
+}
+
+// THE HARNESS HOLDS NO RFC 3339 READING. A grant expires on a Timestamp and the harness clock is epoch
+// seconds; no crossing between them exists in the corpus, so the harness reads the clock as unread and
+// the gate refuses rather than comparing against an invented instant. Frontier: the first consumer that
+// holds a real RFC 3339 reading (the qualification procedure, C4b) supplies RentedHostClockRead.
+type RentedHostClock
+  = RentedHostClockRead { at: Timestamp }
+  | RentedHostClockUnread
+
+type RentedHostPermit
+  = RentedHostPermitted
+  | RentedHostNotPermitted { cause: String }
+
+fn rented_host_authorization_subject(a: ScopedAuthorization<RentedHostSubject>) -> RentedHostSubject? {
+  match a {
+    AuthorizationPending { request: r } => Present { value: r.subject }
+    AuthorizationGranted { grant: g, claim: _ } => Present { value: g.subject }
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => none
+  }
+}
+
+fn rented_host_authorization_escalation(a: ScopedAuthorization<RentedHostSubject>) -> NonEmptyStr {
+  match a {
+    AuthorizationPending { request: r } => r.escalation_id
+    AuthorizationGranted { grant: g, claim: _ } => g.escalation_id
+    AuthorizationDenied { escalation_id: e, denied_by: _, denied_at: _, reason: _ } => e
+  }
+}
+
+fn rented_host_authorizes_subject(a: ScopedAuthorization<RentedHostSubject>, subject: RentedHostSubject) -> Bool {
+  match rented_host_authorization_subject(a: a) {
+    Absent => false
+    Present { value: s } => s == subject
+  }
+}
+
+fn rented_host_not_permitted(why: String) -> RentedHostPermit {
+  RentedHostNotPermitted { cause: join(["rented host access not authorized: ", why], "") }
+}
+
+// A PERMIT IS PRODUCED ONLY BY authorize OVER A GRANT FOR THIS SUBJECT AND THIS ATTEMPT. authorize does
+// not read the subject, so the match is made here before it runs; an absent, ambiguous, pending, denied,
+// wrong-attempt, wrong-scope or expired authorization is a typed refusal and the SSH leg is never built.
+fn rented_host_permit(
+  authorizations: List<ScopedAuthorization<RentedHostSubject>>,
+  declaration: RentedHostAccessDeclaration,
+  attempt_raw: String,
+  clock: RentedHostClock,
+) -> RentedHostPermit {
+  match clock {
+    RentedHostClockUnread => rented_host_not_permitted(why: "the caller holds no RFC 3339 clock reading to judge a grant's window against")
+    RentedHostClockRead { at: observed_at } =>
+      if attempt_raw == "" {
+        rented_host_not_permitted(why: "the attempt identity is empty")
+      } else {
+        let subject = rented_host_subject(declaration: declaration)
+        let held = filter(authorizations, a => rented_host_authorizes_subject(a: a, subject: subject))
+        if count(held) == 0 {
+          rented_host_not_permitted(why: "no operator authorization names this node, endpoint, principal, host key and operator key fingerprint")
+        } else if count(held) > 1 {
+          rented_host_not_permitted(why: "more than one operator authorization names this subject, and order does not choose between them")
+        } else {
+          match first(held) {
+            Absent => rented_host_not_permitted(why: "no operator authorization names this subject")
+            Present { value: a } =>
+              match authorize(
+                authorization: a,
+                request: rented_host_request(escalation_id: rented_host_authorization_escalation(a: a), subject: subject, attempt: attempt_raw as AttemptIdentity),
+                observed_at: observed_at,
+              ) {
+                AuthorizationPermitted { grant: _ } => RentedHostPermitted
+                AuthorizationRefused { cause: why } => rented_host_not_permitted(why: authorization_refusal_reason(cause: why))
+              }
+          }
+        }
+      }
+  }
+}
+
+data rented_host_authorizations: List<ScopedAuthorization<RentedHostSubject>> = []

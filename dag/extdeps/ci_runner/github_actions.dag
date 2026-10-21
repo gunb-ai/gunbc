@@ -1,0 +1,141 @@
+module extdeps.ci_runner.github_actions
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.pricing.github_actions { github_actions_linux_arm_2core_price }
+import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmSiliconStanding,
+  ArmUsdPerMinute,
+  ArmListPriceStanding,
+  ArmCapacityChannel,
+  CatalogSnapshot,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
+  RunnerCatalogAvailability,
+  QuotedWithoutBasis,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  ResoldNamedCloud,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/reference/runners/larger-runners"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.github_actions",
+      decl_name: "github_actions_runner_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data github_actions_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data github_actions_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions",
+  decl_name: "github_actions_catalog_authority",
+)
+
+// Live-fetched 2026-08-18 from the larger-runners machine-sizes reference.
+// THE RATIO IS NOT CONSTANT WITHIN THIS PROVIDER, which is why the rows are
+// modelled per SIZE rather than collapsed to one memory-per-vCPU figure: most
+// sizes are four GB per vCPU, but the arm64 5-vCPU size is 14 GB (2.8) and
+// the arm64 64-vCPU size is 208 GB (3.25), and on x64 the 12-vCPU size is
+// 30 GB (2.5). A provider-level constant would have had to pick one of these
+// and silently discard the rest.
+//
+// The page states no basis for "GB" and states no per-vCPU core entitlement.
+fn github_actions_shape(
+  label: NonEmptyStr,
+  architecture: Architecture,
+  vcpus: Nat,
+  quoted_numeral: Nat,
+) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: github_actions_provider_identity,
+    label: label,
+    architecture: architecture,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    github_actions_shape(label: "ubuntu-latest-arm-2core", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-arm-4core", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-arm-5core", architecture: Aarch64, vcpus: 5, quoted_numeral: 14),
+    github_actions_shape(label: "ubuntu-latest-arm-8core", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-arm-16core", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-arm-32core", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-arm-64core", architecture: Aarch64, vcpus: 64, quoted_numeral: 208),
+    github_actions_shape(label: "ubuntu-latest-2core", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-4core", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-8core", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-12core", architecture: X86_64, vcpus: 12, quoted_numeral: 30),
+    github_actions_shape(label: "ubuntu-latest-16core", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-32core", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-64core", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
+    github_actions_shape(label: "ubuntu-latest-96core", architecture: X86_64, vcpus: 96, quoted_numeral: 384),
+  ],
+}
+
+// THE LABEL ROSTER FOR THIS MODULE'S OWN PAGE, AND NOTHING BEYOND IT.
+//
+// This module's authority is the larger-runners reference, so its label catalog is exactly the
+// projection of the sized rows above. THE STANDARD GitHub-hosted LABELS ARE NOT RE-AUTHORED HERE:
+// extdeps.github.hosted_runners already owns them, keyed by extdeps.github.actions RunnerLabel
+// with the visibility axis this module's RunnerShapeRow lacks, and it says in its own words that
+// the label vocabulary is spelled once and "never a free string beside it". Enrolling that
+// catalog is gunbc.runner.runner_provider_survey's job, because joining two upstream authorities is
+// consumer-layer work and not something either upstream module may do to the other.
+data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "The sized ubuntu-latest-Ncore larger-runner families only, from the larger-runners reference cited above. The STANDARD GitHub-hosted labels are not in this catalog and are not missing from it: they are owned by extdeps.github.hosted_runners and enrolled separately. Self-hosted labels are in no vendor catalog and never will be - a self-hosted label is named by the repository that registered it, so a miss on one is not a coverage gap.",
+}
+
+data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.github_actions", decl_name: "github_actions_label_catalog"),
+  provider: github_actions_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: github_actions_catalog_snapshot,
+  availability: github_actions_runner_catalog,
+)
+
+// Linux 2-core arm64 list price is github_actions_linux_arm_2core_price.per_minute
+// (extdeps.pricing.github_actions); this module does not restate the micros.
+// Silicon: the 2025-01-16 changelog names Cobalt 100-based processors for the 4 vCPU
+// public ubuntu-*-arm runners; that sentence is not a SKU for the larger-runner table.
+// Capacity: GitHub names Microsoft Azure's Arm VMs in that changelog.
+// Offer standing is unread in the census (hosted-label docs are not a signup surface).
+data github_actions_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords {
+  quoted_family: "Cobalt 100-based processors",
+  cited_surface: "GitHub changelog 2025-01-16: Cobalt 100-based processors for public ubuntu-*-arm 4 vCPU (read 2026-09-13).",
+}
+
+data github_actions_arm_capacity: ArmCapacityChannel = ResoldNamedCloud {
+  vendor_words: "Microsoft Azure Arm VMs",
+}
+
+data github_actions_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: github_actions_linux_arm_2core_price.per_minute,
+  priced_label: "ubuntu-latest-arm-2core",
+}

@@ -1,0 +1,13 @@
+module test.fixture.evaluation_store_address_alias.mutation_entry
+
+import test.fixture.evaluation_store_address_alias.aliased { aliased_call }
+import test.fixture.evaluation_store_address_alias.same_leaf { same_leaf_imported_call }
+import test.fixture.evaluation_store_address_alias.qualified { qualified_call }
+
+fn mutation_touch() -> Int {
+  aliased_call() + qualified_call()
+}
+
+fn mutation_touch_decoy() -> Bool {
+  same_leaf_imported_call()
+}

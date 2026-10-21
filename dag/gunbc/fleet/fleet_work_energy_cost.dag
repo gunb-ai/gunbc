@@ -1,0 +1,99 @@
+module gunbc.fleet.fleet_work_energy_cost
+
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.measure {
+  Watt, watt_count, Second, second_count,
+  MoneyAmountMicro, MoneyPerKilowattHour,
+  money_amount_micro, money_amount_micro_count, money_per_kilowatt_hour_micros,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.currency.currency { Usd }
+import extdeps.energy.con_edison { el1_marginal_volumetric_rate }
+import gunbc.fleet.fleet_host_power {
+  HostPowerProfile, PowerProvenance, MeasuredOnHost, InferredFromSimilarBuild,
+  host_power_profile, power_is_measured,
+}
+
+// THE MARGINAL ENERGY COST OF RUNNING WORK ON OWNED HARDWARE.
+//
+//     micro-USD  =  watts x seconds x (micro-USD per kWh) / 3_600_000
+//
+// The divisor converts watt-seconds to kilowatt-hours: 1 kWh = 1000 W x 3600 s = 3.6e6 W.s. The
+// arithmetic is integer throughout because MoneyAmountMicro is Nat-denominated, so the result
+// TRUNCATES -- a sub-micro-dollar remainder is dropped, which for a short job is most of the
+// figure. That direction is stated on the carrier rather than left for a reader to discover: this
+// derivation UNDERSTATES cost, and it understates it most for the cheapest work.
+//
+// WHY THIS IS MARGINAL AND NOT TOTAL. con_edison.el1_marginal_volumetric_rate deliberately excludes
+// the fixed monthly service charge, because that charge is paid whether or not a job runs and
+// pricing a decision-invariant cost into a decision is the same error as amortizing sunk capacity
+// rent per job. The operator's framing was exactly this: the servers' capacity cost is already
+// committed, so what a job actually costs at the margin is the electricity it causes to be burned.
+//
+// WHAT THIS IS NOT. It is not the cost of the job to the business (that would include the committed
+// capacity, the network, the operator's time), and it is not a price. It is one input a supplier
+// offer may quote against, and the fabric's selection layer owns what to do with it.
+
+data watt_seconds_per_kilowatt_hour: Nat = 3600000
+
+type EnergyCostBasis
+  = MarginalEnergyOnly { rate: MoneyPerKilowattHour }
+
+// The provenance of the POWER figure survives into the cost, because a cost derived from an
+// inferred draw is itself inferred. A consumer that may not price work on an unmeasured host can
+// refuse on this without re-deriving where the wattage came from.
+type WorkEnergyCost {
+  host: NonEmptyStr
+  duration: Second
+  draw: Watt
+  amount: MoneyAmountMicro
+  power_provenance: PowerProvenance
+}
+
+type WorkEnergyCostOutcome
+  = EnergyCostDerived { cost: WorkEnergyCost }
+  | EnergyCostRefused { reason: NonEmptyStr }
+
+fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
+  let watt_seconds = watt_count(w: draw) * second_count(s: duration)
+  let rate_micros = money_per_kilowatt_hour_micros(q: el1_marginal_volumetric_rate())
+  (watt_seconds * rate_micros) / watt_seconds_per_kilowatt_hour
+}
+
+// An unknown host REFUSES rather than defaulting to a fleet-average draw. A default here would be
+// the absorbing fallback DESIGN section 5 names: it answers every question, including the ones
+// about hosts nobody has modeled, and destroys the signal that a host is missing from the roster.
+fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcome {
+  match host_power_profile(host: host) {
+    Absent => EnergyCostRefused {
+      reason: concat("no power profile is declared for host ", host as String) as NonEmptyStr
+    }
+    Present { value } => EnergyCostDerived {
+      cost: WorkEnergyCost {
+        host: host,
+        duration: duration,
+        draw: value.draw,
+        amount: money_amount_micro(count: marginal_energy_micros(draw: value.draw, duration: duration)),
+        power_provenance: value.provenance,
+      }
+    }
+  }
+}
+
+fn cost_rests_on_measured_power(c: WorkEnergyCost) -> Bool {
+  match c.power_provenance {
+    MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => true
+    InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
+  }
+}
+
+fn cost_micros(c: WorkEnergyCost) -> Nat {
+  money_amount_micro_count(m: c.amount)
+}
+
+data whole_host_attribution_note: NonEmptyStr = "This charges a job the WHOLE host's draw for its duration, which is correct only when the job has the host to itself. srv1 runs eleven concurrent runner slots today, so eleven concurrent jobs would each be charged the full 94 W and the host would appear to cost eleven times what it draws. Fixing that needs either per-job power attribution (which the hwmon sensors cannot provide -- they meter the board, not the cgroup) or a declared concurrency divisor. Until one exists this figure is an UPPER bound per job and its sum across concurrent jobs is not a fleet total."
+
+data cost_derivation_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: an idle-versus-loaded draw pair exists for each host, making the true marginal delta derivable rather than the whole-host draw standing in for it, AND a concurrency divisor or per-cgroup attribution exists so concurrent jobs on one host do not each carry the full board draw. Both are named in whole_host_attribution_note and gunbc.fleet.fleet_host_power per_host_measurement_trigger; neither is discharged by measuring more hosts at one operating point."
+)

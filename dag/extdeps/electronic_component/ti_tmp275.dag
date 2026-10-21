@@ -1,0 +1,55 @@
+module extdeps.electronic_component.ti_tmp275
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { ElectronicComponentRow, TemperatureSensorSpec, TemperatureSensorSpecification, MillivoltRange, I2cOrSmbus, SensorPin, SerialData, SerialClock, AlertOutput, GroundReturn, SupplyInput, AddressSelect }
+
+// TI's TMP275 datasheet, SBOS363F (June 2006, revised May 2018), read 2026-10-15: the title "TMP275
+// +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and
+// Pinout", "Wide Supply Range: 2.7 V to 5.5 V", the D and DGK pin table, and the package option
+// addendum, which gives orderable TMP275AIDGKR (VSSOP, DGK, 8 pins) the part marking T275.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/gpn/tmp275"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_tmp275",
+      decl_name: "tmp275_dgk",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tmp275_dgk: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "TMP275AIDGKR",
+  package: "VSSOP-8 (DGK)",
+  top_marking: "T275",
+  specification: TemperatureSensorSpec { sensor: TemperatureSensorSpecification {
+    supply: MillivoltRange { minimum: millivolt(count: 2700), maximum: millivolt(count: 5500) },
+    bus: I2cOrSmbus,
+    pins: [
+      SensorPin { number: 1, name: "SDA", role: SerialData { bus: I2cOrSmbus, open_drain: true } },
+      SensorPin { number: 2, name: "SCL", role: SerialClock { bus: I2cOrSmbus } },
+      SensorPin { number: 3, name: "ALERT", role: AlertOutput { open_drain: true } },
+      SensorPin { number: 4, name: "GND", role: GroundReturn },
+      SensorPin { number: 5, name: "A2", role: AddressSelect { bit: 2 } },
+      SensorPin { number: 6, name: "A1", role: AddressSelect { bit: 1 } },
+      SensorPin { number: 7, name: "A0", role: AddressSelect { bit: 0 } },
+      SensorPin { number: 8, name: "V+", role: SupplyInput },
+    ],
+  } },
+  vendor_application_statements: [
+    "TMP275 +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and Pinout",
+  ],
+}

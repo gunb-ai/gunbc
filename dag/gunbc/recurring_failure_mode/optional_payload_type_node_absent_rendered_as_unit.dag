@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.optional_payload_type_node_absent_rendered_as_unit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data optional_payload_type_node_absent_rendered_as_unit: RecurringFailureMode = RecurringFailureMode {
+  identity: "optional_payload_type_node_absent_rendered_as_unit" as NonEmptyStr,
+
+  receipts: [
+    "**an Optional carrier whose payload type node is absent on the declared children was rendered with a fabricated `()` payload** (INVALID STATE: `Optional<List<Optional<Int>>>` emitted as `Option<Rc<Vec<Option<()>>>>` because render_rust_optional_carrier_inner took `Absent => \"()\"`; the element payload was erased to Unit).",
+
+    "HARM: section 5 silent wrongness: with `[Absent]` the output compiles with the wrong type; with `[Absent, Present \{ value: 5 \}]` cargo refuses E0308 at a site far from the cause, and the interpreter answers 5.",
+
+    "SPECIMEN, 2026-10-13 (measured by neat-boar-550, localised by merry-moth-118, node adhoc-c3c735c9-3af): the earliest wrong link was infer stamping, which left the inner List unstamped and the element leaf childless; the emitter only rendered what it was given.",
+
+    "REPAIRED INSTANCE: the emitter refuses with a located compile_error! at the carrier (gunbc#13896, RED fixture is a hand-built childless carrier) and the producer-side stamping is repaired separately (gunbc#13939).",
+
+    "RUNG FOUND AT: 1, mitigation: compile_error! is the interim refusal seam, located but not a typed emit diagnostic.",
+
+    "CEILING: a typed emit refusal, structurally guaranteed once the emitter's refusals are typed outcomes rather than text in the emitted crate.",
+
+    "NEXT-RUNG TRIGGER, phrased as the capability: a typed emit-refusal carrier that render_rust_optional_carrier_inner returns instead of splicing compile_error! text, so an absent payload type node surfaces as a located typed diagnostic before any output is written. Owner: Manager 2 (emitter).",
+
+    "RECOGNITION RULE: an emitted `Option<()>` or `Option<Rc<Vec<..<()>..>>>` for a declared Optional of a non-Unit payload is this class; inspect the inferred tree of the nested generic argument before the renderer.",
+  ],
+
+  evidence: [],
+}

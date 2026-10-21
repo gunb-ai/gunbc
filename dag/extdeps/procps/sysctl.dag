@@ -1,0 +1,36 @@
+module extdeps.procps.sysctl
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// procps-ng sysctl(8): the program that reads and writes kernel parameters by name. THIS MODULE
+// OWNS THE PROGRAM IDENTITY. Which parameter names exist, and what a value means, belong to the
+// subsystem that defines that parameter (for AppArmor userns restriction,
+// extdeps.linux.apparmor_userns).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "gitlab.com/procps-ng/procps/-/blob/master/man/sysctl.8"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.procps.sysctl",
+      decl_name: "sysctl_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn sysctl_standing() -> CitedFigureStanding {
+  CitedToAuthority { authority: extdeps_external_authority_anchor }
+}
+
+fn sysctl_program() -> ProgramIdentity = uncataloged_program(invocation: "sysctl")

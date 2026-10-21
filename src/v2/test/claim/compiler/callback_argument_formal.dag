@@ -1,0 +1,187 @@
+module v2.test.claim.compiler.callback_argument_formal
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import v2.compiler.infer { infer, infer_type_equal_ignoring_provenance }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Suggested, Unavailable, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: an inline function literal passed as an application argument is typed from the formal it is
+// passed to (v2.compiler.infer, the dependent-child frame of infer_entries_for_tree). Lowering mints a
+// fresh type variable per unannotated parameter (v2.std.anonymous_binder fresh_type_variable); the
+// callee and the independent actuals settle first, and the callback's subtree is entered under a frame
+// that instantiates those variables from the formal Arrow's domain at the call's instances.
+// gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result -- the same class
+// N7-1 climbed for a fold's step; this is its application-argument arm. The native-seven wall
+// (//v2/test/parse/expression_bodied_fn_decl_parse:all) is this shape: bind_outcome(o: tokenize_prepared(..),
+// f: fn(token_stream) { .. parse_module_prepared(tokens: token_stream, ..) .. }).
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
+// Measured against main d935a9d2f9 before the repair: the monomorphic and generic positives REFUSE
+// application_argument_does_not_inhabit with produced type <type-variable@..:x>, the Bool control
+// refuses with that same placeholder rather than Bool, and the wrong-return callback is ACCEPTED with
+// inhabitance_undecidable_argument_type_not_derived -- so all four claims are red there.
+//
+// MUTATIONS, each leaving the compiler runnable: removing the callback frame join (the callback subtree
+// inheriting its parent's frame unchanged) turns the positives and the Bool control red again; removing
+// the callback's signature from the argument judgment (infer_entries_with_callback_signatures) turns
+// the monomorphic positive and the wrong-return refusal red again.
+
+data caf_prelude: String = "module p\n\ntype Res<T>\n  = Ok { value: T }\n  | Err\n\nfn h() -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn need_int(n: Int) -> Res<Int> {\n  Ok { value: n }\n}\n\n"
+
+fn caf_source(body: String) -> String {
+  join([caf_prelude, body], "")
+}
+
+// MONOMORPHIC: no generic instance is involved, so only the formal's domain can type `x`.
+data caf_mono: String = "fn apply_int(f: fn(Int) -> Res<Int>) -> Res<Int> {\n  f(1)\n}\n\nfn use_it() -> Res<Int> {\n  apply_int(f: fn(x) { need_int(n: x) })\n}\n"
+
+// GENERIC, CALLBACK FIRST: T is fixed only by the sibling `o: h()`, authored AFTER the callback, so the
+// claim exercises dependency scheduling as well as the frame join. U is fixed by nothing before the
+// callback; knowing T must not wait on it.
+data caf_generic: String = "fn bindr<T, U>(o: Res<T>, f: fn(T) -> Res<U>) -> Res<U> {\n  match o {\n    Ok { value: v } => f(v)\n    Err => Err\n  }\n}\n\nfn use_it() -> Res<Int> {\n  bindr(f: fn(x) { need_int(n: x) }, o: h())\n}\n"
+
+// WRONG DOMAIN: the formal gives `x` Bool, so need_int(n: x) refuses AT THAT ARGUMENT with produced Bool.
+data caf_bool: String = "fn apply_bool(f: fn(Bool) -> Res<Int>) -> Res<Int> {\n  f(true)\n}\n\nfn use_it() -> Res<Int> {\n  apply_bool(f: fn(x) { need_int(n: x) })\n}\n"
+
+// THE ORACLE FOR "PRODUCED Bool": the same use with `x` DECLARED Bool. The callback's parameter must be
+// typed exactly as an authored Bool parameter is, so the produced types are compared, not spelled.
+data caf_bool_declared: String = "fn use_it(x: Bool) -> Res<Int> {\n  need_int(n: x)\n}\n"
+
+fn caf_fatal(src: String) -> Optional<Diagnostic> {
+  match fmi_assemble(src: caf_source(body: src)) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => optional_present(value: diagnostics_fatal(d: d))
+      }
+  }
+}
+
+fn caf_reason(src: String) -> Symbol {
+  match fmi_assemble(src: caf_source(body: src)) {
+    Rejected { diagnostics: _ } => ^caf_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+fn caf_edge_named(e: Edge, name: Symbol) -> Bool {
+  match e.label {
+    Authored { name: n } => n == name
+    Positional => false
+    StructuralLabel { label: _ } => false
+  }
+}
+
+// The refusal's suggested correction carries the parameter's declared type under the parameter's name
+// and the argument's produced type under ^inhabitance_produced_type
+// (v2.std.inhabitance application_argument_does_not_inhabit_diagnostic).
+fn caf_correction_type(d: Diagnostic, name: Symbol) -> Optional<Node> {
+  match d.correction {
+    Unavailable { reason: _ } => optional_absent()
+    Suggested { node: c } =>
+      fold(c.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => if caf_edge_named(e: e, name: name) { optional_present(value: e.target) } else { acc }
+        }
+      })
+  }
+}
+
+// The produced type, only when the refusal is the argument check at the parameter named `n`.
+fn caf_produced_at_n(d: Optional<Diagnostic>) -> Optional<Node> {
+  match d {
+    Absent => optional_absent()
+    Present { value: x } =>
+      match caf_correction_type(d: x, name: ^n) {
+        Absent => optional_absent()
+        Present { value: _ } =>
+          if x.reason == ^application_argument_does_not_inhabit { caf_correction_type(d: x, name: ^inhabitance_produced_type) } else { optional_absent() }
+      }
+  }
+}
+
+fn caf_same_type(a: Optional<Node>, b: Optional<Node>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+// ACCEPTED AND DECIDED: the callback is judged at `f` against fn(Int) -> Res<Int>, so the call carries no
+// argument-type-not-derived obligation -- an accept on the undecidable frontier would not discriminate.
+fn caf_accepted_and_decided(src: String) -> Bool {
+  match fmi_assemble(src: caf_source(body: src)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+      }
+  }
+}
+
+test fn caf_a_monomorphic_callback_parameter_is_typed_from_its_formal() -> Bool {
+  caf_accepted_and_decided(src: caf_mono)
+}
+
+test fn caf_a_generic_callback_parameter_is_typed_from_a_later_sibling() -> Bool {
+  caf_reason(src: caf_generic) == ^accepted
+}
+
+// THE ROUTE: the refusal is the inner argument check, and what reached it is the formal's Bool -- the
+// same produced type an authored `x: Bool` reaches it with -- not the lowering placeholder.
+test fn caf_a_callback_parameter_typed_bool_refuses_at_the_inner_int_argument() -> Bool {
+  caf_same_type(a: caf_produced_at_n(d: caf_fatal(src: caf_bool)), b: caf_produced_at_n(d: caf_fatal(src: caf_bool_declared)))
+}
+
+// THE ENCLOSING CHECK: once the callback's input is known, its RESULT must still be judged against the
+// formal it is passed to. A callback producing Res<Bool> where fn(Int) -> Res<Int> is declared refuses
+// AT `f`, not silently through an underived callback type.
+data caf_wrong_return: String = "fn need_bool(b: Bool) -> Res<Bool> {\n  Ok { value: b }\n}\n\nfn apply_int(f: fn(Int) -> Res<Int>) -> Res<Int> {\n  f(1)\n}\n\nfn use_it() -> Res<Int> {\n  apply_int(f: fn(x) { need_bool(b: true) })\n}\n"
+
+fn caf_refused_at(d: Optional<Diagnostic>, name: Symbol) -> Bool {
+  match d {
+    Absent => false
+    Present { value: x } =>
+      match caf_correction_type(d: x, name: name) {
+        Absent => false
+        Present { value: _ } => x.reason == ^application_argument_does_not_inhabit
+      }
+  }
+}
+
+test fn caf_a_callback_returning_the_wrong_result_refuses_at_its_formal() -> Bool {
+  caf_refused_at(d: caf_fatal(src: caf_wrong_return), name: ^f)
+}
+
+// ARITY: the callback takes two parameters where the formal takes one. The count alone refutes it, so the
+// call refuses AT `f` rather than accepting on the undecidable frontier because `y` has no supplied type.
+data caf_arity_extra: String = "fn apply_int(f: fn(Int) -> Res<Int>) -> Res<Int> {\n  f(1)\n}\n\nfn use_it() -> Res<Int> {\n  apply_int(f: fn(x, y) { need_int(n: x) })\n}\n"
+
+test fn caf_a_callback_with_an_extra_parameter_refuses_at_its_formal() -> Bool {
+  caf_refused_at(d: caf_fatal(src: caf_arity_extra), name: ^f)
+}
+
+// ORDER: the callback is written BEFORE the argument fixing T, and its result (Res<Bool> from the body)
+// disagrees with the formal's concrete Res<Int>. It refuses at `f` exactly as the same call written in
+// the other order does: the judgment walks the actuals as inference settled them.
+data caf_generic_wrong_return: String = "fn wrong(n: Int) -> Res<Bool> {\n  Ok { value: true }\n}\n\nfn apply<T>(o: Res<T>, f: fn(T) -> Res<Int>) -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn use_it() -> Res<Int> {\n  apply(f: fn(x) { wrong(n: x) }, o: h())\n}\n"
+
+test fn caf_a_generic_callback_written_first_refuses_its_wrong_result_at_its_formal() -> Bool {
+  caf_refused_at(d: caf_fatal(src: caf_generic_wrong_return), name: ^f)
+}

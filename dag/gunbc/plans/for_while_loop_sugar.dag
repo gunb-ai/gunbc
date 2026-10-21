@@ -1,0 +1,320 @@
+module gunbc.plans.for_while_loop_sugar
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn code(text: String) -> MarkdownBlock { CodeBlock { code: text } }
+
+fn table3(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone], rows: rows }
+}
+
+fn table4(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone, AlignNone], rows: rows }
+}
+
+fn table2(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone], rows: rows }
+}
+
+fn r4(a: String, b: String, c: String, d: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b), cell(text: c), cell(text: d)]) }
+fn r3(a: String, b: String, c: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b), cell(text: c)]) }
+fn r2(a: String, b: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b)]) }
+
+fn section_0_how_to_read() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** design brief for the contributor who implements `for` and `while` in the v2 `.dag` frontend. Two slices of representation have landed and nothing executes yet: S0's edge half (#12548: `Loop` admits one `^loop_domain_edge`, and every loop-edge consumer reads it through `v2.std.node` `loop_edge_role`) and S3 (#12550: the fold call lowers to the full fold encoding). S0's execution half, S1, S2 and S4 are not built, so both interpreter steps (`v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop`, `v2.program` `program_step_loop`) still reject every `Loop`, and no surface `for` or `while` exists. The representation that landed does not establish execution support. **Consumer of this document:** that contributor. **Authority for every judgement about a change:** `DESIGN.md`. §12 lists the sections of it you need, in the order you will need them."),
+    p(text: "`for` and `while` add **no** new behavior to the closed vocabulary of six. Each is an ergonomic spelling that lowers to the one `Loop` behavior. What they do need is a `Loop` that can represent *what it iterates over*, and today it cannot: §2 (S0) fixes that representation first, and every later section is written against it. If a spelling cannot be given exactly one canonical encoding, it is refused, and the refusal names the construct to write instead."),
+    p(text: "This is the third cut. The first lowered `for` through `list_map`, which reintroduces a dependency chain. The second was held in review because it described a `Loop` the substrate cannot represent, gave the carrier edge two meanings, specified a `repeat` that could not execute, and cited a termination proof path that does not exist. Each of those is corrected here, and the corrections are stated where they apply. Every claim names the module and symbol it rests on (DESIGN §3, *cite the symbol, not the position*)."),
+    p(text: "**Which authority owns which fact.** Where dependencies come from is owned by `gunbc.plans.demand_engine_program` §2.4 and D16: data flow, selected-branch activation and the passing of non-duplicable access, and never textual position. This brief owns only the loop encodings and the surface spellings that reach them, and its rules about members are that rule applied to a loop. So a surface `for` and a pointwise collection operation such as `map` must reach one interpretation, the domain encoding of §2.3; today `v2.compiler.fold_lowering` lowers `map`, `filter`, `any` and `all` to a carrier recurrence instead, so the demand-engine M2 specimen for pointwise work waits on S0's domain-only execution subcut: the interpreter and native execution path for a domain loop with no carrier, indexed assembly, routing the `map` population to it, and `v2.std.dependency` `dependency_view_relations` as the named consumer. S1 then adds surface `for` over that same interpretation, and the carrier and `WhileStep` rules stay separately outstanding. `map` has one meaning: indexed member applications with no accumulator and no positional predecessor relation. Member dependencies, activation conditions and effect obligations are derived by the shared authority (`gunbc.plans.demand_engine_program` section 2.4, D16); effect-freedom is one fact that may support admission, never a second meaning. The subcut is still an execution change: `map` runs today as `std.algebra` `list_map` over `fold_list_right`, which applies the callback to the tail before the head, so even a serial ascending-index executor changes callback order. The cut therefore preserves the displaced route's contract for its declared population or names the semantic migration, and qualifies callback order, refusal selection, the demanded-member population, diagnostics and effects, not only successful values. Which callbacks the subcut admits is an operator decision pending on its design; an unresolved obligation never authorizes independence, reordering, speculation, sharing or replay. The domain encoding yields the list of member results, which is `map`'s meaning. `filter` (retained members in input order) and `any` and `all` (a Boolean whose refusal contract is `gunbc.plans.demand_engine_program` D17) each need a declared composition over it before they lower, never a reading of the bare encoding."),
+  ]
+}
+
+fn section_1_rule() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The rule"),
+    quote(blocks: [p(text: "**Surface syntax chooses one canonical meaning. Dependency analysis may change how that meaning is scheduled; it may never reinterpret the source.**")]),
+    p(text: "No optimizer guesses whether a `for` *meant* a map or a fold. A `for` always means pointwise iteration, a `fold` always means an explicit recurrence, and a `while` always means a state transition. When the source does not determine one of those meanings, the program is refused."),
+    h3(text: "1.1 What the construct guarantees, and what it does not"),
+    p(text: "The guarantee `for` makes is narrow and structural: **the construct contributes no implicit positional predecessor edge.** Member *i+1* is not ordered after member *i* because they are adjacent in the list. The language has no mutation, so there is no way for a `for` body to write something the next member reads, and a carrier (the one route a loop has for passing state) is simply absent from its encoding."),
+    p(text: "That is **not** the same as saying the members are independent. Members can still be coupled by data, effects, resources or barriers, which are the relations `v2.lens.common.algebraic_composition` `ParallelismRelation` already distinguishes. Full independence is a *derived* fact: it holds only once the members exist at identity grain, dependency extraction over them is complete, no cross-member edge of any kind was found, and no coupling is left unresolved (§7)."),
+    h3(text: "1.2 A variable is not a dependency"),
+    p(text: "**Declaring a variable does not create loop-carried dependence. Consuming a value a previous iteration produced does.** A list position is a *coordinate*, derivable on its own, not state. A carrier exists only when the next state is defined from the previous one: `s1 = next(s0)`, `s2 = next(s1)`. Dependencies between members come from data, never from adjacency: if one member's input names an artifact another member produces, that reference is the edge."),
+    h3(text: "1.3 Zero ambiguity means one graph, not one interleaving"),
+    p(text: "If `A -> C` and `B -> C`, the program is unambiguous even though `A` and `B` may run in either order or at once. Demanding one physical order would mean inserting an edge between them, which is exactly the false dependency this design removes. So the contract fixes the **permitted execution relation** and requires values, refusal selection and diagnostic order to be identical under every permitted order wherever the operation's contract fixes them (§7). Execution receipts record what actually happened; qualification checks those events against the required relation and never demands one completion order among unrelated members (`gunbc.plans.demand_engine_program` M3a)."),
+  ]
+}
+
+fn section_2_s0() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. S0 — the canonical loop encodings"),
+    h3(text: "2.1 What exists today"),
+    p(text: "Be precise about the starting point, because the earlier cuts were not:"),
+    ul(items: [
+      li(text: "**The shape.** `v2.std.node` `loop_behavior_edges_conform`: at least one positional body child, exactly one `^loop_bound_edge`, at most one `^loop_carrier_edge`, at most one `^loop_domain_edge` (S0's edge half, landed) and at most one `^loop_realized_declaration_edge` (S3, landed). `v2.std.node` `loop_edge_role` is the one reading of what each edge means. There is still no executing rule for member binding, member identity or result assembly."),
+      li(text: "**The carrier edge means a binder.** `v2.std.node` `loop_carrier_binder_target` reads it, `v2.compiler.fold_lowering` `fold_recurrence_encoding` puts the accumulator's binder atom there, and `v2.lens.complexity_accumulator_copy` consumes it as a symbol. It never holds an initial value."),
+      li(text: "**The only source form is unary.** The grammar is `loop <expr>` (`v2.extdeps.languages.dag` `dag_grammar_loop_expr_expr`); `v2.std.compilers.body_lowering` `lower_loop(value, bound)` puts the expression in the one positional slot and the bound is hard-coded to `dag_loop_measure_node()`. Its Rust spelling `loop { break e; }` exists only as the unwired token `^rust_token_unwired_loop`, which the production rust target refuses (`v2.test.claim.emit.rust_production_closure_let_emit` `rust_production_refuses_unspelled_token_class`), so no production target spells any loop shape today. There is no `loop N e` form and no budget."),
+      li(text: "**No interpreter executes a `Loop`.** `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop` both reject. This is S0's remaining half."),
+      li(text: "**The fold call lowers to the full fold encoding (S3).** `v2.compiler.fold_lowering` `fold_recurrence_encoding` builds the §2.3 encoding from the call's operands, and `v2.compiler.body_lowering_fold` `body_lower_fold_encoding` fills it from their lowered forms. No interpreter executes it yet (S0's interpreter half)."),
+    ]),
+    h3(text: "2.2 The one extension: a domain edge"),
+    p(text: "Pointwise iteration needs something to iterate. No existing structure instantiates a body once per member: `Occupancy` and `Instantiation` are *type* connectives, not computations. So the choice is between a seventh behavior and one more named edge on `Loop`. A seventh behavior would break the closed vocabulary of DESIGN §4, so the answer is the edge:"),
+    ul(items: [
+      li(text: "**`^loop_domain_edge`** (new, optional, at most one): its target is the value being iterated. Its presence is what makes a `Loop` iterate members rather than evaluate once."),
+      li(text: "**`^loop_realized_declaration_edge`** (added with S3, optional, at most one): its target is the AUTHORED callee occurrence of a desugared recurrence, such as the `fold` in `fold(xs, init, step)`. Resolve must bind it to the declaration whose recurrence the `Loop` realizes, or refuse at the head (`v2.compiler.resolve` `resolve_realized_declaration`). For the collection `fold`, that is the operation `std.algebra` `collection_fold_shape`, which binds only when nothing in the lookup chain binds the spelling. For `fold_list`, it is the declaration the chain must bind exactly. **Why it exists:** desugaring runs before resolve and is keyed on the callee's spelling. Without this edge, a user's own `fold` would be silently rewritten as the collection operation, and the authored head would be dropped from the tree. It is named for its role, not for fold. `for`, `while` and unary `loop` never carry it, because the language fixes their meaning and they name no declaration."),
+    ]),
+    p(text: "Beyond the domain edge, the only addition is the realized-declaration edge. No existing edge changes meaning:"),
+    table2(
+      header: r2("fact", "where it lives"),
+      rows: [
+        r2("the domain", "`^loop_domain_edge` → the domain value"),
+        r2("the member binder", "the positional body child is a member template, a function node whose parameter binds the member (for a fold, the step itself, as a function value)"),
+        r2("member identity", "the member's ordinal in the domain's canonical enumeration. In S1 the only admitted domain is `List<T>`, whose ordinal is its index (§3)"),
+        r2("loop-carried state's binder", "`^loop_carrier_edge`, unchanged: a binder, never a value"),
+        r2("loop-carried state's initial value", "an enclosing `Bind` that binds the carrier's binder to the initial value; the `Loop` is that `Bind`'s body"),
+        r2("the termination measure", "`^loop_bound_edge`, unchanged"),
+        r2("the declaration a desugared recurrence realizes", "`^loop_realized_declaration_edge` → the authored callee occurrence, bound by resolve"),
+        r2("the per-loop termination proof", "derived from the node, never stored on it (§5.2)"),
+        r2("result assembly", "a rule fixed by which edges are present (next table), not an edge"),
+      ]
+    ),
+    h3(text: "2.3 The four encodings"),
+    table4(
+      header: r4("form", "edges present", "encoding", "result"),
+      rows: [
+        r4("existing unary `loop e`", "bound; no domain; no carrier", "unchanged", "the one value of `e`, as today"),
+        r4("`for x in xs { e }`", "domain; bound; no carrier", "`Loop { domain: xs, bound: fold-iteration measure, body: x => e }`", "the list of member results in domain order"),
+        r4("`fold(xs, init, step)`", "domain; bound; carrier; realized declaration", "`Bind { acc := init, body: Loop { domain: xs, carrier: acc, bound, realized: fold, body: (acc, x) => step } }`", "the final carrier value"),
+        r4("stateful `while`", "bound; carrier; no domain", "`Bind { s := init, body: Loop { carrier: s, bound: measure, body: s => WhileStep } }` (§5)", "the value carried by the `WhileComplete` arm"),
+      ]
+    ),
+    p(text: "S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`), which landed in #12548, and give the `Loop` interpreter step the three executing rules above in place of its rejection, which has not. S0 changes no surface syntax, and the unary `loop` keeps its meaning."),
+    p(text: "**The fold seam migrated at its root (S3).** The old seam was the fold encoding with its domain and initial `Bind` missing. It was replaced in one change by `fold_recurrence_encoding`, with its consumers and no second encoding left: body lowering, the accumulator-copy lens, and resolve's check of the realized declaration. The carrier edge kept its binder meaning. `v2.lens.complexity_accumulator_copy` reads the carrier through `fold_recurrence_loop`, and it analyzes the domain under the enclosing iteration state, because the domain is evaluated once."),
+  ]
+}
+
+fn section_2b_s0_execution_domain_only() -> List<MarkdownBlock> {
+  [
+    h3(text: "2.6 S0's execution half for domain-only loops, consumed by `map` (design amendment)"),
+    p(text: "**Status and premise.** No `Loop` executes on any route; each fact below is re-derived by reading the symbol it names (observed at main b4d1564a, not an instrument). `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop` reject every `Loop`; the rust target spells a loop as `^rust_token_unwired_loop`, which `v2.test.claim.emit.rust_production_closure_let_emit` `rust_production_refuses_unspelled_token_class` pins as a refusal; the committed stage0 mirror `src/v1/stage0/src/std_algebra.rs` emits `std.algebra` `fold_list` as a TCO `loop` threading the accumulator, and `map` reaches execution as `list_map` over `fold_list_right`. So the §2.3 encoding is representation only today, and `v2.compiler.fold_lowering` / `v2.compiler.body_lowering_fold` build it for lenses and claims while production runs the serial carrier route. This section specifies the first slice that executes a Loop, for the domain-only shape and for `map` only. Nothing here is built."),
+    p(text: "**(a) Interpreter arm.** Claims evaluate through `v2_evaluator_runtime`, so `v2_eval_step_loop` is the arm that must execute. `program_step_loop` belongs to `v2.program`'s assembled-program interpretation, which no claim of this slice reaches: it keeps rejecting, and a claim pins that it still rejects a domain loop with its own reason, so the two never silently diverge. The arm accepts exactly one shape, `^loop_domain_edge` present, `^loop_carrier_edge` absent, `^loop_realized_declaration_edge` naming the `map` declaration, read through `v2.std.node` `loop_edge_role`. It evaluates the domain list, then for each member in index order instantiates the loop's one body callable through its declared template with the member as the sole argument, and assembles the results at their original indices. The ordinal is the list index. A refusing member makes the Loop refuse with the diagnostics of the LOWEST refusing index (not the first reported), and members after it are not demanded by this schedule; that is one permitted schedule of an independent population, not a scheduler. Domain-with-carrier, carrier-only (`WhileStep`) and a non-`List` domain stay rejected with their present diagnostic. **Meaning and admission.** `map` has ONE meaning: indexed member applications with no accumulator and no positional predecessor relation. Effect-freedom may support ADMISSION to this execution; it is never a second meaning of `map`, and any admission consumes the shared analysis rather than a private effect system. **The displaced contract is not the new one.** `std.algebra` `list_map` is `fold_list_right(xs, Empty, (acc, item) => Cons(f(item), acc))` and the emitted `fold_list_right` recurses on the tail BEFORE stepping the head, so today's callbacks run right-to-left (`f(b)` before `f(a)`), and when two members refuse the tail's refusal fires first. The ascending-index executor changes callback order and refusal selection even serially, so the cut NAMES this semantic migration for its whole population and qualifies callback order, refusal selection (now the lowest index), the demanded-member population, diagnostics and effects, not only values. **Activation after failure** is the operation's failure contract, not D16's access question (a refusing member 0 and an unrelated write by member 1 have no access conflict, yet whether member 1 runs is decided here; `gunbc.plans.demand_engine_program` D17 covers it): the interim rule is that no pointwise member starts before every earlier member's outcome is known. **Admission obligation.** Admitted callbacks are those whose order and refusal timing are unobservable: no effects, and either non-refusing or under the declared lowest-index refusal migration. **No producer of the effect fact exists today:** `v2.lens.effect` `effect_fact` is not one (`v2.lens.common.algebraic_composition` `EffectClassification` is the empty record, `effect_classifier` maps every dependency kind to it, and `effect_signature_deferred_unresolved` is `non_empty` of the supplied views), and `v2.compiler.infer` carries no effect row. The source of the fact is an open operator decision between (A) building a producer first and (B) a conservative structural stand-in (the callee closure reaches no effect-operation primitive, with `v2.compiler.effect_demand` operation classification as the roster; an opaque host call or unresolved callee refuses), which refuses read-only members that do not actually interfere and is sufficient, not exact; the exact test is D16's access/conflict check (Track B, held). Nothing defaults to admitted. A refusal at index k means later members are not demanded by this schedule and their advisory diagnostics are not reported (section 7's lowest-index rule). The arm contains no member queue, worker or completion order; it is the existing evaluator stepping a list."),
+    p(text: "**(b) Rust emission rule.** `TargetLoopShape` today carries one token, so it cannot say which Loop shape it spells. The amendment adds a distinct domain-only shape to the target model (`v2.std.compilers.target_model`), spelled on rust as an indexed collection with no mutable state read by the body: `(0..xs.len()).map(|i| body(xs[i].clone())).collect()`, wrapped in `Rc::new` as the surrounding free-monoid carrier requires. The body closure takes only the member, so the emitted Rust has no cell that one member writes and another reads. `^rust_token_unwired_loop` is retained, unspelled, for every other shape. `rust_production_refuses_unspelled_token_class` keeps its form and gains controls: a carrier loop and a carrier-less loop with a non-map realized declaration each still REFUSE on the rust target, and the domain-only map shape ACCEPTS. Other targets keep their unwired token and refuse. The exact token rows are Step 2 detail; the rule fixed here is that the form carries no loop-carried state."),
+    p(text: "**(c) The route change.** Where a call resolves to `map` with a callback body, `fold_lowering` stops realizing it as `CallbackMapsToCons` over the carrier encoding and builds `Loop { body: member => B, domain: xs, bound: fold-iteration measure, realized: map }`, with no `Bind`, no initial value and no carrier edge. `filter`, `any` and `all` are untouched (different results; `any` and `all` carry the open refusal-versus-short-circuit question and need an operator ruling). `std.algebra` `list_map` is NOT given a second recursion-free definition: that would be a second representation of `map`'s meaning beside the domain encoding. The displaced route is `map` through `list_map` and `fold_list_right`; `fold_list_right` keeps its other consumers. Step 2 owes a census of consumers of `CallbackMapsToCons`, `list_map` and `fold_list_right` at identity grain (a grep today counts hundreds of `list_map` mentions and tens of `fold_list_right` ones, which is a candidate list and not a census); the population is EVERY resolved `map(` site, because the `collection_map_shape` roster row is keyed on the declaration and a per-site selector would be a second path beside the modeled route. All sites move together, and the proof is a branch-versus-main outcome diff over the claim modules that reach them, with the semantic migration above stated for that whole population."),
+    p(text: "**(d) The consumer.** `v2.std.dependency` `dependency_view_relations`, today `fold(views, init: [], f: fn(acc, v) { list_snoc_item(xs: acc, item: dependency_view_relation(view: v)) })`, becomes `map(views, v => dependency_view_relation(view: v))`. Before: a `fold_list` TCO loop in emitted Rust threading a snoc accumulator, so member k waits on k-1. After: the §(b) indexed collection. Its callers (`v2.workflow.scheduler`, three sites) are unchanged, since the result is the same list. Step 2 records the emitted form before and after from the real emission, and any cost figure as a measured `eval_steps` reading, not an asserted complexity class."),
+    p(text: "**(e) Claims and routes.** Two routes execute, each with the same specimens. **Interpreter route:** the Loop built by the real front end from `dependency_view_relations`' source is evaluated by `v2_evaluator_runtime` and equals the list the old fold produced. **Native route:** the emitted Rust is EXECUTED, not only emitted and built. The existing executing qualification route is the native test verdict route of `gunbc.plans.demand_engine_program` D15 (the v2-native CLI emits the reached declarations, `cargo test` runs the emitted target, and equivalence is full `JudgmentContract` equality, never exit status alone); the emit-and-build text checks of the closure are supplementary. The native `dependency_view_relations` consumer and the discriminating specimens below run through it, comparing values, refusal cause and selection, diagnostics and activation evidence with the interpreter route, and a mutation of the emitted map realization must fail the EXECUTED native control. Where the D15 route cannot yet execute this population, Step 2 names the limitation and its cutover and the slice is not reported as fully qualified. The (b) form shows successful assembly only; refusal and diagnostic propagation (the lowest refusing index's cause, diagnostics and no later activation) is an obligation of the emitted realization and is established only by the executing refusal specimens, whatever the mechanism. **Specimens, on both routes:** (1) already-produced successful member results fed to the assembler in reversed or shuffled order give the same indexed output, and assembling by completion position instead of index fails that result-order claim; this perturbation is claim-side only, never a production visitation knob (an escape hatch, DESIGN section 5); a successful-value claim may stay green under reversal and is not qualification of the whole operation. (2) Reversing actual member ACTIVATION under the interim rule is a different mutation and FAILS an activation-order control (no member starts before every earlier member's outcome is known). (3) A two-refusal specimen, member 0 refusing with A and member 1 with B: the Loop refuses with A, and reversed visitation fails the lowest-index refusal and demanded-population control. (4) A no-later-activation specimen: after member 0 refuses, member 1 is never started. (5) An empty list and a singleton. (6) The true-recurrence control, `fold` of `acc * 10 + x` over `[1, 2, 3]` is 123 and reversed visitation is 321 (red), on today's `fold_list` route, as a regression control that a recurrence stays a recurrence; it is not carrier execution and this slice builds none. **Structure and independence.** The STRUCTURAL fact is qualified through the Loop authority: one inhabitance claim that the real front end emits a domain-only encoding, `^loop_domain_edge` present, no `^loop_carrier_edge`, no implicit positional predecessor, and that the consumer reads that encoding; a mutation inserting a carrier edge is red. `v2.compiler.value_use_dependency` A1 rows relate lexical binders to references and a callback template is one piece of resolved syntax, not a per-member judgment, so empty A1 rows do NOT discharge member independence; A1 may separately qualify lexical value uses. Full member-relation and readiness qualification is deferred with member instantiation to M3a. The consumer's own claim, not only a helper's, must go red when the integration is broken (route reverted, or the Loop's domain edge dropped). **Two readings made explicit.** (i) \"All sites move together\" means every resolved call to the `map` declaration enters the new admission and realization path; it does not mean every callback is admitted. The branch-versus-main comparison accounts for outcomes by identity and distinguishes unchanged results, intentional migration differences, new admission refusals and unexecuted cases; an empty diff over the claims that happened to run is not proof that every site was exercised. (ii) Option B is conservative only with complete, positive classification: `v2.compiler.effect_demand` distinguishes Pure, ReadsBoundInput, host observations, host actuations and ExecutionSemanticsUnknown, and complete, lower-bound and unmeasured populations, and absence from an effects list is never purity. The A/B choice stays open and is not a blocker for this design."),
+    p(text: "**(f) Interim and trigger.** Index-order execution is interim, one permitted schedule. Parallel and shuffled-completion execution is `gunbc.plans.demand_engine_program` M5(a); member instantiation as demanded computations is M3a. This slice claims *parallelizable*, never *parallelized* (DESIGN §4b). Fold_node and tree traversal are a later cut joined to M6 and must keep each child result's relation to its combine; effects (Track B) are held."),
+  ]
+}
+
+fn section_3_for() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. S1 — the `for` contract"),
+    p(text: "`for` is **finite, pointwise iteration over a canonically ordered domain**, and in S1 that domain is `List<T>` only."),
+    ul(items: [
+      li(text: "**Why only lists.** The promises about result and diagnostic order need an enumeration and an ordinal, and a cardinality supplies only a count: a finite set of five members has no canonical first member. `v2.std.refinement` already distinguishes `StructurallyOrdered` from `StructurallyUnordered`. A list is structurally ordered and its index is its ordinal. A range comes once a range carrier with its own canonical enumeration exists, and any other finite domain needs an ordering witness or an explicit ordering projection."),
+      li(text: "**Why not `list_map`.** `std.algebra` `list_map` is defined by `fold_list_right`, which threads an accumulator, and lowering through it or through `fold_call_lowering` installs a carrier. `for` lowers directly to the domain encoding of §2.3."),
+      li(text: "**Pure bodies only.** An effectful body is refused in S1 until `gunbc.plans.demand_engine_program` D16's access discipline lands. After that, members are related only by the access they pass, as any other computations are: two members whose effects conflict with no derived relation between them are refused, never ordered by index, and effects that must happen in sequence are a `fold` whose carried value includes the previous member's result or completion evidence, consumed by the next member. That is ordinary loop-carried state (§1.2); D16 derives the access flow that follows from it, and nothing restates it as an authored access chain."),
+    ]),
+    table2(
+      header: r2("admitted in S1", "refused in S1"),
+      rows: [
+        r2("a `List<T>` domain", "any other domain, until its canonical enumeration exists"),
+        r2("an immutable member binder and immutable captures", "an effectful body"),
+        r2("every member runs to completion", "`break`, `continue`, early `return`: they have nothing to mean in a pointwise form"),
+        r2("results assembled by list index", "(nothing to refuse: see below)"),
+      ]
+    ),
+    p(text: "**There is no reduction-shaped-body diagnostic.** The second cut asked for a `for_body_requires_loop_carried_state` refusal. It is deleted, because its red cannot be authored: a `for` body sees only its member and immutable captures, so it has no name for a previous result, no accumulator, and no way to mutate one. `xs[i - 1]` reads input data and is not a recurrence; `acc = acc + x` is unwritable; an unbound `acc` gets the ordinary binding refusal, not a guess that the author meant a fold. That is the rung-4 result the design wants, and a check for a state with no constructor would be permanently green decoration (DESIGN §4b)."),
+  ]
+}
+
+fn section_4_fold() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. `fold` stays an explicit recurrence"),
+    p(text: "A `fold` declares a recurrence: `step(acc0, x0) = acc1`, `step(acc1, x1) = acc2`. `gunbc.plans.demand_engine_program` says the same: such a fold stays a chain, and only established algebraic laws license regrouping it. So `fold` is carrier-bearing and ordered, and this brief changes its encoding (S3) but not its meaning."),
+    p(text: "Two constructs are deliberately **not** in this brief, because the substrate they need does not exist and minting them would add vocabulary with no consumer (DESIGN §3c):"),
+    ul(items: [
+      li(text: "**a law-bearing `reduce`**, which could run as a tree. It needs a carried, checked associativity law. Today `std.algebra` `Monoid` and `CommutativeMonoid` are field-identical records, and `std.algebra_law` holds only a refutation receipt for float addition. The law evidence must also cover the full observation contract, meaning overflow and refusal behavior, diagnostics and their order, effects, provenance and termination, not just values. The spelling `acc + x` is not evidence."),
+      li(text: "**`scan`**, the fold that exposes its prefix states. There is no `scan` in `std`; it is the fold encoding with a different result rule, and it comes when a consumer needs it. A scan that runs as a parallel prefix computation needs the same associativity evidence a `reduce` does, and both consume the one law authority, `gunbc.plans.demand_engine_program` D5; a first scan that stays sequential needs no law, but it may not mint a second one."),
+    ]),
+  ]
+}
+
+fn section_5_while() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. S2 — the `while` contract"),
+    p(text: "A `while` is a **state transition**, and its state is written in the syntax, not inferred from free variables. The fields:"),
+    ul(items: [
+      li(text: "an **initial state**. Several pieces of state are one product record, because the core admits one carrier"),
+      li(text: "a **guard** of type `Bool` over the state. There is no collection or integer truthiness"),
+      li(text: "a **transition** from the state to one `WhileStep<S, R>`: `WhileContinue` with exactly one next state of the same type, or `WhileComplete` with a result, which is how a `while` exits early"),
+      li(text: "a **measure**, proven to descend (§5.2)"),
+      li(text: "an explicit **result** for the exit the guard takes, `finish(s)`"),
+    ]),
+    p(text: "The encoding (§2.3) wraps the guard and the transition into a body that returns an explicit step. The binder is the carrier edge's meaning; the initial value comes from the enclosing `Bind`. When the guard holds, the body's step is the transition's own answer, so an early exit is the transition returning `WhileComplete`:"),
+    code(text: "type WhileStep<S, R>\n  = WhileContinue { state: S }\n  | WhileComplete { result: R }\n\nBind { s := init,\n  body: Loop { carrier: s, bound: measure(s),\n    body: s => if guard(s) { next(s) }\n               else        { WhileComplete { result: finish(s) } } } }\n\n// next: fn(S) -> WhileStep<S, R>\n"),
+    p(text: "`WhileContinue` and `WhileComplete` were unused names in the corpus as of this writing; grep again before settling them. A colliding bare variant name is resolved by precedence rather than refused (the name-collision class in `gunbc.recurring_failure_mode`), which is why the obvious `Continue` is not used: `v2.std.runtime` `ControlTransfer` already has one."),
+    h3(text: "5.1 What exists, and what does not"),
+    p(text: "The second cut claimed that `std.computation` `lower_call_pattern` already classifies a `while` body's updates. It does not. It maps an **already-selected** `CallPattern` to a `LoweringTarget`: it never inspects a transition expression, never connects the pattern to a measure, and its production callers are in the v1 complexity machinery, not the v2 frontend. And `v2.std.cardinality` `loop_multiplicity` takes its proof from `measure_descent_fact_registry`, a static list of three symbol-keyed rows for global measures. An authored measure such as `s.n` is not a registered symbol, so today it is `DescentUnknown` and refuses."),
+    h3(text: "5.2 The four joins S2 must build"),
+    ol(items: [
+      li(text: "**Recognition** — from the resolved transition expression to a descent pattern. S2 admits exactly: the predecessor of a `v2.std.nat` `Nat` (`Succ { prev } => prev`); `m - k` for a positive integer literal `k`; `m / k` for an integer literal `k > 1`. Anything else is `DescentUnknown`."),
+      li(text: "**Relation** — the recognized update must apply to **the authored measure itself**: the same field path of the carried state that the `^loop_bound_edge` names, in the state of **every** `WhileContinue` the transition can return. A `WhileComplete` arm carries no obligation, because nothing iterates after it. A descending expression elsewhere in the body proves nothing."),
+      li(text: "**Well-foundedness** — a strictly smaller `Int` is not termination, since integers descend forever. A `Nat` measure is well-founded by construction (`Zero | Succ`). An `Int` measure is admitted only when the guard implies a floor that keeps the update strict: for `m - k` the guard must imply `m >= k`, and for `m / k` it must imply `m >= 1`. In S2 the admitted guard shapes are literal comparisons on the measure itself (`m > c`, `m >= c`)."),
+      li(text: "**Carriage** — one producer, read by every consumer. The producer is a single derivation in `v2.std.cardinality` over the `Loop` node: measure, transition and guard in, `TerminationProof` witness out. `loop_multiplicity` calls it for any loop whose measure is not a registry symbol (the three registry rows keep answering for their global measures). The witness that `v2.compiler.infer` exposes through `inferred_facts_descent` is that same function's answer, never a second computation. The cost and cardinality lenses therefore cannot disagree with inference about one loop."),
+    ]),
+    p(text: "**No fallback to a budget.** When no proof is found, quietly giving the loop a large step budget is DESIGN §5's absorbing fallback: it widens *unknown* into *bounded by something* and hides the missing proof. The loop is refused with `^cardinality_descent_not_proven`, naming the measure and the transition."),
+    p(text: "**No `break` or `continue`.** `WhileStep` already is the explicit exit, and early exit is spelled `WhileComplete`."),
+  ]
+}
+
+fn section_6_refusals() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. What is refused, and what is out of scope"),
+    table3(
+      header: r3("spelling", "disposition", "write instead"),
+      rows: [
+        r3("`while (xs)`, a collection as a condition", "**refused**. It has three incompatible meanings: each member independently, consume the head and carry the tail, or drain a worklist that can grow. No collection truthiness", "`for`, `fold`, or a stateful `while` over an explicit worklist state with a proven measure"),
+        r3("`while (true)`", "**refused**. It claims unbounded computation, which the substrate cannot express", "a stateful `while` with a proven measure, or, for a service, the lifecycle design below"),
+      ]
+    ),
+    h3(text: "6.1 Why `while (true)` gets no hidden bound"),
+    p(text: "The first cut desugared it to a counter of `std.computation` `forever_iteration_bound()` (2^63 − 1) iterations. That is withdrawn. `SizeBound.Forever` is a value in the **cost model**, not the runtime meaning of an authored loop. A hidden counter puts a bound in the program that its source never states, proves termination where the author meant non-completion, and leaves cancellation unrepresented. Worst for this design, `while true { conn = accept(); handle(conn) }` makes each `accept` wait for the previous handler: a **false dependency**, the exact thing §1 exists to prevent."),
+    h3(text: "6.2 Budgeted repetition is a separate design"),
+    p(text: "The second cut proposed `repeat s = init up_to: N`. It is withdrawn from this brief. As specified it could not execute: no `loop N e` form exists to carry `N`, and a step returning only a next state gives the author no way to finish, so its `RepeatCompleted` arm was uninhabited. A correct version needs an explicit terminal signal (the `WhileStep` shape) and a remaining-budget count inside the carried state: continue with fuel left advances and decrements, continue at zero is budget exhaustion, and complete is completion. That is straightforward once S0 and S2 exist, so it should be designed then, against a named consumer."),
+    h3(text: "6.3 Long-lived services are a lifecycle, and a separate design"),
+    p(text: "Keeping a socket open is not *one computation repeated many times*. It is a lifecycle: acquire the listener, hold it under a lease, accept until cancellation or closure, start one demand per connection, run handlers by their real dependencies, drain or cancel what is in flight, release, and publish a teardown receipt. That design should build on what exists: leases are `std.temporal_effect` `HeldLease`, and `gunbc.host.host_effect` `Drive` = `OneShot | ConvergeLoop` already separates re-driven work from one-shot work, though it is a host-effect drive mode and not a service lifecycle. Its natural first consumer is the served-dashboard accept loop, designed as a sequential host Rust `std::net::TcpListener` under a declared scaffold."),
+  ]
+}
+
+fn section_7_observation() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Parallelism, and why observations must not race"),
+    p(text: "Whether a loop *may* run in parallel is a fact about its graph. Whether it *does* is a realization choice (DESIGN §3: the dispatch that selects a realization is itself realization; §3d: a selection over cost). So there is no `parallel for` keyword."),
+    ul(items: [
+      li(text: "**In S1's admitted population, cross-member edges are not constructible.** A pure body over a list sees its member and immutable captures, and captures are the same for every member, so no member can reference another member's result. Independence therefore holds for that population, and the claim is scoped to it."),
+      li(text: "**Everywhere else, independence is derived** after dependency extraction, and only when no cross-member data, effect, resource or barrier edge was found (§1.1)."),
+      li(text: "**Unresolved coupling is not admitted to a parallel realization.** It is refused for parallelism, with its diagnostic, the way `v2.lens.parallelism` already flags it (`parallelism_fact_unresolved`) rather than classifying it as any kind of coupling. It is not silently serialized: serializing an unresolved graph is DESIGN §5's absorbing fallback, and it would manufacture an ordering the source never stated."),
+      li(text: "**Classify with the vocabulary that exists.** `ParallelismRelation` has no positive *independent* arm, and none is added: independence is the absence of any cross-member relation."),
+    ]),
+    p(text: "**Every permitted order produces the same observation.** Results are assembled by list index. Diagnostics are ordered by index, then by a canonical order within one member. *First error* means the lowest index, not the first worker to report. A runtime may cancel speculative later work, but that must not change the canonical answer. Execution receipts are not observations in this sense: they record the actual events, which may differ between runs."),
+    p(text: "**Claim the graph shape, not the speed-up.** No emitter emits parallel code. S1 establishes the graph (no carrier, no positional edges) and executes it in index order, which is one permitted schedule of an independent population, not a fallback. Until a parallel realization lands with its own evidence, describe a loop as *parallelizable*, never *parallelized* (DESIGN §4b, rung honesty)."),
+  ]
+}
+
+fn section_8_effect_plan() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. The existing `EffectPlanStep` loop forms"),
+    p(text: "`v2.std.effect_plan` `EffectPlanStep` already has `For { binder, over, body }` and `While { cond, body }`, and `docs/plans/host-effect-orchestration.md` says body lowering treats For, While, Retry and recursion as one `Loop` sugar. Both need a disposition (DESIGN §3b, conformance):"),
+    ul(items: [
+      li(text: "**`EffectPlanStep.For` — no realization, so no sequencing to preserve.** An earlier cut called it a stated divergence that *promises sequencing*, without saying where that sequence would come from. Read against its realizations, it has none: `gunbc.host.host_effect_plan` `host_effect_plan_apply_step`, `v2.workflow.effect_plan_bash_materialize` and `v2.compiler.emit_orchestration` each refuse a `For` step, and the only construction outside the declaration is a refusal claim in `v2.test.claim.effect_plan_bash_materialize`. So no caller depends on an order and nothing has to migrate. Its spelling gets no meaning of its own: when a consumer needs it, it lowers onto `Loop` like any other iteration, and the representation must supply what decides which encoding. An ordered consumer must carry an explicit recurrence -- each member consuming the previous member's result or completion evidence -- before the `fold` lowering is admitted; the `For` spelling alone supplies none, and the compiler never infers that a loop was meant to be sequential from its conflicting effects. Without one it is the domain encoding with its effects, under `gunbc.plans.demand_engine_program` D16, where conflicting members with no derived relation are refused. In neither case does a separate interpreter order members by position. The plan's own step sequence is the same question one level up: `gunbc.host.host_effect_plan` `host_effect_plan_apply_rest` activates the rest of the plan only once the head step has converged, which is the D16 route (activation by completion evidence), and a plan realization that ordered steps by list position alone would not be."),
+      li(text: "**`EffectPlanStep.While` — conform.** It has no measure field today, while the orchestration plan says a `While` without a measure is unconstructible. It must end with the same answer as the surface `while`: a measure whose proof comes from the §5.2 producer. That change is slice S4."),
+    ]),
+  ]
+}
+
+fn section_9_where() -> List<MarkdownBlock> {
+  [
+    h2(text: "9. Where the change lands"),
+    p(text: "Everything is v2. v1 is under `gunbc.v1.v1_maintenance_standing` `v1_seed_standing`: semantics frozen, maintenance only for the v2 self-host program, so loop forms are not added to v1. v1 already reserves `for`/`in` and has an unused `for x in coll` path (`src/v1/02_parse.dag` `parse_for` → `ExprForEach`, emitted through the `emit_for_each` arm of `src/v1/05_emit.dag`) with no bound and no termination check, and zero corpus uses. Do not revive it."),
+    table2(
+      header: r2("piece", "where"),
+      rows: [
+        r2("the domain edge, and every consumer of loop edges (S0)", "`v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`"),
+        r2("executing a `Loop` (S0)", "the `Loop` interpreter step: `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop`, both of which reject today; and the Rust emission of the three rules"),
+        r2("keywords `for`, `in`, `while`, `decreases`", "`v2.extdeps.languages.dag`, beside `dag_keyword_lex_rule(^dag_token_kw_loop, ...)`. Grep first: a keyword removes an identifier from every module"),
+        r2("one production per form", "`v2.compiler.body_producer_forward`, one `BodyProducerForwardRow` per surface identity (see `body_producer_forward_row_loop_expr`). If its cutover from `body_lowering_fold` has not landed, coordinate with its owner rather than adding arms to the table being deleted"),
+        r2("`for` lowering (S1)", "the domain encoding. Not `list_map`, not `fold_call_lowering`"),
+        r2("`while` lowering and the proof producer (S2)", "`lower_loop` generalized in `v2.std.compilers.body_lowering`, and the derivation in `v2.std.cardinality` of §5.2"),
+        r2("fold seam migration (S3)", "`v2.compiler.fold_lowering` `fold_recurrence_encoding`, with its consumers in the same change"),
+        r2("the two refusals", "typed, located diagnostics where the production is recognized, each naming the alternatives in §6"),
+      ]
+    ),
+  ]
+}
+
+fn section_10_deviations() -> List<MarkdownBlock> {
+  [
+    h2(text: "10. How this differs from a traditional loop"),
+    p(text: "The one-line version for a newcomer: **a `.dag` `for` enumerates a list; it does not assert or manufacture iteration order.** Anything that needs a predecessor's state uses a construct that visibly carries it."),
+    table3(
+      header: r3("in C / Python / Java", "here", "why"),
+      rows: [
+        r3("the body assigns to a variable outside the loop", "impossible: no mutation. State that crosses iterations is `fold` or a stateful `while`", "the dependence is structure, so the scheduler can see it"),
+        r3("iterations run in order, always", "`for` members may run in any permitted order; results and diagnostics are still reported by index", "order is observable only through a carrier, an effect or another real edge"),
+        r3("`for` returns nothing; you push into a list", "`for x in xs { e }` *is* a value: the list of `e`s", "pointwise iteration has a result"),
+        r3("`for` works over any iterable", "S1 iterates a `List` only", "the order promises need a canonical enumeration, not just a count"),
+        r3("an index makes the loop sequential", "a position is a coordinate, not state", "only consuming a previous iteration's value creates a dependence"),
+        r3("`while (cond)` needs no termination argument", "a `while` needs a measure proven to descend on a well-founded domain, or it is refused", "execution is bounded and forward (DESIGN §4)"),
+        r3("`while (xs)` tests a collection", "refused", "three meanings, no truthiness"),
+        r3("`while (true)` runs forever", "refused; services get a lifecycle construct", "a hidden bound misreports, and a server loop manufactures a false dependency"),
+        r3("`break` / `continue`", "a `while` body returns `WhileContinue` or `WhileComplete`; a `for` has neither", "no non-local jumps"),
+        r3("the compiler may auto-parallelize if it proves safety", "the graph is the evidence; running in parallel is a later realization, and today everything runs in order", "*parallelizable* is a fact; *parallelized* is a realization"),
+      ]
+    ),
+  ]
+}
+
+fn section_11_slices() -> List<MarkdownBlock> {
+  [
+    h2(text: "11. Slices and the evidence each owes"),
+    p(text: "Each slice lands with its consumer and with claims that evaluate a program and can go red (DESIGN §3c, §5). A test that only shows a production *parses* proves nothing."),
+    ol(items: [
+      li(text: "**S0 — the encodings.** The domain edge and every loop-edge consumer landed in #12548, with its claims in `v2.test.claim.loop_domain_edge` (a domain loop conforms, two domain edges refuse, the unary form is unchanged, the hash separates a domain loop from a unary one, and the unary-only target realization refuses a domain loop). What remains is the three executing rules in the one `Loop` interpreter. The domain-only rule lands first, as its own subcut with a native spelling, consumed by `map` (`gunbc.plans.demand_engine_program` M2 pointwise specimen); the carrier and `WhileStep` rules remain outstanding after it. Claims, built directly as nodes (no surface syntax yet): a domain loop yields its member results **by index**, a domain-and-carrier loop yields the fold of an order-sensitive step (`acc * 10 + x` from seed 0 over `[1, 2, 3]` yields 123; subtraction would not do, because `acc - x` steps commute and a reversed fold returns the same answer), a carrier loop with a `WhileStep` body yields its completing value, and the unary `loop e` still yields `e`. The controls must keep evaluation order and result order apart, because a claim that pointwise members are *evaluated* in index order would enforce the dependency §1 removes: evaluating independent members in reversed or shuffled order yields the **same** values and diagnostics; a mutation that reverses result positions fails the result claim; a mutation that reverses member visitation while keeping the callback's argument roles fails the fold claim (321)."),
+      li(text: "**S1 — `for` over `List<T>`.** Claims: the lowered node has a domain edge and **no** carrier edge, and a mutation that inserts one fails the claim; its values equal a hand-built domain loop's; results and diagnostics are identical under reversed and shuffled member evaluation; the first error is the lowest index; an effectful body and a non-`List` domain are each refused with their own diagnostic."),
+      li(text: "**S2 — stateful `while`.** Claims: a `Nat` count-down, an `Int` count-down guarded by `m > 0`, and a halving loop guarded by `n > 1` are admitted, each with a proof from the §5.2 producer; `s + 1`, an unchanged `s`, an `Int` decrement with no guard floor, and a descent on a field other than the measure are each refused with `^cardinality_descent_not_proven`; `loop_multiplicity` and `inferred_facts_descent` return the same proof for the same loop. The mutation control has a real producer to mutate: making the producer answer `Strict` for an unrecognized update must turn the refusal claims red. `while (xs)` and `while (true)` are refused with the alternatives named."),
+      li(text: "**S3 — fold seam migration (landed, #12550).** `fold_recurrence_encoding` emits the full fold encoding in one change with its consumers, plus the realized-declaration edge that resolve checks. The claims in `v2.test.claim.fold_encoding` are: every operand at its authored occurrence; each operand's drop turns conservation red; the head binds `std.algebra` `collection_fold_shape`; a user `fold` refuses; `fold_x` never desugars. The claims of `v2.lens.complexity_accumulator_copy` stay green."),
+      li(text: "**S4 — `EffectPlanStep.While` conformance** (§8)."),
+    ]),
+    p(text: "**Out of scope, each gated on a named capability:** law-bearing `reduce` (a carried associativity law covering the full observation contract), `scan` (a consumer), ranges and other domains (a canonical enumeration), effects in `for` (`gunbc.plans.demand_engine_program` D16's access discipline; mergeable effects stay out of D16's scope too), budgeted repetition (S0 and S2, then its own design, §6.2), parallel emission (owned by `gunbc.plans.demand_engine_program` M5(a), the concurrent-execution cut, which carries the serial-versus-parallel equality claims and the observed-overlap evidence), and the service lifecycle (its own design, §6.3)."),
+  ]
+}
+
+fn section_12_open() -> List<MarkdownBlock> {
+  [
+    h2(text: "12. Open questions, and what to read in DESIGN.md"),
+    ul(items: [
+      li(text: "**Q1 — head spelling of a `while`.** The fields in §5 are fixed; the surface order and keywords are not. Whatever is chosen must make the carried state impossible to miss, because it is the one thing that makes the loop ordered."),
+      li(text: "**Q2 — `WhileStep` variant names.** Grep before settling them (§5)."),
+      li(text: "**Q3 — which measure lands first in S2.** `Nat` is well-founded by construction and needs no guard reasoning; the guarded `Int` forms are more ergonomic. Landing `Nat` first makes the smallest S2."),
+    ]),
+    table2(
+      header: r2("before…", "read"),
+      rows: [
+        r2("S0", "§4, *the closed, grounded substrate* (six behaviors; sugar adds no power), and §3, *replacement migrations cut over at the root* (for S3)"),
+        r2("writing any refusal", "§5, *fail-closed*: the absorbing fallback and the workaround are the traps this design is most exposed to"),
+        r2("writing a check", "§4b: ask whether its red is authorable before writing it"),
+        r2("claiming a loop is parallel", "§4b rung honesty, and §3d, *selection precedes convergence*"),
+        r2("touching `EffectPlanStep`", "§3b, conformance, and §3 on one name across distinct scopes"),
+        r2("your first claim", "§3, *a witness discriminates at one interface*"),
+      ]
+    ),
+  ]
+}
+
+fn for_while_loop_sugar_body() -> List<MarkdownBlock> {
+  concat(section_0_how_to_read(),
+  concat(section_1_rule(),
+  concat(section_2_s0(),
+  concat(section_2b_s0_execution_domain_only(),
+  concat(section_3_for(),
+  concat(section_4_fold(),
+  concat(section_5_while(),
+  concat(section_6_refusals(),
+  concat(section_7_observation(),
+  concat(section_8_effect_plan(),
+  concat(section_9_where(),
+  concat(section_10_deviations(),
+  concat(section_11_slices(), section_12_open())))))))))))))
+}
+
+data for_while_loop_sugar_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "for-while-loop-sugar",
+  title: "for / while — frontend sugar over Loop, one canonical meaning per spelling",
+  body: for_while_loop_sugar_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this brief when slices S0 through S4 are landed and their retained claims, enrolled in a named executing qualification gate, pass on the integrated retirement head (the required job evaluates no witness, so a landing receipt alone does not qualify): Loop carries the domain edge and executes its three rules, the for and while productions exist as body_producer_forward rows, the per-loop termination proof has its one producer and every consumer reads it, the fold seam emits the full encoding, and EffectPlanStep.While shares the measure. At that point the node shape, the grammar rows and their claims are the authority for what the loop forms mean, and this document, whose only job was to hand off the design, would be a second statement of it.") }
+}

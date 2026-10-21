@@ -1,0 +1,110 @@
+module extdeps.ssh.keys
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.encoding { base64_decode_canonical, Standard }
+import std.algebra { list_at_optional }
+import std.optional { Absent, Present }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT"
+  }
+}
+
+type SshKeyAlgorithm
+  = Ed25519
+  | Rsa
+  | EcdsaP256
+
+data ssh_key_algorithm_token_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/ssh-parameters/ssh-parameters.xhtml#ssh-parameters-19"
+  }
+}
+
+// ssh_key_algorithm_token emits registered wire tokens: the token SET is owned by the IANA SSH
+// Protocol Parameters public-key-algorithm-names registry (anchor above); each variant's
+// cryptosystem and token carry their own upstream authorities in the per-variant rows below — a
+// referenced entity carries ITS authority, never its consumer's (the Vendor<Domain> precedent).
+data ed25519_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ed25519.cr.yp.to/"
+  }
+}
+
+// Ed25519: design authority ed25519.cr.yp.to (Bernstein et al.); EdDSA specified in RFC 8032; the
+// ssh-ed25519 wire token is registered by RFC 8709.
+
+data rsa_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8017"
+  }
+}
+
+// Rsa: PKCS #1 v2.2 (RFC 8017); the ssh-rsa wire token is defined in RFC 4253 section 6.6. POSTURE:
+// ssh-rsa SIGNATURES (SHA-1) are deprecated by RFC 8332 in favor of rsa-sha2-256/rsa-sha2-512 — an
+// authorized_keys ssh-rsa KEY line remains valid, but selecting Rsa for new fleet keys is a
+// deprecated posture and the fleet's declared keys are Ed25519.
+
+data ecdsa_p256_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc5656"
+  }
+}
+
+// EcdsaP256: ECC in SSH per RFC 5656; curve P-256 per FIPS 186 / SEC 2; wire token ecdsa-sha2-nistp256.
+fn ssh_key_algorithm_token(a: SshKeyAlgorithm) -> NonEmptyStr {
+  match a {
+    Ed25519 => "ssh-ed25519"
+    Rsa => "ssh-rsa"
+    EcdsaP256 => "ecdsa-sha2-nistp256"
+  }
+}
+
+type SshPublicKey {
+  algorithm: SshKeyAlgorithm
+  material: NonEmptyStr
+  comment: String
+}
+
+fn ssh_public_key_line(k: SshPublicKey) -> String {
+  concat(
+    concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "),
+    concat(k.material as String, concat(" ", k.comment)),
+  )
+}
+
+// RFC 8709 section 4 (with RFC 4251 section 5 string encoding): an ssh-ed25519 public key blob is
+// uint32 11, the 11 octets "ssh-ed25519", uint32 32, then the 32 key octets, and nothing after. The
+// identity is parsed exactly -- every header octet, both declared lengths, the total -- so a blob
+// declaring any other key length, or carrying trailing octets, has no identity. Canonical base64
+// admits one spelling per blob, so the parsed key octets and the canonical material are the same
+// identity; a comment never participates in it.
+type SshEd25519KeyIdentity sole_constructor { key_octets: List<Int>, canonical_material: NonEmptyStr }
+
+data ssh_ed25519_blob_header: List<Int> = [0, 0, 0, 11, 115, 115, 104, 45, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 32]
+
+type SshBlobScan { index: Int, header_matches: Bool, key_reversed: List<Int> }
+
+fn ssh_ed25519_key_identity(material: NonEmptyStr) -> SshEd25519KeyIdentity? {
+  match base64_decode_canonical(s: material as String, variant: Standard) {
+    Absent => none
+    Present { value: octets } => if count(octets) != count(ssh_ed25519_blob_header) + 32 { none } else {
+      let scan = fold(octets, init: SshBlobScan { index: 0, header_matches: true, key_reversed: [] }, f: fn(acc, octet) {
+        match list_at_optional(xs: ssh_ed25519_blob_header, index: acc.index) {
+          Present { value: expected } => SshBlobScan { index: acc.index + 1, header_matches: acc.header_matches && expected == octet, key_reversed: acc.key_reversed }
+          Absent => SshBlobScan { index: acc.index + 1, header_matches: acc.header_matches, key_reversed: concat([octet], acc.key_reversed) }
+        }
+      })
+      if !scan.header_matches || count(scan.key_reversed) != 32 { none }
+      else { Present { value: SshEd25519KeyIdentity { key_octets: reverse(scan.key_reversed), canonical_material: material } } }
+    }
+  }
+}

@@ -1,0 +1,179 @@
+module test.claim.compute.compute_run_unit_cold_witness
+
+import std.types { Bool, FilePath, String }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  fleet_compute_hermetic_dashboard_instance_at, srv1_live_dashboard_instance, HostDashboardInstance,
+  IsolatedJobToolchainHomes, srv1_linux_toolchain,
+  macbook_local_dashboard_instance, srv2_deploy_dashboard_instance,
+  srv1_lab_dashboard_instance, srv2_preview_dashboard_instance, srv2_lab_dashboard_instance,
+}
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_provider_local { compute_store, compute_staging_dir }
+import std.materialization_store_grant {
+  MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace, WitnessScratchRoot,
+  materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
+  DurableAcrossRuns, EphemeralToFrame,
+}
+import gunbc.instrument_targets { compute_run_unit_cold_label }
+import gunbc.instruments.compute_run_unit_cold {
+  compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_unit_grant,
+  compute_run_unit_cold_launcher_headroom, compute_run_unit_cold_job_memory_demand,
+}
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
+import extdeps.bazel.label { render_label, label_eq }
+import std.measure { byte_size_count, kibibyte_count }
+
+fn witness_isolated_job_toolchain_homes() -> IsolatedJobToolchainHomes {
+  IsolatedJobToolchainHomes {
+    cargo_home: "/job-temp/cargo" as FilePath,
+    rustup_home: "/job-temp/rustup" as FilePath,
+  }
+}
+
+fn witness_hermetic_instance() -> HostDashboardInstance {
+  fleet_compute_hermetic_dashboard_instance_at(
+    workspace: "/job-workspace" as FilePath,
+    frame: 7,
+    toolchain_homes: witness_isolated_job_toolchain_homes(),
+  )
+}
+
+test fn the_hermetic_instance_is_not_srv1_live() -> Bool {
+  let h = witness_hermetic_instance()
+  let live = srv1_live_dashboard_instance()
+  (h.instance_id != live.instance_id)
+    && (h.host_identity != live.host_identity)
+    && ((h.repo_root as String) != (live.repo_root as String))
+    && ((h.instance_root as String) != (live.instance_root as String))
+}
+
+// The hermetic instance reads its source from the job workspace and writes only under its frame.
+test fn the_hermetic_compute_root_is_the_frame_not_the_workspace_or_opt_gunbc() -> Bool {
+  let h = witness_hermetic_instance()
+  let root = compute_root(instance: h) as String
+  let live_root = srv1_live_dashboard_instance().instance_root as String
+  ((h.instance_root as String) == "/tmp/gunbc_compute_7")
+    && ((h.repo_root as String) == "/job-workspace")
+    && root.starts_with(prefix: "/tmp/gunbc_compute_7/")
+    && !root.starts_with(prefix: "/job-workspace")
+    && !root.starts_with(prefix: live_root)
+    && !live_root.starts_with(prefix: root)
+}
+
+fn staging_is(instance: HostDashboardInstance, expected: String) -> Bool {
+  match compute_staging_dir(instance: instance) {
+    Absent => false
+    Present { value: d } => d == expected
+  }
+}
+
+test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Bool {
+  let h = witness_hermetic_instance()
+  let live = srv1_live_dashboard_instance()
+  match h.materialization_store_root {
+    Absent => false
+    Present { value: hermetic_root } =>
+      match live.materialization_store_root {
+        Absent => false
+        Present { value: live_root } => {
+          let hermetic_path = materialization_store_root_path(root: hermetic_root)
+          let live_path = materialization_store_root_path(root: live_root)
+          (hermetic_path == "/tmp/gunbc_compute_7/materialization-store")
+            && (live_path == materialization_store_host_volume_path)
+            && staging_is(instance: h, expected: join([hermetic_path, "-staging"], ""))
+            && staging_is(instance: live, expected: join([live_path, "-staging"], ""))
+            && match hermetic_root {
+              FrameJobWorkspace { frame } => frame == 7
+              DurableHostVolume => false
+              PersistentInstanceWorkspace { scope: _ } => false
+              WitnessScratchRoot { root: _ } => false
+            }
+            && match materialization_store_durability(root: hermetic_root) {
+              EphemeralToFrame => true
+              DurableAcrossRuns => false
+            }
+            && match materialization_store_durability(root: live_root) {
+              DurableAcrossRuns => true
+              EphemeralToFrame => false
+            }
+        }
+      }
+  }
+}
+
+test fn the_hermetic_toolchain_cargo_is_the_isolated_home_shim_not_srv1() -> Bool {
+  let homes = witness_isolated_job_toolchain_homes()
+  let h = fleet_compute_hermetic_dashboard_instance_at(
+    workspace: "/job-workspace" as FilePath,
+    frame: 7,
+    toolchain_homes: homes,
+  )
+  ((h.toolchain.cargo as String) == "/job-temp/cargo/bin/cargo")
+    && ((h.toolchain.rustc as String) == "/job-temp/cargo/bin/rustc")
+    && ((h.toolchain.rustfmt as String) == "/job-temp/cargo/bin/rustfmt")
+    && ((h.toolchain.cargo as String) != (srv1_linux_toolchain.cargo as String))
+    && !(h.toolchain.cargo as String).starts_with(prefix: "/home/briansrls/")
+}
+
+test fn the_job_memory_demand_is_the_unit_grant_plus_declared_launcher_headroom() -> Bool {
+  let grant = byte_size_count(b: compute_run_unit_cold_unit_grant_bytes)
+  let headroom = byte_size_count(b: compute_run_unit_cold_launcher_headroom)
+  let demand = byte_size_count(b: compute_run_unit_cold_job_memory_demand())
+  (kibibyte_count(k: compute_run_unit_cold_unit_grant()) == 16777216)
+    && (grant == 17179869184)
+    && (headroom == 1073741824)
+    && (demand == grant + headroom)
+    && (demand > grant)
+}
+
+fn store_root_is(root: MaterializationStoreRoot?, persistent: Bool) -> Bool {
+  match root {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        PersistentInstanceWorkspace { scope: _ } => persistent
+        FrameJobWorkspace { frame: _ } => !persistent
+        DurableHostVolume => false
+        WitnessScratchRoot { root: _ } => false
+      }
+  }
+}
+
+fn store_root_undeclared(root: MaterializationStoreRoot?) -> Bool {
+  match root {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// Literal persistent roots pick their declared scope, srv1 the host volume, the hermetic instance its
+// frame; the isolated preview/lab instances declare NO store (nothing in this closure requests one for
+// them), so compute refuses there with MaterializationStoreUndeclared rather than inventing a root.
+test fn each_instance_declares_the_store_its_lifetime_admits() -> Bool {
+  store_root_is(root: macbook_local_dashboard_instance().materialization_store_root, persistent: true)
+    && store_root_is(root: srv2_deploy_dashboard_instance().materialization_store_root, persistent: true)
+    && match srv1_live_dashboard_instance().materialization_store_root {
+      Absent => false
+      Present { value: r } =>
+        match r {
+          DurableHostVolume => true
+          PersistentInstanceWorkspace { scope: _ } => false
+          FrameJobWorkspace { frame: _ } => false
+          WitnessScratchRoot { root: _ } => false
+        }
+    }
+    && store_root_undeclared(root: srv1_lab_dashboard_instance().materialization_store_root)
+    && store_root_undeclared(root: srv2_preview_dashboard_instance().materialization_store_root)
+    && store_root_undeclared(root: srv2_lab_dashboard_instance().materialization_store_root)
+    && store_root_is(root: witness_hermetic_instance().materialization_store_root, persistent: false)
+    && match compute_store(instance: srv2_preview_dashboard_instance()) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn the_cold_instrument_is_not_a_required_emit_build_row() -> Bool {
+  let want = compute_run_unit_cold_label()
+  all(emitted_subject_build_rows(), row => !label_eq(a: row.label, b: want))
+    && (render_label(l: want) == "//gunbc/instruments:compute-run-unit-cold")
+}

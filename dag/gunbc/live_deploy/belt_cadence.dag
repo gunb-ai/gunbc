@@ -1,0 +1,81 @@
+module gunbc.live_deploy.belt_cadence
+
+import std.measure { Second, second, second_count }
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  belt_attempt_obligation_order,
+  BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation,
+  MeteringObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+}
+
+// belt_tick_cadence is NOT a timer that walks the frontier. The belt timer was removed (dogfood
+// intervention #4). This row is the bound on residual retrigger of the publication path unit
+// (TriggerLimitIntervalSec / StartLimitIntervalSec) and the gap between helper re-asks after a
+// leftover pending request. It is not OnUnitInactiveSec of a tick, and it does not spawn sessions.
+
+data belt_tick_cadence: Second = second(count: 60)
+
+// THE EXIT PATH UNIT'S TRIGGER LIMIT IS PINNED, NOT INHERITED. A stalled exit spool is stopped by the drain's own
+// verdict (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_verdict) and the service's
+// `ConditionDirectoryNotEmpty=!stalled`; what the path unit then does while the condition skips every start is
+// hit systemd's trigger limit and fail loudly (a failed .path in `systemctl --failed`, zero processes launched).
+// 200 starts in 2s is systemd 255's default, verified on srv1 2026-10-21; pinning it keeps the loud stop from
+// depending on a distribution default.
+data belt_exit_trigger_limit_interval: Second = second(count: 2)
+data belt_exit_trigger_limit_burst: Int = 200
+
+// THE PER-TICK WATCHDOG, and the 2026-09-21 measurement that put it here. A Type=oneshot unit with
+// no start bound runs as long as the tick runs, and OnUnitInactiveSec only schedules the next tick
+// from INACTIVITY -- so one tick that wedged in the SCM seed (measured that night: 2.25 hours at
+// 100% CPU inside one capture, the timer showing no next elapse and no receipt distinguishing
+// "nothing to do" from "stuck") halted the whole pipeline invisibly; the operator could not tell
+// the frozen cadence from an idle belt. TimeoutStartSec is the bounded-reconciliation backstop in
+// the workflow-execution ruling's sense: past the bound systemd kills the tick, the unit goes
+// inactive(failed) LOUDLY, and the timer resumes on the next cadence -- one lost pass, never a
+// lost night. The bound must clear the worst HONEST tick, which is first-capture-heavy: a fresh
+// project envelope seeds the whole ~7,050-path intake base through the git bridge once (measured
+// 2026-09-21 at roughly seven minutes of bridge time per project), and verification then runs the
+// node's validations; it must stay far below the hours a wedge needs to be noticed by a human.
+// The bound names the instrument that re-derives it, never a transcribed number (DESIGN section 6):
+// a green tick's receipt at receipts/belt-last-tick.json carries its observed_at, and the belt's
+// own stage timings re-derive the worst honest pass. 2700s (45 minutes) is the policy row: roughly six times
+// the 2026-09-21 measured seed-bridge cost, far below the hours a wedge needs to be noticed by a
+// human, and any honest growth beyond it must move this row with a reason, not the wedge.
+data belt_tick_run_bound: Second = second(count: 2700)
+
+data capture_obligation_run_bound: Second = second(count: 2700)
+data verify_obligation_run_bound: Second = second(count: 2700)
+data review_obligation_run_bound: Second = second(count: 2700)
+data audit_obligation_run_bound: Second = second(count: 2700)
+data publish_obligation_run_bound: Second = second(count: 2700)
+data launch_obligation_run_bound: Second = second(count: 2700)
+
+fn attempt_obligation_run_bound(kind: BeltAttemptObligationKind) -> Second {
+  match kind {
+    CaptureObligation => capture_obligation_run_bound
+    VerifyObligation => verify_obligation_run_bound
+    ReviewObligation => review_obligation_run_bound
+    AuditObligation => audit_obligation_run_bound
+    PublishObligation => publish_obligation_run_bound
+  }
+}
+
+fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
+  match kind {
+    LaunchObligation => launch_obligation_run_bound
+    ServedObservationObligation => belt_tick_run_bound
+    ResultReturnObligation => belt_tick_run_bound
+    MeteringObligation => belt_tick_run_bound
+    DogfoodStartRecordObligation => belt_tick_run_bound
+    SnapshotCensusObligation => belt_tick_run_bound
+  }
+}
+
+fn belt_attempt_obligation_unit_run_bound() -> Second {
+  fold(belt_attempt_obligation_order, init: second(count: 0), f: (acc, kind) => {
+    let b = attempt_obligation_run_bound(kind: kind)
+    if second_count(s: b) > second_count(s: acc) { b } else { acc }
+  })
+}
+
+data belt_credential_recovery_backstop: Second = second(count: 900)

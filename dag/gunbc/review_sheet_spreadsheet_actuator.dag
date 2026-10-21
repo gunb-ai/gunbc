@@ -1,0 +1,287 @@
+module gunbc.review_sheet_spreadsheet_actuator
+
+import std.types { NonEmptyStr, String, Bool }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy }
+import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_refusal,
+}
+import extdeps.google.drive
+import extdeps.google.drive { google_sheet_mime_type }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetPageIncomplete,
+  SheetSearchUnreadable,
+  SpreadsheetCreatePlan,
+  spreadsheet_from_file_list,
+  review_sheet_search_query,
+}
+import gunbc.review_sheet_identity_converge {
+  review_sheet_identity_subject,
+  ensure_review_spreadsheet_on_identity,
+}
+import gunbc.review_sheet_legacy_extent_producer {
+  OperatorLegacyDeclaration,
+  review_sheet_legacy_extent,
+  read_operator_legacy_declaration,
+}
+import gunbc.review_sheet_declared_id_admission {
+  DeclaredIdAdmission,
+  DeclaredIdAdmitted,
+  DeclaredIdRefused,
+  NoDeclaredIdOffered,
+  admit_declared_id,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  ReviewSheetIdentityDisposition,
+  review_sheet_identity_standing_disposition,
+}
+
+// THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
+// files.create may have minted a spreadsheet whose id this process never saw. Nothing in the
+// response recovers it, because there was no response -- so the only way back to that file is a
+// property written ONTO it at creation time, which is exactly what marker_property_key is. The
+// recovery read is therefore not a nicety: it is the whole reason a create is allowed at all.
+//
+// Membership had the same shape but a milder consequence: a lost permissions.create leaves a
+// principal that may or may not be a member, and re-reading settles it. A lost files.create leaves
+// a FILE, and without the key the next pass would find nothing and mint a second one, with the
+// first invisible and holding whatever was written to it.
+
+// AN OPERATOR-ADJUDICATED ADOPTION IS ITS OWN OUTCOME AND NOT A PLAIN SpreadsheetAdopted. The two
+// are reached by different authorities -- one by an observation that settled on its own, one by a
+// human choosing between observed lineages after a file-by-id preflight -- and collapsing them
+// would make the run's own report unable to say which. An operator reading a converge log needs to
+// know that the sheet in use is the one they named, because that is the fact they would revisit.
+type SpreadsheetConvergeOutcome
+  = SpreadsheetAdopted { file_id: NonEmptyStr }
+  | SpreadsheetAdoptedByDeclaredId { file_id: NonEmptyStr }
+  | SpreadsheetCreatedAndVerified { file_id: NonEmptyStr }
+  | SpreadsheetCreateUnverified { cause: NonEmptyStr }
+  | SpreadsheetConvergeRefused { cause: NonEmptyStr }
+
+fn read_spreadsheet(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> ReviewSpreadsheetObservation {
+  match drive.Files.ListFiles(
+    drive_id: drive_id as String,
+    query: review_sheet_search_query(marker_value: marker_value),
+  ) {
+    RestAnswered { answer: read } => spreadsheet_from_file_list(list: read.list)
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        SheetSearchUnreadable {
+          reason: join(["files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        }
+    }
+  }
+}
+
+// THE RECOVERY READ. After a create -- successful or ambiguous -- the question is not what the
+// create said but what the drive now holds under our key. Exactly one is the answer in both cases:
+// after a success it is the file just made, and after an ambiguity it is the file the lost answer
+// made. Two is a refusal even here, because a duplicate found at this moment is a duplicate the
+// operator must adjudicate, not one this converge may quietly pick from.
+fn verify_created_spreadsheet(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  create_detail: NonEmptyStr,
+) -> SpreadsheetConvergeOutcome {
+  match read_spreadsheet(drive_id: drive_id, marker_value: marker_value) {
+    SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
+    SheetAbsent =>
+      SpreadsheetCreateUnverified {
+        cause: join(
+          ["no file carries the key after ", create_detail as String, "; the create did not take and was not refused"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: ids } =>
+      SpreadsheetConvergeRefused {
+        cause: join(
+          ["after ", create_detail as String, " two or more files carry the key (", join(ids, ", "), "); an earlier create also landed and only an operator can say which is real"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying search was incomplete, so nothing may be reported as created"], "") as NonEmptyStr
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying search returned one page of a longer list; a page is not the list, so a second file carrying the key may sit unread on the next page"], "") as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetCreateUnverified {
+        cause: join([create_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn perform_spreadsheet_create(
+  plan: SpreadsheetCreatePlan,
+) -> SpreadsheetConvergeOutcome {
+  match drive.Files.CreateFile(
+    name: plan.name as String,
+    mime_type: google_sheet_mime_type as String,
+    parent_id: plan.drive_id as String,
+    marker_property_value: plan.marker_property_value as String,
+  ) {
+    RestAnswered { answer: created } =>
+      verify_created_spreadsheet(
+        drive_id: plan.drive_id,
+        marker_value: plan.marker_property_value,
+        create_detail: "files.create answered success" as NonEmptyStr,
+      )
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+      RestExchangeCommitAmbiguous { detail } =>
+        verify_created_spreadsheet(
+          drive_id: plan.drive_id,
+          marker_value: plan.marker_property_value,
+          create_detail: join(["files.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+        )
+      RestExchangeStatusRefused { status, body } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        SpreadsheetConvergeRefused {
+          cause: join(["files.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+    }
+  }
+}
+
+// TWO READINGS AND ONE DECLARATION ENTER, AND NONE OF THEM DECIDES. The current-marker search
+// answers what this drive holds under the live marker field; the legacy-extent producer answers
+// what can be established about the superseded one; the operator declaration is read once and used
+// twice, as the extent's settling statement or as a selection, never as both.
+// gunbc.review_sheet_identity joins the two readings into a standing,
+// gunbc.review_sheet_declared_id_admission decides whether a declared id may be acted on, and
+// gunbc.review_sheet_identity_converge decides the ordinary create. This function performs.
+//
+// THE ADMISSION IS ASKED FIRST BECAUSE IT IS THE NARROWER AUTHORITY. It answers NoDeclaredIdOffered
+// for every run that declared no selection, which is almost all of them, and only a declaration
+// that survived the subject check, the standing check, the contradicting-observation check and an
+// exact file-by-id preflight can reach an adoption through it. A refusal there is final: a
+// selection that could not be admitted must not fall through to the ordinary path, because the
+// ordinary path would answer about a state the operator has said is wrong.
+//
+// THE DECLARATION FILE IS READ EXACTLY ONCE PER PASS. Two reads would be two demands for one fact
+// with the converge as their least common ancestor, and they could disagree if the operator edits
+// the file between them -- so the extent producer and the admission are handed the same value.
+//
+// THE DECLARATION PATH IS A DECLARED ROW AND NOT AN ARGUMENT. gunbc run passes arguments only as
+// argv, and on this fleet an argv word is readable by any job payload a pull request can influence
+// -- the reason converge_drive_half_cli takes no arguments at all. A caller-supplied path would
+// also be a caller-supplied ANSWER: point it at a file you wrote and the extent settles.
+fn converge_review_spreadsheet(
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  policy: EnsurePolicy,
+) -> SpreadsheetConvergeOutcome {
+  let subject = review_sheet_identity_subject(drive_id: drive_id, marker_value: marker_value)
+  let declaration = read_operator_legacy_declaration(
+    path: review_sheet_legacy_declaration_path as String,
+  )
+  let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
+  let disposition = review_sheet_identity_standing_disposition(
+    subject: subject,
+    current: observed,
+    legacy: review_sheet_legacy_extent(subject: subject, declaration: declaration),
+  )
+  match admit_declared_id(subject: subject, disposition: disposition, declaration: declaration) {
+    DeclaredIdAdmitted { file_id: f } => SpreadsheetAdoptedByDeclaredId { file_id: f }
+    DeclaredIdRefused { cause: c } => SpreadsheetConvergeRefused { cause: c }
+    NoDeclaredIdOffered =>
+      match ensure_review_spreadsheet_on_identity(
+        policy: policy,
+        disposition: disposition,
+        drive_id: drive_id,
+        sheet_name: sheet_name,
+        marker_value: marker_value,
+      ) {
+        Noop => spreadsheet_noop_outcome(observed: observed)
+        Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
+        Apply { plan: p } => perform_spreadsheet_create(plan: p)
+      }
+  }
+}
+
+// WHERE AN OPERATOR WRITES THE DECLARATION. One fixed path per host, because the declaration's
+// subject lives in its CONTENT: a path cannot say which drive, which marker generation or which
+// sheet it speaks for, and a declaration that outlives its subject is worse than an absent one --
+// it is a stale assertion that still reads as authoritative, unlocking exactly the adopt and create
+// decisions that lose data when they are wrong. The kernel refuses a declaration whose carried
+// subject is not the intended one, which is what makes one path safe.
+data review_sheet_legacy_declaration_path: NonEmptyStr = "/etc/gunbc/review-sheet-legacy-extent-declaration.json"
+
+fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> SpreadsheetConvergeOutcome {
+  match observed {
+    SheetObservedOne { file_id: id } => SpreadsheetAdopted { file_id: id }
+    SheetAbsent =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on an absent spreadsheet, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: _ } =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on duplicated spreadsheets, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on an incomplete search, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetConvergeRefused {
+        cause: "converged on one page of a longer file list, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["converged on an unreadable search: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn spreadsheet_outcome_text(o: SpreadsheetConvergeOutcome) -> String {
+  match o {
+    SpreadsheetAdopted { file_id: id } => join(["adopted existing sheet ", id as String], "")
+    SpreadsheetAdoptedByDeclaredId { file_id: id } =>
+      join(["adopted operator-declared sheet ", id as String, ", confirmed by an exact file-by-id read"], "")
+    SpreadsheetCreatedAndVerified { file_id: id } =>
+      join(["created and verified by readback: ", id as String], "")
+    SpreadsheetCreateUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    SpreadsheetConvergeRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}

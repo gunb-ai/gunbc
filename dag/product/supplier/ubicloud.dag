@@ -1,0 +1,252 @@
+module product.supplier.ubicloud
+
+import std.types { NonEmptyStr, List, Int, Timestamp }
+import std.nat { Nat }
+import std.measure { ByteSize, Second, second }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { cpu_memory_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
+import product.fabric.provider_route {
+  ProviderRoute,
+  ProviderRegionObservation, ProviderRegionUnread,
+  ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import std.decl_ref { decl_ref, DeclarationRef }
+import extdeps.pricing.ubicloud {
+  UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
+}
+import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow }
+
+// THE MISSING LAYER BETWEEN A CITED PRICE AND A SELECTABLE OFFER.
+//
+// product.fabric.supply states the division of labour explicitly: "Normalizing a
+// supplier's published terms into one of these is the supplier binding's work, and so
+// are billing quantum, rounding, minimum charge, fixed and setup charges, caps, and
+// when billing starts and stops. The core compares normalized quotes; it does not
+// model any supplier's tariff." Until this module existed there were no supplier
+// bindings at all: SupplierOffer was constructed only in test fixtures, so the selection fold
+// had nothing real to rank. This module is that work for one supplier.
+//
+// It RESTATES NOTHING. Shapes come from extdeps.cloud.ubicloud, prices from
+// extdeps.pricing.ubicloud, and both keep their own citations. A previous attempt in
+// this repository re-minted both and produced two disagreeing answers for one vendor
+// fact within a day; the rule that prevents it is to consume the row, never copy it.
+
+// THE VENDOR'S OWN BILLING PERIOD IS PRESERVED, NOT NORMALIZED.
+//
+// Ubicloud bills by the minute, so the quote is QuotedPerMinute and the billing quantum
+// is sixty seconds. An earlier revision of this binding squashed the per-minute rate
+// into QuotedPerHour because the core had no per-minute arm; that was a twentyfold
+// overcharge on a three-minute job, since the hourly arm rounds up to whole billed
+// hours. Normalizing a supplier's period is not a presentational choice -- the period
+// and the quantum together ARE the tariff, and a binding that discards them hands the
+// selection fold a number that is not the price.
+fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
+  QuotedPerMinute(row.per_minute)
+}
+
+// Sixty seconds, from the vendor's published per-minute billing. Not a default.
+data ubicloud_billing_quantum: Second = second(count: 60)
+
+// WHAT THE FABRIC'S SHAPE CANNOT SAY.
+//
+// MEMORY CAME OFF THIS LIST, AND ITS REMOVAL IS THE POINT RATHER THAN A TIDY-UP. This row
+// existed because Shape carried only { hard: { threads } }, so a 2-thread runner with 6 GB and a
+// 2-thread runner with 8 GB were indistinguishable to a selection fold -- and Ubicloud sells
+// exactly that pair. Shape now carries an `envelope`, added for precisely this binding, so the
+// memory a catalog row publishes is EXPRESSED (see ubicloud_shape) and MemoryNotExpressibleInShape
+// would now be a false statement about the model rather than an honest one about its limits. A
+// diagnosis outliving the deficit it diagnoses is worse than absent: it is cited as a known gap
+// while the gap is closed.
+//
+// Disk stays, because nothing in ResourceEnvelope's storage axis is populated from this catalog
+// yet, and the fact is still true. That asymmetry is the whole content of this type now.
+type UnexpressedSupplyFact
+  = DiskNotExpressibleInShape { provided: ByteSize }
+  | IsolationNotObserved
+
+// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
+// looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
+// called, and the field below then read as referring to this wrapper rather than to the
+// carrier it wraps. Two types under one name is the ambiguity the corpus resolves by silent
+// last-import-wins, so nothing refuses and the reader cannot tell which one a use means.
+type SupplierOfferProjection<P> {
+  offer: SupplierOffer<P>
+  unexpressed: List<UnexpressedSupplyFact>
+}
+
+fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: catalog.vcpus },
+    envelope: cpu_memory_envelope(
+      min_threads: catalog.vcpus,
+      architecture: none,
+      min_bytes: catalog.memory_bytes,
+    ),
+  }
+}
+
+// THE PROFILE THIS BINDING MAY HONESTLY CLAIM IS THE EMPTY ONE, AND IT IS NOT A PLACEHOLDER.
+//
+// SupplierOffer.isolation states what an offer PROVIDES, and nobody here has measured what a
+// Ubicloud runner provides. The published catalog rows carry vcpus, memory and disk; they say
+// nothing about kernel tenancy, namespacing or egress. Naming shared_kernel_sandbox_profile()
+// would be inventing a vendor guarantee from its price list -- the fabricated-plausible-output
+// failure, and worse than a refusal because a broker would then ROUTE work to it.
+//
+// An empty guarantee list is fail-closed by construction: unsatisfied_isolation_guarantees
+// filters the REQUIRED set against this one, so every guarantee any work asks for comes back
+// missing and the offer refuses BY NAME. Work requiring nothing still matches, which is correct.
+//
+// The empty list alone would conflate "provides none" with "nobody looked", so the projection
+// carries IsolationNotObserved beside it -- the same move the disk fact makes, and the thing
+// that turns this from a silent zero into a stated coverage obligation.
+fn ubicloud_unobserved_isolation() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// THE ROUTE THIS VENDOR'S OFFERS SIT ON, AND WHY AN UNOBSERVED REGION CANNOT PRODUCE ONE.
+// provider and service cite declarations that exist in the upstream module - the external
+// authority anchor and the runner types authority - so both are checkable by the namespace tree
+// rather than agreed by spelling.
+//
+// AN EARLIER REVISION PUT A SENTINEL IN THE REGION SLOT, and that was the exact fail-open shape
+// product.fabric.provider_route rules out one file over: "THE ABSENT AND UNREAD ARMS ARE SEPARATE
+// AND THAT SEPARATION IS THE WHOLE POINT ... the first is a fact that can support an admission and
+// the second is an obligation that must refuse." It cited a RegionNotObserved declaration as if it
+// named a region, and defended that with a roster argument - no sanction cites it, so every offer
+// refuses. But nothing in RouteScopeSanction or admit_provider_use forbids a roster row from
+// citing it, and provider_route_eq compares declaration references and would match happily. One
+// added row and every Ubicloud offer is admitted under a sanction for "unobserved", whatever
+// region it actually runs in, with a fully populated evidence record. Safety contingent on a
+// roster nobody has written yet is not safety; DESIGN section 5 asks for the state to be
+// UNWRITABLE, not for the currently-empty set of writers to be pointed at.
+//
+// So the observation is its own coproduct and a ProviderRoute is minted ONLY in the read arm.
+// There is no value of ProviderRegionObservation that yields a route with an unobserved region,
+// which is what makes this construction rather than validation. The coproduct itself lives in
+// product.fabric.provider_route (review 65274): this module was the first instance, and the
+// Cloudflare R2 coincidence is why it moved rather than being copied.
+fn ubicloud_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "extdeps_external_authority_anchor")
+}
+
+fn ubicloud_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_runner_types_authority")
+}
+
+// NOBODY HAS READ THIS VENDOR'S REGIONS, stated as the standing production observation. Nothing
+// in the cited catalog names a location, so any region written here would be invented. This is
+// what the binding is handed today; it is a row rather than a literal at the call site so the
+// obligation is one named thing rather than a sentence repeated per caller.
+data ubicloud_region_unread_obligation: NonEmptyStr = "No cited Ubicloud row names a region for a runner. Until one is read and cited, this vendor's offers cannot be placed on a route, and binding refuses rather than inventing a location."
+
+fn ubicloud_region_unread() -> ProviderRegionObservation {
+  ProviderRegionUnread {
+    obligation: decl_ref(module_path: "product.supplier.ubicloud", decl_name: "ubicloud_region_unread_obligation"),
+  }
+}
+
+fn ubicloud_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: ubicloud_provider_ref(),
+    service: ubicloud_service_ref(),
+    region: region,
+  )
+}
+
+fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
+  [
+    DiskNotExpressibleInShape { provided: catalog.disk_bytes },
+    IsolationNotObserved,
+  ]
+}
+
+// BUYER-SIDE POLICY, DECLARED HERE BECAUSE IT IS OURS AND NOT THE VENDOR'S.
+//
+// A scraped list price carries no expiry: the vendor publishes a number, not a quote
+// with a validity window, while QuotedSupply requires valid_until. The gap is closed by
+// OUR freshness policy -- how long we are willing to treat a scraped list price as
+// current -- which is a buyer fact and belongs in the product layer. It is NOT a claim
+// about what the vendor promised.
+data list_price_trust_horizon_note: NonEmptyStr = "A scraped vendor list price has no stated expiry. valid_until is therefore OUR staleness horizon, not the vendor's commitment. Reading it as a vendor promise would turn a buyer-side policy into a supplier guarantee that nobody made."
+
+// Cloud supply is bounded, never unbounded: supply.dag requires a quantity bound
+// because an offer without one cannot be conserved against, and no supplier actually
+// claims infinite capacity. Ubicloud publishes no concurrency cap in the cited rows, so
+// this is the bound WE would place against, which is a buyer policy and not a vendor
+// fact.
+data placement_concurrency_bound: Int = 64
+
+// READINESS IS REFUSED, NOT ASSUMED, AND THAT IS THE POINT.
+//
+// The selection policy is CheapestFungibleWithDelayValuation: ready_at is an INPUT to
+// the ranking, not decoration. Guessing it does not merely add an unmeasured field --
+// it corrupts the exact comparison the policy exists to make, and it does so silently,
+// in the direction that flatters whichever supplier we guessed optimistically about.
+// So provisioning delay must be MEASURED, and until it is this binding refuses rather
+// than binding an offer that would rank on a fabricated number.
+type ReadinessObservation
+  = ReadinessMeasured { ready_at: Timestamp, receipt: ObservationReceiptRef }
+  | ReadinessUnmeasured { obligation: DeclarationRef }
+
+data ubicloud_readiness_unread_obligation: NonEmptyStr = "Provisioning delay from job dispatch to a Ubicloud runner accepting work has not been measured. Start one job per shape, record dispatch and first-heartbeat timestamps, and land the receipt. Until then no Ubicloud offer may be ranked by a delay-valuing policy."
+
+data ubicloud_readiness: ReadinessObservation = ReadinessUnmeasured {
+  obligation: decl_ref(module_path: "product.supplier.ubicloud", decl_name: "ubicloud_readiness_unread_obligation"),
+}
+
+type OfferBinding<P>
+  = OfferBound { bound: SupplierOfferProjection<P> }
+  | OfferBindingRefused { runs_on_label: NonEmptyStr, cause: DeclarationRef }
+
+fn bind_ubicloud_offer<P>(
+  principal: P,
+  executor: P,
+  row: UbicloudRunnerPriceRow,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  region: ProviderRegionObservation,
+  quoted_at: Timestamp,
+  valid_until: Timestamp,
+  receipt: ObservationReceiptRef,
+) -> OfferBinding<P> {
+  match ubicloud_route(region: region) {
+    ProviderRouteRegionUnobserved { obligation } =>
+      OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
+    ProviderRouteObserved { route: bound_route } =>
+    match readiness {
+      ReadinessUnmeasured { obligation } =>
+        OfferBindingRefused { runs_on_label: row.catalog.runs_on_label, cause: obligation },
+      ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+        OfferBound {
+          bound: SupplierOfferProjection {
+            offer: SupplierOffer {
+              id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
+              executor: executor,
+              route: bound_route,
+              shape: ubicloud_shape(catalog: row.catalog),
+              capabilities: capabilities,
+              trust_domain: trust_domain,
+              isolation: ubicloud_unobserved_isolation(),
+              quantity_bound: placement_concurrency_bound,
+              ready_at: ready_at,
+              quote: ubicloud_quote(row: row),
+              billing_quantum: ubicloud_billing_quantum,
+              evidence: QuotedSupply {
+                quoted_at: quoted_at,
+                valid_until: valid_until,
+                receipt: receipt,
+              },
+            },
+            unexpressed: ubicloud_unexpressed(catalog: row.catalog),
+          },
+        },
+    },
+  }
+}

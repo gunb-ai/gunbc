@@ -1,0 +1,33 @@
+module v2.test.language_model.rust_r3_internal
+
+test fn rust_r3_internal_emit_coupling_fixture_wired() -> Bool {
+  let receipt = rust_r3_internal_fixture()
+  receipt.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
+  && receipt.atom_realization_fact == ^rust_atom_realization_symbol
+  && rust_r3_internal_emit_coupling_both_projections_changed(receipt: receipt)
+}
+
+fn rust_r3_internal_pending_verification_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^rust_r3_internal_pending_verification_reason,
+    at: Textual { file: ^rust_r3_internal_pending_verification_reason, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+data rust_r3_internal_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
+  claim_id: leaf_model_claim_rust_r3_internal_symbol_coupling,
+  happy_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r3_internal_pending_verification_diagnostic())
+  ),
+  falsification_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r3_internal_pending_verification_diagnostic())
+  )
+}
+
+test fn rust_r3_internal_verification_receipt_claim_id_wired() -> Bool {
+  rust_r3_internal_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
+}
+
+data rust_r3_internal_modeled_happy_expectation: TargetCompileVerdict = TargetCompileAccepted
+

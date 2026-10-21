@@ -1,0 +1,10 @@
+module gunbc.instruments.native_emission_controls_alias
+
+import std.types { String }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
+
+type ControlWords = FreeMonoid<String>
+
+fn control_words_of(name: String) -> ControlWords {
+  list_snoc_item(Empty, name)
+}

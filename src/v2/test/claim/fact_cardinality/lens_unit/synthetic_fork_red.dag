@@ -1,0 +1,27 @@
+module v2.test.claim.fact_cardinality.lens_unit.synthetic_fork_red
+
+import std.live_tree { LiveTreeDisposition }
+import v2.lens.fact_cardinality { Dag, FactCardinalityDeclFact, V2, fact_cardinality_cross_tree_diverged_fork }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data synthetic_fork_dag: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:FreeMonoid",
+  tree: Dag,
+  content_hash: "dag_free_monoid_record"
+}
+
+data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:FreeMonoid",
+  tree: V2,
+  content_hash: "v2_free_monoid_coproduct"
+}
+
+test fn synthetic_fork_red_holds() -> Bool {
+  fact_cardinality_cross_tree_diverged_fork(
+    left: synthetic_fork_dag,
+    right: synthetic_fork_v2
+  )
+}

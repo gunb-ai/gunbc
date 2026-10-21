@@ -1,0 +1,123 @@
+module v2.test.claim.self_host.native_agreement_label_probe
+
+import v2.std.native_agreement { runtime_value_discriminant_octet, runtime_value_octet_label }
+import v2.std.node { Node, TypeNode, Atom, OccurrenceSynthetic }
+import v2.std.runtime {
+  RuntimeValue,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeAggregate,
+  RuntimeAggregateValue,
+  RuntimeReference,
+  RuntimeReferenceValue,
+  RuntimeClosure,
+  RuntimeClosureValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeIdentity,
+  EvaluationEnvironment
+}
+import v2.std.machine { Byte }
+import std.optional { Absent, Present }
+import std.algebra { empty_map }
+
+fn probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^label_probe_type } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn probe_two_bytes() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: probe_node(),
+      bytes: [Byte { bits: [true] }, Byte { bits: [false] }]
+    }
+  }
+}
+
+fn probe_zero_bytes() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue { primitive_type: probe_node(), bytes: [] }
+  }
+}
+
+test fn label_of_a_two_byte_primitive() -> Bool {
+  runtime_value_octet_label(value: probe_two_bytes()) != "?"
+}
+
+test fn label_of_an_empty_primitive_is_unknown() -> Bool {
+  runtime_value_octet_label(value: probe_zero_bytes()) == "?"
+}
+
+// ---- runtime_value_discriminant_octet: total-match backfill (wildcard arm -> named arms) ----
+// The off-variant wildcard `_ => Absent` migrated to one named arm per remaining RuntimeValue
+// variant (RuntimeAggregate / RuntimeReference / RuntimeClosure / RuntimeUnit), each Absent.
+// The witnesses below are the discriminating RED (non-primitive variants and a short primitive
+// project to Absent) and the positive control (a primitive whose second byte is k projects to
+// Present k).
+
+// RuntimeUnit carries no primitive-discriminant byte.
+fn probe_unit() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: probe_node() }
+  }
+}
+
+// RuntimeAggregate carries no primitive-discriminant byte.
+fn probe_aggregate() -> RuntimeValue {
+  RuntimeAggregate {
+    value: RuntimeAggregateValue { aggregate_type: probe_node(), fields: [] }
+  }
+}
+
+// RuntimeReference carries no primitive-discriminant byte.
+fn probe_reference() -> RuntimeValue {
+  RuntimeReference {
+    value: RuntimeReferenceValue {
+      reference_type: probe_node(),
+      identity: RuntimeIdentity { identity: ^label_probe_ref },
+      referent_type: probe_node()
+    }
+  }
+}
+
+// RuntimeClosure carries no primitive-discriminant byte.
+fn probe_closure() -> RuntimeValue {
+  RuntimeClosure {
+    value: RuntimeClosureValue {
+      arrow_type: probe_node(),
+      arrow: probe_node(),
+      environment: EvaluationEnvironment { bindings: empty_map() }
+    }
+  }
+}
+
+// A primitive whose second byte is 5 (LSB-first bits: true, false, true).
+fn probe_five_second_byte() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: probe_node(),
+      bytes: [Byte { bits: [false] }, Byte { bits: [true, false, true] }]
+    }
+  }
+}
+
+// RED: every non-primitive variant (Aggregate / Reference / Closure / Unit — all four named
+// arms) and a primitive with fewer than 2 bytes project to Absent. A match that answered the
+// wrong variant, or that read bytes[1] on any of them, would fail this.
+test fn discriminant_octet_non_primitive_is_absent() -> Bool {
+  runtime_value_discriminant_octet(value: probe_aggregate()) == Absent
+    && runtime_value_discriminant_octet(value: probe_reference()) == Absent
+    && runtime_value_discriminant_octet(value: probe_closure()) == Absent
+    && runtime_value_discriminant_octet(value: probe_unit()) == Absent
+    && runtime_value_discriminant_octet(value: probe_zero_bytes()) == Absent
+}
+
+// POSITIVE CONTROL: a primitive whose second byte is k projects to Present k (the behavior the
+// named arms must preserve alongside the RED).
+test fn discriminant_octet_second_byte_is_present() -> Bool {
+  runtime_value_discriminant_octet(value: probe_five_second_byte()) == Present { value: 5 }
+}

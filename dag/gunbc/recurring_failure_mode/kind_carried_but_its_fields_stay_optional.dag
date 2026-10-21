@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data kind_carried_but_its_fields_stay_optional: RecurringFailureMode = RecurringFailureMode {
+  identity: "kind_carried_but_its_fields_stay_optional" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a carrier gains a positive KIND variant while the fields that kind implies stay OPTIONAL on the same carrier, so a consumer that matches the kind still cannot reach the payload without an unwrap. The kind answers WHICH construct this is and answers nothing about what the construct contains, yet the climb reads as if it had closed both -- which is the shape of DESIGN section 4b(1) rung inflation, because the honest rung is the MINIMUM across the paths and the field path did not move.",
+
+    "RECEIPT, 2026-09-04, in v1.std.core Node. Node gained module_item_kind carrying ParsedModuleItemKind, stamped by the parse item constructors, which dissolved the emit-side predicates that decided an item's kind from the ABSENCE of fields. Node.body and Node.type_annotation stayed `Node?`, because Node is one carrier for items and expressions alike and an expression has no body. So a ModuleItemFunction whose body is Absent, or a ModuleItemDataValue with no declared type, remains fully AUTHORABLE, and twelve dispatch sites across the three emitters that previously used is_function_item / is_data_def_item as PROOF THAT AN UNWRAP WAS SAFE now match on the optional field and refuse when it is Absent. The refusal is real and it is a wall, not a construction.",
+
+    "THE DISTINGUISHING FACT is that the surviving guard reads as leftover ceremony rather than as load-bearing. A reviewer who accepts the kind as authoritative sees `match item.body { Present ... Absent => refuse }` under `ModuleItemFunction =>` and reads the Absent arm as unreachable -- and deleting it, or replacing it with an unwrap, is a one-line edit that no test names. The tell is a coproduct arm whose body immediately reaches for a field the coproduct does not guarantee.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. Ceiling STRUCTURALLY IMPOSSIBLE, DESIGN section 4b rung 4; current rung MECHANICALLY PREVENTABLE for the field-presence half, while the kind half sits at rung 4. THE TRIGGER IS THE CAPABILITY AND NOT AN ARTIFACT: a per-kind item carrier in which each kind's implied payload is NON-OPTIONAL BY CONSTRUCTION -- a function item whose body is a `Node` and not a `Node?`, a data item whose declared type and value are both required -- so that a kind-stamped item with a missing payload has no constructor and the Absent arms have no RED to catch. Anything less than that, including a check that every stamped item carries its fields, is a validator standing where construction was available and does not retire this row.",
+
+    "RECOGNITION RULE: when a positive variant lands on a shared carrier, ask which fields that variant IMPLIES and whether they are still optional on the carrier. If they are, the climb covered the classification axis only; report the rung for that axis and name the payload axis separately. A single carrier serving several variants is the structural reason the payload cannot be tightened in place, so this row and the carrier split are the same work seen from two ends.",
+  ],
+
+  evidence: [],
+}

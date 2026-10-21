@@ -1,0 +1,9 @@
+module uab.declaring
+
+type Shape
+  = Circ { r: Int }
+  | Sq { s: Int }
+
+fn pick(c: Bool) -> Shape {
+  if c { Circ { r: 1 } } else { Sq { s: 2 } }
+}

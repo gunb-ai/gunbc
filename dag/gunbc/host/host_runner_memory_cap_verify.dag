@@ -1,0 +1,337 @@
+module gunbc.host.host_runner_memory_cap_verify
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { list_reverse }
+import gunbc.host.host_effect { LocalShell }
+import std.disposition { Disposition, Terminal }
+import gunbc.clock_read { clock_now_probed_at }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_converge {
+  ConvergeKnob,
+  ConvergeVerdict,
+  VerdictConverged,
+  Drifted,
+  VerdictAbsent,
+  converge_verdict,
+  runner_instance_glob,
+}
+import gunbc.systemctl_list_units { systemctl_list_units_active_services }
+import gunbc.host.host_runner_memory_provision {
+  runner_memory_host_converge,
+  runner_memory_knobs_from,
+  runner_memory_cap_readback_verdict,
+}
+import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+}
+import gunbc.runner.runner_unit_live_read {
+  RunnerUnitMemoryLiveRead,
+  RunnerUnitLiveReadRow,
+  runner_unit_live_read_typed,
+}
+
+data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."
+}
+
+type RunnerMemoryCapVerifyTally {
+  converged: Int
+  drifted: Int
+  absent: Int
+}
+
+type RunnerMemoryCapVerifyReceipt {
+  host: HostIdentity
+  tally: RunnerMemoryCapVerifyTally
+  knob_count: Int
+  verdict: ConvergeVerdict
+}
+
+fn runner_memory_cap_verify_tally_knob(
+  acc: RunnerMemoryCapVerifyTally,
+  read: RunnerUnitMemoryLiveRead,
+  knob: ConvergeKnob,
+) -> RunnerMemoryCapVerifyTally {
+  match runner_memory_cap_readback_verdict(read: read, knob: knob) {
+    Present { value: VerdictConverged } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged + 1,
+        drifted: acc.drifted,
+        absent: acc.absent,
+      }
+    Present { value: Drifted } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted + 1,
+        absent: acc.absent,
+      }
+    Present { value: VerdictAbsent } =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted,
+        absent: acc.absent + 1,
+      }
+    Absent =>
+      RunnerMemoryCapVerifyTally {
+        converged: acc.converged,
+        drifted: acc.drifted,
+        absent: acc.absent + 1,
+      }
+  }
+}
+
+fn runner_memory_cap_verify_tally_from_read(
+  host: HostIdentity,
+  read: RunnerUnitMemoryLiveRead,
+) -> RunnerMemoryCapVerifyTally? {
+  match runner_memory_host_converge(host: host) {
+    Present { value: hc } =>
+      Present {
+        value: fold(
+          runner_memory_knobs_from(host: hc),
+          init: RunnerMemoryCapVerifyTally { converged: 0, drifted: 0, absent: 0 },
+          f: fn(acc, knob) { runner_memory_cap_verify_tally_knob(acc: acc, read: read, knob: knob) }
+        ),
+      }
+    Absent => none
+  }
+}
+
+fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally, knob_count: Int) -> ConvergeVerdict {
+  if tally.drifted > 0 {
+    Drifted
+  } else { if tally.absent > 0 {
+    VerdictAbsent
+  } else { if tally.converged == knob_count && knob_count > 0 {
+    VerdictConverged
+  } else {
+    VerdictAbsent
+  } } }
+}
+
+fn runner_memory_cap_verify_receipt_from_read(
+  host: HostIdentity,
+  read: RunnerUnitMemoryLiveRead,
+) -> RunnerMemoryCapVerifyReceipt? {
+  match runner_memory_host_converge(host: host) {
+    Present { value: hc } =>
+      match runner_memory_cap_verify_tally_from_read(host: host, read: read) {
+        Present { value: tally } =>
+          let knob_count = runner_memory_knobs_from(host: hc).length()
+          Present {
+            value: RunnerMemoryCapVerifyReceipt {
+              host: host,
+              tally: tally,
+              knob_count: knob_count,
+              verdict: runner_memory_cap_verify_verdict_from_tally(tally: tally, knob_count: knob_count),
+            },
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn runner_memory_cap_live_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
+  match clock_now_probed_at() {
+    Present { value: probed_at } =>
+      match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryMax) {
+        SystemdPropertyCaptured { value: memory_max_raw } =>
+          match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemorySwapMax) {
+            SystemdPropertyCaptured { value: memory_swap_max_raw } =>
+              match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryHigh) {
+                SystemdPropertyCaptured { value: memory_high_raw } =>
+                  Present {
+                    value: runner_unit_live_read_typed(
+                      row: RunnerUnitLiveReadRow {
+                        unit: unit,
+                        memory_max_raw: memory_max_raw,
+                        memory_swap_max_raw: memory_swap_max_raw,
+                        memory_high_raw: memory_high_raw,
+                        memory_current_raw: "",
+                        probed_at: probed_at,
+                      }
+                    )
+                  }
+                SystemdPropertyBlank => none
+                SystemdPropertyCaptureRefused { reason: _ } => none
+              }
+            SystemdPropertyBlank => none
+            SystemdPropertyCaptureRefused { reason: _ } => none
+          }
+        SystemdPropertyBlank => none
+        SystemdPropertyCaptureRefused { reason: _ } => none
+      }
+    Absent => none
+  }
+}
+
+fn runner_memory_cap_live_reads_accumulate(
+  acc: List<RunnerUnitMemoryLiveRead>?,
+  unit: NonEmptyStr,
+) -> List<RunnerUnitMemoryLiveRead>? {
+  match acc {
+    Absent => none
+    Present { value: reads } =>
+      match runner_memory_cap_live_read_unit(unit: unit) {
+        Absent => none
+        Present { value: read } => Present { value: concat([read], reads) }
+      }
+  }
+}
+
+fn runner_memory_cap_live_reads(host: HostIdentity) -> List<RunnerUnitMemoryLiveRead>? {
+  match systemctl_list_units_active_services(instance_glob: runner_instance_glob(host: host) as NonEmptyStr) {
+    Absent => none
+    Present { value: units } =>
+      if length(units) == 0 {
+        none
+      } else {
+        let empty: List<RunnerUnitMemoryLiveRead> = []
+        match fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+          runner_memory_cap_live_reads_accumulate(acc: acc, unit: unit)
+        }) {
+          Absent => none
+          Present { value: reversed } => Present { value: list_reverse(xs: reversed) }
+        }
+      }
+  }
+}
+
+fn runner_memory_cap_verify_tally_add(
+  a: RunnerMemoryCapVerifyTally,
+  b: RunnerMemoryCapVerifyTally,
+) -> RunnerMemoryCapVerifyTally {
+  RunnerMemoryCapVerifyTally {
+    converged: a.converged + b.converged,
+    drifted: a.drifted + b.drifted,
+    absent: a.absent + b.absent,
+  }
+}
+
+fn runner_memory_cap_verify_combine_receipts(
+  a: RunnerMemoryCapVerifyReceipt,
+  b: RunnerMemoryCapVerifyReceipt,
+) -> RunnerMemoryCapVerifyReceipt {
+  let tally = runner_memory_cap_verify_tally_add(a: a.tally, b: b.tally)
+  let knob_count = a.knob_count + b.knob_count
+  RunnerMemoryCapVerifyReceipt {
+    host: a.host,
+    tally: tally,
+    knob_count: knob_count,
+    verdict: runner_memory_cap_verify_verdict_from_tally(tally: tally, knob_count: knob_count),
+  }
+}
+
+fn runner_memory_cap_verify_receipt_from_unit_reads(
+  host: HostIdentity,
+  reads: List<RunnerUnitMemoryLiveRead>,
+) -> RunnerMemoryCapVerifyReceipt? {
+  if length(reads) == 0 {
+    none
+  } else {
+    let start: RunnerMemoryCapVerifyReceipt? = none
+    fold(reads, init: start, f: fn(acc, read) {
+      match runner_memory_cap_verify_receipt_from_read(host: host, read: read) {
+        Absent => none
+        Present { value: next } =>
+          match acc {
+            Absent => Present { value: next }
+            Present { value: so_far } => Present { value: runner_memory_cap_verify_combine_receipts(a: so_far, b: next) }
+          }
+      }
+    })
+  }
+}
+
+type RunnerMemoryCapVerifyRunResult
+  = RunnerMemoryCapVerifyObserved { receipt: RunnerMemoryCapVerifyReceipt }
+  | RunnerMemoryCapVerifyRefused { host: HostIdentity, reason: String }
+
+// The live-read arm of runner_memory_cap_verify_result_from_live_read is the fail-closed seam
+// (DESIGN section 5): an absent typed read — clock_now_probed_at absent, or any of the three
+// systemd.Systemctl.ShowProperty reads absent — refuses with a located reason and NEVER widens to
+// an Observed receipt with a fabricated tally. Taking the Optional read as a parameter is what
+// makes that arm executable hermetically: runner_memory_cap_verify_run supplies the live read,
+// while the RED control supplies none and asserts a refusal.
+
+fn runner_memory_cap_verify_result_from_live_read(
+  host: HostIdentity,
+  read: RunnerUnitMemoryLiveRead?,
+) -> RunnerMemoryCapVerifyRunResult {
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      match read {
+        Present { value: read } =>
+          match runner_memory_cap_verify_receipt_from_read(host: host, read: read) {
+            Present { value: receipt } => RunnerMemoryCapVerifyObserved { receipt: receipt }
+            Absent =>
+              RunnerMemoryCapVerifyRefused {
+                host: host,
+                reason: "host_runner_memory_cap_verify: read-back tally refused after live read; fail-closed",
+              }
+          }
+        Absent =>
+          RunnerMemoryCapVerifyRefused {
+            host: host,
+            reason: "host_runner_memory_cap_verify: live typed read absent (Clock.Now or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
+          }
+      }
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_result_from_unit_reads(
+  host: HostIdentity,
+  reads: List<RunnerUnitMemoryLiveRead>?,
+) -> RunnerMemoryCapVerifyRunResult {
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      match reads {
+        Present { value: unit_reads } =>
+          match runner_memory_cap_verify_receipt_from_unit_reads(host: host, reads: unit_reads) {
+            Present { value: receipt } => RunnerMemoryCapVerifyObserved { receipt: receipt }
+            Absent =>
+              RunnerMemoryCapVerifyRefused {
+                host: host,
+                reason: "host_runner_memory_cap_verify: enumerated unit reads produced no host tally; fail-closed",
+              }
+          }
+        Absent =>
+          RunnerMemoryCapVerifyRefused {
+            host: host,
+            reason: "host_runner_memory_cap_verify: live unit enumeration or a per-unit typed read absent (list-units, Clock.Now, or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
+          }
+      }
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_knobs_absent(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+  RunnerMemoryCapVerifyRefused {
+    host: host,
+    reason: concat(
+      "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
+      host as String
+    ),
+  }
+}
+
+fn runner_memory_cap_verify_run(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      runner_memory_cap_verify_result_from_unit_reads(
+        host: host,
+        reads: runner_memory_cap_live_reads(host: host),
+      )
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_receipt_converged(receipt: RunnerMemoryCapVerifyReceipt) -> Bool {
+  receipt.verdict == VerdictConverged
+}

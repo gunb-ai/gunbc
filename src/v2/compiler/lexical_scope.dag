@@ -1,0 +1,477 @@
+module v2.compiler.lexical_scope
+
+import std.types { List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { list_snoc_item, list_map, collection_concat_shape }
+import v2.std.integer { Int }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  Arrow,
+  ArrowResourceRequirementsEdge,
+  ArrowSignatureOrderEdge,
+  Atom,
+  Authored,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
+  Match,
+  MatchArmPatternEdge,
+  MatchArmScopeExitEdge,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  arrow_first_positional_target,
+  arrow_named_edge_is_metadata,
+  edge_is_core,
+  BindBinderSlot,
+  BindBodySlot,
+  BindSlot,
+  BindValueSlot,
+  MatchArmSlot,
+  MatchScrutineeSlot,
+  bind_positional_slot,
+  bind_slot_target,
+  match_positional_slot,
+  positional_child_count
+}
+import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
+
+// WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT. Resolution decides what a name means at a site by the
+// frames that enclose the site; module acquisition decides whether a dotted spelling at a site can name
+// a module by the same frames, because a spelling whose head a frame binds is a projection off that
+// binder and names no module. These are the two questions v2.compiler.resolve and
+// v2.compiler.module_acquisition ask of the SAME tree, so the answer they share is declared here once and
+// each reads it: which names a binding construct introduces, and which of its children each name is
+// visible in. Neither stage restates the other's table.
+//
+// The module is a pure reading of one Node and imports only std, v2.std and the module-body marker's
+// producer (v2.compiler.namespace_graft), none of which import a stage that reads it, so resolution and
+// acquisition both import it and no import cycle can form.
+
+type DeclaredBinding {
+  name: Symbol
+}
+
+fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
+  match e.label {
+    Authored { name: sym } => Present { value: DeclaredBinding { name: sym } }
+    StructuralLabel { label: _ } => Absent
+    Positional => Absent
+  }
+}
+
+// ---- Arrow ---------------------------------------------------------------------------------------------
+
+// An Arrow's value binders are the AUTHORED Named edges of its domain Conj, in the domain's declared
+// order, each with the edge that carries its declared type (v2.std.node A4: a domain is a Conj of Named
+// binders). Only a Named binder binds.
+type ArrowDomainBinder {
+  name: Symbol
+  edge: Edge
+}
+
+fn arrow_domain_binders(n: Node) -> List<ArrowDomainBinder> {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_first_positional_target(children: n.children) {
+        FirstPositionalFound { target: domain } => conj_declared_binders(root: domain)
+        FirstPositionalAbsent => []
+      }
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
+  }
+}
+
+fn conj_declared_binders(root: Node) -> List<ArrowDomainBinder> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: [], f: fn(acc, e) {
+        match try_edge_declared_binding(e: e) {
+          Present { value: b } => list_snoc_item(xs: acc, item: ArrowDomainBinder { name: b.name, edge: e })
+          Absent => acc
+        }
+      })
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
+  }
+}
+
+fn arrow_domain_binder_names(n: Node) -> List<Symbol> {
+  list_map(xs: arrow_domain_binders(n: n), f: fn(b) { b.name })
+}
+
+// THE SLOT AN ARROW'S CHILD OCCUPIES, decided from the edge and its ordinal among ALL of the Arrow's
+// children (resolution counts every preceding child, authored or structural, not only positional ones).
+// The branches are ordered: an edge that is both a type-parameter edge and something else is a
+// type-parameter edge.
+type ArrowSlot
+  = ArrowTypeParamsSlot
+  | ArrowCarriedSlot
+  | ArrowResourceRequirementsSlot
+  | ArrowBodyOrNamedSlot
+  | ArrowAuthoredSlot
+  | ArrowDomainSlot
+  | ArrowCodomainSlot
+
+fn arrow_slot(e: Edge, ordinal: Int) -> ArrowSlot {
+  match e.label {
+    StructuralLabel { label: _ } =>
+      if edge_is_type_params(e: e) {
+        ArrowTypeParamsSlot
+      } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+        ArrowCarriedSlot
+      } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
+        ArrowResourceRequirementsSlot
+      } else if arrow_named_edge_is_metadata(e: e) {
+        ArrowCarriedSlot
+      } else {
+        ArrowBodyOrNamedSlot
+      }
+    Authored { name: _ } => ArrowAuthoredSlot
+    Positional =>
+      if ordinal == 0 {
+        ArrowDomainSlot
+      } else {
+        ArrowCodomainSlot
+      }
+  }
+}
+
+// THE FRAME EACH SLOT IS WALKED UNDER, relative to the scope the Arrow was reached under. The type
+// parameters bind types only, so a slot that sees them and no value parameter (the domain, the resource
+// requirements) still sees every value binder that encloses the Arrow. The value parameters are visible
+// in the codomain, the body and the authored edges, and in no part of the signature before them.
+type ArrowSlotScope
+  = SlotScopeOuter
+  | SlotScopeTypeParams
+  | SlotScopeParamsOverTypeParams
+  | SlotScopeParamsOverOuter
+
+// WHETHER RESOLVE CARRIES THE SLOT'S TARGET UNCHANGED AND NEVER WALKS IT: the declared order and the
+// contract metadata. Nothing under it is resolved, so nothing under it is a mention; the reference-site
+// collector asks this and keeps no list of such edges.
+fn arrow_slot_is_carried(slot: ArrowSlot) -> Bool {
+  match slot {
+    ArrowTypeParamsSlot => false
+    ArrowCarriedSlot => true
+    ArrowResourceRequirementsSlot => false
+    ArrowDomainSlot => false
+    ArrowCodomainSlot => false
+    ArrowBodyOrNamedSlot => false
+    ArrowAuthoredSlot => false
+  }
+}
+
+fn arrow_slot_scope(slot: ArrowSlot) -> ArrowSlotScope {
+  match slot {
+    ArrowTypeParamsSlot => SlotScopeOuter
+    ArrowCarriedSlot => SlotScopeOuter
+    ArrowResourceRequirementsSlot => SlotScopeTypeParams
+    ArrowDomainSlot => SlotScopeTypeParams
+    ArrowCodomainSlot => SlotScopeParamsOverTypeParams
+    ArrowBodyOrNamedSlot => SlotScopeParamsOverOuter
+    ArrowAuthoredSlot => SlotScopeParamsOverOuter
+  }
+}
+
+fn arrow_slot_scope_binds_value_params(scope: ArrowSlotScope) -> Bool {
+  match scope {
+    SlotScopeOuter => false
+    SlotScopeTypeParams => false
+    SlotScopeParamsOverTypeParams => true
+    SlotScopeParamsOverOuter => true
+  }
+}
+
+// ---- Bind ----------------------------------------------------------------------------------------------
+
+// A `let`'s binder is its FIRST positional child when that child is an atom and the Bind carries its
+// three positional children (binder, value, body).
+type BindBinder {
+  name: Symbol
+  atom: Node
+}
+
+fn bind_binder(n: Node) -> Optional<BindBinder> {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: n.children) == 3 {
+        match bind_slot_target(n: n, slot: BindBinderSlot) {
+          Present { value: binder } =>
+            match binder.kind {
+              TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: binder })
+              TypeNode { connective: _ } => optional_absent()
+              ComputationNode { behavior: _ } => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+// A `let`'s VALUE: its second positional child, the node resolve records as the binding's LexicalValued
+// value (v2.compiler.resolve bind_frame_binders) and the one a reader of the resolved tree takes as the
+// value a use of the binder waits on (v2.compiler.value_use_dependency).
+fn bind_value(n: Node) -> Optional<Node> {
+  bind_slot_target(n: n, slot: BindValueSlot)
+}
+
+// THE SLOT A BIND'S POSITIONAL CHILD OCCUPIES is v2.std.node bind_positional_slot, the one table every stage
+// reads. The binder is visible in the body and nowhere else.
+fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
+  match slot {
+    BindBinderSlot => false
+    BindValueSlot => false
+    BindBodySlot => true
+  }
+}
+
+// ---- Match arm -----------------------------------------------------------------------------------------
+
+// A PATTERN'S CANDIDATE BINDERS, as one producer. An atom in a field position of a constructor pattern is
+// either a binder or the name of a payload constructor (a nested pattern), and a wildcard is neither
+// (v2.std.node_query is_wildcard_pattern). The binder-versus-constructor decision reads the symbol index
+// (v2.compiler.resolve resolve_pattern_atom_names_constructor), and that index does not exist until the
+// modules a program names have been acquired, so this producer decides what the pattern's own syntax decides
+// and stops there: it lists every atom that MAY bind, in the pre-order resolution binds them. Resolution
+// keeps the candidates the index does not name a constructor (v2.compiler.resolve pattern_binder_name_list,
+// resolve_pattern_binders), each with the construct and field edge that declare its type; module
+// acquisition runs before any index exists and can only say these names are undecided. Both read this one
+// traversal, so neither restates the other's.
+type PatternBinderCandidate {
+  name: Symbol
+  pattern: Node
+  field: Edge
+}
+
+fn pattern_binder_candidates(pat: Node) -> List<PatternBinderCandidate> {
+  match construct_tag_optional(n: pat) {
+    Absent => []
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if is_wildcard_pattern(pattern: e.target) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: PatternBinderCandidate { name: id, pattern: pat, field: e })
+            }
+          TypeNode { connective: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
+          ComputationNode { behavior: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
+        }
+      })
+  }
+}
+
+// An arm whose pattern edge is not exactly one node binds nothing, as resolution reads it
+// (v2.compiler.resolve resolve_match_arm_walk walks such an arm under the enclosing scope).
+fn match_arm_candidate_names(arm: Node) -> List<Symbol> {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Accepted { value: pat, diagnostics: _ } => list_map(xs: pattern_binder_candidates(pat: pat), f: fn(c) { c.name })
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+// ---- The value binders a child sees --------------------------------------------------------------------
+
+// WHICH VALUE BINDERS EACH CHILD OF A NODE SEES, as one fact derived from the slot tables above. A walk
+// that carries the value binders in scope (module acquisition's reference-site collector) asks it per child
+// instead of re-deciding where an Arrow's parameters and a `let`'s binder are visible. Two answers, and the
+// difference between them is the point:
+//
+// DECIDED BINDERS are the names an Arrow's value parameters and a `let` introduce. Their binder-ness is a
+// fact of the syntax, so a walk may say a head they bind IS bound. A loop's carrier is bound by the `let`
+// that encloses the Loop (v2.compiler.resolve resolve_loop_node), so it is a decided binder of that `let`
+// and not a construct of its own, and the type parameters of an Arrow bind types and never the head of a
+// value projection.
+//
+// UNDECIDED NAMES are a match arm's pattern atoms (ChildSeesParentValuesAndUndecided). Whether an atom
+// binds or names a payload constructor needs the symbol index, which acquisition runs before, so the table
+// can say only that the atom MAY bind. A walk that read it as bound would hide a module reference whose
+// head is a constructor, and a walk that read it as unbound would probe a module for a name resolution
+// binds as a value; this table lets the walk say neither. The names are a SUPERSET of what resolution binds
+// and they are visible in the whole arm EXCEPT where resolution ends the arm's binders: a `let` lowered
+// from `let x = match s { .. }` with a returning arm carries MatchArmScopeExitEdge, and its binder and body
+// (the rest of the function) stand in the scope enclosing the match, so the arm's names end there
+// (ChildSeesParentValuesBeyondCurrentArm). Undecided names are not a harmless over-approximation at that
+// boundary: a spelling the walk hides there is a module reference nothing acquires, and resolution then
+// refuses a valid program. The names of the arms that ENCLOSE the match stay, because the rest of the
+// function is still inside them.
+type ValueFrame
+  = NoValueFrame
+  | ArrowValueFrame { params: List<Symbol> }
+  | BindValueFrame { binder: Symbol, exits_arm: Bool }
+  | MatchValueFrame
+
+fn node_value_frame(n: Node) -> ValueFrame {
+  match n.kind {
+    TypeNode { connective: Arrow } => ArrowValueFrame { params: arrow_domain_binder_names(n: n) }
+    ComputationNode { behavior: Bind } =>
+      match bind_binder(n: n) {
+        Present { value: b } => BindValueFrame { binder: b.name, exits_arm: bind_carries_arm_scope_exit(n: n) }
+        Absent => NoValueFrame
+      }
+    ComputationNode { behavior: Match } => MatchValueFrame
+    TypeNode { connective: _ } => NoValueFrame
+    ComputationNode { behavior: _ } => NoValueFrame
+  }
+}
+
+type ChildValueScope
+  = ChildSeesParentValues
+  | ChildSeesNoValues
+  | ChildSeesParentValuesAnd { names: List<Symbol> }
+  | ChildSeesParentValuesAndUndecided { names: List<Symbol> }
+  | ChildSeesParentValuesBeyondCurrentArm { names: List<Symbol> }
+
+// A TYPE-ROLE EDGE is resolved in the type scope, which holds type parameters and no value binder
+// (v2.compiler.resolve resolve_type_role_target), so a child on one sees no value at all. The Arrow's
+// ordinal counts ALL of its children and the Bind's counts its POSITIONAL children only, exactly as the
+// slot tables are keyed. A Match's counts its POSITIONAL children too (v2.std.node match_positional_slot),
+// as resolution's walk does (v2.compiler.resolve resolve_match_node_walk): positional 0 is the scrutinee,
+// which sees the enclosing scope, every later positional child is an arm, which sees the candidates of its
+// own pattern, and a labeled child sees the enclosing scope. A `let` that ends its arm's
+// binders (bind_carries_arm_scope_exit) sees them in its value only: its binder and body leave the current arm.
+fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ordinal: Int) -> ChildValueScope {
+  if edge_is_cast_target(e: edge) || edge_is_type_annotation(e: edge) {
+    ChildSeesNoValues
+  } else {
+    match frame {
+      NoValueFrame => ChildSeesParentValues
+      MatchValueFrame =>
+        match edge.label {
+          Positional =>
+            match match_positional_slot(ordinal: positional_ordinal) {
+              MatchScrutineeSlot => ChildSeesParentValues
+              MatchArmSlot => ChildSeesParentValuesAndUndecided { names: match_arm_candidate_names(arm: edge.target) }
+            }
+          Authored { name: _ } => ChildSeesParentValues
+          StructuralLabel { label: _ } => ChildSeesParentValues
+        }
+      ArrowValueFrame { params: ps } =>
+        if arrow_slot_scope_binds_value_params(scope: arrow_slot_scope(slot: arrow_slot(e: edge, ordinal: ordinal))) {
+          ChildSeesParentValuesAnd { names: ps }
+        } else {
+          ChildSeesParentValues
+        }
+      BindValueFrame { binder: name, exits_arm: exits_arm } =>
+        match edge.label {
+          Positional => bind_slot_child_scope(slot: bind_positional_slot(ordinal: positional_ordinal), binder: name, exits_arm: exits_arm)
+          Authored { name: _ } => ChildSeesParentValues
+          StructuralLabel { label: _ } => ChildSeesParentValues
+        }
+    }
+  }
+}
+
+// A `let` THAT ENDS ITS MATCH ARM'S BINDERS (v2.std.node MatchArmScopeExitEdge): its value stands in the arm's
+// scope and its binder and body stand in the scope enclosing the match, exactly as resolution walks them
+// (v2.compiler.resolve resolve_arm_scope_exit_bind). The marker is the one fact, read here once and by
+// resolution from this function.
+fn bind_carries_arm_scope_exit(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold(n.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: MatchArmScopeExitEdge) })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn bind_slot_leaves_arm(slot: BindSlot) -> Bool {
+  match slot {
+    BindBinderSlot => true
+    BindValueSlot => false
+    BindBodySlot => true
+  }
+}
+
+fn bind_slot_binder_names(slot: BindSlot, binder: Symbol) -> List<Symbol> {
+  if bind_slot_sees_binder(slot: slot) {
+    list_snoc_item(xs: [], item: binder)
+  } else {
+    []
+  }
+}
+
+fn bind_slot_child_scope(slot: BindSlot, binder: Symbol, exits_arm: Bool) -> ChildValueScope {
+  if exits_arm && bind_slot_leaves_arm(slot: slot) {
+    ChildSeesParentValuesBeyondCurrentArm { names: bind_slot_binder_names(slot: slot, binder: binder) }
+  } else if bind_slot_sees_binder(slot: slot) {
+    ChildSeesParentValuesAnd { names: bind_slot_binder_names(slot: slot, binder: binder) }
+  } else {
+    ChildSeesParentValues
+  }
+}
+
+// ---- Module root ---------------------------------------------------------------------------------------
+
+// WHAT A MODULE ROOT BINDS, as one producer. The names a module's own tree introduces at its root are the
+// AUTHORED Named edges of the root Conj and of the module body the namespace graft stamped, each with the
+// declaration it names (v2.compiler.symbol_index_fill indexes edge.target as that declaration). A service
+// namespace the body declares is a path segment, never a bare binding, so it is not a member: its members
+// stay reachable by their qualified paths. Resolution builds its root frame from this list
+// (v2.compiler.resolve namespace_bindings_augment_from_module_atoms), and module acquisition reads which of
+// those declarations name a value from the same list.
+type ModuleRootBinding {
+  name: Symbol
+  declaration: Node
+}
+
+fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => namespace_graft_node_is_module_body(node: e.target)
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+fn module_root_bindings(root: Node) -> List<ModuleRootBinding> {
+  let at_root = module_node_root_bindings(root: root, acc: [])
+  match namespace_graft_module_body_optional(root: root) {
+    Present { value: body } => module_node_root_bindings(root: body, acc: at_root)
+    Absent => at_root
+  }
+}
+
+// Only a Conj root has named members to bind; every other node kind binds nothing at the module root.
+fn module_node_root_bindings(root: Node, acc: List<ModuleRootBinding>) -> List<ModuleRootBinding> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: acc, f: fn(a, e) {
+        if module_binding_edge_is_namespace_body(e: e) {
+          a
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: b } => list_snoc_item(xs: a, item: ModuleRootBinding { name: b.name, declaration: e.target })
+            Absent => a
+          }
+        }
+      })
+    TypeNode { connective: _ } => acc
+    ComputationNode { behavior: _ } => acc
+  }
+}
+
+// A DECLARATION NAMES A VALUE EXACTLY WHEN IT IS AN ARROW. Body lowering realizes a `data` item as the
+// nullary function that returns it (v2.compiler.body_lowering_fold body_lower_data_decl_to_member), so a
+// module-level value is an Arrow declaration, while a type or a namespace is not. A name bound at a module
+// root whose declaration names a value is the head of a field projection exactly as a frame binder is.
+fn declaration_names_value(declaration: Node) -> Bool {
+  match declaration.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}

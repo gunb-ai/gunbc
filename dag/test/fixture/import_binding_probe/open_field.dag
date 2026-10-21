@@ -1,0 +1,6 @@
+module test.fixture.import_binding_probe.open_field
+
+// Twin of test.fixture.import_binding_probe.sealed_field: same type name, different
+// field name, no sole_constructor.  See that module's note for why the pair varies a
+// field name rather than the wall.
+type FieldShape { open_tag: Int }

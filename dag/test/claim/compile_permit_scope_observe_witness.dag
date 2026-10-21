@@ -1,0 +1,227 @@
+module test.claim.compile_permit_scope_observe_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import std.measure { hardware_thread_count, hardware_thread_count_value }
+import gunbc.compile_permit_scope {
+  InvocationLocalCargo,
+  HostCompileCancellationStanding,
+  HostCancellationObserved,
+  HostCancellationUnreadable,
+  fleet_cancellation_standing,
+  FleetCancellationNotSafe,
+  FleetCancellationSafe,
+}
+import gunbc.compile_permit_scope_observe {
+  realization_from_unit_text,
+  join_host_slot_realizations,
+  SlotRealizationObserved,
+  SlotRealizationUnreadable,
+}
+import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit }
+import gunbc.fleet.fleet_show_effective_read { fleet_host_ssh_transport }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_effect { SshShell }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A HOST READING OF A UNIT STILL CARRYING THE RETIRED ctrl-jobserver HANDOFF, as systemd prints it.
+fn fifo_path() -> String {
+  "/var/lib/ctrl/jobserver/host.fifo"
+}
+
+fn fifo_environment() -> String {
+  join(
+    [
+      "APP_ID=1",
+      concat("CTRL_JOBSERVER_FIFO=", fifo_path()),
+      concat("MAKEFLAGS=--jobserver-auth=fifo:", fifo_path()),
+    ],
+    " ",
+  )
+}
+
+fn fifo_after() -> String {
+  join(["network-online.target", (ctrl_jobserver_unit as String)], " ")
+}
+
+fn fifo_wants() -> String {
+  join(["network-online.target", (ctrl_jobserver_unit as String)], " ")
+}
+
+fn local_environment() -> String {
+  "CARGO_BUILD_JOBS=6 APP_ID=1"
+}
+
+// RED (A2): the FIFO arm is deleted, so a unit still advertising the retired ctrl-jobserver handoff is
+// not a realization -- it is unreadable, and therefore never safe for cancellation.
+test fn w_retired_fifo_unit_text_is_unreadable_not_a_realization() -> Bool {
+  match realization_from_unit_text(
+    environment: fifo_environment(),
+    after: fifo_after(),
+    wants: fifo_wants(),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: any single piece of retired pool evidence refuses, even beside a CARGO_BUILD_JOBS bound.
+test fn w_any_retired_pool_evidence_refuses_beside_cargo_jobs() -> Bool {
+  (match realization_from_unit_text(environment: "CARGO_BUILD_JOBS=6 MAKEFLAGS=-j8", after: "network-online.target", wants: "network-online.target") { Absent => true Present { value: _ } => false })
+    && (match realization_from_unit_text(environment: concat("CARGO_BUILD_JOBS=6 CTRL_JOBSERVER_FIFO=", fifo_path()), after: "network-online.target", wants: "network-online.target") { Absent => true Present { value: _ } => false })
+    && (match realization_from_unit_text(environment: local_environment(), after: fifo_after(), wants: "network-online.target") { Absent => true Present { value: _ } => false })
+}
+
+test fn w_malformed_makeflags_is_unreadable_even_with_cargo_jobs() -> Bool {
+  match realization_from_unit_text(
+    environment: "CARGO_BUILD_JOBS=6 MAKEFLAGS=--jobserver-auth=fifo:",
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_mixed_slot_realizations_are_unreadable() -> Bool {
+  match join_host_slot_realizations(
+    host: operator_host_srv3,
+    reads: [
+      SlotRealizationObserved {
+        realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 7) },
+      },
+      SlotRealizationObserved {
+        realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 6) },
+      },
+    ],
+  ) {
+    HostCancellationUnreadable { host: h, cause: _ } => h == operator_host_srv3
+    HostCancellationObserved { host: _, realization: _ } => false
+    _ => false
+  }
+}
+
+test fn w_empty_slot_reads_are_unreadable() -> Bool {
+  match join_host_slot_realizations(host: operator_host_srv3, reads: []) {
+    HostCancellationUnreadable { host: _, cause: _ } => true
+    HostCancellationObserved { host: _, realization: _ } => false
+    _ => false
+  }
+}
+
+test fn w_absent_fifo_and_absent_jobs_is_unreadable_not_invocation_local() -> Bool {
+  match realization_from_unit_text(
+    environment: "APP_ID=1",
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_absent_fifo_evidence_with_cargo_jobs_is_invocation_local() -> Bool {
+  match realization_from_unit_text(
+    environment: local_environment(),
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    Present { value: InvocationLocalCargo { jobs_per_slot: j } } =>
+      hardware_thread_count_value(t: j) == 6
+    Absent => false
+  }
+}
+
+test fn w_makeflags_without_ordering_is_unreadable_not_a_realization() -> Bool {
+  match realization_from_unit_text(
+    environment: fifo_environment(),
+    after: "network-online.target",
+    wants: fifo_wants(),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn standing_from_unit_text_via_host_join(
+  host: HostIdentity,
+  environment: String,
+  after: String,
+  wants: String,
+) -> HostCompileCancellationStanding {
+  match realization_from_unit_text(environment: environment, after: after, wants: wants) {
+    Present { value: realization } =>
+      join_host_slot_realizations(
+        host: host,
+        reads: [SlotRealizationObserved { realization: realization }],
+      )
+    Absent =>
+      join_host_slot_realizations(
+        host: host,
+        reads: [
+          SlotRealizationUnreadable {
+            cause: "unit text did not evidence a realization" as NonEmptyStr,
+          },
+        ],
+      )
+  }
+}
+
+test fn w_observation_carries_realization_not_a_safety_verdict() -> Bool {
+  match standing_from_unit_text_via_host_join(
+    host: operator_host_srv3,
+    environment: local_environment(),
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    HostCancellationObserved { host: h, realization: r } =>
+      (h == operator_host_srv3)
+        && match r {
+          InvocationLocalCargo { jobs_per_slot: j } => hardware_thread_count_value(t: j) == 6
+        }
+    HostCancellationUnreadable { host: _, cause: _ } => false
+    _ => false
+  }
+}
+
+test fn w_partial_fleet_observations_cannot_be_safe() -> Bool {
+  match fleet_cancellation_standing(
+    eligible_hosts: [operator_host_srv1, operator_host_srv3],
+    observations: [
+      standing_from_unit_text_via_host_join(
+        host: operator_host_srv3,
+        environment: fifo_environment(),
+        after: fifo_after(),
+        wants: fifo_wants(),
+      ),
+      HostCancellationUnreadable {
+        host: operator_host_srv1,
+        cause: "ssh refused" as NonEmptyStr,
+      },
+    ],
+  ) {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => true
+    FleetCancellationSafe { hosts: _ } => false
+  }
+}
+
+test fn w_empty_observation_set_is_not_safe() -> Bool {
+  match fleet_cancellation_standing(eligible_hosts: [operator_host_srv3], observations: []) {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => true
+    FleetCancellationSafe { hosts: _ } => false
+  }
+}
+
+test fn w_fleet_ssh_transport_covers_srv3_and_srv4() -> Bool {
+  match fleet_host_ssh_transport(host: operator_host_srv3) {
+    Present { value: SshShell { ssh_host: h3 } } =>
+      (h3 == operator_host_srv3)
+        && match fleet_host_ssh_transport(host: operator_host_srv4) {
+          Present { value: SshShell { ssh_host: h4 } } => h4 == operator_host_srv4
+          _ => false
+        }
+    _ => false
+  }
+}

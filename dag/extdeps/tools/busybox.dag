@@ -1,0 +1,82 @@
+module extdeps.tools.busybox
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { NonEmptyStr, String, Int, Port }
+import std.measure { Mebibyte, mebibyte_count }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.package_managers.apt { apt_bin_dir, package_busybox }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "busybox.net/downloads/BusyBox.html"
+  }
+}
+
+data busybox_pinned_version: VersionConstraint = ">= 1.36"
+
+fn busybox_program() -> ProgramIdentity = cataloged_program(invocation: "busybox")
+
+data busybox_cli_tool: CliTool = CliTool {
+  program: busybox_program(),
+  min_version: Present { value: busybox_pinned_version },
+  installable_via: [SourceApt { package: package_busybox, bin_dir: apt_bin_dir }],
+}
+
+data busybox_source_1_36_1_url: Uri = Uri {
+  scheme: Https,
+  locator: "busybox.net/downloads/busybox-1.36.1.tar.bz2",
+}
+
+fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Port) -> ArgvCommand {
+  argv_command(
+    program: cataloged_program(invocation: busybox_bin),
+    arguments: ["httpd", "-p", to_string(port), "-h", document_root as String],
+  )
+}
+
+// THE PROGRAM IS THE STAGED BUSYBOX, NAMED TWICE ON PURPOSE. udpsvd binds the UDP port and then
+// EXECS the program named in its own operands for each datagram, so the second occurrence is not a
+// repetition of the first -- it is udpsvd's argument, the server it supervises. A builder that
+// took one path and used it once would have to invent which of the two it meant.
+//
+// -E tells udpsvd not to print the connection banner; 0.0.0.0 and 69 are the bind address and the
+// IANA-assigned TFTP port; -r makes tftpd read-only, which is the fail-closed posture for a netboot
+// server that must never accept an upload.
+fn busybox_tftpd_over_udpsvd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: cataloged_program(invocation: busybox_bin),
+    arguments: [
+      "udpsvd", "-E", "0.0.0.0", "69",
+      busybox_bin as String,
+      "tftpd", "-r", document_root as String,
+    ],
+  )
+}
+
+// count=0 AND seek=N CREATES A SPARSE FILE OF N BLOCKS WITHOUT WRITING ZEROS. busybox dd treats
+// `bs=1M` as the block size, so the seek count is a Mebibyte magnitude rendered here rather than
+// a bare integer at the call site. `of=` is the image path; the file is then formatted by a
+// different tool (mke2fs_format_command). This is the host-init workspace create X already runs.
+fn busybox_dd_sparse_image_command(
+  busybox_bin: NonEmptyStr,
+  image_path: String,
+  size: Mebibyte,
+) -> ArgvCommand {
+  argv_command(
+    program: cataloged_program(invocation: busybox_bin),
+    arguments: [
+      "dd",
+      "if=/dev/zero",
+      concat("of=", image_path),
+      "bs=1M",
+      "count=0",
+      concat("seek=", to_string(mebibyte_count(m: size))),
+    ],
+  )
+}

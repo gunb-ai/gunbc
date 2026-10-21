@@ -1,0 +1,196 @@
+module v2.test.claim.parse.population_grammar_gaps
+
+import v2.compiler.infer { infer }
+import v2.std.type_binder { refinement_declaration_of_node }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.node {
+  Authored,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  node_subtree_nodes,
+  symbol_intern_lexeme
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.std.node_query { declared_field_from_edge }
+import v2.std.text { String }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Field and io-field where clauses parse and LOWER onto the field type through
+// body_lower_kept_where_clause (the type-variant reader). A malformed neighbour still refuses at parse.
+
+data refined_field_source: String = "module probe.gaps\n\ntype T { n: Int where range(min: 0) }\nfn f() -> Int { 1 }\n"
+data refined_io_field_source: String = "module probe.gaps\n\nservice S {\n  operation Op {\n    input { n: Int where range(min: 0) }\n  }\n}\n"
+data plain_field_source: String = "module probe.gaps\n\ntype T { n: Int }\nfn f() -> Int { 1 }\n"
+data field_named_m_source: String = "module probe.gaps\n\ntype T { m: Int where range(min: 0) }\nfn f() -> Int { 1 }\n"
+data field_brand_source: String = "module probe.gaps\n\ntype T { n: Int where brand(\"X\") }\nfn f() -> Int { 1 }\n"
+data field_min_one_source: String = "module probe.gaps\n\ntype T { n: Int where range(min: 1) }\nfn f() -> Int { 1 }\n"
+data refinement_after_default_red_source: String = "module probe.gaps\n\ntype T { n: Int = 1 where range(min: 0) }\nfn f() -> Int { 1 }\n"
+data refinement_without_predicate_red_source: String = "module probe.gaps\n\ntype T { n: Int where }\nfn f() -> Int { 1 }\n"
+
+data inline_field_bad_source: String = "module p\nfn range(value: Int, min: Int) -> Bool { true }\ntype T { n: Int where range(min: 0) }\ndata d: T = T { n: -1 }\nfn f() -> Int { 1 }\n"
+data alias_field_bad_source: String = "module p\nfn range(value: Int, min: Int) -> Bool { true }\ntype Digits = Int where range(min: 0)\ntype T { n: Digits }\ndata d: T = T { n: -1 }\nfn f() -> Int { 1 }\n"
+
+fn parsed_ok(text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_gaps.dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn normalized_ok(text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_gaps.dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn atom_is_int(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Absent => false
+    Present { value: s } => s == symbol_intern_lexeme(lexeme: "Int")
+  }
+}
+
+fn literal_magnitude_is(n: Node, want: Int) -> Bool {
+  match dag_int_literal_magnitude_int_from_node(node: n) {
+    Accepted { value: v, diagnostics: _ } => v == want
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn node_has_authored_min(n: Node, want: Int) -> Bool {
+  fold(n.children, init: false, f: fn(acc, e) {
+    acc || match e.label {
+      Authored { name: lab } =>
+        ((lab == symbol_intern_lexeme(lexeme: "min")) && literal_magnitude_is(n: e.target, want: want))
+          || node_has_authored_min(n: e.target, want: want)
+      Positional => node_has_authored_min(n: e.target, want: want)
+      StructuralLabel { label: _ } => node_has_authored_min(n: e.target, want: want)
+    }
+  })
+}
+
+fn node_has_range_spelling(n: Node) -> Bool {
+  fold(n.children, init: false, f: fn(acc, e) {
+    acc || match e.label {
+      Authored { name: lab } =>
+        (lab == symbol_intern_lexeme(lexeme: "range")) || node_has_range_spelling(n: e.target)
+      Positional => node_has_range_spelling(n: e.target)
+      StructuralLabel { label: _ } => node_has_range_spelling(n: e.target)
+    }
+  })
+}
+
+fn named_binder_is_int_range_min(tree: Node, name: Symbol, min: Int) -> Bool {
+  fold(node_subtree_nodes(root: tree), init: false, f: fn(acc, n) {
+    acc || fold(n.children, init: false, f: fn(a, e) {
+      a || match declared_field_from_edge(e: e) {
+        Absent => false
+        Present { value: field } =>
+          (field.name == name) && match refinement_declaration_of_node(decl: field.type_node) {
+            Absent => false
+            Present { value: d } =>
+              atom_is_int(n: d.carrier)
+                && node_has_range_spelling(n: d.where_clause)
+                && node_has_authored_min(n: d.where_clause, want: min)
+          }
+      }
+    })
+  })
+}
+
+fn normalized_named_int_range_min(text: String, name: String, min: Int) -> Bool {
+  match conservation_subject_of_text(path: "probe_gaps.dag", text: text).normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      named_binder_is_int_range_min(tree: tree.root, name: symbol_intern_lexeme(lexeme: name), min: min)
+  }
+}
+
+fn infer_fatal_reason(src: String) -> Optional<Symbol> {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => Absent
+        Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn refined_field_parsed() -> Bool { parsed_ok(text: refined_field_source) }
+fn refined_field_normalized() -> Bool { normalized_ok(text: refined_field_source) }
+fn refined_io_field_parsed() -> Bool { parsed_ok(text: refined_io_field_source) }
+fn plain_field_normalized() -> Bool { normalized_ok(text: plain_field_source) }
+fn refinement_after_default_parsed() -> Bool { parsed_ok(text: refinement_after_default_red_source) }
+fn refinement_without_predicate_parsed() -> Bool { parsed_ok(text: refinement_without_predicate_red_source) }
+
+test fn a_refined_field_parses_holds() -> Bool { refined_field_parsed() }
+
+test fn a_refined_field_lowers_holds() -> Bool { refined_field_normalized() }
+
+test fn a_refined_field_n_is_int_where_range_min_zero_holds() -> Bool {
+  normalized_named_int_range_min(text: refined_field_source, name: "n", min: 0)
+}
+
+test fn an_unrefined_field_n_does_not_carry_the_where_clause_holds() -> Bool {
+  !normalized_named_int_range_min(text: plain_field_source, name: "n", min: 0)
+}
+
+test fn a_refined_field_named_m_is_not_read_as_n_holds() -> Bool {
+  !normalized_named_int_range_min(text: field_named_m_source, name: "n", min: 0)
+}
+
+test fn a_brand_clause_on_n_is_not_range_min_zero_holds() -> Bool {
+  !normalized_named_int_range_min(text: field_brand_source, name: "n", min: 0)
+}
+
+test fn a_range_min_one_on_n_is_not_min_zero_holds() -> Bool {
+  !normalized_named_int_range_min(text: field_min_one_source, name: "n", min: 0)
+}
+
+test fn a_refined_io_field_parses_holds() -> Bool { refined_io_field_parsed() }
+
+test fn a_refined_io_field_n_is_int_where_range_min_zero_holds() -> Bool {
+  normalized_named_int_range_min(text: refined_io_field_source, name: "n", min: 0)
+}
+
+test fn an_unrefined_field_still_normalizes_holds() -> Bool { plain_field_normalized() }
+
+test fn a_refinement_after_the_default_still_refuses_at_parse_holds() -> Bool {
+  refinement_after_default_parsed() == false
+}
+
+test fn a_refinement_without_a_predicate_still_refuses_at_parse_holds() -> Bool {
+  refinement_without_predicate_parsed() == false
+}
+
+// Agreement observation, not a wall. Both spellings assemble once `range` is declared in-module
+// (tpb_assemble subject `p`). A violating -1 is not a fatal on either spelling: predicate
+// enforcement is the sibling gunbc.recurring_failure_mode
+// refinement_predicate_enforced_only_where_the_value_is_a_literal. The previous equality of
+// infer_fatal_reason values was vacuous (both resolve_module_not_found when the module was not `p`).
+test fn an_inline_field_and_a_type_alias_assemble_with_declared_range_holds() -> Bool {
+  tpb_accepts(o: tpb_assemble(src: inline_field_bad_source))
+    && tpb_accepts(o: tpb_assemble(src: alias_field_bad_source))
+}
+
+test fn a_violating_minus_one_is_not_yet_a_fatal_on_either_spelling_holds() -> Bool {
+  match infer_fatal_reason(src: inline_field_bad_source) {
+    Present { value: _ } => false
+    Absent =>
+      match infer_fatal_reason(src: alias_field_bad_source) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}

@@ -1,0 +1,104 @@
+module v2.test.claim.compiler.payload_binder_declared_type
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { ObligatedInferredTree }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.algebra { list_snoc_item }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a match payload binder's type when the matched coproduct is declared in ANOTHER module
+// (v2.compiler.infer infer_match_arm_child_frame). The binder must carry the field's RESOLVED
+// declaration -- the same type a construction of that arm is judged at -- not the field type as it is
+// spelled inside the declaring module. The native-seven specimen is
+// `match parse_module_prepared(..) { Rejected { diagnostics: r } => Rejected { diagnostics: r } .. }`,
+// whose `r` reached the construction as the bare `NonEmptyDiagnostics` while the field is declared
+// v2.std.diagnostic.NonEmptyDiagnostics.
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
+
+data pbd_lib_artifact: Artifact = Artifact { kind: SourceFile, id: ^pbd_lib_artifact, file_path: "src/v2/pilot/pbd_lib.dag" }
+
+data pbd_lib_source: String = "module q.lib\n\ntype Diag {\n  code: Int\n}\n\ntype Res<T>\n  = Ok { value: T }\n  | Err { why: Diag }\n\nfn mk<T>() -> Res<T> {\n  Err { why: Diag { code: 0 } }\n}\n"
+
+fn pbd_peers() -> List<DagSourceReadWitness> {
+  list_snoc_item(xs: fmi_list_peers(), item: bla_source(src: pbd_lib_source, artifact: pbd_lib_artifact, cu: ^pbd_lib_cu))
+}
+
+fn pbd_inferred(src: String) -> Outcome<ObligatedInferredTree> {
+  match bla_assemble_with_peers(p_src: src, peers: pbd_peers()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+  }
+}
+
+fn pbd_reason(src: String) -> Symbol {
+  match pbd_inferred(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// THE SCRUTINEE'S TYPE IS NOT DERIVED: `mk<T>()` binds no T, so its result stays on the frontier and the
+// arm is read against its own declared coproduct with no instances (infer_match_arm_unpaid_frame) -- the
+// native-seven shape, where `parse_module_prepared(..)`'s result reached the match underived. A scrutinee
+// whose type IS derived pays the binder from the coproduct and never showed the defect.
+//
+// ROUND TRIP: extract the imported variant's concrete field and rebuild the same variant with it.
+data pbd_round_trip: String = "module p\n\nimport q.lib { Res, Ok, Err, Diag, mk }\n\nfn pass_on() -> Res<Int> {\n  match mk() {\n    Ok { value: _ } => Err { why: Diag { code: 1 } }\n    Err { why: r } => Err { why: r }\n  }\n}\n"
+
+// THE ORACLE: the same program with `r` replaced by an authored value of the field's declared type. The
+// binder must be typed exactly as that value is, so the two verdicts are compared, never spelled.
+data pbd_authored_field: String = "module p\n\nimport q.lib { Res, Ok, Err, Diag, mk }\n\nfn pass_on() -> Res<Int> {\n  match mk() {\n    Ok { value: _ } => Err { why: Diag { code: 1 } }\n    Err { why: _ } => Err { why: Diag { code: 2 } }\n  }\n}\n"
+
+// WRONG VALUE: an Int where the field is declared q.lib.Diag.
+data pbd_wrong_value: String = "module p\n\nimport q.lib { Res, Ok, Err }\n\nfn pass_on(o: Res<Int>) -> Res<Bool> {\n  match o {\n    Ok { value: _ } => Ok { value: true }\n    Err { why: _ } => Err { why: 3 }\n  }\n}\n"
+
+// SAME SHORT NAME, DIFFERENT DECLARATION: p declares its own Diag, with a different field, and puts one in
+// the field declared q.lib.Diag. Sharing the spelling `Diag` must not make them one type.
+data pbd_other_diag: String = "module p\n\nimport q.lib { Res, Ok, Err }\n\ntype Diag {\n  name: Bool\n}\n\nfn wrap(d: Diag) -> Res<Bool> {\n  Err { why: d }\n}\n"
+
+// A verdict as its outcome and its reasons, less the counted infer_grounding_not_derived frontier: that
+// advisory is charged per underived node, and the two programs differ in node count by construction.
+fn pbd_reason_text(acc: String, d: Diagnostic) -> String {
+  if d.reason == ^infer_grounding_not_derived { acc } else { join([acc, ",", symbol_lexeme(sym: d.reason)], "") }
+}
+
+fn pbd_verdict(src: String) -> String {
+  match pbd_inferred(src: src) {
+    Rejected { diagnostics: d } => fold(d.tail, init: pbd_reason_text(acc: "rejected:", d: d.head), f: fn(acc, x) { pbd_reason_text(acc: acc, d: x) })
+    Accepted { value: _, diagnostics: ds } =>
+      match ds {
+        None => "accepted:"
+        Some { diagnostics: d } => fold(d.tail, init: pbd_reason_text(acc: "accepted:", d: d.head), f: fn(acc, x) { pbd_reason_text(acc: acc, d: x) })
+      }
+  }
+}
+
+fn pbd_is_accepted(src: String) -> Bool {
+  match pbd_inferred(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn pbd_a_payload_binder_is_typed_as_an_authored_value_of_its_field() -> Bool {
+  pbd_is_accepted(src: pbd_round_trip) && pbd_verdict(src: pbd_round_trip) == pbd_verdict(src: pbd_authored_field)
+}
+
+test fn pbd_a_wrong_value_in_the_imported_field_refuses_at_the_field() -> Bool {
+  pbd_reason(src: pbd_wrong_value) == ^record_field_value_does_not_inhabit
+}
+
+test fn pbd_a_same_named_type_from_another_module_refuses_at_the_field() -> Bool {
+  pbd_reason(src: pbd_other_diag) == ^record_field_value_does_not_inhabit
+}

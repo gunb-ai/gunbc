@@ -1,0 +1,3489 @@
+module v2.compiler.eval
+
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.types { List, Map }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic, inferred_facts_canonical_admitted, inferred_facts_cover_node, inferred_facts_descent, inferred_facts_grounding_derived, inferred_facts_resolved_type }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import std.algebra { Cons, Empty, list_snoc_item, fold_list, length, empty_map, list_at_optional, collection_count_shape, collection_map_shape }
+import v2.std.type_binder { edge_is_cast_target }
+import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, arrow_declared_parameter_order }
+import v2.std.cardinality { RankingComponent, TerminationProof }
+import v2.std.qualified_name { qualified_name_snoc, qualified_name_to_dotted_string, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.grammar { node_atom_identity_optional }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.verdict { Verdict, verdict_fail, verdict_fold }
+import v2.std.runtime { EnvironmentBindingKey, Continue, EvaluationEnvironment, EvaluationFrame, BindInterpreter, BranchInterpreter, InterpretationAlgebra, InterpretationStructureWitness, LoopInterpreter, MatchInterpreter, Raise, TransformInterpreter, ValueInterpreter, Return, RuntimeAggregate, RuntimeAggregateValue, RuntimeFieldFound, RuntimeFieldValue, RuntimeFieldMissing, runtime_aggregate_field_selection, RuntimeClosure, RuntimeClosureValue, RuntimePrimitive, RuntimeReference, RuntimeUnit, RuntimeValueNodeProjected, RuntimeValueNodeUnrepresentable, RuntimeBehaviorInterpreter, ValueRuntimeInterpreter, TransformRuntimeInterpreter, BranchRuntimeInterpreter, LoopRuntimeInterpreter, BindRuntimeInterpreter, MatchRuntimeInterpreter, Suspend, ControlTransfer, RuntimeValue, EffectHandler, EffectHandlerBinding, EffectReceipt, EffectReceiptLog, OperationCall, OperationCallKind, ReadResource, WriteResource, effect_handler_for_kind, environment_binding_key_for_symbol, interpretation_behavior_dispatch, runtime_value_node_projection, runtime_value_resolved_type }
+import v2.std.node { BranchConditionSlot, branch_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, MatchScrutineeSlot, bind_slot_target, match_slot_target, positional_child_target_nodes, symbol_intern_lexeme, StructuralLabel, positional_edges, ArrowBodyForm, Behavior, Bind, Branch, ComputationNode, Edge, Hash, Loop, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, Value, Arrow, Atom, Conj, Disj, Instantiation, Match, DirectAtomBody, FunctionValueBody, ComputationBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, arrow_body_admits_eval_entry, bag_hash_digest, classify_arrow_body_form, combine_hash, content_hash, ByteOffsetCacheEligible, ByteOffsetCacheIneligible, ByteOffsetCacheKey, byte_offset_cache_key, fold_node, is_positional, locally_well_formed, node_for_structural_equality, well_formed }
+import v2.std.node_query { arrow_constant_member_codomain, FieldProjection, field_projection_edge_base_optional, field_projection_optional, find_arrow_body_child }
+import v2.std.diagnostic { AmbiguousIntent, ByteRange, Correction, DeclarationLocus, Diagnostic, Extent, Locus, NodeLocus, NoCorrectionReason, NonEmptyDiagnostics, InvariantPortLocus, SourcePortLocus, Textual, WholeFile, node_locus, Outcome, Unavailable, Accepted, None, Rejected, ShortCircuit, Suggested, StageDiagnosticPolicy, UserInputBoundary, ExternalContractUnknown, absorb_outcome_diagnostics, append_outcome_value, bind_outcome, diagnostics_eq, diagnostics_singleton, non_empty_diagnostics_eq, outcome_eq, outcome_node_eq, outcome_rejected, sequence_outcome }
+import v2.std.verification { CompilesClaim, DiagnosticClaim, EqualsClaim, RoundTripClaim, StructuralEqualsClaim, TestClaim, TestClaimCompilesClaimVariant, TestClaimDiagnosticClaimVariant, TestClaimEqualsClaimVariant, TestClaimStructuralEqualsClaimVariant, TestClaimRoundTripClaimVariant, test_claim_coproduct_variant, test_claim_evaluation_nodes, test_claim_input }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional, list_nth }
+import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
+import v2.extdeps.runtimes.v2_effect_io_pure { EffectIoFixtureStore, EffectIoResourceBackend, effect_io_pure_append_receipt, effect_io_pure_apply_write, effect_io_pure_handler_binding, effect_io_pure_invoke_handler, effect_io_pure_locator_from_args, effect_io_pure_read_request, effect_io_pure_write_request }
+import v2.extdeps.runtimes.v2_evaluator { V4EvaluatorRuntime, v2_eval_is_literal_shaped_node, v2_evaluator_interpretation_structure_witness, v2_evaluator_interpretation, v2_evaluator_runtime }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+
+type InterpretationCacheAuthority {
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  semantics_digest: Hash,
+  structure_witness: InterpretationStructureWitness
+}
+
+type Inputs {
+  root: Node
+
+  expected_eval_root: Optional<Node>
+
+  host_claim_pin: Optional<Node>
+}
+
+fn inputs_root_only(root: Node) -> Inputs {
+  Inputs {
+    root: root,
+    expected_eval_root: optional_absent(),
+    host_claim_pin: optional_absent()
+  }
+}
+
+fn symbol_atom_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn inputs_for_emit_host(
+  claim_input_root: Node,
+  expected_eval_root: Node,
+  claim_pin: Symbol
+) -> Inputs {
+  Inputs {
+    root: claim_input_root,
+    expected_eval_root: optional_present(value: expected_eval_root),
+    host_claim_pin: optional_present(value: symbol_atom_node(sym: claim_pin))
+  }
+}
+
+type EffectIoEvalBundle {
+  backend: EffectIoResourceBackend
+  store: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+  receipt_log: EffectReceiptLog
+}
+
+type EffectIoYieldOutcome {
+  bundle: EffectIoEvalBundle
+  value: RuntimeValue
+}
+
+type EffectIoEvalContext
+  = EffectIoEvalAbsent
+  | EffectIoEvalPresent { bundle: EffectIoEvalBundle }
+
+type EvalContext {
+  cache_authority: InterpretationCacheAuthority
+  effect_io: EffectIoEvalContext
+}
+
+fn eval_context_effect_io(context: EvalContext) -> EffectIoEvalContext {
+  context.effect_io
+}
+
+fn eval_context_with_semantics(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> EvalContext {
+  EvalContext {
+    cache_authority: InterpretationCacheAuthority {
+      runtime_identity: runtime_identity,
+      interpretation: interpretation,
+      semantics_digest: interpretation_registry_semantics_digest(
+        runtime_identity: runtime_identity,
+        interpretation: interpretation,
+        structure_witness: structure_witness
+      ),
+      structure_witness: structure_witness
+    },
+    effect_io: EffectIoEvalAbsent
+  }
+}
+
+fn eval_context_with_effect_io(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness,
+  backend: EffectIoResourceBackend,
+  store: EffectIoFixtureStore
+) -> EvalContext {
+  let handler_bundle = effect_io_pure_handler_binding(store: store)
+  EvalContext {
+    cache_authority: InterpretationCacheAuthority {
+      runtime_identity: runtime_identity,
+      interpretation: interpretation,
+      semantics_digest: interpretation_registry_semantics_digest(
+        runtime_identity: runtime_identity,
+        interpretation: interpretation,
+        structure_witness: structure_witness
+      ),
+      structure_witness: structure_witness
+    },
+    effect_io: EffectIoEvalPresent {
+      bundle: EffectIoEvalBundle {
+        backend: backend,
+        store: store,
+        handlers: handler_bundle.handlers,
+        receipt_log: EffectReceiptLog { entries: Empty }
+      }
+    }
+  }
+}
+
+fn eval_context_v4_evaluator() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^v2_evaluator_runtime_id,
+    interpretation: v2_evaluator_interpretation(),
+    structure_witness: v2_evaluator_interpretation_structure_witness()
+  )
+}
+
+fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitness) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: combine_hash(
+          a: test_claim_symbol_digest(sym: w.allocate_literal),
+          b: test_claim_symbol_digest(sym: w.call_primitive)
+        ),
+        b: test_claim_symbol_digest(sym: w.choose_branch)
+      ),
+      b: combine_hash(
+        a: test_claim_symbol_digest(sym: w.step_loop),
+        b: test_claim_symbol_digest(sym: w.bind_value)
+      )
+    ),
+    b: test_claim_symbol_digest(sym: w.choose_arm)
+  )
+}
+
+fn interpretation_structure_witness_digest(
+  runtime_identity: Symbol,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: runtime_identity),
+    b: interpretation_structure_witness_slots_digest(w: structure_witness)
+  )
+}
+
+fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: v.identity)
+}
+
+fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: t.identity)
+}
+
+fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: b.identity)
+}
+
+fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: l.identity)
+}
+
+fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: b.identity)
+}
+
+fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash {
+  test_claim_symbol_digest(sym: m.identity)
+}
+
+fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
+  v.identity == witness_sym
+}
+
+fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, witness_sym: Symbol) -> Bool {
+  t.identity == witness_sym
+}
+
+fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness_sym: Symbol) -> Bool {
+  b.identity == witness_sym
+}
+
+fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym: Symbol) -> Bool {
+  l.identity == witness_sym
+}
+
+fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym: Symbol) -> Bool {
+  b.identity == witness_sym
+}
+
+fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_sym: Symbol) -> Bool {
+  m.identity == witness_sym
+}
+
+fn interpretation_structure_witness_coherent(
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> Bool {
+  interpretation_value_interpreter_slot_coherent(v: interpretation.value, witness_sym: structure_witness.allocate_literal)
+    && interpretation_transform_interpreter_slot_coherent(t: interpretation.transform, witness_sym: structure_witness.call_primitive)
+    && interpretation_branch_interpreter_slot_coherent(b: interpretation.branch, witness_sym: structure_witness.choose_branch)
+    && interpretation_loop_interpreter_slot_coherent(l: interpretation.loop, witness_sym: structure_witness.step_loop)
+    && interpretation_bind_interpreter_slot_coherent(b: interpretation.bind, witness_sym: structure_witness.bind_value)
+    && interpretation_match_interpreter_slot_coherent(m: interpretation.match, witness_sym: structure_witness.choose_arm)
+}
+
+fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: combine_hash(
+          a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
+          b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+        ),
+        b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
+      ),
+      b: combine_hash(
+        a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
+        b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
+      )
+    ),
+    b: interpretation_match_interpreter_executed_digest(m: interpretation.match)
+  )
+}
+
+fn interpretation_algebra_executed_structure_digest(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  let executed = combine_hash(
+    a: test_claim_symbol_digest(sym: runtime_identity),
+    b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
+  )
+  if interpretation_structure_witness_coherent(
+    interpretation: interpretation,
+    structure_witness: structure_witness
+  ) {
+    executed
+  } else {
+    combine_hash(
+      a: executed,
+      b: interpretation_structure_witness_digest(
+        runtime_identity: runtime_identity,
+        structure_witness: structure_witness
+      )
+    )
+  }
+}
+
+fn interpretation_v4_evaluator_registry_semantics_digest(
+  interpretation: InterpretationAlgebra
+) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: ^v2_evaluator_runtime_id),
+    b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
+  )
+}
+
+fn interpretation_registry_semantics_digest(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  _structure_witness: InterpretationStructureWitness
+) -> Hash {
+  if runtime_identity == ^v2_evaluator_runtime_id {
+    if interpretation_algebra_slot_identities_equal(a: interpretation, b: v2_evaluator_interpretation()) {
+      interpretation_v4_evaluator_registry_semantics_digest(interpretation: interpretation)
+    } else {
+      test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
+    }
+  } else {
+    interpretation_algebra_executed_slots_digest(interpretation: interpretation)
+  }
+}
+
+fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
+  context.cache_authority.interpretation
+}
+
+type TestClaimTypedInput<T> {
+  evaluator_input: T
+  evaluator_pin: Symbol
+}
+
+type TestClaimEvalSubject<T> {
+  claim: TestClaim
+  context: EvalContext
+  tree: InferredTree
+  input: TestClaimTypedInput<T>
+}
+
+type TestClaimRun<S, A> {
+  claim: TestClaim
+  verdict: Verdict<TestClaimEvalSubject<S>, A>
+}
+
+fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
+  run.claim
+}
+
+fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
+  run.verdict
+}
+
+type EvalFoldState {
+  node: Node
+  progress: EvalProgress
+  structural: Outcome<Node>
+  child_values: Outcome<List<RuntimeValue>>
+  value: Outcome<RuntimeValue>
+}
+
+type EvalProgress
+  = AwaitingChildren { processed: Int }
+  | ReadyToInterpret
+  | Interpreted
+
+fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin
+  }
+}
+
+fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: tag } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
+  fold_list(
+    xs: test_claim_evaluation_nodes(c: c),
+    empty: content_hash(n: test_claim_cache_digest_tag_node(tag: ^test_claim_cache_claim_digest_tag)),
+    cons: fn(acc, n) {
+      combine_hash(a: acc, b: content_hash(n: n))
+    }
+  )
+}
+
+fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
+  match reason {
+    UserInputBoundary =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_user_input_boundary_tag)
+    AmbiguousIntent =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_ambiguous_intent_tag)
+    ExternalContractUnknown =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_external_contract_unknown_tag)
+    CorrectionNotModeled =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_correction_not_modeled_tag)
+  }
+}
+
+fn correction_verdict_digest(c: Correction) -> Hash {
+  match c {
+    Suggested { node: n } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_suggested_tag),
+        b: content_hash(n: n)
+      )
+    Unavailable { reason: r } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_unavailable_tag),
+        b: no_correction_reason_digest(reason: r)
+      )
+  }
+}
+
+fn byte_offset_cache_key_extent_component(key: ByteOffsetCacheKey) -> Hash {
+  match key {
+    ByteOffsetCacheEligible { digest: digest } => digest
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_byte_offset_cache_ineligible_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: boundary_tag),
+          b: witness
+        )
+      )
+  }
+}
+
+fn extent_cache_digest(e: Extent) -> Hash {
+  match e {
+    WholeFile =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_extent_whole_file_tag)
+    ByteRange { start: sa, end: ea } =>
+      combine_hash(
+        a: combine_hash(
+          a: test_claim_symbol_digest(sym: ^test_claim_cache_extent_byte_range_tag),
+          b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: sa))
+        ),
+        b: byte_offset_cache_key_extent_component(key: byte_offset_cache_key(i: ea))
+      )
+  }
+}
+
+fn locus_cache_digest(at: Locus) -> Hash {
+  match at {
+    NodeLocus { anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
+        b: content_hash(n: a.at)
+      )
+    SourcePortLocus { anchor: a, file: f, extent: e } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_source_port_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: a.at),
+          b: combine_hash(
+            a: test_claim_symbol_digest(sym: f),
+            b: extent_cache_digest(e: e)
+          )
+        )
+      )
+    InvariantPortLocus { anchor: a, invariant: invariant } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_invariant_port_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: a.at),
+          b: test_claim_symbol_digest(sym: invariant)
+        )
+      )
+    Textual { file: f, extent: e } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_textual_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: f),
+          b: extent_cache_digest(e: e)
+        )
+      )
+    DeclarationLocus { declaration: segments } =>
+      fold_list(
+        xs: segments,
+        empty: test_claim_symbol_digest(sym: ^test_claim_cache_locus_declaration_tag),
+        cons: fn(acc, seg) { combine_hash(a: acc, b: test_claim_symbol_digest(sym: seg)) }
+      )
+  }
+}
+
+fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
+  combine_hash(
+    a: locus_cache_digest(at: d.at),
+    b: combine_hash(
+      a: test_claim_symbol_digest(sym: d.reason),
+      b: correction_verdict_digest(c: d.correction)
+    )
+  )
+}
+
+fn diagnostic_tail_bag_cache_digest(xs: List<Diagnostic>) -> Hash {
+  bag_hash_digest(
+    empty: test_claim_symbol_digest(sym: ^test_claim_cache_diagnostic_tail_bag_empty_tag),
+    xs: map(xs, diag => diagnostic_cache_digest(d: diag))
+  )
+}
+
+fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
+  combine_hash(
+    a: diagnostic_cache_digest(d: d.head),
+    b: diagnostic_tail_bag_cache_digest(xs: d.tail)
+  )
+}
+
+fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
+  match test_claim_coproduct_variant(c: c) {
+    TestClaimCompilesClaimVariant =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_variant_compiles_tag)
+    TestClaimDiagnosticClaimVariant =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_variant_diagnostic_tag)
+    TestClaimEqualsClaimVariant =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_variant_equals_tag)
+    TestClaimStructuralEqualsClaimVariant =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_variant_structural_equals_tag)
+    TestClaimRoundTripClaimVariant =>
+      test_claim_symbol_digest(sym: ^test_claim_cache_variant_roundtrip_tag)
+  }
+}
+
+fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
+  let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      nodes_digest
+    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
+      combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      nodes_digest
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      nodes_digest
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      nodes_digest
+  }
+}
+
+fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+  combine_hash(
+    a: test_claim_variant_cache_digest(c: c),
+    b: test_claim_claim_body_cache_digest(c: c)
+  )
+}
+
+fn test_claim_symbol_digest(sym: Symbol) -> Hash {
+  content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
+}
+
+fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: w.property),
+    b: content_hash(n: w.evidence)
+  )
+}
+
+fn ranking_dimension_digest(d: v2.std.cardinality.RankingComponent) -> Hash {
+  test_claim_symbol_digest(sym: d.measured)
+}
+
+fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> Hash {
+  combine_hash(
+    a: ranking_dimension_digest(d: proof.strict),
+    b: fold_list(
+      xs: proof.non_increasing,
+      empty: test_claim_symbol_digest(sym: ^test_claim_cache_termination_non_increasing_empty_tag),
+      cons: fn(acc, d) {
+        combine_hash(a: acc, b: ranking_dimension_digest(d: d))
+      }
+    )
+  )
+}
+
+fn witness_cache_holds_digest(payload: Hash) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_holds_tag),
+    b: payload
+  )
+}
+
+fn witness_cache_violates_digest(diag: Diagnostic) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_violates_tag),
+    b: diagnostic_cache_digest(d: diag)
+  )
+}
+
+fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> Hash {
+  match d {
+    Holds { value: proof } =>
+      witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
+    Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+  }
+}
+
+fn eval_grounding_not_derived_digest_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^eval_grounding_not_derived_digest_tag } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn inferred_facts_digest(facts: InferredFacts) -> Hash {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } =>
+      combine_hash(
+        a: content_hash(n: g.node),
+        b: combine_hash(
+          a: combine_hash(
+            a: structural_property_witness_digest(w: g.witness.structural),
+            b: structural_property_witness_digest(w: g.witness.closedness)
+          ),
+          b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+        )
+      )
+    GroundingNotDerived { node: n, site: _ } =>
+      combine_hash(
+        a: combine_hash(
+          a: content_hash(n: eval_grounding_not_derived_digest_node()),
+          b: content_hash(n: n)
+        ),
+        b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+      )
+  }
+}
+
+fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
+  combine_hash(
+    a: content_hash(n: node),
+    b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
+      Holds { value: facts } =>
+        witness_cache_holds_digest(payload: inferred_facts_digest(facts: facts))
+      Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+    }
+  )
+}
+
+fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
+  fold_node(
+    n: tree.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        inferred_node_facts_cache_digest(tree: tree, node: n0)
+      },
+      step: fn(acc, e, child) {
+        combine_hash(a: acc, b: child)
+      }
+    }
+  )
+}
+
+fn inferred_tree_digest(tree: InferredTree) -> Hash {
+  combine_hash(
+    a: content_hash(n: tree.root),
+    b: inferred_tree_evaluated_facts_digest(tree: tree)
+  )
+}
+
+type InterpretationCacheDigestAuthority
+  = InterpretationCacheRegistered {
+      runtime_identity: Symbol,
+      semantics_witness: Hash
+    }
+  | InterpretationCacheIneligible {
+      runtime_identity: Symbol,
+      registry_witness: Hash,
+      structure_digest: Hash
+    }
+
+// A VERDICT IS REUSED ON CONTENT IDENTITY ONLY WHERE CONTENT IDENTITY DETERMINES THE RUN. A named
+// actual's position is not part of an application's identity (v2.std.node
+// canonicalize_positional_then_named sorts the named suffix), but it is part of its
+// EVALUATION ORDER, which is authored order. For pure evaluation the two coincide; with an effect
+// bundle present, f(a: e1(), b: e2()) and f(b: e2(), a: e1()) hash equal and perform their effects
+// in opposite orders, so a verdict keyed on the hash could be reused across two different runs. An
+// effectful evaluation context is therefore cache-ineligible (gunbc.recurring_failure_mode
+// argument_order_silently_orders_two_effects, until v2 carries uses facts and the order wall lands).
+fn eval_context_performs_effects(context: EvalContext) -> Bool {
+  match context.effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } => true
+  }
+}
+
+fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
+  let authority = context.cache_authority
+  let registry_witness = interpretation_registry_semantics_digest(
+    runtime_identity: authority.runtime_identity,
+    interpretation: authority.interpretation,
+    structure_witness: authority.structure_witness
+  )
+  let registered_semantics = interpretation_v4_evaluator_registry_semantics_digest(
+    interpretation: v2_evaluator_interpretation()
+  )
+  let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
+  if eval_context_performs_effects(context: context) {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_algebra_executed_structure_digest(
+        runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
+        structure_witness: authority.structure_witness
+      )
+    }
+  } else if authority.runtime_identity == ^v2_evaluator_runtime_id
+    && interpretation_algebra_slot_identities_equal(a: authority.interpretation, b: v2_evaluator_interpretation())
+    && authority.semantics_digest == registered_semantics
+    && registry_witness == registered_semantics
+    && registry_witness != registry_mismatch {
+    InterpretationCacheRegistered {
+      runtime_identity: authority.runtime_identity,
+      semantics_witness: registry_witness
+    }
+  } else {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_algebra_executed_structure_digest(
+        runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
+        structure_witness: authority.structure_witness
+      )
+    }
+  }
+}
+
+fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAuthority) -> Hash {
+  match auth {
+    InterpretationCacheRegistered {
+      runtime_identity: runtime_identity,
+      semantics_witness: semantics_witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_registered_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: runtime_identity),
+          b: semantics_witness
+        )
+      )
+    InterpretationCacheIneligible {
+      runtime_identity: runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: structure_digest
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_cache_ineligible_tag),
+        b: combine_hash(
+          a: combine_hash(
+            a: test_claim_symbol_digest(sym: runtime_identity),
+            b: registry_witness
+          ),
+          b: structure_digest
+        )
+      )
+  }
+}
+
+fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+  interpretation_cache_digest_authority_hash(
+    auth: test_claim_interpretation_cache_digest_authority(context: context)
+  )
+}
+
+fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+  content_hash(n: input.evaluator_input)
+}
+
+fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: input.evaluator_pin),
+    b: test_claim_evaluator_input_digest_node(input: input)
+  )
+}
+
+fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_cache_digest(context: subject.context),
+      b: test_claim_evaluator_digest_node(input: subject.input)
+    )
+  )
+}
+
+fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  empty_map()
+}
+
+fn empty_evaluation_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: empty_runtime_bindings()
+  }
+}
+
+fn eval_runtime() -> V4EvaluatorRuntime {
+  v2_evaluator_runtime()
+}
+
+fn eval_default_interpretation() -> InterpretationAlgebra {
+  v2_evaluator_interpretation()
+}
+
+fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
+}
+
+fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
+  match inferred_facts_witness_for_eval(tree: tree, node: node) {
+    Holds { value: facts } =>
+      if !inferred_facts_grounding_derived(facts: facts) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
+          )
+        }
+      } else if !inferred_facts_cover_node(facts: facts, node: node) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: ^eval_rejected_grounding_node_mismatch, node: node)
+          )
+        }
+      } else if !inferred_facts_canonical_admitted(facts: facts) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
+          )
+        }
+      } else {
+        match inferred_facts_descent(facts: facts) {
+          Holds { value: _ } =>
+            Accepted { value: facts, diagnostics: None }
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d) }
+        }
+      }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(_facts) {
+      Accepted { value: node, diagnostics: None }
+    }
+  )
+}
+
+fn eval_short_circuit_policy() -> StageDiagnosticPolicy {
+  StageDiagnosticPolicy { accumulation: ShortCircuit }
+}
+
+fn eval_absorb_structural_child(
+  acc: Outcome<Node>,
+  child: Outcome<Node>
+) -> Outcome<Node> {
+  absorb_outcome_diagnostics(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
+}
+
+fn control_transfer_value(
+  control: ControlTransfer,
+  node: Node,
+  runtime: V4EvaluatorRuntime,
+  environment: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  runtime.execution.control.terminal_value(
+    control,
+    EvaluationFrame { current: node, environment: environment }
+  )
+}
+
+type RuntimeValueAcceptanceWitness {
+  resolved_type: Witness<Node>
+  inhabitance: Witness<InferredFacts>
+  canonical: Witness<InferredFacts>
+}
+
+fn eval_runtime_value_acceptance_witness(
+  node: Node,
+  facts: InferredFacts,
+  value: RuntimeValue
+) -> RuntimeValueAcceptanceWitness {
+  RuntimeValueAcceptanceWitness {
+    resolved_type: match inferred_facts_resolved_type(facts: facts) {
+      Violates { diagnostic: _ } =>
+        Violates {
+          diagnostic: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
+        }
+      Holds { value: declared } =>
+        if declared == runtime_value_resolved_type(value: value) {
+          Holds { value: runtime_value_resolved_type(value: value) }
+        } else {
+          Violates {
+            diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
+          }
+        }
+    },
+    inhabitance: if inferred_facts_canonical_admitted(facts: facts) {
+      Holds { value: facts }
+    } else {
+      Violates {
+        diagnostic: eval_diagnostic(reason: ^eval_rejected_inhabitance_mismatch, node: node)
+      }
+    },
+    canonical: if inferred_facts_canonical_admitted(facts: facts) {
+      Holds { value: facts }
+    } else {
+      Violates {
+        diagnostic: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
+      }
+    }
+  }
+}
+
+fn eval_accept_runtime_value_with_facts(
+  node: Node,
+  facts: InferredFacts,
+  value: RuntimeValue
+) -> Outcome<RuntimeValue> {
+  let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
+  match witness.resolved_type {
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+    Holds { value: _ } => match witness.inhabitance {
+      Violates { diagnostic: d } => outcome_rejected(d: d)
+      Holds { value: _ } => match witness.canonical {
+        Violates { diagnostic: d } => outcome_rejected(d: d)
+        Holds { value: _ } => Accepted { value: value, diagnostics: None }
+      }
+    }
+  }
+}
+
+fn eval_witness_outcome<T>(witness: Witness<T>) -> Outcome<T> {
+  match witness {
+    Holds { value: v } => Accepted { value: v, diagnostics: None }
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+  }
+}
+
+fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: args,
+      wanted: 0,
+      absent: eval_diagnostic(reason: ^eval_rejected_branch_argument_absent, node: node)
+    )
+  )
+}
+
+fn eval_bind_value_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: args,
+      wanted: 1,
+      absent: eval_diagnostic(reason: ^eval_rejected_bind_value_absent, node: node)
+    )
+  )
+}
+
+fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: node.children,
+      wanted: wanted,
+      absent: eval_diagnostic(reason: absent_reason, node: node)
+    )
+  )
+}
+
+// A node's role children are read through the v2.std.node slot tables, so an edge shared by two roles of one
+// node (a value equal to its body, a scrutinee equal to an arm) still names exactly one slot. A let's
+// <type-annotation> edge (v2.std.type_binder) is a static ascription evaluation does not read, and the
+// tables count positional children only.
+fn eval_slot_outcome(target: Optional<Node>, node: Node, absent_reason: Symbol) -> Outcome<Node> {
+  match target {
+    Present { value: t } => Accepted { value: t, diagnostics: None }
+    Absent => outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
+  }
+}
+
+fn eval_branch_condition(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: branch_slot_target(n: node, slot: BranchConditionSlot),
+    node: node,
+    absent_reason: ^eval_rejected_branch_argument_absent
+  )
+}
+
+fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
+  bind_outcome(
+    o: eval_slot_outcome(
+      target: bind_slot_target(n: node, slot: BindBinderSlot),
+      node: node,
+      absent_reason: ^eval_rejected_bind_key_absent
+    ),
+    f: fn(declaration) {
+      eval_environment_binding_key_from_node(declaration: declaration)
+    }
+  )
+}
+
+fn eval_bind_value(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: bind_slot_target(n: node, slot: BindValueSlot),
+    node: node,
+    absent_reason: ^eval_rejected_bind_value_absent
+  )
+}
+
+fn eval_bind_body(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: bind_slot_target(n: node, slot: BindBodySlot),
+    node: node,
+    absent_reason: ^eval_rejected_bind_body_absent
+  )
+}
+
+fn eval_match_scrutinee(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: match_slot_target(n: node, slot: MatchScrutineeSlot),
+    node: node,
+    absent_reason: ^eval_rejected_branch_argument_absent
+  )
+}
+
+fn eval_binding_key_node(sym: Symbol) -> Node {
+  symbol_atom_node(sym: sym)
+}
+
+fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    Absent => optional_absent()
+  }
+}
+
+fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
+  match eval_binding_key_from_atom(node: declaration) {
+    Present { value: key } =>
+      Accepted { value: key, diagnostics: None }
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
+      )
+  }
+}
+
+fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: eval_environment_binding_key_from_node(declaration: node),
+    f: fn(key) {
+      eval_witness_outcome(
+        witness: witness_from_optional(
+          opt: environment.bindings.lookup(key),
+          absent: eval_diagnostic(
+            reason: ^eval_rejected_runtime_binding_lookup_miss,
+            node: symbol_atom_node(sym: key.identity)
+          )
+        )
+      )
+    }
+  )
+}
+
+// A LEXICAL REFERENCE READS ITS LOCAL FROM THE ENVIRONMENT BY LABEL, AND A MISS REFUSES. resolve
+// minted it (v2.std.qualified_name lexical_reference_node) only where a Lexical frame -- a `let`, a
+// match arm, a lambda -- answered the name, and eval binds exactly those binders by label, so the label
+// is the environment key. It is a name, never a literal: unlike a bare atom, a miss is not handed to
+// allocate_literal, which would fabricate a value from the spelling of a binding that is absent.
+fn eval_lexical_reference(node: Node, label: Symbol, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  eval_witness_outcome(
+    witness: witness_from_optional(
+      opt: environment.bindings.lookup(environment_binding_key_for_symbol(sym: label)),
+      absent: eval_diagnostic(reason: ^eval_rejected_runtime_binding_lookup_miss, node: node)
+    )
+  )
+}
+
+// A RESOLVED CORPUS-DECLARATION REFERENCE IS REFUSED HERE AS A BINDING MISS, NEVER ALLOCATED.
+// Resolution carries a reference to a declaration as its declaring path (v2.compiler.resolve
+// resolved_reference_node), a Conj-shaped spine; the default TypeNode arm below allocates a literal
+// from any non-Atom type node, which for the spine would fabricate a two-field record of the
+// reference's own segments. The evaluator binds frame-local names and parameters by symbol and
+// binds no module-level declaration at all (a callee that is not an Arrow already falls to the
+// primitive table and refuses there), so a declaration reference in value position is what a bare
+// Atom miss was before the carrier: unbound in this environment, refused with the miss reason at
+// the reference's own locus. Binding module-level declarations by their path is the evaluator's
+// own next step and is not taken here.
+//
+// A PARAMETER REFERENCE REFUSES THE SAME WAY, UNDER ITS OWN REASON, AND NEVER BY LABEL. A named fn's
+// parameter is resolved as a path-keyed reference (v2.std.qualified_name parameter_reference_node),
+// while eval_bind_arrow_params binds by bare label; reading the leaf here would re-derive the binding
+// from the spine's shape. No route evaluates a declared fn body over resolver output yet, so no
+// accepted program reaches this arm. DECLARED FRONTIER, TRIGGER NAMING THE CAPABILITY: gunbc#12506's
+// named-call route evaluates a declared fn body over resolver output, SUFFICIENT FOR eval to key
+// parameters by QualifiedName with this refusal arm deleted.
+//
+// THE REFERENCE CARRIES ITS OWN KEY, so the body looks the actual up under the path the call bound it
+// at -- the same key eval_parameter_binding_key produced, which is why that constructor is the only
+// place either side derives one. The refusal that stood here answered for EVERY parameter reference,
+// which was honest while no route evaluated a declared body over resolver output and became a wall
+// against the capability once one did. It does not disappear: a reference whose path the environment
+// does not hold still refuses with the same reason, so a wrong path or an unbound parameter is still
+// a located refusal and only a BOUND one now executes.
+fn eval_type_node_atom(
+  node: Node,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: _ } =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_runtime_binding_lookup_miss, node: node)
+      )
+    Absent =>
+  match parameter_reference_path_optional(node: node) {
+    Present { value: path } =>
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
+          )
+      }
+    Absent =>
+  match lexical_reference_label_optional(node: node) {
+    Present { value: label } => eval_lexical_reference(node: node, label: label, environment: environment)
+    Absent =>
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if v2_eval_is_literal_shaped_node(node: node) {
+        interpretation.value.allocate_literal(node, environment)
+      } else {
+        match eval_runtime_binding_lookup(node: node, environment: environment) {
+          Accepted { value: v, diagnostics: d } =>
+            Accepted { value: v, diagnostics: d }
+          Rejected { diagnostics: bind_ds } =>
+            match interpretation.value.allocate_literal(node, environment) {
+              Accepted { value: v, diagnostics: d } =>
+                Accepted { value: v, diagnostics: d }
+              Rejected { diagnostics: _ } =>
+                Rejected { diagnostics: bind_ds }
+            }
+        }
+      }
+    TypeNode { connective: _ } =>
+      interpretation.value.allocate_literal(node, environment)
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
+  }
+  }
+  }
+}
+
+// BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
+// order (eval_edge_is_runtime_argument); v2.std.arrow_signature application_binding_plan says,
+// for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
+// the two stages cannot bind one call differently. A domain with no named binder keeps its positional
+// edges, bound in their own order.
+// THE PARAMETER BINDING KEY, AND IT IS ONE CONSTRUCTOR BECAUSE BINDING AND LOOKUP MUST NOT DISAGREE.
+// gunbc#12766 made a named fn's parameter use a PATH-KEYED parameter reference and declared eval's keying a
+// frontier whose trigger is this lane's named-call route. Binding by the bare label while the body looks the
+// parameter up by its declaring path is exactly the two-authorities defect that frontier existed to prevent,
+// so the key is derived here and nowhere else: the callee's declaring path, then the formal's label.
+//
+// THE FULL PATH, NEVER THE LEAF. `p.f.x` and `p.g.x` are different parameters of different declarations, and
+// keying on `x` would alias them -- one function's actual answering another function's body. That is the same
+// reasoning v2.compiler.infer records for symbol_index_lookup, which asks for the whole declaring path
+// precisely because a leaf answer fabricated a type from an unrelated declaration.
+//
+// THE KEY IS INTERNED, because EnvironmentBindingKey carries a Symbol (v2.std.runtime) rather than a path,
+// and the dotted rendering is v2.std.qualified_name's own. A separator that could occur inside a segment
+// would make two distinct paths collide, and `.` cannot: it is the segment separator of the very grammar
+// these names come from.
+fn eval_parameter_binding_key(parameter_path: QualifiedName) -> EnvironmentBindingKey {
+  environment_binding_key_for_symbol(
+    sym: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: parameter_path))
+  )
+}
+
+// WHICH KEYING A FORMAL GETS, decided once. A call whose callee is a resolved declaration reference supplies
+// a declaring path, so its formals are keyed by path. A LAMBDA supplies none: gunbc#12766 deliberately left
+// lambda parameters on their lexical bare-label route, because an anonymous Arrow has no index path to key
+// by, so Absent keeps exactly the behaviour that route already had. This is not a fallback for the
+// path-keyed case -- a named declaration NEVER keys by bare label, because binding both spellings would make
+// the route look repaired while preserving the two authorities the frontier forbids.
+fn eval_formal_binding_key(callee_path: Optional<QualifiedName>, label: Symbol) -> EnvironmentBindingKey {
+  match callee_path {
+    Present { value: path } =>
+      eval_parameter_binding_key(parameter_path: qualified_name_snoc(qn: path, segment: label))
+    Absent => environment_binding_key_for_symbol(sym: label)
+  }
+}
+
+fn eval_parameter_reference_is_value(node: Node) -> Bool {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn eval_parameter_reference_value(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match parameter_reference_path_optional(node: node) {
+    Absent => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+    Present { value: path } =>
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+      }
+  }
+}
+
+fn eval_bind_arrow_params(
+  arrow: Node,
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node,
+  callee_path: Optional<QualifiedName>
+) -> Outcome<EvaluationEnvironment> {
+  bind_outcome(
+    o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
+    f: fn(domain_edge) {
+      if eval_domain_has_named_binder(domain: domain_edge.target) {
+        match application_binding_plan(arrow: arrow, actuals: application_actual_edges(site: node)) {
+          ApplicationBindingRefused { reason: reason, at: _ } =>
+            outcome_rejected(d: eval_diagnostic(reason: reason, node: node))
+          ApplicationBound { slots: slots } =>
+            fold(slots, init: Accepted { value: environment, diagnostics: None }, f: fn(acc, slot) {
+              bind_outcome(o: acc, f: fn(env) {
+                bind_outcome(
+                  o: eval_witness_outcome(
+                    witness: list_nth(
+                      xs: args,
+                      wanted: slot.actual_index,
+                      absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+                    )
+                  ),
+                  f: fn(value) {
+                    bind.bind_value(
+                      eval_formal_binding_key(callee_path: callee_path, label: slot.label),
+                      value,
+                      env
+                    )
+                  }
+                )
+              })
+            })
+        }
+      } else {
+        eval_bind_positional_domain(domain: domain_edge.target, args: args, environment: environment, bind: bind, node: node)
+      }
+    }
+  )
+}
+
+fn eval_domain_has_named_binder(domain: Node) -> Bool {
+  fold(domain.children, init: false, f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => acc
+      Authored { name: _ } => true
+      Positional => acc
+    }
+  })
+}
+
+// A DOMAIN WITH NO NAMED BINDER BINDS NO NAME: its positional edges carry types, not binders, so the
+// only question is arity -- an actual beyond the domain's zero named slots is excess.
+fn eval_bind_positional_domain(
+  domain: Node,
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  if eval_actual_present(args: args, wanted: 0, node: node) {
+    outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
+  } else {
+    Accepted { value: environment, diagnostics: None }
+  }
+}
+
+fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
+  match list_nth(
+    xs: args,
+    wanted: wanted,
+    absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
+  eval_nth_child(
+    node: node,
+    wanted: 0,
+    absent_reason: ^eval_rejected_callee_absent
+  )
+}
+
+fn eval_node_is_arrow(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
+  }
+}
+
+// A RESOLVED DECLARATION REFERENCE IS A CALLEE REFERENCE, RECOGNIZED THROUGH ITS MARKER READER AND
+// NOT BY ITS CONNECTIVE. The carrier is a marked Conj (v2.std.qualified_name
+// declaration_reference_node), and admitting Conj as such would admit every record shape with it --
+// so the third arm asks declaration_reference_path_optional, the same reader infer and translate ask.
+//
+// WHAT THIS FIXES IS THE WALK BEFORE IT IS THE DISPATCH. Until the classifier recognized the
+// reference, eval_fold_is_callee_reference_edge answered false, eval_fold_child_for_edge took its
+// ordinary recursive arm, and the walk DESCENDED INTO THE REFERENCE'S ENCODED DECLARING PATH --
+// demanding value-grounding for the internal representation of a declaration identity. That spine is
+// built at OccurrenceSynthetic because the authored occurrence belongs to the marker node, and infer
+// visits it too, so each component held an entry with grounding underived and the walk refused with
+// eval_rejected_grounding_not_derived anchored on path data. The regression control for exactly that
+// anchor is v2.test.claim.callexec.declaration_reference_eval.
+//
+// A lexical reference is the name a bare Atom callee was before resolve marked it, so it routes as one.
+fn eval_node_is_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ =>
+      match declaration_reference_path_optional(node: node) {
+        Present { value: _ } => true
+        Absent =>
+          match lexical_reference_label_optional(node: node) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE EXECUTABLE DECLARATION A CALLEE REFERENCE NAMES, taken from the denotation infer recorded with
+// the guarded index lookup (v2.compiler.inferred_tree InferredFacts denotation). eval does not
+// re-resolve: it holds no symbol index, and a second resolution path here would be a weaker authority
+// that could accept a reference the guard refuses.
+//
+// A REFERENCE WHOSE FACTS ARE ABSENT OR CARRY NO DENOTATION REFUSES, and refuses as a missing runtime
+// binding rather than being guessed at, inlined by name, or silently treated as a primitive.
+fn eval_callee_declaration_optional(tree: InferredTree, callee: Node) -> Optional<Node> {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => optional_absent()
+    Present { value: _ } =>
+      match tree.facts.lookup(callee) {
+        Absent => optional_absent()
+        Present { value: facts } => facts.denotation
+      }
+  }
+}
+
+// THE NODE THE CALL DISPATCHES THROUGH. For an ordinary Arrow callee it is the callee itself, exactly
+// as before; for a declaration reference it is the DENOTED declaration. Returning the callee unchanged
+// when no denotation is reachable keeps the existing refusal arms in charge of saying so.
+fn eval_callee_dispatch_node(tree: InferredTree, callee: Node) -> Node {
+  match eval_callee_declaration_optional(tree: tree, callee: callee) {
+    Present { value: declaration } => declaration
+    Absent => callee
+  }
+}
+
+fn eval_child_absent(node: Node, wanted: Int) -> Bool {
+  match eval_nth_child(
+    node: node,
+    wanted: wanted,
+    absent_reason: ^eval_rejected_unsupported_callee
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
+
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 3) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn eval_transform_has_callee_reference(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match eval_nth_child(
+        node: node,
+        wanted: 0,
+        absent_reason: ^eval_rejected_callee_absent
+      ) {
+        Accepted { value: e0, diagnostics: _ } =>
+          match e0.label {
+            StructuralLabel { label: _ } => false
+            Positional => eval_node_is_callee_reference(node: e0.target)
+            Authored { name: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
+  }
+}
+
+fn eval_node_is_branch(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Branch } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
+  }
+}
+
+fn eval_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
+  }
+}
+
+fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: locator },
+      Edge { label: Positional, target: payload }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
+  match effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } =>
+      match node.kind {
+        ComputationNode { behavior: Transform } =>
+          !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: Value } => false
+        ComputationNode { behavior: Branch } => false
+        ComputationNode { behavior: Loop } => false
+        ComputationNode { behavior: Bind } => false
+        ComputationNode { behavior: Match } => false
+      }
+  }
+}
+
+fn eval_invoke_effect_handler(
+  bundle: EffectIoEvalBundle,
+  request: OperationCall
+) -> Outcome<RuntimeValue> {
+  let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
+  effect_io_pure_invoke_handler(handler: handler, request: request)
+}
+
+fn eval_bundle_with_receipt_appended(
+  bundle: EffectIoEvalBundle,
+  request: OperationCall,
+  result: Outcome<RuntimeValue>
+) -> EffectIoEvalBundle {
+  EffectIoEvalBundle {
+    backend: bundle.backend,
+    store: bundle.store,
+    handlers: bundle.handlers,
+    receipt_log: effect_io_pure_append_receipt(
+      log: bundle.receipt_log,
+      request: request,
+      result: result
+    )
+  }
+}
+
+fn eval_yield_effect_request(
+  bundle: EffectIoEvalBundle,
+  request: OperationCall
+) -> Outcome<EffectIoYieldOutcome> {
+  let result = eval_invoke_effect_handler(bundle: bundle, request: request)
+  let logged_bundle = eval_bundle_with_receipt_appended(
+    bundle: bundle,
+    request: request,
+    result: result
+  )
+  match result {
+    Accepted { value: v, diagnostics: ds } =>
+      Accepted {
+        value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
+        diagnostics: ds
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
+  eval_actual_present(args: args, wanted: 0, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
+    && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
+}
+
+fn eval_effect_io_roundtrip(
+  bundle: EffectIoEvalBundle,
+  args: List<RuntimeValue>,
+  node: Node
+) -> Outcome<RuntimeValue> {
+  if eval_effect_io_roundtrip_args_present(args: args) {
+    bind_outcome(
+      o: eval_first_runtime_argument(args: args, node: node),
+      f: fn(locator_arg) {
+        bind_outcome(
+          o: eval_bind_value_argument(args: args, node: node),
+          f: fn(payload) {
+            let write_args = Cons {
+              head: locator_arg,
+              tail: Cons { head: payload, tail: Empty }
+            }
+            let write_request = effect_io_pure_write_request(args: write_args)
+            bind_outcome(
+              o: eval_yield_effect_request(bundle: bundle, request: write_request),
+              f: fn(write_yield) {
+                let written = write_yield.value
+                match runtime_value_equality(a: written, b: payload) {
+                  RuntimeValuesEqual =>
+                  match effect_io_pure_locator_from_args(
+                    backend: bundle.backend,
+                    args: write_args
+                  ) {
+                    Holds { value: locator } =>
+                      let store1 = effect_io_pure_apply_write(
+                        store: bundle.store,
+                        locator: locator,
+                        payload: written
+                      )
+                      let rebound = effect_io_pure_handler_binding(store: store1)
+                      let read_bundle = EffectIoEvalBundle {
+                        backend: bundle.backend,
+                        store: store1,
+                        handlers: rebound.handlers,
+                        receipt_log: write_yield.bundle.receipt_log
+                      }
+                      let read_args = Cons { head: locator_arg, tail: Empty }
+                      let read_request = effect_io_pure_read_request(args: read_args)
+                      bind_outcome(
+                        o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
+                        f: fn(read_yield) {
+                          Accepted { value: read_yield.value, diagnostics: None }
+                        }
+                      )
+                    Violates { diagnostic: d } =>
+                      Rejected { diagnostics: diagnostics_singleton(d: d) }
+                  }
+                  RuntimeValuesDiffer =>
+                    outcome_rejected(
+                      d: eval_diagnostic(reason: ^eval_rejected_effect_io_write_payload_mismatch, node: node)
+                    )
+                  RuntimeValueEqualityUnavailable { reason: r } =>
+                    outcome_rejected(d: eval_diagnostic(reason: r, node: node))
+                }
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      d: eval_diagnostic(reason: ^eval_rejected_effect_io_roundtrip_arity, node: node)
+    )
+  }
+}
+
+fn eval_value_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  _tree: InferredTree,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  _runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    ValueRuntimeInterpreter { interpreter: value } =>
+      value.allocate_literal(node, environment)
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
+}
+
+// A LIST LITERAL IS AN INTRODUCTION, NOT A CALL. Its head is the marked reference to the declaration
+// of the free monoid (v2.std.list_introduction list_introduction_head_path), which names a type and
+// has no executable body, so reading the head as a callee reached the lookup-miss refusal
+// (eval_rejected_runtime_binding_lookup_miss) although nothing was unbound. Recognition goes through
+// the one reader infer and body lowering share, so eval cannot disagree with them about which
+// Transform heads a list. The head edge is the callee edge of eval_edge_is_runtime_argument, so
+// `args` is already exactly the elements in order.
+//
+// The value is a RuntimeAggregate typed by the declared type infer resolved for the literal (the
+// acceptance witness compares them), one field per element in order. FreeMonoid has no names, so
+// every field carries ^list_element and ORDER is the identity: a consumer reads the fields as a
+// sequence, never by name.
+fn eval_list_introduction_value(
+  node: Node,
+  facts: InferredFacts,
+  args: List<RuntimeValue>
+) -> Outcome<RuntimeValue> {
+  match inferred_facts_resolved_type(facts: facts) {
+    Violates { diagnostic: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node))
+    Holds { value: declared } =>
+      Accepted {
+        value: RuntimeAggregate {
+          value: RuntimeAggregateValue {
+            aggregate_type: declared,
+            fields: fold(
+              args,
+              init: [],
+              f: fn(acc, element) {
+                list_snoc_item(xs: acc, item: RuntimeFieldValue { field: ^list_element, value: element })
+              }
+            )
+          }
+        },
+        diagnostics: None
+      }
+  }
+}
+
+// A CALLEE WHOSE BODY IS ITSELF A FUNCTION VALUE REFUSES UNDER ITS OWN REASON. The body is
+// well-formed (v2.std.node FunctionValueBody), but eval carries no closure value to return, so the
+// call is refused -- never folded into the generic unsupported-callee reason, which would hide
+// which capability is missing.
+fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
+  match form {
+    FunctionValueBody => ^eval_rejected_function_value_body
+    DirectAtomBody => ^eval_rejected_unsupported_callee
+    RecordConstructBody => ^eval_rejected_unsupported_callee
+    DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ParameterReferenceBody => ^eval_rejected_parameter_reference_unbound
+    LexicalReferenceBody => ^eval_rejected_unsupported_callee
+    ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
+    UnsupportedArrowBody => ^eval_rejected_unsupported_callee
+  }
+}
+
+// THE CALL DISPATCHES THROUGH THE DENOTED DECLARATION WHEN ITS CALLEE IS A REFERENCE, and through the
+// callee itself otherwise. `callee_target` below is that one node, read by both the body lookup and
+// the parameter binding, so a reference binds the CALLEE's own formals against the CALLEE's own body
+// -- never a body from one declaration paired with formals from another.
+//
+// A REFERENCE THAT REACHED NO EXECUTABLE DECLARATION REFUSES AS AN UNBOUND RUNTIME BINDING. Either no
+// facts entry carried a denotation -- so infer refused the reference's contract -- or the denoted
+// declaration is not an Arrow with an admissible body. Neither arm falls through to the primitive
+// table, where a reference would be looked up by a name it does not have and reported as a missing
+// primitive rather than as the declaration it actually names.
+// THE CALLEE'S OWN DECLARING PATH, read off the reference the call carries rather than
+// re-resolved: eval is a consumer of resolution's answer here, never a second naming
+// authority. A callee that is not a declaration reference (a lambda) yields Absent and
+// its formals stay on the lexical route.
+fn eval_transform_node(
+  node: Node,
+  args: List<RuntimeValue>,
+  facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    TransformRuntimeInterpreter { interpreter: transform } =>
+      if eval_node_is_effect_io_roundtrip(node: node, effect_io: effect_io) {
+        match effect_io {
+          EffectIoEvalPresent { bundle: b } =>
+            eval_effect_io_roundtrip(bundle: b, args: args, node: node)
+
+          EffectIoEvalAbsent =>
+            outcome_rejected(
+              d: eval_diagnostic(reason: ^eval_rejected_effect_io_unbound, node: node)
+            )
+        }
+      } else {
+        match list_introduction_elements_optional(node: node) {
+          Present { value: _ } =>
+            eval_list_introduction_value(node: node, facts: facts, args: args)
+          Absent =>
+            if eval_transform_has_callee_reference(node: node) {
+              bind_outcome(
+                o: eval_transform_callee_edge(node: node),
+                f: fn(callee_edge) {
+                  let callee_target = eval_callee_dispatch_node(tree: tree, callee: callee_edge.target)
+                  match find_arrow_body_child(root: callee_target) {
+                    Accepted { value: body, diagnostics: _ } =>
+                      let body_form = classify_arrow_body_form(target: body)
+                      if eval_arrow_admits_callee_dispatch(arrow: callee_target)
+                        && arrow_body_admits_eval_entry(form: body_form) {
+                        bind_outcome(
+                          o: eval_bind_arrow_params(
+                            arrow: callee_target,
+                            args: args,
+                            environment: environment,
+                            bind: interpretation.bind,
+                            node: node,
+                            callee_path: declaration_reference_path_optional(node: callee_edge.target)
+                          ),
+                          f: fn(call_environment) {
+                            match body_form {
+                              DirectAtomBody =>
+                                eval_type_node_atom(
+                                  node: body,
+                                  interpretation: interpretation,
+                                  environment: call_environment
+                                )
+                              RecordConstructBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              DeclarationReferenceBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              ParameterReferenceBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              LexicalReferenceBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              ComputationBody { behavior: _ } =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              FunctionValueBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                              UnsupportedArrowBody =>
+                                eval_runtime_node(
+                                  node: body,
+                                  tree: tree,
+                                  interpretation: interpretation,
+                                  environment: call_environment,
+                                  runtime: runtime,
+                                  effect_io: effect_io
+                                )
+                            }
+                          }
+                        )
+                      } else {
+                        outcome_rejected(
+                          d: eval_diagnostic(
+                            reason: eval_callee_body_refusal_reason(form: body_form),
+                            node: callee_target
+                          )
+                        )
+                      }
+                    Rejected { diagnostics: _ } =>
+                      if eval_node_is_arrow(node: callee_target) {
+                        outcome_rejected(
+                          d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_target)
+                        )
+                      } else if eval_node_is_callee_reference(node: callee_edge.target)
+                        && !eval_node_is_arrow(node: callee_edge.target) {
+                        match declaration_reference_path_optional(node: callee_edge.target) {
+                          Present { value: _ } =>
+                            outcome_rejected(
+                              d: eval_diagnostic(
+                                reason: ^eval_rejected_runtime_binding_lookup_miss,
+                                node: callee_edge.target
+                              )
+                            )
+                          Absent => transform.call_primitive(node, args, environment)
+                        }
+                      } else {
+                        transform.call_primitive(node, args, environment)
+                      }
+                  }
+                }
+              )
+            } else {
+              transform.call_primitive(node, args, environment)
+            }
+        }
+      }
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
+}
+
+fn eval_branch_node_eval(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    BranchRuntimeInterpreter { interpreter: branch } =>
+      bind_outcome(
+        o: eval_branch_condition(node: node),
+        f: fn(cond_node) {
+          bind_outcome(
+            o: eval_runtime_node(
+              node: cond_node,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            ),
+            f: fn(condition) {
+              bind_outcome(
+                o: branch.choose_branch(node, condition, environment),
+                f: fn(chosen) {
+                  eval_runtime_node(
+                    node: chosen,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: environment,
+                    runtime: runtime,
+                    effect_io: effect_io
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
+}
+
+fn eval_branch_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_branch_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_loop_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  _tree: InferredTree,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
+      bind_outcome(
+        o: loop_interpreter.step_loop(node, environment),
+        f: fn(control) {
+          control_transfer_value(
+            control: control,
+            node: node,
+            runtime: runtime,
+            environment: environment
+          )
+        }
+      )
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
+}
+
+fn eval_bind_node_eval(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: bind } =>
+      bind_outcome(
+        o: eval_bind_key(node: node),
+        f: fn(key) {
+          bind_outcome(
+            o: eval_bind_value(node: node),
+            f: fn(value_target) {
+              bind_outcome(
+                o: eval_runtime_node(
+                  node: value_target,
+                  tree: tree,
+                  interpretation: interpretation,
+                  environment: environment,
+                  runtime: runtime,
+                  effect_io: effect_io
+                ),
+                f: fn(bound_value) {
+                  bind_outcome(
+                    o: bind.bind_value(key, bound_value, environment),
+                    f: fn(bound_environment) {
+                      bind_outcome(
+                        o: eval_bind_body(node: node),
+                        f: fn(body) {
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: bound_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn eval_bind_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_bind_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_match_node_eval(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+      bind_outcome(
+        o: eval_match_scrutinee(node: node),
+        f: fn(scrutinee_target) {
+          bind_outcome(
+            o: eval_runtime_node(
+              node: scrutinee_target,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            ),
+            f: fn(scrutinee_value) {
+              bind_outcome(
+                o: match_interpreter.choose_arm(node, scrutinee_value, environment),
+                f: fn(chosen) {
+                  eval_runtime_node(
+                    node: chosen,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: environment,
+                    runtime: runtime,
+                    effect_io: effect_io
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+  }
+}
+
+fn eval_match_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_match_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_computation_node(
+  behavior: Behavior,
+  node: Node,
+  args: List<RuntimeValue>,
+  facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let dispatch = interpretation_behavior_dispatch(
+    interpretation: interpretation,
+    behavior: behavior
+  )
+  bind_outcome(
+    o: match dispatch {
+      ValueRuntimeInterpreter { interpreter: _ } =>
+        eval_value_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      TransformRuntimeInterpreter { interpreter: _ } =>
+        eval_transform_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpretation: interpretation,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      BranchRuntimeInterpreter { interpreter: _ } =>
+        eval_branch_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpretation: interpretation,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      LoopRuntimeInterpreter { interpreter: _ } =>
+        eval_loop_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      BindRuntimeInterpreter { interpreter: _ } =>
+        eval_bind_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpretation: interpretation,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      MatchRuntimeInterpreter { interpreter: _ } =>
+        eval_match_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpretation: interpretation,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+    },
+    f: fn(value) {
+      eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
+    }
+  )
+}
+
+fn eval_interpret_node(
+  node: Node,
+  args: List<RuntimeValue>,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(facts) {
+      match node.kind {
+        ComputationNode { behavior: b } =>
+          eval_computation_node(
+            behavior: b,
+            node: node,
+            args: args,
+            facts: facts,
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          )
+        TypeNode { connective: _ } =>
+          match field_projection_optional(n: node) {
+            Present { value: projection } =>
+              eval_field_projection(node: node, projection: projection, args: args)
+            Absent =>
+              eval_type_node_atom(
+                node: node,
+                interpretation: interpretation,
+                environment: environment
+              )
+          }
+      }
+    }
+  )
+}
+
+// THE CONSTANT'S BODY RUNS THROUGH THE SAME BODY-FORM DISPATCH A NULLARY CALL USES (eval_transform_node's
+// callee arm): v2.std.node arrow_body_admits_eval_entry decides whether the form may enter, a direct atom
+// (a literal) is allocated by eval_type_node_atom without a facts lookup, and every other admitted form
+// is walked by eval_runtime_node. A form that may not enter refuses with eval_callee_body_refusal_reason,
+// the reason the call route gives for the same form, so the two routes cannot disagree about a body.
+fn eval_constant_member_value(
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let form = classify_arrow_body_form(target: body)
+  if !arrow_body_admits_eval_entry(form: form) {
+    outcome_rejected(d: eval_diagnostic(reason: eval_callee_body_refusal_reason(form: form), node: body))
+  } else {
+    match form {
+      DirectAtomBody => eval_type_node_atom(node: body, interpretation: interpretation, environment: environment)
+      RecordConstructBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      DeclarationReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ParameterReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      LexicalReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      FunctionValueBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ComputationBody { behavior: _ } => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      UnsupportedArrowBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    }
+  }
+}
+
+// A REFERENCE TO A `data` CONSTANT EVALUATES TO THE CONSTANT'S VALUE: the body of the nullary Arrow body
+// lowering realizes it as, evaluated as the nullary application the seed performs at every reference
+// (v1.compiler.emit_rust emits a data item as a nullary fn and calls it). The declaration is the
+// denotation infer recorded beside the reference, and it is a constant exactly when its Arrow carries
+// v2.std.node ConstantMemberEdge -- the same reader (v2.std.node_query arrow_constant_member_codomain)
+// infer typed the reference by, so a reference infer typed at T is the one eval applies, and every other
+// value-position declaration reference keeps the binding-miss refusal in eval_type_node_atom. The empty
+// domain binds nothing, so the body runs in the environment of the reference.
+fn eval_constant_member_body(node: Node, facts: InferredFacts) -> Optional<Node> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => Absent
+    Present { value: _ } =>
+      match facts.denotation {
+        Absent => Absent
+        Present { value: declaration } =>
+          match arrow_constant_member_codomain(arrow: declaration) {
+            Absent => Absent
+            Present { value: _ } =>
+              match find_arrow_body_child(root: declaration) {
+                Accepted { value: body, diagnostics: _ } => Present { value: body }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+      }
+  }
+}
+
+// A FIELD PROJECTION SELECTS A FIELD FROM THE RECEIVER'S VALUE, and refuses on anything else. Without
+// this arm a projection reached the default TypeNode route and was handed to allocate_literal, which
+// would fabricate a literal out of a two-edge Conj -- a value for an expression that selects, not one
+// that constructs.
+//
+// THE RECEIVER'S VALUE ARRIVES AS THE ONE RUNTIME ARGUMENT, through the same seam the evaluator already
+// uses to decide which children are values (eval_edge_is_runtime_argument). So the base is evaluated
+// ONCE, by the ordinary walk, rather than re-evaluated here: re-entering the base would compute it a
+// second time for every projection off it, which is the duplicated work DESIGN section 2 forbids at any
+// n. The FIELD edge is deliberately not an argument -- it carries a name, not a value, and evaluating it
+// would ask for the grounding of a field-name atom.
+//
+// EVERY NON-SELECTING CASE REFUSES, TYPED AND LOCATED. A receiver that is not an aggregate has no
+// fields to select from; an aggregate that does not carry the field is a value disagreeing with the type
+// that admitted the projection, which is a fail-closed refusal here rather than a fabricated default,
+// because infer has already established that the receiver's type declares the field
+// (v2.compiler.infer infer_field_projection_facts) -- so reaching this arm means the VALUE and the TYPE
+// disagree, and that is worth its own reason rather than being folded into "no such field".
+fn eval_field_projection(
+  node: Node,
+  projection: FieldProjection,
+  args: List<RuntimeValue>
+) -> Outcome<RuntimeValue> {
+  match list_at_optional(xs: args, index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_projection_receiver_absent, node: node)
+      )
+    Present { value: receiver } =>
+      eval_field_projection_of_receiver(
+        node: node,
+        projection: projection,
+        receiver: receiver
+      )
+  }
+}
+
+// THE RECEIVER CROSSES INTO A TYPED PARAMETER BEFORE ANY FIELD IS READ. list_at_optional answers
+// Optional<T>, and a value destructured straight out of it does not carry RuntimeValue through a field
+// access -- measured: reading `aggregate.fields` inline produced a runtime type error while the
+// non-aggregate arm, which reads no field, passed. Naming the parameter is what restores the type, and it
+// is the same shape v2.std.runtime runtime_fields_list_node already uses for its own element.
+fn eval_field_projection_of_receiver(
+  node: Node,
+  projection: FieldProjection,
+  receiver: RuntimeValue
+) -> Outcome<RuntimeValue> {
+  match receiver {
+    RuntimeAggregate { value: aggregate } =>
+      match runtime_aggregate_field_selection(fields: aggregate.fields, name: projection.field) {
+        RuntimeFieldFound { value: field_value } =>
+          Accepted { value: field_value, diagnostics: None }
+        RuntimeFieldMissing =>
+          outcome_rejected(
+            d: eval_diagnostic(
+              reason: ^eval_rejected_projected_field_absent_from_value,
+              node: node
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_projection_receiver_not_aggregate, node: node)
+      )
+  }
+}
+
+fn empty_runtime_values() -> List<RuntimeValue> {
+  []
+}
+
+// An applied callee's actuals are every edge after the callee, positional AND named, evaluated in
+// authored order -- never a cast's <cast-target>, which is a type (v2.std.type_binder), whichever arm
+// the node takes; eval_bind_arrow_params binds them through the one binding plan. Every other
+// Transform -- including an application whose callee is a resolved declaration reference, which
+// eval_transform_has_callee_reference does not recognise -- evaluates EVERY child: its named edges are
+// named actuals (v2.std.node PositionalPrefixThenLabeled), and filtering to positional edges dropped
+// them silently.
+fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
+  if eval_transform_has_callee_reference(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } => (p != 0) && !edge_is_cast_target(e: edge)
+      ReadyToInterpret => !edge_is_cast_target(e: edge)
+      Interpreted => !edge_is_cast_target(e: edge)
+    }
+  } else if eval_node_is_branch(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } =>
+        if p == 0 { is_positional(e: edge) } else { false }
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else if eval_node_is_loop(node: parent) {
+    false
+  } else if eval_node_is_transform(node: parent) {
+    !edge_is_cast_target(e: edge)
+  } else {
+    match field_projection_optional(n: parent) {
+      Present { value: _ } =>
+        match field_projection_edge_base_optional(e: edge) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      Absent => is_positional(e: edge)
+    }
+  }
+}
+
+fn eval_node_is_transform(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
+  }
+}
+
+fn eval_fold_state_value(state: EvalFoldState) -> Outcome<RuntimeValue> {
+  state.value
+}
+
+fn eval_absorb_child_diagnostics(
+  acc: Outcome<List<RuntimeValue>>,
+  child: Outcome<Node>
+) -> Outcome<List<RuntimeValue>> {
+  absorb_outcome_diagnostics(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
+}
+
+fn eval_append_child_value(
+  acc: Outcome<List<RuntimeValue>>,
+  child: Outcome<RuntimeValue>
+) -> Outcome<List<RuntimeValue>> {
+  append_outcome_value(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
+}
+
+fn eval_fold_init(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren { processed: 0 } }
+  EvalFoldState {
+    node: node,
+    progress: progress,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: if count(node.children) == 0 {
+      eval_interpret_node(
+        node: node,
+        args: empty_runtime_values(),
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      )
+    } else {
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: node)
+      )
+    }
+  }
+}
+
+fn eval_fold_control_transfer_state(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+// THIS PREDICATE IDENTIFIES THE CALLEE EDGE BY A PROCESSED COUNT, WHICH IS A STANDING OBSERVATION AND
+// NOT A REPAIR THIS FUNCTION CONTAINS. `p == 0 && is_positional(edge)` names the callee only while the
+// callee is the first child the fold happens to process, so the discriminator is child ORDER rather
+// than the callee -- and eval_transform_callee_edge already answers the question directly.
+//
+// IT IS LEFT ALONE BECAUSE REWRITING IT CHANGED NO VERDICT. Keying on eval_transform_callee_edge was
+// written and measured: all seven controls in v2.test.claim.callexec.declaration_reference_eval pass
+// either way, in both directions. A second formulation nothing needs is redundant work (DESIGN section
+// 2), so the count-based test stays and the observation is recorded here rather than acted on. Whoever
+// finds a call shape where the two DISAGREE has the discriminating case this lacked, and that case is
+// what would justify the change.
+fn eval_fold_is_callee_reference_edge(
+  parent: Node,
+  progress: EvalProgress,
+  edge: Edge
+) -> Bool {
+  if eval_transform_has_callee_reference(node: parent) {
+    match progress {
+      AwaitingChildren { processed: p } => p == 0 && is_positional(e: edge)
+      ReadyToInterpret => false
+      Interpreted => false
+    }
+  } else {
+    false
+  }
+}
+
+fn eval_fold_callee_reference_child_state(
+  edge: Edge,
+  tree: InferredTree
+) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: outcome_rejected(
+      d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: edge.target)
+    )
+  }
+}
+
+// A closure passed as a runtime argument is an Arrow TypeNode in argument position (fold's
+// transform child 3). Its value is the closure itself — the captured arrow plus the environment it
+// closes over — NOT the value of its body, whose parameters (fold acc/h) are unbound until the
+// callee applies it. So the walk materializes RuntimeClosure here and does not descend into the
+// arrow's children; descending would evaluate the body against an environment that cannot bind its
+// parameters. This is the same structural-child seam as eval_fold_is_callee_reference_edge (a child
+// the walk must not value-evaluate), at edge grain so an Arrow in CALLEE or root position still
+// evaluates normally — only a runtime-argument edge is a closure. Carrier is the existing
+// v2.std.runtime authority (RuntimeClosureValue); no literal-atom roster is extended.
+
+fn eval_fold_is_closure_argument_edge(
+  parent: Node,
+  progress: EvalProgress,
+  edge: Edge
+) -> Bool {
+  eval_edge_is_runtime_argument(parent: parent, progress: progress, edge: edge)
+    && eval_node_is_arrow(node: edge.target)
+}
+
+fn eval_fold_closure_argument_child_state(
+  edge: Edge,
+  tree: InferredTree,
+  environment: EvaluationEnvironment
+) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: Accepted {
+      value: RuntimeClosure {
+        value: RuntimeClosureValue {
+          arrow_type: edge.target,
+          arrow: edge.target,
+          environment: environment
+        }
+      },
+      diagnostics: None
+    }
+  }
+}
+
+// A LIST LITERAL'S HEAD NAMES A TYPE (std.algebra FreeMonoid), NOT A VALUE: infer derives no grounding for
+// that reference, so asking the facts of it (eval_fold_callee_reference_child_state) refuses
+// eval_rejected_grounding_not_derived anchored on the head. The literal's own facts carry the type, so the
+// head child contributes no structural demand; the elements are the runtime arguments.
+fn eval_fold_list_head_child_state(edge: Edge) -> EvalFoldState {
+  EvalFoldState {
+    node: edge.target,
+    progress: Interpreted,
+    structural: Accepted { value: edge.target, diagnostics: None },
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: outcome_rejected(
+      d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: edge.target)
+    )
+  }
+}
+
+fn eval_fold_child_for_edge(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_fold_is_callee_reference_edge(
+    parent: acc.node,
+    progress: acc.progress,
+    edge: edge
+  ) {
+    match list_introduction_elements_optional(node: acc.node) {
+      Present { value: _ } => eval_fold_list_head_child_state(edge: edge)
+      Absent => eval_fold_callee_reference_child_state(edge: edge, tree: tree)
+    }
+  } else if eval_fold_is_closure_argument_edge(
+    parent: acc.node,
+    progress: acc.progress,
+    edge: edge
+  ) {
+    eval_fold_closure_argument_child_state(
+      edge: edge,
+      tree: tree,
+      environment: environment
+    )
+  } else {
+    eval_fold_tree(
+      n: edge.target,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+fn eval_fold_child_edge_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  eval_fold_step(
+    acc: acc,
+    edge: edge,
+    child: eval_fold_child_for_edge(
+      acc: acc,
+      edge: edge,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    ),
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
+fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  match eval_constant_reference_body(tree: tree, node: n) {
+    Present { value: body } =>
+      eval_fold_constant_reference_state(node: n, body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    Absent => eval_fold_tree_walk(n: n, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// A REFERENCE TO A `data` CONSTANT IS A LEAF OF THE WALK, AS A PARAMETER REFERENCE IS (eval_runtime_node's
+// first arm). Its only child is its declaring path spine, which is identity data built at
+// OccurrenceSynthetic with no facts entry of its own, so descending into it refused with
+// infer_facts_lookup_miss on the spine before the reference was ever valued. The leaf's value is the
+// constant's, through eval_constant_member_value; its structural check is the reference's own facts.
+fn eval_fold_constant_reference_state(
+  node: Node,
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_constant_member_value(body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// The constant body a node names when it is a declaration reference whose facts record a marked
+// declaration, Absent for every other node (so every other node keeps the ordinary walk).
+fn eval_constant_reference_body(tree: InferredTree, node: Node) -> Optional<Node> {
+  match tree.facts.lookup(node) {
+    Absent => Absent
+    Present { value: facts } => eval_constant_member_body(node: node, facts: facts)
+  }
+}
+
+fn eval_fold_tree_walk(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  if eval_runtime_node_is_control_transfer(node: n) {
+    eval_fold_control_transfer_state(
+      node: n,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    fold_list(
+      xs: n.children,
+      empty: eval_fold_init(
+        node: n,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      ),
+      cons: fn(acc, e) {
+        eval_fold_child_edge_step(
+          acc: acc,
+          edge: e,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      }
+    )
+  }
+}
+
+fn eval_maybe_complete_node(
+  node: Node,
+  progress: EvalProgress,
+  args: List<RuntimeValue>,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext,
+  pending: Outcome<RuntimeValue>
+) -> Outcome<RuntimeValue> {
+  match progress {
+    ReadyToInterpret =>
+      eval_interpret_node(
+        node: node,
+        args: args,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      )
+    Interpreted => pending
+    AwaitingChildren { processed: _ } => pending
+  }
+}
+
+fn eval_advance_progress(progress: EvalProgress, node: Node) -> EvalProgress {
+  match progress {
+    AwaitingChildren { processed: p } => {
+      let processed = p + 1
+      if processed == count(node.children) { ReadyToInterpret } else { AwaitingChildren { processed: processed } }
+    }
+    ReadyToInterpret => Interpreted
+    Interpreted => Interpreted
+  }
+}
+
+fn eval_fold_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  child: EvalFoldState,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
+  let next_args = if eval_edge_is_runtime_argument(parent: acc.node, progress: acc.progress, edge: edge) {
+    eval_append_child_value(acc: acc.child_values, child: child.value)
+  } else {
+    eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
+  }
+  let progress = eval_advance_progress(progress: acc.progress, node: acc.node)
+  EvalFoldState {
+    node: acc.node,
+    progress: progress,
+    structural: structural,
+    child_values: next_args,
+    value: bind_outcome(
+      o: structural,
+      f: fn(_) {
+        bind_outcome(
+          o: next_args,
+          f: fn(args) {
+            eval_maybe_complete_node(
+              node: acc.node,
+              progress: progress,
+              args: args,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io,
+              pending: acc.value
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Branch } => true
+    ComputationNode { behavior: Loop } => true
+    ComputationNode { behavior: Bind } => true
+    ComputationNode { behavior: Match } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+  }
+}
+
+fn eval_runtime_control_node(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(facts) {
+      let dispatch = match node.kind {
+        ComputationNode { behavior: b } =>
+          interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
+        TypeNode { connective: Atom { identity: _ } } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Conj } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Disj } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Arrow } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+        TypeNode { connective: Instantiation } =>
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
+      }
+      bind_outcome(
+        o: match node.kind {
+          ComputationNode { behavior: Branch } =>
+            eval_branch_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          ComputationNode { behavior: Loop } =>
+            eval_loop_node(
+              node: node,
+              args: empty_runtime_values(),
+              facts: facts,
+              tree: tree,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime
+            )
+          ComputationNode { behavior: Bind } =>
+            eval_bind_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          ComputationNode { behavior: Match } =>
+            eval_match_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          TypeNode { connective: Atom { identity: _ } } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Conj } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Disj } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Arrow } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          TypeNode { connective: Instantiation } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          ComputationNode { behavior: Value } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+          ComputationNode { behavior: Transform } =>
+            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+        },
+        f: fn(value) {
+          eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
+        }
+      )
+    }
+  )
+}
+
+fn eval_runtime_node_via_data_flow_fold(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let folded = eval_fold_tree(
+    n: node,
+    tree: tree,
+    interpretation: interpretation,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+  eval_fold_state_value(state: folded)
+}
+
+// A PARAMETER REFERENCE IS A LEAF HERE, NOT A STRUCTURE TO WALK. Its carrier is a marked Conj whose child
+// is the encoded declaring path (v2.std.qualified_name parameter_reference_node), so letting the data-flow
+// fold see it descends into that path and demands value-grounding for the internal representation of a
+// parameter identity -- the same defect this module already fixed for DECLARATION references, recorded at
+// eval_fold_is_callee_reference_edge, and the reason its regression control exists.
+//
+// IT RESOLVES THROUGH THE SAME KEY THE CALL BOUND IT AT, so eval_parameter_binding_key stays the only
+// place either side derives a key. A reference whose path the environment does not hold still refuses with
+// ^eval_rejected_parameter_reference_unbound, which is now a statement about a MISSING BINDING rather than
+// about the body's form.
+fn eval_runtime_node(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  if eval_parameter_reference_is_value(node: node) {
+    eval_parameter_reference_value(node: node, environment: environment)
+  } else if eval_runtime_node_is_control_transfer(node: node) {
+    eval_runtime_control_node(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  } else {
+    eval_runtime_node_via_data_flow_fold(
+      node: node,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    )
+  }
+}
+
+// THE EVAL GATE NAMES THE NODE THAT FAILED, NOT THE ROOT IT SAT UNDER. v2.std.node well_formed is a
+// conjunction of locally_well_formed over the subtree, so its refusal has a first witness, and
+// that witness is the only fact that tells a reader what to repair: anchoring the refusal at the
+// prepared module's root made one ill-formed declaration refuse every test in the module under an
+// occurrence that located nothing (the native lane canary, 2026-09-26). The walk is the same
+// preorder fold_node well_formed takes over the same local predicate, so the gate admits exactly
+// what well_formed admits.
+fn eval_first_ill_formed_node(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        if locally_well_formed(n: n0) { optional_absent() } else { optional_present(value: n0) }
+      },
+      step: fn(acc, _, child) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child
+        }
+      }
+    }
+  )
+}
+
+fn eval_ill_formed_input(tree: InferredTree, inputs: Inputs) -> Optional<Node> {
+  match eval_first_ill_formed_node(n: tree.root) {
+    Present { value: bad } => optional_present(value: bad)
+    Absent => eval_first_ill_formed_node(n: inputs.root)
+  }
+}
+
+fn eval_ill_formed_refusal(at: Node) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)) }
+}
+
+fn eval_with_context(
+  tree: InferredTree,
+  context: EvalContext,
+  inputs: Inputs
+) -> Outcome<RuntimeValue> {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
+      eval_runtime_node(
+        node: inputs.root,
+        tree: tree,
+        interpretation: eval_context_interpretation(context: context),
+        environment: empty_evaluation_environment(),
+        runtime: eval_runtime(),
+        effect_io: eval_context_effect_io(context: context)
+      )
+  }
+}
+
+fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
+      eval_runtime_node(
+        node: inputs.root,
+        tree: tree,
+        interpretation: interpretation,
+        environment: empty_evaluation_environment(),
+        runtime: eval_runtime(),
+        effect_io: EffectIoEvalAbsent
+      )
+  }
+}
+
+fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
+  bind_outcome(
+    o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
+    f: fn(value) {
+      match runtime_value_node_projection(value: value) {
+        RuntimeValueNodeProjected { node: n } =>
+          Accepted { value: n, diagnostics: None }
+        RuntimeValueNodeUnrepresentable =>
+          outcome_rejected(
+            d: eval_diagnostic(
+              reason: ^eval_rejected_runtime_value_node_unrepresentable,
+              node: inputs.root
+            )
+          )
+      }
+    }
+  )
+}
+
+fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
+  if well_formed(n: input) {
+    Accepted { value: input, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
+      )
+    }
+  }
+}
+
+fn run_test_claim_round_trip_verdict(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  match actual {
+    Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    Accepted { value: _, diagnostics: _ } =>
+      if dag_round_trip_authorities_ready() {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_rejected_roundtrip_precondition, node: at)
+          )
+        )
+      }
+  }
+}
+
+fn run_test_claim_round_trip_verdict_runtime(
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match actual {
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
+    Accepted { value: _, diagnostics: _ } =>
+      if dag_round_trip_authorities_ready() {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_rejected_roundtrip_precondition, node: at)
+          )
+        )
+      }
+  }
+}
+
+fn run_test_claim_assert(
+  claim: TestClaim,
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+}
+
+fn run_test_claim_structural_equals_verdict(
+  actual: Outcome<Node>,
+  rhs: Node,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match actual {
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
+    Accepted { value: admitted, diagnostics: _ } =>
+      if outcome_node_eq(
+        a: Accepted { value: admitted, diagnostics: None },
+        b: Accepted { value: rhs, diagnostics: None }
+      ) {
+        Pass
+      } else {
+        verdict_fail(
+          actual: outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_structural_equals_mismatch, node: at)
+          )
+        )
+      }
+  }
+}
+
+fn run_test_claim_assert_decided(
+  claim: TestClaim,
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  match claim {
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+        Pass
+      } else {
+        verdict_fail(actual: actual)
+      }
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+        Pass
+      } else {
+        verdict_fail(actual: actual)
+      }
+    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
+      if outcome_node_eq(
+        a: actual,
+        b: Accepted { value: expected, diagnostics: None }
+      ) {
+        Pass
+      } else {
+        verdict_fail(actual: actual)
+      }
+    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+      run_test_claim_round_trip_verdict(
+        actual: eval_round_trip_claim_input_for_verdict(input: input),
+        at: at
+      )
+    DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
+      match actual {
+        Rejected { diagnostics: _ } =>
+          if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
+            Pass
+          } else {
+            verdict_fail(actual: actual)
+          }
+        Accepted { value: _, diagnostics: _ } => verdict_fail(actual: actual)
+      }
+  }
+}
+
+// The universal Boolean comparator (runtime_value_eq: a == b) is DELETED, not relocated: the
+// equality admission wall refuses generic '==' on RuntimeValue because its closure arm has no
+// equality denotation. Comparison is the typed RuntimeValueEquality verdict from v2.std.runtime,
+// and the third state (EqualityUnavailable) routes to a RunFailed verdict carrying its reason --
+// it is never collapsed to 'false'.
+fn outcome_runtime_value_equality(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> RuntimeValueEquality {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
+        match runtime_value_equality(a: av, b: bv) {
+          RuntimeValuesEqual => if diagnostics_eq(a: ad, b: bd) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+          RuntimeValuesDiffer => RuntimeValuesDiffer
+          RuntimeValueEqualityUnavailable { reason: r } => RuntimeValueEqualityUnavailable { reason: r }
+        }
+      Rejected { diagnostics: _ } => RuntimeValuesDiffer
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => RuntimeValuesDiffer
+      Rejected { diagnostics: br } => if non_empty_diagnostics_eq(a: ar, b: br) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+    }
+  }
+}
+
+fn accepted_runtime_value_outcome_equality(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> RuntimeValueEquality {
+  match b {
+    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_equality(a: a, b: b)
+    Rejected { diagnostics: _ } => RuntimeValuesDiffer
+  }
+}
+
+fn runtime_value_equality_verdict<S>(
+  equality: RuntimeValueEquality,
+  actual: Outcome<RuntimeValue>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<S>, RuntimeValue> {
+  match equality {
+    RuntimeValuesEqual => Pass
+    RuntimeValuesDiffer => verdict_fail(actual: actual)
+    RuntimeValueEqualityUnavailable { reason: r } =>
+      verdict_run_failed(
+        actual: actual,
+        diagnostic: Diagnostic {
+          reason: r,
+          at: node_locus(node: at),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn run_test_claim_runtime_assert(
+  claim: TestClaim,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  actual: Outcome<RuntimeValue>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  match claim {
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected),
+        actual: actual,
+        at: at
+      )
+    }
+
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected),
+        actual: actual,
+        at: at
+      )
+    }
+    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
+      let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected_outcome),
+        actual: actual,
+        at: at
+      )
+    }
+    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+      run_test_claim_round_trip_verdict_runtime(
+        actual: eval_round_trip_claim_input_for_verdict(input: input),
+        at: at
+      )
+    DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
+      match actual {
+        Rejected { diagnostics: _ } =>
+          runtime_value_equality_verdict(
+            equality: outcome_runtime_value_equality(a: actual, b: Rejected { diagnostics: expected }),
+            actual: actual,
+            at: at
+          )
+        Accepted { value: _, diagnostics: _ } => verdict_fail(actual: actual)
+      }
+  }
+}
+
+fn aggregate_verdicts<S, T>(
+  rs: List<Verdict<TestClaimEvalSubject<S>, T>>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<S>, T> {
+  verdict_fold(
+    rs: rs,
+    empty_verdict: verdict_fail(
+      actual: outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_empty_verdict_list, node: at)
+      )
+    )
+  )
+}
+
+fn run_test_claim_runtime_evaluated(
+  subject: TestClaimEvalSubject<Node>,
+  at: Node
+) -> TestClaimRun<Node, RuntimeValue> {
+  let actual = eval_with_context(
+    tree: subject.tree,
+    context: subject.context,
+    inputs: inputs_root_only(root: subject.input.evaluator_input)
+  )
+  TestClaimRun {
+    claim: subject.claim,
+    verdict: aggregate_verdicts(
+      rs: [
+        run_test_claim_runtime_assert(
+          claim: subject.claim,
+          tree: subject.tree,
+          interpretation: eval_context_interpretation(context: subject.context),
+          actual: actual,
+          at: at
+        )
+      ],
+      at: at
+    )
+  }
+}
+
+fn run_test_claim(
+  subject: TestClaimEvalSubject<Node>
+) -> TestClaimRun<Node, RuntimeValue> {
+  let at = test_claim_input(c: subject.claim)
+  match subject.claim {
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      TestClaimRun {
+        claim: subject.claim,
+        verdict: run_test_claim_round_trip_verdict_runtime(
+          actual: eval_round_trip_claim_input_for_verdict(
+            input: subject.input.evaluator_input
+          ),
+          at: at
+        )
+      }
+
+    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+      TestClaimRun {
+        claim: subject.claim,
+        verdict: run_test_claim_structural_equals_verdict(
+          actual: eval_round_trip_claim_input_for_verdict(
+            input: subject.input.evaluator_input
+          ),
+          rhs: rhs,
+          at: at
+        )
+      }
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+  }
+}
+
+fn eval_test_claim_subject(
+  claim: TestClaim,
+  context: EvalContext,
+  tree: InferredTree,
+  evaluator_pin: Symbol
+) -> TestClaimEvalSubject<Node> {
+  let input = test_claim_input(c: claim)
+  TestClaimEvalSubject {
+    claim: claim,
+    context: context,
+    tree: tree,
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: evaluator_pin
+    )
+  }
+}
+
+data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projection at eval: RuntimeAggregate is the one RuntimeValue variant that carries named fields, and every other variant refuses with the same located eval_rejected_projection_receiver_not_aggregate; enumerating them would clone one refusal arm per variant. Landed with gunbc#12506's field-projection eval route; declared at landing so the ratchet arms with the code"
+
+data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow {
+      subject: PathSubject { path: "eval_field_projection_of_receiver" },
+      reason: nfr_reason_eval_projection_receiver_not_aggregate,
+      dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
+    },
+]

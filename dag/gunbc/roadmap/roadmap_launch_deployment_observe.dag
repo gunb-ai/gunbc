@@ -1,0 +1,422 @@
+module gunbc.roadmap.roadmap_launch_deployment_observe
+
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
+
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.algebra { trim }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar { iso8601_days_from_civil, iso8601_gregorian_days_in_month, iso8601_seconds_per_day, iso8601_seconds_per_hour }
+import extdeps.http.client
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
+import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
+import gunbc.durable_handoff_host {
+  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  HostSpoolHealthEntry, HostSpoolHealthBound, HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved,
+  host_spool_health_judge, host_spool_stage_wire,
+}
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.roadmap.roadmap_belt_actuate {
+  BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
+  belt_tick_receipt_decode,
+}
+
+// LIVE HTTP OBSERVATIONS OF THE DEPLOYED PUBLIC ROUTES, DECODED INTO THE TYPES THE ROUTES
+// SERIALIZE. The RLM-2 ruling (section 5) rejects renderers as evidence:
+// gunbc.roadmap.roadmap_site_surface_render healthz_body_with_release_identity CONSTRUCTS the expected
+// /healthz body and gunbc.roadmap.roadmap_serve serve_workflow_response_for_instance CONSTRUCTS the
+// /workflow.json response, so calling either in the receipt process proves what the code would say,
+// not what the routed service said. This module performs the GETs (extdeps.http.client
+// GetLocalhostBounded, the same operation gunbc.live_deploy.readiness uses for its local probe) and
+// decodes the bytes that came back.
+// 
+// THE DECODERS ARE THE INVERSE OF THE PRODUCERS, member for member: /healthz through
+// gunbc.running_release_identity observe_running_release_identity (the existing inverse);
+// /instance.json through the members gunbc.roadmap.roadmap_serve dashboard_instance_json writes;
+// /workflow.json through the schema and belt_tick members gunbc.roadmap.roadmap_belt_actuate
+// belt_workflow_attempts_json_value_for_instance writes, with the nested tick decoded by the
+// receipt's own decoder so a v3 or damaged embedded tick is Unreadable here exactly as it is on
+// disk. HTTP 200 is not sufficient for /workflow.json: a valid document whose belt_tick is absent
+// or unreadable refuses RLM-2 rather than reading as Idle.
+// 
+// BELT LIVENESS is no longer tick freshness: there is no timer cadence to be fresh against. It is the
+// event backlog below (event_backlog_judge) -- events recorded and not consumed within their bound.
+// ---------------------------------------------------------------- HTTP GET
+type HttpBodyRead
+  = HttpBodyServed { body: String }
+  | HttpBodyRefused { url: String, detail: String }
+
+fn local_route_url(port: Int, path: String) -> String {
+  join(["http://127.0.0.1:", to_string(port), path], "")
+}
+
+fn observe_local_route(port: Int, path: String) -> HttpBodyRead {
+  let url = local_route_url(port: port, path: path)
+  let got = http.Client.GetLocalhostBounded(url: url as NonEmptyStr)
+  if got.success {
+    HttpBodyServed { body: got.body }
+  } else {
+    HttpBodyRefused { url: url, detail: "http client GET failed" }
+  }
+}
+
+// THE ROUTED READ IS THE AUTHORITATIVE ONE (review 5061891290 P1-6): localhost proves the local
+// process, not that the deployed production route serves the release. The base URL is DERIVED from
+// the deployment authority (gunbc.live_deploy.spec deployment_tailnet_url), never typed here.
+fn observe_routed_route(base_url: String, path: String) -> HttpBodyRead {
+  let url = concat(base_url, path)
+  let got = http.Client.GetBounded(url: url as NonEmptyStr)
+  if got.success {
+    HttpBodyServed { body: got.body }
+  } else {
+    HttpBodyRefused { url: url, detail: "http client GET failed" }
+  }
+}
+
+data healthz_route_path: String = "/healthz"
+data instance_route_path: String = "/instance.json"
+data workflow_route_path: String = "/workflow.json"
+
+// ---------------------------------------------------------------- /healthz
+type HealthzObservation
+  = HealthzServed { body: String, identity: RunningReleaseIdentity }
+  | HealthzRefused { detail: String }
+
+fn healthz_observation_of_read(read: HttpBodyRead) -> HealthzObservation {
+  match read {
+    HttpBodyRefused { url: u, detail: d } => HealthzRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => HealthzServed { body: b, identity: observe_running_release_identity(healthz_body: b) }
+  }
+}
+
+fn observe_healthz(port: Int) -> HealthzObservation {
+  healthz_observation_of_read(read: observe_local_route(port: port, path: healthz_route_path))
+}
+
+fn observe_healthz_routed(base_url: String) -> HealthzObservation {
+  healthz_observation_of_read(read: observe_routed_route(base_url: base_url, path: healthz_route_path))
+}
+
+// ---------------------------------------------------------------- /instance.json
+data dashboard_instance_document_schema: String = "roadmap-dashboard-instance/v1"
+
+type DashboardInstanceDocument {
+  instance_id: String
+  host_identity: String
+  actuation: String
+  repo_root: String
+  listen_port: String
+}
+
+type DashboardInstanceObservation
+  = InstanceDocumentServed { document: DashboardInstanceDocument }
+  | InstanceDocumentRefused { detail: String }
+
+fn dashboard_instance_document_decode(raw: String) -> DashboardInstanceObservation {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      InstanceDocumentRefused { detail: join(["/instance.json is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => InstanceDocumentRefused { detail: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != dashboard_instance_document_schema {
+            InstanceDocumentRefused { detail: join(["/instance.json schema is not ", dashboard_instance_document_schema, ": ", schema], "") }
+          } else {
+            match json_required_string_member(doc: doc, key: "instance_id") {
+              JsonStringMemberRefused { reason: r } => InstanceDocumentRefused { detail: r }
+              JsonStringMemberFound { value: instance_id } =>
+                match json_required_string_member(doc: doc, key: "host_identity") {
+                  JsonStringMemberRefused { reason: r } => InstanceDocumentRefused { detail: r }
+                  JsonStringMemberFound { value: host_identity } =>
+                    match json_required_string_member(doc: doc, key: "actuation") {
+                      JsonStringMemberRefused { reason: r } => InstanceDocumentRefused { detail: r }
+                      JsonStringMemberFound { value: actuation } =>
+                        match json_required_string_member(doc: doc, key: "repo_root") {
+                          JsonStringMemberRefused { reason: r } => InstanceDocumentRefused { detail: r }
+                          JsonStringMemberFound { value: repo_root } =>
+                            match json_object_unique_member(v: doc, key: "listen_port") {
+                              JsonMemberFound { value: port_value } =>
+                                InstanceDocumentServed {
+                                  document: DashboardInstanceDocument {
+                                    instance_id: instance_id,
+                                    host_identity: host_identity,
+                                    actuation: actuation,
+                                    repo_root: repo_root,
+                                    listen_port: serialize_json(v: port_value),
+                                  },
+                                }
+                              JsonMemberAbsent => InstanceDocumentRefused { detail: "listen_port is missing" }
+                              JsonMemberDuplicated { count: _ } => InstanceDocumentRefused { detail: "listen_port is duplicated" }
+                              JsonMemberNotAnObject => InstanceDocumentRefused { detail: "/instance.json is not an object" }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn observe_instance_document(port: Int) -> DashboardInstanceObservation {
+  match observe_local_route(port: port, path: instance_route_path) {
+    HttpBodyRefused { url: u, detail: d } => InstanceDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => dashboard_instance_document_decode(raw: b)
+  }
+}
+
+fn observe_instance_document_routed(base_url: String) -> DashboardInstanceObservation {
+  match observe_routed_route(base_url: base_url, path: instance_route_path) {
+    HttpBodyRefused { url: u, detail: d } => InstanceDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => dashboard_instance_document_decode(raw: b)
+  }
+}
+
+// ---------------------------------------------------------------- /workflow.json
+data roadmap_workflow_document_schema: String = "roadmap-workflow/v1"
+
+type RoadmapWorkflowDocument {
+  observe_refused: Bool
+  belt_tick: BeltTickReceiptRead
+}
+
+type RoadmapWorkflowObservation
+  = WorkflowDocumentServed { document: RoadmapWorkflowDocument }
+  | WorkflowDocumentRefused { detail: String }
+
+fn workflow_belt_tick_of_member(doc: JsonValue) -> BeltTickReceiptRead {
+  match json_object_unique_member(v: doc, key: "belt_tick") {
+    JsonMemberFound { value: tick } =>
+      match json_object_unique_member(v: tick, key: "present") {
+        JsonMemberFound { value: JsonBool { value: present } } =>
+          if present {
+            match json_object_unique_member(v: tick, key: "receipt") {
+              JsonMemberFound { value: receipt } => belt_tick_receipt_decode(raw: serialize_json(v: receipt))
+              JsonMemberAbsent => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick is present but carries no receipt" }
+              JsonMemberDuplicated { count: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick receipt is duplicated" }
+              JsonMemberNotAnObject => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick is not an object" }
+            }
+          } else {
+            match json_object_unique_member(v: tick, key: "unreadable_reason") {
+              JsonMemberFound { value: JsonString { value: why } } => BeltTickReceiptUnreadable { reason: why }
+              JsonMemberFound { value: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick unreadable_reason is not a string" }
+              JsonMemberAbsent => BeltTickReceiptAbsent
+              JsonMemberDuplicated { count: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick unreadable_reason is duplicated" }
+              JsonMemberNotAnObject => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick is not an object" }
+            }
+          }
+        JsonMemberFound { value: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick present is not a boolean" }
+        JsonMemberAbsent => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick carries no present member" }
+        JsonMemberDuplicated { count: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick present is duplicated" }
+        JsonMemberNotAnObject => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick is not an object" }
+      }
+    JsonMemberAbsent => BeltTickReceiptUnreadable { reason: "/workflow.json carries no belt_tick member" }
+    JsonMemberDuplicated { count: _ } => BeltTickReceiptUnreadable { reason: "/workflow.json belt_tick is duplicated" }
+    JsonMemberNotAnObject => BeltTickReceiptUnreadable { reason: "/workflow.json is not an object" }
+  }
+}
+
+fn roadmap_workflow_document_decode(raw: String) -> RoadmapWorkflowObservation {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      WorkflowDocumentRefused { detail: join(["/workflow.json is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => WorkflowDocumentRefused { detail: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != roadmap_workflow_document_schema {
+            WorkflowDocumentRefused { detail: join(["/workflow.json schema is not ", roadmap_workflow_document_schema, ": ", schema], "") }
+          } else {
+            match json_object_unique_member(v: doc, key: "observe_refused") {
+              JsonMemberFound { value: JsonBool { value: refused } } =>
+                WorkflowDocumentServed {
+                  document: RoadmapWorkflowDocument {
+                    observe_refused: refused,
+                    belt_tick: workflow_belt_tick_of_member(doc: doc),
+                  },
+                }
+              JsonMemberFound { value: _ } => WorkflowDocumentRefused { detail: "/workflow.json observe_refused is not a boolean" }
+              JsonMemberAbsent => WorkflowDocumentRefused { detail: "/workflow.json observe_refused is missing" }
+              JsonMemberDuplicated { count: _ } => WorkflowDocumentRefused { detail: "/workflow.json observe_refused is duplicated" }
+              JsonMemberNotAnObject => WorkflowDocumentRefused { detail: "/workflow.json is not an object" }
+            }
+          }
+      }
+  }
+}
+
+fn observe_workflow_document(port: Int) -> RoadmapWorkflowObservation {
+  match observe_local_route(port: port, path: workflow_route_path) {
+    HttpBodyRefused { url: u, detail: d } => WorkflowDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => roadmap_workflow_document_decode(raw: b)
+  }
+}
+
+fn observe_workflow_document_routed(base_url: String) -> RoadmapWorkflowObservation {
+  match observe_routed_route(base_url: base_url, path: workflow_route_path) {
+    HttpBodyRefused { url: u, detail: d } => WorkflowDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => roadmap_workflow_document_decode(raw: b)
+  }
+}
+
+// ---------------------------------------------------------------- instants
+// `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
+// Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
+// every date the format can spell; the calendar is extdeps.units.iso8601_calendar's, which also formats the
+// same instants. Anything that is not exactly that shape refuses.
+fn two_digits_at(s: String, i: Int) -> Int? {
+  parse_int(s: substring(s: s, start: i, end: i + 2))
+}
+
+fn iso8601_utc_epoch_seconds(text: String) -> Second? {
+  let t = trim(s: text)
+  if string_length(s: t) != 20 {
+    none
+  } else if substring(s: t, start: 4, end: 5) != "-" || substring(s: t, start: 7, end: 8) != "-"
+      || substring(s: t, start: 10, end: 11) != "T" || substring(s: t, start: 13, end: 14) != ":"
+      || substring(s: t, start: 16, end: 17) != ":" || substring(s: t, start: 19, end: 20) != "Z" {
+    none
+  } else {
+    match parse_int(s: substring(s: t, start: 0, end: 4)) {
+      Absent => none
+      Present { value: y } =>
+        match two_digits_at(s: t, i: 5) {
+          Absent => none
+          Present { value: m } =>
+            match two_digits_at(s: t, i: 8) {
+              Absent => none
+              Present { value: d } =>
+                match two_digits_at(s: t, i: 11) {
+                  Absent => none
+                  Present { value: hh } =>
+                    match two_digits_at(s: t, i: 14) {
+                      Absent => none
+                      Present { value: mm } =>
+                        match two_digits_at(s: t, i: 17) {
+                          Absent => none
+                          Present { value: ss } =>
+                            if m < 1 || m > 12 || d < 1 || d > iso8601_gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
+                              none
+                            } else {
+                              {
+                                let epoch = iso8601_days_from_civil(y: y, m: m, d: d) * iso8601_seconds_per_day() + hh * iso8601_seconds_per_hour() + mm * (iso8601_seconds_per_minute() as Int) + ss
+                                if epoch < 0 {
+                                  none
+                                } else {
+                                  match checked_int_magnitude(a: epoch) {
+                                    CheckedNatOverflow { cause: _ } => none
+                                    CheckedNatReady { value: n } => Present { value: second(count: n) }
+                                  }
+                                }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- event backlog
+// FRESHNESS AGAINST EVENTS, NOT A CLOCK (dogfood intervention #4; bold-bee-114 ruling 2026-10-06).
+// The belt used to be live when its tick receipt was younger than three timer cadences. There is no
+// timer: the belt runs when an event arrives, so the age of the last tick says nothing about whether
+// it is alive -- an idle belt is correctly silent. What a dead belt leaves behind is EVENTS NOBODY
+// CONSUMED. So the row reads the exit spool: an exit still in the inbox past the drain bound means the
+// path unit or its drain is not consuming; an exit still queued past the obligation bound means the
+// attempt's obligation unit did not finish. Either refuses, naming the oldest entry. An active .path
+// unit (the unit standing row) proves only that the watcher is armed; this row proves it is consumed.
+//
+// THE BOUNDS ARE DERIVED FROM THE THINGS THEY BOUND, AS DURATIONS. The drain is one `gunbc run` that
+// moves entries, so its bound is the corpus load plus slack (a policy row, in Second). The queued bound
+// IS the obligation unit's own RuntimeMaxSec (gunbc.live_deploy.belt_cadence belt_tick_run_bound,
+// a Second, no text parsed) plus the drain bound: past that the unit has been stopped
+// by its manager, and an entry still queued is one no run settled. Changing the run bound moves this
+// bound; there is no second copy of it.
+data event_backlog_drain_bound: Second = second(count: 900)
+
+fn event_backlog_queued_bound() -> Second? {
+  Present { value: second(count: second_count(s: belt_tick_run_bound) + second_count(s: event_backlog_drain_bound)) }
+}
+
+fn event_backlog_bound(stage: HostSpoolStage) -> Second? {
+  match stage {
+    AttemptExitInbox => Present { value: event_backlog_drain_bound }
+    AttemptExitQueued => event_backlog_queued_bound()
+    AttemptExitRunning => event_backlog_queued_bound()
+    AttemptExitDone => none
+    AttemptExitRefused => none
+  }
+}
+
+// The stage is the spool's own closed sum (gunbc.roadmap.roadmap_attempt_exit_spool), not a label.
+type EventBacklogEntry {
+  stage: HostSpoolStage
+  entry: String
+  age: Second
+}
+
+type EventBacklogFact
+  = EventBacklogClear { inbox: Int, queued: Int }
+  | StaleBacklog { stage: HostSpoolStage, entry: String, age: Second, bound: Second }
+  | EventSpoolStalled { waiting: Int, head: String }
+  | EventBacklogUnobserved { detail: String }
+
+fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
+  concat([
+    HostSpoolHealthBound { stage: AttemptExitInbox, bound: event_backlog_drain_bound },
+  ], match event_backlog_queued_bound() {
+    Present { value: q } => [
+      HostSpoolHealthBound { stage: AttemptExitQueued, bound: q },
+      HostSpoolHealthBound { stage: AttemptExitRunning, bound: q },
+    ]
+    Absent => []
+  })
+}
+
+// PURE OVER THE AGED ENTRIES: the oldest entry past its stage's bound refuses; none past, clear. A stage
+// with no bound (done, refused are not a backlog) or an unreadable bound is stale, never silently young.
+// The reading is gunbc.durable_handoff_host host_spool_health_judge; EventBacklogFact is this
+// spool's projection of that one queue-health type.
+//
+// THE STALL RECORD COMES FIRST. `stalled` is the entries the exit drain recorded as unmovable
+// (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_read_at): while any exist the belt-exit service is
+// held, so ageing says nothing about them and every spooled entry is waiting behind the head. This is the
+// stall record's consumer (DESIGN section 3c).
+fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {
+  match stalled.first() {
+    Present { value: head } => EventSpoolStalled { waiting: count(entries |> filter(e => e.stage == AttemptExitInbox || e.stage == AttemptExitQueued)), head: head }
+    Absent => event_backlog_aged_judge(entries: entries)
+  }
+}
+
+fn event_backlog_aged_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
+  match host_spool_health_judge(
+    entries: map(entries, e => HostSpoolHealthEntry { stage: e.stage, entry: e.entry, age: e.age }),
+    bounds: event_backlog_health_bounds(),
+  ) {
+    HostSpoolHealthClear { depth_inbox: inbox, depth_queued: queued, depth_running: _ } =>
+      EventBacklogClear { inbox: inbox, queued: queued }
+    HostSpoolHealthStale { stage: stage, entry: entry, age: age, bound: bound } =>
+      StaleBacklog { stage: stage, entry: entry, age: age, bound: bound }
+    HostSpoolHealthUnobserved { detail: detail } => EventBacklogUnobserved { detail: detail }
+  }
+}
+
+fn event_backlog_text(f: EventBacklogFact) -> String {
+  match f {
+    EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
+    EventSpoolStalled { waiting, head } => join(["exit spool stalled: ", to_string(value: waiting), " entries waiting behind ", head], "")
+    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", host_spool_stage_wire(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
+    EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
+  }
+}

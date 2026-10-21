@@ -1,0 +1,20 @@
+module v2.test.claim.extdeps_shape_transport_policy.corpus.gcp_login_dead_param
+
+import std.live_tree { LiveTreeDisposition }
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_gcp_module }
+import v2.lens.extdeps_shape_transport_policy { extdeps_live_module_dead_param_count_for_operation }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gcp_login_service: String = "gcloud.Auth"
+data gcp_login_operation: String = "Login"
+
+test fn corpus_gcp_login_dead_param_defused_holds() -> Bool {
+  extdeps_live_module_dead_param_count_for_operation(
+    module: extdeps_gcp_module,
+    service: gcp_login_service,
+    operation: gcp_login_operation
+  ) == 0
+}

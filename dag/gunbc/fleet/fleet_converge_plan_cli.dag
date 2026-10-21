@@ -1,0 +1,1796 @@
+module gunbc.fleet.fleet_converge_plan_cli
+
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
+
+import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+
+import gunbc.host.host_kernel_dependency { host_kernel_maintenance_capability }
+import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
+
+import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
+import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
+import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.sudo.nopasswd_execute_probe_check_op
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  HostGrantDecisionRead,
+  HostGrantPrincipalObserved,
+  HostGrantPrincipalUnobserved,
+  InstalledSudoersText,
+  InstalledSudoersUnreadable,
+}
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.elevation { sudo_version_command }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
+import std.types { CommitSha }
+
+
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
+import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
+import gunbc.workspace_allocation_dispatch_transport { workspace_allocation_dispatch_prepare, workspace_allocation_dispatch_readback }
+import gunbc.workspace_allocation_store { workspace_allocation_json }
+import gunbc.workspace_allocation_policy { workspace_installed_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import gunbc.principal_projection { PrincipalRef }
+
+import extdeps.languages.json.emit { serialize_json }
+
+import extdeps.shell
+import extdeps.tools.chmod { chmod_path_resolved_program }
+import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.durable_compare_and_set { cas_generation_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim }
+import std.content_hash { serialize_content_hash }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
+  filesystem_file_observation,
+  filesystem_read_outcome,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+}
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
+import gunbc.runner.runner_unit { runner_unit_dropin_dir }
+import gunbc.runner.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  observe_transition_retirement_evidence,
+  interruption_authorization_for_host,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
+}
+import gunbc.runner.runner_slot_provision {
+  runner_slot_member_observed,
+  runner_slot_name_in_host_grammar,
+  RunnerSlotProvenance,
+  SlotProvenanceObserved,
+  RunnerSlotRegistration, SlotUnregistered, SlotRegisteredPersistent, SlotRegisteredEphemeral, SlotRegistrationUnreadable,
+  RunnerSlotObservation,
+  RunnerSlotMember,
+  RunnerSlotsObserved,
+  RunnerSlotsUnobserved,
+  observe_runner_slot_members_wet,
+}
+import product.host_identity { HostIdentity }
+import extdeps.github.actions_runner {
+  actions_runner_registration_file_name,
+  actions_runner_registration_decode,
+  ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
+  ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
+}
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.fabric.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
+import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.fabric.fabric_allocation_store_substrate {
+  AllocationStoreSubstrateObservation,
+  AllocationStoreSubstrateObserved,
+  AllocationStoreSubstrateObservationRefused,
+  AllocationStoreNamespaceAbsent,
+  AllocationStoreNamespacePresent,
+  AllocationStoreDirectoryPrestate,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreSubstrateSpec,
+  fabric_allocation_store_substrate_spec,
+  allocation_store_presence_parent,
+  allocation_store_presence_coordinates_match_path,
+  allocation_store_directory_present,
+  allocation_store_directory_absent,
+  allocation_store_desired_stat_mode,
+}
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { srv3_observe_path_owner, srv3_observe_path_mode }
+import extdeps.posix.path_ownership {
+  PathOwnerObserved,
+  PathOwnerUnobserved,
+  PathModeObserved,
+  PathModeUnobserved,
+}
+import gunbc.runner.runner_service_activation {
+  runner_unit_standings_unobserved_no_transaction,
+  runner_activation_readiness_unobserved_no_transaction,
+  RunnerUnitStandings,
+  RunnerUnitStanding,
+  UnitStandingsObserved,
+  UnitStandingsUnobserved,
+  runner_host_activation_units,
+}
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
+import extdeps.systemd { ActiveState, UnitFileState }
+import gunbc.host_convergence_protocol {
+  bind_canonical_protocol,
+  canonical_protocol_gate,
+  canonical_protocol_standing_label,
+  CanonicalProtocolAdmitted,
+  CanonicalProtocolRefused,
+}
+import gunbc.fleet.fleet_converge_plan_manifest {
+  FleetConvergeApplyPayload,
+  PayloadAdmitted,
+  PayloadScopeUndecodableInReceipt,
+  PayloadSidecarDiverged,
+  PayloadGenerationTextCorrupt,
+  PayloadBundleDigestMismatch,
+  PayloadDigestUncomputable,
+  fleet_converge_apply_payload_admits,
+  fleet_converge_apply_payload_refusal_text,
+}
+import gunbc.fleet.fleet_converge_plan {
+  fleet_converge_host_grant_queries,
+  TimerRetirementMember,
+  fleet_converge_allocation_store_plan_artifact,
+  fleet_converge_plan_body_path,
+  fleet_converge_plan_baseline_hex_path,
+  fleet_converge_plan_apply_shell_path,
+  fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_subject_host_path,
+  fleet_converge_plan_generation_path,
+  fleet_converge_plan_prior_generation_path,
+  fleet_converge_plan_member_set_fp_path,
+  fleet_converge_plan_content_hash,
+  fleet_converge_observed_baseline_matches,
+  fleet_converge_member_set_fingerprint_matches,
+  fleet_converge_member_set_drift_text,
+  fleet_converge_retirement_drift_text,
+  RetirementDriftAdmitted,
+  RetirementDriftRefused,
+  fleet_converge_plan_subject_scope_path,
+  fleet_converge_apply_artifact_admits,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
+  ApplyAwaitingCapability,
+  fleet_converge_apply_admission_refusal_text,
+  fleet_converge_scope_wire,
+  fleet_converge_plan_subject,
+  FleetConvergeRequest,
+  FleetConvergePlanArtifact,
+  FullHostConverge,
+  LaunchEnvironmentConverge,
+  FabricExecutionCellsConverge,
+  FabricAllocationStoreConverge,
+  WorkspaceAllocationConverge,
+  WorkspaceSlotCommissioningConverge,
+  WorkspaceCommissioningDependencyConverge,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_matches,
+  fleet_converge_plan_artifact_of_request,
+  ScopeDecoded,
+  ScopeUndecodable,
+  timer_retirement_observed_legacy_srv1,
+  fleet_converge_generation_store_path,
+  fleet_converge_locked_apply_script,
+  fleet_converge_apply_invoker,
+  fleet_converge_parse_nonneg_generation_text,
+  fleet_converge_generation_observation,
+  fleet_converge_generation_admission,
+  GenerationAdmission,
+  GenerationAdmitted,
+  GenerationAdmissionRefused,
+  fleet_converge_plan_bundle_digest_hex,
+  fleet_converge_plan_bundle_matches,
+  fleet_converge_plan_content_hash_path
+}
+import extdeps.git
+import gunbc.live_deploy.apply { live_deploy_apply_prod_role_operator_local_wet }
+import gunbc.live_deploy.spec { deployment_plan_host_identity }
+import gunbc.live_deploy.desired { prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, desired_roster_refusal_detail, prod_role_deployment_mismatch_detail, selected_deployment_spec }
+import gunbc.live_deploy.pre_swap_admission { observe_checkout_branch }
+import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.repository { gunbc_repository }
+import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.actions_run_binding {
+  ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  admit_optional_expected_revision,
+  RunRevisionAdmitted,
+  RunRevisionRefused,
+  fleet_converge_expected_host_env_name,
+}
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
+  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
+  fleet_converge_plan_run_id_env_name,
+  write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
+  ReceiptWritten, ReceiptWriteRefused,
+  read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
+  fleet_converge_plan_receipt_identity_hex,
+  admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
+  PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
+}
+// The apply script is written by this CLI and then executed, so its mode is a decision this module
+// makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
+data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
+
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible."
+
+// MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
+// repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
+// like a hostname, both plan and apply refuse on Absent, and the subject comparison routes through
+// a typed authority over two NonEmptyStr values instead of a bare String equality that two
+// coincident non-observations could satisfy. The defeated-guard defect is fixed, not surfaced.
+//
+// WHAT CHANGED HERE IS ONLY THE PROBE'S INPUT SHAPE. main derived Absent from `!run.success ||
+// trimmed == ""`, reading a record this branch deletes; the same judgment now reads the arms of
+// ProcessOutcome. The three arms map to exactly the two states main distinguished, so the behaviour
+// is preserved rather than re-decided: Refused and Absent are both non-observations, and a Present
+// arm whose text trims empty is still Absent, because ProcessOutputPresent means the process wrote
+// bytes -- not that those bytes name a host.
+// The effective principal, read the same way the hostname is: a typed observation that is Absent
+// when the probe did not succeed, never an empty name.
+fn observe_effective_user_wet() -> NonEmptyStr?
+{
+  match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+fn observe_host_short_wet() -> NonEmptyStr?
+{
+  match run_shell_command_capture(
+    command: hostname_short_read_command(),
+    transport: LocalExec,
+  ) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" {
+        none
+      } else {
+        Present { value: trim(s: t) as NonEmptyStr }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
+// (gunbc.fleet.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
+// that invents a number.
+fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
+{
+  let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
+  fleet_converge_generation_admission(
+    observation: fleet_converge_generation_observation(
+      subject_host: subject_host,
+      store_present: read.success,
+      content: read.content,
+    ),
+  )
+}
+
+fn observe_timer_members_wet() -> List<TimerRetirementMember>
+{
+  let legacy = timer_retirement_observed_legacy_srv1()
+  filter(legacy, m =>
+    process_outcome_admitted(outcome: run_shell_command_capture(
+      command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
+      transport: LocalExec,
+    ))
+  )
+}
+
+type CapMembersObservation
+  = CapMembersObserved { members: List<CapMember> }
+  | CapMembersAbsent
+  | CapMembersUnobservable { path: NonEmptyStr, cause: String }
+
+type CapMemberRead
+  = CapMemberReadObserved { member: CapMember }
+  | CapMemberReadAbsent
+  | CapMemberReadUnobservable { path: NonEmptyStr, cause: String }
+
+fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation {
+  fold(reads, init: CapMembersAbsent, f: fn(acc, read) {
+    match acc {
+      CapMembersUnobservable { path: _, cause: _ } => acc
+      CapMembersAbsent =>
+        match read {
+          CapMemberReadObserved { member: member } => CapMembersObserved { members: [member] }
+          CapMemberReadAbsent => CapMembersAbsent
+          CapMemberReadUnobservable { path: path, cause: cause } =>
+            CapMembersUnobservable { path: path, cause: cause }
+        }
+      CapMembersObserved { members: members } =>
+        match read {
+          CapMemberReadObserved { member: member } => CapMembersObserved {
+            members: append(members, items: [member]),
+          }
+          CapMemberReadAbsent => acc
+          CapMemberReadUnobservable { path: path, cause: cause } =>
+            CapMembersUnobservable { path: path, cause: cause }
+        }
+    }
+  })
+}
+
+fn observe_cap_members_wet() -> CapMembersObservation
+{
+  let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
+  let listing = filesystem_listing_observation(
+    directory: runner_unit_dropin_dir as String,
+    success: listed.success,
+    entries: listed.entries,
+    error: listed.error,
+  )
+  cap_members_observation(reads: map(caps_managed_dropin_paths, path => {
+    let read = Filesystem.Read(path: path as String)
+    let name = match split(s: path as String, delimiter: "/").last() {
+      Present { value: value } => value
+      Absent => ""
+    }
+    match filesystem_file_observation(
+      listing: listing,
+      name: name,
+      path: path as String,
+      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+    ) {
+      FilesystemFileAbsent(_) => CapMemberReadAbsent
+      FilesystemFileRead { path: _, content: content } =>
+        CapMemberReadObserved { member: CapMember { dropin_path: path, content: content } }
+      FilesystemFileIndeterminate { cause: cause } =>
+        CapMemberReadUnobservable { path: path, cause: cause }
+      FilesystemFileObservationsDisagree { path: _, cause: cause } =>
+        CapMemberReadUnobservable { path: path, cause: cause }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: cause } =>
+        CapMemberReadUnobservable { path: path, cause: cause }
+    }
+  }))
+}
+
+type FleetConvergeRequestObservation
+  = FleetConvergeRequestObserved { request: FleetConvergeRequest }
+  | FleetConvergeRequestUnobserved { reason: String }
+
+// THE LAUNCH-ENVIRONMENT ARM CALLS ONLY THE TIMER OBSERVER. That is the production fact this
+// annotation is entitled to state: this branch invokes observe_timer_members_wet and nothing else,
+// and constructs exactly the two reviewed fields. The refusals an unreadable slot roster or a
+// blocked fabric observation raise for their own scopes are therefore not SUPPRESSED here -- they
+// are never produced, because this scope never took those obligations on.
+//
+// AN EARLIER CUT SAID THE ARM "HAS NO FIELD TO PUT AN ANSWER IN", which reads as a claim about what
+// the compiler permits. It does not: a payload-carrying variant literal accepts any excess field
+// (see the excess-field measurement in gunbc.fleet.fleet_converge_plan above FleetConvergeRequest, and the
+// compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
+// is what the site census and the non-interference matrix actually execute.
+fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
+{
+  match fleet_converge_scope_of_wire(wire: scope_wire) {
+    ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+    ScopeDecoded { scope: FabricAllocationStoreOnly } =>
+      match observe_allocation_store_substrate_wet() {
+        AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
+          FleetConvergeRequestUnobserved {
+            reason: join(["AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""),
+          }
+        AllocationStoreSubstrateObserved { prestate: observed } => FleetConvergeRequestObserved {
+          request: FabricAllocationStoreConverge {
+            host: host,
+            observed_allocation_store: observed,
+          },
+        }
+      }
+    ScopeDecoded { scope: FabricExecutionCellsOnly } => FleetConvergeRequestObserved {
+      request: FabricExecutionCellsConverge {
+        host: host,
+        observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+      },
+    }
+    ScopeDecoded { scope: LaunchEnvironment } => FleetConvergeRequestObserved {
+      request: LaunchEnvironmentConverge {
+        host: host,
+        observed_timers: observe_timer_members_wet(),
+      },
+    }
+    ScopeDecoded { scope: WorkspaceSlotCommissioningOnly } => FleetConvergeRequestUnobserved { reason: "commissioning observation requires the admitted revision" }
+    ScopeDecoded { scope: WorkspaceAllocationOnly } => FleetConvergeRequestUnobserved { reason: "workspace allocation observation requires the admitted revision" }
+    ScopeDecoded { scope: LiveDeploy } =>
+      FleetConvergeRequestUnobserved {
+        reason: "observe_fleet_converge_request_wet is host-and-scope-wire; LiveDeployConverge is minted from DesiredDeployment and LiveDeployMemberBasis, not a hostname",
+      }
+    ScopeDecoded { scope: FullHost } =>
+          match observe_runner_slot_members_with_provenance_wet(host: host) {
+            RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
+            RunnerSlotsObserved { members: observed_slots } =>
+              match observe_cap_members_wet() {
+                CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
+                  reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
+                }
+                CapMembersAbsent => {
+                  let observed_timers = observe_timer_members_wet()
+                  let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
+                  let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
+                  let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
+                  FleetConvergeRequestObserved {
+                    request: FullHostConverge {
+                      host: host,
+                      observed_timers: observed_timers,
+                      observed_caps: [],
+                      observed_slots: observed_slots,
+                      observed_fabric_cells: observed_fabric_cells,
+                      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                      observed_unit_standings: observed_unit_standings,
+                      observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
+                    },
+                  }
+                }
+                CapMembersObserved { members: observed_caps } => {
+                  let observed_timers = observe_timer_members_wet()
+                  let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
+                  let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
+                  let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
+                  FleetConvergeRequestObserved {
+                    request: FullHostConverge {
+                      host: host,
+                      observed_timers: observed_timers,
+                      observed_caps: observed_caps,
+                      observed_slots: observed_slots,
+                      observed_fabric_cells: observed_fabric_cells,
+                      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                      observed_unit_standings: observed_unit_standings,
+                      observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
+                    },
+                  }
+                }
+              }
+          }
+  }
+}
+
+// THE RETIREMENT HALF OF THE HOST OBSERVATION TRANSACTION, TAKEN WHERE EVERY OTHER HOST FACT IS.
+//
+// This is the seam the branch was missing, and its absence is why a correct remover, a correct
+// realization and a correct obligation still could not retire anything: the request carried no
+// retirement evidence, so `runner_slot_provision_plan` was always handed
+// `SlotRetirementEvidenceAbsent` and rendered withheld lines forever.
+//
+// IT OBSERVES AND DOES NOT ACTUATE. The `mask --now` for a slot that is required, permitted and not
+// yet retired is RENDERED by `runner_slot_provision_plan` into `retirement_scripts` and executed only
+// by fleet apply, after apply has reobserved this same subject and compared it with the reviewed
+// artifact. An effectful retirement performed HERE would mutate the host while the plan describing it
+// was still being built, which is why the actuator drafted in `gunbc.runner.runner_slot_retirement` was
+// deleted rather than called from this function.
+//
+// COVERAGE IS DECIDED OVER THIS RUN'S READBACK. observe_transition_retirement_evidence reads
+// standings for the durable required set, then admits only if every unit that is not already
+// RetirementComplete is inside the grant. A completed standing discharges interruption demand for
+// this plan; it does not edit the obligation. A stored run id is not that standing.
+//
+// AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
+// a host with no deploy row has no transition and nothing here may speak for it.
+fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
+{
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
+      }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match interruption_authorization_for_host(host: host as HostIdentity) {
+        HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
+          SlotRetirementEvidenceAbsent { cause: c }
+        HostInterruptionAuthorizationPresent { authorization: host_auth } =>
+          observe_transition_retirement_evidence(
+            transport: LocalShell,
+            host: host as HostIdentity,
+            auth: host_auth,
+          )
+      }
+  }
+}
+
+// THE UNIT-STATE HALF OF THE HOST OBSERVATION TRANSACTION. Two property reads per desired unit,
+// through the same reader live_deploy uses; any unreadable property refuses the WHOLE standing
+// rather than reporting the units it did read, because a partial roster would plan the unread units
+// as converged by omission. A host the fleet model does not know has no desired units and no
+// standing.
+type RunnerUnitStandingRead
+  = UnitStandingRead { standing: RunnerUnitStanding }
+  | UnitStandingRefused { reason: NonEmptyStr }
+
+fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
+{
+  match read_unit_property(unit: unit, property: ActiveState) {
+    UnitPropertyUnreadable { unit: u, property: p } =>
+      UnitStandingRefused { reason: join([u, " ", p, " unreadable"], "") as NonEmptyStr }
+    UnitPropertyValue { value: active_state } =>
+      match read_unit_property(unit: unit, property: UnitFileState) {
+        UnitPropertyUnreadable { unit: u, property: p } =>
+          UnitStandingRefused { reason: join([u, " ", p, " unreadable"], "") as NonEmptyStr }
+        UnitPropertyValue { value: file_state } =>
+          UnitStandingRead {
+            standing: RunnerUnitStanding {
+              unit: unit,
+              active: active_state == "active",
+              enabled: file_state == "enabled",
+            },
+          }
+      }
+  }
+}
+
+// THE HOST-GRANT HALF OF THE OBSERVATION TRANSACTION. Each rule is asked of sudo itself
+// (`sudo -n -ll -u RUNAS ARGV`, extdeps.sudo.nopasswd_decision), which lists and never runs the
+// command, as the account running this CLI, whose name is recorded beside the decisions. An
+// unreadable principal, a missing binary, a sudo that did not spawn or any status other than the
+// documented 0/1 is typed Unobserved, never covered. The installed drop-in is read separately: it is
+// normally root:root 0440, so an unreadable file is its own typed outcome.
+// THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
+// run the pure mapping over recorded outputs.
+fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
+{
+  let program = match query.argv.first() {
+    Present { value: w } => w as String
+    Absent => ""
+  }
+  let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+  HostGrantDecisionRead {
+    query: query,
+    decision: if present {
+      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+    } else {
+      sudo_decision_binary_absent(query: query)
+    },
+  }
+}
+
+fn observe_host_grants_wet(host: NonEmptyStr) -> HostGrantObservation
+{
+  let installed = Filesystem.Read(path: runner_host_sudoers_install_path)
+  let version = sudo_version_from_run(outcome: run_shell_command_observe_outcome(command: sudo_version_command(), transport: LocalExec))
+  HostGrantObservation {
+    principal: match observe_effective_user_wet() {
+      Present { value: login } => HostGrantPrincipalObserved { login: login }
+      Absent => HostGrantPrincipalUnobserved { cause: "the effective user could not be read (whoami)" as NonEmptyStr }
+    },
+    sudo_version: version,
+    decisions: map(fleet_converge_host_grant_queries(host: host), q => observe_host_grant_decision_wet(query: q, version: version)),
+    installed: if installed.success {
+      InstalledSudoersText { text: installed.content }
+    } else {
+      InstalledSudoersUnreadable { cause: join(["read of ", runner_host_sudoers_install_path as String, " failed"], "") as NonEmptyStr }
+    },
+  }
+}
+
+fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
+{
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " is refused as a runner host (", c, "), so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
+    RunnerHostDeployUnmodeled { host: h } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
+    RunnerHostDeployFound { deploy: d } => {
+      let reads = map(runner_host_activation_units(deploy: d), u => observe_runner_unit_standing_wet(unit: u))
+      let refusals = flat_map(reads, r => match r {
+        UnitStandingRefused { reason: why } => [why as String]
+        UnitStandingRead { standing: _ } => []
+      })
+      if list_length(items: refusals) > 0 {
+        UnitStandingsUnobserved { reason: join(refusals, "; ") as NonEmptyStr }
+      } else {
+        UnitStandingsObserved {
+          units: flat_map(reads, r => match r {
+            UnitStandingRead { standing: st } => [st]
+            UnitStandingRefused { reason: _ } => []
+          }),
+        }
+      }
+    }
+  }
+}
+
+fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
+{
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: artifact.plan_body,
+    apply_shell: artifact.apply_shell,
+  ) {
+    Absent => exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
+    Present { value: content_hash } => {
+      match run_shell_commands(
+        commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
+        transport: LocalExec,
+      ) {
+        ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
+        ExitSuccess => {
+          let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
+          let w_base = Filesystem.Write(path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex)
+          let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
+          let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
+          let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String)
+          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(cas_generation_count(g: artifact.plan_lease.epoch.generation)))
+          let w_prior = Filesystem.Write(path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation))
+          let w_member_fp = Filesystem.Write(path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String)
+          let w_scope = Filesystem.Write(path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope))
+          if w_plan.success && w_base.success && w_hash.success && w_apply.success && w_host.success
+            && w_gen.success && w_prior.success && w_member_fp.success && w_scope.success {
+            run_shell_commands(
+              commands: [
+                chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
+                cat_command(path: fleet_converge_plan_body_path),
+                cat_command(path: fleet_converge_plan_content_hash_path),
+              ],
+              transport: LocalExec,
+            )
+          } else {
+            exit_failure(reason: fleet_converge_plan_artifact_write_refusal(rows: [
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_body_path, success: w_plan.success, error: w_plan.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_baseline_hex_path, success: w_base.success, error: w_base.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_content_hash_path, success: w_hash.success, error: w_hash.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_apply_shell_path, success: w_apply.success, error: w_apply.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_host_path, success: w_host.success, error: w_host.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_generation_path, success: w_gen.success, error: w_gen.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_prior_generation_path, success: w_prior.success, error: w_prior.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_member_set_fp_path, success: w_member_fp.success, error: w_member_fp.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_scope_path, success: w_scope.success, error: w_scope.error),
+            ]))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
+{
+  match observe_host_short_wet() {
+    Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
+    Present { value: host } =>
+      match observe_generation_store_wet(subject_host: host) {
+        GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
+        GenerationAdmitted { generation: prior_generation } =>
+          match observe_allocation_store_substrate_wet() {
+            AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
+              exit_failure(reason: join(["fleet_converge_allocation_store_plan: AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""))
+            AllocationStoreSubstrateObserved { prestate: observed } =>
+              match fleet_converge_allocation_store_plan_artifact(
+                host: host,
+                prior_generation: prior_generation,
+                observed_allocation_store: observed,
+              ) {
+                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or lease generation successor refused")
+                Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
+              }
+          }
+      }
+  }
+}
+
+fn observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
+  let spec = fabric_allocation_store_substrate_spec()
+  if !allocation_store_presence_coordinates_match_path(spec: spec) {
+    AllocationStoreSubstrateObservationRefused {
+      path: spec.path,
+      cause: "the modeled presence coordinates do not reconstruct the allocation-store path",
+    }
+  } else {
+    let ancestor = Filesystem.List(path: spec.presence_ancestor as String)
+    match filesystem_entry_presence(
+      listing: filesystem_listing_observation(
+        directory: spec.presence_ancestor as String,
+        success: ancestor.success,
+        entries: ancestor.entries,
+        error: ancestor.error,
+      ),
+      name: spec.presence_parent_entry as String,
+    ) {
+      FilesystemEntryPresenceIndeterminate { cause: why } =>
+        AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
+      FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.namespace_path,
+          cause: join([
+            "the spec asked about ", n, " under ", d,
+            ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
+          ], ""),
+        }
+      FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+        prestate: AllocationStoreNamespaceAbsent {
+          namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
+          store_path: spec.path,
+        },
+      }
+      FilesystemEntryListed { directory: _, name: _ } => observe_allocation_store_namespace_wet(spec: spec)
+    }
+  }
+}
+
+fn observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
+  let parent = allocation_store_presence_parent(spec: spec)
+  let contents = Filesystem.List(path: parent as String)
+  if !contents.success {
+    AllocationStoreSubstrateObservationRefused {
+      path: parent,
+      cause: join(["the ancestor names the allocation namespace but it cannot be listed — ", contents.error], ""),
+    }
+  } else {
+    match srv3_observe_path_owner(path: parent as String, transport: LocalShell) {
+      PathOwnerUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+      PathOwnerObserved { owner: owner } => match srv3_observe_path_mode(path: parent as String, transport: LocalShell) {
+        PathModeUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+        PathModeObserved { mode: mode } => observe_allocation_store_under_namespace_wet(
+          spec: spec,
+          namespace: allocation_store_directory_present(
+            path: parent,
+            owner: owner,
+            mode: mode,
+            desired_mode: allocation_store_desired_stat_mode(mode: spec.namespace_mode),
+          ),
+          entries: contents.entries,
+          listing_error: contents.error,
+        )
+      }
+    }
+  }
+}
+
+fn observe_allocation_store_under_namespace_wet(
+  spec: AllocationStoreSubstrateSpec,
+  namespace: AllocationStoreDirectoryPrestate,
+  entries: String,
+  listing_error: String,
+) -> AllocationStoreSubstrateObservation {
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: spec.namespace_path as String,
+      success: true,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: spec.presence_target_entry as String,
+  ) {
+    FilesystemEntryPresenceIndeterminate { cause: why } =>
+      AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+      AllocationStoreSubstrateObservationRefused {
+        path: spec.path,
+        cause: join([
+          "the spec asked about ", n, " under ", d,
+          ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
+        ], ""),
+      }
+    FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+      prestate: AllocationStoreNamespacePresent {
+        namespace: namespace,
+        store: allocation_store_directory_absent(path: spec.path, evidence: established),
+      },
+    }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let contents = Filesystem.List(path: spec.path as String)
+      if !contents.success {
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.path,
+          cause: join(["the parent names the allocation store but the target directory cannot be listed — ", contents.error], ""),
+        }
+      } else {
+        match srv3_observe_path_owner(path: spec.path as String, transport: LocalShell) {
+          PathOwnerUnobserved { reason: why } =>
+            AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+          PathOwnerObserved { owner: owner } =>
+            match srv3_observe_path_mode(path: spec.path as String, transport: LocalShell) {
+              PathModeUnobserved { reason: why } =>
+                AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+              PathModeObserved { mode: mode } => AllocationStoreSubstrateObserved {
+                prestate: AllocationStoreNamespacePresent {
+                  namespace: namespace,
+                  store: allocation_store_directory_present(
+                    path: spec.path,
+                    owner: owner,
+                    mode: mode,
+                    desired_mode: allocation_store_desired_stat_mode(mode: spec.mode),
+                  ),
+                },
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+
+// THE PLAN BINDS ITS RUN AND ADMITS ITS HOST BEFORE OBSERVING ANYTHING ELSE (RLM-2 ruling sections
+// 2 and 8). The run binding is what the plan receipt carries; the expected host is the workflow's
+// `host` input, delivered through FLEET_CONVERGE_EXPECTED_HOST, and a plan whose kernel hostname is
+// not that input refuses -- the runner label aims the dispatch, the hostname is the evidence.
+// THE TWO PLAN MODES ARE ONE ENTRY POINT UNDER TWO SCOPES. The run binding, the expected-revision
+// admission, the expected-host admission, the generation lease and the receipt mint are obligations
+// of PLANNING, not of any one resource family, so a second copy of them beside this one would be a
+// parallel authority for whether a plan run is admissible at all.
+fn fleet_converge_plan_wet() -> ProcessExit
+{
+  fleet_converge_scoped_plan_wet(scope: FullHost)
+}
+
+// RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
+// in gunbc.fleet.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
+fn fleet_converge_launch_environment_plan_wet() -> ProcessExit
+{
+  fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
+}
+
+fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
+{
+  match observe_actions_run_binding() {
+    ActionsRunUnbound { variable: v, detail: d } =>
+      exit_failure(reason: join(["fleet_converge_plan: RunUnbound — ", v, " ", d, "; the plan mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
+    ActionsRunBound { binding: run } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
+        RunRevisionAdmitted { revision: _ } =>
+      match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
+        ActionsVariablePresent { value: expected_host } =>
+          fleet_converge_plan_scoped_bound_wet(
+            run: run,
+            expected_host: expected_host,
+            scope: scope,
+          )
+      }
+      }
+  }
+}
+
+// ONE OBSERVER, SELECTED BY THE SCOPE. This branch used to inline the timer, cap and slot probes
+// beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
+// that a scope could only widen. Routing plan through the same observer means the population the
+// plan hashes and the population apply re-observes come from one authority.
+// THE LINE STOPS BEFORE THE HOST IS READ when the canonical host-convergence protocol does
+// not bind (gunbc.host_convergence_protocol canonical_protocol_gate). A declared frontier
+// openly awaiting its consumer does not stop it; a self-naming or fired frontier does.
+// RUNG: test.claim.host_convergence_protocol_witness exercises canonical_protocol_gate
+// directly, refusals and admission both. This wet arm, which only matches the gate's
+// result, is proven by typecheck alone; no witness executes it.
+fn fleet_converge_plan_scoped_bound_wet(
+  run: ActionsRunBinding,
+  expected_host: String,
+  scope: FleetConvergeScope,
+) -> ProcessExit
+{
+  match canonical_protocol_gate(standing: bind_canonical_protocol()) {
+    CanonicalProtocolRefused { standing: why } =>
+      exit_failure(reason: concat(
+        "fleet_converge_plan: CanonicalProtocolRefused — gunbc.host_convergence_protocol bind_canonical_protocol answered ",
+        canonical_protocol_standing_label(standing: why),
+      ))
+    CanonicalProtocolAdmitted { frontiers: _ } =>
+  match observe_host_short_wet() {
+    Absent =>
+      exit_failure(reason: "fleet_converge_plan: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to plan")
+    Present { value: host } =>
+      if (host as String) != expected_host {
+        exit_failure(reason: join(["fleet_converge_plan: ExpectedHostMismatch — the workflow input names ", expected_host, " but this runner observes ", host as String], ""))
+      } else {
+  let host_short = host as String
+  let subject_host = host
+  match observe_generation_store_wet(subject_host: subject_host) {
+    GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
+    GenerationAdmitted { generation: prior_generation } => {
+  let observed = if (scope == WorkspaceSlotCommissioningOnly) {
+    match workspace_dispatch_observe(host: subject_host, revision: run.execution_revision as CommitSha) {
+      WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
+      WorkspaceCommissioningFleetDependencyObserved { plan } => FleetConvergeRequestObserved { request: WorkspaceCommissioningDependencyConverge { plan: plan } }
+      WorkspaceCommissioningFleetRefused { reason } => FleetConvergeRequestUnobserved { reason: concat("commissioning privileged observation refused: ", reason) }
+    }
+  } else if (scope == WorkspaceAllocationOnly) {
+    observe_workspace_allocation_plan_request_wet(host: subject_host,
+      release_dir: release_locus_dir(root: microvm_controller_root,
+        revision: RevisionBoundAtEmission { revision: run.execution_revision as CommitSha }) as NonEmptyStr)
+  } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
+  match observed {
+    FleetConvergeRequestUnobserved { reason: why } =>
+      exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
+    FleetConvergeRequestObserved { request: request } =>
+  {
+    match fleet_converge_plan_artifact_of_request(
+      request: request,
+      prior_generation: prior_generation,
+    ) {
+      Absent =>
+        exit_failure(reason: "fleet_converge_plan: lease generation successor refused")
+      Present { value: artifact } =>
+      match fleet_converge_plan_bundle_digest_hex(
+        plan_body: artifact.plan_body,
+        apply_shell: artifact.apply_shell,
+      ) {
+        Absent =>
+          exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
+        Present { value: content_hash } => {
+          let planned_generation = cas_generation_count(g: artifact.plan_lease.epoch.generation)
+          let mkdir = run_shell_commands(
+            commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
+            transport: LocalExec,
+          )
+          match mkdir {
+            ExitFailure { code: _, reason: why } =>
+              exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
+            ExitSuccess => {
+              let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
+              let w_base = Filesystem.Write(
+                path: fleet_converge_plan_baseline_hex_path,
+                content: artifact.observed_baseline_hex,
+              )
+              let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
+              let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
+              let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)
+              let w_gen = Filesystem.Write(
+                path: fleet_converge_plan_generation_path,
+                content: to_string(planned_generation),
+              )
+              let w_prior = Filesystem.Write(
+                path: fleet_converge_plan_prior_generation_path,
+                content: to_string(prior_generation),
+              )
+              let w_member_fp = Filesystem.Write(
+                path: fleet_converge_plan_member_set_fp_path,
+                content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+              )
+              let w_scope = Filesystem.Write(
+                path: fleet_converge_plan_subject_scope_path,
+                content: fleet_converge_scope_wire(scope: artifact.subject.scope),
+              )
+              if w_plan.success
+                && w_base.success
+                && w_hash.success
+                && w_apply.success
+                && w_host.success
+                && w_gen.success
+                && w_prior.success
+                && w_member_fp.success
+                && w_scope.success {
+                let receipt = FleetConvergePlanReceipt {
+                  run: run,
+                  observed_host: host_short,
+                  scope_wire: fleet_converge_scope_wire(scope: artifact.subject.scope),
+                  member_set_fingerprint_hex: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+                  plan_artifact_hash: content_hash as String,
+                  observed_baseline_hex: artifact.observed_baseline_hex as String,
+                  prior_generation: prior_generation,
+                  planned_generation: planned_generation,
+                  lease_key: artifact.plan_lease.epoch.lease_key as String,
+                  lease_resource_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.resource_fingerprint) as String,
+                  lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
+                  lease_generation: artifact.plan_lease.epoch.generation,
+                  apply_terminal: artifact.apply_terminal,
+                }
+                match write_fleet_converge_plan_receipt(r: receipt) {
+                  ReceiptWriteRefused { path: p, error: e } =>
+                    exit_failure(reason: join(["fleet_converge_plan: PlanReceiptWriteRefused at ", p, ": ", e], ""))
+                  ReceiptWritten { path: _ } =>
+                    run_shell_commands(
+                      commands: [
+                        chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
+                        cat_command(path: fleet_converge_plan_body_path),
+                        cat_command(path: fleet_converge_plan_content_hash_path),
+                        cat_command(path: fleet_converge_plan_receipt_path),
+                      ],
+                      transport: LocalExec,
+                    )
+                }
+              } else {
+                exit_failure(reason: fleet_converge_plan_artifact_write_refusal(rows: [
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_body_path, success: w_plan.success, error: w_plan.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_baseline_hex_path, success: w_base.success, error: w_base.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_content_hash_path, success: w_hash.success, error: w_hash.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_apply_shell_path, success: w_apply.success, error: w_apply.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_host_path, success: w_host.success, error: w_host.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_generation_path, success: w_gen.success, error: w_gen.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_prior_generation_path, success: w_prior.success, error: w_prior.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_member_set_fp_path, success: w_member_fp.success, error: w_member_fp.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_scope_path, success: w_scope.success, error: w_scope.error),
+            ]))
+              }
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+  }
+    }
+  }
+  }
+  }
+}
+
+// APPLY BINDS ITSELF TO THE PLAN RECEIPT IT WAS HANDED (RLM-2 ruling section 2): the plan run id
+// the operator typed, the bundle hash on disk, the revision and the repository must all agree with
+// what the plan receipt says, and the apply receipt carries the plan receipt's identity so the
+// final join can pair them without re-deriving anything.
+fn fleet_converge_apply_wet() -> ProcessExit
+{
+  match observe_actions_run_binding_at_checkout() {
+    ActionsRunUnbound { variable: v, detail: d } =>
+      exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
+    ActionsRunBound { binding: run } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
+        RunRevisionAdmitted { revision: admitted_r } =>
+      match actions_variable_read(name: fleet_converge_plan_run_id_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: join(["fleet_converge_apply: PlanRunIdAbsent — ", v, " ", d], ""))
+        ActionsVariablePresent { value: plan_run_id } =>
+          match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+            FleetConvergePlanReceiptUnreadable { reason: why } =>
+              exit_failure(reason: join(["fleet_converge_apply: PlanReceiptUnreadable — ", why, " (a plan artifact minted before the typed plan receipt joined the bundle will not carry one)"], ""))
+            FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+              fleet_converge_apply_bound_wet(run: run, plan_run_id: plan_run_id, plan_receipt: plan_receipt, expected_revision_admitted: admitted_r)
+          }
+      }
+      }
+  }
+}
+
+fn fleet_converge_apply_ordinary_bound_wet(
+  run: ActionsRunBinding,
+  plan_run_id: String,
+  plan_receipt: FleetConvergePlanReceipt,
+  expected_revision_admitted: String,
+) -> ProcessExit
+{
+  let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
+  let read_base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)
+  let read_host = Filesystem.Read(path: fleet_converge_plan_subject_host_path)
+  let read_prior = Filesystem.Read(path: fleet_converge_plan_prior_generation_path)
+  let read_gen = Filesystem.Read(path: fleet_converge_plan_generation_path)
+  let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
+  let read_apply = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
+  let read_hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+  let read_scope = Filesystem.Read(path: fleet_converge_plan_subject_scope_path)
+  if !read_plan.success
+    || !read_base.success
+    || !read_host.success
+    || !read_prior.success
+    || !read_gen.success
+    || !read_member_fp.success
+    || !read_apply.success
+    || !read_hash.success
+    || !read_scope.success {
+    exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
+  } else {
+    match observe_host_short_wet() {
+      Absent =>
+        exit_failure(reason: "fleet_converge_apply: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to compare subject host")
+      Present { value: observed_host } => {
+    let planned_host = trim(s: read_host.content) as NonEmptyStr
+    match fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
+      Absent =>
+        exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
+      Present { value: prior_generation } =>
+        match fleet_converge_parse_nonneg_generation_text(content: read_gen.content) {
+          Absent =>
+            exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
+          Present { value: planned_generation } => {
+            {
+              let payload_admission = fleet_converge_apply_payload_admits(
+                receipt: plan_receipt,
+                payload: FleetConvergeApplyPayload {
+                  subject_host_text: read_host.content,
+                  subject_scope_text: read_scope.content,
+                  subject_member_set_text: read_member_fp.content,
+                  observed_baseline_hex_text: read_base.content,
+                  prior_generation_text: read_prior.content,
+                  planned_generation_text: read_gen.content,
+                  plan_body: read_plan.content,
+                  apply_shell: read_apply.content,
+                  plan_content_hex: read_hash.content,
+                },
+              )
+              match payload_admission {
+                PayloadScopeUndecodableInReceipt { cause: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadDigestUncomputable { path: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadAdmitted { routed_scope: routed_scope } =>
+              match observe_fleet_converge_request_from_plan_wet(
+                scope_wire: fleet_converge_scope_wire(scope: routed_scope),
+                host: observed_host, plan_body: read_plan.content,
+              ) {
+                FleetConvergeRequestUnobserved { reason: why } =>
+                  exit_failure(reason: concat("fleet_converge_apply: PlannedScopeOrObservationRefused — ", why))
+                FleetConvergeRequestObserved { request: observed_request } =>
+              match fleet_converge_apply_artifact_admits(
+                planned_host_text: planned_host as String,
+                planned_scope_wire: read_scope.content,
+                planned_fingerprint_text: read_member_fp.content,
+                observed: observed_request,
+              ) {
+                ApplySubjectHostMismatch { planned: ph, observed: oh } =>
+                  exit_failure(
+                    reason: concat(
+                      "fleet_converge_apply: SubjectHostMismatch planned=",
+                      concat(ph, concat(" observed=", oh)),
+                    ),
+                  )
+                ApplyScopeUndecodable { cause: why } =>
+                  exit_failure(reason: concat("fleet_converge_apply: PlannedScopeUndecodable — ", why))
+                ApplyScopeMismatch { planned_wire: pw, observed_wire: ow } =>
+                  exit_failure(
+                    reason: concat(
+                      "fleet_converge_apply: SubjectScopeMismatch — the plan selected ",
+                      concat(pw, concat(" and apply re-observed ", concat(ow, "; apply would actuate a family the plan never selected"))),
+                    ),
+                  )
+                ApplyMemberSetMismatch =>
+                  exit_failure(reason: concat("fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan\n", fleet_converge_member_set_drift_text(plan_body: read_plan.content, observed: observed_request)))
+                ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+                  exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
+                ApplyAwaitingCapability { capability: c } =>
+                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — this plan requires an unavailable apply capability"], ""))
+                ApplyAdmitted =>
+              if !fleet_converge_observed_baseline_matches(
+                observed_baseline_hex: trim(s: read_base.content),
+                observed: observed_request,
+              ) {
+                exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
+              } else {
+              match fleet_converge_retirement_drift_text(plan_body: read_plan.content, observed: observed_request) {
+              RetirementDriftRefused { first: drift_first, rest: drift_rest } =>
+                exit_failure(reason: concat("fleet_converge_apply: RetirementStandingDrift — a retirement premise changed since plan\n", join(concat([drift_first], drift_rest), "\n")))
+              RetirementDriftAdmitted =>
+              if !fleet_converge_plan_bundle_matches(
+                plan_body: read_plan.content,
+                apply_shell: read_apply.content,
+                claimed_hex: read_hash.content,
+              ) {
+                exit_failure(
+                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — the plan.txt + apply.sh bundle does not match plan_content.hex",
+                )
+              } else {
+                let binding = admit_apply_plan_binding(
+                  plan: plan_receipt,
+                  apply_run: run,
+                  plan_run_id_input: plan_run_id,
+                  plan_hash_on_disk: trim(s: read_hash.content),
+                )
+                match binding {
+                  PlanBindingRunIdMismatch { planned: _, requested: _ } =>
+                    exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
+                  PlanBindingHashMismatch { receipt: _, on_disk: _ } =>
+                    exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
+                  PlanBindingRevisionMismatch { plan: _, apply: _ } =>
+                    exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
+                  PlanBindingRepositoryMismatch { plan: _, apply: _ } =>
+                    exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
+                  PlanBindingAdmitted => {
+                    let applied = match observe_effective_user_wet() {
+                      Absent =>
+                        exit_failure(reason: "fleet_converge_apply: EffectiveUserUnobserved — whoami did not succeed, so the lease guard cannot decide whether to run as the lease owner")
+                      Present { value: effective_user } =>
+                        run_shell_commands(
+                          commands: [
+                            bash_program_command(
+                              script: fleet_converge_locked_apply_script(
+                                subject_host: planned_host,
+                                prior_generation: prior_generation,
+                                planned_generation: planned_generation,
+                                apply_shell_path: fleet_converge_plan_apply_shell_path,
+                                plan_hash: trim(s: read_hash.content) as NonEmptyStr,
+                                invoker: fleet_converge_apply_invoker(effective_user: effective_user),
+                              ),
+                            ),
+                          ],
+                          transport: LocalExec,
+                        )
+                    }
+                    let actuated = applied
+                    let exit_code = match actuated {
+                      ExitSuccess => 0
+                      ExitFailure { code: c, reason: _ } => c
+                    }
+                    let receipt = FleetConvergeApplyReceipt {
+                      run: run,
+                      plan_run_id: plan_run_id,
+                      plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
+                      plan_artifact_hash: trim(s: read_hash.content),
+                      observed_host: observed_host as String,
+                      prior_generation: prior_generation,
+                      planned_generation: planned_generation,
+                      expected_revision_admitted: expected_revision_admitted,
+                      terminal: plan_receipt.apply_terminal,
+                      locked_apply_exit_code: exit_code,
+                    }
+                    match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {
+                      ExitFailure { code: _, reason: why } =>
+                        exit_failure(reason: join(["fleet_converge_apply: ApplyReceiptDirRefused — ", why], ""))
+                      ExitSuccess =>
+                        match write_fleet_converge_apply_receipt(r: receipt) {
+                          ReceiptWriteRefused { path: p, error: e } =>
+                            exit_failure(reason: join(["fleet_converge_apply: ApplyReceiptWriteRefused at ", p, ": ", e], ""))
+                          ReceiptWritten { path: _ } => actuated
+                        }
+                    }
+                  }
+                }
+              }
+              }
+              }
+              }
+              }
+            }
+          }
+          }
+        }
+      }
+      }
+    }
+  }
+  }
+
+
+// ── The operator-local route ─────────────────────────────────────────────────────────────────────
+//
+// WHY `gunbc converge` REFUSED, AND WHAT THIS IS INSTEAD. PR #8286 deleted the cli_run driver's verb
+// handlers; converge's handler was resolve-a-.dag-entry plus an interpreter context, and the ruling
+// was that the frozen v1 engine must not become load-bearing for a capability by being re-homed.
+// The verb was left refusing with `successor: gunbc.fleet.fleet_converge_apply`, the knob-grain spine
+// behind the per-host timer -- and that timer was retired 2026-08-13, so the named successor is a
+// route nothing invokes. Meanwhile the spine that IS live -- plan, hashed bundle, lease, apply,
+// receipts -- was reachable only from inside a GitHub Actions run, because its entries admit
+// themselves through observe_actions_run_binding and refuse ActionsRunUnbound.
+//
+// The two entries below are the same spine with a different RUN BINDING, not a second spine. A
+// binding is four facts -- repository, workflow ref, run id, revision -- and an operator at a shell
+// on the host can supply all four honestly: the repository from gunbc.repository, the revision from
+// HEAD of the checkout being executed, a workflow ref that names THIS route rather than a workflow
+// file, and a clock-derived run id. Nothing here spells GITHUB_* into the environment; a local run
+// is distinguishable from an Actions run by its workflow_ref forever, and
+// run_bindings_share_transaction never admits one into an RLM launch transaction, because that
+// predicate requires the ref to name the workflow file.
+//
+// EVERYTHING DOWNSTREAM IS SHARED: fleet_converge_plan_scoped_bound_wet and
+// fleet_converge_apply_bound_wet take the binding as a value, so the hostname gate, the scope
+// observers, the lease, the bundle digest, the subject compare-and-swap, the plan/apply binding
+// admission and the receipts are the same code the workflow runs. What the operator loses is only
+// what the workflow added around the binary: the artifact upload, and the bash EXPECTED_HASH
+// compare -- which fleet_converge_local_apply_wet performs itself before reading the receipt.
+//
+// INVOCATION (the run seam, which is how every other operation is invoked):
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag \
+//     --function fleet_converge_local_plan_wet --arg scope=scope:full-host
+//   gunbc run ... --function fleet_converge_local_apply_wet --arg plan_run_id=<id> --arg plan_hash=<hex>
+data fleet_converge_operator_local_workflow_ref: String = "operator-local:gunbc.fleet.fleet_converge_plan_cli"
+
+type OperatorLocalRunBinding
+  = OperatorLocalRunBound { binding: ActionsRunBinding }
+  | OperatorLocalRunUnbound { reason: String }
+
+fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
+{
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success {
+    OperatorLocalRunUnbound { reason: "HEAD commit could not be read from the checkout being executed" }
+  } else if !release_revision_text_valid(text: head.sha as String) {
+    OperatorLocalRunUnbound { reason: join(["HEAD is not a 40-digit lower-hex revision: ", head.sha as String], "") }
+  } else {
+    match clock_now_probed_at() {
+      Absent => OperatorLocalRunUnbound { reason: "the clock could not be read, so no run id can be minted" }
+      Present { value: now } =>
+        OperatorLocalRunBound {
+          binding: ActionsRunBinding {
+            repository: gunbc_repository.full_name,
+            workflow_ref: fleet_converge_operator_local_workflow_ref,
+            run_id: join(["local-", now as String], ""),
+            run_revision: head.sha as String,
+            execution_revision: head.sha as String,
+          },
+        }
+    }
+  }
+}
+
+fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
+{
+  match fleet_converge_scope_of_wire(wire: scope) {
+    ScopeUndecodable { cause: why } =>
+      exit_failure(reason: concat("fleet_converge_local_plan: ScopeUndecodable — ", why))
+    ScopeDecoded { scope: decoded } =>
+      match observe_operator_local_run_binding() {
+        OperatorLocalRunUnbound { reason: why } =>
+          exit_failure(reason: concat("fleet_converge_local_plan: RunUnbound — ", why))
+        OperatorLocalRunBound { binding: run } =>
+          match observe_host_short_wet() {
+            Absent =>
+              exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
+            Present { value: host } =>
+              fleet_converge_plan_scoped_bound_wet(
+                run: run,
+                expected_host: host as String,
+                scope: decoded,
+              )
+          }
+      }
+  }
+}
+
+// ── The converge verb ────────────────────────────────────────────────────────────────────────────
+//
+// `gunbc converge` reaches this declaration through the generated dispatch as a bootstrap .dag
+// operation (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding): every option is
+// handed over by name as a String, and receipt_path is the channel the launcher prints back. The
+// verb is a thin router over the two local entries above; it adds exactly two things -- the
+// operator's declared host, refused on mismatch before any observer runs, and the receipt copy --
+// and nothing else, so the CLI and the workflow keep one spine.
+//
+// THE RECEIPT IS WRITTEN ON EVERY ARM. The launcher reads receipt_path after the operation returns
+// and refuses if it is unreadable, BEFORE it renders the terminal, so an operation that wrote no
+// receipt on its failure arm would have its typed refusal masked by an unreadable-receipt refusal.
+// A failure therefore writes its reason to the channel; a success writes the plan or apply receipt.
+data fleet_converge_operator_mode_plan: String = "plan"
+data fleet_converge_operator_mode_apply: String = "apply"
+data fleet_converge_operator_mode_deploy: String = "deploy"
+
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. Operator 2026-10-09: fleet-converge
+// must support an arbitrary branch. An empty --candidate-branch therefore admits the observed
+// branch. A named requirement still has to equal the checkout. An empty observed branch never admits.
+// Operator 2026-10-13 (gunbc.design_ruling production_is_main_only_lab_admits_integration) NARROWED
+// that for the target: each desired row carries the branch it admits. The empty-flag helper still
+// exists for naming the checkout; it does not widen the row. Apply enforces target_branch_admission
+// on the selected deployment; this CLI does not re-answer that fact with a production literal.
+fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
+  trim(s: observed) != "" && (trim(s: required) == "" || trim(s: observed) == trim(s: required))
+}
+
+fn fleet_converge_operator_cli_entry(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+  candidate_branch: String,
+  receipt_path: String,
+) -> ProcessExit
+{
+  let outcome = fleet_converge_operator_cli_dispatch(
+    host: host, mode: mode, scope: scope, plan_run_id: plan_run_id, plan_hash: plan_hash, target: target,
+    candidate_branch: candidate_branch,
+  )
+  let receipt_source = if mode == fleet_converge_operator_mode_apply {
+    fleet_converge_apply_receipt_path
+  } else {
+    fleet_converge_plan_receipt_path
+  }
+  let receipt_text = match outcome {
+    ExitSuccess =>
+      if mode == fleet_converge_operator_mode_deploy {
+        match observe_operator_local_run_binding() {
+          OperatorLocalRunBound { binding: b } =>
+            join(["deploy-converged host=", trim(s: host), " candidate=", b.execution_revision, " branch=", trim(s: candidate_branch), "\n"], "")
+          OperatorLocalRunUnbound { reason: why } => join(["deploy-converged host=", trim(s: host), " candidate=unread: ", why, "\n"], "")
+        }
+      } else {
+        let r = Filesystem.Read(path: receipt_source)
+        if r.success { r.content } else { join(["receipt unreadable at ", receipt_source, ": ", r.error], "") }
+      }
+    ExitFailure { code: _, reason: why } => join(["converge-refused ", why, "\n"], "")
+  }
+  let w = Filesystem.Write(path: receipt_path, content: receipt_text)
+  if !w.success {
+    exit_failure(reason: join(["fleet_converge_operator_cli_entry: receipt write refused at ", receipt_path, ": ", w.error], ""))
+  } else {
+    outcome
+  }
+}
+
+fn fleet_converge_operator_cli_dispatch(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+  candidate_branch: String,
+) -> ProcessExit
+{
+  match observe_host_short_wet() {
+    Absent =>
+      exit_failure(reason: "gunbc converge: HostObservationFailed — hostname probe did not succeed or returned empty output")
+    Present { value: observed } =>
+      if (observed as String) != trim(s: host) {
+        exit_failure(reason: join(["gunbc converge: ExpectedHostMismatch — --host names ", trim(s: host), " but this process runs on ", observed as String], ""))
+      } else if trim(s: target) != "" {
+        exit_failure(reason: join(["gunbc converge: TargetNotASubject — --target named ", trim(s: target), " but every remaining scope plans the executor itself; the remote-subject scope was retired with the Spark serving tree"], ""))
+      } else if mode == fleet_converge_operator_mode_plan {
+        fleet_converge_local_plan_wet(scope: scope)
+      } else if mode == fleet_converge_operator_mode_deploy {
+        match prod_role_desired_deployment() {
+          ProdRoleDeploymentRefused { cause: cause } =>
+            exit_failure(reason: join(["gunbc converge: DeployHolderRefused — ", prod_role_realization_refusal_detail(cause: cause)], ""))
+          ProdRoleDeploymentRosterRefused { refusal: refusal } =>
+            exit_failure(reason: join(["gunbc converge: DeployHolderRefused — ", desired_roster_refusal_detail(refusal: refusal)], ""))
+          ProdRoleDeploymentHolderRowMismatch { holder: holder, rostered: rostered } =>
+            exit_failure(reason: join(["gunbc converge: DeployHolderRefused — ", prod_role_deployment_mismatch_detail(holder: holder, rostered: rostered)], ""))
+          ProdRoleDeploymentSelected { deployment: deployment } =>
+            let deploy_host = deployment_plan_host_identity(spec: selected_deployment_spec(row: deployment))
+            if trim(s: host) != deploy_host {
+              exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
+            } else {
+              let branch = trim(s: observe_checkout_branch())
+              if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
+                exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
+              } else {
+                live_deploy_apply_prod_role_operator_local_wet()
+              }
+            }
+        }
+      } else if mode == fleet_converge_operator_mode_apply {
+        if trim(s: plan_run_id) == "" || trim(s: plan_hash) == "" {
+          exit_failure(reason: "gunbc converge: --mode apply requires --plan-run-id and --plan-hash from the plan receipt")
+        } else {
+          fleet_converge_local_apply_wet(plan_run_id: trim(s: plan_run_id), plan_hash: trim(s: plan_hash))
+        }
+      } else {
+        exit_failure(reason: join(["gunbc converge: --mode must be plan, apply or deploy, got ", mode], ""))
+      }
+  }
+}
+
+fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
+{
+  match observe_operator_local_run_binding() {
+    OperatorLocalRunUnbound { reason: why } =>
+      exit_failure(reason: concat("fleet_converge_local_apply: RunUnbound — ", why))
+    OperatorLocalRunBound { binding: run } => {
+      let on_disk = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+      if !on_disk.success {
+        exit_failure(reason: "fleet_converge_local_apply: plan artifact missing — run fleet_converge_local_plan_wet first")
+      } else if trim(s: plan_hash) == "" || trim(s: on_disk.content) != trim(s: plan_hash) {
+        exit_failure(
+          reason: join([
+            "fleet_converge_local_apply: PlanArtifactHashMismatch expected=", trim(s: plan_hash),
+            " actual=", trim(s: on_disk.content),
+          ], ""),
+        )
+      } else {
+        match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+          FleetConvergePlanReceiptUnreadable { reason: why } =>
+            exit_failure(reason: concat("fleet_converge_local_apply: PlanReceiptUnreadable — ", why))
+          FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+            fleet_converge_apply_bound_wet(
+              run: run,
+              plan_run_id: plan_run_id,
+              plan_receipt: plan_receipt,
+              expected_revision_admitted: run.execution_revision,
+            )
+        }
+      }
+    }
+  }
+}
+
+
+// THE SLOT OBSERVATION WITH PROVENANCE. Names come from the base-dir listing exactly as before;
+// each name in this host's slot grammar then gets three more reads -- the registration file, the
+// unit's ActiveState and its UnitFileState -- and a name outside the grammar gets none, because no
+// unit or registration is defined for it. Any unreadable unit property refuses the WHOLE
+// observation: a roster in which one tree's liveness was guessed could remove a live runner.
+// The registration KIND comes from the file's own bytes, read only when the file is present; an
+// unreadable or undecodable file is carried as its own arm so ownership refuses on it rather than
+// defaulting either way.
+fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSlotRegistration {
+  if !present {
+    SlotUnregistered
+  } else {
+    let read = Filesystem.Read(path: path)
+    if !read.success {
+      SlotRegistrationUnreadable { reason: join([".runner present but unreadable: ", read.error], "") }
+    } else {
+      match actions_runner_registration_decode(raw: read.content) {
+        ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+      }
+    }
+  }
+}
+
+// A refused artifact write names WHICH path refused and why. The srv2 plan run of 2026-09-04 22:42
+// refused with the bare sentence and the cause -- /tmp/fleet-converge-plan owned by another
+// principal from a local plan run -- had to be found by hand on the host. The shared literal dir
+// is the underlying defect and is declared, not solved, here.
+fn fleet_converge_write_refusal_row(path: String, success: Bool, error: String) -> List<String> {
+  if success { [] } else { [join([path, ": ", error], "")] }
+}
+
+fn fleet_converge_plan_artifact_write_refusal(rows: List<List<String>>) -> String {
+  join(["fleet_converge_plan: artifact write refused: ", join(flat_map(rows, r => r), "; ")], "")
+}
+
+type RunnerSlotProvenanceRead
+  = SlotProvenanceRead { member: RunnerSlotMember }
+  | SlotProvenanceRefused { reason: String }
+
+fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
+{
+  let name = member.instance_name
+  if !runner_slot_name_in_host_grammar(host: host as HostIdentity, instance_name: name) {
+    SlotProvenanceRead {
+      member: runner_slot_member_observed(
+        instance_name: name as String,
+        provenance: SlotProvenanceObserved { in_host_grammar: false, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+      ),
+    }
+  } else {
+    let registration_path = join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")
+    let registered = process_outcome_admitted(outcome: run_shell_command_capture(
+      command: test_regular_file_command(path: registration_path),
+      transport: LocalExec,
+    ))
+    let registration = observe_runner_slot_registration_wet(present: registered, path: registration_path)
+    let unit = runner_unit_name_of_registration(registration_name: name)
+    match read_unit_property(unit: unit, property: ActiveState) {
+      UnitPropertyUnreadable { unit: u, property: p } =>
+        SlotProvenanceRefused { reason: join([u, " ", p, " unreadable"], "") }
+      UnitPropertyValue { value: active_state } =>
+        match read_unit_property(unit: unit, property: UnitFileState) {
+          UnitPropertyUnreadable { unit: u, property: p } =>
+            SlotProvenanceRefused { reason: join([u, " ", p, " unreadable"], "") }
+          UnitPropertyValue { value: file_state } =>
+            SlotProvenanceRead {
+              member: runner_slot_member_observed(
+                instance_name: name as String,
+                provenance: SlotProvenanceObserved {
+                  in_host_grammar: true,
+                  registration: registration,
+                  unit_active: active_state == "active",
+                  unit_enabled: file_state == "enabled",
+                },
+              ),
+            }
+        }
+    }
+  }
+}
+
+fn observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
+{
+  match observe_runner_slot_members_wet() {
+    RunnerSlotsUnobserved { reason: why } => RunnerSlotsUnobserved { reason: why }
+    RunnerSlotsObserved { members: names } => {
+      let reads = map(names, m => observe_runner_slot_provenance_wet(host: host, member: m))
+      let refusals = flat_map(reads, r => match r {
+        SlotProvenanceRefused { reason: why } => [why]
+        SlotProvenanceRead { member: _ } => []
+      })
+      if length(refusals) > 0 {
+        RunnerSlotsUnobserved { reason: join(concat(["slot provenance refused: "], refusals), "; ") as NonEmptyStr }
+      } else {
+        RunnerSlotsObserved {
+          members: flat_map(reads, r => match r {
+            SlotProvenanceRead { member: m } => [m]
+            SlotProvenanceRefused { reason: _ } => []
+          }),
+        }
+      }
+    }
+  }
+}
+
+// Allocation apply recovers its locator only from the already hash-admitted plan body. Host and
+// scope alone never select whichever request happens to be latest at execution time.
+fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmptyStr, plan_body: String) -> FleetConvergeRequestObservation {
+  match fleet_converge_scope_of_wire(wire: scope_wire) {
+    ScopeDecoded { scope: WorkspaceSlotCommissioningOnly } => match workspace_executor_plan_credential(plan_body: plan_body) {
+      Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
+        WorkspaceCommissioningDirectiveReady { provenance } => match workspace_dispatch_observe(host: host, revision: provenance.source_revision as CommitSha) {
+          WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
+          WorkspaceCommissioningFleetDependencyObserved { plan: _ } => FleetConvergeRequestUnobserved { reason: "commissioning dependency remains unresolved" }
+          WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning no-op readback refused" }
+        }
+        WorkspaceCommissioningDirectiveRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning provenance unreadable" }
+      }
+      Absent => FleetConvergeRequestUnobserved { reason: "commissioning credential missing" }
+    }
+    ScopeDecoded { scope: WorkspaceAllocationOnly } => {
+      let marker = "workspace-launch-directive:"
+      let rows = filter(split(plan_body, separator: "\n"), row => starts_with(s: row, prefix: marker))
+      if count(rows) != 1 { FleetConvergeRequestUnobserved { reason: "workspace plan has no unique launch directive" } }
+      else { match rows.first() {
+        Absent => FleetConvergeRequestUnobserved { reason: "workspace plan launch directive is absent" }
+        Present { value: row } => match workspace_launch_directive_from_text(text: substring(s: row, start: string_length(s: marker), end: string_length(s: row))) {
+          WorkspaceLaunchDirectiveRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
+          WorkspaceLaunchDirectiveReady { directive: planned } => if !(match workspace_installed_policy() { WorkspacePolicyAdmitted { policy } => (match workspace_owner_enrollment(policy: policy, owner: planned.allocation.request.owner) { Present { value: _ } => true Absent => false }) WorkspacePolicyRefused { reason: _ } => false }) {
+            FleetConvergeRequestUnobserved { reason: "workspace plan owner is not authorized by the installed allocation policy" }
+          } else { match workspace_allocation_dispatch_readback(host: host, planned: planned) {
+            WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
+            WorkspaceConvergenceObserved { basis: current } => if current.owner_generation != planned.owner_generation
+              || serialize_json(v: workspace_allocation_json(allocation: current.allocation)) != serialize_json(v: workspace_allocation_json(allocation: planned.allocation)) {
+              FleetConvergeRequestUnobserved { reason: "workspace desired head or incarnation drifted since plan" }
+            } else { FleetConvergeRequestObserved { request: WorkspaceAllocationConverge { basis: current, release_dir: planned.release_dir } } }
+          } }
+        }
+      } }
+    }
+    other => observe_fleet_converge_request_wet(scope_wire: scope_wire, host: host)
+  }
+}
+
+// State access uses the exact root-owned installed helper. The runner never receives the MAC key.
+fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr, release_dir: NonEmptyStr) -> FleetConvergeRequestObservation {
+  match workspace_allocation_dispatch_prepare(host: host, release_dir: release_dir) {
+    WorkspaceConvergenceUnobserved { reason } => FleetConvergeRequestUnobserved { reason: reason }
+    WorkspaceConvergenceObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceAllocationConverge { basis: basis, release_dir: release_dir } }
+  }
+}
+
+fn allocation_demo_plan_wet() -> ProcessExit {
+  fleet_converge_local_plan_wet(scope: fleet_converge_scope_wire(scope: WorkspaceAllocationOnly))
+}
+
+// Commissioning recovery enters before generic baseline re-observation: the protected journal
+// deliberately changes that baseline. Its installed executor rechecks the initial prestate or
+// recovers the exact already-recorded bundle. Generic host scopes retain their existing gates.
+fn fleet_converge_apply_bound_wet(run: ActionsRunBinding, plan_run_id: String,
+  plan_receipt: FleetConvergePlanReceipt, expected_revision_admitted: String) -> ProcessExit {
+  let body = Filesystem.Read(path: fleet_converge_plan_body_path)
+  let noop = body.success && count(filter(split(s: body.content, delimiter: "\n"), row => row == "commissioning-already-committed:true")) == 1
+  if plan_receipt.scope_wire == workspace_executor_scope_wire && body.success && host_kernel_dependency_in_plan_body(body: body.content) {
+    exit_failure(reason: concat("fleet_converge_apply: AwaitingCapability — ", host_kernel_maintenance_capability))
+  } else if plan_receipt.scope_wire != workspace_executor_scope_wire || noop {
+    fleet_converge_apply_ordinary_bound_wet(run: run, plan_run_id: plan_run_id,
+      plan_receipt: plan_receipt, expected_revision_admitted: expected_revision_admitted)
+  } else { fleet_converge_apply_commissioning_bound_wet(run: run, plan_run_id: plan_run_id,
+    plan_receipt: plan_receipt, expected_revision_admitted: expected_revision_admitted) }
+}
+
+fn fleet_converge_apply_commissioning_bound_wet(run: ActionsRunBinding, plan_run_id: String,
+  plan_receipt: FleetConvergePlanReceipt, expected_revision_admitted: String) -> ProcessExit {
+  let body = Filesystem.Read(path: fleet_converge_plan_body_path)
+  let shell = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
+  let base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)
+  let host = Filesystem.Read(path: fleet_converge_plan_subject_host_path)
+  let prior = Filesystem.Read(path: fleet_converge_plan_prior_generation_path)
+  let generation = Filesystem.Read(path: fleet_converge_plan_generation_path)
+  let members = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
+  let hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+  let scope = Filesystem.Read(path: fleet_converge_plan_subject_scope_path)
+  if !body.success || !shell.success || !base.success || !host.success || !prior.success
+    || !generation.success || !members.success || !hash.success || !scope.success {
+    exit_failure(reason: "commissioning reviewed artifact is missing")
+  } else { match observe_host_short_wet() {
+    Present { value: actual_host } => if (actual_host as String) != plan_receipt.observed_host {
+      exit_failure(reason: "commissioning apply is on another host")
+    } else { match fleet_converge_apply_payload_admits(receipt: plan_receipt, payload: FleetConvergeApplyPayload {
+      subject_host_text: host.content, subject_scope_text: scope.content, subject_member_set_text: members.content,
+      observed_baseline_hex_text: base.content, prior_generation_text: prior.content, planned_generation_text: generation.content,
+      plan_body: body.content, apply_shell: shell.content, plan_content_hex: hash.content,
+    }) {
+      PayloadAdmitted { routed_scope } => if (routed_scope != WorkspaceSlotCommissioningOnly) {
+        exit_failure(reason: "commissioning apply received another scope")
+      } else { match admit_apply_plan_binding(plan: plan_receipt, apply_run: run, plan_run_id_input: plan_run_id, plan_hash_on_disk: trim(s: hash.content)) {
+        PlanBindingAdmitted => match workspace_executor_plan_credential(plan_body: body.content) {
+          Present { value: credential } => {
+            let receipt_text = serialize_json(v: gunbc.fleet.fleet_converge_receipt.fleet_converge_plan_receipt_json(r: plan_receipt))
+            match workspace_executor_plan_bytes(plan_body: body.content, apply_shell: shell.content, receipt_text: receipt_text, credential: credential) {
+              WorkspaceExecutorPlanBytesVerified { verified } => {
+                let bytes = WorkspaceCommissioningInputBytes { body: body.content, shell: shell.content, receipt: receipt_text, credential: credential }
+                let applied = match observe_effective_user_wet() {
+                  Present { value: effective_user } => {
+                    let command = workspace_dispatch_captured_command(effective_user: effective_user, shell: shell.content,
+                      bundle: verified.bundle as String, payload: workspace_commissioning_input_text(bytes: bytes))
+                    run_shell_commands(commands: [bash_program_command(script: command)], transport: LocalExec)
+                  }
+                  Absent => exit_failure(reason: "commissioning apply principal unreadable")
+                }
+                let receipt = FleetConvergeApplyReceipt { run: run, plan_run_id: plan_run_id,
+                  plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt), plan_artifact_hash: verified.bundle as String,
+                  observed_host: actual_host as String, prior_generation: plan_receipt.prior_generation, planned_generation: plan_receipt.planned_generation,
+                  expected_revision_admitted: expected_revision_admitted,
+                  terminal: match applied { ExitSuccess => FullyApplied ExitFailure { code: _, reason: _ } => PartiallyApplied { refused_axis_count: 1, detail: "commissioning executor completion not established; recover the same bundle" } },
+                  locked_apply_exit_code: match applied { ExitSuccess => 0 ExitFailure { code, reason: _ } => code },
+                }
+                match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {
+                  ExitSuccess => match write_fleet_converge_apply_receipt(r: receipt) {
+                    ReceiptWritten { path: _ } => applied
+                    ReceiptWriteRefused { path: _, error: _ } => exit_failure(reason: "commissioning completed or refused but apply receipt publication failed; retry readback")
+                  }
+                  ExitFailure { code: _, reason: _ } => exit_failure(reason: "commissioning apply receipt directory refused")
+                }
+              }
+              WorkspaceExecutorPlanBytesRefused { reason: _ } => exit_failure(reason: "commissioning plan bytes failed binding")
+            }
+          }
+          Absent => exit_failure(reason: "commissioning plan lacks a unique credential")
+        }
+        PlanBindingRunIdMismatch { planned: _, requested: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingHashMismatch { receipt: _, on_disk: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingRevisionMismatch { plan: _, apply: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingRepositoryMismatch { plan: _, apply: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+      } }
+      PayloadScopeUndecodableInReceipt { cause: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadDigestUncomputable { path: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+    } }
+    Absent => exit_failure(reason: "commissioning host identity unreadable")
+  } }
+}
+
+fn fleet_converge_workspace_commissioning_plan_wet() -> ProcessExit {
+  fleet_converge_scoped_plan_wet(scope: WorkspaceSlotCommissioningOnly)
+}
+
+fn fleet_converge_workspace_allocation_plan_wet() -> ProcessExit {
+  fleet_converge_scoped_plan_wet(scope: WorkspaceAllocationOnly)
+}

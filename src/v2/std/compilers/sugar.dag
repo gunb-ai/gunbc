@@ -1,0 +1,536 @@
+module v2.std.compilers.sugar
+
+import std.types { List }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, is_empty, length }
+import std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.diagnostic {
+  Correction,
+  DeclarationLocus,
+  declaration_locus,
+  Diagnostic,
+  node_locus,
+  Outcome,
+  UserInputBoundary,
+  Accepted,
+  None,
+  Rejected,
+  bind_outcome,
+  diagnostics_singleton,
+  outcome_accepted,
+  Unavailable
+}
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+import v2.std.node_query {
+  find_named_child,
+  repeated_authored_name_optional,
+  variant_declaration_edge_optional
+}
+import v2.std.qualified_name { qualified_name_from_node }
+import v2.extdeps.languages.dag { parse_production_captured_child_optional }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  ComputationNode,
+  Connective,
+  Disj,
+  Edge,
+  LabeledEdges,
+  Authored,
+  Instantiation,
+  Node,
+  Symbol,
+  TypeNode,
+  edges_conform,
+  is_empty_conj_root
+}
+
+type SugarLowering
+  = SugarFoldCoproductPipeChain {}
+  | SugarDropLeadingSeparator {}
+
+// A SUGAR RULE IS KEYED BY A PRODUCTION'S EMITTED IDENTITY AND BY NOTHING ELSE. The key is read
+// through the grammar's production-identity projection (v2.std.grammar
+// parse_production_emitted_identity_optional), never from a bare atom: a bare atom is authored
+// text -- an identifier or a caret symbol's name -- and a rule keyed on it rewrote
+// `data x: Int = dag_c3_surface_sugar_fn` into an empty Arrow. The former SurfaceAtomKey arm and
+// its four ^dag_c3_surface_sugar_* rules had no producer (only hand-built test fixtures built those
+// atoms), so they were deleted rather than re-keyed (gunbc.recurring_failure_mode
+// authored_lexeme_read_as_a_grammar_marker).
+type SugarKey
+  = ProductionIdentityKey { identity: Symbol }
+
+type SugarRule {
+  key: SugarKey
+  lowering: SugarLowering
+}
+
+data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs },
+  lowering: SugarFoldCoproductPipeChain {}
+}
+
+// A coproduct may open with its separator (`type H =\n  | A\n  | B`). Over two or more variants the
+// separator is layout, so the lead production (v2.extdeps.languages.dag
+// dag_grammar_type_alias_rhs_lead_expr) lowers to its type_alias_rhs child and `= | A | B` normalizes
+// to the tree `= A | B` does; over ONE variant it marks a coproduct (sugar_carries_separator).
+data sugar_rule_type_alias_rhs_lead: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs_lead },
+  lowering: SugarDropLeadingSeparator {}
+}
+
+fn sugar_rules() -> List<SugarRule> {
+  [
+    sugar_rule_type_alias_rhs,
+    sugar_rule_type_alias_rhs_lead
+  ]
+}
+
+fn no_sugar_rule() -> SugarRule? {
+  optional_absent()
+}
+
+fn sugar_key_matches(key: SugarKey, rule_key: SugarKey) -> Bool {
+  match key {
+    ProductionIdentityKey { identity: i } =>
+      match rule_key {
+        ProductionIdentityKey { identity: j } => i == j
+      }
+  }
+}
+
+fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
+  fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sugar_key_matches(key: key, rule_key: rule.key) {
+          optional_present(value: rule)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^sugar_reason_malformed,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A COPRODUCT VARIANT IS AUTHORED BY NAME, SO A REPEATED NAME IS A REPEATED VARIANT. This is the
+// declaration-time wall against gunbc.recurring_failure_mode
+// a_coproduct_declares_one_variant_twice: the Disj-building fold refuses a declaration whose
+// children do not carry pairwise distinct authored names, with a TYPED LOCATED diagnostic that
+// names the type the declaration belongs to AND the name that was declared twice -- not the
+// generic ^sugar_reason_malformed over a bare node locus. The type name is read from the
+// enclosing type_decl (threaded down the normalize recursion, since a Node carries no parent
+// pointer) and the repeated name is read ONCE from v2.std.node_query
+// repeated_authored_name_optional -- the single O(n) scan that already decides all_names_distinct
+// -- so the reason and the name it reports come from one place.
+//
+// CAUSE DISCIPLINE (DESIGN section 3, section 5): this diagnostic is emitted ONLY where
+// edges_conform(children, LabeledEdges) refused a list that is pairwise-UNDISTINCT, so a repeat
+// is always present and the reason ^sugar_reason_duplicate_variant_name is never fabricated.
+// A list that fails conformance for any other reason -- an edge with no authored name -- is not a
+// duplicate and is NOT given this reason: it is reported with sugar_malformed_diagnostic, the
+// reason for a shape the sugar fold cannot read. The no-repeat Absent arm below keeps that
+// malformed reason so no accepted-shape edge can ever be mislabelled a duplicate variant.
+fn sugar_duplicate_variant_diagnostic(
+  edges: List<Edge>,
+  shell: Node,
+  enclosing_type_name: Symbol?
+) -> Diagnostic {
+  match repeated_authored_name_optional(children: edges) {
+    Present { value: repeated } =>
+      match enclosing_type_name {
+        Present { value: type_name } =>
+          Diagnostic {
+            reason: ^sugar_reason_duplicate_variant_name,
+            at: declaration_locus(
+              declaration: Cons { head: type_name, tail: Cons { head: repeated, tail: Empty } }
+            ),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        Absent =>
+          Diagnostic {
+            reason: ^sugar_reason_duplicate_variant_name,
+            at: node_locus(node: shell),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+      }
+    Absent => sugar_malformed_diagnostic(n: shell)
+  }
+}
+
+fn sugar_type_node(connective: Connective, children: List<Edge>, n: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: children,
+    occurrence_id: n.occurrence_id
+  }
+}
+
+fn sugar_named_child_optional(root: Node, name: Symbol) -> Node? {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+type SugarSequencePair {
+  left: Node
+  right: Node
+}
+
+fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
+  match sugar_named_child_optional(root: node, name: ^grammar_sequence_left_node_projection) {
+    Present { value: left } =>
+      match sugar_named_child_optional(root: node, name: ^grammar_sequence_right_node_projection) {
+        Present { value: right } =>
+          optional_present(value: SugarSequencePair { left: left, right: right })
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
+  match sugar_sequence_pair_optional(node: node) {
+    Present { value: pair } => optional_present(value: pair.right)
+    Absent => optional_present(value: node)
+  }
+}
+
+fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
+  if is_empty_conj_root(n: spine) {
+    std.algebra.Empty
+  } else {
+    match sugar_sequence_pair_optional(node: spine) {
+      Present { value: pair } =>
+        match sugar_pipe_sequence_variant_optional(node: pair.left) {
+          Present { value: variant } =>
+            Cons { head: variant, tail: sugar_collect_pipe_chain_variants(spine: pair.right) }
+          Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
+        }
+      Absent => std.algebra.Empty
+    }
+  }
+}
+
+fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => std.algebra.Empty
+    Present { value: pair } =>
+      list_append(
+        left: Cons { head: pair.left, tail: std.algebra.Empty },
+        right: sugar_collect_pipe_chain_variants(spine: pair.right)
+      )
+  }
+}
+
+fn sugar_unwrap_production_shell(node: Node) -> Node {
+  match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } => sugar_unwrap_production_shell(node: captured)
+    Absent => node
+  }
+}
+
+fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
+  let stripped = sugar_unwrap_production_shell(node: node)
+  match node_atom_identity_optional(node: stripped) {
+    Present { value: sym } => optional_present(value: sym)
+    Absent =>
+      fold(
+        stripped.children,
+        init: optional_absent(),
+        f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => sugar_first_atom_identity_optional(node: e.target)
+          }
+        }
+      )
+  }
+}
+
+// A Disj arm is Named{label} -> payload. A variant whose fields body lowering already declared
+// (v2.std.node_query variant_declaration_node) hands over its edge as is; a bare variant is the
+// nullary arm, whose payload is the empty Conj (a Conj with no children) -- its
+// name is the edge label, so the parse subtree that spelled it carries nothing the arm keeps.
+//
+// A NAMELESS ARM REFUSES HERE INSTEAD OF COINING A NAME. The arm's constructor is its type body,
+// and the grammar decides which bodies carry a name: type_expr = choice(qualified_type, fn_type,
+// field_decl_block), and only the qualified_type branch spells a constructor -- a bare identifier
+// or a dotted path. An arm whose type body is written directly as a field block ({ x: Int } as an
+// alternative) or a fn type spells no constructor at all, and the old fold read the { of the field
+// block as the arm's name, so `type T = { x: Int } | B` built a Disj whose first arm carried the
+// brace as its constructor and normalize accepted it.
+//
+// The presence/absence of the name is therefore read from the GRAMMAR POSITION, not the spelling.
+// The discriminator is the production that opens the arm's type body: a field_decl_block / fn_type
+// production is nameless, anything else (a qualified_type, whose spelling may itself collide with a
+// lex token class -- `type T = dag_token_lbrace | B` is a legitimate coproduct whose first variant
+// is NAMED dag_token_lbrace) is named. Testing the first atom's spelling against the token catalog
+// (the former gate) mis-refused that named arm, because after unwrapping an identifier atom's
+// identity is its spelling and `dag_token_lbrace` is a lex token class. Fielded variants never
+// reach this path (body lowering hands them over already declared), and a record's single field
+// block is not a coproduct, so only an arm with no authored constructor name inside a coproduct is
+// refused.
+fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
+  let variant = sugar_unwrap_production_shell(node: variant_node)
+  match variant_declaration_edge_optional(n: variant) {
+    Present { value: declared } => Accepted { value: declared, diagnostics: None }
+    Absent =>
+      if sugar_arm_type_body_is_nameless(variant) {
+        Rejected {
+          diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node))
+        }
+      } else {
+        match sugar_first_atom_identity_optional(node: variant) {
+          Present { value: name } =>
+            Accepted {
+              value: Edge {
+                label: Authored { name: name },
+                target: sugar_type_node(connective: Conj, children: [], n: variant)
+              },
+              diagnostics: None
+            }
+          Absent =>
+            Rejected {
+              diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node))
+            }
+        }
+      }
+  }
+}
+
+// True iff the arm's type body (the leading type_expr of the arm) is a field_decl_block or fn_type
+// production -- the two type_expr branches that spell no constructor name. The arm, after one
+// production-shell unwrap, is seq(type_expr, suffix); the type body is the type_expr's captured
+// child. A named arm's type body is a qualified_type (a seq / qualified_name), whose identity is
+// not a block production, so the check is spelling-agnostic: it cannot be fooled by a constructor
+// whose name is spelled like a lex token.
+//
+// The raw shape is not always what the fold sees. The where-suffix branch of body lowering
+// (v2.compiler.body_lowering_fold body_lower_type_variant) REBUILDS a where arm into a synthetic
+// Conj whose first child is the lowered head carried under ^dag_surface_type_expr -- the
+// seq(type_expr, suffix) parse shape is gone by the time the fold runs (children are lowered
+// before the type_alias_rhs sugar fold). So when the seq shape is Absent, constructor presence is
+// decided from the CARRIED HEAD instead, by the kind body lowering gave it: the qualified_type
+// branch lowers a named head to an Atom, a dotted qualified-name spine Conj, or an Instantiation
+// of either; the field_decl_block branch lowers to a record Conj; the fn_type branch
+// lowers to an Arrow. The ^dag_surface_type_expr edge is written only by that rebuild, so a raw
+// arm (which keeps its parse shell) never reaches the carrier read. A head the rebuild hands over
+// that none of the named kinds can read is refused -- the where-rebuilt shape never fails open.
+fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: variant) {
+    Absent => sugar_where_carried_head_is_nameless(variant)
+    Present { value: pair } =>
+      match parse_production_captured_child_optional(node: pair.left) {
+        Absent => false
+        Present { value: body } =>
+          match parse_production_emitted_identity_optional(node: body) {
+            Present { value: id } =>
+              (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_fn_type)
+            Absent => false
+          }
+      }
+  }
+}
+
+// The where-rebuilt arm: the synthetic Conj body lowering hands the fold carries its head under
+// ^dag_surface_type_expr (body_lower_where_refined_type_edges). A where clause beside a payload
+// still refuses at body_lower_type_variant rather than carrying a field-decl-block edge. True iff
+// that carried head is a nameless type body. The kind is the lowered image of the production identity the raw path
+// reads, so the decision stays spelling-agnostic (a named constructor spelled like a lex token
+// still lowers to an Atom and reads as named). A dotted qualified-name spine lowers to a head/tail
+// Conj, which a record Conj would also be -- and a record whose FIELD NAMES happen to be spelled
+// like the spine labels passes a label-only shape check. So the Conj head is named only when the
+// full qualified-name reader (qualified_name_from_node) reads it: its shape pre-gate is internal,
+// but the fold validates the targets (the head must be an atom, the tail a spine Conj), which a
+// record payload fails. A successful read of an EMPTY name (the reader's zero-field hole) and a
+// rejected read both count as nameless -- only a non-empty successful read is a name.
+fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
+  match sugar_named_child_optional(root: variant, name: ^dag_surface_type_expr) {
+    // The where-rebuild always carries its head under this edge, so Absent is the one shape it
+    // leaves unconfirmed: a where-suffix arm with no carried constructor head has no name, which is
+    // exactly the class this wall exists to refuse. Never count it as named.
+    Absent => true
+    Present { value: head } =>
+      match head.kind {
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Instantiation } => false
+        TypeNode { connective: Conj } =>
+          match qualified_name_from_node(root: head) {
+            Accepted { value: qn } => length(xs: qn) == 0
+            Rejected { diagnostics: _ } => true
+          }
+        TypeNode { connective: Disj } => true
+        TypeNode { connective: Arrow } => true
+        ComputationNode { behavior: _ } => true
+      }
+  }
+}
+
+// THE SEED'S RULE FOR WHAT IS A SUM (v1.compiler.parse parse_type_body_after_eq): more than one
+// alternative, or a single alternative that carries a payload. One bare alternative is an alias
+// to the type it names and is left as parsed.
+fn sugar_variants_form_coproduct(variants: FreeMonoid<Node>) -> Bool {
+  if length(xs: variants) >= 2 {
+    true
+  } else {
+    fold_list(xs: variants, empty: false, cons: fn(acc, v) {
+      acc || (match variant_declaration_edge_optional(n: sugar_unwrap_production_shell(node: v)) {
+        Present { value: _ } => true
+        Absent => false
+      })
+    })
+  }
+}
+
+fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
+  fold_list(
+    xs: variants,
+    empty: outcome_accepted(std.algebra.Empty),
+    cons: fn(acc_outcome, variant) {
+      bind_outcome(o: acc_outcome, f: fn(edges) {
+        bind_outcome(o: sugar_variant_to_disj_edge(variant_node: variant), f: fn(edge) {
+          outcome_accepted(list_snoc_item(xs: edges, item: edge))
+        })
+      })
+    }
+  )
+}
+
+fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
+  let variants = sugar_all_coproduct_variants(captured: captured)
+  if !sugar_variants_form_coproduct(variants: variants) {
+    Accepted { value: captured, diagnostics: None }
+  } else {
+    match sugar_variants_to_disj_edges(variants: variants) {
+      Accepted { value: edges, diagnostics: d } =>
+        if edges_conform(children: edges, d: LabeledEdges) {
+          Accepted {
+            value: sugar_type_node(connective: Disj, children: edges, n: shell),
+            diagnostics: d
+          }
+        } else {
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: sugar_duplicate_variant_diagnostic(
+                edges: edges,
+                shell: shell,
+                enclosing_type_name: enclosing_type_name
+              )
+            )
+          }
+        }
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  }
+}
+
+// A LEADING SEPARATOR IS LAYOUT ONLY WHEN THE RIGHT-HAND SIDE IS ALREADY A COPRODUCT. `= | A | B` and
+// `= A | B` are one tree. But a single payload-less variant is an ALIAS without the separator and a
+// ONE-VARIANT COPRODUCT with it -- v1.compiler.parse parse_type_body_after_eq takes the `|` arm to a
+// Disj and the bare arm to type_item_from_alias_rhs -- so the separator is the only mark of that
+// meaning. Dropping it read `type SignatureSuite =\n  | EcdsaP256Sha256` as an alias to an undeclared
+// name (gunbc.recurring_failure_mode leading_separator_single_variant_read_as_an_alias_in_v2). When the
+// separator is present the right-hand side lowers to the coproduct of its variants, one or many.
+fn sugar_carries_separator(node: Node) -> Bool {
+  match sugar_first_atom_identity_optional(node: node) {
+    Present { value: sym } => sym == ^dag_token_pipe
+    Absent => false
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
+  match rhs.kind {
+    TypeNode { connective: Disj } => Accepted { value: rhs, diagnostics: None }
+    TypeNode { connective: Atom { identity: _ } } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Conj } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Arrow } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Instantiation } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    ComputationNode { behavior: _ } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct_otherwise(
+  rhs: Node,
+  shell: Node,
+  enclosing_type_name: Symbol?
+) -> Outcome<Node> {
+  match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } =>
+      match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
+        Accepted { value: edges, diagnostics: d } =>
+          if edges_conform(children: edges, d: LabeledEdges) {
+            Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
+          } else {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: sugar_duplicate_variant_diagnostic(
+                  edges: edges,
+                  shell: shell,
+                  enclosing_type_name: enclosing_type_name
+                )
+              )
+            }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+  }
+}
+
+fn apply_sugar(rule: SugarRule, n: Node, folded: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
+  match rule.lowering {
+    SugarFoldCoproductPipeChain {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n, enclosing_type_name: enclosing_type_name) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: result, diagnostics: d } =>
+              match result.kind {
+                TypeNode { connective: Disj } =>
+                  Accepted { value: result, diagnostics: d }
+                TypeNode { connective: Atom { identity: _ } } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Conj } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Arrow } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Instantiation } =>
+                  Accepted { value: folded, diagnostics: None }
+                ComputationNode { behavior: _ } =>
+                  Accepted { value: folded, diagnostics: None }
+              }
+          }
+        Absent =>
+          Accepted { value: folded, diagnostics: None }
+      }
+    SugarDropLeadingSeparator {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Present { value: pair } =>
+              if sugar_carries_separator(node: pair.left) {
+                sugar_separated_rhs_as_coproduct(rhs: pair.right, shell: n, enclosing_type_name: enclosing_type_name)
+              } else {
+                Accepted { value: pair.right, diagnostics: None }
+              }
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+          }
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+  }
+}

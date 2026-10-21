@@ -1,0 +1,215 @@
+module v2.test.claim.compiler.let_binder_frame
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
+import v2.test.claim.compiler.callback_argument_formal { caf_correction_type, caf_same_type }
+import v2.compiler.infer { infer, infer_entries_for_tree, infer_settled_type_at }
+import v2.std.diagnostic { Accepted, Diagnostic, None, Rejected, Some, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.node { positional_child_target_nodes, Bind, ComputationNode, Node, Symbol }
+import std.algebra { fold_list, list_at_optional, map_support_keys }
+import v2.std.integer { Int }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, Map, String }
+import v2.compiler.inferred_tree { InferredFacts }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: an ordinary `let` is typed through infer's dependent-child frame (v2.compiler.infer
+// infer_let_body_frame, infer_gather_let_result_row): the value settles first, the body is entered under one
+// InferBinderType row at the binder's site -- the value's settled type, or the annotation where one is
+// authored -- and the Bind takes its body's settled type. The binder key is binding syntax
+// (v2.std.node bind_key_edge), not a value. gunbc.recurring_failure_mode
+// bind_and_match_binders_not_typed_from_their_dependency_sibling; native-seven's g_fatal_at reads
+// `let fatal = diagnostics_fatal(d: d)` and compares `fatal.reason`.
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer. Measured before
+// the repair at 2e6f223035: `fn g(a: Int) -> Int { let b = a  b }` was accepted with the Bind, the binder key,
+// the reference and five dependent nodes not derived; `let b = true; need_int(n: b)` and a let returned where
+// Bool is declared were both ACCEPTED undecided.
+//
+// MUTATIONS, each leaving the compiler runnable: the body frame answering the inherited frame turns the
+// typed positive, the wrong-argument refusal and the projection red; the result row answering the frontier
+// turns the declared-return refusal and the typed positive red; inferring the key edge again (bind_key_edge
+// false in v2.compiler.infer and v2.std.type_binder) turns the typed positive red.
+
+fn lbf_src(body: String) -> String {
+  join(["module p\n\n", body], "")
+}
+
+fn lbf_reason(body: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => ^lbf_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// Accepted with no advisory at all: no node of the program -- binder key, reference, Bind -- stands on the frontier.
+fn lbf_accepted_clean(body: String) -> Bool {
+  match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } =>
+          match d {
+            None => true
+            Some { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn lbf_accepted_carries(body: String, reason: Symbol) -> Bool {
+  match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: reason)
+      }
+  }
+}
+
+// THE SETTLED TYPES AT THE ONE `let` OF A PROGRAM: its value, its body (the reference), and the Bind itself,
+// read from the gather's own entries by the reader infer uses (infer_settled_type_at).
+type LbfLetTypes {
+  value: Optional<Node>
+  body: Optional<Node>
+  bind: Optional<Node>
+}
+
+fn lbf_no_types() -> LbfLetTypes {
+  LbfLetTypes { value: optional_absent(), body: optional_absent(), bind: optional_absent() }
+}
+
+fn lbf_is_bind(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } => true
+    ComputationNode { behavior: _ } => false
+    _ => false
+  }
+}
+
+fn lbf_child_type(bind: Node, index: Int, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match list_at_optional(xs: positional_child_target_nodes(node: bind), index: index) {
+    Absent => optional_absent()
+    Present { value: c } => infer_settled_type_at(target: c, entries: entries)
+  }
+}
+
+fn lbf_let_types(body: String) -> LbfLetTypes {
+  match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => lbf_no_types()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer_entries_for_tree(tree: tree) {
+        Rejected { diagnostics: _ } => lbf_no_types()
+        Accepted { value: entries, diagnostics: _ } =>
+          fold_list(xs: map_support_keys(m: entries), empty: lbf_no_types(), cons: fn(acc, key) {
+            if lbf_is_bind(n: key) {
+              LbfLetTypes {
+                value: lbf_child_type(bind: key, index: 1, entries: entries),
+                body: lbf_child_type(bind: key, index: 2, entries: entries),
+                bind: infer_settled_type_at(target: key, entries: entries)
+              }
+            } else {
+              acc
+            }
+          })
+      }
+  }
+}
+
+fn lbf_present(x: Optional<Node>) -> Bool {
+  match x {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+data lbf_int_let: String = "fn g(a: Int) -> Int {\n  let b = a\n  b\n}\n"
+
+// THE BOUND TYPE REACHES THE REFERENCE AND THE LET: the reference b and the Bind both carry the type the
+// parameter route gives the value `a`, and nothing in the program -- the binder key included -- is left on
+// the frontier.
+test fn lbf_a_let_reference_and_the_let_take_the_bound_type() -> Bool {
+  let t = lbf_let_types(body: lbf_int_let)
+  lbf_present(x: t.value)
+    && caf_same_type(a: t.body, b: t.value)
+    && caf_same_type(a: t.bind, b: t.value)
+    && lbf_accepted_clean(body: lbf_int_let)
+}
+
+// THE REFERENCE IS CONCRETELY Bool, not undecided: it refuses at need_int's `n` with the same produced type
+// an authored `b: Bool` parameter reaches it with.
+data lbf_bool_let: String = "fn need_int(n: Int) -> Int {\n  n\n}\n\nfn g(a: Int) -> Int {\n  let b = true\n  need_int(n: b)\n}\n"
+data lbf_bool_param: String = "fn need_int(n: Int) -> Int {\n  n\n}\n\nfn g(b: Bool) -> Int {\n  need_int(n: b)\n}\n"
+
+fn lbf_produced_at_n(body: String) -> Optional<Node> {
+  match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } =>
+          if diagnostics_fatal(d: d).reason == ^application_argument_does_not_inhabit {
+            caf_correction_type(d: diagnostics_fatal(d: d), name: ^inhabitance_produced_type)
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+test fn lbf_a_bool_let_refuses_at_an_int_argument_as_bool() -> Bool {
+  caf_same_type(a: lbf_produced_at_n(body: lbf_bool_let), b: lbf_produced_at_n(body: lbf_bool_param))
+}
+
+// THE LET CARRIES ITS BODY'S TYPE OUTWARD: an Int body where Bool is declared refuses at the declared return.
+test fn lbf_the_let_carries_its_body_type_to_the_declared_return() -> Bool {
+  lbf_reason(body: "fn g(a: Int) -> Bool {\n  let b = a\n  b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// THE ROW'S TRIGGER: a projection off a let-bound record types through the one frame -- the projection has a
+// derived type, the Bind carries it, and it is judged at the declared return. (The record declaration's own
+// field label and type nodes stand on the frontier with or without a let, so this claim reads types, not
+// the absence of advisories.)
+test fn lbf_a_projection_off_a_let_binder_is_typed() -> Bool {
+  let t = lbf_let_types(body: "type R {\n  n: Int\n}\n\nfn g(p: R) -> Int {\n  let r = p\n  r.n\n}\n")
+  lbf_present(x: t.body) && caf_same_type(a: t.bind, b: t.body)
+    && lbf_reason(body: "type R {\n  n: Int\n}\n\nfn g(p: R) -> Bool {\n  let r = p\n  r.n\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// NO TYPE IS INVENTED: a value with no derived type (the nullary constructor `A`) gives the binder no row,
+// so the reference and the Bind stay on the counted frontier.
+data lbf_underived_let: String = "type T\n  = A\n  | B\n\nfn g() -> T {\n  let b = A\n  b\n}\n"
+
+test fn lbf_an_underived_value_types_neither_the_reference_nor_the_let() -> Bool {
+  let t = lbf_let_types(body: lbf_underived_let)
+  !lbf_present(x: t.value) && !lbf_present(x: t.body) && !lbf_present(x: t.bind)
+    && lbf_accepted_carries(body: lbf_underived_let, reason: ^infer_grounding_not_derived)
+}
+
+// THE ANNOTATION TYPES THE BINDER: the same underived value under `b: T` gives the reference and the Let
+// T from the annotation, while the value itself stays underived -- the binder is not typed by the value.
+data lbf_annotated_underived_let: String = "type T\n  = A\n  | B\n\nfn g() -> T {\n  let b: T = A\n  b\n}\n"
+
+test fn lbf_an_annotated_binder_is_typed_by_its_annotation() -> Bool {
+  let t = lbf_let_types(body: lbf_annotated_underived_let)
+  !lbf_present(x: t.value) && lbf_present(x: t.body) && caf_same_type(a: t.bind, b: t.body)
+    && lbf_accepted_clean(body: "fn g(a: Int) -> Int {\n  let b: Int = a\n  b\n}\n")
+}
+
+// THE ANNOTATION IS STILL JUDGED: a value that does not inhabit it refuses at the let annotation.
+test fn lbf_a_value_that_does_not_inhabit_the_annotation_still_refuses() -> Bool {
+  lbf_reason(body: "fn g(a: Int) -> Int {\n  let b: Int = true\n  b\n}\n") == ^infer_reason_bound_value_does_not_inhabit_annotation
+}
+
+// CONTROL: a fixture that does not assemble reads as no types and is not accepted.
+test fn lbf_a_fixture_that_does_not_assemble_is_not_typed() -> Bool {
+  let body = "fn g(a: Int) -> Int {\n  let b = nope\n  b\n}\n"
+  !lbf_present(x: lbf_let_types(body: body).body) && lbf_reason(body: body) == ^lbf_assembly_refused
+}

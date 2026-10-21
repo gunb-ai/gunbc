@@ -1,0 +1,800 @@
+module extdeps.languages.markdown
+import std.types { List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
+import std.markup { CommentGrammar, DeclaresDocument }
+import extdeps.languages.html {
+  canonical_html_spellings,
+  html_comment_open_sequence,
+  html_comment_close_sequence,
+  html_doctype_open_sequence,
+  html_comment_terminators,
+  html_doctype_name_end_whitespace,
+}
+import extdeps.languages.html_fragment { serialize_fragment }
+import extdeps.uri_validation {
+  validate_href, SafeHref, RejectedHref, RejectedUrlScheme,
+}
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.markup {
+  MarkupMedium,
+  TagDelimiter,
+  EscapeRaw,
+  OmitClose,
+  MarkupSerializeResult,
+  Rejected,
+}
+import std.markdown {
+  MarkdownDocument,
+  MarkdownBlock,
+  MarkdownInline,
+  MarkdownListItem,
+  MarkdownTaskItem,
+  MarkdownTableRow,
+  MarkdownTableCell,
+  MarkdownAlignment,
+  HeadingLevel,
+  CheckboxState,
+  HeadingBlock,
+  ParagraphBlock,
+  UnorderedListBlock,
+  OrderedListBlock,
+  CodeBlock,
+  TaskListBlock,
+  TableBlock,
+  BlockquoteBlock,
+  TextInline,
+  EmphasisInline,
+  StrongInline,
+  CodeInline,
+  LinkInline,
+  ImageInline,
+  H1,
+  H2,
+  H3,
+  H4,
+  H5,
+  H6,
+  Checked,
+  Unchecked,
+  AlignNone,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  markdown_document_to_fragment,
+
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "spec.commonmark.org/0.31.2/"
+  }
+}
+
+type MarkdownSpellings {
+  heading_marker: String
+  heading_sep: String
+  unordered_bullet: String
+  ordered_suffix: String
+  task_checked: String
+  task_unchecked: String
+  emphasis_delim: String
+  strong_delim: String
+  code_span_delim: String
+  code_fence: String
+  link_text_open: String
+  link_text_close: String
+  link_url_open: String
+  link_url_close: String
+  image_marker: String
+  table_pipe: String
+  table_cell_pad: String
+  table_align_none: String
+  table_align_left: String
+  table_align_center: String
+  table_align_right: String
+  blockquote_marker: String
+  list_indent: String
+  block_separator: String
+  thematic_break: String
+}
+
+data commonmark_gfm_spellings: MarkdownSpellings = {
+  heading_marker: "#",
+  heading_sep: " ",
+  unordered_bullet: "- ",
+  ordered_suffix: ". ",
+  task_checked: "[x] ",
+  task_unchecked: "[ ] ",
+  emphasis_delim: "*",
+  strong_delim: "**",
+  code_span_delim: "`",
+  code_fence: "```",
+  link_text_open: "[",
+  link_text_close: "]",
+  link_url_open: "(",
+  link_url_close: ")",
+  image_marker: "!",
+  table_pipe: "|",
+  table_cell_pad: " ",
+  table_align_none: "---",
+  table_align_left: ":--",
+  table_align_center: ":-:",
+  table_align_right: "--:",
+  blockquote_marker: "> ",
+  list_indent: "  ",
+  block_separator: "\n\n",
+  thematic_break: "---",
+}
+
+fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
+  join(
+    [sp.link_text_open, text, sp.link_text_close, sp.link_url_open, url, sp.link_url_close],
+    ""
+  )
+}
+
+// THE MARKDOWN MEDIUM, FOR THE ONE ROUTE THAT SERIALIZES MARKDOWN AS MARKUP.
+// Its consumer is the convergence witness (test.claim.markup_medium_convergence), which is what this
+// module's serializer claim rests on: fill a medium's rows and the shared serializer follows them, with
+// no per-language arm. Production Markdown takes two other routes and neither uses this value -- Markdown
+// TEXT comes from md_render_inlines composing MarkdownSpellings (Markdown's own spelling, which must pass
+// & and < through raw), and Markdown-to-HTML goes through serialize_markdown_document in std.markdown,
+// which builds an HTML Fragment and uses the HTML medium. So the em/strong/code rows below are read from
+// sp by the witness, and the comment/doctype rows are HTML's, imported rather than retyped.
+fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [
+      TagDelimiter { tag: "em", open: sp.emphasis_delim, close: sp.emphasis_delim },
+      TagDelimiter { tag: "strong", open: sp.strong_delim, close: sp.strong_delim },
+      TagDelimiter { tag: "code", open: sp.code_span_delim, close: sp.code_span_delim },
+    ],
+    bracket: canonical_html_spellings,
+    text_escape: EscapeRaw,
+    void_tags: [],
+    void_rendering: OmitClose,
+    raw_text_tags: [],
+    // Read, not retyped, and read as ONE value: CommonMark passes an HTML comment through as an HTML
+    // block (0.30 §6.6 lists "<!--" among the block start conditions) and sends a line starting
+    // "<!DOCTYPE" through the same way (§4.2), so Markdown's comment grammar IS HTML's and a Markdown
+    // doctype IS the HTML doctype. Importing is what makes that sentence enforced rather than
+    // aspirational: re-typing "<!-- " here was a second home for one fact (§3), which review 82174 on
+    // #14351 caught.
+    comment_grammar: CommentGrammar {
+      open: html_comment_open_sequence,
+      close: html_comment_close_sequence,
+      terminators: html_comment_terminators,
+    },
+    document_grammar: DeclaresDocument {
+      open: html_doctype_open_sequence,
+      name_end_whitespace: html_doctype_name_end_whitespace,
+    },
+  }
+}
+
+// MARKDOWN TEXT IS COMPOSED FROM MARKDOWN SPELLINGS, not by borrowing the markup medium.
+//
+// THIS ROUTE PASSES THROUGH UNESCAPED, ON PURPOSE. md_render_inlines hands back Markdown source text,
+// which is fed to an ingest_markdown_source round trip and to committed docs; escaping & or < would
+// corrupt the source. Every sibling helper here already says the same thing -- md_link_form, md_code_block
+// and md_table_row each join sp.* rows directly and never consult a medium. The one exception was this
+// fold, which detoured through Fragment and the medium for three rows it could have read from sp.
+//
+// WHY THE DETOUR WAS REMOVED, AND WHAT IT COST (my own regression, caught by
+// markup_medium_convergence.witness_md_inline_emission_bytes / witness_md_link_named_arm_bytes, which
+// went red at 89a39626b6f and stayed red until this commit). Those three arms called
+// serialize_fragment_with. When #14351 gave that function a result return -- the change the reviews on
+// this PR required -- the fold's `concat(acc, <result>)` became a record in a String position, and the
+// language did not stop it: **b** came out as b, *i* as i, `x` as x. Delimiters vanished from committed
+// documentation, and it compiled. A detour through a foreign medium bought nothing that sp.emphasis_delim
+// does not already say, and it put a String where a result belongs -- exactly the shape §5 forbids, since
+// no plausible output was fabricated and no refusal was raised.
+//
+// THE OTHER ROUTE KEEPS THE MEDIUM, AND THAT IS THE DISTINCTION: serialize_markdown_document builds an
+// HTML Fragment and serializes it through a medium, because there the bytes ARE HTML. Here they are
+// Markdown, so the rows come from the module that owns Markdown's spelling.
+fn md_inline_text(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
+  match inline {
+    TextInline { text } => text
+    EmphasisInline { inlines } =>
+      join([sp.emphasis_delim, md_render_inlines(inlines: inlines, sp: sp), sp.emphasis_delim], "")
+    StrongInline { inlines } =>
+      join([sp.strong_delim, md_render_inlines(inlines: inlines, sp: sp), sp.strong_delim], "")
+    CodeInline { text } =>
+      join([sp.code_span_delim, text, sp.code_span_delim], "")
+    LinkInline { inlines, url } =>
+      md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp)
+    ImageInline { alt, url } =>
+      join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "")
+  }
+}
+
+fn md_render_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
+  fold(inlines, init: "", f: (acc, i) => concat(acc, md_inline_text(inline: i, sp: sp)))
+}
+
+fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
+  let pad = repeat_string(s: sp.list_indent, n: depth)
+  fold(blocks, init: { idx: 0, out: "" }, f: (acc, b) => {
+    if acc.idx == 0 {
+      let lead = match b {
+        ParagraphBlock { inlines } =>
+          join([pad, marker, md_render_inlines(inlines: inlines, sp: sp)], "")
+        HeadingBlock { level: _, inlines: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        UnorderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        OrderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        CodeBlock { code: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        TaskListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        TableBlock { header: _, alignments: _, rows: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        BlockquoteBlock { blocks: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        ThematicBreak => join([pad, marker, md_block(block: b, sp: sp)], "")
+      }
+      { idx: 1, out: lead }
+    } else {
+      let cont = match b {
+        UnorderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        OrderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        HeadingBlock { level: _, inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        ParagraphBlock { inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        CodeBlock { code: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        TableBlock { header: _, alignments: _, rows: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        BlockquoteBlock { blocks: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        ThematicBreak => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+      }
+      { idx: acc.idx + 1, out: concat(acc.out, cont) }
+    }
+  }).out
+}
+
+fn md_unordered(items: List<MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  join(map(items, it => md_item(marker: sp.unordered_bullet, blocks: it.blocks, sp: sp, depth: depth)), "\n")
+}
+
+fn md_ordered(items: List<MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  fold(items, init: { n: 1, out: "" }, f: (acc, it) => {
+    let marker = concat(to_string(acc.n), sp.ordered_suffix)
+    let line = md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
+    {
+      n: acc.n + 1,
+      out: if acc.out == "" { line } else { concat(acc.out, concat("\n", line)) }
+    }
+  }).out
+}
+
+fn md_task_box(state: CheckboxState, sp: MarkdownSpellings) -> String {
+  match state {
+    Checked => sp.task_checked
+    Unchecked => sp.task_unchecked
+  }
+}
+
+fn md_tasklist(items: List<MarkdownTaskItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  join(map(items, it => {
+    let marker = concat(sp.unordered_bullet, md_task_box(state: it.state, sp: sp))
+    md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
+  }), "\n")
+}
+
+fn md_nested(block: MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String {
+  match block {
+    UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
+    OrderedListBlock { items } => md_ordered(items: items, sp: sp, depth: depth)
+    TaskListBlock { items } => md_tasklist(items: items, sp: sp, depth: depth)
+    _ => md_block(block: block, sp: sp)
+  }
+}
+
+fn md_table_cell(cell: MarkdownTableCell, sp: MarkdownSpellings) -> String {
+  md_render_inlines(inlines: cell.inlines, sp: sp)
+}
+
+fn md_table_row(row: MarkdownTableRow, sp: MarkdownSpellings) -> String {
+  fold(row.cells, init: sp.table_pipe, f: (acc, c) =>
+    join([acc, sp.table_cell_pad, md_table_cell(cell: c, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
+}
+
+fn md_align_cell(a: MarkdownAlignment, sp: MarkdownSpellings) -> String {
+  match a {
+    AlignNone => sp.table_align_none
+    AlignLeft => sp.table_align_left
+    AlignCenter => sp.table_align_center
+    AlignRight => sp.table_align_right
+  }
+}
+
+fn md_table_delim(alignments: List<MarkdownAlignment>, sp: MarkdownSpellings) -> String {
+  fold(alignments, init: sp.table_pipe, f: (acc, a) =>
+    join([acc, sp.table_cell_pad, md_align_cell(a: a, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
+}
+
+fn md_table(
+  header: MarkdownTableRow,
+  alignments: List<MarkdownAlignment>,
+  rows: List<MarkdownTableRow>,
+  sp: MarkdownSpellings
+) -> String {
+  let head = md_table_row(row: header, sp: sp)
+  let delim = md_table_delim(alignments: alignments, sp: sp)
+  let body = join(map(rows, r => md_table_row(row: r, sp: sp)), "\n")
+  if body == "" {
+    join([head, "\n", delim], "")
+  } else {
+    join([head, "\n", delim, "\n", body], "")
+  }
+}
+
+fn md_prefix_lines(text: String, prefix: String) -> String {
+  join(map(split(s: text, delimiter: "\n"), line => concat(prefix, line)), "\n")
+}
+
+fn md_blockquote(blocks: List<MarkdownBlock>, sp: MarkdownSpellings) -> String {
+  let inner = join(map(blocks, b => md_block(block: b, sp: sp)), "\n")
+  md_prefix_lines(text: inner, prefix: sp.blockquote_marker)
+}
+
+fn heading_level_to_int(level: HeadingLevel) -> Int {
+  match level {
+    H1 => 1
+    H2 => 2
+    H3 => 3
+    H4 => 4
+    H5 => 5
+    H6 => 6
+  }
+}
+
+fn md_code_block(code: String, sp: MarkdownSpellings) -> String {
+  if ends_with(s: code, suffix: "\n") {
+    join([sp.code_fence, "\n", code, sp.code_fence], "")
+  } else {
+    join([sp.code_fence, "\n", code, "\n", sp.code_fence], "")
+  }
+}
+
+fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
+  match block {
+    HeadingBlock { level, inlines } =>
+      join([
+        repeat_string(s: sp.heading_marker, n: heading_level_to_int(level: level)),
+        sp.heading_sep,
+        md_render_inlines(inlines: inlines, sp: sp)
+      ], "")
+    ParagraphBlock { inlines } =>
+      md_render_inlines(inlines: inlines, sp: sp)
+    UnorderedListBlock { items } =>
+      md_unordered(items: items, sp: sp, depth: 0)
+    OrderedListBlock { items } =>
+      md_ordered(items: items, sp: sp, depth: 0)
+    TaskListBlock { items } =>
+      md_tasklist(items: items, sp: sp, depth: 0)
+    CodeBlock { code } =>
+      md_code_block(code: code, sp: sp)
+    TableBlock { header, alignments, rows } =>
+      md_table(header: header, alignments: alignments, rows: rows, sp: sp)
+    BlockquoteBlock { blocks } =>
+      md_blockquote(blocks: blocks, sp: sp)
+    ThematicBreak =>
+      sp.thematic_break
+  }
+}
+
+fn serialize_markdown_source_with(doc: MarkdownDocument, sp: MarkdownSpellings) -> String {
+  concat(
+    join(map(doc.blocks, b => md_block(block: b, sp: sp)), sp.block_separator),
+    "\n"
+  )
+}
+
+fn serialize_markdown_source(doc: MarkdownDocument) -> String {
+  serialize_markdown_source_with(doc: doc, sp: commonmark_gfm_spellings)
+}
+
+type RepeatStrip { count: Int, rest: String }
+
+fn int_to_heading_level(n: Int) -> HeadingLevel {
+  if n == 1 { H1 }
+  else if n == 2 { H2 }
+  else if n == 3 { H3 }
+  else if n == 4 { H4 }
+  else if n == 5 { H5 }
+  else { H6 }
+}
+
+fn md_drop_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+fn md_strip_repeated(s: String, unit: String, n: Int) -> RepeatStrip {
+  if (unit != "") && starts_with(s: s, prefix: unit) {
+    md_strip_repeated(s: md_drop_prefix(s: s, prefix: unit), unit: unit, n: n + 1)
+  } else {
+    RepeatStrip { count: n, rest: s }
+  }
+}
+
+fn md_is_digit(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789", pattern: c)
+}
+
+fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
+  let c = char_at(s, 0)
+  if md_is_digit(c: c) {
+    md_strip_digits(s: substring(s: s, start: 1, end: s.length()), n: n + 1)
+  } else {
+    RepeatStrip { count: n, rest: s }
+  }
+}
+
+fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
+  let trimmed = if ends_with(s: src, suffix: "\n") {
+    substring(s: src, start: 0, end: src.length() - 1)
+  } else {
+    src
+  }
+  split(s: trimmed, delimiter: sp.block_separator)
+}
+
+fn md_is_heading(line: String, sp: MarkdownSpellings) -> Bool {
+  let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
+  (h.count >= 1) && (h.count <= 6) && starts_with(s: h.rest, prefix: sp.heading_sep)
+}
+
+fn md_is_task_line(line: String, sp: MarkdownSpellings) -> Bool {
+  if starts_with(s: line, prefix: sp.unordered_bullet) {
+    let after = md_drop_prefix(s: line, prefix: sp.unordered_bullet)
+    starts_with(s: after, prefix: sp.task_checked) || starts_with(s: after, prefix: sp.task_unchecked)
+  } else {
+    false
+  }
+}
+
+fn md_is_ordered_line(line: String, sp: MarkdownSpellings) -> Bool {
+  let d = md_strip_digits(s: line, n: 0)
+  (d.count >= 1) && starts_with(s: d.rest, prefix: sp.ordered_suffix)
+}
+
+fn md_parse_heading(line: String, sp: MarkdownSpellings) -> MarkdownBlock {
+  let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
+  HeadingBlock {
+    level: int_to_heading_level(n: h.count),
+    inlines: md_parse_inline_rest(text: md_drop_prefix(s: h.rest, prefix: sp.heading_sep), sp: sp),
+  }
+}
+
+fn md_unordered_item(line: String, sp: MarkdownSpellings) -> MarkdownListItem {
+  MarkdownListItem {
+    blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet), sp: sp) } ],
+  }
+}
+
+fn md_ordered_item(line: String, sp: MarkdownSpellings) -> MarkdownListItem {
+  let d = md_strip_digits(s: line, n: 0)
+  MarkdownListItem {
+    blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix), sp: sp) } ],
+  }
+}
+
+fn md_task_item(line: String, sp: MarkdownSpellings) -> MarkdownTaskItem {
+  let after = md_drop_prefix(s: line, prefix: sp.unordered_bullet)
+  if starts_with(s: after, prefix: sp.task_checked) {
+    MarkdownTaskItem {
+      state: Checked,
+      blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: after, prefix: sp.task_checked), sp: sp) } ],
+    }
+  } else {
+    MarkdownTaskItem {
+      state: Unchecked,
+      blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: after, prefix: sp.task_unchecked), sp: sp) } ],
+    }
+  }
+}
+
+fn md_parse_code(block_lines: List<String>) -> MarkdownBlock {
+  let inner = block_lines.skip(n: 1).take(n: block_lines.length() - 2)
+  CodeBlock {
+    code: if inner == [] { "" } else { concat(join(inner, "\n"), "\n") },
+  }
+}
+
+fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
+  let lines = split(s: block_src, delimiter: "\n")
+  if starts_with(s: block_src, prefix: sp.code_fence) {
+    md_parse_code(block_lines: lines)
+  } else {
+    match lines.first() {
+      Absent => ParagraphBlock { inlines: md_parse_inline_rest(text: block_src, sp: sp) }
+      Present { value: first } =>
+        if md_is_heading(line: first, sp: sp) {
+          md_parse_heading(line: first, sp: sp)
+        } else if md_is_task_line(line: first, sp: sp) {
+          TaskListBlock { items: map(lines, l => md_task_item(line: l, sp: sp)) }
+        } else if md_is_ordered_line(line: first, sp: sp) {
+          OrderedListBlock { items: map(lines, l => md_ordered_item(line: l, sp: sp)) }
+        } else if starts_with(s: first, prefix: sp.unordered_bullet) {
+          UnorderedListBlock { items: map(lines, l => md_unordered_item(line: l, sp: sp)) }
+        } else {
+          ParagraphBlock { inlines: md_parse_inline_rest(text: block_src, sp: sp) }
+        }
+    }
+  }
+}
+
+fn ingest_markdown_source_with(src: String, sp: MarkdownSpellings) -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: map(md_split_blocks(src: src, sp: sp), b => md_parse_block(block_src: b, sp: sp)),
+  }
+}
+
+fn ingest_markdown_source(src: String) -> MarkdownDocument {
+  ingest_markdown_source_with(src: src, sp: commonmark_gfm_spellings)
+}
+
+fn markdown_medium_lossless(doc: MarkdownDocument) -> Medium<MarkdownDocument> {
+  Medium { carried: doc, fidelity: Lossless }
+}
+
+fn markdown_url_validation(url: String) -> RejectedUrlScheme? {
+  match validate_href(url: url) {
+    SafeHref { url: _ } => Absent
+    RejectedHref { reason: r } => Present { value: r }
+  }
+}
+
+fn find_first_rejected_url_in_inlines(inlines: List<MarkdownInline>) -> RejectedUrlScheme? {
+  fold(inlines,
+    init: Absent,
+    f: (acc, inline) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_inline(inline: inline)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlScheme? {
+  match inline {
+    TextInline { text: _ } => Absent
+    CodeInline { text: _ } => Absent
+    ImageInline { alt: _, url } => markdown_url_validation(url: url)
+    LinkInline { inlines, url } =>
+      match markdown_url_validation(url: url) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_inlines(inlines: inlines)
+      }
+    EmphasisInline { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    StrongInline { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+  }
+}
+
+fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrlScheme? {
+  fold(blocks,
+    init: Absent,
+    f: (acc, block) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_block(block: block)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_cells(cells: List<MarkdownTableCell>) -> RejectedUrlScheme? {
+  fold(cells,
+    init: Absent,
+    f: (acc, cell) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_inlines(inlines: cell.inlines)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlScheme? {
+  fold(rows,
+    init: Absent,
+    f: (acc, row) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_cells(cells: row.cells)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
+  match block {
+    CodeBlock { code: _ } => Absent
+    HeadingBlock { level: _, inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    ParagraphBlock { inlines } =>
+      find_first_rejected_url_in_inlines(inlines: inlines)
+    UnorderedListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+    OrderedListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+    TaskListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+    TableBlock { header, alignments: _, rows } =>
+      match find_first_rejected_url_in_cells(cells: header.cells) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_rows(rows: rows)
+      }
+    BlockquoteBlock { blocks } =>
+      find_first_rejected_url_in_blocks(blocks: blocks)
+    ThematicBreak => Absent
+  }
+}
+
+fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlScheme? {
+  find_first_rejected_url_in_blocks(blocks: doc.blocks)
+}
+
+fn serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
+  serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
+}
+
+// THE URL PASS, THEN THE SERIALIZER. MarkdownDocument is a closed set of typed blocks and no block carries
+// a MarkupComment or a Document node, so today the comment checks have nothing to find here -- but the
+// serializer is the same one and refuses the same way, so the day MarkdownDocument gains a raw-HTML block
+// (the trigger for a comment reaching this route) the guard is already in place rather than a line someone
+// has to remember to add. The separate pre-flight walk this used to run is gone: it checked rules the
+// emitter now checks, from the same medium rows, and a route that skipped it was the defect.
+fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
+  match find_first_rejected_url_in_document(doc: doc) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
+    Absent => serialize_markdown_document(doc: doc)
+  }
+}
+
+type InlineSplit {
+  before: String
+  inner: String
+  after: String
+}
+
+type InlineSplitResult
+  = FoundSplit { parts: InlineSplit }
+  | NoSplit
+
+fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
+  let parts = split(s: text, delimiter: delim)
+  if parts.length() >= 3 {
+    let tail = parts.skip(n: 1)
+    let after = join(tail.skip(n: 1), delim)
+    match parts.first() {
+      Present { value: before } =>
+        match tail.first() {
+          Present { value: inner } =>
+            FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
+          Absent => NoSplit
+        }
+      Absent => NoSplit
+    }
+  } else {
+    NoSplit
+  }
+}
+
+fn md_text_inline_if_nonempty(s: String) -> List<MarkdownInline> {
+  if s == "" { [] } else { [ TextInline { text: s } ] }
+}
+
+fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<MarkdownInline> {
+  if text == "" {
+    []
+  } else {
+    match md_split_on_delim_pair(text: text, delim: sp.strong_delim) {
+      FoundSplit { parts: p } =>
+        concat(
+          md_parse_inline_rest(text: p.before, sp: sp),
+          concat(
+            [ StrongInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+            md_parse_inline_rest(text: p.after, sp: sp)
+          )
+        )
+      NoSplit =>
+        match md_split_on_delim_pair(text: text, delim: sp.code_span_delim) {
+          FoundSplit { parts: p } =>
+            concat(
+              md_parse_inline_rest(text: p.before, sp: sp),
+              concat(
+                [ CodeInline { text: p.inner } ],
+                md_parse_inline_rest(text: p.after, sp: sp)
+              )
+            )
+          NoSplit =>
+            match md_split_on_delim_pair(text: text, delim: sp.emphasis_delim) {
+              FoundSplit { parts: p } =>
+                concat(
+                  md_parse_inline_rest(text: p.before, sp: sp),
+                  concat(
+                    [ EmphasisInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+                    md_parse_inline_rest(text: p.after, sp: sp)
+                  )
+                )
+              NoSplit =>
+                md_parse_inline_link(text: text, sp: sp)
+            }
+        }
+    }
+  }
+}
+
+fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInline> {
+  let open_parts = split(s: text, delimiter: sp.link_text_open)
+  match open_parts.first() {
+    Absent => [ TextInline { text: text } ]
+    Present { value: before_bracket } =>
+      if open_parts.length() < 2 {
+        [ TextInline { text: text } ]
+      } else {
+        let after_bracket = join(open_parts.skip(n: 1), sp.link_text_open)
+        let close_open_pat = join([sp.link_text_close, sp.link_url_open], "")
+        let inner_parts = split(s: after_bracket, delimiter: close_open_pat)
+        match inner_parts.first() {
+          Absent => [ TextInline { text: text } ]
+          Present { value: label_text } =>
+            if inner_parts.length() < 2 {
+              [ TextInline { text: text } ]
+            } else {
+              let url_and_rest = join(inner_parts.skip(n: 1), close_open_pat)
+              let url_parts = split(s: url_and_rest, delimiter: sp.link_url_close)
+              match url_parts.first() {
+                Absent => [ TextInline { text: text } ]
+                Present { value: url } =>
+                  if url_parts.length() < 2 {
+                    [ TextInline { text: text } ]
+                  } else {
+                    let after_link = join(url_parts.skip(n: 1), sp.link_url_close)
+                    concat(
+                      md_text_inline_if_nonempty(s: before_bracket),
+                      concat(
+                        [ LinkInline {
+                            inlines: md_parse_inline_rest(text: label_text, sp: sp),
+                            url: url,
+                          }
+                        ],
+                        md_parse_inline_rest(text: after_link, sp: sp)
+                      )
+                    )
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn parse_inline_markdown_minimal(text: String) -> List<MarkdownInline> {
+  md_parse_inline_rest(text: text, sp: commonmark_gfm_spellings)
+}
+
+data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.markdown",
+    decl_name: "parse_inline_markdown_minimal",
+    field: WholeDeclaration
+  }
+}

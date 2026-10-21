@@ -1,0 +1,298 @@
+module v2.workflow.floor_discovery_producer
+
+import gunbc.source_root_read { source_root_candidate_is_file }
+
+import v2.compiler.discovery_enumeration {
+  OwnedBoolWitnessClaimInit,
+  OwnedDataDeclInitializer,
+  OwnedDataDeclRecord,
+  OwnedNodeCorpusInit,
+  OwnedOtherInit
+}
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
+import v2.workflow.floor_marked_fact {
+  FloorMarkedFact,
+  FloorMarkedFactDuplicated,
+  FloorMarkedFactSupplied,
+  floor_marked_fact_duplicated_reason,
+  floor_marked_fact_index,
+  floor_marked_fact_missing_reason
+}
+import v2.workflow.floor_discovery_source_authority {
+  EntryLiveTreeDispositionRefused,
+  EntryLiveTreeResolved,
+  FloorDiscoveryProducerResult,
+  FloorDiscoveryWalkState,
+  discover_floor_rows_for_source,
+  floor_discovery_append_row,
+  floor_discovery_finalize,
+  floor_discovery_fold_source,
+  floor_discovery_merge_walk_states,
+  floor_discovery_path_excluded,
+  floor_discovery_record_disposition_refusal,
+  floor_discovery_record_walk_failure,
+  floor_discovery_resolve_entry_live_tree,
+  floor_discovery_walk_state_zero
+}
+import v2.workflow.witness_admission { witness_row_excluded_from_discovery }
+import std.algebra { map_lookup }
+import std.optional { Absent, Present }
+import std.types { String, List, Map }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// Source ingress shared with required-floor preparation. This is the full ingress inventory,
+// before witness policy or closure selection; consumers must retain per-source dispositions.
+type FloorDiscoverySource {
+  module_path: String
+  repo_path: String
+  content: String
+}
+
+type FloorDiscoverySourceInventory
+  = FloorDiscoverySourcesObserved { sources: List<FloorDiscoverySource> }
+  | FloorDiscoverySourcesRefused { reason: String }
+
+fn floor_discovery_source_inventory_live(pool_roots: List<String>) -> FloorDiscoverySourceInventory {
+  floor_discovery_source_inventory(pool_roots: pool_roots)
+}
+
+// THE CORPUS WALK AND ITS ROW-ADMISSION POLICY. This module is discovery's EFFECTFUL consumer:
+// it walks the declared roots with Filesystem.List/Read, folds the per-file authority
+// (v2.workflow.floor_discovery_source_authority) over every non-excluded `.dag` file, applies the
+// discovery-corpus mode's row admission, and finalizes. The per-file authority itself carries no
+// effect and no policy, which is what lets the required floor — and the emitted native compiler's
+// own universe derivation — compose it without either.
+//
+// WHAT IS A TEST IS NOT DECIDED HERE. The walk learns which declarations are tests from the marker
+// fact it is SUPPLIED for each file (FloorMarkedSource), and it never infers a test, a directory or
+// a witness from a name: a `.dag` file is a module because of its extension, a path is a directory
+// because the host's listing succeeded, and a declaration is a test because it carries the authored
+// `test` marker.
+
+fn floor_discovery_process_dag_file(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  marked_index: Map<String, FloorMarkedFact>,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  if floor_discovery_path_excluded(path: repo_path, exclude_substrings: exclude_substrings) {
+    state
+  } else {
+    match map_lookup(m: marked_index, key: repo_path) {
+      Absent => floor_discovery_record_disposition_refusal(
+        state: state,
+        reason: floor_marked_fact_missing_reason(repo_path: repo_path)
+      )
+      Present { value: fact } =>
+        match fact {
+          FloorMarkedFactDuplicated => floor_discovery_record_disposition_refusal(
+            state: state,
+            reason: floor_marked_fact_duplicated_reason(repo_path: repo_path)
+          )
+          FloorMarkedFactSupplied { marked: marked } => {
+            let read_out = Filesystem.Read(path: repo_path)
+            if !read_out.success {
+              floor_discovery_record_walk_failure(state: state, path: repo_path)
+            } else {
+              floor_discovery_fold_source(
+                state: state,
+                repo_path: repo_path,
+                marked: marked,
+                content: read_out.content
+              )
+            }
+          }
+        }
+    }
+  }
+}
+
+// ROW ADMISSION IS POLICY, NOT DISCOVERY (DESIGN section 3: interface, realization and policy
+// are three facts). witness_row_excluded_from_discovery quarantines known-red probes, the
+// falsifier long lane and the ci_layer_roots exclusion frontier -- the per-PR discovery-corpus
+// mode's admission. It is applied HERE, after the walk and before the owned-data merge, exactly
+// where it applied before the per-file seam was cut, so claim_batch's roster is unchanged. The
+// required floor deliberately does not inherit it: its admission is the static gate roster and
+// floor_prepared_subject_exclusions, and the known-red rows themselves record that the floor's
+// execution of them "is the row's real, present protection" (gunbc.explicit_witness_admission).
+// Folding this policy into the per-file authority would have dropped those witnesses from the
+// floor silently.
+data floor_discovery_row_admission_policy_note: String = "Row admission (witness_row_excluded_from_discovery) is the discovery-corpus mode's policy over the per-file authority's rows, applied by discover_floor_corpus_rows_from_host_facts only. The required floor composes the same per-file authority under its own admission (required_gate_prefixes + floor_prepared_subject_exclusions) via discover_floor_rows_for_source / floor_discovery_finalize_source_outcomes."
+
+fn floor_discovery_apply_row_admission(state: FloorDiscoveryWalkState) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: fold(
+      state.rows,
+      init: [],
+      f: fn(acc, row) {
+        if witness_row_excluded_from_discovery(entry: row.entry, function: row.function) {
+          acc
+        } else {
+          concat(acc, [row])
+        }
+      }
+    ),
+    walk_failures: state.walk_failures,
+    walk_failure_path: state.walk_failure_path,
+    wire_contract_misplaced_paths: state.wire_contract_misplaced_paths,
+    disposition_refusal: state.disposition_refusal
+  }
+}
+
+// THE WALK KNOWS A DIRECTORY BY WHAT THE HOST SAID, NOT BY WHAT IT IS CALLED. A `.dag` path is a
+// module file; every other path is listed, and a failed listing is a file only when the host's own
+// failure kind says NotADirectory (gunbc.source_root_read source_root_candidate_is_file, the one
+// authority for that admission). Any other failure -- a vanished entry, a permission refusal, a
+// broken link -- is a located walk failure and the finalize refuses, so a failed listing is never
+// read as an empty directory and the corpus cannot shrink silently. A root is always a directory.
+fn floor_discovery_walk_path(
+  state: FloorDiscoveryWalkState,
+  path: String,
+  is_root: Bool,
+  marked_index: Map<String, FloorMarkedFact>,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  if !is_root && ends_with(s: path, suffix: ".dag") {
+    floor_discovery_process_dag_file(
+      state: state,
+      repo_path: path,
+      marked_index: marked_index,
+      exclude_substrings: exclude_substrings
+    )
+  } else {
+    let listed = Filesystem.List(path: path)
+    if listed.success {
+      if listed.entries == "" {
+        state
+      } else {
+        fold(
+          split(s: listed.entries, delimiter: "\n"),
+          init: state,
+          f: fn(acc, name) {
+            if name == "" {
+              acc
+            } else {
+              floor_discovery_walk_path(
+                state: acc,
+                path: concat(path, "/", name),
+                is_root: false,
+                marked_index: marked_index,
+                exclude_substrings: exclude_substrings
+              )
+            }
+          }
+        )
+      }
+    } else if source_root_candidate_is_file(root: is_root, error_kind: listed.error_kind) {
+      state
+    } else {
+      floor_discovery_record_walk_failure(state: state, path: path)
+    }
+  }
+}
+
+fn floor_discovery_walk_dir(
+  state: FloorDiscoveryWalkState,
+  dir_path: String,
+  marked_sources: List<FloorMarkedSource>,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  floor_discovery_walk_path(
+    state: state,
+    path: dir_path,
+    is_root: true,
+    marked_index: floor_marked_fact_index(marked_sources: marked_sources),
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// An owned-data row's label is its declaration name, exactly as a marked test's label is its
+// function: a label names the row and decides nothing (no consumer reads it for a decision), so no
+// prefix of the name is stripped to make it.
+fn floor_discovery_merge_owned_data_record(
+  state: FloorDiscoveryWalkState,
+  rec: OwnedDataDeclRecord
+) -> FloorDiscoveryWalkState {
+  match rec.initializer {
+    OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
+      if (entry == "") || (function == "") {
+        floor_discovery_record_disposition_refusal(
+          state: state,
+          reason: concat(
+            "owned data '",
+            rec.decl_name,
+            "' has malformed BoolWitnessClaim witness (missing entry and/or function)"
+          )
+        )
+      } else {
+        let read_out = Filesystem.Read(path: entry)
+        if !read_out.success {
+          floor_discovery_record_walk_failure(state: state, path: entry)
+        } else {
+          match floor_discovery_resolve_entry_live_tree(
+            entry_path: entry,
+            content: read_out.content
+          ) {
+            EntryLiveTreeDispositionRefused { reason: reason } =>
+              floor_discovery_record_disposition_refusal(state: state, reason: reason)
+            EntryLiveTreeResolved { disposition: reads_live } =>
+              floor_discovery_append_row(
+                state: state,
+                row: FloorDiscoveryRow {
+                  label: rec.decl_name,
+                  entry: entry,
+                  function: function,
+                  reads_live_tree: reads_live
+                }
+              )
+          }
+        }
+      }
+    OwnedNodeCorpusInit => state
+    OwnedOtherInit { resolved: _ } => state
+  }
+}
+
+fn discover_floor_corpus_rows_from_host_facts(
+  source_roots: List<String>,
+  exclude_substrings: List<String>,
+  owned_data_records: List<OwnedDataDeclRecord>,
+  marked_sources: List<FloorMarkedSource>
+) -> FloorDiscoveryProducerResult {
+  let marked_index = floor_marked_fact_index(marked_sources: marked_sources)
+  floor_discovery_finalize(
+    state: fold(
+      owned_data_records,
+      init: floor_discovery_apply_row_admission(
+        state: fold(
+          source_roots,
+          init: floor_discovery_walk_state_zero(),
+          f: fn(acc, root) {
+            floor_discovery_walk_path(
+              state: acc,
+              path: root,
+              is_root: true,
+              marked_index: marked_index,
+              exclude_substrings: exclude_substrings
+            )
+          }
+        )
+      ),
+      f: fn(acc, rec) { floor_discovery_merge_owned_data_record(state: acc, rec: rec) }
+    )
+  )
+}
+
+// The per-PR discovery roster is shrunk by TWO independent facts, checked at their own grains. The
+// exclude_substrings parameter carries PATH POLICY (gunbc.ci.ci_layer_roots
+// witness_exclusion_frontier) and is applied to whole files while walking, because a directory home
+// is a statement about a place. explicit_witness_admission_covers carries EXACT ADMISSION
+// (gunbc.explicit_witness_admission) and is applied per test declaration as rows are appended,
+// because an admission is a statement about one witness and must not reach its siblings. Reading
+// the admission authority here rather than accepting it as a parameter is deliberate: it is the
+// same single authority the falsifier roster projects, so a quarantined witness cannot be scheduled
+// and discovered, or excluded and unscheduled, by two lists disagreeing. A green sibling of an
+// admitted witness stays in this roster and runs per-PR — under the previous file-grain exclusion
+// it was swept out with its neighbour, which is the defect this closes.
+
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), the per-file marker facts the host supplies (marked_sources: the declarations carrying the authored `test` marker, read from the canonical parse), and witness_exclusion_substrings. A walked `.dag` file with no supplied marker fact refuses, and so does a path named by two facts; an absent fact is never an empty list of tests. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. A path is a directory when its listing succeeds and a file when the host's failure kind says NotADirectory; any other listing failure is a walk failure."

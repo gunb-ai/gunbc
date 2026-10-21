@@ -1,0 +1,22 @@
+module v2.std.report
+
+import v2.std.diagnostic { Locus }
+import v2.std.node { Symbol }
+
+type ReportReason
+  = SynthesisGapDecisionTree
+  | SynthesisGapInformationTheoretic
+
+type Report {
+  reason: ReportReason
+  at: Locus
+}
+
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+  discriminant(v: reason)
+}
+
+type ReportSuggestion {
+  report: Report
+  detail: Symbol
+}

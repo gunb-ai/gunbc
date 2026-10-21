@@ -1,0 +1,187 @@
+module extdeps.cloud.packet_ai
+
+import std.resources { Network }
+import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.cloud.packet_ai_contracts { packet_ai_allocation_wire_contract }
+
+// PACKET.AI (operated by hosted.ai), THE GPU RENTAL INTERFACE: what its REST API returns about
+// launchable GPU capacity. Read 2026-10-11 from the vendor's own OpenAPI document at
+// dash.packet.ai/api/v1/openapi (title "Packet.ai API", version 1.0.0) and its pricing page. This
+// module owns the vendor's SHAPE and nothing about how this repository uses the vendor: which
+// workloads go here, which pools are acceptable and what a pool is worth to us are supplier policy
+// in product.supplier.packet_ai (DESIGN §3, interface / realization / policy are three facts).
+//
+// THREE FACTS ABOUT THE UPSTREAM THAT A CONSUMER MUST NOT LOSE, each read from the document above:
+//
+//   1. POST /api/v1/instances is documented as "Not available via the API yet -- every request
+//      currently returns 501 NOT_IMPLEMENTED after validation. Launch instances from the console."
+//      So this interface can OBSERVE launchable capacity and list instances, and cannot launch one.
+//      Modeling a Launch operation here would describe an operation the vendor refuses; it is absent
+//      on purpose, and returns the day the document stops saying so.
+//   2. The create body names a pool (pool_id) and a region and carries NO GPU count. How many GPUs an
+//      instance receives is a property of the pool the vendor sells, not a request parameter, so a
+//      two-GPU deployment is not something this interface lets a caller ask for.
+//   3. The pricing page sells the RTX 6000 Pro 96GB in a "Dynamic" tier, defined there as shared
+//      infrastructure whose scheduler co-locates workloads ("latency stays within 2-5% of
+//      dedicated"), distinct from a "Dedicated" tier that gives the whole card. An instance's gpu
+//      object carries a vgpu_count. Whether a pool is a whole card is therefore a fact the consuming
+//      layer must establish before it treats a pool as a seat on a card.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "dash.packet.ai/api/v1/openapi" }
+}
+
+data packet_ai_pricing_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "packet.ai/pricing" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.packet_ai",
+      decl_name: "packet_ai_api_base",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [packet_ai_pricing_page]
+}
+
+data packet_ai_api_base: NonEmptyStr = "https://dash.packet.ai/api/v1"
+
+// Every response is {"data": ..., "meta": {requestId, timestamp}}; an error is
+// {"error": {"code", "message"}, "meta": ...} with stable UPPER_SNAKE codes (ILLEGAL_TRANSITION,
+// NOT_IMPLEMENTED, ...). Keys are `pk_live_` secrets sent as X-API-Key or as a Bearer token.
+type PacketAiApiError {
+  code: String
+  message: String
+}
+
+type PacketAiRegion {
+  id: Int?
+  name: String
+  city: String
+  country: String
+}
+
+// region IS OPTIONAL UPSTREAM: the OpenAPI describes it as "Where this pool physically sits ... omitted when
+// the platform reports none for it", so an absent region is an unread location, never a default.
+// A POOL IS THE UNIT A LAUNCH NAMES (pool_id). the pool's
+// Float price_per_hour is not modeled (nothing reads it); the integer-cents figure on the product row below
+// is the one a price is read from.
+type PacketAiPool {
+  id: String
+  name: String
+  gpu_model: String
+  available_gpus: Int
+  region: PacketAiRegion?
+}
+
+// A PRODUCT GROUPS POOLS OF ONE GPU MODEL: poolIds are the pools that sell it, vramGb the memory per
+// GPU (null for a product the vendor does not size), and pricePerHourCents an integer, so a
+// consumer needs no float rounding to turn it into money.
+type PacketAiProduct {
+  id: String
+  name: String
+  featured: Bool
+  poolIds: List<Int>
+  pricePerHourCents: Int
+  totalAvailableGpus: Int
+  vramGb: Int?
+  regions: List<PacketAiRegion>
+}
+
+// THE STOREFRONT ROW (GET /api/products, NOT launch-options) IS WHERE THE VENDOR STATES TENANCY: its
+// `allocation` is "dedicated or dynamic. Read off the product's pools where the platform reports them:
+// dynamic when every pool shares its GPUs, dedicated when none does; otherwise the stored value."
+// launch-options products carry no allocation, so a consumer joins the two by product name. gpuCount
+// is the storefront's per-product GPU count.
+//
+// THE ALLOCATION IS A CLOSED SET HERE ON THE DOCUMENT'S OWN WORDS ("dedicated or dynamic"), though the
+// OpenAPI schema types it a bare string and its "otherwise the stored value" leaves room for words the
+// document does not name. The wire spelling is declared once, as the CoproductWireContract row in
+// extdeps.cloud.packet_ai_contracts (SnakeCase: "dedicated", "dynamic"), which the type-directed REST
+// decode of Storefront.ListProducts reads. A word that names no arm, a case variant included, REFUSES the
+// response body at the located field; it is never defaulted to an arm. `allocation: null` or absent is
+// none = unread. Case-folding would be this module inventing a vendor rule.
+type PacketAiAllocation
+  = Dedicated
+  | Dynamic
+
+type PacketAiStorefrontProduct {
+  id: String
+  name: String
+  allocation: PacketAiAllocation?
+  gpuCount: Int
+}
+
+service packet_ai.LaunchOptions {
+  config {
+    endpoint: packet_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Get {
+    requires Network
+    input {
+      api_key: Secret
+    }
+    output {
+      pools: List<PacketAiPool> from "data/pools"
+      products: List<PacketAiProduct> from "data/products"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/launch-options"
+    }
+    response {
+      200 => PacketAiLaunchOptions
+      401 => PacketAiApiError
+      429 => PacketAiApiError
+      5xx => PacketAiApiError
+    }
+  }
+}
+
+type PacketAiLaunchOptions {
+  pools: List<PacketAiPool>
+  products: List<PacketAiProduct>
+}
+
+// The public storefront catalogue (GET /api/products on the vendor's server root, https://dash.packet.ai
+// per the OpenAPI `servers`, so NOT under the /api/v1 base the launch-options service uses). Response
+// envelope: {"data": [product, ...]}. No auth is documented for it.
+data packet_ai_storefront_base: NonEmptyStr = "https://dash.packet.ai/api"
+
+service packet_ai.Storefront {
+  config {
+    endpoint: packet_ai_storefront_base
+  }
+
+  operation ListProducts {
+    requires Network
+    input {
+    }
+    output {
+      products: List<PacketAiStorefrontProduct> from "data"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/products"
+    }
+    response {
+      200 => PacketAiStorefrontProducts
+      429 => PacketAiApiError
+      5xx => PacketAiApiError
+    }
+  }
+}
+
+type PacketAiStorefrontProducts {
+  products: List<PacketAiStorefrontProduct>
+}

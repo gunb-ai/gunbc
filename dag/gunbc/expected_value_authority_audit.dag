@@ -1,0 +1,188 @@
+module gunbc.expected_value_authority_audit
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import gunbc.semantic_conformance { PrimarySemanticAuthority }
+
+// THE PARTITION THIS CARRIER EXISTS TO PUBLISH: for every enrolled v2 test.claim, does its expected
+// side come from something OTHER than the implementation under test, or is it a value the same
+// evaluator produced from another expression? The second kind is green whenever the evaluator is
+// self-consistent, including when it is consistently wrong, so it measures agreement rather than
+// conformance. It is not a defect in itself -- a relation between two production calls is a
+// perfectly good authority when the RELATION is the authored statement -- and that is exactly why
+// the partition has to be published by identity rather than summarized: the two look identical at
+// the call site and differ only in what is being claimed.
+
+// WHY THIS IS NOT DERIVED FROM v2.lens.vacuity, RECORDED BEFORE THE FIRST ROW SO IT IS NOT
+// DISCOVERED LATER AS A SHORTCUT. That lens owns TestClaimOperandProvenance and VacuityEvidence and
+// it is the nearest existing authority, so re-coining an operand-provenance axis here would be the
+// duplicate DESIGN section 3 forbids -- but consuming its VERDICT as this partition's answer would
+// be the opposite error and the worse one. VacuityEvidence answers "are the two operands the same
+// thing arriving twice"; this partition answers "what statement defines the correct value". Those
+// are neighbouring propositions, and the classifier makes the gap visible: its EmitVsEval arm
+// returns ProvenIndependent UNCONDITIONALLY, on the stated ground that emit and eval are distinct
+// execution paths. For vacuity that is defensible -- the operands genuinely did not arrive from one
+// place. For semantic authority it is precisely the sentence this lane forbids, because two
+// execution paths agreeing is two implementations agreeing, and that is not a definition. Reading
+// one verdict as the other is the authority_substitution class in gunbc.recurring_failure_mode: both
+// halves check out and only the arrow between them is invented. So there is no constructor below by
+// which a vacuity verdict can inhabit an audit row's basis, and no function here converts one.
+
+// The basis on which a row was classified. A row is only as good as the relation that produced it,
+// so the basis is carried rather than assumed, and the arms are the two that can actually be
+// computed plus the honest absence. There is deliberately no DerivedFromVacuityVerdict arm.
+type AuditDerivationBasis
+  = DerivedFromReferenceClosure {
+      relation_producer: DeclarationRef
+    }
+  | DerivedFromAuthoredAuthorityBinding {
+      binding_producer: DeclarationRef
+    }
+  | BasisUnavailable { reason: NonEmptyStr }
+
+// INDEPENDENCE IS RELATIVE TO A NAMED IMPLEMENTATION CLOSURE, not an absolute property of a value.
+// A literal is independent of the evaluator; a call to a helper that is itself part of the subject's
+// closure is not; a call to a DIFFERENT production authority is independent of THIS subject and
+// dependent on that one. Carrying the closure the judgment was made against is what keeps the row
+// re-interrogable rather than a remembered opinion.
+type ExpectedValueOrigin
+  = IndependentOfImplementation {
+      authority: PrimarySemanticAuthority,
+      judged_against_closure: DeclarationRef
+    }
+  | DerivedThroughEvaluatorUnderTest {
+      deriving_producer: DeclarationRef,
+      judged_against_closure: DeclarationRef
+    }
+  | OriginUnmeasured { reason: NonEmptyStr }
+
+type AuditRow {
+  claim: DeclarationRef
+  origin: ExpectedValueOrigin
+  basis: AuditDerivationBasis
+}
+
+// THE DENOMINATOR IS STRUCTURAL AND THE TWO ARMS ANSWER OPPOSITELY AT ZERO ROWS, the same move
+// gunbc.semantic_conformance CoverageStanding makes and for the same reason: a partition published
+// as a bare list is indistinguishable from a partition nobody ran, and a consumer counting rows gets
+// the same zero from both. PartitionMeasured additionally carries the producer, the revision and the
+// command, so every number in it is re-derivable rather than transcribed.
+type AuditPartition
+  = PartitionUnmeasured { subject_universe: NonEmptyStr, blocked_on: NonEmptyStr }
+  | PartitionMeasured {
+      rows: List<AuditRow>,
+      subject_universe: NonEmptyStr,
+      measured_revision: CommitSha,
+      producer: DeclarationRef,
+      command: NonEmptyStr
+    }
+
+fn partition_is_measured(p: AuditPartition) -> Bool {
+  match p {
+    PartitionUnmeasured { subject_universe: _, blocked_on: _ } => false
+    PartitionMeasured {
+      rows: _,
+      subject_universe: _,
+      measured_revision: _,
+      producer: _,
+      command: _
+    } => true
+  }
+}
+
+fn origin_is_independent(o: ExpectedValueOrigin) -> Bool {
+  match o {
+    IndependentOfImplementation { authority: _, judged_against_closure: _ } => true
+    DerivedThroughEvaluatorUnderTest { deriving_producer: _, judged_against_closure: _ } => false
+    OriginUnmeasured { reason: _ } => false
+  }
+}
+
+fn origin_is_unmeasured(o: ExpectedValueOrigin) -> Bool {
+  match o {
+    IndependentOfImplementation { authority: _, judged_against_closure: _ } => false
+    DerivedThroughEvaluatorUnderTest { deriving_producer: _, judged_against_closure: _ } => false
+    OriginUnmeasured { reason: _ } => true
+  }
+}
+
+// A row whose basis is unavailable cannot support ANY origin claim, so a partition carrying one is
+// refused rather than counted with the unavailable rows quietly filed under unmeasured. The two are
+// different facts: "we measured this and could not tell" is a measurement, "we had no relation to
+// measure with" is not, and collapsing them would let an absent instrument read as a surveyed gap.
+type AuditRefusalCause
+  = RowClaimsOriginWithoutBasis { claim: DeclarationRef }
+  | RowDuplicated { claim: DeclarationRef }
+  | MeasuredPartitionCarriesNoRows
+
+fn basis_is_available(b: AuditDerivationBasis) -> Bool {
+  match b {
+    DerivedFromReferenceClosure { relation_producer: _ } => true
+    DerivedFromAuthoredAuthorityBinding { binding_producer: _ } => true
+    BasisUnavailable { reason: _ } => false
+  }
+}
+
+fn claim_occurrence_count(rows: List<AuditRow>, claim: DeclarationRef) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) {
+    if declaration_ref_eq(a: r.claim, b: claim) { acc + 1 } else { acc }
+  })
+}
+
+// EVERY ARM OF AuditRefusalCause IS PRODUCED HERE, because an arm no producer can reach is a
+// decoration that will later be cited as coverage. The duplicate arm is reachable because rows are
+// keyed by claim identity and nothing prevents two rows naming one claim; the empty-measured arm is
+// reachable because PartitionMeasured is constructible with an empty row list, which is a claim of
+// completeness over a universe the producer never enumerated.
+fn audit_row_refusal_causes(rows: List<AuditRow>) -> List<AuditRefusalCause> {
+  fold(rows, init: [], f: fn(acc, r) {
+    if !basis_is_available(b: r.basis) && !origin_is_unmeasured(o: r.origin) {
+      concat(acc, [RowClaimsOriginWithoutBasis { claim: r.claim }])
+    } else {
+      if claim_occurrence_count(rows: rows, claim: r.claim) > 1 {
+        concat(acc, [RowDuplicated { claim: r.claim }])
+      } else {
+        acc
+      }
+    }
+  })
+}
+
+fn audit_partition_refusal_causes(p: AuditPartition) -> List<AuditRefusalCause> {
+  match p {
+    PartitionUnmeasured { subject_universe: _, blocked_on: _ } => []
+    PartitionMeasured {
+      rows: rows,
+      subject_universe: _,
+      measured_revision: _,
+      producer: _,
+      command: _
+    } =>
+      if list_length(items: rows) == 0 {
+        [MeasuredPartitionCarriesNoRows]
+      } else {
+        audit_row_refusal_causes(rows: rows)
+      }
+  }
+}
+
+fn count_rows_with_origin_independent(rows: List<AuditRow>, want_independent: Bool) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) {
+    if origin_is_independent(o: r.origin) == want_independent { acc + 1 } else { acc }
+  })
+}
+
+// THE MEASUREMENT HAS NOT BEEN PERFORMED AND THIS ROW SAYS SO IN THE ONLY WAY THAT STAYS TRUE. The
+// lane that owns this carrier is under a model-work-only gate: the reference-closure relation that
+// decides independence is a corpus-wide read, and running it now would produce a number ahead of the
+// gate that authorizes it. Publishing PartitionUnmeasured is therefore the honest state rather than
+// a placeholder -- and it is not the same as publishing an empty measured partition, which is the
+// distinction the type above exists to make. BLOCKED_ON NAMES THE CAPABILITY, not an artifact: the
+// audit becomes computable when a reference-closure relation can answer, for a named test.claim's
+// expected-side expression, whether every producer it reaches lies inside the subject's own
+// implementation closure. v2.lens.reference_deps is the nearest existing producer of that relation
+// and is named as the starting point rather than as the answer.
+data v2_test_claim_expected_value_partition: AuditPartition = PartitionUnmeasured {
+  subject_universe: "every enrolled v2 test.claim under src/v2/test/claim" as NonEmptyStr,
+  blocked_on: "a reference-closure relation able to decide, for a named test.claim's expected-side expression, whether every producer it reaches lies inside the subject's own implementation closure; v2.lens.reference_deps is the nearest existing producer of that relation. The lane is additionally under a model-work-only gate that forbids corpus-wide measurement until released." as NonEmptyStr,
+}

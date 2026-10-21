@@ -1,0 +1,88 @@
+module gunbc.rung_drop.shared_index_residency_asserted_after_the_run
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// THE DECLARED RUNG DROP for where one-pool-per-slot is enforced in the thread's shared index memo
+// (entry_resolve PROCESS_RESOLVE_INDEX), landed with gunbc#12821 on review 73367 and ruled by the
+// floor manager (option A): the correctness fix lands now because main's regen round panicked, and
+// the enforcement point is declared lowered rather than left implied.
+//
+// WHAT FELL. gunbc#12765 refused at the build site (SharedIndexRebuiltAfterEviction): an index was
+// never rebuilt for roots the slot had already held. That was over-strict for a legitimate shape --
+// the regen round demanded two pools on one thread and panicked. gunbc#12821 keys each slot by
+// roots so distinct pools coexist, moves the one-shot regen reader to its own index, and asserts at
+// most one resident pool per slot (shared_index_residency_control) at the END of the floor and of a
+// regen round. So a second pool is caught after it was built and paid for, not before.
+//
+// WHY IT CANNOT BE REFUSED AT BUILD YET. Refusing a second pool where it is built is correct only if
+// no caller legitimately demands one; the population below is every production caller of the shared
+// memo, and they pass root sets the change did not audit. Refusing at build without that audit is
+// the exact mistake gunbc#12765 made.
+//
+// THE TRIGGER NAMES THE CAPABILITY: every caller below has its root set audited -- it passes the
+// run's own roots, or owns an index for a pool no one else reads -- and the one-pool-per-slot refusal
+// is enforced at the build site in try_process_shared_index_for_pool. This row retires in that change.
+data shared_index_residency_asserted_after_the_run: RungDrop = RungDrop {
+  identity: "shared_index_residency_asserted_after_the_run" as NonEmptyStr,
+
+  subject: "one resident pool per precedence slot in the thread's shared index memo (entry_resolve::PROCESS_RESOLVE_INDEX)",
+
+  declared: "2026-09-30",
+
+  standing: Retired { trigger_fired: "2026-09-30 -- every population caller's root set was audited (the table on the retiring PR): each passes the run's own roots except three one-shot readers of a fixture pool (the regen round's dag-artifact identity compile, the XL-1 primary-root tap, the required-lane resolution census builtin), which now own their index; try_process_shared_index_for_pool refuses a second resident pool in a slot at the build site (SharedIndexSecondResidentPool, naming both root sets and the demanding site), and shared_index_residency_control stays as its positive control" as NonEmptyStr },
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the caller audit plus a build-site refusal in try_process_shared_index_for_pool (the follow-up to gunbc#12821)" },
+    population: [
+      "v1_compiler::bin::claim_batch::run",
+      "v1_compiler::cli_run::call_compile_clean_bool_list_fn",
+      "v1_compiler::cli_run::ci_floor_commit_witness_claim_pairs",
+      "v1_compiler::cli_run::compile_clean::compile_clean_scope_plan_from_touched_paths",
+      "v1_compiler::cli_run::compile_emission",
+      "v1_compiler::cli_run::discover_owned_data_decls",
+      "v1_compiler::cli_run::emit_host::compile_dag_candidate_resolved_call_edges_uncached",
+      "v1_compiler::cli_run::emit_host::compile_xl1_primary_root_tap",
+      "v1_compiler::cli_run::emitted_crate_workspace_host::evaluate_plan",
+      "v1_compiler::cli_run::entry_resolve::load_sources_for_entry",
+      "v1_compiler::cli_run::entry_resolve::load_sources_for_entry_with_pool_index",
+      "v1_compiler::cli_run::entry_resolve::resolve_entry_graph",
+      "v1_compiler::cli_run::handle_serve",
+      "v1_compiler::cli_run::install_group_syntax",
+      "v1_compiler::cli_run::install_output_policy",
+      "v1_compiler::cli_run::measure_selected_entry_closure_overlap",
+      "v1_compiler::cli_run::project_witness_cost_receipt",
+      "v1_compiler::cli_run::render_batch_summary_line",
+      "v1_compiler::cli_run::required_floor_runner::floor_base_test_decl_census",
+      "v1_compiler::cli_run::required_floor_runner::floor_compile_clean_emit_ok_via_index",
+      "v1_compiler::cli_run::required_floor_runner::floor_diff_baseline_readout",
+      "v1_compiler::cli_run::required_floor_runner::floor_diff_comparison_readout",
+      "v1_compiler::cli_run::required_floor_runner::floor_git_diff_name_status_range",
+      "v1_compiler::cli_run::required_floor_runner::floor_git_diff_range",
+      "v1_compiler::cli_run::required_floor_runner::head",
+      "v1_compiler::cli_run::required_floor_runner::run_required_floor",
+      "v1_compiler::cli_run::required_floor_runner::unimported_bare_provider_roster_source_at_base",
+      "v1_compiler::cli_run::required_lane_resolution_census::entry_closure_module_identities",
+      "v1_compiler::cli_run::required_lane_resolution_census::required_floor_nominal_subject_module_identities",
+      "v1_compiler::cli_run::resolve",
+      "v1_compiler::cli_run::resolve_workspace_entry",
+      "v1_compiler::cli_run::run_required_bare_reference_admission",
+      "v1_compiler::cli_run::test_module_hygiene_bridge::resolve_hygiene_ctx",
+      "v1_compiler::cli_run::witness_gates::commit_witness_claim_pair_resolvable",
+      "v1_compiler::cli_run::witness_gates::commit_witness_claim_roster_defects",
+      "v1_compiler::generated_artifact_boundary_host::generated_artifact_ctx",
+      "v1_compiler::generated_artifact_boundary_host::run_docs_projection_agreement",
+      "v1_compiler::pre_push::load_plan_ctx",
+      "v1_compiler::required_regen_host::load",
+      "v1_compiler::required_regen_host::partition_rebuild_actuation",
+      "v1_compiler::required_regen_host::regen_generation_role_population",
+      "v1_compiler::required_regen_host::render_affected_set_bound",
+      "v1_compiler::required_regen_host::render_round_cost_receipt",
+      "v1_compiler::required_regen_host::render_scope_selection",
+    ],
+    restoration_trigger: "every population caller's root set is audited (it passes the run's own roots, or owns an index for a pool no other caller reads) and try_process_shared_index_for_pool refuses a second resident pool in a slot at the build site, before it is built; shared_index_residency_control then becomes the positive control of that refusal. Observed at retirement: the build-site refusal fires on a two-pool fixture and the floor and a regen round pass with it; this row retires in the same change."
+  }
+}

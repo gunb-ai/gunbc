@@ -1,0 +1,158 @@
+module test.claim.serving.rented_instance_offer_witness
+
+import std.types { List, Bool, Int, String, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { MoneyRate, money_amount_micro, money_amount_micro_count, byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value, gibibyte_to_byte_size, gibibyte }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.work { Shape }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement, CpuRequirement, MemoryRequirement }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedPerMinute, offer_quote_amount }
+import product.fabric.candidate_field { FieldRequest }
+import product.fabric.selection { DispatchInputs }
+import extdeps.gpu.types { Cuda }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.rented_offer_admission { RentedOfferReading, RentedOfferRead, RentedOfferNotRead }
+import gunbc.serving.rented_instance_offer { rented_replica_offer_reading, rented_instance_gpu_count_unusable_obligation }
+import test.claim.fabric.spill_candidate_field_witness { s_request, s_hetzner_route }
+import test.claim.serving.serving_session_attachment_witness { w_replica }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn i_base() -> FieldRequest<NonEmptyStr> {
+  s_request(key: "instance-a", route: s_hetzner_route(), amount: money_amount_micro(count: 3000))
+}
+
+fn i_quote(amount: Nat, hourly: Bool) -> OfferQuote {
+  match i_base().offer.quote {
+    QuotedPerHour(r) =>
+      if hourly { QuotedPerHour(MoneyRate { amount: money_amount_micro(count: amount), currency: r.currency }) } else { QuotedPerMinute(MoneyRate { amount: money_amount_micro(count: amount), currency: r.currency }) }
+    q => q
+  }
+}
+
+fn i_full(gpus: Int, threads: Nat, memory_gib: Nat, quote: OfferQuote) -> SupplierOffer<NonEmptyStr> {
+  let o = i_base().offer
+  SupplierOffer {
+    id: o.id, executor: o.executor, route: o.route,
+    shape: Shape {
+      hard: o.shape.hard,
+      envelope: ResourceEnvelope {
+        cpu: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: threads), architecture: none } },
+        gpu: Present { value: GpuRequirement { count: gpus, min_vram: gibibyte_to_byte_size(g: gibibyte(count: 96)), runtimes: [Cuda] } },
+        memory: Present { value: MemoryRequirement { min_bytes: gibibyte_to_byte_size(g: gibibyte(count: memory_gib)) } },
+        storage: none, network: none,
+      },
+    },
+    capabilities: o.capabilities, trust_domain: o.trust_domain, isolation: o.isolation,
+    quantity_bound: 1, ready_at: o.ready_at, quote: quote, billing_quantum: o.billing_quantum, evidence: o.evidence,
+  }
+}
+
+fn i_instance(gpus: Int) -> SupplierOffer<NonEmptyStr> {
+  i_full(gpus: gpus, threads: 64, memory_gib: 512, quote: i_quote(amount: 3000, hourly: true))
+}
+
+fn i_read(instance: SupplierOffer<NonEmptyStr>, device: Nat) -> RentedOfferReading {
+  rented_replica_offer_reading(
+    instance: instance, inputs: i_base().dispatch,
+    replica: RentedReplicaIdentity { node: "rented-1", device_index: device, served_name: "qwen" },
+  )
+}
+
+fn i_unread(r: RentedOfferReading) -> Bool {
+  match r {
+    RentedOfferNotRead { replica: _, obligation: _ } => true
+    RentedOfferRead { replica: _, request: _ } => false
+  }
+}
+
+fn i_key(r: RentedOfferReading) -> String {
+  match r {
+    RentedOfferRead { replica: _, request: q } => q.offer.id.key as String
+    RentedOfferNotRead { replica: _, obligation: _ } => ""
+  }
+}
+
+test fn a_two_gpu_instance_reads_as_two_distinct_one_gpu_replica_offers() -> Bool {
+  let a = i_read(instance: i_instance(gpus: 2), device: 0)
+  let b = i_read(instance: i_instance(gpus: 2), device: 1)
+  i_key(r: a) != "" && i_key(r: b) != "" && i_key(r: a) != i_key(r: b)
+}
+
+test fn each_replica_offer_states_one_gpu_and_half_the_instance_quote() -> Bool {
+  match i_read(instance: i_instance(gpus: 2), device: 0) {
+    RentedOfferNotRead { replica: _, obligation: _ } => false
+    RentedOfferRead { replica: _, request: q } =>
+      match q.offer.shape.envelope.gpu {
+        Absent => false
+        Present { value: g } =>
+          g.count == 1 &&
+          money_amount_micro_count(m: offer_quote_amount(q: q.offer.quote)) * 2 == money_amount_micro_count(m: offer_quote_amount(q: i_instance(gpus: 2).quote)) &&
+          q.dispatch.offer == q.offer.id
+      }
+  }
+}
+
+test fn an_instance_stating_no_gpu_or_a_negative_count_reads_nothing() -> Bool {
+  i_unread(r: i_read(instance: i_instance(gpus: 0), device: 0)) && i_unread(r: i_read(instance: i_instance(gpus: -2), device: 0))
+}
+
+test fn each_replica_offer_states_half_the_instance_cpu_and_memory_not_all_of_it() -> Bool {
+  match i_read(instance: i_instance(gpus: 2), device: 0) {
+    RentedOfferNotRead { replica: _, obligation: _ } => false
+    RentedOfferRead { replica: _, request: q } =>
+      match q.offer.shape.envelope.cpu {
+        Absent => false
+        Present { value: c } =>
+          match q.offer.shape.envelope.memory {
+            Absent => false
+            Present { value: m } =>
+              hardware_thread_count_value(t: c.min_threads) == 32 &&
+              byte_size_count(b: m.min_bytes) * 2 == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 512)))
+          }
+      }
+  }
+}
+
+test fn an_envelope_that_does_not_divide_across_the_gpus_reads_nothing() -> Bool {
+  i_unread(r: i_read(instance: i_full(gpus: 2, threads: 63, memory_gib: 512, quote: i_quote(amount: 3000, hourly: true)), device: 0)) && i_unread(r: i_read(instance: i_full(gpus: 4, threads: 66, memory_gib: 512, quote: i_quote(amount: 3000, hourly: true)), device: 0))
+}
+
+test fn a_quote_that_is_not_an_evenly_divisible_hourly_rate_reads_nothing() -> Bool {
+  i_unread(r: i_read(instance: i_full(gpus: 2, threads: 64, memory_gib: 512, quote: i_quote(amount: 3001, hourly: true)), device: 0)) &&
+  i_unread(r: i_read(instance: i_full(gpus: 2, threads: 64, memory_gib: 512, quote: i_quote(amount: 3000, hourly: false)), device: 0)) &&
+  !i_unread(r: i_read(instance: i_full(gpus: 2, threads: 64, memory_gib: 512, quote: i_quote(amount: 3000, hourly: true)), device: 0))
+}
+
+fn i_read_with(inputs: DispatchInputs<NonEmptyStr>) -> RentedOfferReading {
+  rented_replica_offer_reading(
+    instance: i_instance(gpus: 2), inputs: inputs,
+    replica: RentedReplicaIdentity { node: "rented-1", device_index: 0, served_name: "qwen" },
+  )
+}
+
+test fn dispatch_observations_for_another_offer_key_are_refused() -> Bool {
+  i_unread(r: i_read_with(inputs: s_request(key: "instance-b", route: s_hetzner_route(), amount: money_amount_micro(count: 3000)).dispatch)) &&
+  !i_unread(r: i_read_with(inputs: i_base().dispatch))
+}
+
+test fn dispatch_observations_for_the_same_key_under_another_principal_are_refused() -> Bool {
+  let d = i_base().dispatch
+  i_unread(r: i_read_with(inputs: DispatchInputs {
+    offer: FabricIdentity { principal: "someone-else", key: d.offer.key },
+    availability: d.availability, commitment: d.commitment, start: d.start,
+    transition: d.transition, operating: d.operating, opportunity: d.opportunity,
+  }))
+}
+
+test fn a_replica_slot_outside_the_instance_gpu_count_reads_nothing_with_the_gpu_count_cause() -> Bool {
+  i_unread(r: i_read(instance: i_instance(gpus: 2), device: 2)) &&
+  i_unread(r: i_read(instance: i_instance(gpus: 2), device: 5)) &&
+  !i_unread(r: i_read(instance: i_instance(gpus: 2), device: 1)) &&
+  (match i_read(instance: i_instance(gpus: 0), device: 0) {
+    RentedOfferNotRead { replica: _, obligation: o } => o == rented_instance_gpu_count_unusable_obligation
+    RentedOfferRead { replica: _, request: _ } => false
+  })
+}

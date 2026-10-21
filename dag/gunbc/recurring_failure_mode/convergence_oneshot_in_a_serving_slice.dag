@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.convergence_oneshot_in_a_serving_slice
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data convergence_oneshot_in_a_serving_slice: RecurringFailureMode = RecurringFailureMode {
+  identity: "convergence_oneshot_in_a_serving_slice" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a deploy-time convergence oneshot (Type=oneshot, started by the apply's `systemctl restart` and waited on) runs inside a deployment's serving slice, or with no TimeoutStartSec, so its memory is whatever the resident serving members have not taken and its start has no bound of its own. HARM: once the members grow past the slice's MemoryHigh the oneshot is reclaim-throttled -- alive, silent, in D state -- and the apply that waits on it stalls with no diagnosis until an outer ceiling kills it, leaving the host part-way through a cutover. Near MemoryMax the slice's OOM killer may instead take a serving member.",
+
+    "RECOGNITION RULE: an apply or converge step silent inside `systemctl restart <oneshot>`; the oneshot's process in state D with wchan mem_cgroup_handle_over_high; its slice's memory.current above memory.high with memory.events `high` climbing; the oneshot's own CPU far below its wall time. Raising the serving slice's bound is the absorbing fallback: the bound belongs to the served processes, and the oneshot's demand is its own.",
+
+    "DISTINGUISHING FACT: required_floor_strict_prep_sits_on_memory_high is the CI floor's own resident set at its cgroup watermark; here the throttled process is a co-tenant of a slice whose bound was derived for other processes (gunbc.live_deploy.slice_bounds derives gunbc-roadmap.slice from the serving members alone, N+1).",
+
+    "RECEIPT 1 (tree-sync, 2026-09): fleet-converge run 36204703858 read gunbc-roadmap.slice at MemoryPeak 42,797,977,600 B over its then 38,654,705,664 B MemoryHigh; the repository convergence oneshot sat silent after '[workspace-root] discovered' and was killed by TimeoutStartSec. Repaired by gunbc.live_deploy.repository_convergence_placement: the slice became an admission (convergence_slice_admission refuses every slice within a serving one) and the start a declared bound (convergence_unit_start_timeout).",
+
+    "RECEIPT 2 (tree-remote, srv1, 2026-10-12): the operator-local production apply of af66aa62 (live_deploy_apply_prod_role_operator_local_wet) waited on gunbc-roadmap-tree-remote.service from 17:40:08 until the operator's 2400 s wrapper killed it at 17:53:45. That unit named gunbc-roadmap.slice with no TimeoutStartSec -- the sibling consumer the receipt-1 repair never reached. The slice read memory.current 55,007,817,728 B against memory.high 52,613,349,376 B and memory.max 56,908,316,672 B (memory.events high 18,260,443); the resident members held 43.6 GiB (gunbc-roadmap 15.5, gunbc-roadmap-tailnet-door 15.5, gunbc-roadmap-fabric-storage 12.6) and the oneshot 7.6 GiB, in D state in mem_cgroup_handle_over_high with 1 min 43 s of CPU in 14 min. It was stopped by hand to restore 1.9 GB of headroom under memory.max; the host was left with binary and tree at af66aa62 and the unit and serving process at c22acb7.",
+
+    "RECEIPT 3 (a near miss on the bound the repair kept, srv1, 2026-10-12 20:26:13-20:40:29): the continuation apply of 547e3dd ran tree-sync in gunbc-repository-convergence.slice under the repair, and it converged -- in 14 min 16 s of wall time and 14 min 14 s of CPU (11.0 GB peak) against convergence_unit_start_timeout's 900 s, so 44 s spare. tree-remote then ran in 1 min 22 s. The bound is NOT raised to fit (DESIGN section 6b: a larger bound is not an answer to why the demand exists). OPEN DEMAND QUESTION, typed here so it is not lost: why does one tree convergence spend 14 CPU-minutes? The 17:23 run of the same oneshot spent about 11 of its minutes inside git.Core.TrackedWorktreeDiffFromInRepo. A further few percent of corpus growth crosses the bound, and a tree-sync killed by TimeoutStartSec leaves the cutover unfinished.",
+
+    "REPAIR (2026-10-12): repository_convergence_placement renders every convergence oneshot through one path, convergence_oneshot_rendering over a ConvergenceOneshot (the member's work: description, principal, directory, environment, command); the module alone supplies the admitted slice and the start bound. gunbc.live_deploy.emit emit_tree_remote_unit_doc supplies only tree_remote_convergence_oneshot. Claims: test.claim.live_deploy_unit_emission_oracle_witness the_tree_remote_oneshot_joins_the_convergence_slice_with_its_start_bound (RED on af66aa62) and the_tree_remote_oneshot_in_a_serving_slice_refuses.",
+
+    "RUNG FOUND AT: silent stall of a production cutover (below the ladder). RUNG NOW: mechanically preventable -- each convergence oneshot that renders through the placement module is admitted, and a claim per member pins it, but a new oneshot unit can still be written with its own Slice= line. CEILING: structurally guaranteed, once every Type=oneshot unit a deployment emits is constructible only through a placement that admits its slice. NEXT-RUNG TRIGGER: a census over the deployment's emitted units that refuses any oneshot whose Slice= is within a serving slice or which carries no TimeoutStartSec, or a oneshot unit constructor that requires the admission.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Observed on the host by the unit's journal and the slice's memory.current / memory.high / memory.events; the claims above are enrolled in test.claim.live_deploy_unit_emission_oracle_witness.",
+  ],
+
+  evidence: [],
+}

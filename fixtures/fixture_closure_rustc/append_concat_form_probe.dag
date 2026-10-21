@@ -1,0 +1,62 @@
+module fixture.closure.rustc_append_concat_form_probe
+
+import std.types { String, Int, List }
+
+// `append` IS TWO OPERATIONS UNDER ONE NAME, AND RUSTC IS THE ORACLE FOR WHICH ONE WAS EMITTED.
+// The subject is v1.compiler.emit_rust rust_append_call_is_concat_form: when the second argument is
+// itself a list the operation is concat, and the bridge is `rc_list_concat`; when it is one element
+// the operation is snoc, and the bridge is `append`. Emitting snoc for the concat form hands a whole
+// list where an element is declared, which rustc refuses as E0308. Measured on extdeps.exec.command
+// argv_words and its scp/ssh argv builders -- nine sites on the 00_compile closure.
+//
+// THE DISCRIMINATOR IS THE ARGUMENT'S TYPE, NOT THE `items:` KEYWORD, and the first two declarations
+// below are why. The interpreter -- which is the semantics this emitter has to agree with -- answers
+// a four-element list for BOTH `append(xs, items: ys)` and `append(xs, ys)`, and a three-element list
+// for `append(xs, items: "z")`: its concat arm asks whether each argument is a list carrier and never
+// reads the keyword. So a repair keyed on the keyword would leave concat_positional still emitting
+// snoc, and a repair keyed on the arity would break snoc_keyword. Both forms are here for that
+// reason rather than for variety.
+//
+// WHY A SPELLING ORACLE CANNOT STAND HERE. Both emissions are a call to a `v1_rt::` function with two
+// arguments; asserting that `rc_list_concat` appears somewhere in the emitted module says nothing
+// about WHICH of these declarations got it. What has to hold is that the argument's type satisfies
+// the bridge's declared parameter, which is rustc's question.
+fn concat_keyword(xs: List<String>, ys: List<String>) -> List<String> {
+  append(xs, items: ys)
+}
+
+fn concat_positional(xs: List<String>, ys: List<String>) -> List<String> {
+  append(xs, ys)
+}
+
+fn snoc_keyword(xs: List<String>, x: String) -> List<String> {
+  append(xs, items: x)
+}
+
+fn snoc_positional(xs: List<String>, x: String) -> List<String> {
+  append(xs, x)
+}
+
+// NESTED CONCATS ARE THE SHAPE THE CORPUS ACTUALLY WRITES, so it is the shape that has to emit: the
+// scp argv builder in extdeps.exec.command is three of these one inside another, and a repair that
+// handles a concat whose receiver is a literal but not one whose receiver is another concat leaves
+// every real site red.
+fn nested_concat(head: String, middle: List<String>, tail: String) -> List<String> {
+  append(append([head], items: middle), items: [tail])
+}
+
+// A LIST OF LISTS IS WHERE THE TWO READINGS COINCIDE, and this declaration fixes which one wins:
+// concat, exactly as the interpreter answers it. An author who meant snoc here gets rustc's E0308
+// from the concat bridge rather than a list that differs silently from the interpreted one.
+fn concat_list_of_lists(xs: List<List<String>>, ys: List<List<String>>) -> List<List<String>> {
+  append(xs, items: ys)
+}
+
+fn appended_word_count(xs: List<String>, ys: List<String>, x: String) -> Int {
+  count(concat_keyword(xs: xs, ys: ys))
+    + count(concat_positional(xs: xs, ys: ys))
+    + count(snoc_keyword(xs: xs, x: x))
+    + count(snoc_positional(xs: xs, x: x))
+    + count(nested_concat(head: x, middle: ys, tail: x))
+    + count(concat_list_of_lists(xs: [xs], ys: [ys]))
+}

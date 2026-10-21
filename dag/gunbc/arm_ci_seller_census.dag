@@ -1,0 +1,419 @@
+module gunbc.arm_ci_seller_census
+
+import std.types { Bool, List }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CustomerAccountNamedCloud,
+  ResoldNamedCloud,
+  SellerArmLinuxOffer,
+  SellerOwnMetalStated,
+  SoftwareOnCustomerHosts,
+  CloudOperatorIsTheSeller,
+  CapacityChannelUnread,
+  CurrentlyAcceptingCustomers,
+  SellerNotAcceptingCustomers,
+  OfferStandingUnread,
+}
+import extdeps.ci_runner.actuated {
+  actuated_provider_identity,
+  actuated_catalog_snapshot,
+  actuated_runner_catalog,
+  actuated_arm_capacity,
+  actuated_offer_standing,
+}
+import extdeps.ci_runner.aws_codebuild {
+  aws_codebuild_provider_identity,
+  aws_codebuild_catalog_snapshot,
+  aws_codebuild_runner_catalog,
+  aws_codebuild_arm_capacity,
+}
+import extdeps.ci_runner.blacksmith {
+  blacksmith_provider_identity,
+  blacksmith_catalog_snapshot,
+  blacksmith_runner_catalog,
+  blacksmith_arm_capacity,
+  blacksmith_arm_list_price,
+  blacksmith_offer_standing,
+}
+import extdeps.ci_runner.buildjet {
+  buildjet_provider_identity,
+  buildjet_catalog_snapshot,
+  buildjet_runner_catalog,
+  buildjet_arm_list_price,
+  buildjet_offer_standing,
+}
+import extdeps.ci_runner.buildkite {
+  buildkite_provider_identity,
+  buildkite_catalog_snapshot,
+  buildkite_runner_catalog,
+  buildkite_arm_list_price,
+  buildkite_offer_standing,
+}
+import extdeps.ci_runner.circleci {
+  circleci_provider_identity,
+  circleci_catalog_snapshot,
+  circleci_runner_catalog,
+  circleci_arm_list_price,
+}
+import extdeps.ci_runner.cirrus_runners {
+  cirrus_runners_provider_identity,
+  cirrus_runners_catalog_snapshot,
+  cirrus_runners_runner_catalog,
+  cirrus_runners_arm_list_price,
+  cirrus_runners_offer_standing,
+}
+import extdeps.ci_runner.depot {
+  depot_provider_identity,
+  depot_catalog_snapshot,
+  depot_runner_catalog,
+  depot_arm_silicon,
+  depot_arm_capacity,
+  depot_arm_list_price,
+}
+import extdeps.ci_runner.github_actions {
+  github_actions_provider_identity,
+  github_actions_catalog_snapshot,
+  github_actions_runner_catalog,
+  github_actions_arm_silicon,
+  github_actions_arm_capacity,
+  github_actions_arm_list_price,
+}
+import extdeps.ci_runner.gitlab {
+  gitlab_provider_identity,
+  gitlab_catalog_snapshot,
+  gitlab_runner_catalog,
+  gitlab_arm_capacity,
+}
+import extdeps.ci_runner.google_cloud_build {
+  google_cloud_build_provider_identity,
+  google_cloud_build_catalog_snapshot,
+  google_cloud_build_runner_catalog,
+}
+import extdeps.ci_runner.namespace {
+  namespace_provider_identity,
+  namespace_catalog_snapshot,
+  namespace_runner_catalog,
+  namespace_arm_list_price,
+  namespace_offer_standing,
+}
+import extdeps.ci_runner.runs_on {
+  runs_on_provider_identity,
+  runs_on_catalog_snapshot,
+  runs_on_runner_catalog,
+  runs_on_arm_capacity,
+  runs_on_offer_standing,
+}
+import extdeps.ci_runner.semaphore {
+  semaphore_provider_identity,
+  semaphore_catalog_snapshot,
+  semaphore_runner_catalog,
+  semaphore_arm_silicon,
+}
+import extdeps.ci_runner.sprinters {
+  sprinters_provider_identity,
+  sprinters_catalog_snapshot,
+  sprinters_runner_catalog,
+  sprinters_arm_capacity,
+  sprinters_arm_list_price,
+  sprinters_offer_standing,
+}
+import extdeps.ci_runner.warpbuild {
+  warpbuild_provider_identity,
+  warpbuild_catalog_snapshot,
+  warpbuild_runner_catalog,
+  warpbuild_arm_list_price,
+  warpbuild_offer_standing,
+}
+import extdeps.cloud.ubicloud {
+  ubicloud_provider_identity,
+  ubicloud_catalog_snapshot,
+  ubicloud_runner_catalog_shapes,
+}
+import extdeps.pricing.ubicloud {
+  ubicloud_arm_silicon,
+  ubicloud_arm_list_price,
+  ubicloud_offer_standing,
+}
+
+// WHICH ARM LINUX CI SELLERS THIS REPOSITORY HAS READ. Observation layer: DESIGN
+// forbids the extdeps hub from enumerating products. Adding a seller is one module
+// plus one line here.
+//
+// Scope: Linux aarch64 CI-runner sellers only. Mac/Apple-silicon CI (Bitrise,
+// Codemagic, MacStadium, and macOS families on mixed sellers) is a different market
+// and is not modelled as ARM Linux shapes. Hetzner CAX (extdeps.cloud.hetzner) is ARM
+// supply, not a CI-runner seller, and is not enrolled here; CAX was unread as
+// orderable on three dated readings.
+//
+// CONSUMPTION (DESIGN §3c). Executing consumer in this tree:
+// test.claim.arm_ci_seller_census_witness. Later consumers are the enrolled
+// FrontierRow below, not a second prose roster.
+data arm_ci_seller_census_later_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "surveyed_arm_linux_offers"),
+    reason: "surveyed_arm_linux_offers and cloud_arm_reseller_offers are observation plus the census witness until a production join outside this public tree reads them. Named consumer: strategy.ci_compute_offer_catalog (gunbc-private #113 catalog; private #88 is closed and superseded) folding SellerArmLinuxOffer including SellerOfferStanding, and strategy.node_rental SupplierHypothesis folding ArmCapacityChannel (reseller of scarce cloud ARM as a candidate Ampere buyer). Trigger: that catalog, or SupplierHypothesis, imports surveyed_arm_linux_offers or cloud_arm_reseller_offers from public gunb-ai/gunbc@main. NOT satisfied by this witness, nor by pinning a PR head, nor by restating prices in private strategy.",
+    dissolution: unbound_dissolution(description: "dissolve-on: strategy.ci_compute_offer_catalog (or strategy.node_rental SupplierHypothesis) imports surveyed_arm_linux_offers or cloud_arm_reseller_offers from public origin/main; that change rebinds this row to bound_dissolution on the importing declaration. SUFFICIENT FOR deleting this row. Private modules are not DeclarationRefs in this tree (CITED-MODULE-ABSENT), so the dissolution stays unbound until the import exists as a public or overlay citation this corpus can name."),
+  ),
+]
+
+data blacksmith_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: blacksmith_provider_identity,
+  snapshot: blacksmith_catalog_snapshot,
+  shapes: blacksmith_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: blacksmith_arm_capacity,
+  list_price: blacksmith_arm_list_price,
+  standing: blacksmith_offer_standing,
+}
+
+data depot_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: depot_provider_identity,
+  snapshot: depot_catalog_snapshot,
+  shapes: depot_runner_catalog,
+  silicon: depot_arm_silicon,
+  capacity: depot_arm_capacity,
+  list_price: depot_arm_list_price,
+  standing: OfferStandingUnread,
+}
+
+data warpbuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: warpbuild_provider_identity,
+  snapshot: warpbuild_catalog_snapshot,
+  shapes: warpbuild_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: warpbuild_arm_list_price,
+  standing: warpbuild_offer_standing,
+}
+
+data circleci_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: circleci_provider_identity,
+  snapshot: circleci_catalog_snapshot,
+  shapes: circleci_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: circleci_arm_list_price,
+  standing: OfferStandingUnread,
+}
+
+data github_actions_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: github_actions_provider_identity,
+  snapshot: github_actions_catalog_snapshot,
+  shapes: github_actions_runner_catalog,
+  silicon: github_actions_arm_silicon,
+  capacity: github_actions_arm_capacity,
+  list_price: github_actions_arm_list_price,
+  standing: OfferStandingUnread,
+}
+
+data ubicloud_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: ubicloud_provider_identity,
+  snapshot: ubicloud_catalog_snapshot,
+  shapes: ubicloud_runner_catalog_shapes,
+  silicon: ubicloud_arm_silicon,
+  capacity: CapacityChannelUnread,
+  list_price: ubicloud_arm_list_price,
+  standing: ubicloud_offer_standing,
+}
+
+data namespace_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: namespace_provider_identity,
+  snapshot: namespace_catalog_snapshot,
+  shapes: namespace_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: namespace_arm_list_price,
+  standing: namespace_offer_standing,
+}
+
+data buildjet_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: buildjet_provider_identity,
+  snapshot: buildjet_catalog_snapshot,
+  shapes: buildjet_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: buildjet_arm_list_price,
+  standing: buildjet_offer_standing,
+}
+
+data runs_on_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: runs_on_provider_identity,
+  snapshot: runs_on_catalog_snapshot,
+  shapes: runs_on_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: runs_on_arm_capacity,
+  list_price: ArmListPriceUnread,
+  standing: runs_on_offer_standing,
+}
+
+data actuated_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: actuated_provider_identity,
+  snapshot: actuated_catalog_snapshot,
+  shapes: actuated_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: actuated_arm_capacity,
+  list_price: ArmListPriceUnread,
+  standing: actuated_offer_standing,
+}
+
+data cirrus_runners_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: cirrus_runners_provider_identity,
+  snapshot: cirrus_runners_catalog_snapshot,
+  shapes: cirrus_runners_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: cirrus_runners_arm_list_price,
+  standing: cirrus_runners_offer_standing,
+}
+
+data buildkite_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: buildkite_provider_identity,
+  snapshot: buildkite_catalog_snapshot,
+  shapes: buildkite_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: buildkite_arm_list_price,
+  standing: buildkite_offer_standing,
+}
+
+data gitlab_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: gitlab_provider_identity,
+  snapshot: gitlab_catalog_snapshot,
+  shapes: gitlab_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: gitlab_arm_capacity,
+  list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
+}
+
+data aws_codebuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: aws_codebuild_provider_identity,
+  snapshot: aws_codebuild_catalog_snapshot,
+  shapes: aws_codebuild_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: aws_codebuild_arm_capacity,
+  list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
+}
+
+data sprinters_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: sprinters_provider_identity,
+  snapshot: sprinters_catalog_snapshot,
+  shapes: sprinters_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: sprinters_arm_capacity,
+  list_price: sprinters_arm_list_price,
+  standing: sprinters_offer_standing,
+}
+
+data semaphore_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: semaphore_provider_identity,
+  snapshot: semaphore_catalog_snapshot,
+  shapes: semaphore_runner_catalog,
+  silicon: semaphore_arm_silicon,
+  capacity: CapacityChannelUnread,
+  list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
+}
+
+data google_cloud_build_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: google_cloud_build_provider_identity,
+  snapshot: google_cloud_build_catalog_snapshot,
+  shapes: google_cloud_build_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
+}
+
+fn surveyed_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  [
+    blacksmith_arm_linux_offer,
+    depot_arm_linux_offer,
+    warpbuild_arm_linux_offer,
+    circleci_arm_linux_offer,
+    github_actions_arm_linux_offer,
+    ubicloud_arm_linux_offer,
+    namespace_arm_linux_offer,
+    buildjet_arm_linux_offer,
+    runs_on_arm_linux_offer,
+    actuated_arm_linux_offer,
+    cirrus_runners_arm_linux_offer,
+    buildkite_arm_linux_offer,
+    gitlab_arm_linux_offer,
+    aws_codebuild_arm_linux_offer,
+    sprinters_arm_linux_offer,
+    semaphore_arm_linux_offer,
+    google_cloud_build_arm_linux_offer,
+  ]
+}
+
+fn offer_resells_named_cloud(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.capacity {
+    ResoldNamedCloud { vendor_words: _ } => true
+    CustomerAccountNamedCloud { vendor_words: _ } => false
+    SellerOwnMetalStated => false
+    CloudOperatorIsTheSeller { vendor_words: _ } => false
+    SoftwareOnCustomerHosts => false
+    CapacityChannelUnread => false
+  }
+}
+
+fn offer_launches_customer_cloud(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.capacity {
+    CustomerAccountNamedCloud { vendor_words: _ } => true
+    ResoldNamedCloud { vendor_words: _ } => false
+    SellerOwnMetalStated => false
+    CloudOperatorIsTheSeller { vendor_words: _ } => false
+    SoftwareOnCustomerHosts => false
+    CapacityChannelUnread => false
+  }
+}
+
+fn cloud_arm_reseller_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_resells_named_cloud(offer: o))
+}
+
+fn customer_account_cloud_arm_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_launches_customer_cloud(offer: o))
+}
+
+fn offer_is_not_accepting_customers(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.standing {
+    SellerNotAcceptingCustomers { cause: _ } => true
+    CurrentlyAcceptingCustomers { status_surface: _ } => false
+    OfferStandingUnread => false
+  }
+}
+
+fn offer_standing_is_unread(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.standing {
+    OfferStandingUnread => true
+    CurrentlyAcceptingCustomers { status_surface: _ } => false
+    SellerNotAcceptingCustomers { cause: _ } => false
+  }
+}
+
+fn not_accepting_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_is_not_accepting_customers(offer: o))
+}
+
+fn unread_standing_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_standing_is_unread(offer: o))
+}
+
+fn offer_has_provider(offer: SellerArmLinuxOffer, provider: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: offer.provider, b: provider)
+}
+
+fn offers_include_provider(offers: List<SellerArmLinuxOffer>, provider: DeclarationRef) -> Bool {
+  any(offers, o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn provider_in(provider: DeclarationRef, identities: List<DeclarationRef>) -> Bool {
+  any(identities, p => declaration_ref_eq(a: provider, b: p))
+}

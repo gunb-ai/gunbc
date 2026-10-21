@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.host_ownership_admitted_as_vacancy
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data host_ownership_admitted_as_vacancy: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_ownership_admitted_as_vacancy" as NonEmptyStr,
+
+  receipts: [
+    "**a host's ownership admitted as its vacancy** (an admission answers WHO HOLDS a host -- a fact in the event log -- and the effect it admits then runs as though the host were FREE, which is a fact on the machine the admission never read; the owner's own running workload and the admitted effect contend for the same memory).",
+
+    "SPECIMEN (2026-09-26, srv8, reported by clever-gull-48 and proud-deer-538). gunbc.spark.host_commitment `admit_host_held_by_subject` admitted srv8 for V4.1 work because the Group A pair subject holds it. That subject's existing serving, the DeepSeek V4 Flash pair worker (gunbc-spark-pair-worker.service, restarting at boot), held ~99.7 GB of the GB10's unified memory; the host was left with 15 GiB available, a probe was added on top, the host thrashed, and it needed a power cycle. Every relation the admission consulted was true: the subject did hold the host.",
+
+    "WHY IT IS A CLASS: the owner of a resource is the most likely thing to be USING it, so an ownership relation is exactly the relation whose holder is least likely to find the resource free. The tell is an admission whose inputs are all ledger facts, guarding an effect whose harm is a physical quantity -- memory, GPU, disk, a port -- that no ledger input measures.",
+
+    "RUNG found at 1, mitigatable (the harm occurred; a power cycle contained it). NOW 2, mechanically preventable: gunbc.compute.host_occupancy reads serving-unit state, GPU compute processes and MemAvailable on the host, and gunbc.spark.host_occupancy_admission `admit_spark_host_unoccupied` refuses HostOccupiedBy / HostMemoryShort / Unread for the effects that declare a memory need (the V4.1 image build and row-store encode), with the discriminating reds in test.claim.spark.host_occupancy_admission_witness. CEILING 2 for the reading itself: occupancy is external reality read at admission, and a process can start after the read (outside the modeled guarantee, DESIGN 4b); only a host-level reservation the serving units also honour would close that window. NEXT TRIGGER, capability not artifact: EVERY effect that declares a memory or GPU need on a committed host is admitted only through a seam that consumes an occupancy reading -- today that is diligence per door, and the Engram probe and V4.1 capacity-measurement serve doors must arrive through it.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.spark.host_occupancy_admission", decl_name: "admit_spark_host_unoccupied"),
+    decl_ref(module_path: "gunbc.compute.host_occupancy", decl_name: "admit_host_occupancy"),
+  ],
+}

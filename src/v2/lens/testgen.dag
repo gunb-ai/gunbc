@@ -1,0 +1,2423 @@
+module v2.lens.testgen
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
+import std.algebra { FreeMonoid, Empty, Cons, list_append, list_snoc_item, count_where, fold_list, fold_list_right, length, list_flat_map, list_map, non_empty, zip_eq }
+import v2.std.diagnostic {
+  Outcome,
+  DeclarationLocus,
+  Diagnostic,
+  Locus,
+  NodeLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
+  LocusAnchor,
+  Extent,
+  Correction,
+  Suggested,
+  Unavailable,
+  NoCorrectionReason,
+  UserInputBoundary,
+  AmbiguousIntent,
+  ExternalContractUnknown,
+  Textual,
+  WholeFile,
+  ByteRange,
+  NonEmptyDiagnostics,
+  Diagnostics,
+  Some,
+  Accepted,
+  Rejected,
+  None,
+  bind_outcome,
+  bind_outcome_accepted,
+  diagnostics_merge,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v2.std.witness { StructuralPropertyWitness }
+import v2.std.find_witness { PreservationPredicate, verify_witness }
+import v2.std.nat { NatAlgebraLawObligation, nat_declared_algebra_law_obligations }
+import v2.std.node {
+  Atom,
+  Edge,
+  Node,
+  Authored,
+  Positional,
+  Connective,
+  Conj,
+  Disj,
+  Arrow,
+  Instantiation,
+  Behavior,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Symbol,
+  TypeNode,
+}
+import v2.std.refinement { Refined, Validation, refine, refined_base }
+import v2.extdeps.file_system {
+  AbsolutePath,
+  FileBody,
+  FileKindResolutionPolicy,
+  FileSystemOperations,
+  Filesystem
+}
+
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  TestClaim,
+  TestClassification,
+  ClaimAnchorKey,
+  GeneratedClaimAnchor,
+  GeneratedCoproductExhaustiveness,
+  TestClaimCompilesClaimVariant,
+  TestClaimCoproductVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  ManualAnchorAbsent,
+  ManualAnchorKey,
+  ManualClaimAnchor,
+  ManualLbeConjDagSurface,
+  ManualLbeDisjDagSurface,
+  ManualLbeTransformDagSurface,
+  GeneratedAnchorKey,
+  GeneratedCrossRepresentationEquality,
+  ManualRefinementNonEmptyListBase,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatAddRightIdentity,
+  ManualNatMulAnnihilator,
+  ManualNatMulAssociativity,
+  ManualNatMulLeftIdentity,
+  ManualTcArrowTwoConj,
+  ManualTcConjEmpty,
+  ManualTcConjEqualsRefl,
+  ManualTcDisjEmpty,
+  ManualTcInstantiationEmpty,
+  ManualTcArrowEmpty,
+  ManualTcTransformEmpty,
+  ManualTcBranchEmpty,
+  ManualTcLoopEmpty,
+  ManualTcBindZeroChildren,
+  Tier1,
+  Unit,
+  generated_claim_anchor,
+  manual_claim_anchor,
+  test_claim_coproduct_variant,
+  test_claim_classification,
+  test_claim_anchor
+}
+import v2.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+  stub_empty_transform,
+  claim_arrow_two_conj_compiles,
+  claim_conj_empty_compiles,
+  claim_conj_equals_refl,
+  claim_disj_empty_compiles,
+  claim_instantiation_empty_rejected,
+  claim_arrow_empty_rejected,
+  claim_transform_empty_rejected,
+  claim_branch_empty_rejected,
+  claim_loop_empty_rejected,
+  claim_bind_zero_children_rejected
+}
+import v2.test.claim.manual.nat_law_anchors {
+  claim_nat_add_associativity,
+  claim_nat_add_left_identity,
+  claim_nat_add_right_identity,
+  claim_nat_mul_annihilator,
+  claim_nat_mul_associativity,
+  claim_nat_mul_left_identity
+}
+import v2.std.effects {
+  Composable,
+  ComposableIdempotentOperationSubject,
+  IdempotentOperationSubject,
+  LabelOnlyIdempotentInhabitance,
+  idempotent_operation_apply_once,
+  idempotent_operation_apply_twice,
+  sample_delete_composable,
+  sample_create_if_absent_composable,
+  sample_label_only_subject,
+  sample_read_composable,
+  sample_state,
+  sample_upsert_composable
+}
+
+import v2.std.artifact {
+  GeneratorId,
+  GeneratorProvenance,
+  test_claim_generated_artifact
+}
+
+import v2.std.concept_index {
+  ConceptDecl,
+  enumerate_coproduct_decls
+}
+import v2.std.node_query {
+  coproduct_arm_key_list_from_node
+}
+
+type TypeConstructionSubject
+
+  = ConnectiveKernel { connective: Connective }
+  | BehaviorValueSubject { behavior: Behavior }
+
+type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
+
+type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
+
+type LensApplicabilitySubject {
+  lens: Symbol
+  program: Node
+}
+
+type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
+
+type FrozenLanguageBehaviorSnapshot {
+  language: Symbol
+  input_node: Node
+  expected_value: Node
+}
+
+type LanguageBehaviorIoMock {
+  snapshot: FrozenLanguageBehaviorSnapshot
+}
+
+type LanguageBehaviorEquivalenceSubject {
+  subject: TypeConstructionSubject
+  language: Symbol
+}
+
+type RefinementPreservationSubject {
+  refined: Refined<List<Node>>
+  original: List<Node>
+}
+
+type TestgenConcept
+
+  = TypeConstruction { subject: TypeConstructionSubject }
+  | AlgebraLaw { subject: AlgebraLawSubject }
+  | DiagnosticExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+
+  | CrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
+  | LensApplicability { subject: LensApplicabilitySubject }
+  | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+  | LanguageBehaviorEquivalence {
+      subject: LanguageBehaviorEquivalenceSubject
+      mock: LanguageBehaviorIoMock
+    }
+  | RefinementPreservation { subject: RefinementPreservationSubject }
+
+type Generator<C> {
+  kind: TestClaimCoproductVariant
+  classification: TestClassification
+  anchor: ClaimAnchorKey
+  slot: C
+  provenance: GeneratorProvenance
+  profile_metadata: GeneratorProfile
+}
+
+type GeneratorProfile { profile_ref: Symbol }
+
+data testgen_lens_file_path: String = "src/v2/lens/testgen.dag"
+
+fn default_generator_profile() -> GeneratorProfile {
+  GeneratorProfile { profile_ref: ^testgen_default_profile_ref }
+}
+fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^testgen_profile_roster_mismatch,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
+  match key {
+    ManualTcConjEmpty => ^gen_id_tc_conj_empty
+    ManualTcDisjEmpty => ^gen_id_tc_disj_empty
+    ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
+    ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
+    ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
+    ManualTcTransformEmpty => ^gen_id_tc_transform_empty
+    ManualTcBranchEmpty => ^gen_id_tc_branch_empty
+    ManualTcLoopEmpty => ^gen_id_tc_loop_empty
+    ManualTcBindZeroChildren => ^gen_id_tc_bind_zero_children
+    ManualTcConjEqualsRefl => ^gen_id_tc_conj_equals_refl
+    ManualNatAddLeftIdentity => ^gen_id_nat_add_left_identity
+    ManualNatAddRightIdentity => ^gen_id_nat_add_right_identity
+    ManualNatAddAssociativity => ^gen_id_nat_add_associativity
+    ManualNatMulLeftIdentity => ^gen_id_nat_mul_left_identity
+    ManualNatMulAnnihilator => ^gen_id_nat_mul_annihilator
+    ManualNatMulAssociativity => ^gen_id_nat_mul_associativity
+    ManualLbeConjDagSurface => ^gen_id_lbe_conj_dag_surface
+    ManualLbeDisjDagSurface => ^gen_id_lbe_disj_dag_surface
+    ManualLbeTransformDagSurface => ^gen_id_lbe_transform_dag_surface
+    ManualRefinementNonEmptyListBase => ^gen_id_refinement_nonempty_list_base
+    ManualAnchorAbsent => ^gen_id_anchor_absent
+  }
+}
+
+fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratorId {
+  concat(
+    "gen_id_coproduct_exhaustiveness::",
+    concat(coproduct_type, concat("::", omitted_variant))
+  )
+}
+
+fn generator_id_for_cross_representation_straddle(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratorId {
+  concat(
+    "gen_id_cross_representation_equality::",
+    concat(modeled_coproduct, concat("::", native_realization))
+  )
+}
+
+fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
+  match key {
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant } =>
+      generator_id_for_coproduct_arm(coproduct_type: coproduct_type, omitted_variant: omitted_variant)
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization } =>
+      generator_id_for_cross_representation_straddle(
+        modeled_coproduct: modeled_coproduct,
+        native_realization: native_realization
+      )
+  }
+}
+
+fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
+  match anchor {
+    ManualClaimAnchor { manual_anchor } => generator_id_for_manual_anchor(key: manual_anchor)
+    GeneratedClaimAnchor { generated_anchor } => generator_id_for_generated_anchor(key: generated_anchor)
+  }
+}
+
+fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
+  GeneratorProvenance {
+    generator_id: id,
+    artifact: test_claim_generated_artifact(id: id, file_path: testgen_lens_file_path),
+  }
+}
+
+type CorpusEntry {
+  path: AbsolutePath
+  body: FileBody
+}
+
+type CorpusTraversalScope
+
+  = RecursiveCorpusWalk
+  | SingleDirectoryCorpusWalk
+
+type CorpusTraversalOrder
+
+  = LexicalPathOrder
+  | FilesystemNativeOrder
+
+type CorpusDuplicatePolicy
+
+  = PreserveDuplicateEntries
+  | RejectDuplicatePaths
+
+type CorpusTraversalPolicy {
+  scope: CorpusTraversalScope
+  order: CorpusTraversalOrder
+  duplicates: CorpusDuplicatePolicy
+}
+
+type CorpusEnumerationRequest {
+  filesystem: Filesystem
+  root: AbsolutePath
+  operations: FileSystemOperations
+  resolution: FileKindResolutionPolicy
+  traversal: CorpusTraversalPolicy
+}
+
+type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
+
+type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
+
+type CorpusEntryIngestResult = Outcome<Node>
+
+type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
+
+type CorpusLensReadResult<C> = Outcome<C>
+
+type CorpusLensReader<C> {
+  lens: Symbol
+  read: fn(Node) -> CorpusLensReadResult<C>
+}
+
+type CorpusLensObservation<C> {
+  entry: CorpusEntry
+  program: Node
+  output: C
+}
+
+type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
+
+type CorpusLensDriver<C> = fn(
+  CorpusEnumerationRequest,
+  CorpusEnumerator,
+  CorpusEntryIngestor,
+  CorpusLensReader<C>
+) -> CorpusLensDriveResult<C>
+
+data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+data lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
+
+data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
+data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
+data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
+data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
+data idempotent_label_create_if_absent: String = "generated/idempotent_operation: CreateIfAbsentEffect f(f(x)) == f(x)"
+fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: ^dag_language_model_surface_id,
+    input_node: stub_empty_conj,
+    expected_value: stub_empty_conj,
+  }
+}
+
+fn lbe_frozen_snapshot_disj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: ^dag_language_model_surface_id,
+    input_node: stub_empty_disj,
+    expected_value: stub_empty_disj,
+  }
+}
+
+fn lbe_frozen_snapshot_transform_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: ^dag_language_model_surface_id,
+    input_node: stub_empty_transform,
+    expected_value: stub_empty_transform,
+  }
+}
+
+fn lbe_io_mock_conj_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_conj_dag_surface() }
+}
+
+fn lbe_io_mock_disj_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_disj_dag_surface() }
+}
+
+fn lbe_io_mock_transform_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_transform_dag_surface() }
+}
+
+fn lbe_subject_conj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: ConnectiveKernel { connective: Conj },
+    language: ^dag_language_model_surface_id,
+  }
+}
+
+fn lbe_subject_disj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: ConnectiveKernel { connective: Disj },
+    language: ^dag_language_model_surface_id,
+  }
+}
+
+fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: BehaviorValueSubject { behavior: Transform },
+    language: ^dag_language_model_surface_id,
+  }
+}
+
+fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
+  refine(
+    base: xs,
+    by: Validation {
+      reason: ^refinement_preservation_empty_list_reason,
+      admits: fn(candidate) { non_empty(xs: candidate) }
+    },
+    at: at
+  )
+}
+fn refinement_preservation_list_node(xs: List<Node>) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: Node {
+      kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+},
+    snoc: fn(tail_node, h) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
+        children: [
+          Edge { label: Authored { name: ^refinement_preservation_list_head_edge }, target: h },
+          Edge {
+            label: Authored { name: ^refinement_preservation_list_tail_edge },
+            target: tail_node
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    }
+  )
+}
+
+fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
+  let original = [stub_empty_conj]
+  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: refined, diagnostics: d } =>
+      Accepted {
+        value: RefinementPreservationSubject {
+          refined: refined,
+          original: original,
+        },
+        diagnostics: d,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn testgen_emit_refinement_preservation_claim(
+  anchor: ManualAnchorKey,
+  label: String,
+  subject: RefinementPreservationSubject
+) -> Outcome<TestClaim> {
+  match anchor {
+    ManualRefinementNonEmptyListBase =>
+      Accepted {
+        value: EqualsClaim {
+          label: label,
+          anchor: manual_claim_anchor(anchor: anchor),
+          lhs: refinement_preservation_list_node(
+            xs: refined_base(r: subject.refined)
+          ),
+          rhs: refinement_preservation_list_node(xs: subject.original),
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+  }
+}
+
+fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  match bootstrap_claim_generator_for_manual_anchor(key: ManualRefinementNonEmptyListBase) {
+    Accepted { value: generator, diagnostics: d } =>
+      Accepted {
+        value: [generator],
+        diagnostics: d,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn testgen_emit_idempotent_operation_equals_claim(
+  label: String,
+  subject: ComposableIdempotentOperationSubject,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: label,
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      lhs: idempotent_operation_apply_twice(state: sample_state, subject: subject),
+      rhs: idempotent_operation_apply_once(state: sample_state, subject: subject),
+      classification: classification,
+    },
+    diagnostics: None,
+  }
+}
+
+fn testgen_emit_idempotent_operation_claim(
+  label: String,
+  subject: IdempotentOperationSubject,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  match subject {
+    LabelOnlyIdempotentInhabitance { shape: _, label: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^idempotent_operation_tautology_skip,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    Composable(inner) =>
+      testgen_emit_idempotent_operation_equals_claim(
+        label: label,
+        subject: inner,
+        classification: classification
+      )
+  }
+}
+
+fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
+  [
+    sample_read_composable,
+    sample_upsert_composable,
+    sample_delete_composable,
+    sample_create_if_absent_composable,
+  ]
+}
+
+fn testgen_emit_language_behavior_equivalence_claim(
+  anchor: ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> Outcome<TestClaim> {
+  let snap = mock.snapshot
+  match anchor {
+    ManualLbeConjDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          anchor: manual_claim_anchor(anchor: anchor),
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    ManualLbeDisjDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          anchor: manual_claim_anchor(anchor: anchor),
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    ManualLbeTransformDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          anchor: manual_claim_anchor(anchor: anchor),
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+  }
+}
+
+fn testgen_emit_algebra_law_claim(
+  anchor: ManualAnchorKey,
+  label: String,
+  lhs: Node,
+  rhs: Node,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  if lhs == rhs {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: ^t19_algebra_law_tautological_sides,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else {
+    match algebra_law_manual_claim_case(anchor: anchor) {
+      Accepted { value: law_case, diagnostics: d } =>
+        Accepted {
+          value: EqualsClaim {
+            label: label,
+            anchor: law_case.anchor,
+            lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs),
+            rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
+            classification: classification,
+          },
+          diagnostics: d,
+        }
+      Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d }
+    }
+  }
+}
+
+fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
+  match algebra_law_subject_for_manual_anchor(anchor: anchor) {
+    Accepted { value: subject, diagnostics: d } =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: subject,
+        },
+        diagnostics: d,
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
+  match anchor {
+    ManualNatAddLeftIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_left_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatAddRightIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_right_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatAddAssociativity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_associativity,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulLeftIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_left_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAnnihilator =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_annihilator,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAssociativity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_mul_associativity,
+        },
+        diagnostics: None,
+      }
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualAnchorAbsent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+fn algebra_law_subject_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Authored { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Authored { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Authored { name: ^t19_algebra_law_expression_field }, target: expression },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^witness_validity_field_algebra }, target: p.algebra },
+      Edge {
+        label: Authored { name: ^witness_validity_field_preservation_rule },
+        target: witness_validity_symbol_atom_node(s: p.preservation_rule)
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^witness_validity_field_property },
+        target: witness_validity_symbol_atom_node(s: w.property)
+      },
+      Edge { label: Authored { name: ^witness_validity_field_evidence }, target: w.evidence }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^witness_validity_byte_range_unencodable,
+    at: node_locus(node: at_node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn witness_validity_subject_node(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Outcome<Node> {
+  bind_outcome(
+    o: witness_validity_outcome_node(
+      o: verify_witness(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      )
+    ),
+    f: fn(oracle_outcome) {
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Authored { name: ^witness_validity_field_source_facts }, target: source_facts },
+            Edge { label: Authored { name: ^witness_validity_field_candidate }, target: candidate },
+            Edge {
+              label: Authored { name: ^witness_validity_field_predicate },
+              target: witness_validity_predicate_node(p: predicate)
+            },
+            Edge {
+              label: Authored { name: ^witness_validity_field_witness },
+              target: witness_validity_witness_node(w: witness)
+            },
+            Edge {
+              label: Authored { name: ^witness_validity_field_oracle_outcome },
+              target: oracle_outcome
+            }
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
+  match r {
+    UserInputBoundary =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_user)
+    AmbiguousIntent =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
+    ExternalContractUnknown =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
+    CorrectionNotModeled =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
+  }
+}
+
+fn witness_validity_correction_node(c: Correction) -> Node {
+  match c {
+    Suggested { node: n } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Authored { name: ^witness_validity_correction_tag_suggested }, target: n }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    Unavailable { reason: r } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Authored { name: ^witness_validity_correction_tag_unavailable },
+            target: witness_validity_no_correction_reason_node(r: r)
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
+  match e {
+    WholeFile =>
+      Accepted {
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_whole_file),
+        diagnostics: None
+      }
+    ByteRange { start: _, end: _ } =>
+      outcome_rejected(
+        d: witness_validity_byte_range_unencodable_diagnostic(
+          at_node: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_byte_range)
+        )
+      )
+  }
+}
+
+fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
+  match l {
+    Textual { file: f, extent: e } =>
+      bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Authored { name: ^witness_validity_locus_tag_textual },
+                target: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge {
+                      label: Authored { name: ^witness_validity_locus_textual_file },
+                      target: witness_validity_symbol_atom_node(s: f)
+                    },
+                    Edge {
+                      label: Authored { name: ^witness_validity_locus_textual_extent },
+                      target: en
+                    }
+                  ],
+                  occurrence_id: OccurrenceSynthetic
+}
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+    NodeLocus { anchor: a } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at }
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    SourcePortLocus { anchor: a, file: f, extent: e } =>
+      bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Authored { name: ^witness_validity_locus_tag_source_port },
+                target: witness_validity_symbol_atom_node(s: a.at)
+              },
+              Edge {
+                label: Authored { name: ^witness_validity_locus_source_port_file },
+                target: witness_validity_symbol_atom_node(s: f)
+              },
+              Edge {
+                label: Authored { name: ^witness_validity_locus_source_port_extent },
+                target: en
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+    InvariantPortLocus { anchor: a, invariant: invariant } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^witness_validity_locus_tag_invariant_port },
+              target: witness_validity_symbol_atom_node(s: a.at)
+            },
+            Edge {
+              label: Authored { name: ^witness_validity_locus_invariant },
+              target: witness_validity_symbol_atom_node(s: invariant)
+            }
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    DeclarationLocus { declaration: declaration } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: declaration,
+            empty: [
+              Edge {
+                label: Authored { name: ^witness_validity_locus_tag_declaration },
+                target: witness_validity_symbol_atom_node(s: ^witness_validity_locus_tag_declaration)
+              }
+            ],
+            cons: fn(acc, seg) {
+              list_snoc_item(xs: acc, item: Edge {
+                label: Positional,
+                target: witness_validity_symbol_atom_node(s: seg)
+              })
+            }
+          ),
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+  }
+}
+
+fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
+  bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
+    Accepted {
+      value: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Authored { name: ^witness_validity_diag_field_reason },
+            target: witness_validity_symbol_atom_node(s: d.reason)
+          },
+          Edge {
+            label: Authored { name: ^witness_validity_diag_field_at },
+            target: at_node
+          },
+          Edge {
+            label: Authored { name: ^witness_validity_diag_field_correction },
+            target: witness_validity_correction_node(c: d.correction)
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+},
+      diagnostics: None
+    }
+  })
+}
+
+fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
+  fold_list_right(
+    xs: xs,
+    empty: Accepted {
+      value: witness_validity_symbol_atom_node(s: ^witness_validity_list_tag_empty),
+      diagnostics: None
+    },
+    snoc: fn(acc, h) {
+      bind_outcome(o: acc, f: fn(prev_node) {
+        bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
+          Accepted {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge { label: Authored { name: ^witness_validity_list_cons_head }, target: hn },
+                Edge { label: Authored { name: ^witness_validity_list_cons_tail }, target: prev_node }
+              ],
+              occurrence_id: OccurrenceSynthetic
+},
+            diagnostics: None
+          }
+        })
+      })
+    }
+  )
+}
+
+fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcome<Node> {
+  bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
+    bind_outcome(o: witness_validity_diagnostic_list_node(xs: d.tail), f: fn(tn) {
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^witness_validity_diags_field_head },
+              target: hn
+            },
+            Edge {
+              label: Authored { name: ^witness_validity_diags_field_tail },
+              target: tn
+            }
+          ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    })
+  })
+}
+
+fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
+  match ds {
+    None =>
+      Accepted {
+        value: witness_validity_symbol_atom_node(s: ^witness_validity_diagnostics_tag_none),
+        diagnostics: None
+      }
+    Some { diagnostics: nd } =>
+      bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: nd), f: fn(ndn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Authored { name: ^witness_validity_diagnostics_tag_some },
+                target: ndn
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+  }
+}
+
+fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outcome<Node> {
+  match o {
+    Accepted { value: w, diagnostics: ds } =>
+      bind_outcome(o: witness_validity_diagnostics_node(ds: ds), f: fn(dsn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Authored { name: ^witness_validity_outcome_holds },
+                target: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge {
+                      label: Authored { name: ^witness_validity_outcome_accepted_value },
+                      target: witness_validity_witness_node(w: w)
+                    },
+                    Edge {
+                      label: Authored { name: ^witness_validity_outcome_accepted_diagnostics },
+                      target: dsn
+                    }
+                  ],
+                  occurrence_id: OccurrenceSynthetic
+}
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+    Rejected { diagnostics: d } =>
+      bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: d), f: fn(dn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Authored { name: ^witness_validity_outcome_violates },
+                target: dn
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+  }
+}
+
+fn testgen_emit_witness_validity_claim(
+  label: String,
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Outcome<TestClaim> {
+  bind_outcome(
+    o: witness_validity_subject_node(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate,
+      witness: witness
+    ),
+    f: fn(input_node) {
+      Accepted {
+        value: RoundTripClaim {
+          label: label,
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: input_node,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
+  [
+    Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_conj_dag_surface(),
+        mock: lbe_io_mock_conj_dag_surface(),
+      },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeConjDagSurface)),
+      profile_metadata: default_generator_profile(),
+    },
+    Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_disj_dag_surface(),
+        mock: lbe_io_mock_disj_dag_surface(),
+      },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeDisjDagSurface)),
+      profile_metadata: default_generator_profile(),
+    },
+    Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_transform_dag_surface(),
+        mock: lbe_io_mock_transform_dag_surface(),
+      },
+      provenance: generator_provenance(id: generator_id_for_manual_anchor(key: ManualLbeTransformDagSurface)),
+      profile_metadata: default_generator_profile(),
+    },
+  ]
+}
+
+fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+type NatAlgebraLawScheduleRow {
+  obligation: NatAlgebraLawObligation
+  anchor: ManualAnchorKey
+}
+
+fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: o.algebra,
+    inhabitant: o.inhabitant,
+    law: o.law,
+  }
+}
+
+fn append_nat_obligation_if_law_matches(
+  found: Outcome<NatAlgebraLawObligation>,
+  obligation: NatAlgebraLawObligation,
+  law: Symbol
+) -> Outcome<NatAlgebraLawObligation> {
+  match found {
+    Accepted { value: _, diagnostics: _ } => found
+    Rejected { diagnostics: _ } =>
+      if obligation.law == law {
+        Accepted { value: obligation, diagnostics: None }
+      } else {
+        found
+      }
+  }
+}
+
+fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: ^testgen_non_algebra_law_scheduled_slot,
+          at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_obligation_if_law_matches(
+        found: found,
+        obligation: obligation,
+        law: law
+      )
+    }
+  )
+}
+
+fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
+  if law == ^law_nat_add_left_identity {
+    Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
+  } else if law == ^law_nat_add_right_identity {
+    Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
+  } else if law == ^law_nat_add_associativity {
+    Accepted { value: ManualNatAddAssociativity, diagnostics: None }
+  } else if law == ^law_nat_mul_left_identity {
+    Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
+  } else if law == ^law_nat_mul_annihilator {
+    Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
+  } else if law == ^law_nat_mul_associativity {
+    Accepted { value: ManualNatMulAssociativity, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    }
+  }
+}
+
+fn testgen_manual_anchor_from_nat_obligation(
+  o: NatAlgebraLawObligation
+) -> Outcome<ManualAnchorKey> {
+  testgen_manual_anchor_for_law(law: o.law)
+}
+
+fn nat_algebra_law_schedule_row_from_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  bind_outcome(
+    o: testgen_manual_anchor_for_law(law: obligation.law),
+    f: fn(anchor) {
+      Accepted {
+        value: NatAlgebraLawScheduleRow { obligation: obligation, anchor: anchor },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+fn append_nat_algebra_law_schedule_row_if_anchor_matches(
+  found: Outcome<NatAlgebraLawScheduleRow>,
+  obligation: NatAlgebraLawObligation,
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  match found {
+    Accepted { value: _, diagnostics: _ } => found
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
+        f: fn(row) {
+          if row.anchor == anchor {
+            Accepted { value: row, diagnostics: None }
+          } else {
+            found
+          }
+        }
+      )
+  }
+}
+
+fn nat_algebra_law_schedule_row_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_algebra_law_schedule_row_if_anchor_matches(
+        found: found,
+        obligation: obligation,
+        anchor: anchor
+      )
+    }
+  )
+}
+
+fn testgen_algebra_law_generator_from_nat_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<Generator<TestgenConcept>> {
+  bind_outcome(
+    o: testgen_manual_anchor_from_nat_obligation(o: obligation),
+    f: fn(anchor) {
+      Accepted {
+        value: Generator {
+          kind: TestClaimEqualsClaimVariant,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: anchor),
+          slot: AlgebraLaw {
+            subject: algebra_law_subject_from_nat_obligation(o: obligation),
+          },
+          provenance: generator_provenance(id: generator_id_for_manual_anchor(key: anchor)),
+          profile_metadata: default_generator_profile(),
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+fn append_algebra_law_generator_from_nat_obligation(
+  acc: Outcome<List<Generator<TestgenConcept>>>,
+  obligation: NatAlgebraLawObligation
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc) {
+      bind_outcome(
+        o: testgen_algebra_law_generator_from_nat_obligation(obligation: obligation),
+        f: fn(generator) {
+          Accepted {
+            value: list_snoc_item(xs: acc, item: generator),
+            diagnostics: None,
+          }
+        }
+      )
+    }
+  )
+}
+
+fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  fold_list_right(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, obligation) {
+      append_algebra_law_generator_from_nat_obligation(
+        acc: o,
+        obligation: obligation
+      )
+    }
+  )
+}
+
+fn nat_algebra_law_obligation_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawObligation> {
+  bind_outcome(
+    o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
+    f: fn(row) {
+      Accepted { value: row.obligation, diagnostics: None }
+    }
+  )
+}
+
+fn testgen_algebra_law_concept_for_manual_nat_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<TestgenConcept> {
+  bind_outcome(
+    o: nat_algebra_law_obligation_for_manual_anchor(anchor: anchor),
+    f: fn(obligation) {
+      Accepted {
+        value: AlgebraLaw {
+          subject: algebra_law_subject_from_nat_obligation(o: obligation),
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+fn testgen_algebra_law_subject_from_scheduled_generator(
+  generator: Generator<TestgenConcept>
+) -> Outcome<AlgebraLawSubject> {
+  match generator.slot {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
+    TypeConstruction { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    DiagnosticExhaustiveness { coproduct_type: _, omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    CrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LensApplicability { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    RefinementPreservation { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+  }
+}
+
+fn append_algebra_law_subject_from_scheduled_generator(
+  acc: List<AlgebraLawSubject>,
+  generator: Generator<TestgenConcept>
+) -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_algebra_law_subject_from_scheduled_generator(generator: generator),
+    f: fn(subject) {
+      Accepted {
+        value: Cons { head: subject, tail: acc },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+fn testgen_algebra_law_subjects_from_scheduled_generators(
+  generators: List<Generator<TestgenConcept>>
+) -> Outcome<List<AlgebraLawSubject>> {
+  fold_list_right(
+    xs: generators,
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, generator) {
+      bind_outcome(
+        o: o,
+        f: fn(acc) {
+          append_algebra_law_subject_from_scheduled_generator(
+            acc: acc,
+            generator: generator
+          )
+        }
+      )
+    }
+  )
+}
+
+fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_scheduled_algebra_law_generators(),
+    f: fn(generators) {
+      testgen_algebra_law_subjects_from_scheduled_generators(generators: generators)
+    }
+  )
+}
+
+fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { coproduct_type: coproduct_type, omitted_variant: omitted_variant }
+}
+
+fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
+  }
+}
+
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
+  }
+}
+
+fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: omitted_variant }
+    },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor) }
+    },
+    children: [
+      Edge {
+        label: Authored { name: ^coproduct_exhaustiveness_omitted_variant_edge },
+        target: coproduct_exhaustiveness_variant_node(
+          omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
+        )
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/diagnostic-exhaustiveness: coproduct ",
+    concat(
+      coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor),
+      concat(
+        " missing arm ",
+        concat(coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor), " rejects")
+      )
+    )
+  )
+}
+
+fn coproduct_exhaustiveness_diagnostic(
+  input: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^coproduct_exhaustiveness_missing_variant,
+    at: node_locus(node: input),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn testgen_emit_coproduct_exhaustiveness_claim(
+  anchor: GeneratedAnchorKey
+) -> Outcome<TestClaim> {
+  let input = coproduct_exhaustiveness_input(anchor: anchor)
+  Accepted {
+    value: DiagnosticClaim {
+      label: coproduct_exhaustiveness_label(anchor: anchor),
+      anchor: generated_claim_anchor(anchor: anchor),
+      input: input,
+      expected_rejection: diagnostics_singleton(
+        d: coproduct_exhaustiveness_diagnostic(input: input)
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
+  }
+}
+
+fn coproduct_exhaustiveness_generator(
+  coproduct_type: Symbol,
+  omitted_variant: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = coproduct_exhaustiveness_anchor(
+    coproduct_type: coproduct_type,
+    omitted_variant: omitted_variant
+  )
+  Generator {
+    kind: TestClaimDiagnosticClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: DiagnosticExhaustiveness {
+      coproduct_type: coproduct_type,
+      omitted_variant: omitted_variant,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+fn coproduct_exhaustiveness_generators_for_decl(
+  decl: ConceptDecl
+) -> List<Generator<TestgenConcept>> {
+  list_map(
+    xs: coproduct_arm_key_list_from_node(node: decl.node),
+    f: fn(arm) {
+      coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
+    }
+  )
+}
+
+fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
+  list_flat_map(
+    xs: enumerate_coproduct_decls(),
+    f: fn(decl) { coproduct_exhaustiveness_generators_for_decl(decl: decl) }
+  )
+}
+
+data cross_repr_native_value_bool: Symbol = ^native_value_bool
+data cross_repr_native_value_null: Symbol = ^native_value_null
+
+fn cross_representation_equality_anchor(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratedAnchorKey {
+  GeneratedCrossRepresentationEquality {
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  }
+}
+
+fn cross_representation_anchor_modeled_coproduct(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization: _ } => modeled_coproduct
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+fn cross_representation_anchor_native_realization(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization } => native_realization
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+fn cross_representation_representation_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/cross-representation-equality: modeled ",
+    concat(
+      cross_representation_anchor_modeled_coproduct(anchor: anchor),
+      concat(
+        " reconciles with native ",
+        cross_representation_anchor_native_realization(anchor: anchor)
+      )
+    )
+  )
+}
+
+fn testgen_emit_cross_representation_equality_claim(
+  anchor: GeneratedAnchorKey
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: cross_representation_equality_label(anchor: anchor),
+      anchor: generated_claim_anchor(anchor: anchor),
+      lhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_modeled_coproduct(anchor: anchor)
+      ),
+      rhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_native_realization(anchor: anchor)
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
+  }
+}
+
+fn cross_representation_equality_generator(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = cross_representation_equality_anchor(
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  )
+  Generator {
+    kind: TestClaimEqualsClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: CrossRepresentationEquality {
+      modeled_coproduct: modeled_coproduct,
+      native_realization: native_realization,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+fn testgen_scheduled_cross_representation_equality_generators() -> List<Generator<TestgenConcept>> {
+  [
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Bool,
+      native_realization: cross_repr_native_value_bool
+    ),
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Optional,
+      native_realization: cross_repr_native_value_null
+    ),
+  ]
+}
+
+fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
+  g.provenance.generator_id == generator_id_for_claim_anchor(anchor: g.anchor)
+    && g.profile_metadata.profile_ref == ^testgen_default_profile_ref
+}
+
+fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Bool {
+  fold_list(
+    xs: gens,
+    empty: true,
+    cons: fn(acc, g) { acc && generator_carries_provenance(g: g) },
+  )
+}
+
+fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>>>) -> Bool {
+  match o {
+    Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
+    Rejected { diagnostics: d } => false
+  }
+}
+
+fn scheduled_generators_carry_provenance() -> Bool {
+  all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_cross_representation_equality_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
+    && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
+}
+
+fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
+  list_append(
+    left: testgen_scheduled_language_behavior_generators(),
+    right: list_append(
+      left: testgen_scheduled_coproduct_exhaustiveness_generators(),
+      right: testgen_scheduled_cross_representation_equality_generators()
+    )
+  )
+}
+
+fn testgen_scheduled_generators_outcome() -> Outcome<List<Generator<TestgenConcept>>> {
+  let base = testgen_scheduled_generators_static_base()
+  bind_outcome(
+    o: testgen_scheduled_refinement_preservation_generators(),
+    f: fn(refinement_gens) {
+      bind_outcome(
+        o: testgen_scheduled_algebra_law_generators(),
+        f: fn(algebra_gens) {
+          outcome_accepted(
+            value: list_append(
+              left: base,
+              right: list_append(left: refinement_gens, right: algebra_gens)
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn testgen_scheduled_generators_roster_holds() -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+type TestgenRunReceipt {
+  profile_ref: Symbol
+  generators: List<Generator<TestgenConcept>>
+}
+
+fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
+  g.profile_metadata.profile_ref == profile_ref
+}
+
+fn testgen_scheduled_generators_matching_profile(
+  gens: List<Generator<TestgenConcept>>,
+  profile_ref: Symbol
+) -> List<Generator<TestgenConcept>> {
+  filter(
+    xs: gens,
+    predicate: fn(g) {
+      generator_matches_profile(g: g, profile_ref: profile_ref)
+    }
+  )
+}
+
+fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
+  bind_outcome(
+    o: testgen_scheduled_generators_outcome(),
+    f: fn(gens) {
+      let matched = testgen_scheduled_generators_matching_profile(gens: gens, profile_ref: profile_ref)
+      if length(xs: matched) == 0 && length(xs: gens) > 0 {
+        outcome_rejected(d: testgen_profile_roster_mismatch_diagnostic())
+      } else {
+        outcome_accepted(
+          value: TestgenRunReceipt {
+            profile_ref: profile_ref,
+            generators: matched
+          }
+        )
+      }
+    }
+  )
+}
+
+fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConcept>) -> Bool {
+  left.provenance.generator_id == right.provenance.generator_id
+}
+
+fn testgen_generators_roster_equal_by_id(
+  left: List<Generator<TestgenConcept>>,
+  right: List<Generator<TestgenConcept>>
+) -> Bool {
+  zip_eq(
+    a: left,
+    b: right,
+    eq: fn(l, r) {
+      generator_id_eq(left: l, right: r)
+    }
+  )
+}
+
+fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Bool {
+  match testgen_scheduled_generators_outcome() {
+    Accepted { value: roster, diagnostics: _ } =>
+      testgen_generators_roster_equal_by_id(
+        left: receipt.generators,
+        right: testgen_scheduled_generators_matching_profile(
+          gens: roster,
+          profile_ref: receipt.profile_ref
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^manual_anchor_absent_bootstrap,
+    at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClaim> {
+  match key {
+    ManualAnchorAbsent =>
+      Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
+    ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
+    ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
+    ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
+    ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
+    ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
+    ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
+    ManualTcBranchEmpty => Accepted { value: claim_branch_empty_rejected, diagnostics: None }
+    ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
+    ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
+    ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
+    ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
+    ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
+    ManualNatAddAssociativity => Accepted { value: claim_nat_add_associativity, diagnostics: None }
+    ManualNatMulLeftIdentity => Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
+    ManualNatMulAnnihilator => Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
+    ManualNatMulAssociativity => Accepted { value: claim_nat_mul_associativity, diagnostics: None }
+    ManualLbeConjDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: ManualLbeConjDagSurface,
+        label: lbe_label_conj_dag_surface,
+        mock: lbe_io_mock_conj_dag_surface()
+      )
+    ManualLbeDisjDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: ManualLbeDisjDagSurface,
+        label: lbe_label_disj_dag_surface,
+        mock: lbe_io_mock_disj_dag_surface()
+      )
+    ManualLbeTransformDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: ManualLbeTransformDagSurface,
+        label: lbe_label_transform_dag_surface,
+        mock: lbe_io_mock_transform_dag_surface()
+      )
+    ManualRefinementNonEmptyListBase =>
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: d } =>
+          bind_outcome_accepted(
+            od: d,
+            inner: testgen_emit_refinement_preservation_claim(
+              anchor: ManualRefinementNonEmptyListBase,
+              label: refinement_label_nonempty_list_base,
+              subject: subject
+            )
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
+  match test_claim_anchor(c: claim) {
+    ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } =>
+      Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
+    ManualClaimAnchor { manual_anchor: ManualTcConjEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcDisjEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Disj },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcArrowTwoConj } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Instantiation },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcArrowEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcTransformEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Transform },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcBranchEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Branch },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcLoopEmpty } =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Loop },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcBindZeroChildren } =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Bind },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualTcConjEqualsRefl } =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        }, diagnostics: None }
+    ManualClaimAnchor { manual_anchor: ManualNatAddLeftIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddLeftIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatAddRightIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddRightIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatAddAssociativity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddAssociativity)
+    ManualClaimAnchor { manual_anchor: ManualNatMulLeftIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulLeftIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatMulAnnihilator } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAnnihilator)
+    ManualClaimAnchor { manual_anchor: ManualNatMulAssociativity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAssociativity)
+    ManualClaimAnchor { manual_anchor: ManualLbeConjDagSurface } =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_conj_dag_surface(),
+          mock: lbe_io_mock_conj_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    ManualClaimAnchor { manual_anchor: ManualLbeDisjDagSurface } =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_disj_dag_surface(),
+          mock: lbe_io_mock_disj_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    ManualClaimAnchor { manual_anchor: ManualLbeTransformDagSurface } =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_transform_dag_surface(),
+          mock: lbe_io_mock_transform_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
+      Accepted {
+        value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
+        diagnostics: None,
+      }
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
+      Accepted {
+        value: CrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr },
+        diagnostics: None,
+      }
+    ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: d } =>
+          Accepted {
+            value: RefinementPreservation {
+              subject: subject,
+            },
+            diagnostics: d,
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    ManualClaimAnchor { manual_anchor: manual_anchor } =>
+      match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
+        Accepted { value: subject, diagnostics: d } =>
+          Accepted {
+            value: AlgebraLaw {
+              subject: subject,
+            },
+            diagnostics: d,
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn bootstrap_claim_generator_for_manual_anchor(
+  key: ManualAnchorKey
+) -> Outcome<Generator<TestgenConcept>> {
+  match manual_test_claim_for_manual_anchor(key: key) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: claim, diagnostics: d0 } =>
+      match testgen_concept_for_manual_claim(claim: claim) {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: d0, rejected: r) }
+        Accepted { value: slot, diagnostics: d1 } =>
+          Accepted {
+            value: Generator {
+              kind: test_claim_coproduct_variant(c: claim),
+              classification: test_claim_classification(c: claim),
+              anchor: test_claim_anchor(c: claim),
+              slot: slot,
+              provenance: generator_provenance(id: generator_id_for_claim_anchor(anchor: test_claim_anchor(c: claim))),
+              profile_metadata: default_generator_profile(),
+            },
+            diagnostics: diagnostics_merge(outer: d0, inner: d1)
+          }
+    }
+  }
+}
+
+// Next-rung: gunbc.guarantee_stall.testgen_anchor_generator_totality_stall.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

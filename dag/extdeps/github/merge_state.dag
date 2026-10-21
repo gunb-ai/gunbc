@@ -1,0 +1,33 @@
+module extdeps.github.merge_state
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.github.merge_state_contracts { merge_state_status_wire_contract }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/graphql/reference/enums#mergestatestatus"
+  }
+}
+
+type MergeStateStatus
+  = Behind
+  | Blocked
+  | Clean
+  | Dirty
+  | Draft
+  | HasHooks
+  | Unknown
+  | Unstable
+
+data merge_state_graphql_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.merge_state", decl_name: "MergeStateStatus"),
+    reason: "MergeStateStatus|transport:graphql-only",
+    dissolution: unbound_dissolution(description: "dashboard shadow lane adds graphql transport handler when extdeps.github.graphql module lands"),
+  )
+]

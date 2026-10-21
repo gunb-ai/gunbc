@@ -1,0 +1,80 @@
+module extdeps.iproute2.ss
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.algebra { trim, length }
+
+// ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository
+// consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population
+// itself rather than a status code.
+
+// ENUMERATION IS THE ONLY SHAPE THAT CAN PROVE NOTHING IS SERVING A PORT.
+//
+// The evidence this replaces was a dial's exit status, and it claimed more than its source
+// establishes. curl(1) documents exit 7 as CURLE_COULDNT_CONNECT, "Failed to connect() to host or
+// proxy" -- one code covering every reason a connect failed, and curl's own documentation tells
+// callers to keep the error buffer because the numeric code does not carry the complete cause. So a
+// 7 establishes `curl did not connect`, which is strictly weaker than the four things a retirement
+// proof needs: that the intended host was reached, that the intended port was tested directly, that
+// no proxy stood in the path, and that no listener exists. A transport failure was being read as
+// the good-news arm of a proof that authorizes training onto the machine.
+//
+// A host-local enumeration answers the actual question. `ss -H -l -t -n 'sport = :PORT'` completes
+// with status 0 and prints ONE LINE PER LISTENING SOCKET on that port; no lines is the observed
+// empty population, not a failure to look. The distinction the exit code could not make is now
+// structural: a query that did not complete exits nonzero and establishes nothing, and a query that
+// completed carries its population as data.
+//
+// Cited to ss(8), iproute2. `-H` suppresses the header so the line count IS the population count,
+// `-l` selects listening sockets, `-t` restricts to TCP, `-n` keeps ports numeric so the filter and
+// the output speak the same vocabulary.
+//
+// The invocation is described here rather than minted as an argv builder, and the success status is
+// not minted at all, because nothing reads either yet: the probe capture site that will issue this
+// command is P0's wet half. A row authored ahead of its consumer is the artifact-with-no-consumer
+// §6 warns about, and this module had two of them within an hour of the same trim being applied to
+// its curl and pgrep neighbours -- which is why the rule is written down here rather than remembered.
+// AN EMPTY COMPLETED ENUMERATION IS AN OBSERVATION, and the trimmed-empty test is what separates it
+// from a query that printed nothing because it never ran. The caller only reaches this on a capture
+// that already carries a successful completion.
+fn ss_enumeration_is_empty(stdout: String) -> Bool {
+  trim(s: stdout) == ""
+}
+
+// THE SAME ENUMERATION SHAPE ASKED OF A CONNECTION RATHER THAN A LISTENER, and it earns its argv
+// because it lands with a consumer: gunbc.spark.rendezvous_participation reads it to decide whether
+// a rank is attached to the store its head is currently serving. The caution above -- that this
+// module twice carried rows authored ahead of their consumers -- is why the listening form still has
+// no argv builder and this one does.
+//
+// `state established` with a `dst` filter answers "is there a live connection from this host to that
+// exact peer", which is the only question that separates a process that is participating from one
+// that merely exists. It needs no privilege: the socket table is world-readable and only the
+// process-attribution flag (`-p`) requires more, which this invocation does not ask for.
+//
+// THE PEER IS ADDRESS AND PORT TOGETHER because a rendezvous is identified by both; filtering on the
+// address alone would count an ssh session to the same host as participation.
+data ss_binary_path: NonEmptyStr = "/usr/bin/ss" as NonEmptyStr
+
+fn ss_established_to_peer_argv(peer: NonEmptyStr) -> List<String> {
+  [
+    ss_binary_path as String,
+    "-H",
+    "-t",
+    "-n",
+    "state",
+    "established",
+    "dst",
+    peer as String,
+  ]
+}
+
+// A COMPLETED ENUMERATION CARRIES ITS POPULATION AS DATA, so the count is derived from the lines and
+// an empty completion counts zero rather than refusing. The caller is responsible for having
+// established that the query completed; this only reads what it printed.
+fn ss_enumeration_line_count(stdout: String) -> Int {
+  if ss_enumeration_is_empty(stdout: stdout) {
+    0
+  } else {
+    length(filter(split(s: trim(s: stdout), delimiter: "\n"), l => trim(s: l) != ""))
+  }
+}

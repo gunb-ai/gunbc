@@ -1,0 +1,122 @@
+module gunbc.runner.runner_host_kvm_probe_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// ONE ATTEMPT, RECORDED AS A CHAIN. A repository-built bare-metal host image booted on the Mt.
+// Collins unit, obtained a usable /dev/kvm, launched Firecracker v1.16.1 and caused an aarch64
+// guest kernel to execute under KVM, 2026-09-06.
+//
+// THIS IS A SECOND RECEIPT, NOT AN EDIT OF THE FIRST. gunbc.runner.runner_host_first_boot_receipt
+// says "that KVM can start a guest -- /dev/kvm existing is a precondition, not a demonstration" is
+// unobserved, and that remains TRUE OF ITS OWN ATTEMPT. Rewriting it to describe this later run
+// would make an immutable statement about one boot into a mutable summary of several, and would
+// change the bytes its digest names. Its capture is likewise untouched: this run has its own.
+//
+// WHAT IT CLOSES AND NOTHING MORE. The uncertainty between "the device node exists" and "hardware
+// virtualization works on this machine" is closed. The guest's own kernel printing "KVM: hypervisor
+// services detected" is the corroboration -- that line is the guest observing the hypervisor
+// interface, so Firecracker genuinely crossed the host's KVM boundary rather than emulating.
+type KvmProbeArtifactChain {
+  iso_envelope_sha256: NonEmptyStr
+  host_kernel_sha256: NonEmptyStr
+  host_kernel_config_sha256: NonEmptyStr
+  initramfs_spec_sha256: NonEmptyStr
+  firecracker_binary_sha256: NonEmptyStr
+  jailer_binary_sha256: NonEmptyStr
+  guest_kernel_sha256: NonEmptyStr
+  guest_rootfs_sha256: NonEmptyStr
+  vm_config_sha256: NonEmptyStr
+}
+
+data mtcollins1_kvm_probe_chain: KvmProbeArtifactChain = KvmProbeArtifactChain {
+  iso_envelope_sha256: "ee0bfcc3f88a90cd9e4cd523375b0bf3bd7ea7bbc13a0e4fa81346a47d8bab03",
+  host_kernel_sha256: "fd9826afcbd6205bd3e011bd1a3b3d74dadf531f73b0221bfce8787a15b75ad9",
+  host_kernel_config_sha256: "5f8d1d19558665647d92880793d89a1417563a7e636b9d2b4c1d517937afd08a",
+  initramfs_spec_sha256: "790a1af322b2bd808066272c5655668f183c749ad5307e457dd41b46d2c1076e",
+  firecracker_binary_sha256: "71ca0733576579a75cef268a8fd0ae0629b761b9844559c611f144132ac6038a",
+  jailer_binary_sha256: "7db39d34991ccdd8d12aacab384b1dcbe35e79c27823e4e4d33725d4b504edd7",
+  guest_kernel_sha256: "cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319",
+  guest_rootfs_sha256: "c61b6ff3b34cb3d393f9c7d8e274f11c356ca7346609532fcffa415bb7d62d70",
+  vm_config_sha256: "196d781734e8f8a1cd788ac0875763a80ae264f00198dd51f715841a770af15f",
+}
+
+// THE NAME IS DELIBERATELY NARROW, and the rejected names are listed because each would have been
+// read as a claim this run does not support. Not MicroVmSucceeded, not RunnerHostReady, not
+// GuestBootCompleted: what was observed is that a guest KERNEL entered early boot.
+type KvmProbeOutcome
+  = RunnerHostKvmProbeReachedGuestKernel {
+      firecracker_version: NonEmptyStr
+      guest_kernel_release: NonEmptyStr
+      evidence_artifact: NonEmptyStr
+    }
+  | RunnerHostKvmProbeRefused { detail: String }
+
+data mtcollins1_kvm_probe: KvmProbeOutcome = RunnerHostKvmProbeReachedGuestKernel {
+  firecracker_version: "v1.16.1",
+  guest_kernel_release: "6.1.128",
+  evidence_artifact: "artifacts/bmc/mtcollins1-runner-host-kvm-probe.log",
+}
+
+data mtcollins1_kvm_probe_evidence_sha256: NonEmptyStr = "781ea555ff993e94442f152092c7b6832f87735421af9b3c3bcfa1f5760bd50b"
+data mtcollins1_kvm_probe_evidence_byte_count: Int = 217138
+
+// WHAT THE GUEST OUTPUT ESTABLISHES, at the grain it was printed.
+data kvm_probe_established: List<NonEmptyStr> = [
+  "Firecracker accepted the configuration and reported starting the microvm",
+  "a guest vCPU executed",
+  "the guest kernel entered early boot and identified itself as 6.1.128",
+  "the guest observed KVM hypervisor services, so the host's KVM interface was genuinely crossed",
+]
+
+// AND WHAT IT DOES NOT, which is most of what a runner needs. Listed rather than left to inference
+// because a milestone is exactly when a reader starts assuming the rest followed.
+data kvm_probe_not_established: List<NonEmptyStr> = [
+  "that the guest mounted its root filesystem",
+  "that guest userspace ran at all",
+  "sustained guest execution, or a controlled poweroff",
+  "that the host-imposed deadline fired or was even reached",
+  "that no Firecracker process survived the attempt",
+  "any production containment: the jailer was present in the image and NOT in the launch path",
+  "any guest networking, which was deliberately absent from this configuration",
+]
+
+// PID 1 SURVIVED THE LAUNCHER RETURNING, and that is the whole of the claim. The console printed
+// "[init] shell exited; PID 1 holding", which establishes the host avoided the earlier fatal
+// "Attempted to kill init!" shape. It does NOT establish reaping, deadline enforcement, or that
+// the guest's resources were released -- a hold loop is correct for a qualification image and is
+// not the supervisor the production profile owes.
+data pid1_standing_after_launch: NonEmptyStr = "host PID 1 remained alive after the launcher returned; no cleanup property is claimed"
+
+// ── the three defects this run cost, each narrowed to what was measured ─────────────────────────
+
+// THE ENLARGED EFI ARTIFACT WAS REFUSED BY THIS LOADER, and that is as far as the evidence goes.
+// An 84 MiB EFI artifact loaded and executed; a 173 MiB one produced "Boot option loading failed"
+// on the same unit by the same route. Size is the leading changed axis -- but embedding the guest
+// also changed PE section dimensions and loader memory demand, so no byte THRESHOLD has been
+// measured and none is claimed. It was not bisected because moving guest artifacts out of the host
+// image is independently the better architecture: they were never meant to live inside the trusted
+// boot artifact.
+data enlarged_efi_artifact_refused: NonEmptyStr = "this exact enlarged EFI artifact was incompatible with this firmware loader; size is the leading changed axis and no threshold was measured"
+
+// A DEVICE NODE IS NOT DEVICE READINESS. The initramfs declares /dev/sr0 statically, so its
+// presence proves only that a pathname exists. The first attempt mounted at 17.5s and the kernel
+// registered sr0 at 17.58s -- the node was there and the device was not. A SUCCESSFUL MOUNT is the
+// only observation that establishes readiness, so the mount is retried under a bounded deadline and
+// a failed observation is reported as a deadline, never as "media absent".
+data media_readiness_rule: NonEmptyStr = "MediaNodePresent is not MediaReady; a bounded mount retry establishes readiness and its failure is a deadline rather than an absence"
+
+// A PIPELINE'S EXIT STATUS ANSWERS FOR ITS LAST COMMAND. The first form piped Firecracker into
+// head and read $?, so a hypervisor that failed outright would have reported rc=0 -- the
+// fabricated-negative shape, in the instrument rather than in the program. The status is now
+// captured directly from the launcher.
+data launcher_status_capture_rule: NonEmptyStr = "the hypervisor's own exit status is captured directly; piping into a pager made the pager's status answer for the launcher"
+
+// ── what this run did NOT verify about its own inputs ───────────────────────────────────────────
+
+// THE GUEST ARTIFACTS WERE NOT RE-MEASURED AFTER MOUNTING. They are correctly outside the immutable
+// host artifact now, but they are NOT outside the trust boundary: the guest kernel and rootfs are
+// what will enforce a job's isolation and run the runner. This attempt proves the ISO was published
+// under a known digest and that the host later opened files by name -- not that Firecracker
+// received the intended bytes. The launcher owes a digest comparison against the admitted values
+// before it starts a VM.
+data guest_artifact_verification_gap: NonEmptyStr = "guest kernel and rootfs were opened by path from the mounted medium without being re-measured; the launcher owes a digest check against the admitted values before launch"

@@ -1,0 +1,151 @@
+module test.claim.serving.serving_session_attachment_witness
+
+import std.measure { token_count, money_amount_micro }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.demand { ObservationReceiptRef, admission_terms, BuyTerms, debt_payoff_objective }
+import extdeps.currency.currency { Usd }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.replica_endpoint_launch {
+  ReplicaEndpointLaunch, ReplicaLaunchObservation, ReplicaLaunchObserved, replica_endpoint_launch,
+  replica_endpoint_launch_key, replica_incarnation_unverified_obligation,
+}
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.serving.turn_admission {
+  BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
+  ServingSessionResidency, ReusedAtTurn, TurnReuseRead, MustReconstruct, TokenPrefixBroken,
+  ServingSessionRecord, NoSessionRecord, SessionRecord,
+  ResidencyUnread, serving_unread_when_owner_unprobed, serving_session_placement,
+  PlacementFree, OwnedByAnotherReplica,
+}
+import gunbc.harness.harness_backend { HarnessEngineReading }
+import gunbc.serving.replica_incarnation { ReplicaIncarnationUnread }
+import gunbc.harness.harness_seat { HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, harness_apply_session_attachment, harness_turn_subject, harness_turn_request, AnyAdmittedModel }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import gunbc.serving.rented_offer_admission { rented_production_sources }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
+
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { replica: w_replica, address: "10.0.0.7" as NonEmptyStr, port: 8000 }
+
+fn w_launch(field: String) -> ReplicaEndpointLaunch {
+  replica_endpoint_launch(replica: w_replica, endpoint: "10.0.0.7:8000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+}
+
+fn w_seen(field: String) -> ReplicaLaunchObservation {
+  ReplicaLaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
+}
+
+fn w_engine_with(field: String) -> HarnessEngineReading {
+  HarnessEngineReading {
+    queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
+    launch: w_seen(field: field),
+    progress: none,
+  }
+}
+
+// THE ONE INTERFACE THIS CLAIM DISCRIMINATES AT is harness_add_serving_candidate. Every observation it
+// consumes is supplied above; the fold reaches nothing outside its arguments.
+fn w_place_session(session: ServingSessionRecord) -> HarnessCandidates {
+  let field = "1789300000.12"
+  harness_add_serving_candidate(
+    acc_in: HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none },
+    endpoint: w_endpoint,
+    class: BatchQualityTolerant,
+    launch: w_launch(field: field),
+    engine: w_engine_with(field: field),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: session,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: rented_production_sources(replica: w_replica),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1789300000,
+  )
+}
+
+fn w_subject() -> HarnessTurnSubject {
+  harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: admission_terms(
+      buy: BuyTerms {
+        budget_account: "witness",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 0),
+        maximum_buy_order: money_amount_micro(count: 0),
+      },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
+  )
+}
+
+fn w_record(owner: String, intact: Bool) -> ServingSessionRecord {
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, last_turn: TurnReuseRead { cached_tokens: token_count(count: 512), launch: owner as NonEmptyStr, turn: "t7" as NonEmptyStr } }
+}
+
+fn w_own_key() -> String {
+  replica_endpoint_launch_key(launch: w_launch(field: "1789300000.12")) as String
+}
+
+// CONDITION (1), WITNESSED. The owner launch is matched by the endpoint's process-start field alone,
+// which no replica incarnation check has verified, so its standing reads UNREAD naming that obligation:
+// never ReusedAtTurn (warm on an unverified launch) and never a replaced-launch judgement. Reading the
+// standing from the record's own last turn (the earlier arm) fails the first claim; a non-owner
+// contributing a standing fails the second.
+test fn an_owner_matched_only_by_an_unverified_launch_reads_unread_and_is_never_warm() -> Bool {
+  (match w_place_session(session: w_record(owner: w_own_key(), intact: true)).owner_standing {
+     Present { value: ResidencyUnread { obligation: o } } => (o as String) == (replica_incarnation_unverified_obligation as String)
+     _ => false
+   })
+    && (match w_place_session(session: w_record(owner: w_own_key(), intact: false)).owner_standing {
+          Present { value: ResidencyUnread { obligation: _ } } => true
+          _ => false
+        })
+    && (match w_place_session(session: w_record(owner: "some-other-launch", intact: true)).owner_standing {
+          Absent => true
+          _ => false
+        })
+}
+
+// THE PLACEMENT DECISION harness_apply_session_attachment matches. Owner L1 unprobed (unread) plus
+// eligible L2 is OwnedByAnotherReplica. NoSessionRecord is the control that is PlacementFree.
+test fn an_unprobed_owner_does_not_admit_another_replica_and_no_record_does() -> Bool {
+  let l2 = replica_endpoint_launch_key(launch: w_launch(field: "1789300000.12"))
+  (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: w_record(owner: "L1", intact: true), candidate_launch: l2) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: NoSessionRecord, candidate_launch: l2) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: "some-other-launch", intact: true), candidate_launch: l2) {
+          OwnedByAnotherReplica { owner: _ } => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: w_own_key(), intact: true), candidate_launch: l2) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: w_record(owner: "some-other-launch", intact: true), candidate_launch: l2) {
+          PlacementFree => true
+          _ => false
+        })
+}
+
+test fn owner_unprobed_apply_treats_standing_as_unread() -> Bool {
+  let collected = HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none }
+  let applied = harness_apply_session_attachment(session: w_record(owner: "L1", intact: true), collected: collected, kept: [])
+  match applied.owner_standing {
+    Present { value: ResidencyUnread { obligation: _ } } => true
+    _ => false
+  }
+}

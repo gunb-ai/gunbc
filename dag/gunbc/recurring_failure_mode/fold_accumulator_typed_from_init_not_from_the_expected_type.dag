@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.fold_accumulator_typed_from_init_not_from_the_expected_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fold_accumulator_typed_from_init_not_from_the_expected_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "fold_accumulator_typed_from_init_not_from_the_expected_type" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a fold whose result position has a declared type -- a let annotation, a record field, a parameter -- types its accumulator from `init` alone. `init: none` gives the step function an accumulator of `Unit?`, and `init: 0` gives it `Int` where the declared result is `Nat`. The expected type exists at the site and never reaches the accumulator.",
+
+    "HARM: a false refusal of correct source at resolve, located inside the step function rather than at the fold, so the diagnostic names a field or a numeric mismatch and not the missing propagation. SPECIMEN (product.fabric.flex_market, landed by gunbc#13902 outside the required gate, so main carried it unresolved): flex_least_sampled_other folded with `init: none` and read `cur.samples`, refused `no field samples on type Unit`; flex_choose_bid_level seeded `samples: fold(tallies, init: 0, ..)` into the Nat field FlexLevelChosen.samples, refused Nat vs Int.",
+
+    "EXECUTED, NOT READ: gunbc#13993 annotated the binding (`let other: FlexLevelTally? = fold(.., init: none, ..)`) and the same refusal persisted at the same location. That is the evidence the annotation was present and not consumed, as opposed to absent. gunbc#14014 repaired it by moving the step into flex_fewer_samples, whose declared parameter `acc: FlexLevelTally?` types the accumulator, and by seeding `init: Zero`. Both are WORKAROUNDS at the consumer, labeled here: delete them when the trigger below lands.",
+
+    "RELATED, DISTINCT: unapplied_generic_accumulator_types_element_as_container is the case where an annotation DOES repair the accumulator; this row is the case where it does not. generic_variant_without_expected_type_leaves_a_present_arm_undecided records `a fold's initial accumulator names only empty collections` as residue of expected-type propagation; this row is that residue's instance for an absent optional and a numeric literal.",
+
+    "RUNG FOUND AT: 1, mitigatable -- loud refusal of correct source, never a wrong answer; found only because a witness outside the gate was run by hand. CEILING: 3, structurally guaranteed: a fold's accumulator type is unified with the expected type of the fold's result position before `init` is judged, so `none` and `0` are checked against it. NEXT TRIGGER, NAMED AS A CAPABILITY: v1.compiler.infer passes the expected type of a fold application into its accumulator parameter and init argument, sufficient for the annotated gunbc#13993 shape to resolve without a helper fn. Owner unassigned.",
+
+    "RECOGNITION RULE: a field-missing or Nat/Int refusal inside a fold step whose accumulator came from `none`, `0` or an empty collection; and an annotation on the binding that changes nothing. Do not repair by annotating the binding -- it is not consumed.",
+  ],
+
+  evidence: [],
+}

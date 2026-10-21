@@ -1,0 +1,774 @@
+module gunbc.design_argument
+
+import std.types { String, List }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
+
+// A NONEMPTY COLLECTION OF DECLARATION REFERENCES IS FreeSemigroup. A domain with no home has
+// nothing to conform to. Missing-head construction of that carrier is unwritable (MissingField /
+// head). A [] / Empty literal at a FreeSemigroup position is still the inhabitance seam owned by
+// cardinality-vertical-slice, not this first-slice construction wall.
+
+// EACH PROPOSITION CARRIES ITS OWN REVIEW READING, OR NONE. A DesignRow is one proposition of the
+// serial argument plus, where the proposition is checkable on a single change, the question a
+// reviewer asks of that change and the tells that its answer is yes. gunbc.roadmap.roadmap_review_criteria
+// DERIVES the review roster from these rows (one criterion per row with a review, key from the id),
+// so adding, changing or retiring a criterion is an edit to the proposition's own row here and
+// nowhere else (operator, 2026-09-06: DESIGN criteria flow to reviews with no dual representation).
+// A proposition without a review reading (an axiom's consequence, or a program like self-hosting) is
+// still part of the argument and simply mints no reviewer.
+// HOW A REVIEWER'S ANSWER MAPS TO A VERDICT IS A PROPERTY OF THE QUESTION, NOT OF THE REVIEWER.
+// Most criteria ask a yes/no question whose yes is a defect. Conformance (DESIGN section 3b) asks a
+// three-valued one, and the middle value -- a divergence with its reason stated -- is admitted, so
+// collapsing it to yes/no would either block every deliberate departure or admit every accidental
+// one. The verdict words themselves belong to gunbc.roadmap.roadmap_review_role (HeadVerdict); this
+// algebra only says which shape of answer the question has, and that module maps it.
+type ReviewAnswerAlgebra
+  = YesIsADefect
+  | ConformanceThreeValued
+
+type PropositionReview
+  = DefectReview {
+      part: String
+      question: String
+      tells: List<String>
+    }
+  | ConformanceReview {
+      domain: ConformanceDomain
+    }
+
+// A CONFORMANCE DOMAIN IS ONE CONCEPT THE CORPUS ALREADY HOMES, WITH THE DECLARATIONS THAT ARE ITS
+// HOME (DESIGN section 3b). The conformance proposition's review parts are DERIVED from these rows,
+// one reviewer per domain, so the domain list has one authority and DESIGN.md renders it rather
+// than repeating it. A domain is added by adding a row; a domain whose home does not yet exist is a
+// modeling obligation, not a row; a home that does not resolve is a section-3 citation defect.
+//
+// QUESTION and TELLS are reviewer-facing. LABEL, OWNS, BOUNDARIES and each group's LABEL and PURPOSE
+// are reader-facing: DESIGN.md renders a domain as a heading, what it owns, what it deliberately does
+// not absorb, and its home declarations grouped by what they do. The home declarations are the
+// flattened groups (conformance_domain_homes), so the reviewer brief and DESIGN.md name one
+// population. The review-plan identity hashes key, question, tells, answer algebra and homes
+// (gunbc.roadmap.roadmap_review_criteria review_criterion_identity_text); the reader-facing text is
+// excluded, so rewording it never invalidates a prior observation.
+type ConformanceHomeGroup {
+  label: String
+  purpose: String
+  homes: FreeSemigroup<DeclarationRef>
+}
+
+type ConformanceDomain {
+  key: String
+  label: String
+  question: String
+  tells: List<String>
+  owns: String
+  boundaries: List<String>
+  home_groups: FreeSemigroup<ConformanceHomeGroup>
+}
+
+fn conformance_home_list(h: FreeSemigroup<DeclarationRef>) -> List<DeclarationRef> {
+  non_empty_to_list(xs: h)
+}
+
+fn conformance_domain_home_groups(d: ConformanceDomain) -> List<ConformanceHomeGroup> {
+  non_empty_to_list(xs: d.home_groups)
+}
+
+fn conformance_domain_homes(d: ConformanceDomain) -> List<DeclarationRef> {
+  flat_map(conformance_domain_home_groups(d: d), g => conformance_home_list(h: g.homes))
+}
+
+data conformance_domains: List<ConformanceDomain> = [
+  ConformanceDomain {
+    key: "conformance-extdeps",
+    label: "External facts",
+    question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at the extdeps module that owns it, or put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
+    tells: [
+      "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
+      "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
+      "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
+      "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
+    ],
+    owns: "Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (section 3, external upstream decomposition).",
+    boundaries: [
+      "Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Upstream ownership",
+        purpose: "what an external model may own",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope"),
+          tail: [],
+        },
+      },
+      tail: [],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-realization",
+    label: "Materialization / realization",
+    question: "Given an admitted identity and result contract, does the handler, provider, placement or transport faithfully realize it -- preserving completeness, readback, retention, refusal and binding obligations -- without substituting, truncating or bypassing the admitted key; and where it departs, does it say why?",
+    tells: [
+      "a handler that substitutes, truncates or bypasses the admitted key",
+      "a shell or host call that executes what a realization handler already binds",
+      "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
+    ],
+    owns: "Faithfully storing and executing an admitted identity and result contract: completeness, readback, retention, transport, refusal and binding, with no substituting, truncating or bypassing the admitted key. Cache purity is one discriminator, not the whole domain.",
+    boundaries: [
+      "The key relation itself belongs to keys / hashing; this domain begins once the identity and contract are admitted.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Materialization contract",
+        purpose: "what is requested and what result is promised",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
+          tail: [
+            decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Storage contract",
+          purpose: "how admitted results are stored and read back",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
+            tail: [
+              decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
+            ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-leasing",
+    label: "Leasing, locking, grants and privileged access",
+    question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- or perform a privileged effect -- a Secret Manager read or write, an IAM binding, a credential mint, a GitHub App token -- without inhabiting the corpus's lease, grant and authorization-pattern model, and if it departs from that model, does it say why? Who may perform an effect and how that permission was granted is one question: the authorization pattern (workload identity federation with a scoped grant, per-effect operator approval through the ntfy loop, or a named human-only step) is SELECTED by gunbc.auth.authorization_pattern_selection from the effect's characteristics, never chosen at the call site.",
+    tells: [
+      "a flag file, a sleep, a retry loop or a bare Bool standing where a lease with a declared deadline was available",
+      "a write to a shared head that does not carry the expectation it was computed against",
+      "a compare-and-set slot that deletes its own generations other than through the windowed operations, or a slot whose generation history is its audit trail written through file_compare_and_set_windowed",
+      "an effect performed without the grant that names who may perform it and how it is released",
+      "a privileged effect whose token source is bound at the call site (GcloudPrintToken or OperatorSuppliedToken spelled in the entry) rather than resolved by gunbc.auth.access_token_source, with no row in gunbc.auth.privileged_effect_census stating why",
+      "a PR body, message or brief that asks the operator to paste, forward or relay an access token; a GUNBC_GCP_ACCESS_TOKEN_FILE filled from chat; a token value crossing a session boundary by any channel other than the one its issuer issued it on",
+      "a one-off or irreversible effect performed by a dispatched run under the federated identity with no approval request, or a recurring effect gated on a per-run phone tap",
+      "a dashboard-only or checkout-only action performed by prose instruction with no std.human_intervention row naming the step"
+    ],
+    owns: "Exclusive or bounded use of a resource, and the authorization a privileged effect requires.",
+    boundaries: [
+      "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.",
+      "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Lease and exclusion",
+        purpose: "time-bounded possession and atomic updates of shared state",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
+          tail: [
+            decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
+            decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed"),
+            decl_ref(module_path: "std.durable_exclusive_hold", decl_name: "DurableHoldState"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Grant and resource scope",
+          purpose: "what may be used, by whom, under what authority",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
+            tail: [
+              decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
+              decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Authorization-pattern selection",
+          purpose: "chooses the admissible mechanism for an effect",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "select_authorization_pattern"),
+            tail: [
+              decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "select_access_token_source"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Recurring automated access",
+          purpose: "workload identity and scoped secret access",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.github_gcp_federation", decl_name: "github_wif_provider"),
+            tail: [
+              decl_ref(module_path: "gunbc.auth.gcp_secret_access", decl_name: "SecretAccessGrant"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "One-off approved access",
+          purpose: "requests, capabilities and redemption",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.access_request", decl_name: "AccessRequest"),
+            tail: [
+              decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "ApprovalCapability"),
+              decl_ref(module_path: "gunbc.auth.approval_broker", decl_name: "redeem_capability"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Coverage evidence",
+          purpose: "classifies the privileged-effect sites that exist today",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
+            tail: [],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-compute",
+    label: "Fabric / compute",
+    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why? Compute cells and inference serving are two subjects of this one domain, and they share the PRICED SELECTION FOLD (both reach product.fabric.selection select_supply) while carrying DIFFERENT OCCUPANCY PRODUCERS: serving takes a seat via product.capacity.lease LeaseGrant, which has a term and a release law, linearized by fabric_seat_acquire over an append-only event chain; the compute control plane reserves a cell via product.fabric.execution LeaseIdentity, which carries no timestamp and no expiry, linearized by file_compare_and_set. Selection is shared, occupancy is not -- so a change that widens SELECTION must inhabit the shared fold, while a change to how either subject is HELD is a change to that subject's own producer and may not be written as if one lease algebra covered both. THE DOMAIN IS ALLOCATION, NOT ONLY ROUTING: a change that acquires, retains, releases, places, admits or recovers a resource must also choose for the affected work's declared objective and the owning policies (work, service, fleet, resource), consume the supply, occupancy and transition evidence that decides whether its action helps that work, and keep the selected target through realization and readback. Using the shared fold while optimising a local target -- winning a bid back, filling a configured count, equalising occupancy, keeping warm state, preferring local hardware -- is the same departure as bypassing it, because the fold then ranks against an objective nobody declared.",
+    tells: [
+      "a host name, address or port chosen in the change instead of resolved from the fabric",
+      "work run in the caller's own process or tree instead of requested as an exact-tree operation from a provider",
+      "a capacity or budget literal that the provider's admission already decides",
+      "a second SELECTION algebra written beside product.fabric.selection rather than parameterised over the new subject",
+      "a change to how one subject is HELD written as though one lease algebra covered both producers -- serving's termed LeaseGrant and the control plane's timeless LeaseIdentity are separate carriers with separate linearizations",
+      "a preference for winning bids, equal occupancy, local hardware, warm state or low latency with no declared objective or owner policy behind it",
+      "a bid limit, count or retry that rises because the last attempt lost, with no declared update law, evidence scope, objective and bound authorizing that response -- a bounded feedback controller whose update law is itself the declared policy is conforming",
+      "an economic comparison that leaves out a known material consequence: setup, reconstruction, contention, retained liability or release",
+      "two choices that draw on one allowance, or whose benefit exists only together (move these sessions AND release that rental), selected separately",
+      "a provider status, a requested action or a dashboard event treated as proof of usable capacity, completed work or a released liability",
+      "a decision that could not see a fact the system holds elsewhere and that decides whether the action helps (a worker waiting on its manager read as waiting on compute)"
+    ],
+    owns: "Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.",
+    boundaries: [
+      "Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).",
+      "Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.",
+      "Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Shared demand and supply selection",
+        purpose: "what work needs and which supply serves it",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
+          tail: [
+            decl_ref(module_path: "product.fabric.work", decl_name: "ExecutionRequirements"),
+            decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
+            decl_ref(module_path: "product.fabric.contention", decl_name: "select_demand_for_offer"),
+            decl_ref(module_path: "gunbc.ci.ci_runner_target", decl_name: "CiRunnerTarget"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Compute cells",
+          purpose: "layout, reservation and admission",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
+            tail: [
+              decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"),
+              decl_ref(module_path: "gunbc.fabric.fabric_executor_class", decl_name: "CapacityClassAdmission"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Seats and serving",
+          purpose: "seat demand, grants and occupancy",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "product.capacity.lease", decl_name: "LeaseGrant"),
+            tail: [
+              decl_ref(module_path: "product.capacity.pool_events", decl_name: "SeatRequest"),
+              decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
+              decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat"),
+              decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_group_admission"),
+            ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-decision",
+    label: "Decision / selection",
+    question: "When this change chooses among candidates under objectives and constraints, does it inhabit the corpus's decision and Pareto models -- a DecisionSubject, a candidate field of ParetoEntry rows over declared SelectionAxis identities, a RealizationSelectionResult whose SelectedWithin arm binds a SelectionReceipt -- and where it uses another representation or another choosing route, is that departure and its reason stated?",
+    tells: [
+      "a locally authored candidate-selection result (a chosen/none/needs-more sum, a ranked list, a best-of fold) beside RealizationSelectionResult",
+      "a parallel dominance, orientation, interval or evidence-gap representation where std.pareto already carries DominanceVerdict, AxisGoal and AxisGap",
+      "a local convention for candidate-field identity, funded-axis identity or policy identity where SelectionReceipt already names them as declaration references",
+      "a new choosing route that neither consumes select_realization nor states, beside itself, why it does not",
+      "urgency, priority or a deadline weight authored as a local number, queue order or tier rather than as a declared time valuation (a std.measure money rate) on the demand or supply position whose owner holds it",
+      "a declared valuation and an estimated consequence carried in one number, so a new observation can silently rewrite policy -- or a missing estimate read as zero, where zero is a declaration and unknown is not",
+      "one cash consequence counted twice, once as cost and again as urgency (a rental's continuing charge restated as supply urgency)",
+      "a deadline or availability bound priced as a very large valuation instead of held as a hard constraint"
+    ],
+    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
+    boundaries: [
+      "The hard selection laws stay with the section 3d reviewer.",
+      "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Decision subject, result and receipt",
+        purpose: "what is decided and the record of the choice",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.decision", decl_name: "DecisionSubject"),
+          tail: [
+            decl_ref(module_path: "std.decision", decl_name: "RealizationSelectionResult"),
+            decl_ref(module_path: "std.decision", decl_name: "SelectionReceipt"),
+            decl_ref(module_path: "std.decision", decl_name: "select_realization"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Pareto evidence",
+          purpose: "axes, readings and dominance; a frontier, never a winner",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.pareto", decl_name: "SelectionAxis"),
+            tail: [
+              decl_ref(module_path: "std.pareto", decl_name: "ParetoEntry"),
+              decl_ref(module_path: "std.pareto", decl_name: "DominanceVerdict"),
+            ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-identity",
+    label: "Keys / hashing",
+    question: "When this change defines, derives or consumes a key or a hash -- a computation identity, a cache or memo key, a store key, a structural fingerprint, a scoped entity or occurrence identity -- does it inhabit a named keying relation derived algorithmically from that relation's declared inputs through the existing key authority, with a canonical encoding injective over the domain, a declared equality, a hash family chosen for the key's sharing scope, and a declared collision disposition for that scope; and where it departs, does it state the departure and its reason?",
+    tells: [
+      "a locator, path or rendering substituted for another identity relation without an upstream addressing relation establishing it",
+      "a digest with a lossy or out-of-range arm that maps distinct inputs to one value, or an encoding that is not shown injective over its domain",
+      "a structural fingerprint used as identity across a run, host or store boundary where a collision would silently serve the wrong artifact",
+      "a second derivation of the same named relation in the same declared scope, or one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity) -- one subject may lawfully carry entity, demand, evaluation, result-content, occurrence, revision and locator keys",
+      "a cache or memo key that omits a declared input the result depends on"
+    ],
+    owns: "The key relation: what is identified, in what scope, from what complete canonical preimage, under what equality and collision rules, and whether its declared inputs are complete.",
+    boundaries: [
+      "Faithfully realizing an admitted identity belongs to materialization / realization.",
+      "Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Hash family and structural identity",
+        purpose: "how a node's identity is computed",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+          tail: [
+            decl_ref(module_path: "v2.std.node", decl_name: "content_hash"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Request, computation and occurrence identity",
+          purpose: "the keys materialization and source graphs use",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
+            tail: [
+              decl_ref(module_path: "std.computation_identity", decl_name: "ComputationIdentity"),
+              decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Equality and cache admissibility",
+          purpose: "whether a key type's equality may be relied on (instantiation-blind at this rung)",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.algebra", decl_name: "algebra_profile_equality_extensional"),
+            tail: [
+              decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
+            ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-observability",
+    label: "Process observability / reporting",
+    question: "When this change reports process progress, an occurrence, a measurement or an outcome -- a progress line, a heartbeat, a receipt line, a refusal restated for a reader -- does it use the existing observation and presentation authorities: an ObservationEvent or RecordedObservation carrying the typed subject, transition and Measured readings, projected through the CI renderer's event line and rendered line; and where it departs (a seed mirror, a wire format, a transport), does it state the departure and its reason?",
+    tells: [
+      "a status, count, duration or refusal cause built into an ad hoc formatted message instead of a typed event field the renderer projects",
+      "presentation assignment (glyph, attention, grouping, human units) rebuilt at the emit site rather than read from ObservationPresentation and the renderer",
+      "a reader that parses human prose as an undeclared wire contract, or a producer cut over while its reader still expects the old shape",
+      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
+      "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
+    ],
+    owns: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.",
+    boundaries: [
+      "Producing bytes is not delivery.",
+      "A repository population measured at a revision stays with gunbc.repository_census_observation.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Observation and recording",
+        purpose: "the occurrence and its record",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.observation", decl_name: "ObservationEvent"),
+          tail: [
+            decl_ref(module_path: "std.observation", decl_name: "RecordedObservation"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Presentation",
+          purpose: "how an observation is shown",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.observation", decl_name: "ObservationPresentation"),
+            tail: [],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "CI encoding",
+          purpose: "the rendered CI line",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_event_line"),
+            tail: [
+              decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_render_line"),
+            ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-cardinality-absence",
+    label: "Cardinality / absence",
+    question: "Does the change inhabit the existing presence, optional-layer and collection-cardinality authorities at each counted position, preserve their distinctions through its producer-to-consumer path, and state the reason for any departure?",
+    tells: [
+      "none, null or another sentinel answers for DAG absence through a second typing or runtime rule rather than the declared Optional constructor or a named foreign conversion",
+      "a new Absent, Missing or Unset carrier has exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning",
+      "a bare value is implicitly wrapped, or an optional payload is implicitly extracted, without a declared conversion satisfying section 4; the checker and realization insert different conversions",
+      "Option types, constructors, patterns or equality are selected by leaf spelling rather than resolved declaration identity and the admitted realization",
+      "nested optional layers, collection boundaries or absent-versus-empty states are collapsed as normalization rather than changed by an explicit operation",
+      "a new head-and-tail NonEmpty record restates FreeSemigroup, or a validated/nonempty brand can be constructed without establishing its claimed invariant",
+      "a possibly-empty producer enters a nonempty consumer without evidence; an operation preserves a lower bound it can invalidate; or unmeasured cardinality is treated as zero",
+      "a cardinality flag or metadata field independently restates structure already carried by the type and can disagree with it",
+    ],
+    owns: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.",
+    boundaries: [
+      "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.",
+      "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
+      "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Presence and sequences",
+        purpose: "the canonical optional, possibly-empty sequence and nonempty sequence carriers",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.optional", decl_name: "Optional"),
+          tail: [
+            decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+            decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Optional-layer structure",
+          purpose: "read and construct consecutive optional layers without collapsing their depth",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.optional_layers", decl_name: "type_node_occupancy_read"),
+            tail: [
+              decl_ref(module_path: "v2.std.optional_layers", decl_name: "wrap_type_node_occupancy"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Declared-type boundaries",
+          purpose: "the existing producer-versus-declared-type inhabitance judgment",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.inhabitance", decl_name: "declared_type_inhabitance"),
+            tail: [],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Natural bounds",
+          purpose: "the existing natural-order witness from which its two bounds are read",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.cardinality", decl_name: "NatLeWitness"),
+            tail: [],
+          },
+        },
+      ],
+    },
+  },
+]
+
+fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {
+  ConformanceReview { domain: d }
+}
+
+fn yes_no_review(part: String, question: String, tells: List<String>) -> PropositionReview {
+  DefectReview { part: part, question: question, tells: tells }
+}
+
+// WHETHER A PROPOSITION IS REVIEWABLE ON ONE CHANGE IS ITSELF A MODELED FACT, with its reason when it
+// is not: an omitted reviewer is a decision, never an oversight (review 5125854144 on the first cut,
+// which had `review: PropositionReview?` and gave `none` no reason). A reviewable proposition may
+// decompose into several atomic parts, each its own reviewer; the part name is the criterion key.
+type PropositionReviewDisposition
+  = ReviewableOnChange { parts: List<PropositionReview> }
+  | NotReviewableOnChange { reason: String }
+
+type DesignRow {
+  proposition: Proposition
+  review: PropositionReviewDisposition
+}
+
+data design_axioms: List<Axiom> = [
+  Axiom {
+    id: "A1",
+    statement: "there is a goal: to solve a problem presupposes an agent with a goal to satisfy",
+    kind: NonLogicalAxiom
+  },
+  Axiom {
+    id: "A2",
+    statement: "time is the value: every agent intrinsically values time — time is life — the one value assumed shared",
+    kind: NonLogicalAxiom
+  },
+  Axiom {
+    id: "A3",
+    statement: "agreement is temporal: intersubjective agreement is possible only across time, on what stays stable under it",
+    kind: NonLogicalAxiom
+  }
+]
+
+data design_section_1_rows: List<DesignRow> = [
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s1.minimal-safe-efficient",
+      statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
+      premises: ["A1", "A2"]
+    },
+    review: NotReviewableOnChange { reason: "a consequence of the axioms about what a good solution IS; the reviewable propositions below are that standard applied to a change, and a change is not decidable against the standard itself" },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s1.grounding-intersubjective",
+      statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
+      premises: ["A2", "A3"]
+    },
+    review: NotReviewableOnChange { reason: "its checkable form on a change is conformance to the shared authority's home; that reviewer is the conformance-extdeps domain of s3b.conformance, and asking it here as well would be two authorities for one judgment" },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s1.reduce-to-physics",
+      statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
+      premises: ["A1", "A2", "s1.grounding-intersubjective"]
+    },
+    review: NotReviewableOnChange { reason: "the limit the whole argument aims at; no single change is decidable against a limit" },
+  }
+]
+
+data design_section_1_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: design_section_1_propositions
+}
+
+data design_section_2_to_7_rows: List<DesignRow> = [
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s2.minimize-redundancy",
+      statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
+      premises: ["s1.minimal-safe-efficient"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "minimize-redundancy",
+      question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
+      tells: [
+        "a new type or function whose shape matches an existing one under another name",
+        "a hand-written projection of something the model could generate",
+        "a quadratic fold or a copied list where a single fold would do"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3.single-authority",
+      statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
+      premises: ["s2.minimize-redundancy"]
+    },
+    review: ReviewableOnChange { parts: [
+      yes_no_review(
+        part: "single-authority",
+        question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
+        tells: [
+          "a literal string where a modeled value exists",
+          "a file:line citation in prose or a row where a module and symbol could be named",
+          "the same fact now answerable from two carriers with no relation stated between them"
+        ]
+      ),
+      yes_no_review(
+        part: "witness-one-interface",
+        question: "Does a claim this change adds or edits take its subject beyond ONE interface -- deriving its inputs by executing the layers beneath the boundary instead of supplying them, folding several producers, or re-executing another module's claim functions -- or does it supply a boundary's inputs while leaving that boundary with no inhabitance claim that still runs the real path?",
+        tells: [
+          "a production module imports test.claim.* -- a layer inversion that makes every consumer a transitive consumer of those claims, and worth refusing on its own",
+          "a claim calls another module's claim functions, each of which already has its own subject and its own discriminating red",
+          "a claim whose evaluation is dominated by one call whose result shape is all it inspects",
+          "two claims making the same call on the same input where one assertion implies the other, each paying the call in full",
+          "a supplied boundary whose last real execution is gone: deleting the integration would make no control fail",
+          "an inhabitance claim that checks only shape, which is agreement rather than evidence that the real field reached the real decision",
+          "the eval-step budget refused the claim and a debt row was proposed -- the budget is the tell, not the rule, and the reach is never bought with a drop"
+        ]
+      )
+    ] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3b.conformance",
+      statement: "conformance is §2–§3 applied to a change: for every concept domain a change touches the corpus already homes the concept, so the change inhabits that model or states why it diverges; an unstated divergence is a fork that will be consolidated later at interest",
+      premises: ["s2.minimize-redundancy", "s3.single-authority"]
+    },
+    review: ReviewableOnChange { parts: map(conformance_domains, d => conformance_review_part(d: d)) },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3c.consumption",
+      statement: "consumption is the converse of conformance: every declaration a change adds is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is",
+      premises: ["s2.minimize-redundancy", "s5.fail-closed"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "consumption",
+      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling.",
+      tells: [
+        "a pub declaration with no call site anywhere in the closure the change compiles",
+        "a data row no fold reads, or a module no module imports",
+        "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",
+        "consumption described in the change's prose or PR body but absent from the diff",
+        "a frontier row naming a future consumer with no trigger beside it"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s3d.selection-precedes-convergence",
+      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; goal assessment and ensure do not enumerate candidates or choose policy",
+      premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "selection-precedes-convergence",
+      question: "Does the change let a selected or settled answer outrun its candidate-field completeness, constraints, required evidence or policy; treat a Pareto front with several survivors as a chosen winner; turn missing funded evidence into a fabricated zero, a default score or a settled fact; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or choice of desired policy? These are the hard laws, and a stated departure from the decision home (admitted by conformance-decision) does not excuse any of them.",
+      tells: [
+        "a convergence or ensure path that enumerates candidates or selects a realization",
+        "Optimal or first-list-element standing where several non-dominated survivors remain and no policy was named",
+        "a missing funded-axis reading filled with 0 W, a worst-score default, or silently dropped from the comparison",
+        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints, funded-axis evidence or candidate-field identity are incomplete",
+        "a departure note that explains a different representation and is offered as the reason an incomplete choice may stand"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s4.closed-grounded-substrate",
+      statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
+      premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "closed-grounded-substrate",
+      question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
+      tells: [
+        "a String field carrying structure a record could name",
+        "a threshold or guess standing where the richer source exists",
+        "a // annotation inside a fn or type body rather than above a module-scope declaration"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s5.fail-closed",
+      statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
+      premises: ["s1.minimal-safe-efficient"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "fail-closed",
+      question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
+      tells: [
+        "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
+        "an Option or wildcard that collapses two states with different remedies",
+        "a toggle, env var or flag whose only effect is to skip a refusal",
+        "a validator for a state the model could have made unwritable"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s6.how-to-work",
+      statement: "how to work given §1–§5: model by DFS-ing the concept DAG, consume §3d (selection precedes convergence) rather than independently carrying holistic priority, denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
+      premises: ["s2.minimize-redundancy", "s3.single-authority", "s3d.selection-precedes-convergence", "s4.closed-grounded-substrate", "s5.fail-closed"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "how-to-work",
+      question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
+      tells: [
+        "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
+        "a second path beside an existing modeled route",
+        "a change that routes around a substrate refusal instead of naming it"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s6b.root-generalization",
+      statement: "root generalization (anti-unification) closes breadth beside chain re-derivation's depth: when a new case needs new code, every leaf of the same shape is collected, generalized to the least general rule at the earliest unjustified boundary, and deleted; a repeated pattern is rejected until the author states why it should not be generalized or names the trigger and follow-up",
+      premises: ["s2.minimize-redundancy", "s3.single-authority", "s6.how-to-work"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "root-generalization",
+      question: "State what the change touches: which models, structures and behaviors, and what each does. Then look AROUND it, layer by layer up to the root of the tree: sibling arms of the same match, sibling call sites of the same general check, sibling helpers, the same rule in v1 and in v2, other stages and targets. Is the pattern the change adds or repairs REPEATED there, so that this change is one more leaf of a family rather than a single case? REPEATED means the same general question is answered by separate leaves, each taught its case in turn. The trigger is the second local implementation of one rule. List the leaves you found (the fork census). Done means a new ordinary case is data, not control flow. Failure examples. (a) Type-alias identity: node_type_compatible (v1, 04_types) takes no symbol table, so transparent_alias_identity_agrees is bolted on as a fallback at individual call sites; #13941 #14069 #13974 #14043 #14057 each taught one site, and the if-expression site, which has no fallback, broke after #13939. (b) v1 Rust trait bounds: Clone, map-key Eq+Hash and 'static each have their own seed, round, fixpoint and forwarding pipeline (v1_clone_bound_*, v1_map_key_*); #13978 #14010 #14020. (c) Qualified-call resolution: dotted names classified by string search at several sites across 04_infer and 04_lookup, patched in sequence by #13925, #14085, #14089. (d) changed_declaration_signature_consumer_unplanned (recurring_failure_mode). Generalization done well, for contrast: #14151, #14193, #13872, #14187. NOT repeated: two validations of different fields at one boundary (different questions at one site), and a corpus-wide import addition (one fact applied to every site, with no per-site logic). If it is repeated, REJECT and advise investigating generalization (DESIGN section 6b, root generalization). The author must answer with exactly one of: (1) why it should not be generalized, a stated reason (section 3b, diverges with a stated reason); or (2) it should be, but not now, naming the trigger and the follow-up (section 4b, no untracked stall). Accept or reject that answer on its merits. No answer is a reject.",
+      tells: [
+        "a new arm, call-site fallback or helper beside siblings that answer the same general question, with the general check left unable to answer it",
+        "a fix whose diff touches exactly the site named in the finding, while a sibling site, or the same rule in the other of v1 and v2, is shaped like it",
+        "a second or third fix to the same family within a short time, each patching one more site or one more pipeline",
+        "a parallel seed, round, fixpoint or forwarding pipeline per instance of one kind of obligation",
+        "a stated reason not to generalize that restates the instance rather than naming what differs, or a 'later' with no trigger and no follow-up"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s7.self-hosting",
+      statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
+      premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
+    },
+    review: NotReviewableOnChange { reason: "a program over the compiler judged by execution of emitted modules, not a property one change carries" },
+  }
+]
+
+data design_section_1_propositions: List<Proposition> = map(design_section_1_rows, r => r.proposition)
+
+data design_section_2_to_7_propositions: List<Proposition> = map(design_section_2_to_7_rows, r => r.proposition)
+
+data design_rows: List<DesignRow> = concat(design_section_1_rows, design_section_2_to_7_rows)
+
+data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
+
+data design_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: design_propositions
+}

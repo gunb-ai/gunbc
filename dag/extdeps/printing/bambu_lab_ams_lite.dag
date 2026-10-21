@@ -1,0 +1,97 @@
+module extdeps.printing.bambu_lab_ams_lite
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.printing.fdm {
+  FilamentMaterial,
+  Tpu,
+  Tpe,
+  Pva,
+  FiberReinforcedPolymer,
+  FeedPathSuitability,
+  FeedPathSuitabilityLookup,
+  FeedPathResolved,
+  FeedPathRowsConflict,
+  FeedPathSuitabilityRow,
+  FeedPathExcluded,
+  FeedPathUnstated,
+  ExcludedAsFlexible,
+  ExcludedAsMoistureAbsorbent,
+  ExcludedAsHighModulusOrBrittle,
+  feed_path_suitability_row,
+  feed_path_suitability,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wiki.bambulab.com/en/a1/manual/ams-lite"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.bambu_lab_ams_lite",
+      decl_name: "ams_lite_feed_path_suitability",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE AMS LITE IS ITS OWN SUBJECT, NOT A PROPERTY OF THE A1 MINI.
+//
+// It is a separately documented, separately shipped accessory with its own manual, so DESIGN
+// section 3 "External upstream decomposition" puts it in its own module rather than as rows inside
+// bambu_lab_a1_mini. The load-bearing consequence is visible in the rows below: the A1 mini's own
+// vendor table grades Tpu and Pva SuitabilityIdeal, and this manual excludes both. Those are not in
+// conflict and neither is wrong -- the machine prints them from the external spool holder, and the
+// AMS Lite cannot convey them. Had these rows been authored into the machine module, one of the two
+// true facts would have had to be deleted to make the module self-consistent.
+//
+// PROVENANCE, RELAYED RATHER THAN FETCHED. The exclusion sentences were quoted verbatim by the
+// operator from the AMS Lite manual on 2026-09-04. As recorded in bambu_lab_a1_mini, outbound
+// requests to bambulab.com are refused by this environment's egress policy, so no first-party read
+// is available here and none is claimed. The locator above is the manual's documented home and is
+// UNVERIFIED FROM THIS ENVIRONMENT; correcting it is a one-line change that moves no row.
+
+// WHAT THE MANUAL EXCLUDES, KEYED BY THE PROPERTY IT NAMES RATHER THAN BY PRODUCT NAME.
+//
+// The manual gives two distinct prohibitions with two distinct reasons, and the second one ends in
+// "etc" -- an open list. Keying the rows to the material property the manual actually cites, rather
+// than to the example SKUs it happens to print, is what keeps that openness honest: PA-CF, PA-GF,
+// PET-CF, PET-GF, PLA-CF and PLA-GF are all instances of FiberReinforcedPolymer, so one row covers
+// the manual's list AND the members it declined to enumerate. A blocklist of those six spellings
+// would have silently admitted the seventh.
+//
+// THESE ROWS ARE EXCLUSIONS ONLY, AND PLA IS DELIBERATELY NOT AMONG THEM AS ADMITTED. A first draft
+// graded Pla and Petg FeedPathAdmitted on the reasoning that the AMS Lite plainly feeds them. No
+// sentence of the manual was in hand saying so, and "plainly" is not a citation -- it is precisely
+// the fabricated-plausible-output arm this module exists to avoid, and the first consumer to ask
+// whether the AMS Lite feeds PLA would have received a confident answer with no source behind it.
+// Both rows were withdrawn. They return when the manual's supported-material statement is quoted,
+// which is an addition and moves no exclusion below.
+//
+// So materials this manual does not mention are absent from these rows on purpose, and
+// feed_path_suitability answers FeedPathUnstated for them -- the state the manual is actually in.
+data ams_lite_feed_path_suitability: List<FeedPathSuitabilityRow> = [
+  feed_path_suitability_row(material: Tpu, suitability: FeedPathExcluded { cause: ExcludedAsFlexible }),
+  feed_path_suitability_row(material: Tpe, suitability: FeedPathExcluded { cause: ExcludedAsFlexible }),
+  feed_path_suitability_row(material: Pva, suitability: FeedPathExcluded { cause: ExcludedAsMoistureAbsorbent }),
+  feed_path_suitability_row(
+    material: FiberReinforcedPolymer,
+    suitability: FeedPathExcluded { cause: ExcludedAsHighModulusOrBrittle },
+  ),
+]
+
+// THE LOOKUP'S REFUSAL ARM IS RELAYED, NOT ABSORBED. This returns the whole lookup rather than
+// unwrapping to a bare suitability, because a duplicate row in the table above is a defect in THIS
+// module's rows and a caller that received FeedPathUnstated for it could not tell a silent manual
+// from a broken table.
+fn ams_lite_feeds(material: FilamentMaterial) -> FeedPathSuitabilityLookup {
+  feed_path_suitability(rows: ams_lite_feed_path_suitability, material: material)
+}

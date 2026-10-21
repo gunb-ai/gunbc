@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.alarm_from_an_unread_field_is_not_evidence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data alarm_from_an_unread_field_is_not_evidence: RecurringFailureMode = RecurringFailureMode {
+  identity: "alarm_from_an_unread_field_is_not_evidence" as NonEmptyStr,
+
+  receipts: [
+    "**an alarm raised from an unread field is not evidence, and the cost of the unnecessary alarm is paid by whoever acts on it.** INVALID STATE: a field has not been read, or has been read without the discriminator that would decide between a serious finding and a default, and the unreadness is reported as a responsible-sounding finding -- two undisabled keys on a privileged-looking account, undeclared federation into a project we cannot name. HARM: the conclusion survives review because it sounds like diligence, and the next actor spends time, access, or a change on a fact that was never established. DISTINGUISHING FACT: the tell is in the SHAPE of the unread data, not in a later incident -- two keys sharing a create timestamp to the second with exactly one year of validity is the signature of Google-managed signing keys; a project number cited by a principalSet is not an unknown estate. RECOGNITION RULE: before raising an alarm, name the unread field and the one read that would discharge it; if that read has not run, the alarm is a hypothesis, not a finding. DISTINCT FROM [[absent_reads_identically_to_never_looked]] and [[empty_capture_read_as_clean_result]]: those classes manufacture a false ALL-CLEAR from emptiness; this class manufactures a false ALARM from incompleteness, and the cost is borne by the actor who treats the alarm as established.",
+    "**SPECIMEN 1 (2026-09-11, gunbai-ci-workspace-admin keys).** keys list without --managed-by returned two undisabled keys, created 2026-05-27T19:09:29Z, expiring 2027-05-27T19:09:29Z, on an account named Workspace Admin. Reported as possible long-lived private key material it would have been a serious finding. Discharge was one flag: gcloud iam service-accounts keys list --managed-by=user listed 0 items. Both keys are Google-managed signing keys, not downloadable, rotated by Google, the default every service account carries. There was no user key material.",
+    "**SPECIMEN 2 (2026-09-11, cross-project principalSet into 314501921854).** Escalated as undeclared federation into a project we cannot read. The project was gunbai-auto, our own, one repo, tightly scoped, and the provider condition was well-formed; the unreadness was identity, not exposure.",
+    "RUNG FOUND AT: mitigatable, by refusing to promote an unread field to a finding. CEILING: mechanically preventable where a typed standing distinguishes Unread from Observed-and-benign and Observed-and-harmful, so the unread constructor cannot inhabit a finding row. NEXT TRIGGER: estate observations that cannot construct a finding from an EstateUnread cell.",
+  ],
+
+  evidence: [],
+}

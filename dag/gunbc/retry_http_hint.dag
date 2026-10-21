@@ -1,0 +1,19 @@
+module gunbc.retry_http_hint
+
+import std.types { NonEmptyStr }
+import std.retry_law { RetryHint, retry_hint_from_delta, retry_no_hint, retry_hint_unresolved }
+import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread }
+
+// HttpRetryAfter is an upstream HINT into std.retry_law, never a second retry authority.
+// Absent is RetryHintNone. An HTTP-date or unread header is RetryHintUnresolved: the
+// law refuses rather than treating the unknown bound as no bound (DESIGN §5).
+fn retry_hint_from_http(after: HttpRetryAfter) -> RetryHint {
+  match after {
+    RetryAfterSeconds { seconds: s } => retry_hint_from_delta(delay: s)
+    RetryAfterUnparsed { text: _ } =>
+      retry_hint_unresolved(cause: "Retry-After was not delta-seconds" as NonEmptyStr)
+    RetryAfterAbsent => retry_no_hint()
+    RetryAfterUnread { cause: _ } =>
+      retry_hint_unresolved(cause: "Retry-After headers unread" as NonEmptyStr)
+  }
+}

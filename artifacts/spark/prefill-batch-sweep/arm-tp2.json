@@ -1,0 +1,105 @@
+{
+  "probes": [
+    {
+      "arm": "tp2",
+      "target": 512,
+      "tokenized": 512,
+      "prompt_tokens": 512,
+      "cached": 0,
+      "wall_ms": 773.4,
+      "iter_delta": 1,
+      "computed_delta": 512,
+      "flops_delta": 529530880.0,
+      "read_bytes_delta": 1588600832.0
+    },
+    {
+      "arm": "tp2",
+      "target": 2048,
+      "tokenized": 2043,
+      "prompt_tokens": 2043,
+      "cached": 0,
+      "wall_ms": 1645.8,
+      "iter_delta": 1,
+      "computed_delta": 2043,
+      "flops_delta": 529530880.0,
+      "read_bytes_delta": 1588600832.0
+    },
+    {
+      "arm": "tp2",
+      "target": 4096,
+      "tokenized": 4120,
+      "prompt_tokens": 4120,
+      "cached": 0,
+      "wall_ms": 3471.0,
+      "iter_delta": 1,
+      "computed_delta": 4120,
+      "flops_delta": 1588592640.0,
+      "read_bytes_delta": 2647678976.0
+    },
+    {
+      "arm": "tp2",
+      "target": 8192,
+      "tokenized": 8256,
+      "prompt_tokens": 8256,
+      "cached": 0,
+      "wall_ms": 6839.7,
+      "iter_delta": 1,
+      "computed_delta": 8256,
+      "flops_delta": 2647654400.0,
+      "read_bytes_delta": 3706757120.0
+    },
+    {
+      "arm": "tp2",
+      "target": 12288,
+      "tokenized": 12282,
+      "prompt_tokens": 12282,
+      "cached": 0,
+      "wall_ms": 9743.7,
+      "iter_delta": 1,
+      "computed_delta": 12282,
+      "flops_delta": 3177185280.0,
+      "read_bytes_delta": 4236296192.0
+    },
+    {
+      "arm": "tp2",
+      "target": 16384,
+      "tokenized": 16381,
+      "prompt_tokens": 16381,
+      "cached": 0,
+      "wall_ms": 13042.9,
+      "iter_delta": 1,
+      "computed_delta": 16381,
+      "flops_delta": 4236247040.0,
+      "read_bytes_delta": 5295374336.0
+    },
+    {
+      "arm": "tp2",
+      "target": 20082,
+      "tokenized": 20262,
+      "prompt_tokens": 20262,
+      "cached": 0,
+      "wall_ms": 16239.7,
+      "iter_delta": 1,
+      "computed_delta": 20262,
+      "flops_delta": 5295308800.0,
+      "read_bytes_delta": 6354452480.0
+    }
+  ],
+  "cotenant": {
+    "arm": "tp2",
+    "prefill_tokens": 16381,
+    "prefill_wall_ms": 13265.1,
+    "decode_alone": {
+      "n": 87,
+      "median_ms": 40.5,
+      "p95_ms": 42.4,
+      "max_ms": 460.5
+    },
+    "decode_during_prefill": {
+      "n": 12,
+      "median_ms": 1628.6,
+      "p95_ms": 1656.5,
+      "max_ms": 1656.5
+    }
+  }
+}

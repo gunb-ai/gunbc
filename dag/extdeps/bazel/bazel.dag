@@ -1,0 +1,38 @@
+module extdeps.bazel.bazel
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, String }
+
+// THE BAZEL PRODUCT, DECLARED ONCE SO THE SIBLING MODULES CITE ONE SUBJECT RATHER THAN THREE.
+//
+// `extdeps.bazel.label`, `extdeps.bazel.test_status` and `extdeps.bazel.build_event_stream` each
+// model a different published surface of the SAME independently-governed upstream product, and
+// each carries its own `ExternalModelScope` with its own citation — DESIGN §3 external upstream
+// decomposition requires one scope per module, not one module per product. What they may not do
+// is mint three spellings of "Bazel"; the 2026-08-01 subject-identity verdict recorded in
+// `extdeps.external_authority` `external_subject_symbolic_identity_note` says subject identity is
+// SYMBOLIC, so this declaration is the symbol all three point at.
+data bazel_product_name: NonEmptyStr = "Bazel"
+
+data bazel_subject: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.bazel.bazel",
+    decl_name: "bazel_product_name",
+    field: WholeDeclaration
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bazel.build/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.bazel.bazel.bazel_subject,
+  first_citation: extdeps.bazel.bazel.extdeps_external_authority_anchor,
+  further_citations: []
+}

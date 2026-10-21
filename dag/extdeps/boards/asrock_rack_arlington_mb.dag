@@ -1,0 +1,67 @@
+module extdeps.boards.asrock_rack_arlington_mb
+
+import std.types { NonEmptyStr, List }
+import std.measure { volt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.systems.types { SuperchipCarrierBoardRow, BoardPowerInput, BoardConnector }
+
+// The MECAI-GH200 User Manual, Version 1.00, published Sep. 2024, fetched 2026-10-04 from ASRock's own
+// download server. Appendix A-1 (ARLINGTON-MB layout and connector list), A-2 (block diagram) and A-3
+// (riser, BMC card and PDB layouts) are the sources of every field below.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/MECAI-GH200.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_rack_arlington_mb",
+      decl_name: "asrock_rack_arlington_mb",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// GH200-5 (2026-10-04). Quoted from the connector list: "CPU Group Module Connector (CG1_CONN_0)" and
+// "(CG1_CONN_1)"; "ATX 12V (AUX) Power Connector (J9)"; "ATX 12V (Main) Power Connector (J7)" and
+// "(J135)"; "Mini Cool Edge IO Connector (PCIe5.0 x8)" at J132, J133, J127, J128, J118, J119 (the layout
+// labels them MCIO_SLOT_0..5); "SlimSAS Slot for IOR Card (J97)"; "GenZ 2C Slot for M.2 Riser Board
+// (J130)"; "GenZ 4C+ Slot for BMC Board (J31)"; "PSU SMBus Connector (J114)"; "Front Panel Board
+// Connector (J87)"; "NSCI Connector (JNCSIBF3)"; "TPM Connector (J40)"; "Global / Write Protect & UART
+// Switch (SW4)"; eight "System FAN Connector"s. The layout prints the power inputs as "PWR_CONN_1
+// (MAIN_P12V)", "PWR_CONN_2 (MAIN_P12V)" and "PWR_CONN_0 (STBY)"; the standby rail's voltage is not
+// printed, so it is none. The block diagram shows an FPGA, an "Aspeed 2600" BMC, a "DIODES PI7C9X2G606PR"
+// PCIe switch and an E1.S controller. The BMC card layout shows "BMC", "BMC DDR4", "BMC ROM1", "BMC ROM2",
+// "eMMC", "TPM" and "PHY". The manual asks that the processor cover be saved "if the processor is
+// removed" for "after service", so the board is serviced apart from its module. It lists no 699-2G530
+// module part numbers.
+data asrock_rack_arlington_mb: SuperchipCarrierBoardRow = SuperchipCarrierBoardRow {
+  vendor: asrock_rack,
+  model: "ARLINGTON-MB",
+  module_connectors: ["CG1_CONN_0", "CG1_CONN_1"],
+  power_inputs: [
+    BoardPowerInput { designator: "J7", label: "ATX 12V (Main), PWR_CONN_1 (MAIN_P12V)", rail: Present { value: volt(count: 12) } },
+    BoardPowerInput { designator: "J135", label: "ATX 12V (Main), PWR_CONN_2 (MAIN_P12V)", rail: Present { value: volt(count: 12) } },
+    BoardPowerInput { designator: "J9", label: "ATX 12V (AUX), PWR_CONN_0 (STBY)", rail: Absent },
+  ],
+  connectors: [
+    BoardConnector { designators: ["J132", "J133", "J127", "J128", "J118", "J119"], family: "Mini Cool Edge IO (MCIO)", function: "MCIO_SLOT_0..5", link: Present { value: PcieLink { generation: Gen5, lane_count: 8 } } },
+    BoardConnector { designators: ["J97"], family: "SlimSAS", function: "IOR card", link: Absent },
+    BoardConnector { designators: ["J130"], family: "GenZ 2C", function: "M.2 riser board", link: Absent },
+    BoardConnector { designators: ["J31"], family: "GenZ 4C+", function: "BMC board", link: Absent },
+    BoardConnector { designators: ["J114"], family: "header", function: "PSU SMBus", link: Absent },
+    BoardConnector { designators: ["J87"], family: "header", function: "front panel board", link: Absent },
+    BoardConnector { designators: ["SW4"], family: "switch", function: "global / write protect and UART", link: Absent },
+  ],
+  on_board_devices: ["FPGA", "DIODES PI7C9X2G606PR PCIe switch", "E1.S controller"],
+  management_board: Present { value: "separate BMC board in the GenZ 4C+ slot J31: ASPEED AST2600 with its own DDR4, BMC ROM1 and ROM2, eMMC, TPM and PHY" },
+}

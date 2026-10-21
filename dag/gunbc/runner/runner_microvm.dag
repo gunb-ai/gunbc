@@ -1,0 +1,1133 @@
+module gunbc.runner.runner_microvm
+
+import gunbc.runner.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap, GuestNetworkAbsent }
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure {
+  Mebibyte,
+  ByteSize,
+  Gibibyte,
+  gibibyte,
+  gibibyte_to_byte_size,
+  HardwareThreadCount,
+  byte_size_count,
+  byte_size,
+  mebibyte,
+  mebibyte_count,
+  mebibyte_to_byte_size,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  mebibyte_scale_factor_bytes,
+}
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.envelope { StorageRequirement }
+import gunbc.floor.floor_demand { floor_execution_requirements }
+import gunbc.floor.floor_demand {
+  floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable,
+  round_up_to_gibibyte_grain,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
+  receipt_last_unstalled_beat, beat_reclaimable_cache,
+}
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import product.fabric.isolation {
+  IsolationProfile,
+  IsolationGuarantee,
+  DedicatedKernel,
+  dedicated_kernel_sandbox_profile,
+  isolation_profile_satisfies,
+}
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  lifecycle_intent_stops_finished_incarnation,
+  gunbc_runner_main_exits_when_incarnation_ends,
+}
+import product.fabric.sanitation { CellId }
+import gunbc.runner.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
+  HostWithdrawn, HostWithdrawal, CellWithdrawal, CellBoundAttempt,
+}
+import extdeps.github.actions_runner {
+  ActionsRunnerRelease, actions_runner_release_2_337_0, actions_runner_jitconfig_env_name,
+}
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig,
+  FirecrackerBootSource,
+  FirecrackerDrive,
+  FirecrackerNetworkInterface,
+  FirecrackerMachineConfig,
+  FirecrackerRelease,
+  firecracker_release_aarch64,
+  firecracker_config_has_single_root,
+  firecracker_block_sector_size,
+  firecracker_drive_guest_device,
+  firecracker_vcpu_range_v1_16_1,
+  firecracker_vcpu_count_admission,
+  VcpuCountAdmitted,
+  VcpuCountUnsupported,
+}
+import std.bytes { utf8_encode_bytes, bytes_octets }
+
+data runner_microvm_disposition: ConstructionMechanism = SingleAuthority
+
+// THE GUEST IMAGE IS AN IDENTITY, NOT A PATH.
+//
+// A path names where an image happens to sit on one host; two hosts holding different bytes at the
+// same path is exactly the drift this fleet keeps losing track of. The distribution, its release
+// and the runner baked into it are what make two images the same image, so they are the fields.
+//
+// THE RUNNER IS CARRIED AS THE CITED RELEASE ROW, NOT AS A VERSION STRING. extdeps.github.
+// actions_runner already owns which Actions runner this fleet installs, with the upstream digests
+// and a measured note about why the previous pin was retired server-side. A version literal here
+// would be a SECOND authority for one fact, and the two would drift the moment either moved -- the
+// exact nicknaming failure the guest-image-as-identity paragraph above is about, committed one
+// field lower. Whatever the host path installs, the VM path installs, because it is one row.
+type RunnerGuestImage {
+  distribution: NonEmptyStr
+  release_series: NonEmptyStr
+  arch: NonEmptyStr
+  runner: ActionsRunnerRelease
+}
+
+// THE GUEST IMAGE PINS 2.337.0 AND THE FLEET'S HOST SLOTS PIN 2.336.0, AND THAT DIVERGENCE IS NOW
+// DECLARED RATHER THAN ACCIDENTAL. It arrived accidentally: the Mt. Collins guest image was built
+// against the then-latest runner while this row still said 2.336.0, and the canary reported
+// "Current runner version: 2.337.0" to GitHub -- one concept answering two ways, found in review and
+// not by anything in this repository.
+//
+// IT IS RESOLVED FORWARD RATHER THAN BACKWARD because 2.337.0 is what actually ran and was verified:
+// the shipped tarball's digest equals the one extdeps.github.actions_runner records from upstream's
+// release body. Pinning back to 2.336.0 would make the model agree with itself by describing an
+// artifact no run has exercised.
+//
+// THE FLEET'S HOST-SLOT PIN IS DELIBERATELY NOT MOVED HERE. gunbc.runner.runner_slot_provision,
+// gunbc.runner.runner_lifecycle and gunbc.fleet.fleet_converge_plan all install 2.336.0, and changing that
+// re-provisions every slot on every host -- a fleet migration with its own blast radius, which must
+// not ride along inside a canary receipt. Converging the two pins is its own change.
+//
+// SO THE STANDING OBLIGATION IS EXPLICIT: two live pins is the state this row leaves behind, and it
+// is a divergence to close rather than a design. What makes it survivable meanwhile is that each
+// names its own release row and neither is a version string typed twice.
+data gunbc_runner_guest_image: RunnerGuestImage = RunnerGuestImage {
+  distribution: "ubuntu",
+  release_series: "24.04",
+  arch: "aarch64",
+  runner: actions_runner_release_2_337_0,
+}
+
+// THE CREDENTIAL REACHES THE GUEST AS A READ-ONLY BLOCK DEVICE, AND THAT IS THE WHOLE POINT.
+//
+// Today a slot's credential is a FILE IN A DIRECTORY THE NEXT INCARNATION ALSO OWNS, which is how
+// an orphaned listener deletes a live job's credentials: same path, different process, no wall.
+// A per-registration drive has no such sharing to express -- the device is attached to one VM, is
+// read-only to the guest, and ceases to exist when that VM does. AttemptScopedSecrets is therefore
+// a property of the CARRIER rather than a promise the handler makes.
+type JitCredentialTransport
+  = JitConfigOnReadOnlyDrive { drive_id: NonEmptyStr }
+  | JitConfigInSharedSlotDirectory { path: FilePath }
+
+data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDrive {
+  drive_id: "jitcfg",
+}
+
+// WHAT THE CREDENTIAL DRIVE CONTAINS, AS THE ONE CONTRACT BOTH ENDS DERIVE FROM. The host writes
+// these bytes and the guest reads them; a format stated on only one side is a fork the other side
+// discovers at boot, inside a VM nobody is watching.
+//
+// THE CONTENT IS ONE systemd ENVIRONMENT-FILE ASSIGNMENT, because that makes the guest's reader a
+// directive rather than a program. The guest agent names the device in `EnvironmentFile=`, systemd
+// parses it, and the listener takes the value from its environment under upstream's own argument
+// convention (extdeps.github.actions_runner actions_runner_jitconfig_env_name) and unsets it once
+// read. No shell, no `cat`, and the secret never appears on a command line where `ps` would show it.
+//
+// THE PADDING IS NEWLINES BECAUSE A BLOCK DEVICE HAS NO LENGTH OF ITS OWN. Firecracker exposes a
+// backing file only in whole sectors (extdeps.virtualization.firecracker
+// firecracker_block_sector_size) and drops a partial tail, so an unpadded 4,076-byte config would
+// reach the guest cut to 3,584 bytes. Padding to the sector boundary with blank lines keeps every
+// byte, and blank lines are what systemd's environment-file parser skips -- a NUL fill would not be.
+// The length is measured in UTF-8 BYTES, the unit the sector is denominated in, not in characters.
+
+// THE GUEST DEVICE IS DERIVED FROM THE DRIVE LIST, NOT WRITTEN BESIDE IT. runner_microvm_drives is
+// the one drive list runner_microvm_vm_config attaches, and extdeps.virtualization.firecracker
+// firecracker_drive_guest_device maps the credential drive's position in it to its guest name. The
+// guest image renders its agent from this resolution, so prepending or reordering a drive moves the
+// name the guest reads with it -- the rootfs can no longer be read as the credential by an edit that
+// left a literal behind. The order does not depend on the backing paths, so the resolution names the
+// attempt layout's own file names; a credential drive that is not attached resolves to a refusal,
+// never to a guessed device.
+type JitDriveDeviceResolution
+  = JitDriveDevice { device: NonEmptyStr }
+  | JitDriveNotAttached { cause: String }
+
+fn jit_drive_guest_device() -> JitDriveDeviceResolution {
+  let drives = runner_microvm_drives(
+    rootfs_path: "rootfs.ext4",
+    jit_config_path: "jit.img",
+    transport: gunbc_runner_jit_transport,
+  )
+  match firecracker_drive_guest_device(drives: drives, drive_id: jit_transport_drive_id(t: gunbc_runner_jit_transport)) {
+    Present { value: d } => JitDriveDevice { device: d as NonEmptyStr }
+    Absent => JitDriveNotAttached {
+      cause: "the credential drive is not among the first 26 drives runner_microvm_drives attaches, so no guest device names it",
+    }
+  }
+}
+
+fn jit_drive_assignment(encoded_jit_config: NonEmptyStr) -> String {
+  join([actions_runner_jitconfig_env_name(), "=", encoded_jit_config as String, "\n"], "")
+}
+
+fn jit_drive_utf8_size(text: String) -> ByteSize {
+  byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: text))))
+}
+
+// ONE SECTOR OF NEWLINES, AS A SOURCE TO CUT PADDING FROM. Built by doubling to 512 and checked
+// against the sector size by the_credential_drive_is_whole_sectors_of_one_assignment: a newline is
+// one UTF-8 byte, so this string's byte size is its length.
+fn jit_drive_newline_sector() -> String {
+  let n2 = "\n\n"
+  let n8 = concat(concat(n2, n2), concat(n2, n2))
+  let n32 = concat(concat(n8, n8), concat(n8, n8))
+  let n128 = concat(concat(n32, n32), concat(n32, n32))
+  concat(concat(n128, n128), concat(n128, n128))
+}
+
+// A DRIVE THAT HONESTLY CARRIES NO CREDENTIAL: one sector of blank lines, which the guest's
+// environment-file read accepts and assigns nothing from. A VM booted with it reaches the listener,
+// which refuses as unconfigured -- the boot-only probe's arm, where no registration may be spent.
+fn jit_drive_without_credential() -> String {
+  jit_drive_newline_sector()
+}
+
+// ANY TEXT A GUEST READS FROM A FIRECRACKER DRIVE, PADDED WITH NEWLINES TO WHOLE SECTORS: the one
+// padding fold every such drive uses (the credential drive here, the workspace bootstrap, the
+// revision job's spec), for the reason the block comment above gives.
+fn newline_padded_to_whole_sectors(body: String) -> String {
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
+  if tail == 0 { body } else { concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
+}
+
+fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
+  newline_padded_to_whole_sectors(body: jit_drive_assignment(encoded_jit_config: encoded_jit_config))
+}
+
+// WHAT ONE RUNNER VM IS SIZED AT, IN GROUNDED MAGNITUDES RATHER THAN BARE INTEGERS.
+//
+// An earlier revision carried these as `Int`, mirroring Firecracker's own field names inward. That
+// is the right shape AT the cited boundary -- extdeps models what the API actually accepts -- and
+// the wrong shape one layer in: a bare Int is a second representation of a magnitude std.measure
+// already owns, and the fabric envelope this VM will eventually answer to already speaks
+// HardwareThreadCount and the Memory measure family. Two spellings of one quantity is the §3
+// failure, and it is exactly what lets a vcpu count be compared against a memory size without
+// anything refusing.
+//
+// THE SCALE IS Mebi RATHER THAN One, DELIBERATELY. Firecracker's field is denominated in MiB, so
+// `Measure<Memory, Mebi, Nat>` grounds it EXACTLY -- same authority as ByteSize, one scale along
+// the axis that authority exists to carry, with no lossy multiply on the way in. Converting to
+// bytes here would restate the unit rather than ground it, and the boundary conversion back to the
+// API's integer is then a single named call instead of an arithmetic assumption.
+type RunnerMicroVmSize {
+  vcpu_count: HardwareThreadCount
+  memory: Mebibyte
+}
+
+// THREE QUANTITIES, NOT ONE -- THIS IS THE REPAIR, AND THE OLD CODE HAD ONLY THE FIRST.
+//
+// The withdrawn derivation set the guest's RAM to the cell's whole MemoryMax. That treated ONE
+// number as answering three different questions, and the safety property is a relation between
+// all three:
+//
+//   CELL MEMORY ENVELOPE     what the bounded cell is granted -- gunbc_runner_slot_desired.memory_max
+//   GUEST MEMORY REQUEST     what the guest would be handed -- Firecracker's machine_config.mem_size_mib
+//   REALIZATION RESERVE      what the VMM PROCESS ITSELF costs, INSIDE that same cell
+//
+// The reserve was zero and unnamed, so guest == envelope read as correct and the slice would have
+// OOM-killed the VM it exists to bound. Equality is not the property; CONTAINMENT is:
+//
+//   guest + reserve <= envelope
+//
+// A guest SMALLER than the envelope FITS. The withdrawn control asserted the opposite -- it refused
+// the 4 GiB MVP configuration against a 16 GiB cell -- so both arms of that pair were wrong in
+// opposite directions while the pair looked discriminating.
+type CellMemoryEnvelope { bytes: ByteSize }
+type GuestMemoryRequest { bytes: ByteSize }
+
+// THE FIRECRACKER MACHINE CONFIG IS A SIGNED EXTERNAL BOUNDARY, AND IT IS VALIDATED HERE OR
+// NOWHERE.
+//
+// FirecrackerMachineConfig carries `vcpu_count: Int` and `mem_size_mib: Int` -- upstream's own
+// shape, faithfully modeled, and SIGNED. The spelling `Nat` downstream does not rescue it: the
+// generated realization is i64 and byte_size constructs the measure from whatever count it is
+// handed. So a config with mem_size_mib = -1 previously flowed straight through
+// mebibyte -> mebibyte_to_byte_size -> GuestMemoryRequest and satisfied -1 MiB + 256 MiB <= 16 GiB,
+// reaching GuestFitsWithinCell and then RunnerMicroVmAdmitted. A fail-open arm INSIDE the very
+// relation this module exists to establish.
+//
+// It is not enough to be caught later: nothing downstream re-reads the sign, and the admission is
+// the last gate before a VM is provisioned. So the signed values become VALIDATED MAGNITUDES or a
+// typed refusal, BEFORE fit and before admission, and the fit function is never handed an
+// unvalidated number.
+//
+// THE UPPER BOUND IS THE REPRESENTABLE ONE, not a policy guess. mebibyte_to_byte_size multiplies by
+// 2^20, so any mem_size_mib above (2^63 - 1) / 2^20 makes the byte magnitude unrepresentable in the
+// i64 the realization uses. Refusing there is refusing the arithmetic we cannot perform, which is
+// the honest boundary; picking a smaller "reasonable" ceiling would be an unstated policy wearing
+// a representability argument's clothes.
+data guest_memory_mib_representable_max: Int = 8796093022207
+
+type GuestResources
+  = GuestResourcesValidated { memory: GuestMemoryRequest, vcpus: HardwareThreadCount }
+  | GuestResourcesInvalid { cause: String }
+
+fn guest_resources_of_machine_config(mc: FirecrackerMachineConfig) -> GuestResources {
+  if mc.mem_size_mib <= 0 {
+    GuestResourcesInvalid {
+      cause: "the guest machine configuration declares a memory size that is zero or negative, which is not a magnitude; a guest cannot be provisioned with it and no fit judgment against the cell is meaningful",
+    }
+  } else {
+    if mc.mem_size_mib > guest_memory_mib_representable_max {
+      GuestResourcesInvalid {
+        cause: "the guest machine configuration declares a memory size whose conversion to bytes is not representable, so the fit comparison cannot be performed rather than being performed on a wrapped value",
+      }
+    } else {
+      if mc.vcpu_count <= 0 {
+        GuestResourcesInvalid {
+          cause: "the guest machine configuration declares a vCPU count that is zero or negative, which is not a cardinality; the guest could not be started with it",
+        }
+      } else {
+        match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: hardware_thread_count(count: mc.vcpu_count)) {
+          VcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
+            GuestResourcesInvalid {
+              cause: join(["the guest machine configuration declares ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(hardware_thread_count_value(t: lo)), "..", to_string(hardware_thread_count_value(t: hi)), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], ""),
+            }
+          VcpuCountAdmitted { count: _ } =>
+            GuestResourcesValidated {
+              memory: GuestMemoryRequest {
+                bytes: mebibyte_to_byte_size(m: mebibyte(count: mc.mem_size_mib)),
+              },
+              vcpus: hardware_thread_count(count: mc.vcpu_count),
+            }
+        }
+      }
+    }
+  }
+}
+
+// THE RESERVE IS AN INPUT, NOT A GLOBAL, AND THAT IS WHAT MAKES THE FIT CONTROLS AUTHORABLE.
+//
+// Production cannot supply one: no VMM footprint is cited anywhere, so gunbc_runner_microvm_
+// realization_reserve returns ReserveUnmodeled and every production path refuses. If the reserve
+// were read from a global instead of passed, that refusal would be the ONLY reachable outcome and
+// neither fit arm could ever execute -- a wall whose red cannot be authored, which DESIGN 4b calls
+// a decoration. Taking it as a parameter lets a witness declare one from a controlled fixture and
+// drive BOTH polarities, while production stays honest.
+type RealizationReserve
+  = ReserveDeclared { bytes: ByteSize }
+  | ReserveUnmodeled { cause: String }
+
+type MemoryFitJudgment
+  = GuestFitsWithinCell
+  | GuestExceedsCell { detail: String }
+  | MemoryFitUnresolved { cause: String }
+
+// THE ADDITION IS ABSENT ON PURPOSE, AND IT MUST NOT BE HELPFULLY RESTORED. `guest + reserve <=
+// envelope` is the law this function decides, but EVALUATING that left side can exceed the
+// representable range on a hostile guest value and then wrap, answering the wrong question
+// silently. So the comparison is performed by SUBTRACTION -- guest <= envelope - reserve -- which
+// stays inside the range for any non-negative input. A reader who sees no overflow handling here
+// is not looking at an oversight: there is no overflow to handle, because the operation that could
+// overflow does not exist. That is DESIGN 4b rung 4 rather than a checked-add guard at rung 1, and
+// restoring the add to give a guard something to point at would step the class back down.
+//
+// THE reserve > envelope SPLIT IS LOAD-BEARING FOR THAT CLAIM, not a redundant early-out: it is
+// what keeps the subtraction from ever running below zero. Its control is
+// test.claim.runner.runner_microvm_witness a_reserve_larger_than_the_whole_envelope_admits_no_guest,
+// which is the reason the branch may not be refactored away casually.
+fn guest_memory_fits(
+  guest: GuestMemoryRequest,
+  reserve: RealizationReserve,
+  envelope: CellMemoryEnvelope,
+) -> MemoryFitJudgment {
+  match reserve {
+    ReserveUnmodeled { cause: c } =>
+      MemoryFitUnresolved {
+        cause: concat("the guest's memory cannot be judged against the cell without the realization's own reserve: ", c),
+      }
+    ReserveDeclared { bytes: r } =>
+      if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
+        GuestExceedsCell {
+          detail: "the realization's own reserve alone exceeds the cell's MemoryMax, so no guest of any size fits beside it",
+        }
+      } else {
+        if byte_size_count(b: guest.bytes) <= byte_size_count(b: envelope.bytes) - byte_size_count(b: r) {
+          GuestFitsWithinCell
+        } else {
+          GuestExceedsCell {
+            detail: "the guest's memory plus the realization's reserve exceeds the cell's MemoryMax, so the slice would kill the VM it exists to bound",
+          }
+        }
+      }
+  }
+}
+
+// THE RESERVE IS AN ALLOCATION THIS FLEET SETS ASIDE, NOT A MEASUREMENT IT RECOVERED.
+//
+// The refusal this replaces was right about the quantity it could not find, and that reasoning is
+// preserved rather than overturned: extdeps.virtualization.firecracker cites no VMM memory
+// overhead, and the quantity may not exist as a constant at all -- a VMM's resident footprint
+// scales with guest size through page tables, with the device model, and with host page size, so
+// what upstream documents is a MEASURED overhead for one stated configuration. Waiting for that
+// number to become citable was waiting for a fact in a shape nothing produces.
+//
+// SO THE STANDING CHANGES AND THE NUMBER DOES NOT PRETEND TO BE DERIVED. This is the same move
+// gunbc_runner_microvm_declared_size already made for the guest's own size: a product decision
+// standing where no computation exists. It is operator allocation policy, not a measured
+// Firecracker footprint. Inventing it as a SUBTRAHEND in a derivation would still be the fabricated
+// plausible output DESIGN 5 forbids; declaring it as policy, with the containment check below still
+// deciding fit, is not.
+//
+// WHAT WOULD REVISE IT, STATED CAREFULLY, BECAUSE AN OOM IS NOT ONE EVIDENCE CLASS. Its adequacy is
+// revised from host- or cell-boundary memory-pressure evidence attributable to the admitted
+// realization. A guest that exhausts its own 4 GiB workload OOMs INSIDE the guest and says nothing
+// about this allowance; only pressure at the cell boundary implicates it. No Firecracker release
+// note revises it either, because upstream does not publish the quantity.
+//
+// IT IS A MINIMUM RESERVED HEADROOM, NOT A CAP ON THE VMM. The containment check establishes
+// guest + allowance <= cell envelope. It does NOT establish VMM usage <= allowance, and nothing
+// here enforces that -- with the declared guest inside the cell there is materially more real slack
+// than this floor claims.
+//
+// WITHOUT IT THE MEMORY-FIT LEG CANNOT BE DECIDED, WHICH IS THE WHOLE REASON THIS ROW EXISTS.
+// guest_memory_fits returns MemoryFitUnresolved on an unmodeled reserve, so
+// gunbc_runner_microvm_admission refused EVERY configuration on that leg alone: the fleet's own size
+// and reserve binding could never satisfy it, whatever else was true. The reserve was the last
+// MEMORY-FIT quantity standing between the declared size and an admissible configuration.
+//
+// IT IS NOT THE LAST PRODUCTION-LAUNCH PREREQUISITE, AND THIS ROW DOES NOT CLAIM TO BE. Nothing in
+// production calls gunbc_runner_microvm_admission and no production binding selects a
+// VmmProcessTopology, so a launch path remains separate, unbuilt work.
+//
+// THE CELL'S CPU AXIS IS NOW ABSOLUTE WHEN THE SLOT SURVEY RESOLVES. fabric_cell_slice_quota_
+// directives emits slice_cpu_quota from the same RunnerSlotCpuQuota this function reads, and
+// runner_microvm_shape below admits the Work's thread count against that ceiling.
+data gunbc_runner_microvm_declared_realization_allowance: Gibibyte = gibibyte(count: 1)
+
+fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
+  ReserveDeclared {
+    bytes: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance),
+  }
+}
+
+// THE CPU AXIS IS THE CELL'S DECLARED QUOTA, READ HERE RATHER THAN RESTATED.
+//
+// On memory the quantity may exist and merely be uncited. On CPU the cell emits the CPUQuota= line
+// gunbc_runner_slot_cpu_quota declares, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
+// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute;
+// SlotCpuQuotaUnbounded is RelativeOnly, and its cause names the 2026-09-19 policy that put the
+// row there -- never a second invented ceiling. Since that ruling the production path IS
+// RelativeOnly: the slot carries CPUWeight and no ceiling, so the declared guest size below is
+// the answer served rather than a withdrawn one.
+//
+// runner_microvm_shape consumes this: an Absolute entitlement bounds the Work's thread count, and
+// a RelativeOnly one bounds nothing on the CPU axis -- a relative share can refuse no count -- so
+// the guest is given the Work's own threads. Under the 2026-09-19 no-ceiling ruling ("there is no
+// CPU demand -- the processes we run are single core") that is the production arm.
+type CellCpuEntitlement
+  = CpuEntitlementAbsolute { threads: HardwareThreadCount }
+  | CpuEntitlementRelativeOnly { cause: String }
+
+fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
+  match gunbc_runner_slot_desired().cpu_quota {
+    CpuQuotaResolved { threads: t } => CpuEntitlementAbsolute { threads: t }
+    SlotCpuQuotaUnbounded =>
+      CpuEntitlementRelativeOnly {
+        cause: "the slot row declares no absolute CPU ceiling (gunbc.runner.runner_slot_desired gunbc_runner_slot_cpu_quota, operator ruling 2026-09-19), so the cell grants a relative share only"
+      }
+  }
+}
+
+// THE srv4 MVP SIZE, KEPT AS THE BOOT-SMOKE FIXTURE AND NO LONGER A PRODUCTION SIZING ARM. Until
+// 2026-09-19 this row was served whenever the cell granted only a relative CPU share, and the
+// absolute arm refused because the derivation below did not exist. The derivation exists now and
+// serves both arms of the entitlement -- a declared row that keeps answering after its forcing
+// condition is gone is the absorbing fallback DESIGN 5 forbids. The row survives because the boot
+// smoke and the attempt planner's witnesses drive a guest of exactly this size, which is the size
+// srv4 was observed to boot; it is a fixture with a receipt behind it, not a sizing anyone
+// provisions against.
+data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
+  vcpu_count: hardware_thread_count(count: 4),
+  memory: mebibyte(count: 4096),
+}
+
+// THE PER-ATTEMPT WORKSPACE GRANT: X's WORKGB=4 (`dd bs=1M count=0 seek=$((WORKGB*1024))`), four
+// gibibytes as a Mebibyte seek. It lives beside the workspace drive it sizes rather than in the
+// planner, because the shape below judges the Work's storage demand against it and the planner
+// only realizes it. It is a GRANT rather than a derivation: the cell places no numeric bound on
+// disk (gunbc.runner.runner_slot_allocation: disk admits nothing numeric anywhere), so there is no
+// remainder to derive a workspace from the way memory derives from the cell's ceiling, and a
+// workspace sized exactly to a measured lower bound would ENOSPC on the first byte of growth. The
+// fit check is what keeps the grant honest: a demand the grant does not hold refuses the shape.
+data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
+
+// THE GUEST SHAPE, DERIVED FROM THE WORK AND THE CELL RATHER THAN DECLARED BESIDE THEM.
+//
+// Four quantities, each with one source:
+//
+//   vCPUs        the Work's own hard thread requirement, admitted FIRST against the range the
+//                pinned Firecracker release accepts (extdeps.virtualization.firecracker
+//                firecracker_vcpu_range_v1_16_1 -- the VMM's own bound, which no cell policy can
+//                lift and which is never clamped to), then against the cell's absolute CPU
+//                entitlement when one is declared, and unbounded by the cell when the slot
+//                carries only a relative share (the 2026-09-19 no-ceiling ruling). The guest is
+//                sized to what the Work asks for, not to a quota: the VMM's own threads -- the API
+//                thread, the block and net device threads -- would draw on the same CPUQuota, and a
+//                guest holding every entitled thread leaves them nothing, exactly as a guest
+//                holding the whole MemoryMax left the VMM nothing.
+//   memory       the cell's MemoryMax less the realization reserve: everything the cell admits
+//                beside the VMM, admitted only if it is at least the Work's stated minimum PLUS
+//                the guest's cache allowance. The Work's minimum is what it must hold
+//                (gunbc.floor.floor_demand: the resident held-set lower bound); the allowance is what this
+//                realization grants its kernel for file pages above that, because a guest with
+//                exactly its anonymous demand as RAM thrashes. The guest is granted the whole
+//                REMAINDER rather than the sum because the minimum is a censored lower bound and
+//                guest RAM is lazily faulted, so headroom costs nothing until touched. Floor
+//                division to MiB keeps guest + reserve <= MemoryMax by construction, so
+//                guest_memory_fits admits the derived guest without a second relation.
+//   workspace    the attempt's workspace grant, admitted only if it holds the Work's stated
+//                storage minimum.
+//   task ceiling the cell's TasksMax, applied INSIDE the guest as the runner agent unit's own
+//                TasksMax= (pids.max on its cgroup; gunbc.runner.runner_guest_image). In the lifecycle-
+//                controller topology the cell's TasksMax bounds only the VMM's handful of threads;
+//                the floor's processes live behind the guest kernel, where the cell cannot count
+//                them. Re-applying the same row inside the guest keeps the 2026-06-21 incident's
+//                repair value (gunbc.runner.runner_slot_allocation: TasksMax=512 was the EAGAIN outage)
+//                governing the workload that produced the incident.
+//
+// EVERY REFUSAL IS TYPED AND CARRIES THE TWO NUMBERS THAT DISAGREED, because the remedy differs by
+// arm: a Work exceeding the cell's remainder is either a cell row to raise (a fleet decision with
+// a slot cost) or a demand to reduce, a Work exceeding the entitlement is a thread count to
+// revisit, and an unstated Work axis is a Work to complete. Collapsing them into a String would
+// send the reader to the wrong authority.
+type RunnerMicroVmShape {
+  size: RunnerMicroVmSize
+  workspace: Mebibyte
+  task_ceiling: Int
+}
+
+type RunnerMicroVmShapeRefusal
+  = ShapeRefusedVcpuCountUnsupported { requested: HardwareThreadCount, minimum: HardwareThreadCount, maximum: HardwareThreadCount }
+  | ShapeRefusedWorkThreadsExceedEntitlement { required: HardwareThreadCount, entitled: HardwareThreadCount }
+  | ShapeRefusedWorkMemoryUnstated
+  | ShapeRefusedReserveUnmodeled { cause: String }
+  | ShapeRefusedReserveExceedsCell { reserve: ByteSize, envelope: ByteSize }
+  | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, allowance: ByteSize, remainder: ByteSize }
+  | ShapeRefusedWorkStorageExceedsWorkspace { required: ByteSize, workspace: ByteSize }
+  | ShapeRefusedCacheAllowanceUnderivable { cause: String }
+  | ShapeRefusedWorkStorageUnstated { cause: String }
+
+type RunnerMicroVmShapeResolution
+  = MicroVmShapeResolved { shape: RunnerMicroVmShape }
+  | MicroVmShapeRefused { refusal: RunnerMicroVmShapeRefusal }
+
+fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
+  match r {
+    ShapeRefusedVcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
+      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(hardware_thread_count_value(t: lo)), "..", to_string(hardware_thread_count_value(t: hi)), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], "")
+    ShapeRefusedWorkThreadsExceedEntitlement { required: r, entitled: e } =>
+      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " threads and the cell entitles ", to_string(hardware_thread_count_value(t: e))], "")
+    ShapeRefusedWorkMemoryUnstated =>
+      "the work states no memory requirement, so no guest memory can be judged sufficient for it"
+    ShapeRefusedReserveUnmodeled { cause: c } =>
+      concat("the realization reserve is unmodeled, so the cell's remainder cannot be computed: ", c)
+    ShapeRefusedReserveExceedsCell { reserve: r, envelope: e } =>
+      join(["the realization reserve of ", to_string(byte_size_count(b: r)), " bytes exceeds the cell's MemoryMax of ", to_string(byte_size_count(b: e))], "")
+    ShapeRefusedWorkMemoryExceedsCellRemainder { required: r, allowance: a, remainder: m } =>
+      join(["the work's memory demand of ", to_string(byte_size_count(b: r)), " bytes plus the guest's cache allowance of ", to_string(byte_size_count(b: a)), " bytes exceeds the ", to_string(byte_size_count(b: m)), " bytes the cell admits beside the realization reserve; raise the cell row, lower the allowance or reduce the demand"], "")
+    ShapeRefusedWorkStorageExceedsWorkspace { required: r, workspace: w } =>
+      join(["the work's storage demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: w)), " byte workspace grant"], "")
+    ShapeRefusedCacheAllowanceUnderivable { cause: c } =>
+      concat("the guest's cache allowance cannot be derived, so no memory fit can be judged: ", c)
+    ShapeRefusedWorkStorageUnstated { cause: c } =>
+      concat("the work's storage demand could not be stated, so no workspace fit can be judged: ", c)
+  }
+}
+
+fn runner_microvm_shape(
+  work: ExecutionRequirements,
+  storage: StorageRequirement,
+  cpu: CellCpuEntitlement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+  cache_allowance: GuestCacheAllowance,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: work.shape.hard.threads) {
+    VcpuCountUnsupported { requested: _, minimum: lo, maximum: hi } =>
+      MicroVmShapeRefused {
+        refusal: ShapeRefusedVcpuCountUnsupported { requested: work.shape.hard.threads, minimum: lo, maximum: hi },
+      }
+    VcpuCountAdmitted { count: _ } =>
+      match cpu {
+        CpuEntitlementRelativeOnly { cause: _ } => runner_microvm_shape_after_cpu_admitted(
+          work: work, storage: storage, envelope: envelope, reserve: reserve, cache_allowance: cache_allowance,
+          task_ceiling: task_ceiling, workspace: workspace,
+        )
+        CpuEntitlementAbsolute { threads: entitled } =>
+          if hardware_thread_count_value(t: work.shape.hard.threads) > hardware_thread_count_value(t: entitled) {
+            MicroVmShapeRefused {
+              refusal: ShapeRefusedWorkThreadsExceedEntitlement { required: work.shape.hard.threads, entitled: entitled },
+            }
+          } else {
+            runner_microvm_shape_after_cpu_admitted(
+              work: work, storage: storage, envelope: envelope, reserve: reserve, cache_allowance: cache_allowance,
+              task_ceiling: task_ceiling, workspace: workspace,
+            )
+          }
+      }
+  }
+}
+
+fn runner_microvm_shape_after_cpu_admitted(
+  work: ExecutionRequirements,
+  storage: StorageRequirement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+  cache_allowance: GuestCacheAllowance,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  match work.shape.envelope.memory {
+    Absent => MicroVmShapeRefused { refusal: ShapeRefusedWorkMemoryUnstated }
+    Present { value: need } =>
+      runner_microvm_shape_after_cpu(
+        vcpus: work.shape.hard.threads,
+        need: need.min_bytes,
+        storage: storage,
+        envelope: envelope,
+        reserve: reserve,
+        cache_allowance: cache_allowance,
+        task_ceiling: task_ceiling,
+        workspace: workspace,
+      )
+  }
+}
+
+// THE SUBTRACTION STAYS IN RANGE FOR THE SAME REASON guest_memory_fits GIVES: reserve > envelope is
+// split off before envelope - reserve is evaluated, so the remainder is never negative.
+fn runner_microvm_shape_after_cpu(
+  vcpus: HardwareThreadCount,
+  need: ByteSize,
+  storage: StorageRequirement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+  cache_allowance: GuestCacheAllowance,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  match reserve {
+    ReserveUnmodeled { cause: c } =>
+      MicroVmShapeRefused { refusal: ShapeRefusedReserveUnmodeled { cause: c } }
+    ReserveDeclared { bytes: r } =>
+      if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
+        MicroVmShapeRefused { refusal: ShapeRefusedReserveExceedsCell { reserve: r, envelope: envelope.bytes } }
+      } else {
+        match cache_allowance {
+          AllowanceUnderivable { cause: c } =>
+            MicroVmShapeRefused { refusal: ShapeRefusedCacheAllowanceUnderivable { cause: c } }
+          AllowanceDerived { bytes: allowance } =>
+            runner_microvm_shape_after_allowance(
+              vcpus: vcpus, need: need, storage: storage, envelope: envelope, reserve: r, allowance: allowance,
+              task_ceiling: task_ceiling, workspace: workspace,
+            )
+        }
+      }
+  }
+}
+
+// THE FIT IS DECIDED BY SUBTRACTION, NEVER BY need + allowance: that sum is the one expression
+// here that can cross the realization's bound, and a wrapped sum reads as a small demand that
+// FITS. So the two demands are subtracted from the remainder one at a time, each comparison
+// pre-checked so no intermediate leaves the range -- the same construction guest_memory_fits uses
+// against the reserve. RED: need = int_inclusive_max, allowance = 1, remainder = int_inclusive_max
+// refuses here; a sum would have wrapped to a negative and admitted.
+fn runner_microvm_shape_after_allowance(
+  vcpus: HardwareThreadCount,
+  need: ByteSize,
+  storage: StorageRequirement,
+  envelope: CellMemoryEnvelope,
+  reserve: ByteSize,
+  allowance: ByteSize,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: reserve)
+  let need_count = byte_size_count(b: need)
+  let allowance_count = byte_size_count(b: allowance)
+  if need_count > remainder || allowance_count > remainder - need_count {
+    MicroVmShapeRefused {
+      refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
+    }
+  } else {
+    let workspace_bytes = mebibyte_to_byte_size(m: workspace)
+    if byte_size_count(b: storage.min_bytes) > byte_size_count(b: workspace_bytes) {
+      MicroVmShapeRefused {
+        refusal: ShapeRefusedWorkStorageExceedsWorkspace { required: storage.min_bytes, workspace: workspace_bytes },
+      }
+    } else {
+      MicroVmShapeResolved {
+        shape: RunnerMicroVmShape {
+          size: RunnerMicroVmSize {
+            vcpu_count: vcpus,
+            memory: mebibyte(count: remainder / mebibyte_scale_factor_bytes()),
+          },
+          workspace: workspace,
+          task_ceiling: task_ceiling,
+        },
+      }
+    }
+  }
+}
+
+// THE GUEST'S CACHE ALLOWANCE IS DERIVED FROM THE DEMAND RECEIPT, NOT DECLARED BESIDE IT. A guest
+// whose RAM equals the Work's held-set demand runs the floor with no file cache at all, re-reading
+// every source and object from the workspace image on each touch. The receipt carries the last
+// beat at which the host slot was NOT thrashing (gunbc.floor.floor_demand receipt_last_unstalled_beat),
+// and the allowance is that beat's RECLAIMABLE cache -- file less shmem, the part reclaim can give
+// back -- rounded up to the corpus's whole-gibibyte grain: the smallest grain above a cache the
+// run held while it worked. It is a floor on a working operating point rather than a measured
+// optimum, which is the only honest reading of one beat; its revision is the in-guest cold receipt
+// (gunbc.floor.floor_cold_build_receipt), which reads the same counters inside a guest.
+//
+// THE BEAT IS NAMED BY THE DERIVATION, NOT TRANSCRIBED HERE, and that is a correction rather than
+// a style preference. This note used to carry the 2026-09-19 receipt's beat-13 figure -- "the
+// stall clause at zero, 1895120896 bytes of file" -- beside a fold that reads whatever the
+// STANDING receipt says. When gunbc_floor_held_set_standing moved to the 2026-09-21 receipt, the
+// derivation moved with it to beat 17 and the allowance HALVED, while the sentence went on
+// describing a beat nothing reads (DESIGN 6: a transcribed number is unreachable from the thing
+// that owns it, so it rots without anyone touching either end). The figure now has exactly one
+// home, which is the standing receipt's own rows, and this note names the producer instead.
+//
+// THE ALLOWANCE IS A COPRODUCT BECAUSE ITS DERIVATION CAN REFUSE: the subtraction file - shmem is
+// typed (std.measure measure_sub), and a torn line with shmem > file, or a receipt with no beat to
+// derive from, yields AllowanceUnderivable with its cause rather than a zero that reads as "no
+// cache needed". The shape refuses on that arm; the demand being unmeasured refuses earlier, on
+// the Work's absent memory.
+type GuestCacheAllowance
+  = AllowanceDerived { bytes: ByteSize }
+  | AllowanceUnderivable { cause: String }
+
+fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
+  match gunbc_floor_held_set_standing() {
+    HeldSetUnmeasured { instrument: i } =>
+      AllowanceUnderivable { cause: concat("the floor's held-set demand is unmeasured, so there is no beat to read a cache from; instrument: ", i as String) }
+    HeldSetReceiptUnrepresentable { cause: _ } =>
+      AllowanceUnderivable { cause: "the floor's memory.stat receipt carries a beat whose held set the machine cannot represent, so the receipt is torn and no beat of it is evidence" }
+    HeldSetMeasured { receipt: r, peak: _ } =>
+      match receipt_last_unstalled_beat(r: r) {
+        Absent => AllowanceUnderivable { cause: "the receipt has no unstalled beat before its peak, so no cache was observed beside the demand while the slot was not thrashing" }
+        Present { value: b } =>
+          match beat_reclaimable_cache(b: b) {
+            MeasureSubtrahendExceedsMinuend =>
+              AllowanceUnderivable { cause: "the last unstalled beat reports more shmem than file, which the kernel's accounting forbids; the line is torn and no cache can be read from it" }
+            MeasureDifference { value: cache } =>
+              match round_up_to_gibibyte_grain(bytes: cache) {
+                GrainUnrepresentable { cause: _ } => AllowanceUnderivable { cause: "the last unstalled beat's cache is within a gibibyte of the representable bound, so its grain cannot be taken" }
+                GrainRounded { bytes: g } => AllowanceDerived { bytes: g }
+              }
+          }
+      }
+  }
+}
+
+// THE FLEET'S OWN SHAPE: the floor's Work against this fleet's cell, reserve, cache allowance,
+// task row and workspace grant. Every input is read from the authority that owns it; nothing here is a
+// parameter a caller could use to hand the guest an envelope the cell did not declare.
+fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired())
+}
+
+// THE SAME SHAPE, ASKED FOR A NAMED SLOT'S CELL. The slot controller (gunbc.runner_microvm_slot_
+// controller) shapes the guest for the cell its attempt was reserved on, and that cell's row is
+// gunbc_runner_slot_desired_for -- the 28 GiB shakedown row for srv1's shakedown slot, the fleet row
+// everywhere else. The parameter is a slot and not an envelope, so a caller still cannot hand the
+// guest a ceiling the cell did not declare; and the fleet-row entry above is unchanged, so the
+// expecting-red production-shape witness keeps reading the row it was written against.
+fn gunbc_runner_microvm_shape_for_slot(slot: RunnerSlotIdentity) -> RunnerMicroVmShapeResolution {
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired_for(slot: slot))
+}
+
+fn gunbc_runner_microvm_shape_in_cell(cell: RunnerSlotDesired) -> RunnerMicroVmShapeResolution {
+  match floor_storage_demand() {
+    StorageDemandUnrepresentable { cause: _ } =>
+      MicroVmShapeRefused { refusal: ShapeRefusedWorkStorageUnstated { cause: "the floor's storage components do not sum within the representable bound, so the demand is not a figure" } }
+    StorageDemandStated { requirement: storage } =>
+      runner_microvm_shape(
+        work: floor_execution_requirements(),
+        storage: storage,
+        cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
+        envelope: CellMemoryEnvelope { bytes: cell.memory_max },
+        reserve: gunbc_runner_microvm_realization_reserve(),
+        cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
+        task_ceiling: cell.tasks_max,
+        workspace: runner_microvm_workspace_grant,
+      )
+  }
+}
+
+// THE TASK CEILING, READ FROM THE CELL ROW ONCE, FOR THE TWO CONSUMERS THAT CARRY IT: the guest
+// shape (so the shape states what the guest is bounded to) and the guest agent unit
+// (gunbc.runner.runner_guest_image runner_guest_agent_unit), whose TasksMax= directive is the APPLICATION
+// -- systemd realizes it as pids.max on the unit's cgroup inside the guest. It is not projected as
+// kernel.pid_max: that is the PID-number wrap ceiling, a different fact with a different remedy.
+fn gunbc_runner_microvm_task_ceiling() -> Int {
+  gunbc_runner_slot_desired().tasks_max
+}
+
+
+fn runner_microvm_isolation_profile() -> IsolationProfile {
+  dedicated_kernel_sandbox_profile()
+}
+
+fn runner_microvm_provides_dedicated_kernel() -> Bool {
+  isolation_profile_satisfies(
+    required: IsolationProfile { guarantees: [DedicatedKernel] },
+    provided: runner_microvm_isolation_profile(),
+  )
+}
+
+// THE VMM PROCESS TOPOLOGY IS A FACT WITH OPPOSITE CONSEQUENCES, SO IT IS CARRIED RATHER THAN
+// ASSUMED.
+//
+// An earlier revision of this module refused every microVM under an orphanable lifecycle intent, on
+// the reasoning that a microVM relocates the orphan to the VMM rather than removing it. That
+// reasoning is sound for ONE topology and wrong for the other, and collapsing the two into a single
+// unconditional refusal would have refused a correct design:
+//
+//   VmmIsMainProcess -- the unit execs the jailer, which execs Firecracker, so the VMM IS MainPID.
+//     Killing MainPID destroys the guest and everything in it. No process can outlive that kill, so
+//     no kill mode or exit type can produce an orphan here. The guarantee is not needed.
+//
+//   VmmUnderLifecycleController -- a controller stays MainPID so it can wait for the VMM, tear down
+//     the epoch's disk, tap and secret, read back their absence and return one classified status.
+//     That controller is worth having, and it puts the VMM back underneath a parent, which is
+//     exactly the shape that orphans today. The guarantee IS needed.
+//
+// So the prerequisite belongs to the topology, not to virtualization. Stating it the other way
+// would have been a claim about microVMs that the mechanism does not support.
+type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
+
+// THERE IS DELIBERATELY NO `topology_requires_cgroup_reaching_teardown(..) -> Bool` BESIDE THIS
+// TYPE, and its absence is the same repair gunbc.commit_workflow made at its CheckRemoval selection
+// (review 57017): a Bool classifying coproduct arms is a parallel surface over a vocabulary that
+// already answers, and it destroys exhaustiveness at every call site. A THIRD topology -- a VMM
+// supervised by a per-attempt controller that itself execs, say -- would be absorbed into one side
+// of that predicate and no consumer would ever be asked which side it belongs on. Matched in place
+// in runner_microvm_admission below, a third arm fails to compile exactly where the prerequisite
+// has to be decided for it.
+
+// ADMISSION, AND THE PREREQUISITE IS A REFUSAL RATHER THAN A PARAGRAPH.
+//
+// Under a lifecycle-controller topology whose teardown does not reach the whole cgroup, a microVM
+// does not close the orphan class -- it moves the orphan up one level, and an orphaned VMM keeps
+// its guest alive holding the same credential. "Everything inside the VM dies together" is true and
+// does not help when the VM is what survived.
+//
+// gunbc.runner.runner_unit already owns the deciding predicate and the measured input (whether the tracked
+// main process exits when the incarnation ends), so this consumes that authority rather than
+// re-deriving it. Stating the dependency in prose would have left it satisfiable by an author who
+// never read the paragraph.
+//
+// THE TOPOLOGY GATE IS NECESSARY, NOT SUFFICIENT, and the cell's readiness is the other half. The
+// predicate is static: it says a finished incarnation makes systemd issue a stop that reaches the
+// cgroup. It cannot say the VMM is gone afterwards -- a task in uninterruptible sleep survives
+// SIGKILL -- nor that the cell is safe to reuse. That is gunbc.product.fabric.sanitation's
+// CellReadiness as held across incarnations by gunbc.runner.runner_microvm_cell_readiness, whose admission
+// joins the allocation generation to the readiness recorded at the previous one. It is consumed
+// FIRST, before any static gate: a cell that is withdrawn is withdrawn whatever the VM looks like,
+// and reporting a malformed VM for a quarantined cell would send the operator to the wrong fact.
+// Its three non-admitting arms stay three arms here, because their remedies differ: host grain (fix
+// the store; no cell on the host may start), cell grain (this cell's readback), and recovery required
+// (not a refusal to act but the instruction to run the lost attempt's teardown first).
+type RunnerMicroVmAdmission
+  = RunnerMicroVmAdmitted
+  | RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostWithdrawal }
+  | RunnerMicroVmRefusedCellWithdrawn { cell: CellId, withdrawal: CellWithdrawal }
+  | RunnerMicroVmRecoveryRequired { bound: CellBoundAttempt }
+  | RunnerMicroVmRefusedOrphanableUnit { reason: String }
+  | RunnerMicroVmRefusedSharedCredential { reason: String }
+  | RunnerMicroVmRefusedMalformedVm { reason: String }
+  | RunnerMicroVmRefusedEnvelopeDisagreement { reason: String }
+  | RunnerMicroVmRefusedEnvelopeUnresolved { reason: String }
+
+// THE ADMISSION IS A CASCADE OF MATCHES, NOT A CHAIN OF BOOLEAN PREDICATES, and that shape is the
+// point rather than a rendering of it. Each coproduct this admission depends on -- the topology,
+// the credential carrier, the cell's resource envelope -- is matched HERE, where the consequence is
+// decided, so a new variant on any of them fails to compile at the place that has to rule on it
+// instead of being silently absorbed into one side of a `-> Bool` helper.
+//
+// THE ENVELOPE HAS TWO REFUSAL ARMS AND THEY ARE NOT INTERCHANGEABLE. An envelope that did not
+// RESOLVE and an envelope the VM DISAGREES WITH are different states with different owners: the
+// first is a survey or a ceiling this module cannot read, and its remedy is in
+// gunbc.runner.runner_slot_allocation; the second is an authored VM, and its remedy is to derive the size
+// instead of writing it. Collapsing them into one cause is the state-space conflation DESIGN names,
+// and it would send an operator to the wrong module.
+fn runner_microvm_admission(
+  cell: CellIncarnationAdmission,
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  main_exits_when_incarnation_ends: Bool,
+  transport: JitCredentialTransport,
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
+  match cell {
+    HostWithdrawn { withdrawal: w } => RunnerMicroVmRefusedHostWithdrawn { withdrawal: w }
+    CellWithdrawn { cell: c, withdrawal: w } => RunnerMicroVmRefusedCellWithdrawn { cell: c, withdrawal: w }
+    CellRecoveryRequired { bound: b } => RunnerMicroVmRecoveryRequired { bound: b }
+    CellIncarnationAdmitted { cell: _, generation: _ } =>
+      runner_microvm_admission_after_cell(
+        topology: topology,
+        intent: intent,
+        main_exits_when_incarnation_ends: main_exits_when_incarnation_ends,
+        transport: transport,
+        config: config,
+        reserve: reserve,
+      )
+  }
+}
+
+fn runner_microvm_admission_after_cell(
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  main_exits_when_incarnation_ends: Bool,
+  transport: JitCredentialTransport,
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
+  match topology {
+    VmmIsMainProcess =>
+      runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
+    VmmUnderLifecycleController =>
+      if lifecycle_intent_stops_finished_incarnation(intent: intent, main_exits_when_incarnation_ends: main_exits_when_incarnation_ends) {
+        runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
+      } else {
+        RunnerMicroVmRefusedOrphanableUnit {
+          reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the declared intent (ExitType=main with KillMode=control-group), or exec the VMM directly as MainPID",
+        }
+      }
+  }
+}
+
+fn runner_microvm_admission_after_topology(
+  transport: JitCredentialTransport,
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
+  match transport {
+    JitConfigInSharedSlotDirectory { path: _ } =>
+      RunnerMicroVmRefusedSharedCredential {
+        reason: "the JIT credential is carried in a directory shared across incarnations, which is the exact carrier that lets one incarnation delete another's credential mid-job; a per-VM read-only drive is required",
+      }
+    JitConfigOnReadOnlyDrive { drive_id: _ } =>
+      runner_microvm_admission_after_credential(config: config, reserve: reserve)
+  }
+}
+
+// THE ADMISSION JUDGES FIT, NOT AGREEMENT, AND THE DIFFERENCE IS THE WHOLE REPAIR.
+//
+// The withdrawn arm asked whether the guest's configuration EQUALLED a derived envelope. That is
+// the wrong question twice over: it admits a guest sized at the whole ceiling, which leaves the
+// VMM process nothing inside the same cell, and it refuses a guest SMALLER than the ceiling, which
+// fits comfortably. Containment is the property -- guest plus reserve within the envelope -- and a
+// smaller guest passing is a REQUIREMENT of the repair rather than a tolerated side effect.
+//
+// The cell's envelope is read here rather than passed because it is not the disputed quantity:
+// gunbc_runner_slot_desired is the single authority for what the cell is granted, and reading it
+// is what keeps this from becoming a second envelope. The RESERVE is the parameterised one.
+fn runner_microvm_admission_after_credential(
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
+  if !firecracker_config_has_single_root(config: config) {
+    RunnerMicroVmRefusedMalformedVm {
+      reason: "the Firecracker configuration does not name exactly one root device, so the guest either cannot boot or its root is ambiguous",
+    }
+  } else {
+    match guest_resources_of_machine_config(mc: config.machine_config) {
+      GuestResourcesInvalid { cause: c } =>
+        RunnerMicroVmRefusedMalformedVm {
+          reason: concat("the guest machine configuration does not carry usable magnitudes, so it is refused before any fit judgment: ", c),
+        }
+      GuestResourcesValidated { memory: g, vcpus: _ } =>
+        match guest_memory_fits(
+          guest: g,
+          reserve: reserve,
+          envelope: CellMemoryEnvelope { bytes: gunbc_runner_slot_desired().memory_max },
+        ) {
+          MemoryFitUnresolved { cause: c } =>
+            RunnerMicroVmRefusedEnvelopeUnresolved {
+              reason: concat("this guest cannot be judged against the bounded cell, so no VM is admissible: ", c),
+            }
+          GuestExceedsCell { detail: d } =>
+            RunnerMicroVmRefusedEnvelopeDisagreement {
+              reason: concat("the guest would not fit the bounded cell FCI-1 admitted: ", d),
+            }
+          GuestFitsWithinCell => RunnerMicroVmAdmitted
+        }
+    }
+  }
+}
+
+// THE VM CONFIGURATION, DERIVED FROM THE FACTS ABOVE RATHER THAN AUTHORED BESIDE THEM.
+//
+// Every field a caller could get wrong independently is instead a consequence: the root drive is
+// the image, the second drive is the credential transport's own drive_id, and the size is the
+// declared size. A hand-authored config beside these rows would be a second spelling of one VM.
+
+fn runner_microvm_network_interfaces(net: RunnerMicroVmNetworking) -> List<FirecrackerNetworkInterface> {
+  match net {
+    GuestNetworkAbsent { cause: _ } => [] as List<FirecrackerNetworkInterface>
+    GuestNetworkTap { device: d, guest_mac: m } => [
+      FirecrackerNetworkInterface { iface_id: "eth0", host_dev_name: d, guest_mac: m },
+    ]
+  }
+}
+
+fn runner_microvm_vm_config(
+  rootfs_path: FilePath,
+  jit_config_path: FilePath,
+  kernel_path: FilePath,
+  net: RunnerMicroVmNetworking,
+  size: RunnerMicroVmSize,
+  transport: JitCredentialTransport,
+) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: FirecrackerBootSource {
+      kernel_image_path: kernel_path,
+      boot_args: "keep_bootcon console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw",
+    },
+    drives: runner_microvm_drives(rootfs_path: rootfs_path, jit_config_path: jit_config_path, transport: transport),
+    network_interfaces: runner_microvm_network_interfaces(net: net),
+    machine_config: FirecrackerMachineConfig {
+      vcpu_count: hardware_thread_count_value(t: size.vcpu_count),
+      mem_size_mib: mebibyte_count(m: size.memory),
+    },
+  }
+}
+
+fn runner_microvm_drives(
+  rootfs_path: FilePath,
+  jit_config_path: FilePath,
+  transport: JitCredentialTransport,
+) -> List<FirecrackerDrive> {
+  [
+    FirecrackerDrive {
+      drive_id: "rootfs",
+      path_on_host: rootfs_path,
+      is_root_device: true,
+      is_read_only: false,
+    },
+    FirecrackerDrive {
+      drive_id: jit_transport_drive_id(t: transport),
+      path_on_host: jit_config_path,
+      is_root_device: false,
+      is_read_only: true,
+    },
+  ]
+}
+
+fn jit_transport_drive_id(t: JitCredentialTransport) -> NonEmptyStr {
+  match t {
+    JitConfigOnReadOnlyDrive { drive_id: d } => d
+    JitConfigInSharedSlotDirectory { path: _ } => "jitcfg"
+  }
+}
+
+data runner_microvm_workspace_drive_id: NonEmptyStr = "work"
+
+fn runner_microvm_workspace_drive(path: FilePath) -> FirecrackerDrive {
+  FirecrackerDrive {
+    drive_id: runner_microvm_workspace_drive_id,
+    path_on_host: path,
+    is_root_device: false,
+    is_read_only: false,
+  }
+}
+
+fn attach_workspace_drive(config: FirecrackerVmConfig, path: FilePath) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: config.boot_source,
+    drives: append(config.drives, items: [runner_microvm_workspace_drive(path: path)]),
+    network_interfaces: config.network_interfaces,
+    machine_config: config.machine_config,
+  }
+}
+
+// THE FLEET'S OWN ADMISSION, EVALUATED AGAINST THE DECLARED INTENT.
+//
+// This is the row that answers "may we run runners in microVMs today", and it answers by consuming
+// gunbc_runner_lifecycle_intent rather than by an author's assertion. It moves the day that intent
+// is deployed, and not before.
+fn gunbc_runner_microvm_admission(
+  cell: CellIncarnationAdmission,
+  topology: VmmProcessTopology,
+  config: FirecrackerVmConfig,
+) -> RunnerMicroVmAdmission {
+  runner_microvm_admission(
+    cell: cell,
+    topology: topology,
+    intent: gunbc_runner_lifecycle_intent,
+    main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
+    transport: gunbc_runner_jit_transport,
+    config: config,
+    reserve: gunbc_runner_microvm_realization_reserve(),
+  )
+}
+
+// THE FLEET'S OWN VM, WHOSE SIZE IS NOT A PARAMETER.
+//
+// runner_microvm_vm_config above takes a size because it is the SHAPE -- one Firecracker
+// configuration, derived from whatever facts a caller holds -- and the shape is reusable. This row
+// is this fleet's binding of it, and the difference that matters is that the size axis is GONE:
+// there is no argument here through which a caller could hand a guest an envelope the bounded cell
+// did not declare. The admission wall still stands for configurations arriving from elsewhere; on
+// this path there is nothing left for it to catch, which is what construction over validation looks
+// like when it succeeds (DESIGN 5).
+//
+// IT RETURNS A RESOLUTION RATHER THAN A CONFIGURATION, because the envelope itself can fail to
+// resolve and a VM is not constructible without it. Substituting the MVP size here -- or any
+// plausible default -- would be the absorbing fallback: a guest that boots at the wrong ceiling and
+// reports success is strictly worse than one that refuses, because the ceiling is not observable
+// from inside the job it kills.
+type RunnerMicroVmConfigResolution
+  = MicroVmConfigResolved { config: FirecrackerVmConfig }
+  | MicroVmConfigUnresolved { cause: String }
+
+fn gunbc_runner_microvm_vm_config(
+  rootfs_path: FilePath,
+  jit_config_path: FilePath,
+  kernel_path: FilePath,
+  net: RunnerMicroVmNetworking,
+) -> RunnerMicroVmConfigResolution {
+  match gunbc_runner_microvm_shape() {
+    MicroVmShapeRefused { refusal: r } =>
+      MicroVmConfigUnresolved { cause: runner_microvm_shape_refusal_text(r: r) }
+    MicroVmShapeResolved { shape: s } =>
+      MicroVmConfigResolved {
+        config: runner_microvm_vm_config(
+          rootfs_path: rootfs_path,
+          jit_config_path: jit_config_path,
+          kernel_path: kernel_path,
+          net: net,
+          size: s.size,
+          transport: gunbc_runner_jit_transport,
+        ),
+      }
+  }
+}

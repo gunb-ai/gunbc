@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_summary_line_names_scope_in_verdict_position
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_summary_line_names_scope_in_verdict_position: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_summary_line_names_scope_in_verdict_position" as NonEmptyStr,
+
+  receipts: [
+    "a report's SUMMARY line enumerates the subjects a phase COVERED while standing in the position a reader takes as the subjects that FAILED (INVALID STATE: a terminal line of the form 'FAIL populations=A,B' emitted from the phase's scope list rather than from its outcome set, so a population that adjudicated clean appears inside a failure enumeration; the per-subject lines above carry the real verdicts and the summary cannot be read correctly without them, which means the line carries no information of its own while looking like the line that carries all of it)",
+
+    "MEASURED, gunbc#11552, 2026-09-18. The required-CI build lane's generated-artifact phase printed, in order: 'population=stage0-mirrors FAIL generated surface drift: extdeps_uri.rs', 'population=docs-projections OK', 'population=registry-projections rostered=44 adjudicated=44 matches=44 drifted=0 absent=0 unadjudicated=0', and then 'generated-artifact FAIL populations=registry-projections,stage0-mirrors'. registry-projections is named in the FAIL line and its own line reports drifted=0 across all 44 rostered subjects. One population drifted; two are named.",
+
+    "THE HARM IS A WRONG ACTION IN BOTH DIRECTIONS, which is why this is not a cosmetic complaint. Each population has a DIFFERENT regeneration actuator, so the summary is the input to choosing one: stage0-mirrors and registry-projections regenerate through gunbc.instruments.generated_artifact_gate main_wet, docs-projections through gunbc.instruments.docs_projection_gate regen. A reader trusting the summary hunts a registry drift that does not exist; a reader inferring scope from it concludes two surfaces are implicated and may run one actuator while believing both were covered. The failure that does NOT occur here is equally instructive: docs-projections is absent from the summary AND clean, so the line happens to be right about it by coincidence of scope rather than by reporting its outcome.",
+
+    "DISCRIMINATOR, stated so the class is decidable rather than a matter of taste: a subject named in a line whose verdict token is FAIL, whose own per-subject line reports zero failures. That is mechanically checkable against one log and needs no judgement about wording. The neighbouring-but-different case is a summary that names only failed subjects and happens to name several — that is a correct report of a multi-subject failure and is not this class.",
+
+    "CEILING IS CONSTRUCTIVE AND THE DOCUMENTARY REMEDY IS EXPLICITLY REFUSED AS THE ANSWER. Writing down 'read the per-population lines' protects the reader who read the note and nobody else, and leaves a line in the corpus that cannot be read correctly in isolation — DESIGN 5's construction-over-validation applied to a report. The climb is to derive the summary's subject list FROM THE OUTCOME SET rather than from the phase's scope, so a clean population is unnameable in a failure enumeration by construction and a reader who sees only the summary is right. NEXT TRIGGER: the generated-artifact phase's terminal line renders the populations whose adjudication produced a failure, with a discriminating control that a phase covering a clean population and a drifted one names exactly the drifted one.",
+
+    "NOT OWNED BY THE LANE THAT FOUND IT, recorded because that boundary is itself the reusable part. This was found from a GitHub App acquisition change whose only contact with the floor was one drifted stage0 mirror; repairing the floor's reporting from there is the scope widening a review would rightly refuse, and the row is the mechanism DESIGN provides so a finding survives without being taken. The reading discipline that surfaced it — consult the per-subject lines, never the summary, when the summary's shape is a list — is the mitigation available to any reader today.",
+  ],
+
+  evidence: [],
+}

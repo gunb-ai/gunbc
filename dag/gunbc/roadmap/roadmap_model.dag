@@ -1,0 +1,1029 @@
+module gunbc.roadmap.roadmap_model
+
+import std.types { NonEmptyStr, brand, Map }
+import std.content_hash { Fnv1a64Structural }
+import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
+import gunbc.roadmap.roadmap_status {
+  RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
+  node_title, item_description, item_exit_criterion,
+  TicketFields, line_ticket,
+  DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
+  RedControlEvidence, HandbackEvidence,
+  RedControlNotRun, RedControlExecuted,
+  HandbackNotDelivered, HandbackDelivered,
+  red_control_evidence_satisfied, handback_evidence_satisfied,
+}
+import gunbc.roadmap.roadmap_execution_contract { WorkItemExecutionContract }
+import std.algebra { empty_map, map_insert, map_lookup }
+import gunbc.roadmap.roadmap_sizing {
+  SizingSubject, SizingSubjectId, NodeSizingDerivation, derive_task_sizing,
+}
+
+type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
+
+data roadmap_node_identity_law: String = "A roadmap node's identity is MINTED, never derived. Slug, title, criteria digest, containment position, dependency neighbourhood, declaration order and file position are FORBIDDEN identity inputs — the law std.occurrence_identity states for occurrences, generalized to an entity that must outlive the graph it is read from.\n\nThe law is reused; the TYPE deliberately is not. std.occurrence_identity.OccurrenceId is an ordinal from a per-graph allocator starting at zero, so it is unique only INSIDE one constructed graph: inserting a node at the front renumbers every node after it, and two concurrent branches mint the same next integer. That is positional identity wearing an allocator's clothes — right for occurrences within one parse, wrong for a work item that must survive edits, reordering, regeneration and independent branches. What occurrence identity deliberately does not claim is PERSISTENCE SCOPE, and that is precisely what a roadmap node needs.\n\nIdentity is a REQUIRED FIELD rather than a side registry keyed by slug. A registry beside the authority leaves a node authorable without identity, detectable only by a later witness — validation standing where construction was available (DESIGN 5), and two authorities that must be kept in step (DESIGN 3). As a field, a node without durable identity is unwritable, and the slug index is DERIVED from the nodes rather than independently authored, so the two can never disagree."
+
+type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
+
+type Pointer { label: String, path: String }
+
+type Acceptance
+  = PrsMerged
+  | ManualAcceptance
+
+// WorkItemDispatch.acceptance names the evidence a worker must return for review; it is not the
+// work item's lifecycle verdict. PrsMerged means a merged PR is the expected implementation
+// artifact, while ManualAcceptance means the evidence is operator-inspected directly. In both cases
+// RoadmapNode.signoff is the separate acceptance step and the only route to completed work. A PR
+// can be merged while its roadmap node remains open for residue or rework.
+
+// WorkItemDispatch is the UNBUNDLED remainder of the former NodeSizing coproduct, which fused four
+// independent facts under one discriminant: whether the row is a dispatchable work item at all, the
+// repository the work happens in, the evidence its acceptance expects, and an authored
+// intricacy/volume guess at how big it is. The first three are facts an author genuinely holds when
+// declaring a row; the fourth is a measurement, and an author's ordinal guess is not one. Size is
+// therefore no longer a field here at all: it is derived from the row's own facts by
+// gunbc.roadmap.roadmap_sizing, which owns Intricacy, Volume and NodeSizing and hands consumers a typed
+// derivation rather than a stored answer. Keeping the four bundled meant a row could not declare
+// where it runs without also declaring how big it is, and every consumer that wanted only the repo
+// had to destructure a size it never read.
+
+type WorkItemDispatch
+  = NotDispatchable
+  | Dispatchable { repo: String, acceptance: Acceptance }
+
+// ONE NODE INTERFACE, OPTIONAL DISPATCH FACTS (operator ruling, 2026-09-30). A project, a
+// milestone and a task are the same record; what distinguishes them is which dispatch facts a row
+// supplies. parent and centering are optional and absent unless the row passes them, exactly like an
+// unbound execution contract (ExecutionContractUnspecified) or an unsized row (Unsized): an absent
+// fact is not a failure to author, it is a reason the node is NOT READY, and readiness is derived
+// from these fields by ONE predicate (gunbc.roadmap.roadmap_readiness node_readiness) that the
+// dispatcher's admission and the page both read. A container is simply a node that supplies no
+// centering and no contract and has members.
+//
+// parent is where the node sits in the functional decomposition: MemberOf names the project this
+// node's work advances and argues why (the contribution belongs to the edge, so it rides with the
+// child that states it); AdmittedRoot is the top, and the admitted roots are exactly the rows that
+// carry it; Closes is the lineage of a DERIVED closing-contract task, set by gunbc.roadmap.roadmap_authority
+// closing_contract_task_for when it mints the task, so its chain is its target's. One field is one
+// parent: two owners for one level has no constructor, which retires the former keyed roster
+// (gunbc.roadmap.roadmap_nesting roadmap_memberships) and its ambiguity refusals with it.
+type NodeParent
+  = MemberOf { project: String, contribution: NonEmptyStr }
+  | AdmittedRoot
+  | Closes { target: String }
+
+type RoadmapNode {
+  identity: RoadmapNodeIdentity
+  node: RoadmapNodeId
+  line: RoadmapItem
+  carriers: List<Pointer>
+  dispatch: WorkItemDispatch
+  execution: WorkItemExecutionContract
+  owner: String
+  signoff: Signoff
+  parent: NodeParent?
+  centering: NonEmptyStr?
+}
+
+// THE ROADMAP'S ADAPTER ONTO THE TASK SIZER, and the only place a RoadmapNode meets it. The
+// deriver's subject is a task (gunbc.roadmap.roadmap_sizing SizingSubject) precisely so that a plan item in
+// another repository can be sized by the same authority; a roadmap node is one kind of task, so it
+// projects into the subject here rather than the sizer reaching back into the roadmap.
+// THE SUBJECT IS THE DURABLE IDENTITY, NOT THE SLUG. roadmap_node_identity_law in this module
+// states that a node's identity is minted and that the slug is a FORBIDDEN identity input, so
+// keying a sizing derivation to rn.node would join future sizing evidence to a name that can
+// change under it -- the exact rot the law exists to prevent, committed one declaration below the
+// law that forbids it.
+// ONE PROJECTION FROM A NODE TO A SIZING KEY, because a key with two spellings is a join waiting
+// to be made on the weaker one. Everything that needs to name a node TO THE SIZING AUTHORITY --
+// the subject handed to the deriver, and the lookup of an assignment the deriver answered with --
+// goes through this function, so the two can never disagree.
+fn node_sizing_subject_id(rn: RoadmapNode) -> SizingSubjectId {
+  rn.identity as String as SizingSubjectId
+}
+
+fn node_sizing_subject(rn: RoadmapNode) -> SizingSubject {
+  SizingSubject {
+    subject: node_sizing_subject_id(rn: rn),
+    title: node_title(item: rn.line),
+    description: item_description(item: rn.line),
+    exit_criterion: item_exit_criterion(item: rn.line),
+  }
+}
+
+fn node_sizing_derivation(rn: RoadmapNode) -> NodeSizingDerivation {
+  derive_task_sizing(subject: node_sizing_subject(rn: rn))
+}
+
+type RoadmapEdge {
+  child: RoadmapNodeId
+  parent: RoadmapNodeId
+}
+
+type SectionProse { content: String }
+type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+
+type SectionElement
+  = Prose { prose: SectionProse }
+  | Group { group: SectionGroup }
+
+fn section_prose(content: String) -> SectionElement { Prose { prose: SectionProse { content: content } } }
+fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> SectionElement {
+  Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }
+}
+
+type RoadmapParent
+  = TopLevel
+  | UnderParent { parent: RoadmapNodeId }
+
+fn under_parent(p: RoadmapNodeId) -> RoadmapParent { UnderParent { parent: p } }
+fn top_level() -> RoadmapParent { TopLevel }
+
+// RoadmapEdge is the complete dependency DAG. Markdown and HTML are trees, so roadmap_primary_parent selects the first declared dependency for presentation placement only; roadmap_parent_ids preserves every prerequisite for admission and the projections render the complete set whenever there is more than one. Edge order never weakens, prioritizes, or discharges a dependency.
+fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
+  edges |> filter(e => e.child == node) |> map(e => e.parent)
+}
+
+// THE PARENT INDEX, one pass over the edges: child id to its parents in edge order (the order
+// roadmap_parent_ids' filter yields). A fold that asks every node for its parents -- the minting
+// rule's unmet parents, a page's blockers, a tree's primary parent -- reads it instead of filtering
+// every edge per node, which made each of those folds nodes x edges.
+fn roadmap_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNodeId>> {
+  let empty: Map<String, List<RoadmapNodeId>> = empty_map()
+  fold(edges, init: empty, f: fn(acc, e) {
+    match roadmap_parents_of(parents: acc, id: e.child as String) {
+      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent]))
+      Absent => map_insert(m: acc, key: e.child as String, value: [e.parent])
+    }
+  })
+}
+
+fn roadmap_parents_of(parents: Map<String, List<RoadmapNodeId>>, id: String) -> List<RoadmapNodeId>? {
+  map_lookup(m: parents, key: id)
+}
+
+fn roadmap_parent_ids_in(parents: Map<String, List<RoadmapNodeId>>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
+  match roadmap_parents_of(parents: parents, id: node as String) {
+    Absent => []
+    Present { value: ps } => ps
+  }
+}
+
+// THE PRIMARY-CHILD INDEX: parent id to the nodes whose primary parent (roadmap_primary_parent, the
+// first declared dependency) it is, in node order -- the population a tree projection's per-node
+// children filter yields, built in one pass over the nodes after one over the edges.
+fn roadmap_primary_children_index(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNode>> {
+  let parents = roadmap_parent_index(edges: edges)
+  let empty: Map<String, List<RoadmapNode>> = empty_map()
+  fold(nodes, init: empty, f: fn(acc, n) {
+    match first(roadmap_parent_ids_in(parents: parents, node: n.node)) {
+      Absent => acc
+      Present { value: p } =>
+        match map_lookup(m: acc, key: p as String) {
+          Present { value: kids } => map_insert(m: acc, key: p as String, value: concat(kids, [n]))
+          Absent => map_insert(m: acc, key: p as String, value: [n])
+        }
+    }
+  })
+}
+
+fn roadmap_primary_children_in(index: Map<String, List<RoadmapNode>>, parent: RoadmapNodeId) -> List<RoadmapNode> {
+  match map_lookup(m: index, key: parent as String) {
+    Absent => []
+    Present { value: kids } => kids
+  }
+}
+
+fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
+  let parents = roadmap_parent_ids(edges: edges, node: node)
+  match first(parents) {
+    Absent => top_level()
+    Present { value: p } => under_parent(p: p)
+  }
+}
+
+fn is_top_level(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> Bool {
+  match roadmap_primary_parent(edges: edges, node: node) {
+    TopLevel => true
+    UnderParent { parent: _ } => false
+  }
+}
+
+fn pointer_resolves(p: Pointer, existing_docs: List<String>) -> Bool {
+  existing_docs |> any(d => d == p.path)
+}
+
+fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
+  all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
+}
+
+fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
+  signoff_drift(s: rn.signoff, committed_box: committed_box)
+}
+
+fn node_closed(rn: RoadmapNode) -> Bool {
+  signoff_accepts(s: rn.signoff)
+}
+
+data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fact, never row deletion (operator verdict 2026-07-28): before this carrier, accepting a node meant removing its only representation from the active graph, after which a dependent's prerequisite had no acceptance fact to join against and every count was a hand-reconstructed snapshot. A RoadmapAcceptanceReceipt names the node, carries the executed red-control and delivered handback evidence (reusing the #7380 evidence carriers — a receipt without an executed witness or a delivered artifact is unwritable), and pins criteria_digest = roadmap_criteria_digest over the row's own declared brief/red_control/handback. The digest closes the criteria-drift half fail-closed: editing a node's acceptance criteria changes the derived digest, the stored receipt stops matching, and the node returns to the active set while the validity witness reds — an acceptance can never silently survive a criteria rewrite. Merged pull requests never accept: node_accepted consults only receipt rows, and implementation evidence stays review input. REMAINING GAP, counted not implied (same shape as signoff_evidence_note): the witness named inside RedControlExecuted is not mechanically joined to the prose red_control it discharges — any executed witness name satisfies the evidence arm. OWNER: roadmap-runtime; DISSOLVE-ON: TicketFields.red_control becoming a typed reference to its discharging witness, at which point receipt_matches_node derives the join instead of trusting the named pair."
+
+type RoadmapAcceptanceReceipt {
+  node: RoadmapNodeId
+  criteria_digest: Fnv1a64Structural
+  red_control: RedControlEvidence
+  handback: HandbackEvidence
+  accepted_by: NonEmptyStr
+  accepted_on: NonEmptyStr
+}
+
+fn roadmap_criteria_digest(t: TicketFields) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "roadmap-acceptance-criteria-v1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: t.brief as NonEmptyStr),
+        right: content_hash_atom(value: t.red_control as NonEmptyStr),
+      ),
+      right: content_hash_atom(value: t.handback as NonEmptyStr),
+    ),
+  )
+}
+
+fn node_criteria_digest(rn: RoadmapNode) -> Fnv1a64Structural? {
+  match line_ticket(item: rn.line) {
+    Present { value } => Present { value: roadmap_criteria_digest(t: value) }
+    Absent => Absent
+  }
+}
+
+fn receipt_evidence_complete(r: RoadmapAcceptanceReceipt) -> Bool {
+  red_control_evidence_satisfied(e: r.red_control)
+    && handback_evidence_satisfied(e: r.handback)
+}
+
+fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
+  r.node == rn.node
+    && receipt_evidence_complete(r: r)
+    && match node_criteria_digest(rn: rn) {
+      Present { value } => content_hash_eq_structural(left: value, right: r.criteria_digest)
+      Absent => false
+    }
+}
+
+type ReceiptNodeMatchVerdict
+  = ReceiptMatchesNode
+  | LiveReceiptOnSupersededLine { node: RoadmapNodeId }
+  | ReceiptDoesNotMatchNode
+
+fn node_line_is_superseded(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
+    PlainLine { content: _ } => false
+    SupersededLine { by: _, content: _ } => true
+    TicketLine { done: _, ticket: _ } => false
+  }
+}
+
+fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> ReceiptNodeMatchVerdict {
+  if !(r.node == rn.node) {
+    ReceiptDoesNotMatchNode
+  } else {
+    if node_line_is_superseded(rn: rn) {
+      LiveReceiptOnSupersededLine { node: rn.node }
+    } else {
+      if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+    }
+  }
+}
+
+fn receipts_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId) -> List<RoadmapAcceptanceReceipt> {
+  receipts |> filter(r => r.node == id)
+}
+
+fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> Bool {
+  node_receipts_accept(rs: receipts_for_node(receipts: receipts, id: rn.node), rn: rn)
+}
+
+// The acceptance predicate over one node's own receipts: exactly one, and it matches.
+fn node_receipts_accept(rs: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> Bool {
+  count(rs) == 1 && all(rs, r => receipt_matches_node(r: r, rn: rn))
+}
+
+// THE RECEIPT INDEX, one pass over the receipts: node id to its receipts in receipt order (the
+// order receipts_for_node's filter yields). Asking every declared node for its receipts through
+// the per-node filter made the accepted set a nodes x receipts fold.
+fn receipts_by_node(receipts: List<RoadmapAcceptanceReceipt>) -> Map<String, List<RoadmapAcceptanceReceipt>> {
+  let empty: Map<String, List<RoadmapAcceptanceReceipt>> = empty_map()
+  fold(receipts, init: empty, f: fn(acc, r) {
+    match map_lookup(m: acc, key: r.node as String) {
+      Present { value: rs } => map_insert(m: acc, key: r.node as String, value: concat(rs, [r]))
+      Absent => map_insert(m: acc, key: r.node as String, value: [r])
+    }
+  })
+}
+
+fn node_accepted_in(index: Map<String, List<RoadmapAcceptanceReceipt>>, rn: RoadmapNode) -> Bool {
+  match map_lookup(m: index, key: rn.node as String) {
+    Absent => false
+    Present { value: rs } => node_receipts_accept(rs: rs, rn: rn)
+  }
+}
+
+// THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable
+// typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority
+// silently returned the node to the active set with no refusal. A prior validation slice kept a
+// second hand-maintained baseline_nodes ledger beside roadmap_acceptance_receipts, so deleting both
+// rows stayed green — the dual representation this repository keeps paying for. THIS SLICE LANDS
+// THE CONSTRUCTION ANSWER: roadmap_acceptance_event_history is the single authority;
+// roadmap_acceptance_receipts is a projection only. AcceptanceRecorded appends a receipt;
+// AcceptanceRevoked names the exact prior receipt, a disposition, and audit fields. Replay refuses
+// a vanished recorded receipt without an exact matching revocation, a wrong prior digest, a
+// revocation while the exact receipt is still live, a revocation with nothing live to remove, and
+// duplicate revocations for one removal. A sealed prefix chain digest refuses edits to prior events
+// without updating the pin; witness tests compare prior history to mutated history for the deletion
+// arms.
+
+type AcceptanceNodeReopensActiveFrontier {}
+type AcceptanceNodeRemainsSuperseded {}
+
+// The revocation disposition names the FRONTIER CONSEQUENCE, not the supersession fact.
+// SupersededLine already owns terminal standing and `by`. AcceptanceNodeRemainsSuperseded is
+// deliberately payload-free: it says the revoked receipt stays off the active frontier because the
+// referenced node remains superseded. The join to that node's existing SupersededLine is the
+// wall; `by` is read from the line, never re-authored on the event.
+type AcceptanceRevocationDisposition
+  = AcceptanceNodeReopensActiveFrontier
+  | AcceptanceNodeRemainsSuperseded
+
+fn revocation_reopens_active_frontier(disposition: AcceptanceRevocationDisposition) -> Bool {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} => true
+    AcceptanceNodeRemainsSuperseded {} => false
+  }
+}
+
+fn revocation_disposition_eq(a: AcceptanceRevocationDisposition, b: AcceptanceRevocationDisposition) -> Bool {
+  match a {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      match b {
+        AcceptanceNodeReopensActiveFrontier {} => true
+        AcceptanceNodeRemainsSuperseded {} => false
+      }
+    AcceptanceNodeRemainsSuperseded {} =>
+      match b {
+        AcceptanceNodeReopensActiveFrontier {} => false
+        AcceptanceNodeRemainsSuperseded {} => true
+      }
+  }
+}
+
+type RoadmapAcceptanceEvent
+  = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
+  | AcceptanceRevoked {
+      exact_prior_receipt: RoadmapAcceptanceReceipt,
+      disposition: AcceptanceRevocationDisposition,
+      reason: NonEmptyStr,
+      revoked_by: NonEmptyStr,
+      revoked_on: NonEmptyStr,
+    }
+
+type AcceptanceHistoryReplayState {
+  live: List<RoadmapAcceptanceReceipt>
+  revoked: List<RoadmapAcceptanceReceipt>
+  ever_recorded: List<RoadmapAcceptanceReceipt>
+}
+
+type AcceptanceHistoryIntegrityVerdict
+  = AcceptanceHistoryIntegrityHolds
+  | AcceptanceHistoryIntegrityRefusedReplay
+  | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
+      receipt: RoadmapAcceptanceReceipt,
+    }
+  | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
+  | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
+
+fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
+  match a {
+    RedControlNotRun =>
+      match b {
+        RedControlNotRun => true
+        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => false
+      }
+    RedControlExecuted { witness_module: am, witness_fn: af, executed_on: ao } =>
+      match b {
+        RedControlNotRun => false
+        RedControlExecuted { witness_module: bm, witness_fn: bf, executed_on: bo } =>
+          am == bm && af == bf && ao == bo
+      }
+  }
+}
+
+fn handback_evidence_eq(a: HandbackEvidence, b: HandbackEvidence) -> Bool {
+  match a {
+    HandbackNotDelivered =>
+      match b {
+        HandbackNotDelivered => true
+        HandbackDelivered { first_artifact: _, further_artifacts: _ } => false
+      }
+    HandbackDelivered { first_artifact: af, further_artifacts: afs } =>
+      match b {
+        HandbackNotDelivered => false
+        HandbackDelivered { first_artifact: bf, further_artifacts: bfs } =>
+          af == bf && non_empty_str_list_eq_ordered(a: afs, b: bfs)
+      }
+  }
+}
+
+fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  if count(a) != count(b) {
+    false
+  } else if count(a) == 0 {
+    true
+  } else {
+    first(a) == first(b)
+      && non_empty_str_list_eq_ordered(
+        a: drop_first_non_empty_str(items: a),
+        b: drop_first_non_empty_str(items: b),
+      )
+  }
+}
+
+type DropFirstStrState {
+  skipped: Bool
+  rest: List<NonEmptyStr>
+}
+
+type DropFirstEventState {
+  skipped: Bool
+  rest: List<RoadmapAcceptanceEvent>
+}
+
+fn drop_first_non_empty_str(items: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(
+    items,
+    init: DropFirstStrState { skipped: false, rest: [] },
+    f: fn(state, item) {
+      if state.skipped {
+        DropFirstStrState { skipped: true, rest: concat(state.rest, [item]) }
+      } else {
+        DropFirstStrState { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
+}
+
+fn acceptance_receipt_eq(a: RoadmapAcceptanceReceipt, b: RoadmapAcceptanceReceipt) -> Bool {
+  a.node == b.node
+    && content_hash_eq_structural(left: a.criteria_digest, right: b.criteria_digest)
+    && red_control_evidence_eq(a: a.red_control, b: b.red_control)
+    && handback_evidence_eq(a: a.handback, b: b.handback)
+    && a.accepted_by == b.accepted_by
+    && a.accepted_on == b.accepted_on
+}
+
+fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> Bool {
+  match a {
+    AcceptanceRecorded { receipt: ar } =>
+      match b {
+        AcceptanceRecorded { receipt: br } => acceptance_receipt_eq(a: ar, b: br)
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
+      }
+    AcceptanceRevoked { exact_prior_receipt: apr, disposition: ad, reason: ar, revoked_by: ab, revoked_on: ao } =>
+      match b {
+        AcceptanceRecorded { receipt: _ } => false
+        AcceptanceRevoked { exact_prior_receipt: bpr, disposition: bd, reason: br, revoked_by: bb, revoked_on: bo } =>
+          acceptance_receipt_eq(a: apr, b: bpr)
+            && revocation_disposition_eq(a: ad, b: bd)
+            && ar == br
+            && ab == bb
+            && ao == bo
+      }
+  }
+}
+
+fn receipt_present_exact(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+) -> Bool {
+  receipts |> any(r => acceptance_receipt_eq(a: r, b: receipt))
+}
+
+fn receipt_live_for_node(
+  live: List<RoadmapAcceptanceReceipt>,
+  id: RoadmapNodeId,
+) -> Bool {
+  live |> any(r => r.node == id)
+}
+
+fn remove_exact_receipt(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+) -> List<RoadmapAcceptanceReceipt> {
+  receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
+}
+
+fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(
+    items,
+    init: content_hash_atom(value: "non-empty-str-list-v1" as NonEmptyStr),
+    f: fn(acc, item) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: item),
+      )
+    },
+  )
+}
+
+fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
+  match e {
+    RedControlNotRun =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-not-run-v1",
+        payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
+      )
+    RedControlExecuted { witness_module, witness_fn, executed_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-executed-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: content_hash_atom(value: witness_module),
+            right: content_hash_atom(value: witness_fn),
+          ),
+          right: content_hash_atom(value: executed_on),
+        ),
+      )
+  }
+}
+
+fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
+  match e {
+    HandbackNotDelivered =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-not-delivered-v1",
+        payload: content_hash_atom(value: "HandbackNotDelivered" as NonEmptyStr),
+      )
+    HandbackDelivered { first_artifact, further_artifacts } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-delivered-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: first_artifact),
+          right: non_empty_str_list_digest(items: further_artifacts),
+        ),
+      )
+  }
+}
+
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "roadmap-acceptance-receipt-v1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: receipt.node as NonEmptyStr),
+        right: content_hash_combine_structural(
+          left: receipt.criteria_digest,
+          right: red_control_evidence_digest(e: receipt.red_control),
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: handback_evidence_digest(e: receipt.handback),
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: receipt.accepted_by),
+          right: content_hash_atom(value: receipt.accepted_on),
+        ),
+      ),
+    ),
+  )
+}
+
+fn acceptance_revocation_disposition_digest(
+  disposition: AcceptanceRevocationDisposition,
+) -> Fnv1a64Structural {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-reopens-active-frontier-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+    AcceptanceNodeRemainsSuperseded {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-remains-superseded-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeRemainsSuperseded" as NonEmptyStr),
+      )
+  }
+}
+
+fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
+  match event {
+    AcceptanceRecorded { receipt } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-recorded-v2",
+        payload: acceptance_receipt_digest(receipt: receipt),
+      )
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-revoked-v2",
+        payload: content_hash_combine_structural(
+          left: acceptance_receipt_digest(receipt: exact_prior_receipt),
+          right: content_hash_combine_structural(
+            left: acceptance_revocation_disposition_digest(disposition: disposition),
+            right: content_hash_combine_structural(
+              left: content_hash_atom(value: reason),
+              right: content_hash_combine_structural(
+                left: content_hash_atom(value: revoked_by),
+                right: content_hash_atom(value: revoked_on),
+              ),
+            ),
+          ),
+        ),
+      )
+  }
+}
+
+fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1a64Structural {
+  fold(
+    events,
+    init: content_hash_atom(value: "roadmap-acceptance-history-v1" as NonEmptyStr),
+    f: fn(acc, event) {
+      content_hash_combine_structural(
+        left: acc,
+        right: acceptance_event_digest(event: event),
+      )
+    },
+  )
+}
+
+fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
+  fold(
+    events,
+    init: DropFirstEventState { skipped: false, rest: [] },
+    f: fn(state, event) {
+      if state.skipped {
+        DropFirstEventState { skipped: true, rest: concat(state.rest, [event]) }
+      } else {
+        DropFirstEventState { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
+}
+
+fn acceptance_history_prior_prefix_mismatch_index_at(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+  index: Int,
+) -> Int {
+  match first(prior) {
+    Absent => index
+    Present { value: p } => match first(current) {
+      Absent => index
+      Present { value: c } =>
+        if !acceptance_event_eq(a: p, b: c) {
+          index
+        } else {
+          acceptance_history_prior_prefix_mismatch_index_at(
+            prior: drop_first_acceptance_event(events: prior),
+            current: drop_first_acceptance_event(events: current),
+            index: index + 1,
+          )
+        }
+    }
+  }
+}
+
+fn acceptance_history_prior_prefix_mismatch_index(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Int {
+  acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
+}
+
+fn acceptance_history_extends_prior(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Bool {
+  if count(current) < count(prior) {
+    false
+  } else {
+    match first(prior) {
+      Absent => true
+      Present { value: p } => match first(current) {
+        Absent => false
+        Present { value: c } =>
+          acceptance_event_eq(a: p, b: c)
+            && acceptance_history_extends_prior(
+              prior: drop_first_acceptance_event(events: prior),
+              current: drop_first_acceptance_event(events: current),
+            )
+      }
+    }
+  }
+}
+
+fn replay_acceptance_event(
+  state: AcceptanceHistoryReplayState,
+  event: RoadmapAcceptanceEvent,
+) -> AcceptanceHistoryReplayState? {
+  match event {
+    AcceptanceRecorded { receipt } =>
+      if receipt_live_for_node(live: state.live, id: receipt.node)
+        || receipt_present_exact(receipts: state.live, receipt: receipt) {
+        none
+      } else {
+        Present { value: AcceptanceHistoryReplayState {
+          live: concat(state.live, [receipt]),
+          revoked: state.revoked,
+          ever_recorded: concat(state.ever_recorded, [receipt]),
+        } }
+      }
+    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      if !receipt_present_exact(receipts: state.live, receipt: exact_prior_receipt)
+        || receipt_present_exact(receipts: state.revoked, receipt: exact_prior_receipt) {
+        none
+      } else {
+        Present { value: AcceptanceHistoryReplayState {
+          live: remove_exact_receipt(receipts: state.live, receipt: exact_prior_receipt),
+          revoked: concat(state.revoked, [exact_prior_receipt]),
+          ever_recorded: state.ever_recorded,
+        } }
+      }
+  }
+}
+
+fn replay_acceptance_history(events: List<RoadmapAcceptanceEvent>) -> AcceptanceHistoryReplayState? {
+  fold(
+    events,
+    init: Present { value: AcceptanceHistoryReplayState {
+      live: [],
+      revoked: [],
+      ever_recorded: [],
+    } },
+    f: fn(acc, event) {
+      match acc {
+        Absent => Absent
+        Present { value: state } =>
+          match replay_acceptance_event(state: state, event: event) {
+            Absent => Absent
+            Present { value: next } => Present { value: next }
+          }
+      }
+    },
+  )
+}
+
+fn ever_recorded_receipt_accounted_for(
+  receipt: RoadmapAcceptanceReceipt,
+  live: List<RoadmapAcceptanceReceipt>,
+  revoked: List<RoadmapAcceptanceReceipt>,
+) -> Bool {
+  receipt_present_exact(receipts: live, receipt: receipt)
+    || receipt_present_exact(receipts: revoked, receipt: receipt)
+}
+
+type LiveReceiptDeclarationJoin
+  = LiveReceiptsJoinDeclared
+  | LiveReceiptJoinsSupersededLine { node: RoadmapNodeId }
+  | LiveReceiptDoesNotMatchDeclaredNode { node: RoadmapNodeId }
+  | LiveReceiptJoinsUndeclaredNode { node: RoadmapNodeId }
+  | LiveReceiptJoinsAmbiguousDeclaredNode { node: RoadmapNodeId }
+
+// THE NODE INDEX, one pass over the nodes: id to every node carrying it, in list order (the order a
+// per-id filter yields), so ambiguity stays a count of declarations. Every per-id question over a
+// population -- which declared node a receipt joins, which sanctioned node a rendered one copies --
+// reads it instead of filtering the whole population per question.
+fn roadmap_nodes_by_id(nodes: List<RoadmapNode>) -> Map<String, List<RoadmapNode>> {
+  let empty: Map<String, List<RoadmapNode>> = empty_map()
+  fold(nodes, init: empty, f: fn(acc, n) {
+    match map_lookup(m: acc, key: n.node as String) {
+      Present { value: ns } => map_insert(m: acc, key: n.node as String, value: concat(ns, [n]))
+      Absent => map_insert(m: acc, key: n.node as String, value: [n])
+    }
+  })
+}
+
+fn roadmap_nodes_with_id(index: Map<String, List<RoadmapNode>>, id: RoadmapNodeId) -> List<RoadmapNode> {
+  match map_lookup(m: index, key: id as String) {
+    Absent => []
+    Present { value: ns } => ns
+  }
+}
+
+fn live_receipt_join_found(
+  r: RoadmapAcceptanceReceipt,
+  found: List<RoadmapNode>,
+) -> LiveReceiptDeclarationJoin {
+  if count(found) == 0 {
+    LiveReceiptJoinsUndeclaredNode { node: r.node }
+  } else {
+    if count(found) > 1 {
+      LiveReceiptJoinsAmbiguousDeclaredNode { node: r.node }
+    } else {
+      match first(found) {
+        Absent => LiveReceiptJoinsUndeclaredNode { node: r.node }
+        Present { value: rn } =>
+          match receipt_node_match_verdict(r: r, rn: rn) {
+            ReceiptMatchesNode => LiveReceiptsJoinDeclared
+            LiveReceiptOnSupersededLine { node: node } =>
+              LiveReceiptJoinsSupersededLine { node: node }
+            ReceiptDoesNotMatchNode =>
+              LiveReceiptDoesNotMatchDeclaredNode { node: r.node }
+          }
+      }
+    }
+  }
+}
+
+fn live_receipts_join_declared_nodes(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  nodes: List<RoadmapNode>,
+) -> LiveReceiptDeclarationJoin {
+  let index = roadmap_nodes_by_id(nodes: nodes)
+  fold(
+    receipts,
+    init: LiveReceiptsJoinDeclared,
+    f: fn(acc, r) {
+      match acc {
+        LiveReceiptJoinsSupersededLine { node: n } =>
+          LiveReceiptJoinsSupersededLine { node: n }
+        LiveReceiptDoesNotMatchDeclaredNode { node: n } =>
+          LiveReceiptDoesNotMatchDeclaredNode { node: n }
+        LiveReceiptJoinsUndeclaredNode { node: n } =>
+          LiveReceiptJoinsUndeclaredNode { node: n }
+        LiveReceiptJoinsAmbiguousDeclaredNode { node: n } =>
+          LiveReceiptJoinsAmbiguousDeclaredNode { node: n }
+        LiveReceiptsJoinDeclared =>
+          live_receipt_join_found(r: r, found: roadmap_nodes_with_id(index: index, id: r.node))
+      }
+    },
+  )
+}
+
+// Replay refusing and replay succeeding with nothing live are two different answers, and an
+// unreplayable history is not an answer at all, so they may not share the empty list. The
+// distinction is carried structurally here at the producer rather than reconstructed by any
+// consumer.
+type LiveAcceptanceReceiptProjection
+  = LiveAcceptanceReceiptsReplayed { live: List<RoadmapAcceptanceReceipt> }
+  | LiveAcceptanceReceiptsReplayRefused
+
+fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> LiveAcceptanceReceiptProjection {
+  match replay_acceptance_history(events: history) {
+    Present { value: state } => LiveAcceptanceReceiptsReplayed { live: state.live }
+    Absent => LiveAcceptanceReceiptsReplayRefused
+  }
+}
+
+type RemainsSupersededRevocationJoin
+  = RemainsSupersededRevocationsJoined
+  | RemainsSupersededRevocationOnNonSupersededNode { node: RoadmapNodeId }
+  | RemainsSupersededRevocationOnUndeclaredNode { node: RoadmapNodeId }
+  | RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: RoadmapNodeId }
+
+fn join_remains_superseded_to_declared_line(
+  node: RoadmapNodeId,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  let found = nodes |> filter(n => n.node == node)
+  if count(found) == 0 {
+    RemainsSupersededRevocationOnUndeclaredNode { node: node }
+  } else {
+    if count(found) > 1 {
+      RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node }
+    } else {
+      match first(found) {
+        Absent => RemainsSupersededRevocationOnUndeclaredNode { node: node }
+        Present { value: rn } =>
+          if node_line_is_superseded(rn: rn) {
+            RemainsSupersededRevocationsJoined
+          } else {
+            RemainsSupersededRevocationOnNonSupersededNode { node: node }
+          }
+      }
+    }
+  }
+}
+
+fn remains_superseded_revocation_event_join(
+  event: RoadmapAcceptanceEvent,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  match event {
+    AcceptanceRecorded { receipt: _ } => RemainsSupersededRevocationsJoined
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+      match disposition {
+        AcceptanceNodeReopensActiveFrontier {} => RemainsSupersededRevocationsJoined
+        AcceptanceNodeRemainsSuperseded {} =>
+          join_remains_superseded_to_declared_line(node: exact_prior_receipt.node, nodes: nodes)
+      }
+  }
+}
+
+fn remains_superseded_revocations_join(
+  history: List<RoadmapAcceptanceEvent>,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  fold(
+    history,
+    init: RemainsSupersededRevocationsJoined,
+    f: fn(acc, event) {
+      match acc {
+        RemainsSupersededRevocationOnNonSupersededNode { node: n } =>
+          RemainsSupersededRevocationOnNonSupersededNode { node: n }
+        RemainsSupersededRevocationOnUndeclaredNode { node: n } =>
+          RemainsSupersededRevocationOnUndeclaredNode { node: n }
+        RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n } =>
+          RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n }
+        RemainsSupersededRevocationsJoined =>
+          remains_superseded_revocation_event_join(event: event, nodes: nodes)
+      }
+    },
+  )
+}
+
+// Consequence fold only. Callers that admit a withheld set MUST first
+// remains_superseded_revocations_join against the declared nodes; a RemainsSuperseded arm that
+// does not join a SupersededLine is a projection refusal, not an empty withheld list.
+fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapNodeId> {
+  fold(
+    history,
+    init: [] as List<RoadmapNodeId>,
+    f: fn(acc, event) {
+      match event {
+        AcceptanceRecorded { receipt } =>
+          acc |> filter(id => !(id == receipt.node))
+        AcceptanceRevoked { exact_prior_receipt, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+          if revocation_reopens_active_frontier(disposition: disposition) {
+            acc |> filter(id => !(id == exact_prior_receipt.node))
+          } else {
+            concat(
+              acc |> filter(id => !(id == exact_prior_receipt.node)),
+              [exact_prior_receipt.node],
+            )
+          }
+      }
+    },
+  )
+}
+
+fn acceptance_history_integrity_verdict(
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
+) -> AcceptanceHistoryIntegrityVerdict {
+  if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
+    AcceptanceHistoryIntegrityRefusedPriorPrefix {
+      index: acceptance_history_prior_prefix_mismatch_index(
+        prior: prior_history,
+        current: history,
+      ),
+    }
+  } else {
+    match replay_acceptance_history(events: history) {
+      Absent => AcceptanceHistoryIntegrityRefusedReplay
+      Present { value: state } =>
+        match first(
+          state.ever_recorded |> filter(r =>
+            !ever_recorded_receipt_accounted_for(
+              receipt: r,
+              live: state.live,
+              revoked: state.revoked,
+            )
+          ),
+        ) {
+          Present { value: vanished } =>
+            AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: vanished }
+          Absent => AcceptanceHistoryIntegrityHolds
+        }
+    }
+  }
+}
+
+fn acceptance_history_integrity_holds(
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
+) -> Bool {
+  match acceptance_history_integrity_verdict(
+    history: history,
+    prior_history: prior_history,
+  ) {
+    AcceptanceHistoryIntegrityHolds => true
+    AcceptanceHistoryIntegrityRefusedReplay => false
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+  }
+}
+
+fn acceptance_history_integrity_verdict_detail(verdict: AcceptanceHistoryIntegrityVerdict) -> String {
+  match verdict {
+    AcceptanceHistoryIntegrityHolds => ""
+    AcceptanceHistoryIntegrityRefusedReplay =>
+      "acceptance history replay refused: event sequence is not replayable"
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: receipt } =>
+      concat("acceptance receipt vanished without revocation: node=", receipt.node as String)
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: index } =>
+      concat("prior acceptance history prefix mismatch at index ", to_string(index))
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail } =>
+      concat("prior history observation refused: ", detail)
+  }
+}

@@ -1,0 +1,201 @@
+module v2.test.claim.floor_discovery_source_authority
+import std.optional { Absent, Optional, Present }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_source_authority { FloorDiscoveryAccepted, FloorDiscoveryProducerResult, FloorDiscoveryRefused, discover_floor_rows_for_source, floor_discovery_finalize_source_outcomes }
+import std.algebra { length, list_head, fold_list }
+import std.types { Bool, String, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PER-FILE DISCOVERY AUTHORITY, EXERCISED ON THE ROUTE THE REQUIRED FLOOR TAKES. The floor
+// (cli_run required_floor_runner) calls discover_floor_rows_for_source once per prepared source
+// and floor_discovery_finalize_source_outcomes once over the outcomes, and takes the accepted rows
+// as its roster; every fixture below is handed to exactly those two functions.
+//
+// A test is a declaration carrying the authored `test` marker, and nothing else. The marked names
+// are a SUPPLIED value (`marked`), so each rule below is exercised by changing what is supplied
+// and what the path says, never by changing bytes a scan would have to find: the red for the
+// enrolment rule is a path that used to decide the outcome and now decides nothing.
+//
+// One discriminating red per rule, and the control that keeps the real path beside it:
+//   enrolment            red: the retired suffix alone      control: a marked name at any path
+//   wire-contract place  red: a real decl outside the sidecar   control: the same bytes inside it
+//   live-tree row        red: a malformed row               control: a declared row carried onto the row
+//   merge law            red: one violation stops the line  control: outcomes union
+
+data fdsa_plain_entry: String = "src/v2/lens/example.dag"
+data fdsa_second_entry: String = "src/v2/lens/other.dag"
+// The retired spelling: a file name that once enrolled and now means nothing.
+data fdsa_retired_suffix_entry: String = "src/v2/lens/example_test.dag"
+data fdsa_contracts_entry: String = "src/v2/lens/example_contracts.dag"
+data fdsa_ordinary_content: String = "module m\n\nfn helper() -> Bool { true }\n"
+data fdsa_marked_content: String = "module m\n\ntest fn probe() -> Bool { true }\n"
+
+fn fdsa_rows_contain(rows: List<FloorDiscoveryRow>, entry: String, function: String) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      if found { true } else { (row.entry == entry) && (row.function == function) }
+    }
+  )
+}
+
+fn fdsa_first_row_reads(rows: List<FloorDiscoveryRow>, expected: LiveTreeDisposition) -> Bool {
+  match list_head(xs: rows) {
+    Present { value: row } => (length(xs: rows) == 1) && (row.reads_live_tree == expected)
+    Absent => false
+  }
+}
+
+type FloorDiscoveryProducerResultView
+  = AcceptedRows { rows: List<FloorDiscoveryRow> }
+  | RefusedReason { reason: String }
+
+fn fdsa_view(result: FloorDiscoveryProducerResult) -> FloorDiscoveryProducerResultView {
+  match result {
+    FloorDiscoveryAccepted { rows: rows } => AcceptedRows { rows: rows }
+    FloorDiscoveryRefused { reason: reason } => RefusedReason { reason: reason }
+  }
+}
+
+fn fdsa_finalize_one(
+  entry: String,
+  marked: List<String>,
+  content: String
+) -> FloorDiscoveryProducerResultView {
+  fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [discover_floor_rows_for_source(repo_path: entry, marked: marked, content: content)]
+    )
+  )
+}
+
+// ENROLMENT CONTROL: every supplied marked name is one row, at a path that says nothing about tests.
+test fn marked_names_enrol_one_row_each_at_any_path() -> Bool {
+  match fdsa_finalize_one(
+    entry: fdsa_plain_entry,
+    marked: ["probe", "flag"],
+    content: fdsa_marked_content
+  ) {
+    AcceptedRows { rows: rows } =>
+      (length(xs: rows) == 2)
+        && fdsa_rows_contain(rows: rows, entry: fdsa_plain_entry, function: "probe")
+        && fdsa_rows_contain(rows: rows, entry: fdsa_plain_entry, function: "flag")
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// ENROLMENT RED: the retired suffix with nothing marked. Under the naming rule this was a barren
+// sidecar and refused; under the marker it is a file that declares no test, which enrols nothing
+// and refuses nothing. The control above is the same authority enrolling at an unsuffixed path.
+test fn retired_test_suffix_alone_enrols_and_refuses_nothing() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_retired_suffix_entry, marked: [], content: fdsa_ordinary_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// WIRE-CONTRACT RED: a real `CoproductWireContract` row outside a `_contracts.dag` sidecar. The
+// sidecar is the seed emitter's module-composition convention, not a test identification.
+data fdsa_real_wire_contract_content: String = "module m\n\ndata x: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }\n"
+// The live specimen the floor's first run of this authority refused (run 33267373258): a `String`
+// data row whose value quotes a wire-contract declaration. Its declared type is `String`, so it is
+// not a wire-contract decl.
+data fdsa_quoted_wire_contract_content: String = "module m\n\ndata src: String = \"data x: CoproductWireContract = { coproduct: \\\"X\\\" }\"\n"
+
+test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_plain_entry, marked: [], content: fdsa_real_wire_contract_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "_contracts.dag")
+        && string_contains(s: reason, pattern: fdsa_plain_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
+
+// WIRE-CONTRACT CONTROLS: the same bytes inside the sidecar are admitted, and the quoted `String`
+// row is admitted outside it, so the red discriminates on placement and on the declared type.
+test fn wire_contract_row_inside_contracts_sidecar_is_admitted() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_contracts_entry, marked: [], content: fdsa_real_wire_contract_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn quoted_wire_contract_in_a_string_row_is_not_a_wire_contract_decl() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_plain_entry, marked: [], content: fdsa_quoted_wire_contract_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// LIVE-TREE RED: a malformed disposition row refuses even when nothing is marked, so no source
+// escapes the check by declaring no test.
+data fdsa_malformed_disposition_content: String = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = MaybeLive\n"
+data fdsa_declared_substrate_only_content: String = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn probe() -> Bool { true }\n"
+
+test fn malformed_live_tree_disposition_refuses_with_nothing_marked() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_plain_entry, marked: [], content: fdsa_malformed_disposition_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "unknown variant")
+        && string_contains(s: reason, pattern: fdsa_plain_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
+
+// LIVE-TREE CONTROL: the declared row is carried onto the enrolled row, and an undeclared source
+// takes the conservative default, so the red above is not a blanket refusal of the keyword.
+test fn declared_live_tree_disposition_is_carried_onto_the_row() -> Bool {
+  match fdsa_finalize_one(
+    entry: fdsa_plain_entry,
+    marked: ["probe"],
+    content: fdsa_declared_substrate_only_content
+  ) {
+    AcceptedRows { rows: rows } => fdsa_first_row_reads(rows: rows, expected: SubstrateInputsOnly)
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn undeclared_live_tree_disposition_defaults_to_reads_live_tree() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_plain_entry, marked: ["probe"], content: fdsa_marked_content) {
+    AcceptedRows { rows: rows } => fdsa_first_row_reads(rows: rows, expected: ReadsLiveTree)
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// THE MERGE LAW the floor relies on: outcomes judged one source at a time finalize to the union of
+// their rows, identity-joined, and one violation anywhere stops the whole line.
+test fn finalize_unions_per_source_outcomes() -> Bool {
+  match fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [
+        discover_floor_rows_for_source(repo_path: fdsa_plain_entry, marked: ["probe"], content: fdsa_marked_content),
+        discover_floor_rows_for_source(repo_path: fdsa_second_entry, marked: ["flag"], content: fdsa_marked_content),
+        discover_floor_rows_for_source(repo_path: fdsa_retired_suffix_entry, marked: [], content: fdsa_ordinary_content)
+      ]
+    )
+  ) {
+    AcceptedRows { rows: rows } =>
+      (length(xs: rows) == 2)
+        && fdsa_rows_contain(rows: rows, entry: fdsa_plain_entry, function: "probe")
+        && fdsa_rows_contain(rows: rows, entry: fdsa_second_entry, function: "flag")
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn one_violation_among_many_sources_stops_the_line() -> Bool {
+  match fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [
+        discover_floor_rows_for_source(repo_path: fdsa_plain_entry, marked: ["probe"], content: fdsa_marked_content),
+        discover_floor_rows_for_source(repo_path: fdsa_second_entry, marked: [], content: fdsa_real_wire_contract_content)
+      ]
+    )
+  ) {
+    RefusedReason { reason: reason } => string_contains(s: reason, pattern: fdsa_second_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}

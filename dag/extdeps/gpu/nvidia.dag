@@ -1,0 +1,470 @@
+module extdeps.gpu.nvidia
+
+import extdeps.gpu.types {
+  GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda,
+  cuda_compute_capabilities_authority, PcieAddInCard, SxmModule,
+}
+import extdeps.memory.types { MemoryFacts, Dram, Hbm }
+import extdeps.storage.types { PcieLink, PcieGeneration }
+import extdeps.vendor.nvidia { nvidia }
+import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
+
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import std.decl_ref { decl_field_ref }
+import extdeps.uri { Uri, Https }
+import std.types { List, NonEmptyStr }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/"
+  }
+}
+
+data rtx_5090_interconnect: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
+
+data rtx_5090_sm_shared_memory: ByteSize = byte_size(count: 102400)
+data rtx_5090_sm_register_file: ByteSize = byte_size(count: 262144)
+
+data rtx_5090_sm_cache_geometry: GpuSmCacheGeometry = GpuSmCacheGeometry {
+  shared_memory_per_sm: rtx_5090_sm_shared_memory,
+  register_file_per_sm: rtx_5090_sm_register_file,
+}
+
+data rtx_5090_sm_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "shared_memory_per_sm"),
+    authority: cuda_compute_capabilities_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "register_file_per_sm"),
+    authority: cuda_compute_capabilities_authority,
+  },
+]
+
+data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GeForce RTX 5090",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(21760),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
+  boost_clock: hertz(count: 2410000000),
+  tdp_watts: watt(count: 575),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_5090_interconnect },
+  sm_cache: Present { value: rtx_5090_sm_cache_geometry },
+  sm_cache_citations: rtx_5090_sm_cache_citations,
+  figure_citations: [],
+}
+
+// THE RTX PRO 6000 BLACKWELL FAMILY: THREE NVIDIA PRODUCTS, THREE ROWS, AND THE BANDWIDTH FIGURE IS
+// THE REASON THEY ARE NOT ONE. Read 2026-10-11 from NVIDIA's own pages: the Workstation Edition
+// (600 W) and Max-Q Workstation Edition (300 W) pages each state 1792 GB/s; the Server Edition
+// (passive, up to 600 W configurable) page states 1597 GB/s on a 512-bit interface. All three state
+// 96 GB GDDR7 with ECC. A session briefly held "1792 vs 1597" as a disagreement about one card; it
+// is two correct figures for two editions, so merging them into one row would have made one of them
+// a lie. The Max-Q is the card extdeps.pricing.hetzner_dedicated names in hetzner_gex131_listed's
+// gpu_description; the row's model below is that string without the leading vendor word, and
+// test.claim.rtx_pro_6000_catalog_witness joins the two.
+//
+// CUDA CORES. The Workstation Edition datasheet (document 3519208) and the Server Edition page both
+// state 24,064. The Max-Q product page still states no count, so that row keeps TranscribedUncited.
+// INTERCONNECT IS THE BOARD ENDPOINT, NOT A HOST OBSERVATION. The Workstation datasheet and the
+// family table both state PCIe 5.0 x16; that is the add-in-card endpoint capability. Boost clock is
+// Absent (no page states one). Compute capability 12.0 is the GB202 value this module already cites
+// for the RTX 5090 (cuda_compute_capabilities_authority), listed by architecture, not by board.
+// CONSUMER: P4 home-serving feasibility (measured weight+KV fit per rank, engine-on-arch).
+
+data rtx_pro_6000_workstation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000/"
+  }
+}
+
+data rtx_pro_6000_workstation_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/content/dam/en-zz/Solutions/design-visualization/quadro-product-literature/workstation-datasheet-blackwell-rtx-pro6000-x-nvidia-us-3519208-web.pdf"
+  }
+}
+
+data rtx_pro_6000_max_q_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000-max-q/"
+  }
+}
+
+data rtx_pro_6000_server_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/"
+  }
+}
+
+data rtx_pro_6000_family_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000-family/"
+  }
+}
+
+data rtx_pro_6000_cuda_core_uncited_obligation: NonEmptyStr = "Read the CUDA core count off NVIDIA's RTX PRO 6000 Blackwell Max-Q product page or a Max-Q datasheet for this edition. The Workstation Edition datasheet (document 3519208) and the Server Edition page both state 24,064; the Max-Q product page states no count, and the equal value is assumed from the shared GB202 die, not read."
+
+data rtx_pro_6000_workstation_cuda_core_standing: CitedFigureStanding = CitedToAuthority {
+  authority: rtx_pro_6000_workstation_datasheet_authority
+}
+
+data rtx_pro_pcie5_x16_endpoint: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
+
+data rtx_pro_6000_max_q_cuda_core_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: rtx_pro_6000_cuda_core_uncited_obligation
+}
+
+data rtx_pro_6000_server_cuda_core_standing: CitedFigureStanding = CitedToAuthority {
+  authority: rtx_pro_6000_server_authority
+}
+
+data nvidia_rtx_pro_6000_workstation_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 6000 Blackwell Workstation Edition",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(24064),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
+  boost_clock: none,
+  tdp_watts: watt(count: 600),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_pro_pcie5_x16_endpoint },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_workstation_figure_citations,
+}
+
+data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 6000 Blackwell Max-Q",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(24064),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
+  boost_clock: none,
+  tdp_watts: watt(count: 300),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_pro_pcie5_x16_endpoint },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_max_q_figure_citations,
+}
+
+data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 6000 Blackwell Server Edition",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(24064),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1597000000000) },
+  boost_clock: none,
+  tdp_watts: watt(count: 600),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_pro_pcie5_x16_endpoint },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_server_figure_citations,
+}
+
+// The figures each page states, as FactCitations on the row fields they ground. The CUDA core count
+// is deliberately absent from the first two lists: see the standing rows above.
+data rtx_pro_6000_workstation_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "memory_bandwidth"),
+    authority: rtx_pro_6000_workstation_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "tdp_watts"),
+    authority: rtx_pro_6000_workstation_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "memory"),
+    authority: rtx_pro_6000_workstation_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "interconnect"),
+    authority: rtx_pro_6000_workstation_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "execution_lane_count"),
+    authority: rtx_pro_6000_workstation_datasheet_authority,
+  },
+]
+
+data rtx_pro_6000_max_q_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_catalog", field_name: "memory_bandwidth"),
+    authority: rtx_pro_6000_max_q_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_catalog", field_name: "tdp_watts"),
+    authority: rtx_pro_6000_max_q_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_catalog", field_name: "memory"),
+    authority: rtx_pro_6000_max_q_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_catalog", field_name: "interconnect"),
+    authority: rtx_pro_6000_family_authority,
+  },
+]
+
+data rtx_pro_6000_server_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "memory_bandwidth"),
+    authority: rtx_pro_6000_server_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "tdp_watts"),
+    authority: rtx_pro_6000_server_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "memory"),
+    authority: rtx_pro_6000_server_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "execution_lane_count"),
+    authority: rtx_pro_6000_server_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "interconnect"),
+    authority: rtx_pro_6000_family_authority,
+  },
+]
+
+data rtx_pro_5000_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/content/dam/en-zz/Solutions/products/workstations/professional-desktop-gpus/rtx-pro-5000-blackwell/workstation-datasheet-blackwell-rtx-pro-5000-5488550-nvidia.pdf"
+  }
+}
+
+data nvidia_rtx_pro_5000_48gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 5000 Blackwell",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(14080),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 48)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1344000000000) },
+  boost_clock: none,
+  tdp_watts: watt(count: 300),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_pro_pcie5_x16_endpoint },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: rtx_pro_5000_48gb_figure_citations,
+}
+
+data nvidia_rtx_pro_5000_72gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 5000 72GB Blackwell",
+  microarchitecture: "Blackwell",
+  package: PcieAddInCard,
+  execution_lane_count: hardware_thread_count(14080),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 72)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 1344000000000) },
+  boost_clock: none,
+  tdp_watts: watt(count: 300),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: rtx_pro_pcie5_x16_endpoint },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: rtx_pro_5000_72gb_figure_citations,
+}
+
+data rtx_pro_5000_48gb_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_catalog", field_name: "memory"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_catalog", field_name: "memory_bandwidth"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_catalog", field_name: "tdp_watts"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_catalog", field_name: "interconnect"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_catalog", field_name: "execution_lane_count"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+]
+
+data rtx_pro_5000_72gb_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_catalog", field_name: "memory"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_catalog", field_name: "memory_bandwidth"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_catalog", field_name: "tdp_watts"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_catalog", field_name: "interconnect"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_catalog", field_name: "execution_lane_count"),
+    authority: rtx_pro_5000_datasheet_authority,
+  },
+]
+
+data hgx_b200_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/enterprise-reference-architectures/hgx-ai-factory-h100-h200-b200/latest/components.html"
+  }
+}
+
+data hgx_b300_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/enterprise-reference-architectures/hgx-ai-factory/latest/components.html"
+  }
+}
+
+// B200/B300 are SXM modules on HGX trays with NVLink. interconnect stays Absent: a rental
+// listing's PCIe Gen5 label is the host link of that system, not an add-in-card endpoint.
+// CUDA-core counts are unpublished; execution_lane_count is none rather than a blog figure.
+// HGX pages state HBM bandwidth as "up to 8 TB/s" and B200 power as "configurable up to 1 kW";
+// those are ceilings, not exact TDP/rate, so memory_bandwidth and tdp_watts stay none.
+// CONSUMER: P4 treats these as references, not purchase candidates.
+data nvidia_b200_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA B200 SXM",
+  microarchitecture: "Blackwell",
+  package: SxmModule,
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 180)),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: none,
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: nvidia_b200_sxm_figure_citations,
+}
+
+data nvidia_b300_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA B300 SXM",
+  microarchitecture: "Blackwell",
+  package: SxmModule,
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 288)),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: none,
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: nvidia_b300_sxm_figure_citations,
+}
+
+data nvidia_b200_sxm_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "memory"),
+    authority: hgx_b200_authority,
+  },
+]
+
+data nvidia_b300_sxm_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b300_sxm_catalog", field_name: "memory"),
+    authority: hgx_b300_authority,
+  },
+]

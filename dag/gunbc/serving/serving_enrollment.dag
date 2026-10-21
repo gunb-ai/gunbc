@@ -1,0 +1,55 @@
+module gunbc.serving.serving_enrollment
+
+import std.types { String, NonEmptyStr, List, Port }
+import std.nat { Nat }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+
+// A ROUTE IS A THING WE MAY ASK, KEYED BY THE REPLICA THAT ANSWERS IT. Enrolment is its own authority:
+// a route here is not something this repository deploys, converges, restarts or sizes, and every route
+// still has to answer a probe (gunbc.harness.harness_backend) before any turn is offered to it. The
+// route's identity is the replica identity (gunbc.serving.rented_replica RentedReplicaIdentity), which
+// is also the pool identity capacity, acquisition, the front-door permit and release account against;
+// the fleet-cage key this module used to carry was retired with the sale of every DGX Spark
+// (gunbc.spark.dgx_procurement dgx_spark_disposed_units).
+//
+// THE FIELD IS A Port RATHER THAN A Nat, because std.types already carries
+// `type Port = Int where range(min: 1, max: 65535)`: an out-of-range port is unwritable
+// (DESIGN section 4b: construction over validation).
+type ServingRouteEndpoint {
+  replica: RentedReplicaIdentity
+  address: NonEmptyStr
+  port: Port
+}
+
+// THE CEILING IS A DECISION, NOT A READING, AND CANNOT BE SPELLED AS A MEASUREMENT. Neither arm says
+// "somebody measured this route's capacity", because the engine does not export one the harness can
+// read. The attributable-allocation shape is the one gunbc.fleet.fleet_intent_network uses: DESIGN
+// section 5 forbids fabricating an OBSERVATION, and an allocation carrying a decider, a date and a basis
+// is not one. It bounds optimism and nothing else: admission takes the MINIMUM of this ceiling and what
+// the route says about itself right now, so the live reading may always refuse and may never admit
+// beyond the ceiling.
+type ServingRouteTurnCeiling
+  = CeilingByDeclaredPolicy { count: Nat, decider: NonEmptyStr, decided_on: NonEmptyStr, basis: NonEmptyStr }
+  | CeilingFromRouteLaunch { count: Nat, basis: NonEmptyStr }
+
+type ServingRoute
+  = ServingRouteResolved { endpoint: ServingRouteEndpoint, ceiling: ServingRouteTurnCeiling }
+  | ServingRouteUnresolved { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
+
+fn serving_route_turn_ceiling_count(c: ServingRouteTurnCeiling) -> Nat {
+  match c {
+    CeilingByDeclaredPolicy { count: n, decider: _, decided_on: _, basis: _ } => n
+    CeilingFromRouteLaunch { count: n, basis: _ } => n
+  }
+}
+
+// A ROUTE OF A REPLICA IS BUILT FROM THAT REPLICA'S ADDRESS, PORT AND DECLARED CEILING, all three
+// supplied by whoever launched it. Nothing here derives an address: the rented node's reachable
+// address is an observation of the supplier, not a fact of the model.
+fn serving_replica_route(replica: RentedReplicaIdentity, address: NonEmptyStr, port: Port, ceiling: ServingRouteTurnCeiling) -> ServingRoute {
+  ServingRouteResolved { endpoint: ServingRouteEndpoint { replica: replica, address: address, port: port }, ceiling: ceiling }
+}
+
+fn serving_route_endpoint_wire(e: ServingRouteEndpoint) -> NonEmptyStr {
+  join([e.address as String, ":", to_string(e.port)], "") as NonEmptyStr
+}

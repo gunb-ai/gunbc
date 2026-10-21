@@ -1,0 +1,50 @@
+module v2.test.claim.algebra.freemonoid_first_skip_witness
+
+import std.algebra { Cons, Empty, FreeMonoid, list_head, skip }
+import std.optional { Absent, Present }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sample_list() -> FreeMonoid<Int> {
+  Cons {
+    head: 1,
+    tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } }
+  }
+}
+
+test fn witness_first_empty_is_absent() -> Bool {
+  match list_head(xs: Empty) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_first_returns_head() -> Bool {
+  match list_head(xs: sample_list()) {
+    Present { value: v } => v == 1
+    Absent => false
+  }
+}
+
+test fn witness_skip_then_first() -> Bool {
+  match list_head(xs: skip(xs: sample_list(), n: 1)) {
+    Present { value: v } => v == 2
+    Absent => false
+  }
+}
+
+test fn witness_skip_past_length_is_empty() -> Bool {
+  match list_head(xs: skip(xs: sample_list(), n: 4)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_skip_non_positive_is_identity() -> Bool {
+  match list_head(xs: skip(xs: sample_list(), n: 0)) {
+    Present { value: v } => v == 1
+    Absent => false
+  }
+}
+

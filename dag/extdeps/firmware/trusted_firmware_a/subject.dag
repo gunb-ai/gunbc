@@ -1,0 +1,42 @@
+module extdeps.firmware.trusted_firmware_a.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.trustedfirmware.org/projects/tf-a/"
+  }
+}
+
+// TRUSTED FIRMWARE-A, THE SECURE-WORLD BOOT CHAIN. Fetched live 2026-08-12: the project page states
+// TF-A 'provides a reference implementation of secure world software for Armv7-A, Armv8-A and
+// Armv9-A processors'. WHY ITS OWN SUBJECT: separately governed and versioned from the UEFI
+// implementation after it and the system control processor firmware before it, so an Ampere
+// platform's boot chain is several upstreams in sequence, not one 'firmware version'. The board
+// article references this as a ROLE; the version a host runs is a fleet observation, not a fact
+// this module owns. NOT MODELLED HERE: the boot-stage decomposition (BL1/BL2/BL31) — the cited page
+// names no stages, and naming them from memory would be the fabricated citation this repository
+// refuses.
+
+type TrustedFirmwareA
+  = | TrustedFirmwareASecureWorld
+
+data trusted_firmware_a_secure_world: TrustedFirmwareA = TrustedFirmwareASecureWorld
+
+data trusted_firmware_a_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.trusted_firmware_a.subject",
+      decl_name: "trusted_firmware_a_secure_world",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = trusted_firmware_a_model_scope

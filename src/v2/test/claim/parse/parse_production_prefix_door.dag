@@ -1,0 +1,224 @@
+module v2.test.claim.parse.parse_production_prefix_door
+
+import std.types { Bool, List }
+import v2.compiler.parse { ParseArtifact, ParsePrefix, PreparedModeled, PreparedVoidGrammar, parse_production_prefix_prepared, parse_production_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import std.algebra { for_all, length, list_reverse }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, content_hash }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE GENERIC PREFIX DOOR (v2.compiler.parse parse_production_prefix_prepared). The subject
+// is the door, so each control hands it SUPPLIED TOKENS and one production of the real prepared grammar,
+// and compares it with the whole-stream door (parse_production_prepared) that shares its parse run
+// (parse_production_run): the two differ only in what they owe the tokens the production left.
+//
+// What the door owes, one control each: it reads the same tree the whole door reads wherever the whole
+// door accepts; it accepts a stream whose tail the whole door refuses, and the tree it reads is the tree
+// the whole door reads over the consumed tokens alone; and every refusal that is not about the tail
+// stays a refusal -- a stream that does not begin with the production, an order violation, an unknown
+// production, a refusal the grammar records during the run. The last is the one a prefix reader that
+// re-derived its own end would lose: `module rt.match` parses as the header `module rt` followed by
+// `.match`, and only the recorded KeywordAsPathSegment refusal makes it a refusal. The door names no
+// production: two are used below so that a door that knew the module header would fail the second.
+
+fn tokens_of(text: String) -> List<Token> {
+  match tokenize_prepared(text: text, file: ^prefix_door_probe, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: ts, diagnostics: _ } => token_stream_remaining(stream: ts)
+  }
+}
+
+type DoorReading
+  = DoorRefused
+  | DoorRead { tree: Node }
+
+fn reading_of(outcome: Outcome<ParseArtifact>) -> DoorReading {
+  match outcome {
+    Rejected { diagnostics: _ } => DoorRefused
+    Accepted { value: artifact, diagnostics: _ } => DoorRead { tree: artifact.tree }
+  }
+}
+
+fn prefix_reading_of(outcome: Outcome<ParsePrefix>) -> DoorReading {
+  match outcome {
+    Rejected { diagnostics: _ } => DoorRefused
+    Accepted { value: prefix, diagnostics: _ } => DoorRead { tree: prefix.artifact.tree }
+  }
+}
+
+// The unread count the prefix door reports, or -1 where it refuses.
+fn prefix_unread_at(tokens: List<Token>, production: Symbol) -> Int {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: PreparedVoidGrammar, diagnostics: _ } => -1
+    Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+      match parse_production_prefix_prepared(
+        tokens: tokens,
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: production
+      ) {
+        Rejected { diagnostics: _ } => -1
+        Accepted { value: prefix, diagnostics: _ } => prefix.unread
+      }
+  }
+}
+
+fn whole_at(tokens: List<Token>, production: Symbol) -> DoorReading {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => DoorRefused
+    Accepted { value: PreparedVoidGrammar, diagnostics: _ } => DoorRefused
+    Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+      reading_of(outcome: parse_production_prepared(
+        tokens: tokens,
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: production
+      ))
+  }
+}
+
+fn prefix_at(tokens: List<Token>, production: Symbol) -> DoorReading {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => DoorRefused
+    Accepted { value: PreparedVoidGrammar, diagnostics: _ } => DoorRefused
+    Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+      prefix_reading_of(outcome: parse_production_prefix_prepared(
+        tokens: tokens,
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: production
+      ))
+  }
+}
+
+fn is_read(reading: DoorReading) -> Bool {
+  match reading {
+    DoorRefused => false
+    DoorRead { tree: _ } => true
+  }
+}
+
+fn is_refused(reading: DoorReading) -> Bool {
+  match reading {
+    DoorRefused => true
+    DoorRead { tree: _ } => false
+  }
+}
+
+fn same_tree(a: DoorReading, b: DoorReading) -> Bool {
+  match a {
+    DoorRefused => false
+    DoorRead { tree: ta } =>
+      match b {
+        DoorRefused => false
+        DoorRead { tree: tb } => content_hash(n: ta) == content_hash(n: tb)
+      }
+  }
+}
+
+type PrefixCase {
+  production: Symbol
+  whole: String
+  extended: String
+}
+
+// Each case: a production, a text it consumes whole, and the same text with a tail the production does
+// not consume. The header and the qualified name are two productions with different shapes.
+data prefix_cases: List<PrefixCase> = [
+  PrefixCase { production: ^dag_production_module_header, whole: "module a.b\n", extended: "module a.b fn f() -> Bool { true }\n" },
+  PrefixCase { production: ^dag_production_module_header, whole: "module a\n", extended: "module a\nmodule a.c\n" },
+  PrefixCase { production: ^dag_production_module_header, whole: "module a.b.c", extended: "module\na.b.c\n\nfn f() -> Bool { true }\n" },
+  PrefixCase { production: ^dag_production_qualified_name, whole: "a.b.c", extended: "a.b.c (" },
+  PrefixCase { production: ^dag_production_qualified_name, whole: "a", extended: "a b" }
+]
+
+fn whole_door_reads_it(case: PrefixCase) -> Bool {
+  is_read(reading: whole_at(tokens: tokens_of(text: case.whole), production: case.production))
+}
+
+fn prefix_door_reads_the_same_tree(case: PrefixCase) -> Bool {
+  same_tree(
+    a: prefix_at(tokens: tokens_of(text: case.whole), production: case.production),
+    b: whole_at(tokens: tokens_of(text: case.whole), production: case.production)
+  )
+}
+
+fn prefix_door_reads_the_consumed_tokens_of_the_extended_stream(case: PrefixCase) -> Bool {
+  is_refused(reading: whole_at(tokens: tokens_of(text: case.extended), production: case.production))
+    && same_tree(
+      a: prefix_at(tokens: tokens_of(text: case.extended), production: case.production),
+      b: whole_at(tokens: tokens_of(text: case.whole), production: case.production)
+    )
+}
+
+// NON-VACUITY first: the whole door must accept every `whole` text, or the comparisons below would hold
+// over a door that read nothing.
+test fn the_whole_door_accepts_every_consumed_text_the_prefix_cases_are_built_on() -> Bool {
+  length(xs: prefix_cases) > 4 && for_all(xs: prefix_cases, predicate: fn(case) { whole_door_reads_it(case: case) })
+}
+
+test fn the_prefix_door_reads_the_tree_the_whole_door_reads_wherever_the_whole_door_accepts() -> Bool {
+  for_all(xs: prefix_cases, predicate: fn(case) { prefix_door_reads_the_same_tree(case: case) })
+}
+
+test fn the_prefix_door_accepts_a_stream_whose_tail_the_whole_door_refuses_and_reads_the_consumed_tokens() -> Bool {
+  for_all(xs: prefix_cases, predicate: fn(case) { prefix_door_reads_the_consumed_tokens_of_the_extended_stream(case: case) })
+}
+
+// THE UNREAD COUNT IS THE TOKENS THE PRODUCTION LEFT. Its referent is the lexer, independent of the parse:
+// the extended text lexes to the consumed text's tokens followed by the tail's, so the door must report
+// exactly the difference of the two streams' lengths, and none where the production consumed the whole
+// stream. A door that reported the stream length, or the consumed count, fails the first; a door that
+// always reported none fails the second.
+fn prefix_door_reports_the_tokens_it_left(case: PrefixCase) -> Bool {
+  prefix_unread_at(tokens: tokens_of(text: case.whole), production: case.production) == 0
+    && prefix_unread_at(tokens: tokens_of(text: case.extended), production: case.production)
+      == length(xs: tokens_of(text: case.extended)) - length(xs: tokens_of(text: case.whole))
+    && length(xs: tokens_of(text: case.extended)) > length(xs: tokens_of(text: case.whole))
+}
+
+test fn the_prefix_door_reports_the_number_of_tokens_it_left_unread() -> Bool {
+  for_all(xs: prefix_cases, predicate: fn(case) { prefix_door_reports_the_tokens_it_left(case: case) })
+}
+
+// ---- every refusal that is not about the tail stays a refusal ----------------------------------------------------
+
+test fn a_stream_that_does_not_begin_with_the_production_is_refused_by_both_doors() -> Bool {
+  is_refused(reading: whole_at(tokens: tokens_of(text: "fn f() -> Bool { true }\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "fn f() -> Bool { true }\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "import std.types { Bool }\nmodule a.b\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "module\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: [], production: ^dag_production_module_header))
+}
+
+test fn an_unknown_production_is_refused_by_both_doors() -> Bool {
+  is_refused(reading: whole_at(tokens: tokens_of(text: "module a.b\n"), production: ^no_such_production_for_the_prefix_door))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "module a.b\n"), production: ^no_such_production_for_the_prefix_door))
+}
+
+// Tokens whose starts do not increase are no stream (v2.std.compilers.lexing Token): the order is checked
+// at the run's entry, so the prefix door refuses what the whole door refuses before any production runs.
+test fn a_stream_whose_token_starts_do_not_increase_is_refused_by_both_doors() -> Bool {
+  length(xs: tokens_of(text: "module a.b\n")) > 3
+    && is_read(reading: prefix_at(tokens: tokens_of(text: "module a.b\n"), production: ^dag_production_module_header))
+    && is_refused(reading: whole_at(tokens: list_reverse(xs: tokens_of(text: "module a.b\n")), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: list_reverse(xs: tokens_of(text: "module a.b\n")), production: ^dag_production_module_header))
+}
+
+// A refusal the grammar RECORDS during the run is the outcome whatever the production consumed. The header
+// `module rt` is a prefix of `module rt.match`, so a reader that decided its own end would read `rt`; the
+// recorded KeywordAsPathSegment refusal is what makes both doors refuse. The twin without the keyword is
+// read, so the refusal is the keyword's and nothing else.
+test fn a_refusal_recorded_during_the_run_is_a_refusal_at_the_prefix_door_too() -> Bool {
+  is_refused(reading: whole_at(tokens: tokens_of(text: "module rt.match\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "module rt.match\n"), production: ^dag_production_module_header))
+    && is_refused(reading: prefix_at(tokens: tokens_of(text: "module rt.match fn f() -> Bool { true }\n"), production: ^dag_production_module_header))
+    && is_read(reading: prefix_at(tokens: tokens_of(text: "module rt.other fn f() -> Bool { true }\n"), production: ^dag_production_module_header))
+}

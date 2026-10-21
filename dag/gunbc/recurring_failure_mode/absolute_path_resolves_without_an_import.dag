@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.absolute_path_resolves_without_an_import
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absolute_path_resolves_without_an_import: RecurringFailureMode = RecurringFailureMode {
+  identity: "absolute_path_resolves_without_an_import" as NonEmptyStr,
+
+  receipts: [
+    "**a module-qualified path binds in a module that never imports its target module** (INVALID STATE: module `b` writes `t.s.F.Run` with no `import t`, and v2 resolution accepts it, binding to `t`'s declaration. The resolve site is v2.compiler.resolve try_resolve_qualified_name_node, which sends the authored dotted path to v2.std.symbol_index symbol_index_lookup over the corpus-wide index, as though every dotted path were corpus-root absolute. The subject's Admission imports are never consulted. HARM: a dependency that no import declares. It binds wherever the target module happens to share the ingest, and it is invisible to every reader that derives dependencies from imports. That population is the one the XL-2 reference census and XL-5's namespace cut measure: references that bind with no import, through the corpus index.)",
+
+    "SPECIMEN (gunbc#12949, 2026-10-02, the service-spine import control). Over one ingest of `module t` (declaring `service s.F` with `operation Run`) and a subject, v2.compiler.program_assembly assemble_program_from_ingest ACCEPTS `module b` (`fn f(x: t.s.F.Run)`, admission imports Empty). It also accepts `module a`, which imports `t`. So an import makes no difference to an absolute path. Probe: the uncommitted claim pair k2_non_importer_accepts PASS / k3_non_importer_unbound FAIL, at b758922749d. The committed control (v2.test.claim.normalize.service_spine an_imported_service_resolves_through_the_import_holds) therefore pairs the importer's `t.s.F.Run` with its `t.s.F.Nope`, not with a non-importer.",
+
+    "RELATED, NOT THE SAME: gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace is a BARE name resolved because a whole-tree compile's flat namespace holds the declaring module (the seed's loader, per-entry scope). This row is a QUALIFIED path on v2's assembly route, which resolves through the corpus index whatever the subject imports.",
+
+    "RUNG FOUND AT: silent. No refusal exists on any route. CEILING: structurally guaranteed. Whether a referencing module imports the module a qualified path's head names is decidable from Admission imports, so a path whose module is neither the subject nor an admitted import can refuse, located, at the reference. NEXT-RUNG TRIGGER, as the capability: try_resolve_qualified_name_node resolves a dotted path's first segment through the subject's admitted scope (its own declarations and its imports), not the corpus root. Discriminating red: `module b` without `import t` refuses `t.s.F.Run`. Positive control: `module a` with `import t` resolves it. OWNER: XL-5's namespace cut. The docs/plans/namespace-resolution-design.md section 13 unique-on-chain feature named in that function's comment is the same changeover.",
+
+    "RECOGNITION RULE: a dotted reference resolves in a module whose import list names none of the path's module segments.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "try_resolve_qualified_name_node", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,169 @@
+module product.supplier.vast_ai
+
+import std.types { List, Bool, Int, NonEmptyStr, Timestamp }
+import std.measure { ByteSize, HardwareThreadCount, MoneyPerHour, Second }
+import std.decl_ref { decl_ref, DeclarationRef }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import product.fabric.isolation { IsolationProfile, DedicatedDevice }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedSupply }
+import product.fabric.provider_route {
+  ProviderRegionObservation, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import product.supplier.ubicloud {
+  SupplierOfferProjection, UnexpressedSupplyFact, IsolationNotObserved, OfferBinding, OfferBound,
+  OfferBindingRefused, ReadinessObservation, ReadinessMeasured, ReadinessUnmeasured,
+}
+import extdeps.gpu.types { Cuda }
+import extdeps.cloud.vast_ai { VastAiOffer }
+import extdeps.gpu.types { GpuRuntime }
+
+// VAST.AI AS A SUPPLIER: BINDING OVER extdeps.cloud.vast_ai, NOTHING RESTATED AND NO POLICY. The generic
+// carriers (SupplierOfferProjection, OfferBinding, ReadinessObservation) are consumed from the first
+// supplier binding rather than re-minted: they carry no Ubicloud fact. An offer is an independent
+// host's ask whose reliability and verification vary per machine; a demand that cares says so on
+// its requirement, and the fabric screens and ranks on the offer's properties.
+
+// THE GPU COUNT IS THE OFFER'S num_gpus, CARRIED ON THE SHAPE (GpuRequirement.count): a Vast offer
+// is a whole machine rented whole, so 1x and 2x offers of one card are different shapes.
+// Thread floor and per-GPU memory are PARAMETERS: the offer publishes effective cores and gpu_ram as
+// JSON floats and std has no Float-to-Int route, so whoever read the offer supplies them typed.
+data vast_ai_gpu_arch_unread_obligation: NonEmptyStr = "A Vast offer without gpu_arch states no GPU architecture, so its runtime cannot be named. Read gpu_arch from the search-offers response and cite it."
+
+data vast_ai_gpu_arch_not_nvidia_obligation: NonEmptyStr = "A Vast offer whose gpu_arch is not nvidia has no Cuda runtime. Only nvidia hosts bind until another architecture's runtime is modeled and cited."
+
+// The runtime is DERIVED from the observed gpu_arch, never assumed: only nvidia yields Cuda.
+fn vast_ai_runtime(offer: VastAiOffer) -> GpuRuntime? {
+  match offer.gpu_arch {
+    Absent => none
+    Present { value: arch } => if arch == "nvidia" { Present { value: Cuda } } else { none }
+  }
+}
+
+fn vast_ai_runtime_refusal(offer: VastAiOffer) -> DeclarationRef {
+  match offer.gpu_arch {
+    Absent => decl_ref(module_path: "product.supplier.vast_ai", decl_name: "vast_ai_gpu_arch_unread_obligation")
+    Present { value: _ } => decl_ref(module_path: "product.supplier.vast_ai", decl_name: "vast_ai_gpu_arch_not_nvidia_obligation")
+  }
+}
+
+// DedicatedDevice is stated only for an offer OBSERVED on-demand (is_bid false): an offer lists num_gpus
+// devices rented to one tenant (docs.vast.ai search-offers; gpu_frac is the fraction of the machine
+// offered, not a share of a device). A bid offer "may be interrupted if outbid" and an unread is_bid
+// states nothing; both provide no tenancy guarantee, and interruption stays a separate availability fact.
+fn vast_ai_isolation(offer: VastAiOffer) -> IsolationProfile {
+  match offer.is_bid {
+    Present { value: bid } =>
+      if bid { IsolationProfile { guarantees: [] } } else { IsolationProfile { guarantees: [DedicatedDevice] } }
+    Absent => IsolationProfile { guarantees: [] }
+  }
+}
+
+fn vast_ai_shape(offer: VastAiOffer, runtime: GpuRuntime, threads: HardwareThreadCount, min_vram: ByteSize) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: threads },
+    envelope: ResourceEnvelope {
+      cpu: none,
+      gpu: Present {
+        value: GpuRequirement { count: offer.num_gpus, min_vram: min_vram, runtimes: [runtime] },
+      },
+      memory: none,
+      storage: none,
+      network: none,
+    },
+  }
+}
+
+// dph_total is the TOTAL dollars-per-hour for the whole rented machine (all num_gpus; the search-offers
+// reference at docs.vast.ai/api-reference/search/search-offers names it the total, with per-GPU
+// figures separate), so unlike Packet's per-GPU figure no gpu-count multiplication belongs here.
+// dph_total is a float dollars-per-hour and cannot be coerced to money, so the rate arrives already
+// converted (typed MoneyPerHour); the quote keeps Vast's per-hour framing.
+fn vast_ai_quote(rate: MoneyPerHour) -> OfferQuote {
+  QuotedPerHour(rate)
+}
+
+fn vast_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "vast_ai_create_instance_page"),
+    region: region,
+  )
+}
+
+// WHAT A VAST CREATE WAS ASKED AGAINST, as the acquisition receipt keeps it: the ask (offer) id the create
+// PUT named and the machine it sits on. Reconciling a lost create matches the machine, never the contract,
+// because a lost create returned no contract. A Vast fact, so it lives in the Vast binding; the rented
+// allocation (gunbc.serving.rented_allocation RentedAllocationAcquired) carries it as its provider ask.
+type VastAiAskReceipt {
+  ask_id: Int
+  machine_id: Int
+}
+
+// An ask is one machine: it can be rented once. A marketplace fact, not a buyer choice.
+data vast_ai_offer_quantity_bound: Int = 1
+
+// IsolationNotObserved means nobody looked (product.supplier.ubicloud), so it rides only the arm where
+// is_bid was never read. A read is_bid, bid or on-demand, is an observation: the profile it yields,
+// empty or DedicatedDevice, is a stated fact and stamping "not observed" beside it would fork the meaning.
+fn vast_ai_unexpressed(offer: VastAiOffer) -> List<UnexpressedSupplyFact> {
+  match offer.is_bid {
+    Present { value: _ } => []
+    Absent => [IsolationNotObserved]
+  }
+}
+
+fn bind_vast_ai_offer<P>(
+  principal: P,
+  executor: P,
+  offer: VastAiOffer,
+  threads: HardwareThreadCount,
+  min_vram: ByteSize,
+  rate: MoneyPerHour,
+  billing_quantum: Second,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  region: ProviderRegionObservation,
+  quoted_at: Timestamp,
+  valid_until: Timestamp,
+  receipt: ObservationReceiptRef,
+  key: NonEmptyStr,
+) -> OfferBinding<P> {
+  match vast_ai_runtime(offer: offer) {
+    Absent => OfferBindingRefused { runs_on_label: key, cause: vast_ai_runtime_refusal(offer: offer) }
+    Present { value: runtime } =>
+  match vast_ai_route(region: region) {
+    ProviderRouteRegionUnobserved { obligation } =>
+      OfferBindingRefused { runs_on_label: key, cause: obligation },
+    ProviderRouteObserved { route: bound_route } =>
+    match readiness {
+      ReadinessUnmeasured { obligation } =>
+        OfferBindingRefused { runs_on_label: key, cause: obligation },
+      ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+        OfferBound {
+          bound: SupplierOfferProjection {
+            offer: SupplierOffer {
+              id: FabricIdentity { principal: principal, key: key },
+              executor: executor,
+              route: bound_route,
+              shape: vast_ai_shape(offer: offer, runtime: runtime, threads: threads, min_vram: min_vram),
+              capabilities: capabilities,
+              trust_domain: trust_domain,
+              isolation: vast_ai_isolation(offer: offer),
+              quantity_bound: vast_ai_offer_quantity_bound,
+              ready_at: ready_at,
+              quote: vast_ai_quote(rate: rate),
+              billing_quantum: billing_quantum,
+              evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
+            },
+            unexpressed: vast_ai_unexpressed(offer: offer),
+          },
+        },
+    },
+    },
+  }
+}

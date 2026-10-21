@@ -1,0 +1,5 @@
+module uab.carrier_one
+
+import uab.foreign_one { one_marker }
+
+fn carry_one() -> Int { one_marker() }

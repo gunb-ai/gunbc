@@ -1,0 +1,133 @@
+module gunbc.fleet.fleet_main_revision
+
+import std.types { String, Bool, Int }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.inspect {
+  MergeBaseOutcome,
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
+  merge_base_outcome,
+}
+import gunbc.live_deploy.revision {
+  DeployRevisionRelation,
+  revision_relation_from_ancestry_facts,
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  DivergedHistories,
+  RelationUnverifiable,
+}
+
+// After fleet-desired withdrawal the admitted revision is what has landed on origin/main.
+// Every landing passed the required witnesses job on its PR. Standing is ancestry against
+// that head, not a second ref the fleet advances.
+
+data fleet_landed_main_ref_name: String = "refs/heads/main"
+
+type ObservedRemoteRevision
+  = RemoteRevisionPresent { revision: GitObjectId }
+  | RemoteRevisionAbsent
+  | RemoteRevisionUndecodable { advertised: String }
+  | RemoteRevisionUnobserved { cause: String }
+
+fn observed_remote_revision_target(d: ObservedRemoteRevision) -> GitObjectId? {
+  match d {
+    RemoteRevisionPresent { revision: r } => Present { value: r }
+    RemoteRevisionAbsent => none
+    RemoteRevisionUndecodable { advertised: _ } => none
+    RemoteRevisionUnobserved { cause: _ } => none
+  }
+}
+
+fn converge_target_revision(observed: ObservedRemoteRevision) -> GitObjectId? {
+  observed_remote_revision_target(d: observed)
+}
+
+type FleetRevisionRelationObservation {
+  current: GitObjectId
+  accepted: GitObjectId
+  relation: DeployRevisionRelation
+}
+
+fn fleet_revision_relation_from_merge_base(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  exit_code: Int,
+  base_hex: String,
+  stderr: String,
+) -> FleetRevisionRelationObservation {
+  FleetRevisionRelationObservation {
+    current: current,
+    accepted: accepted,
+    relation: merge_base_relation(
+      current: current,
+      accepted: accepted,
+      exit_code: exit_code,
+      base_hex: base_hex,
+      stderr: stderr,
+    ),
+  }
+}
+
+fn merge_base_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  exit_code: Int,
+  base_hex: String,
+  stderr: String,
+) -> DeployRevisionRelation {
+  if git_object_id_eq(left: current, right: accepted) {
+    SameRevision
+  } else {
+    match merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
+      NoCommonAncestor => UnrelatedHistories
+      MergeBaseReported { base_hex: hex } =>
+        match git_object_id_from_untagged_hex(hex: hex) {
+          Present { value: base } =>
+            relation_from_merge_base_oid(current: current, accepted: accepted, base: base)
+          none =>
+            RelationUnverifiable {
+              cause: concat("git merge-base succeeded but its output is not a decodable object id: ", hex),
+            }
+        }
+      MergeBaseRefused { exit_code: _, stderr: why } =>
+        RelationUnverifiable {
+          cause: concat("git merge-base could not answer for this pair: ", why),
+        }
+    }
+  }
+}
+
+fn relation_from_merge_base_oid(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  base: GitObjectId,
+) -> DeployRevisionRelation {
+  revision_relation_from_ancestry_facts(
+    same: git_object_id_eq(left: current, right: accepted),
+    deployed_is_ancestor_of_candidate: git_object_id_eq(left: base, right: current),
+    candidate_is_ancestor_of_deployed: git_object_id_eq(left: base, right: accepted),
+  )
+}
+
+// current is the local (or candidate) tree; accepted is origin/main head.
+// Landed = equal to main, or an ancestor of main (behind tip, still on the landed line).
+// Not landed = ahead of main, diverged, or unrelated. Unverifiable is not a landing
+// verdict: the merge-base was not observed, so the answer is unobserved, not "not on main".
+type LandedOnMainVerdict
+  = RevisionLandedOnMain
+  | RevisionNotLandedOnMain { relation: DeployRevisionRelation }
+  | RevisionLandedUnobserved { cause: String }
+
+fn classify_landed_on_main(relation: DeployRevisionRelation) -> LandedOnMainVerdict {
+  match relation {
+    SameRevision => RevisionLandedOnMain
+    DeployedIsAncestor => RevisionLandedOnMain
+    CandidateIsAncestor => RevisionNotLandedOnMain { relation: relation }
+    UnrelatedHistories => RevisionNotLandedOnMain { relation: relation }
+    DivergedHistories => RevisionNotLandedOnMain { relation: relation }
+    RelationUnverifiable { cause: c } => RevisionLandedUnobserved { cause: c as String }
+  }
+}

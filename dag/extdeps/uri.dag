@@ -1,0 +1,149 @@
+module extdeps.uri
+import std.optional { Absent, Optional, Present }
+
+import std.algebra { trim, collection_concat_shape, collection_join_shape }
+
+import std.types { NonEmptyStr, List }
+
+type UriScheme
+  = Http
+  | Https
+  | Tftp
+  | File
+  | Ftp
+  | Javascript
+  | Data
+  | Vbscript
+  | Mailto
+
+type Uri {
+  scheme: UriScheme
+  locator: NonEmptyStr
+}
+
+fn uri_https(locator: NonEmptyStr) -> Uri {
+  Uri {
+    scheme: Https
+    locator: locator
+  }
+}
+
+fn uri_scheme_is_http(s: UriScheme) -> Bool {
+  match s {
+    Http => true
+    Https => true
+    Tftp => false
+    File => false
+    Ftp => false
+    Javascript => false
+    Data => false
+    Vbscript => false
+    Mailto => false
+  }
+}
+
+fn uri_is_url(uri: Uri) -> Bool {
+  uri_scheme_is_http(s: uri.scheme)
+}
+
+// The declared inhabitant roster for UriScheme. It exists so a consumer decoding a
+// scheme back from its variant discriminant does so from THIS module's declared arms
+// rather than from host type reflection: reflection answers at runtime and only where a
+// live declaration index exists, which the emitted compiler does not carry, so the
+// reflective form emitted as a refusal on every non-interpreter target. The roster is the
+// same fact the arms already state, so the drift risk is real and is walled by
+// v2.test.claim.manual.coproduct_reflection_conformance, which reflects UriScheme's arms under
+// the interpreter and compares them to these rows by discriminant.
+fn uri_scheme_inhabitants() -> List<UriScheme> {
+  [Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto]
+}
+
+fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
+  match s {
+    Http => "http://"
+    Https => "https://"
+    Tftp => "tftp://"
+    File => "file://"
+    Ftp => "ftp://"
+    Javascript => "javascript:"
+    Data => "data:"
+    Vbscript => "vbscript:"
+    Mailto => "mailto:"
+  }
+}
+
+fn uri_wire(uri: Uri) -> NonEmptyStr {
+  concat(uri_scheme_wire(s: uri.scheme), uri.locator)
+}
+
+// TEXT TO Uri IS THE INVERSE OF uri_wire AND THIS MODULE CARRIED ONLY ONE DIRECTION. Every consumer
+// decoding a URL an upstream returned had to either keep it as a String - losing the scheme
+// distinction uri_scheme_is_http exists to make - or split the prefix itself, which is a second
+// authority for the scheme spelling. It is Optional rather than total because a relative reference and
+// an unrecognized scheme are genuinely not Uri values here; the locator is rejoined on the same prefix
+// so an occurrence of the scheme text INSIDE the locator survives the round trip.
+//
+// A BARE SCHEME REFUSES RATHER THAN MINTING AN EMPTY NonEmptyStr. "https://" parses a scheme and
+// leaves nothing after it, and casting that remainder would produce a Uri whose locator is "" while
+// carrying the type whose entire content is non-emptiness -- a fabricated inhabitant, which is the
+// silently-wrong value DESIGN 5 forbids rather than a cosmetic sloppiness. It is checked here, at the
+// one constructor, rather than by every consumer downstream (caught by review 67524).
+fn uri_from_wire(url: String) -> Uri? {
+  let s = trim(url)
+  match parse_href_scheme(url: s) {
+    RelativeHref => none
+    UnknownHref => none
+    HrefScheme { scheme: scheme } => {
+      let prefix = uri_scheme_wire(s: scheme) as String
+      let locator = join(split(s: s, delimiter: prefix) |> skip(n: 1), prefix)
+      if starts_with(s, prefix: prefix) && !(locator == "") {
+        Present {
+          value: Uri {
+            scheme: scheme,
+            locator: locator as NonEmptyStr,
+          }
+        }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type ParsedHrefScheme
+  = HrefScheme { scheme: UriScheme }
+  | RelativeHref
+  | UnknownHref
+
+fn href_is_relative_reference(s: String) -> Bool {
+  starts_with(s, prefix: "/")
+    || starts_with(s, prefix: "#")
+    || starts_with(s, prefix: "./")
+    || starts_with(s, prefix: "../")
+    || !(s |> contains(":"))
+}
+
+fn parse_href_scheme(url: String) -> ParsedHrefScheme {
+  let s = trim(url)
+  if starts_with(s, prefix: "//") {
+    UnknownHref
+  } else if href_is_relative_reference(s: s) {
+    RelativeHref
+  } else if starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:") {
+    HrefScheme { scheme: Javascript }
+  } else if starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:") {
+    HrefScheme { scheme: Data }
+  } else if starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:") {
+    HrefScheme { scheme: Vbscript }
+  } else if starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://") {
+    HrefScheme { scheme: Https }
+  } else if starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://") {
+    HrefScheme { scheme: Http }
+  } else if starts_with(s, prefix: "tftp://") || starts_with(s, prefix: "TFTP://") {
+    HrefScheme { scheme: Tftp }
+  } else if starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:") {
+    HrefScheme { scheme: Mailto }
+  } else {
+    UnknownHref
+  }
+}

@@ -1,0 +1,16 @@
+module gunbc.rung_drop.floor_cut_receipt_discriminating_arms
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutReceiptDiscriminatingArms }
+
+data floor_cut_receipt_discriminating_arms: RungDrop = RungDrop {
+  identity: "floor_cut_receipt_discriminating_arms" as NonEmptyStr,
+
+  subject: "The receipt machinery's own discriminating arms",
+
+  declared: "2026-09-03",
+
+  standing: Standing,
+
+  declaration: AuthoredProse { legacy: FloorCutReceiptDiscriminatingArms, authored: "**THE RECEIPT MACHINERY'S OWN DISCRIMINATING ARMS HAVE NO EXECUTING CONSUMER, AND THIS ROW DECLARES THAT RUNG (2026-09-03).** Split out of `floor_cut`, third of the three losses its own prose names and its five siblings omit. PREVIOUS RUNG: 2 (mechanically preventable). TEMPORARY RUNG: 1 (mitigatable) -- the selftest and census targets exist (`behavioral-receipt-selftest`, `behavioral-receipt-census`) and `floor_cut` records that no workflow invokes them. WHY THIS IS ITS OWN SUBJECT AND NOT A DETAIL OF THE TWO ABOVE, which is the whole reason it must not be folded into them: a differential's value is entirely in whether it still GOES RED on a real divergence, and that property is established by its discriminating arms and by nothing else. Restoring an equivalence comparison whose own falsification controls never execute yields an instrument that reports EQUIVALENT and cannot be shown to be capable of reporting anything else -- DESIGN section 4b(4) keeps the discriminating RED enrolled precisely so a climb does not dissolve the evidence that the higher rung is real. BOUNDED POPULATION: one capability -- executing evidence that the receipt machinery can still distinguish an equivalent emission from a divergent one. RESTORATION TRIGGER, A CAPABILITY: the receipt machinery's falsification controls executing on the required path, SUFFICIENT FOR a deliberately divergent fixture producing a RED from that machinery in a required lane. **`floor_cut` CANNOT RETIRE WHILE THIS ROW STANDS.**" }
+}

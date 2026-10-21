@@ -1,0 +1,69 @@
+module extdeps.ci_runner.sprinters
+
+import std.measure { MoneyOnce, money_amount_micro }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.currency.currency { Usd }
+import extdeps.ci_runner.types {
+  ArmUsdPerJob,
+  ArmListPriceStanding,
+  CatalogSnapshot,
+  CustomerAccountNamedCloud,
+  ArmCapacityChannel,
+  RunnerCatalogAvailability,
+  RunnerShapesUnavailable,
+  CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sprinters.sh",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.sprinters",
+      decl_name: "sprinters_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sprinters_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data sprinters_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.sprinters",
+  decl_name: "sprinters_catalog_authority",
+)
+
+data sprinters_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "sprinters.sh (read 2026-09-13) sells per-job launch of ephemeral EC2 in the customer's AWS account and states CPU Arch x64 + arm64, without a closed ARM size table or an ARM-only runs-on spelling.",
+}
+
+data sprinters_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "sprinters.sh marketing/pricing page. The example label sprinters:aws:ubuntu-latest is architecture-flexible and is not enrolled as an Aarch64-only cited label.",
+}
+
+data sprinters_arm_capacity: ArmCapacityChannel = CustomerAccountNamedCloud {
+  vendor_words: "your own AWS account",
+}
+
+data sprinters_arm_list_price: ArmListPriceStanding = ArmUsdPerJob {
+  per_job: MoneyOnce {
+    amount: money_amount_micro(count: 10000),
+    currency: Usd,
+  },
+}
+
+data sprinters_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "sprinters.sh: 1000 jobs free during first 30 days (read 2026-09-13).",
+}

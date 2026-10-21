@@ -1,0 +1,80 @@
+module extdeps.languages.toml.types
+
+import std.types { Bool, String, List, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "toml.io/en/v1.0.0"
+  }
+}
+
+// TOML's OWN VALUE VOCABULARY, modeled at the grain the spec defines rather than at the grain
+// this repository happens to need today. The sibling is extdeps.languages.yaml.types: one value
+// coproduct, one document shape, and a serializer beside it, so a consumer expresses WHAT it
+// means and the medium's punctuation lives in exactly one place.
+//
+// PARTIAL BY DECLARATION, NOT BY ACCIDENT. Dates, times, floats, dotted keys and array-of-table
+// syntax are absent because nothing here writes them; when a consumer needs one it is a row added
+// here, not a string spliced at the call site. What is present is what cargo's configuration and
+// manifests actually use.
+type TomlValue
+  = TomlString { value: String }
+  | TomlInteger { value: Int }
+  | TomlBool { value: Bool }
+  | TomlArray { elements: List<TomlValue> }
+  | TomlInlineTable { entries: List<TomlKeyValue> }
+
+type TomlKeyValue {
+  key: String
+  value: TomlValue
+}
+
+// A COMMENT IS A DOCUMENT NODE HERE, unlike in the YAML model beside it, and the difference is
+// load-bearing rather than stylistic. The committed files this serializer produces carry authored
+// rationale that a reader of the FILE needs -- why a job count, why a stack size -- and the only
+// alternatives are to drop it on regeneration or to splice it into the text afterwards. The first
+// deletes live policy; the second is the medium-as-string defect this model exists to remove
+// (gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall names that class). So prose
+// is carried as structure and rendered by the serializer, like every other node.
+type TomlEntry {
+  leading_comments: List<String>
+  pair: TomlKeyValue
+  trailing_comment: String?
+}
+
+// `name: Absent` is the ROOT table -- the keys a TOML file carries before its first `[header]`.
+// It is a distinct shape rather than an empty string because "no header" and "a header spelled
+// with the empty name" are different documents, and only the first is writable here.
+type TomlTable {
+  name: String?
+  leading_comments: List<String>
+  entries: List<TomlEntry>
+}
+
+type TomlDocument {
+  preamble_comments: List<String>
+  tables: List<TomlTable>
+}
+
+fn toml_entry(key: String, value: TomlValue) -> TomlEntry {
+  TomlEntry { leading_comments: [], pair: TomlKeyValue { key: key, value: value }, trailing_comment: none }
+}
+
+fn toml_entry_noted(key: String, value: TomlValue, leading_comments: List<String>) -> TomlEntry {
+  TomlEntry { leading_comments: leading_comments, pair: TomlKeyValue { key: key, value: value }, trailing_comment: none }
+}
+
+fn toml_entry_trailing(key: String, value: TomlValue, trailing_comment: String) -> TomlEntry {
+  TomlEntry {
+    leading_comments: [],
+    pair: TomlKeyValue { key: key, value: value },
+    trailing_comment: Present { value: trailing_comment }
+  }
+}
+
+fn toml_strings(values: List<String>) -> TomlValue {
+  TomlArray { elements: values |> map(v => TomlString { value: v }) }
+}

@@ -1,0 +1,92 @@
+module extdeps.ampere.mt_collins_getting_started_guide.subject
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking, SpecificationDocumentDate }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// THE GETTING STARTED GUIDE IS ITS OWN DOCUMENT, so it gets its own module rather than a row
+// beside the product brief's scope. The two are independently versioned - the brief is "2022 V2"
+// marketing collateral, this is Document Issue 1.05 dated 2026-07-20 - and extdeps.publication
+// states the law this module exists to satisfy: publication statuses live on per-document modules,
+// because recording that one document is publicly published must not require editing another
+// document's authority. An earlier revision of this change put the guide's authority and status
+// inside the product brief's module, which stored one document's fact beside another's scope.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=Mt_Collins_DVT_PVT_MP_GSG_v1_05_20260720_52a0348e87.pdf&type=technical-document&documentId=z6zenr250qdpa8eq4irolgds",
+  }
+}
+
+data mt_collins_gsg_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data mt_collins_gsg_title: NonEmptyStr = "Ampere Altra Platform Series Mt. Collins DVT/PVT/MP Getting Started Guide"
+
+data mt_collins_gsg_issue: NonEmptyStr = "1.05"
+
+data mt_collins_gsg_document_number: NonEmptyStr = "AMP 2021-00511"
+
+data mt_collins_gsg_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2026,
+  month: 7,
+  day: 20,
+}
+
+data mt_collins_gsg_content_digest: NonEmptyStr = "sha256 1c41b4f088fa9c8b760d21d57ae93b0d1a68ee67a740d4eb7ac893753fc580b3"
+
+type MtCollinsGettingStartedGuide {
+  title: NonEmptyStr
+  issue: NonEmptyStr
+  document_number: NonEmptyStr
+  published: SpecificationDocumentDate
+  publisher: Vendor<Hardware>
+  content_digest: NonEmptyStr
+}
+
+data mt_collins_getting_started_guide: MtCollinsGettingStartedGuide = MtCollinsGettingStartedGuide {
+  title: mt_collins_gsg_title,
+  issue: mt_collins_gsg_issue,
+  document_number: mt_collins_gsg_document_number,
+  published: mt_collins_gsg_date,
+  publisher: ampere_vendor,
+  content_digest: mt_collins_gsg_content_digest,
+}
+
+// THE PUBLICATION STATUS IS AN UPSTREAM FACT: the publisher put this document where anyone can
+// reach it, under a marking that grants nothing. Every page is footed proprietary and confidential,
+// and extdeps.publication records that marking precisely so a reader can see it decides nothing -
+// exactly as extdeps.cpu.ampere_altra_package reads the Altra datasheet's footer.
+//
+// WHAT THIS REPOSITORY DID TO ESTABLISH THAT IS A SEPARATE AXIS AND IS NOT RECORDED HERE. The
+// unauthenticated fetch, its status, its byte count and the digest comparison are observations gunbc
+// produced, so they live in gunbc.specification_citation_read_provenance as
+// mt_collins_getting_started_guide_citation_read_receipt. Fusing the two was the defect: a status is
+// what the publisher did, a fetch is what we did, and a document whose publisher status is
+// unchanged can still have a refused fetch tomorrow.
+//
+// This guide is NOT the reference-board design package. That collateral - the motherboard design
+// files, UEFI, OpenBMC and CPLD source - is access-gated, and extdeps.cpu.ampere_altra_package is
+// where that barred population is named. Conflating the two is what produced a false access-gated
+// reading of this document.
+data mt_collins_gsg_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Ampere Computing Proprietary and Confidential, document AMP 2021-00511",
+}
+
+data mt_collins_gsg_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject",
+      decl_name: "mt_collins_getting_started_guide",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_collins_gsg_model_scope

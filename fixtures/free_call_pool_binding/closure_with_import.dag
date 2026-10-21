@@ -1,0 +1,14 @@
+module fixtures.free_call_pool_binding.closure_with_import
+
+// ARM B -- REFUSED, and it is what makes arm A discriminating rather than merely green. Same
+// command with this entry, over `subject_with_import`, whose only difference from
+// `subject_module` is one import line naming an unrelated module:
+//
+//   error[.../subject_with_import.dag:6:3]: function 'pool_specimen_free_call' not found in scope
+//
+// Without this arm a reader could not tell a manufactured edge from an ordinary resolution.
+import fixtures.free_call_pool_binding.subject_with_import { subject_with_import_use }
+
+fn plain_with_import() -> Int {
+  subject_with_import_use()
+}

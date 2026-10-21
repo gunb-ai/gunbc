@@ -1,0 +1,105 @@
+module gunbc.serving.serving_key_grant
+
+import std.types { String, Bool, NonEmptyStr }
+import std.content_hash { content_hash_of_value }
+import std.human_intervention { EveryOperatorRequest }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Execute }
+import std.scoped_authorization {
+  ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
+  AuthorizationRequest, AuthorizationScope, AuthorizedAction, AttemptIdentity,
+}
+import gunbc.serving.rented_allocation { RentedAllocationIdentity, rented_allocation_wire }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ReversibleByReapply, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, NoBillingConsequence, NoWitnessDischarge,
+  AuthorizationPatternSelection, PatternSelected, OperatorApprovedCapability, select_authorization_pattern,
+}
+
+// THE SERVING API KEY IS A GRANT BOUND TO THE ALLOCATION, NEVER A LITERAL AND NEVER A VALUE OF THIS MODULE.
+// Delivering the key to a rented card is a privileged effect, so its authorization pattern is SELECTED
+// (gunbc.auth.authorization_pattern_selection select_authorization_pattern), not chosen here: the effect below
+// is the one rented_host_ssh_effect reads (a per-operator-request effect on a host that is no cloud
+// principal, so no workload identity binds), and a grant is bound only when the selection yields the
+// operator-approved capability, which is realized as a std.scoped_authorization ScopedAuthorization.
+// The grant is scoped to Execute on this allocation's position and carries an intent hash over the exact
+// subject. It names the key by grant name only; the key text is delivered by a secret source that does not
+// exist yet, so no field here or in the launch argv can hold it.
+type ServingKeySubject {
+  allocation: RentedAllocationIdentity
+}
+
+fn serving_key_grant_name(subject: ServingKeySubject) -> NonEmptyStr {
+  join(["serve-api-key:", rented_allocation_wire(id: subject.allocation) as String], "") as NonEmptyStr
+}
+
+data serving_key_action: AuthorizedAction = "deliver-serve-api-key" as AuthorizedAction
+
+fn serving_key_scope(subject: ServingKeySubject) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "serving-api-key" }, path: [rented_allocation_wire(id: subject.allocation) as String] },
+    action: serving_key_action,
+  }
+}
+
+fn serving_key_request(escalation_id: NonEmptyStr, subject: ServingKeySubject, attempt: AttemptIdentity) -> AuthorizationRequest<ServingKeySubject> {
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: [serving_key_scope(subject: subject)],
+    subject: subject,
+    purpose: join(["deliver the serving API key to rented allocation ", rented_allocation_wire(id: subject.allocation) as String], "") as NonEmptyStr,
+    attempt: attempt,
+    intent_hash: content_hash_of_value(value: serving_key_grant_name(subject: subject)),
+    destructive: false,
+  }
+}
+
+fn serving_key_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "deliver the serving API key to a rented allocation's engine launch" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "a rented host is not a cloud principal, so no workload identity can be bound to the key delivery" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn serving_key_pattern() -> AuthorizationPatternSelection {
+  select_authorization_pattern(e: serving_key_effect())
+}
+
+type ServingKeyGrant {
+  subject: ServingKeySubject
+  authorization: ScopedAuthorization<ServingKeySubject>
+}
+
+type ServingKeyGrantBinding
+  = ServingKeyGrantBound { grant: ServingKeyGrant }
+  | ServingKeyGrantRefused { cause: NonEmptyStr }
+
+data serving_key_pattern_not_scoped_grant_cause: NonEmptyStr = "the authorization-pattern selection did not select the operator-approved capability for the serving key delivery, so no scoped grant is bound" as NonEmptyStr
+
+data serving_key_grant_names_another_allocation_cause: NonEmptyStr = "the grant names another allocation than the one the key is bound to" as NonEmptyStr
+
+data serving_key_grant_pending_cause: NonEmptyStr = "the key delivery authorization is pending and unapproved, so no grant is bound" as NonEmptyStr
+
+data serving_key_grant_denied_cause: NonEmptyStr = "the operator denied the key delivery authorization, so no grant is bound" as NonEmptyStr
+
+fn serving_key_grant_bind(subject: ServingKeySubject, authorization: ScopedAuthorization<ServingKeySubject>) -> ServingKeyGrantBinding {
+  match serving_key_pattern() {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+      match authorization {
+        AuthorizationPending { request: _ } => ServingKeyGrantRefused { cause: serving_key_grant_pending_cause }
+        AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => ServingKeyGrantRefused { cause: serving_key_grant_denied_cause }
+        AuthorizationGranted { grant: g, claim: _ } =>
+          if g.subject == subject {
+            ServingKeyGrantBound { grant: ServingKeyGrant { subject: subject, authorization: authorization } }
+          } else {
+            ServingKeyGrantRefused { cause: serving_key_grant_names_another_allocation_cause }
+          }
+      }
+    _ => ServingKeyGrantRefused { cause: serving_key_pattern_not_scoped_grant_cause }
+  }
+}

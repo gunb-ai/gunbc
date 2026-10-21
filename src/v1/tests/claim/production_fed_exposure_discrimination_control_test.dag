@@ -1,0 +1,150 @@
+module v1.tests.claim.production_fed_exposure_discrimination_control_test
+
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceTransport,
+  ReferenceOccurrence,
+  DeclarationOccurrence,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceBindingCandidateInputs,
+  OccurrenceModulePathRow,
+  DeclarationExposureGrounding,
+  ModuleLocalMemberExposure,
+  CrossFileProviderExportedExposure,
+  ReferenceBindingProjection,
+  ReferenceBindingProjectionBound,
+  ReferenceBindingProjectionUnbound,
+  resolve_type_reference_containment_binding,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSource,
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+  occurrence_binding_inputs_from_transport,
+  reference_named,
+  declarations_named,
+}
+
+// EXPOSURE DISCRIMINATION, FED BY THE PRODUCTION PARSER. This is the control that makes the
+// census's three grounding columns MEAN something. While the parser stamped no type declaration,
+// all three columns were byte-identical -- not because the groundings agree, but because an
+// unread declaration population cannot be read three different ways. Three identical columns are
+// therefore the SIGNATURE of an absent input, and this control is what makes that signature
+// impossible to mistake for agreement: it holds that when the exposure fact differs, the outcome
+// differs, over occurrences that came out of tokenize -> parse.
+//
+// WHAT IS PRODUCTION AND WHAT IS VARIED, stated exactly, because the whole value of this control
+// is which half is which. The transport -- every occurrence id, containment path, category and
+// index entry -- comes from parse_authored_occurrence_binding_source over authored source text.
+// The candidate inputs are the ordinary projection occurrence_binding_inputs_from_transport
+// builds. The ONE varied fact is the grounding, and the consumer-module rewrite that makes the
+// reference live in a different module from the declaration -- which is what a cross-file
+// reference IS, and is not expressible in a single-file parse. No declaration, reference or
+// containment path is hand-built.
+//
+// WHY THE OUTCOMES MUST DIFFER. Under ModuleLocalMemberExposure a module-root declaration is
+// ModuleExposure{provider}, which a consumer-module reference may not reach: Unbound.
+// CrossFileProviderExportedExposure maps that same ModuleExposure to RootExposure, which every
+// consumer may reach: Bound. Same occurrences, same resolver, one differing fact, two outcomes.
+//
+// Rung: mitigatable, for the same reason its neighbours state -- the required floor's source
+// roots are `dag` and `src/v2`, and this subject is reachable only through v1.compiler.parse, so
+// no witness under dag/test/claim can call it. Direct execution is evidence the assertions hold,
+// never evidence that CI runs them. Next-rung trigger: a witness home whose source roots reach
+// src/v1.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/production_fed_exposure_discrimination_control_test.dag \
+//     --function production_fed_exposure_discrimination_holds
+
+data exposure_subject: String = "module zqxexp.provider\n\ntype ZqxProvided {\n  field_one: Int\n}\n\nfn zqx_consumer(arg: ZqxProvided) -> Int {\n    1\n}\n"
+
+// The consumer-module rewrite. Every occurrence EXCEPT the declaration is re-homed, so the
+// reference and the declaration sit in different modules -- the cross-file shape.
+fn inputs_in_consumer_module(
+  inputs: OccurrenceBindingCandidateInputs,
+  declaration: OccurrenceId,
+  consumer: NonEmptyStr
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: fold(
+      inputs.module_paths,
+      init: [],
+      f: (acc, row) =>
+        concat(acc, [
+          match row.occurrence.value == declaration.value {
+            true => row
+            false => OccurrenceModulePathRow { occurrence: row.occurrence, module_path: consumer }
+          },
+        ]),
+    ),
+    exposure_rows: inputs.exposure_rows,
+    authored_order_rows: inputs.authored_order_rows,
+  }
+}
+
+type ExposureOutcome
+  = OutcomeBound
+  | OutcomeUnbound
+  | OutcomeOther
+  | OutcomeSubjectRefused
+
+fn outcome_under(grounding: DeclarationExposureGrounding) -> ExposureOutcome {
+  match parse_authored_occurrence_binding_source(file: "exposure_control.dag", source: exposure_subject) {
+    ParsedOccurrenceBindingSourceRefused => OutcomeSubjectRefused
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: module_path } =>
+      match reference_named(transport: t, name: "ZqxProvided") {
+        Absent => OutcomeSubjectRefused
+        Present { value: reference } =>
+          match declarations_named(transport: t, name: "ZqxProvided") |> first {
+            Absent => OutcomeSubjectRefused
+            Present { value: declaration } =>
+              match resolve_type_reference_containment_binding(
+                transport: t,
+                inputs: inputs_in_consumer_module(
+                  inputs: occurrence_binding_inputs_from_transport(
+                    module_path: module_path,
+                    transport: t,
+                    grounding: grounding,
+                  ),
+                  declaration: declaration.occurrence,
+                  consumer: "zqxexp.consumer" as NonEmptyStr,
+                ),
+                reference: reference,
+              ) {
+                ReferenceBindingProjectionBound { provider: _ } => OutcomeBound
+                ReferenceBindingProjectionUnbound { occurrence: _ } => OutcomeUnbound
+                _ => OutcomeOther
+              }
+          }
+      }
+  }
+}
+
+fn outcome_is_bound(o: ExposureOutcome) -> Bool {
+  match o {
+    OutcomeBound => true
+    OutcomeUnbound => false
+    OutcomeOther => false
+    OutcomeSubjectRefused => false
+  }
+}
+
+fn outcome_is_unbound(o: ExposureOutcome) -> Bool {
+  match o {
+    OutcomeUnbound => true
+    OutcomeBound => false
+    OutcomeOther => false
+    OutcomeSubjectRefused => false
+  }
+}
+
+// A subject that refuses to parse, or that carries no declaration to bind, scores as NEITHER arm,
+// so a broken subject cannot satisfy this by producing two different flavours of nothing.
+test fn production_fed_exposure_discrimination_holds() -> Bool {
+  outcome_is_unbound(o: outcome_under(grounding: ModuleLocalMemberExposure))
+    && outcome_is_bound(o: outcome_under(grounding: CrossFileProviderExportedExposure))
+}

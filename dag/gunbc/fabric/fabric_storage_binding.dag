@@ -1,0 +1,44 @@
+module gunbc.fabric.fabric_storage_binding
+
+import std.types { String, NonEmptyStr }
+import gunbc.fabric.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement_under, FabricStoragePlacement, FabricStoragePlaced, FabricStoragePlacementRefused, FabricStorageUnplaced }
+import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization, prod_role_realization_refusal_detail }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
+
+// THE RUNTIME PLACEMENT: the placement over the prod-role realization (gunbc.roadmap.roadmap_dashboard_instance
+// prod_role_realization). DECLARED DIVERGENCE from the actuated join (gunbc.live_deploy.desired
+// prod_role_actuated_realization): this module sits in desired's own import closure (via
+// fabric_event_log), so it cannot read the desired roster without a cycle. A holder nothing can install
+// is refused where it is actuated (selected_deployment_spec passes the actuated realization); a runtime
+// reader of such a holder finds an unreachable endpoint and refuses acquisitions. A refused realization
+// is a refused placement, never srv1.
+fn fabric_storage_placement() -> FabricStoragePlacement {
+  fabric_storage_placement_under(realization: prod_role_realization())
+}
+
+fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
+  match placement {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlacementRefused { cause: c } => FabricStorageBindingRefused { detail: join(["fabric storage placement refused: ", prod_role_realization_refusal_detail(cause: c)], "") as NonEmptyStr }
+    FabricStoragePlaced { host: h, store_root: _, endpoint: e, door_socket: s } =>
+      if host_identity_eq(a: h, b: executor) {
+        FabricStorageDoorSocket { socket: s, route_prefix: fabric_storage_route_prefix as NonEmptyStr }
+      } else { FabricStorageServed { endpoint: e } }
+  }
+}
+
+// Protected service writers retain their signed HTTPS route on every host. The proxy now
+// reaches the same restricted socket, so placed-host writers cannot bypass transport admission.
+// In particular a root controller is not misclassified as a local non-proxy peer: its actual
+// tailnet login must be observed and admitted at the proxy boundary before commissioning.
+fn fabric_state_storage_binding() -> FabricStorageBinding {
+  match fabric_storage_placement() {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlacementRefused { cause: c } => FabricStorageBindingRefused { detail: join(["fabric storage placement refused: ", prod_role_realization_refusal_detail(cause: c)], "") as NonEmptyStr }
+    FabricStoragePlaced { host: _, store_root: _, endpoint, door_socket: _ } => FabricStorageServed {
+      endpoint: concat(endpoint as String, fabric_storage_state_suffix) as NonEmptyStr,
+    }
+  }
+}

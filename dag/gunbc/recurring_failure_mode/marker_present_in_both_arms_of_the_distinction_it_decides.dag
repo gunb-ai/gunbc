@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.marker_present_in_both_arms_of_the_distinction_it_decides
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data marker_present_in_both_arms_of_the_distinction_it_decides: RecurringFailureMode = RecurringFailureMode {
+  identity: "marker_present_in_both_arms_of_the_distinction_it_decides" as NonEmptyStr,
+
+  receipts: [
+    "**a marker present in both arms of the distinction it decides** (a reader keys a verdict on a substring that upstream emits on BOTH sides of the question, so the fold answers one arm for every input and its author has no way to notice -- the marker is genuinely there, in genuinely relevant output, saying something other than what it was read as).",
+
+    "INVALID STATE: a classifier whose discriminator does not discriminate, reporting a positive for a subject in the negative arm, with the evidence it cites being real text the producer really emitted.",
+
+    "WHY IT SURVIVES REVIEW, and why it is not an ordinary parser bug: the reviewer checks the marker against the POSITIVE sample and finds it present and meaningful. Nobody checks it against the negative sample, because the negative sample is the state everyone is trying to leave and its output is assumed to be the absence of the positive's. The defect is invisible from one side and obvious from two, and the cost of the second side is one captured file.",
+
+    "SPECIMEN (gunbc PR #11482, extdeps.nvidia.nccl). NCCL announces its collective transport once per communicator init. The IB plugin ALSO logs `NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>` -- on a run where the line immediately before it is `NET/IB : No device found.` and every data channel then goes `via NET/Socket/0`. A reader keyed on `NET/IB` and `Using` appearing in one line answers IB VERBS for a run that served every collective over TCP, which is the exact state the reader exists to detect. The discriminator that actually decides is the whole token `Using network `, which appears once per init and carries the name NCCL chose. This was caught only because the socket incarnation's log was captured beside the RoCE one; against the RoCE capture alone the wrong reader is green.",
+
+    "THE DISCRIMINATOR THAT BOUNDS IT: the class needs an upstream that logs about a SUBSYSTEM whether or not that subsystem won -- a plugin reporting its own probe, a backend announcing it was considered. Where the negative arm is silent about the positive's subject, a one-sided marker is safe and this row does not apply. The check is mechanical: grep the chosen marker against a capture of the OTHER arm before believing it.",
+
+    "NOT THE ABSORBING FALLBACK, and the distinction matters because the remedies differ. The absorbing fallback substitutes a superset when a mechanism cannot compute its answer; this fold computes an answer confidently and the answer is wrong. There is no widening to count and no degradation to make loud -- a typed refusal arm would never fire, because the reader believes it read the thing.",
+
+    "RUNG: found BELOW the ladder. The fold returns a plausible verdict of the wrong arm with no diagnostic.",
+
+    "CEILING 2, mechanically preventable, and the reason it is not higher is worth stating: whether a string discriminates between two upstream states is a fact about the UPSTREAM, which sits in section 4b's outside-the-modelled-guarantee column. No construction on this side can make a non-discriminating marker unwritable. What construction CAN do is make the marker unusable without its negative control.",
+
+    "NEXT-RUNG TRIGGER: the capability of binding a classifier's marker to a captured specimen of EVERY arm it claims to separate, so a marker that matches more than one arm's specimen refuses at enrolment rather than at a reading. SUFFICIENT FOR: a reader keyed on a both-arms substring cannot be landed green. The affordable intermediate, and the one this specimen actually used, is a witness row per arm over real captured output, with the arms asserted to reach OPPOSITE verdicts.",
+
+    "REVIEW TELL: a parser whose marker is justified by quoting the output it is meant to match, with no quotation of the output it is meant NOT to match. Ask for the negative arm's bytes.",
+  ],
+
+  evidence: [],
+}

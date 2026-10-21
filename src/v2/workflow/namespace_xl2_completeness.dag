@@ -1,0 +1,53 @@
+module v2.workflow.namespace_xl2_completeness
+
+import std.types { List }
+import std.algebra { Cons, Empty }
+import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisites_outstanding }
+import v2.workflow.namespace_xl2_rehearsal_census { Xl2UnobservedScope }
+
+// THE COMPLETENESS DECISION IS A CONSUMER OF THE REHEARSAL, NOT PART OF ITS PRODUCTION. The producer
+// (v2.workflow.namespace_xl2_rehearsal_census) reports what it could not observe; whether that
+// answers the denominator is decided here, against the carrier that owns the outstanding
+// prerequisites (gunbc.compiler_frontend_program_status). Keeping the decision out of the producer
+// keeps that status hub out of the producer's emitted closure -- importing it for one list dragged
+// the hub's whole import graph into the native build -- and removes the producer's second reading of
+// a fact the carrier already owns (DESIGN section 2).
+
+// WHY COMPLETENESS IS REFUSED: ONE CAUSE PER OUTSTANDING XL-2 PREREQUISITE. The lowering
+// undercounts that keep this census from being complete are not minted here; their one home is
+// gunbc.compiler_frontend_program_status Xl2Prerequisite, and every arm that carrier types
+// OUTSTANDING heads this roster as its own cause (xl2_prerequisites_outstanding). An arm leaving
+// that list is the only thing that removes its cause, so this module cannot drift from the carrier.
+// They stay REFUSALS rather than excluded populations by the namespace-cut manager's ruling of
+// 2026-09-23: those references depend on imports and XL-5 must rewrite them, so omitting them
+// undercounts the cut's own population.
+// Xl2CompleteArmNotAdmitted is the refusal for the state with NO outstanding prerequisite: the
+// Complete arm is a separate change that must discriminate it by execution, and until it lands no
+// input constructs Xl2CensusComplete.
+type Xl2CompletenessRefusal
+  = Xl2PrerequisiteOutstanding { prerequisite: Xl2Prerequisite }
+  | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
+  | Xl2CompleteArmNotAdmitted
+
+// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. Only xl2_completeness decides it, and
+// today that decision has no complete arm at all, so a complete census is unconstructible until the
+// change that admits it adds the arm there.
+type Xl2CensusCompleteness
+  = Xl2CensusComplete
+  | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
+
+// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. Every outstanding XL-2
+// prerequisite heads the roster in the carrier's order, then every unobserved scope. With neither,
+// the answer is still refused, as Xl2CompleteArmNotAdmitted: Xl2CensusComplete has no constructor
+// anywhere, and the change that adds one adds it here.
+fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
+  let prerequisites = fold(xl2_prerequisites_outstanding(), init: [], f: fn(acc, p) {
+    acc |> list_push(Xl2PrerequisiteOutstanding { prerequisite: p })
+  })
+  let roster = fold(unobserved, init: prerequisites, f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
+  match roster {
+    Cons { head: first, tail: rest } => Xl2CensusCompletenessRefused { first: first, rest: rest }
+    Empty => Xl2CensusCompletenessRefused { first: Xl2CompleteArmNotAdmitted, rest: [] }
+  }
+}
+

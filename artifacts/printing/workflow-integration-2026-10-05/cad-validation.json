@@ -1,0 +1,13 @@
+{
+  "cadquery": "2.8.0",
+  "printed_part_count": 28,
+  "unique_print_geometries": 18,
+  "printed_pair_collisions": [],
+  "required_keepout_collisions": [],
+  "required_keepouts": [
+    "SOCKET-HARDWARE--1",
+    "SOCKET-HARDWARE-1"
+  ],
+  "source_model_checks": "DAG bed/mate/member checks",
+  "scope": "geometry only; no fastener engagement, thermal, structural or electrical qualification"
+}

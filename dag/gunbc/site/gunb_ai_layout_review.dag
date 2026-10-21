@@ -1,0 +1,181 @@
+module gunbc.site.gunb_ai_layout_review
+
+import std.types { String, List, Int }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.optional { Optional, Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.site.gunb_ai_layout {
+  BallotRequest, BallotRender, BallotHtml, BallotRefused, ballot_render,
+  grid_flow, grid_fixed_3, grid_autofill,
+  breakpoints_adopt_live, breakpoints_stack_only,
+  scheme_dark_only, scheme_light_alt,
+}
+
+// Writes the LAYOUT ballot to an out-dir for the srv1 tailnet review site
+// (`python3 -m http.server <port> --bind <tailnet address>`), one file per option so
+// the operator can compare them side by side. Fail closed (DESIGN §5): an emit refusal
+// or an inadmissible choice exits non-zero and NOTHING is written — there is no path
+// where a refused render lands on disk or exits success.
+//
+// Invocation (either entry renders identical bytes from the same call):
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_layout_review.dag \
+//     --function v2_cli_main <out-dir>          (NativeCliDriver positional argv)
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_layout_review.dag \
+//     --function ballot_write_arg --arg dir=<out-dir>
+//
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// Consumers (DESIGN §3c): the operator's browser on the review site, the srv1
+// headless-chromium screenshot pass that precedes showing the page, and
+// test.claim.site_gunb_ai_layout_witness (which re-renders these requests and checks
+// the artifact, so this list is not only a writer's wish list).
+
+// The ballot: three AXES, and the entries are the options within each axis held
+// against the same default on the other two. Options are independent by construction
+// (layout_rules takes the three choices), so any combination renders — the entries
+// below are what the operator is asked to choose between, not a product of axes.
+data ballot_entries: List<BallotRequest> = [
+  BallotRequest {
+    slug: "layout-grid-a-flow",
+    axis: "grid (A)",
+    label: "A — flow stack",
+    note: "One column at every width. The reading-first option: no card ever sits beside another, so measure is the only rhythm.",
+    grid: grid_flow,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-grid-b-three",
+    axis: "grid (B)",
+    label: "B — three equal columns",
+    note: "A fixed three-up track that collapses below the stack breakpoint. Predictable rhythm on desktop, three cards per row whatever the content.",
+    grid: grid_fixed_3,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-grid-c-autofill",
+    axis: "grid (C)",
+    label: "C — auto-fill from a token floor",
+    note: "As many columns as fit, each at least card-min wide. Density follows the viewport instead of a chosen count; the floor is the token, so the choice is about the floor, not the count.",
+    grid: grid_autofill,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-bp-a-live",
+    axis: "breakpoints (A)",
+    label: "A — the live site's two",
+    note: "Cards stack at 700; below 480 the card gutter and padding drop one step on the gap scale. The live site also breaks at 760 and 540, but those restack .hero-spine and .card-receipt-row, elements the primitives and pages layers own, so they sit on that layer's parity list instead of being dropped here. Instrument: curl -s https://gunb.ai/assets/site.css | grep -n @media -A 8",
+    grid: grid_fixed_3,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-bp-b-stackonly",
+    axis: "breakpoints (B)",
+    label: "B — stack only",
+    note: "One response point: cards stack at 700 and nothing changes below it. Fewer rules; below 700 the fluid track does whatever it does on its own.",
+    grid: grid_fixed_3,
+    breakpoints: breakpoints_stack_only,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-scheme-a-dark",
+    axis: "light/dark (A)",
+    label: "A — dark only (parity)",
+    note: "What gunb.ai serves today: no prefers-color-scheme support in the live CSS at all, so this is the no-change option.",
+    grid: grid_fixed_3,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  },
+  BallotRequest {
+    slug: "layout-scheme-b-light",
+    axis: "light/dark (B)",
+    label: "B — light alternative",
+    note: "The same 15 roles rebound to light values taken from the SAME hue set (palette is the only colour authority), inside an OS-following @media (prefers-color-scheme: light) block over :root — no class, no toggle: a reader gets light because their OS asked for it. Judge the accent/callout pairs on this page — it follows YOUR system setting, so if it looks dark, your OS prefers dark and that is the axis working: switch your browser or OS to light (DevTools' rendering emulation can force it) to see what a light-preferring reader gets.",
+    grid: grid_fixed_3,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_light_alt,
+  },
+]
+
+type BallotRun
+  = BallotWritten { paths: List<String> }
+  | BallotRefusedRun { reason: String }
+
+// TWO PHASES, because "nothing is written on refusal" has to mean nothing (DESIGN §5:
+// every path succeeds fully or fails with a typed, located diagnostic). Phase one renders
+// every entry and refuses at the first refusal; phase two writes only once the whole
+// ballot exists. Writing inside the fold, as an earlier draft did, left entries 0..k-1 on
+// disk when entry k was refused — a partial ballot published to the review site, while the
+// header claimed the opposite.
+// The entries are a parameter, not a captured constant, so a claim can drive this
+// function with an entry list it chooses — which is how
+// test.claim.site_gunb_ai_layout_witness.witness_refusal_leaves_nothing_on_disk makes a
+// refusal happen for real and then lists the directory. The entry points pass the modelled
+// ballot.
+fn ballot_write_entries(dir: String, entries: List<BallotRequest>) -> BallotRun {
+  match render_all(entries: entries) {
+    RenderRefused { reason: r } => BallotRefusedRun { reason: r }
+    RenderedAll { pages } => write_all(dir: dir, pages: pages)
+  }
+}
+
+// The render phase reports WHICH entry refused, with the location ballot_render already
+// carries (the slug inside the layout layer's own refusal text). Collapsing this to a bare
+// Absent would make the failure true but useless to whoever has to fix the ballot.
+type RenderPhase
+  = RenderedAll { pages: List<RenderedPage> }
+  | RenderRefused { reason: String }
+
+type RenderedPage { slug: String, html: String }
+
+// Phase 1: render only. No Filesystem.Write is reachable from here.
+fn render_all(entries: List<BallotRequest>) -> RenderPhase {
+  fold(entries, init: RenderedAll { pages: [] }, f: (acc, entry) => match acc {
+    RenderRefused { reason: _ } => acc
+    RenderedAll { pages } => match ballot_render(req: entry) {
+      BallotRefused { reason: r } => RenderRefused { reason: r }
+      BallotHtml { html: h, slug: slug } =>
+        RenderedAll { pages: concat(pages, [RenderedPage { slug: slug, html: h }]) }
+    }
+  })
+}
+
+// Phase 2: write bytes that already exist, keeping the first failure's cause.
+fn write_all(dir: String, pages: List<RenderedPage>) -> BallotRun {
+  fold(pages, init: BallotWritten { paths: [] }, f: (run, page) => match run {
+    BallotRefusedRun { reason: _ } => run
+    BallotWritten { paths } => {
+      let path = join([dir, "/", page.slug, ".html"], "")
+      let wrote = Filesystem.Write(path: path, content: page.html)
+      if wrote.success { BallotWritten { paths: concat(paths, [path]) } } else { BallotRefusedRun { reason: join([path, ": ", wrote.error], "") } }
+    }
+  })
+}
+
+fn ballot_exit(run: BallotRun) -> ProcessExit {
+  match run {
+    BallotWritten { paths: p } => ExitSuccess
+    BallotRefusedRun { reason: r } => exit_failure(reason: join(["layout ballot refused: ", r], ""))
+  }
+}
+
+// Named-arg entry, for `gunbc run --function ballot_write_arg --arg dir=<out>`.
+fn ballot_write(dir: String) -> BallotRun {
+  ballot_write_entries(dir: dir, entries: ballot_entries)
+}
+
+fn ballot_write_arg(dir: String) -> ProcessExit {
+  ballot_exit(run: ballot_write(dir: dir))
+}
+
+// Positional NativeCliDriver entry: renders identical bytes to the named-arg entry.
+fn v2_cli_main(argv: List<String>) -> ProcessExit {
+  match get(argv, 0) {
+    Present { value: dir } => ballot_exit(run: ballot_write(dir: dir))
+    Absent => exit_failure(reason: "usage: gunb_ai_layout_review <out-dir>")
+  }
+}

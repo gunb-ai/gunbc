@@ -1,0 +1,60 @@
+module gunbc.workspace_commissioning_executor_cli
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import std.process { ExitSuccess, exit_failure }
+import extdeps.shell
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.workspace_commissioning_executor_submission {
+  workspace_executor_prepare, workspace_executor_rearm, WorkspaceExecutorPrepared, WorkspaceExecutorPreparationRefused,
+}
+import gunbc.workspace_commissioning_executor_helper {
+  workspace_executor_helper_bind, workspace_executor_helper_finish, WorkspaceExecutorHelperAccepted, WorkspaceExecutorHelperRefused,
+}
+import gunbc.workspace_commissioning_executor_input { workspace_executor_input_observe, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
+
+fn workspace_executor_cli_refused(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
+}
+
+fn workspace_executor_cli_main() -> CliWireResponse {
+  match shell.Env.Get(name: "GUNBC_MICROVM_SLOT").value {
+    Present { value: slot } => match shell.Env.Get(name: "GUNBC_WORKSPACE_EXECUTOR_ACTION").value {
+      Present { value: action } => match shell.Env.Get(name: "GUNBC_WORKSPACE_EXECUTOR_ACTOR").value {
+        Present { value: actor } => if slot == "" || !content_hash_validate_lower_hex_length(text: actor, expected_hex_digits: 32) {
+          workspace_executor_cli_refused(reason: "executor slot or invocation argument is invalid")
+        } else if action == "prepare" || action == "rearm" {
+          let result = if action == "prepare" { workspace_executor_prepare(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr) }
+            else { workspace_executor_rearm(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr) }
+          match result {
+            WorkspaceExecutorPrepared { directive } => CliWirePrintable { bytes: concat(directive, "\n"), exit: ExitSuccess }
+            WorkspaceExecutorPreparationRefused { reason } => workspace_executor_cli_refused(reason: reason)
+          }
+        } else { match shell.Env.Get(name: "GUNBC_WORKSPACE_EXECUTOR_CONTROLLER").value {
+          Present { value: controller } => if !content_hash_validate_lower_hex_length(text: controller, expected_hex_digits: 32) {
+            workspace_executor_cli_refused(reason: "controller invocation argument is invalid")
+          } else if action == "bind" {
+            match workspace_executor_helper_bind(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr, controller: controller as NonEmptyStr) {
+              WorkspaceExecutorHelperAccepted => CliWirePrintable { bytes: "", exit: ExitSuccess }
+              WorkspaceExecutorHelperRefused { reason: _ } => workspace_executor_cli_refused(reason: "controller binding refused")
+            }
+          } else if action == "finish" {
+            match workspace_executor_input_observe(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr) {
+              WorkspaceExecutorInputObserved { input } => match workspace_executor_helper_finish(executor: actor as NonEmptyStr,
+                controller: controller as NonEmptyStr, bundle: input.plan.bundle, provenance: input.plan.provenance,
+                release_dir: input.release_dir, login: input.login, network: input.network) {
+                WorkspaceExecutorHelperAccepted => CliWirePrintable { bytes: "commissioning-fleet-generation-committed\n", exit: ExitSuccess }
+                WorkspaceExecutorHelperRefused { reason: _ } => workspace_executor_cli_refused(reason: "strong commissioning finish or publication refused")
+              }
+              WorkspaceExecutorInputRefused { reason: _ } => workspace_executor_cli_refused(reason: "finish input is unreadable")
+            }
+          } else { workspace_executor_cli_refused(reason: "unknown executor action") }
+          Absent => workspace_executor_cli_refused(reason: "controller invocation argument is absent")
+        } }
+        Absent => workspace_executor_cli_refused(reason: "executor invocation argument is absent")
+      }
+      Absent => workspace_executor_cli_refused(reason: "executor action is absent")
+    }
+    Absent => workspace_executor_cli_refused(reason: "executor slot environment is absent")
+  }
+}

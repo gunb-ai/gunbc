@@ -1,0 +1,50 @@
+module extdeps.docker.hub
+
+import std.types { NonEmptyStr, String }
+import extdeps.container.oci.distribution {
+  oci_distribution_blob_path,
+  oci_distribution_manifest_path,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/docker-hub/api/latest/"
+  }
+}
+
+data docker_hub_registry_host: NonEmptyStr = "registry-1.docker.io" as NonEmptyStr
+data docker_hub_token_host: NonEmptyStr = "auth.docker.io" as NonEmptyStr
+data docker_hub_token_service: NonEmptyStr = "registry.docker.io" as NonEmptyStr
+
+fn docker_hub_https(host: NonEmptyStr, path: NonEmptyStr) -> NonEmptyStr {
+  join(["https://", host as String, path as String], "") as NonEmptyStr
+}
+
+fn docker_hub_anonymous_pull_token_url(repository: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "https://",
+    docker_hub_token_host as String,
+    "/token?service=",
+    docker_hub_token_service as String,
+    "&scope=repository:",
+    repository as String,
+    ":pull",
+  ], "") as NonEmptyStr
+}
+
+fn docker_hub_manifest_url(repository: NonEmptyStr, digest_wire: NonEmptyStr) -> NonEmptyStr {
+  docker_hub_https(
+    host: docker_hub_registry_host,
+    path: oci_distribution_manifest_path(repository: repository, reference: digest_wire),
+  )
+}
+
+fn docker_hub_blob_url(repository: NonEmptyStr, digest_wire: NonEmptyStr) -> NonEmptyStr {
+  docker_hub_https(
+    host: docker_hub_registry_host,
+    path: oci_distribution_blob_path(repository: repository, digest: digest_wire),
+  )
+}

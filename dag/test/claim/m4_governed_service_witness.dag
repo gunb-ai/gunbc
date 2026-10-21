@@ -1,0 +1,55 @@
+module test.claim.m4_governed_service_witness
+
+import std.hermetic_replay { PublishedMockCase }
+
+service GovernedProbe {
+
+  operation Allowed {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "published-realized" } "published op realizes hermetically"
+    }
+  }
+
+  operation Forbidden {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "must-never-be-returned" } "inline mock present but op is UNPUBLISHED"
+    }
+  }
+}
+
+data m4_probe_case_allowed: PublishedMockCase = PublishedMockCase {
+  operation_key: "GovernedProbe.Allowed",
+  service: "GovernedProbe",
+  operation: "Allowed",
+  case_id: 0
+}
+
+data m4_governed_probe_corpus: List<PublishedMockCase> = [
+  m4_probe_case_allowed
+]
+
+fn witness_published_realizes() -> Bool {
+  let r = GovernedProbe.Allowed()
+  return r.ok == "published-realized"
+}
+
+fn witness_unpublished_fails_closed() -> Bool {
+  let r = GovernedProbe.Forbidden()
+  return r.ok != ""
+}

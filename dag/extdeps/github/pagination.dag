@@ -1,0 +1,107 @@
+module extdeps.github.pagination
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.page_fold {
+  PageSize, PageCursor, OffsetPage, OpaqueToken, LinkNext,
+  PageContinuation, ContinuationClosed, ContinuationNext,
+  PageBound, PageFoldSubject,
+  page_cursor_shape_key
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_per_page, max_per_page }
+import extdeps.standards.rfc_8288 {
+  LinkFieldValueParse, LinkFieldValueParsed,
+  LinkValueMissingAngleBrackets, LinkValueMissingRelParameter, LinkValueParameterNotModelled,
+  LinkValueTargetNotAbsoluteHttp,
+  LinkRelation, RelNext,
+  parse_link_field_value, link_with_relation
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api"
+  }
+}
+
+// THE GITHUB BINDING OF THE PAGE FOLD: WHICH CURSOR SHAPE THIS AUTHORITY SPEAKS, AND WHAT IT SAYS
+// WHEN THE LISTING ENDS.
+//
+// GitHub's REST API paginates by an offset `page` query parameter and reports the continuation in
+// an RFC 8288 Link header; the cited page states that a response WITHOUT a rel="next" link is the
+// last page. Those are two facts about one authority and they are both needed: the request side
+// composes the next offset, and the response side is the only thing that says whether another
+// request is owed. Neither is derivable from `per_page`, which is why a per_page parameter alone
+// left every listing in this repository capped at its first page.
+
+data github_page_query_parameter: NonEmptyStr = "page"
+
+// THE PAGE SIZE CARRIERS ARE PROJECTED FROM THE EXISTING ROWS, NOT RE-DECLARED. extdeps.github
+// .github already owns 30 and 100 as this authority's default and maximum; declaring them again
+// as PageSize would be a second representation of one cited fact, free to disagree with the first.
+data github_default_page_size: PageSize = PageSize { count: default_per_page }
+
+data github_max_page_size: PageSize = PageSize { count: max_per_page }
+
+// GitHub numbers pages from 1, so the fold's first demand is page 1 rather than an offset of 0.
+data github_first_page_cursor: PageCursor = OffsetPage { page: 1 }
+
+type GitHubLinkHeader
+  = LinkHeaderPresent { field_value: String }
+  | LinkHeaderAbsent
+
+// THE CONTINUATION READ HAS THREE OUTCOMES AND NOT TWO, and the third is the one a Bool would have
+// destroyed. A parseable header with no rel="next" and an ABSENT header both mean the listing is
+// closed -- that is the cited authority's own statement. A header that cannot be parsed means
+// nothing at all is known about whether a next page exists, and reporting it as closed would end a
+// fold mid-listing and call the truncation a complete read. So an unreadable header refuses,
+// carrying the parse refusal that says why.
+type GitHubContinuationRead
+  = ContinuationRead { continuation: PageContinuation }
+  | LinkHeaderUnreadable { parse: LinkFieldValueParse }
+
+fn github_continuation_from_link_header(header: GitHubLinkHeader) -> GitHubContinuationRead {
+  match header {
+    LinkHeaderAbsent => ContinuationRead { continuation: ContinuationClosed }
+    LinkHeaderPresent { field_value: raw } =>
+      let parsed = parse_link_field_value(field_value: raw)
+      match parsed {
+        LinkFieldValueParsed { links: links } =>
+          match link_with_relation(links: links, relation: RelNext) {
+            Present { value: target } => ContinuationRead {
+              continuation: ContinuationNext { cursor: LinkNext { target: target } }
+            }
+            Absent => ContinuationRead { continuation: ContinuationClosed }
+          }
+        LinkValueMissingAngleBrackets { field_value: f, segment: sg } => LinkHeaderUnreadable { parse: parsed }
+        LinkValueMissingRelParameter { field_value: f, segment: sg } => LinkHeaderUnreadable { parse: parsed }
+        LinkValueParameterNotModelled { field_value: f, segment: sg, parameter: pm } => LinkHeaderUnreadable { parse: parsed }
+        LinkValueTargetNotAbsoluteHttp { field_value: f, segment: sg, target: tg } => LinkHeaderUnreadable { parse: parsed }
+      }
+  }
+}
+
+// THE OFFSET ADVANCE IS THE CLIENT-COMPOSED ARM, AND IT IS THE ONE THAT CAN LOOP.
+//
+// A caller that pages by `page=N` computes the next request itself, so nothing on the serving side
+// stops it from asking forever; the bound in std.page_fold is what stops it, and this projection
+// exists so that the arithmetic lives once beside the parameter name it feeds. It REFUSES for the
+// other two cursor shapes rather than coercing them: an opaque token or a link target reaching an
+// offset advance means the fold's cursor shape and its transport disagree, which is a defect
+// wearing the shape of a listing that continues.
+type GitHubOffsetAdvance
+  = OffsetAdvanced { cursor: PageCursor }
+  | OffsetAdvanceOnNonOffsetCursor { shape: NonEmptyStr }
+
+fn github_next_offset_cursor(current: PageCursor) -> GitHubOffsetAdvance {
+  match current {
+    OffsetPage { page: n } => OffsetAdvanced { cursor: OffsetPage { page: n + 1 } }
+    OpaqueToken { token: t } => OffsetAdvanceOnNonOffsetCursor { shape: page_cursor_shape_key(c: current) }
+    LinkNext { target: u } => OffsetAdvanceOnNonOffsetCursor { shape: page_cursor_shape_key(c: current) }
+  }
+}
+
+fn github_listing_subject(operation: NonEmptyStr) -> PageFoldSubject {
+  PageFoldSubject { operation: operation }
+}

@@ -1,0 +1,193 @@
+module extdeps.cloud.oracle_oci_request_signing
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_decode_lower }
+import std.optional { Absent, Present }
+import std.encoding { base64_encode, Standard }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.types { Int, List, NonEmptyStr, String }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar { iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_two_digits }
+
+// OCI API REQUEST SIGNING, the upstream specification: what is signed and how the Authorization
+// header is spelled. It is read from the signing-requests page cited below on 2026-10-05.
+//
+// This module is PURE. It builds the signing string and the header from a signature it is handed.
+// Producing the RSA-SHA256 signature is realization, done by whichever signer holds the key (today
+// gunbc.jws_signer_realize, which hands a host key file to openssl), and the key never enters here.
+//
+// The page's rules, as they are used below. A GET or DELETE signs at least (request-target), host
+// and date. A POST or PUT also signs x-content-sha256, content-type and content-length. Header
+// names are lowercase in the signing string, and each line is "<name>: <value>". The
+// (request-target) line is the lowercase method, one space, then the path with its query string.
+// x-content-sha256 is the Base64 of the SHA-256 of the body. The signature is
+// Base64(RSA-SHA256(signing string)). The date is an HTTP date such as "Thu, 05 Jan 2014 21:31:40 GMT",
+// and it must be within 5 minutes of the server's clock.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm"
+  }
+}
+
+// keyId is "<tenancy OCID>/<user OCID>/<key fingerprint>". All three are identifiers, not secrets.
+type OciApiKeyId {
+  tenancy: NonEmptyStr
+  user: NonEmptyStr
+  fingerprint: NonEmptyStr
+}
+
+fn oci_key_id_wire(key: OciApiKeyId) -> String {
+  join([key.tenancy as String, "/", key.user as String, "/", key.fingerprint as String], "")
+}
+
+// THE METHOD AND THE BODY ARE ONE FACT. A request is a GET with no body or a POST with a JSON body.
+// Those are the two operations this repository sends, and the signer and the transport both derive
+// from this one value, so a request cannot be signed as one method and sent as another (review on
+// gunbc#13335). A DELETE, a PUT, a bodied GET or a bodiless POST have no constructor here, rather than
+// being admitted and then sent as something else. Each is added as its own arm when a consumer needs
+// it, with the transport operation that sends it.
+//
+// A body is signed by its exact bytes: its UTF-8 encoding. An empty POST body is still a body: Oracle
+// requires its digest and content-length, and it gets them.
+type OciRequestShape
+  = OciGetRequest
+  | OciPostJson { text: String }
+
+// A body's length is its UTF-8 BYTE count, from std.bytes utf8_encode_bytes, which is the encoding
+// the transport writes to curl's stdin and the one the digest seam hashes. So the content-length that
+// is signed, the bytes that are hashed and the bytes that are sent are one encoding of one string.
+fn oci_body_byte_length(text: String) -> Int {
+  bytes_octets(b: utf8_encode_bytes(s: text)).length()
+}
+
+// The digest comes from the std sha256_hex_of_text host seam rather than the pure extdeps.crypto.sha2
+// fold. The seam exists for this cost: the pure fold is hundreds of thousands of interpreted steps per
+// digest, and every signed POST takes one. The pure fold stays the seam's differential oracle
+// (test.claim.sha256_host_known_answer_witness). The seam hashes the text's UTF-8 bytes, the same encoding
+// oci_body_byte_length counts and the transport sends. Lowercase hex that does
+// not decode yields the empty string, which no OCI endpoint accepts as a digest, so the server refuses
+// the request rather than one being signed over an invented hash.
+fn oci_sha256_base64(text: String) -> String {
+  match base16_decode_lower(hex: sha256_hex_of_text(text: text)) {
+    Present { value } => base64_encode(octets: value, variant: Standard)
+    Absent => ""
+  }
+}
+
+// ── THE HTTP DATE ─────────────────────────────────────────────────────────────────────────────
+//
+// The date is derived from epoch seconds, the magnitude extdeps.clock produces. The calendar is
+// extdeps.units.iso8601_calendar's (civil date, floor division and the seconds constants), and only
+// what RFC 7231's IMF-fixdate adds is here: the English weekday and month names and the layout.
+// 1970-01-01 was a Thursday, so day 0 is index 0.
+
+// index 0 is the weekday of day 0, 1970-01-01, which was a Thursday.
+fn oci_weekday_name(index: Int) -> String {
+  if index == 0 { "Thu" } else if index == 1 { "Fri" } else if index == 2 { "Sat" }
+  else if index == 3 { "Sun" } else if index == 4 { "Mon" } else if index == 5 { "Tue" } else { "Wed" }
+}
+
+fn oci_month_name(month: Int) -> String {
+  if month == 1 { "Jan" } else if month == 2 { "Feb" } else if month == 3 { "Mar" }
+  else if month == 4 { "Apr" } else if month == 5 { "May" } else if month == 6 { "Jun" }
+  else if month == 7 { "Jul" } else if month == 8 { "Aug" } else if month == 9 { "Sep" }
+  else if month == 10 { "Oct" } else if month == 11 { "Nov" } else { "Dec" }
+}
+
+fn oci_http_date(epoch_seconds: Int) -> String {
+  let days = iso8601_floor_div(a: epoch_seconds, b: iso8601_seconds_per_day())
+  let secs = epoch_seconds - days * iso8601_seconds_per_day()
+  let civil = iso8601_civil_from_days(days: days)
+  let hour = secs / iso8601_seconds_per_hour()
+  let within_hour = secs - hour * iso8601_seconds_per_hour()
+  let per_minute = iso8601_seconds_per_minute() as Int
+  let minute = within_hour / per_minute
+  join([
+    oci_weekday_name(index: days - iso8601_floor_div(a: days, b: 7) * 7), ", ",
+    iso8601_two_digits(n: civil.day), " ",
+    oci_month_name(month: civil.month), " ",
+    to_string(civil.year), " ",
+    iso8601_two_digits(n: hour), ":",
+    iso8601_two_digits(n: minute), ":",
+    iso8601_two_digits(n: within_hour - minute * per_minute), " GMT",
+  ], "")
+}
+
+// ── THE SIGNING STRING ────────────────────────────────────────────────────────────────────────
+
+fn oci_method_lower(shape: OciRequestShape) -> String {
+  match shape {
+    OciGetRequest => "get"
+    OciPostJson { text } => "post"
+  }
+}
+
+// The request as it will be sent. path_and_query must already be URL-encoded (RFC 3986), in the order
+// it will appear on the wire. The page requires the signed target and the sent target to be the same
+// bytes.
+type OciRequest {
+  shape: OciRequestShape
+  host: NonEmptyStr
+  path_and_query: NonEmptyStr
+  date: String
+}
+
+// What a signer must sign, and the headers that must accompany the request. headers_list is the
+// value of the Authorization header's headers="..." field, in the same order as the signing-string
+// lines.
+type OciSigningPlan
+  = OciSigningReady {
+      signing_string: String,
+      headers_list: String,
+      content_sha256: String,
+      content_length: Int,
+    }
+  | OciSigningRefused { cause: NonEmptyStr }
+
+fn oci_request_target_line(req: OciRequest) -> String {
+  join(["(request-target): ", oci_method_lower(shape: req.shape), " ", req.path_and_query as String], "")
+}
+
+fn oci_bodiless_signing_string(req: OciRequest) -> String {
+  join([
+    join(["date: ", req.date], ""),
+    oci_request_target_line(req: req),
+    join(["host: ", req.host as String], ""),
+  ], "\n")
+}
+
+fn oci_signing_plan(req: OciRequest) -> OciSigningPlan {
+  match req.shape {
+    OciGetRequest => OciSigningReady {
+      signing_string: oci_bodiless_signing_string(req: req),
+      headers_list: "date (request-target) host",
+      content_sha256: "",
+      content_length: 0,
+    }
+    OciPostJson { text } => {
+      let digest = oci_sha256_base64(text: text)
+      let length = oci_body_byte_length(text: text)
+      OciSigningReady {
+        signing_string: join([
+          oci_bodiless_signing_string(req: req),
+          join(["content-length: ", to_string(length)], ""),
+          "content-type: application/json",
+          join(["x-content-sha256: ", digest], ""),
+        ], "\n"),
+        headers_list: "date (request-target) host content-length content-type x-content-sha256",
+        content_sha256: digest,
+        content_length: length,
+      }
+    }
+  }
+}
+
+fn oci_authorization_header(key: OciApiKeyId, headers_list: String, signature_base64: String) -> String {
+  join([
+    "Signature version=\"1\",headers=\"", headers_list,
+    "\",keyId=\"", oci_key_id_wire(key: key),
+    "\",algorithm=\"rsa-sha256\",signature=\"", signature_base64, "\"",
+  ], "")
+}

@@ -1,0 +1,432 @@
+module product.printed_chassis.coupon
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Micrometer, micrometer, micrometer_count, Millimeter, millimeter }
+import extdeps.printing.fdm {
+  BuildEnvelope,
+  PartExtent,
+  EnvelopeFit,
+  PartFits,
+  PartExceedsEnvelope,
+  part_extent,
+  envelope_fit,
+}
+// THE CALIBRATION COUPON AUTHORITY — TOOLCHAIN v0's only consumer, and the reason v0 exists at all.
+//
+// WHY A COUPON IS THE FIRST THING MODELLED. It is the one part class whose dimensions depend on no
+// unmeasured server component and no site dimension: a hole-diameter ladder is a fact about a
+// PRINTER, not about a board. So it can be generated, printed and measured while the board's
+// standoff map, the PETG decision and the deployment envelope are all still open — and it produces
+// exactly the printer/material qualification that every later tolerance rests on. Building the
+// realization contract against an empty measurement pack instead would have been speculative: a
+// geometry-taint wall is not commissioned until it watches real geometry calls and rejects real
+// mutations, and a wall with no handler is only a rule definition.
+//
+// THE LADDER IS AN EXPERIMENTAL DESIGN, NOT A CONVENIENCE. This is the whole point of the module.
+// The tempting shape is a Python list of plausible diameters, on the reasoning that it is only a
+// test part. That reasoning is exactly backwards: a ladder whose steps were chosen in the handler
+// would make the MEASUREMENT meaningless, because the deviation being measured is deviation FROM A
+// NOMINAL, and the nominal would then have no authority. "It is only a calibration coupon" is not
+// permission for the realization layer to choose test dimensions. So the base, the step and the
+// population size are modelled here, and every diameter in the ladder is DERIVED from them.
+//
+// WHY DERIVED RATHER THAN ENUMERATED. An authored list of diameters and an authored step are two
+// representations of one fact, and they can disagree — DESIGN §2's horizontal redundancy, in the
+// place where a disagreement is least visible, because both spellings look like data. Deriving the
+// rungs means the step is the single authority and a mis-typed rung has no way to exist.
+//
+// UNITS ARE MICROMETRES THROUGHOUT, for the reason extdeps.printing.fdm records: the quantum is
+// chosen from the smallest distinction the quantity must preserve. A clearance ladder steps in
+// fifty-micrometre increments, which whole millimetres cannot represent at all — every rung would
+// collapse onto its neighbours and the ladder would measure nothing.
+// IDENTITY IS A CLOSED COPRODUCT, NOT A BRANDED STRING, AND THE PREVIOUS SHAPE IS WHY.
+//
+// It was `CouponSpecimenId = NonEmptyStr where brand(...)` beside a `CouponRevision` of the same
+// shape, stamped by a generic mint that also accepted arbitrary plate and features. A sole
+// constructor that still takes arbitrary identity TEXT next to arbitrary GEOMETRY does not bind the
+// two: nothing stopped a caller minting the r1 identity onto a different ladder, which is precisely
+// the attribution fault identity exists to prevent -- a measured result credited to geometry that
+// never produced it.
+//
+// WHAT THIS DOES AND DOES NOT BUY, stated because the difference is the whole §4b question. It makes
+// an UNSPELLABLE identity structurally impossible: there is no constructor for a specimen whose
+// identity is a string somebody typed. It does NOT yet discriminate between coupons, because only
+// one arm exists -- with a single specimen class the forbidden state "identity names coupon A while
+// the geometry is coupon B" HAS NO CONSTRUCTOR AND NO FIXTURE THAT COULD AUTHOR IT, so a witness
+// asserting it would be permanently green by construction and would carry no information.
+//
+// The field is therefore carried and not yet checked, deliberately. It becomes load-bearing when
+// ProductionInterfaceCoupon lands and gives the coproduct a second arm, at which point the
+// discriminating RED is authorable and owed. Recording it now rather than later is what stops the
+// wire schema churning a second time.
+type CouponSpecimenIdentity = HoleDiameterLadderR1 {}
+// A ladder: a base rung, a uniform step, and how many rungs. The rung VALUES are derived.
+type LengthLadder sole_constructor {
+  base: Micrometer
+  step: Micrometer
+  rung_count: Nat
+}
+// The mint refuses a degenerate ladder rather than emitting one. A zero step makes every rung
+// identical, so the coupon would carry N copies of one measurement while presenting as a ladder —
+// a specimen that cannot discriminate, which is the physical twin of a check that never goes red.
+// Fewer than two rungs is not a ladder either: a single-rung "ladder" measures one diameter and
+// establishes no trend, and the caller almost certainly meant to author a plain feature.
+type LadderConstruction
+  = LadderReady { ladder: LengthLadder }
+  | LadderStepIsZero
+  | LadderTooFewRungs { supplied: Nat }
+fn length_ladder(base: Micrometer, step: Micrometer, rung_count: Nat) -> LadderConstruction {
+  if micrometer_count(m: step) == 0 {
+    LadderStepIsZero
+  } else if rung_count < 2 {
+    LadderTooFewRungs { supplied: rung_count }
+  } else {
+    LadderReady { ladder: LengthLadder { base: base, step: step, rung_count: rung_count } }
+  }
+}
+// The rungs, derived. This is the only place a coupon's nominal values come from.
+fn ladder_rungs(l: LengthLadder) -> List<Micrometer> {
+  fold(nat_range_inclusive(lo: 0, hi: l.rung_count - 1), init: [], f: fn(acc, i) {
+    concat(acc, [micrometer(count: micrometer_count(m: l.base) + i * micrometer_count(m: l.step))])
+  })
+}
+fn ladder_rung_count(l: LengthLadder) -> Nat { l.rung_count }
+fn ladder_base(l: LengthLadder) -> Micrometer { l.base }
+fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
+// THE v0 OPERATION POPULATION, CLOSED, and closed on a rule rather than on taste: an operation is
+// admitted to v0 only because a selected specimen below consumes it. Nothing here anticipates the
+// chassis — no fillet, no sweep, no loft, no rack joint — because TOOLCHAIN generalizes exactly one
+// consumer ahead. FIT will widen this population, and CASSETTE will widen it again, each time with
+// the wall coverage that admits the new operation.
+//
+// The realization handler MAY map these to kernel calls and choose provably equivalent orderings.
+// It may NOT introduce an operation absent from this coproduct: an unknown operation kind has no
+// constructor here, so a handler that invented one could not describe it in a contract at all.
+// V0 CARRIES ONE OPERATION, AND DROPPING THE OTHER IS THE POINT OF THIS REVISION.
+//
+// OpDatumMark { text, at_x, at_y } engraved a label. It fixed three things and left FONT, GLYPH
+// METRICS, STROKE WIDTH, ALIGNMENT, ORIENTATION, DEPTH and ENGRAVED-VERSUS-EMBOSSED to the handler.
+// That is the DESIGN section 3 tell in its exact form: the handler was CHOOSING geometry the model
+// had not fixed, rather than implementing a derivation the model specified. A contract that
+// underdetermines its own output is not a contract.
+//
+// It had already produced a silent falsehood. specimen_extent assumed the mark was ENGRAVED and
+// therefore could not enlarge the plate -- an assumption stated nowhere and enforced by nothing. A
+// handler that embossed would produce a part taller than the model says it is, and the envelope-fit
+// answer would be wrong in the unsafe direction, which is the one direction that matters.
+//
+// The alternative was to determine it fully, which means modelling fonts. That is a domain, not a
+// field, and it would be imported to place a label on a calibration coupon.
+//
+// THE NEED BEHIND IT IS REAL AND IS NOT DROPPED: several coupons will exist physically and must be
+// told apart by hand. Recorded as a V1 obligation rather than left implicit, with the route that
+// looks right -- identify the coupon by GEOMETRY, a coded notch or hole pattern, which OpThroughHole
+// already determines completely. That buys physical identification without importing typography, and
+// it is checked by the same contract the holes already pass through.
+// THIS ROW WAS A STRING BEGINNING "OPEN: ...", WHICH IS THE §4c VIOLATION THIS MODULE OTHERWISE
+// REPAIRS. A dissolution condition is exactly what §4c names as belonging in a typed carrier, and
+// `Altrad8udMountingUnknown` two files over is the same shape done correctly: a closed coproduct of
+// open obligations plus a TOTAL fold that says how each one discharges. The prose row was written in
+// the same commit that deleted OpDatumMark for underdetermining its own output, and it underdetermined
+// its own: nothing could read it, so the obligation was invisible to every lens over the tree.
+//
+// The route is carried as its own coproduct rather than as free text so that "how does this
+// discharge" is answered by a total function. A second obligation added later cannot be forgotten by
+// the route fold -- the match stops compiling until it is handled, which is the property a string
+// roster can never have.
+// ONE OBLIGATION WAS DOING TWO JOBS, AND SPLITTING IT IS WHAT MADE HALF OF IT DISCHARGEABLE.
+//
+// `PhysicalCouponIdentificationUnsolved` conflated two questions that have different consumers,
+// different routes and different closing dates (routed review, 2026-09-02):
+//
+//   ORIENTATION -- which end of THIS coupon is the 3.00 mm end. The ladder steps 0.10 mm across
+//   eleven rungs, so end to end the holes differ by 1 mm and are visually interchangeable; rotated
+//   180 degrees the coupon reads as a valid coupon with its ordinals reversed, and every measurement
+//   is then attributed to the wrong rung. This is a property of the CANONICAL GEOMETRY and it is
+//   discharged below, by making the geometry asymmetric.
+//
+//   PRINT-INSTANCE ATTRIBUTION -- which printer and spool produced THIS piece of plastic. Two
+//   correctly-oriented R1 coupons, one from each printer, remain interchangeable, and swapping them
+//   attributes printer A's process to printer B. No geometry closes this, because the canonical
+//   datum must be IDENTICAL on both coupons or the two processes stop sharing a subject. It is
+//   discharged by the manufacturing manifest and a physical handling route, and it stays open.
+//
+// Holding them as one obligation is why the earlier route fold was near-vacuous: a single arm whose
+// RED could not be authored. Two arms with different routes is not a bigger roster, it is the
+// distinction that lets one of them close.
+//
+// `HoleDiameterLadderR1` is the coupon DESIGN identity. It is not the identity of a printed
+// instance, and no amount of design identity will ever be.
+type CouponV1Obligation = PhysicalPrintInstanceAttributionUnsolved {}
+
+type CouponV1Route = AttributeByManufacturingManifestAndHandling {}
+
+// TOTAL BY CONSTRUCTION, AND HONEST ABOUT WHAT THAT IS WORTH TODAY. Every open obligation names the
+// route that would close it; no obligation may sit without one, because that is the state where a
+// recorded need quietly becomes a wish. Adding a second obligation variant reds this match until it
+// is handled, which is the property the string roster could never have.
+//
+// BUT THIS FOLD HAS NO RUNTIME CONSUMER YET, and that bounds the guarantee rather than voiding it.
+// Its enforcement is the exhaustive-match rule at compile time, so it holds exactly as long as the
+// function exists -- nothing prevents a later reader deleting an uncalled function and taking the
+// forcing with it. Still one arm, so a witness calling it would be near-vacuous and none is written.
+// An earlier cut said the consumer arrives with the SECOND OBLIGATION VARIANT. That was wrong about
+// which event matters: the consumer arrives when the first coupon is PRINTED AND MEASURED, because
+// that is when attributing a measurement to the wrong physical piece becomes possible. The roster
+// growing is bookkeeping; the print is the hazard.
+fn coupon_v1_route(o: CouponV1Obligation) -> CouponV1Route {
+  match o {
+    PhysicalPrintInstanceAttributionUnsolved {} => AttributeByManufacturingManifestAndHandling {}
+  }
+}
+
+data coupon_v1_open_obligations: List<CouponV1Obligation> = [PhysicalPrintInstanceAttributionUnsolved {}]
+
+type CouponOperation
+  = OpThroughHole { diameter: Micrometer, center_x: Micrometer, center_y: Micrometer }
+
+// THE PLATE IS ITS OWN TYPE, not a member of CouponOperation, and the first draft of this module
+// had it as a member. That draft then needed a match to recover the plate's dimensions, whose other
+// arm had nothing sensible to return — and what it returned was a zero extent, which fits every
+// build envelope. A specimen with a malformed plate would have been reported PRINTABLE. The arm was
+// a textbook absorbing fallback: no authority said the extent was zero, and answering zero destroyed
+// the only signal that the specimen was malformed.
+//
+// Making the plate a dedicated type deletes the arm rather than fixing it. There is no non-plate
+// plate to fall back FROM, so the fallback has no place to live — DESIGN §5's construction over
+// validation, and the reason this is rung 4 rather than a checked refusal.
+type PlateDimensions sole_constructor {
+  size_x: Micrometer
+  size_y: Micrometer
+  size_z: Micrometer
+}
+
+// The mint exists because sole_constructor confines construction to THIS module, which is the point
+// -- a plate is not a record any caller may assemble -- but the realization contract must be able to
+// build one when it decodes a wire envelope. Exporting the mint keeps the single authority here
+// rather than relaxing the type so the transport can reach past it.
+fn plate_dimensions(size_x: Micrometer, size_y: Micrometer, size_z: Micrometer) -> PlateDimensions {
+  PlateDimensions { size_x: size_x, size_y: size_y, size_z: size_z }
+}
+// THE DATUM IS ITS OWN FIELD, NOT ANOTHER ENTRY IN THE FEATURE LIST, AND THAT IS THE WHOLE POINT.
+//
+// The obvious cut is to append one more OpThroughHole to `features` and remember that the last one
+// is the datum. That makes "which hole is the datum" a POSITIONAL convention -- the same class this
+// module already deleted once, when the raw envelope carried operation kinds and diameters as two
+// parallel lists whose correspondence was enforced by nothing. It is worse here than there, because
+// the datum exists precisely to remove an ambiguous reading, and a convention about list position is
+// an ambiguous reading.
+//
+// Separate fields make four things structural rather than checked:
+//   - exactly one orientation datum exists (it is a scalar, not a list, so zero and two are
+//     unwritable rather than refused);
+//   - the datum cannot enter the ladder population, so it cannot become a twelfth rung;
+//   - canonical geometry with no datum has no representation at all;
+//   - every consumer that reads holes must say WHICH population it means, so the eleven measured
+//     rungs stay one separately named thing.
+//
+// This is deliberately NOT a generic tagged feature graph. A `CouponFeatureIdentity` wrapper would
+// also work and would carry a vocabulary invented for exactly one special feature, which is
+// generalizing a full consumer ahead of the evidence. The dedicated field is narrower and says the
+// same thing.
+type HoleDiameterCouponGeometry sole_constructor {
+  plate: PlateDimensions
+  orientation_datum: CouponOperation
+  ladder_holes: List<CouponOperation>
+}
+
+// Exported because the realization contract decodes wire rows into this shape and cannot reach a
+// sole_constructor across the module boundary. The mint is total and carries no derivation: it takes
+// already-built operations and names their populations, so it cannot be used to produce a geometry
+// whose ladder disagrees with a declaration. The seal that matters is on the contract's decoded
+// carrier, not here -- this is plain data, like PlateDimensions.
+fn hole_diameter_coupon_geometry(
+  plate: PlateDimensions,
+  orientation_datum: CouponOperation,
+  ladder_holes: List<CouponOperation>,
+) -> HoleDiameterCouponGeometry {
+  HoleDiameterCouponGeometry {
+    plate: plate,
+    orientation_datum: orientation_datum,
+    ladder_holes: ladder_holes,
+  }
+}
+
+// A specimen is its geometry plus its identity, so a measured result can never be attributed to the
+// wrong geometry. The identity is the DESIGN's, and the design is what the ladder and the datum
+// together fix -- see the two-obligation split above for why it is not the printed piece's identity.
+type CouponSpecimen sole_constructor {
+  identity: CouponSpecimenIdentity
+  geometry: HoleDiameterCouponGeometry
+}
+// SPECIMEN 1 — THE HOLE-DIAMETER LADDER. Eleven rungs from 3.00 mm in 0.10 mm steps, so the ladder
+// spans 3.00 to 4.00 mm and brackets the M3 clearance region a printed chassis actually fastens
+// with. The rungs are DERIVED from this declaration; changing the step here moves every hole and
+// cannot leave a stale rung behind.
+data hole_ladder_spec: LadderConstruction = length_ladder(
+  base: micrometer(count: 3000),
+  step: micrometer(count: 100),
+  rung_count: 11
+)
+data hole_ladder_pitch: Micrometer = micrometer(count: 9000)
+data hole_ladder_margin: Micrometer = micrometer(count: 6000)
+data hole_ladder_plate_depth: Micrometer = micrometer(count: 18000)
+data hole_ladder_plate_thickness: Micrometer = micrometer(count: 4000)
+// The plate is SIZED FROM THE LADDER rather than authored beside it. An authored plate width would
+// be a second representation of the ladder's extent, and the two would silently disagree the moment
+// a rung was added — the coupon would then either crowd its last hole into the edge or carry dead
+// plastic, and in both cases the geometry would stop matching the declaration that named it.
+fn hole_ladder_plate_width(l: LengthLadder) -> Micrometer {
+  micrometer(count: 2 * micrometer_count(m: hole_ladder_margin) + (ladder_rung_count(l: l) - 1) * micrometer_count(m: hole_ladder_pitch))
+}
+// THE HOLES ARE THE RUNGS. This function folds over ladder_rungs and does NOT recompute the series.
+//
+// THE FIRST REVISION RECOMPUTED IT, and that was the most serious defect in this module — found in
+// review, not by any witness here, because no witness could see it. Both this function and
+// ladder_rungs independently evaluated base + i * step, so there were TWO derivations of one law
+// while the module's own annotation claimed there was one. The contract layer then compared
+// ladder_rungs against the handler's output and reported conformance, while the holes actually cut
+// into the plate came from this other computation entirely. Change the step here alone and every
+// witness stays green while the physical coupon carries the wrong holes — and the coupon's whole
+// purpose is to be the nominal that later measurements are deviations FROM, so a wrong coupon
+// silently miscalibrates every tolerance derived from it.
+//
+// That is DESIGN §2 horizontal redundancy in its most expensive form: not two authored spellings
+// that a reader might notice disagree, but two derivations of one law where only one is checked.
+// The check was real, the wall was real, and they were pointed at a sidecar.
+//
+// The index is carried in the fold accumulator rather than recovered by position, because a second
+// nat_range over the same rung count would reintroduce exactly the parallel enumeration this repair
+// removes.
+type HoleLadderAcc sole_constructor {
+  index: Int
+  ops: List<CouponOperation>
+}
+
+fn hole_ladder_features(l: LengthLadder) -> List<CouponOperation> {
+  fold(ladder_rungs(l: l), init: HoleLadderAcc { index: 0, ops: [] }, f: fn(acc, rung) {
+    HoleLadderAcc {
+      index: acc.index + 1,
+      ops: concat(acc.ops, [OpThroughHole {
+        diameter: rung,
+        center_x: micrometer(count: micrometer_count(m: hole_ladder_margin) + acc.index * micrometer_count(m: hole_ladder_pitch)),
+        center_y: micrometer(count: 9000),
+      }])
+    }
+  }).ops
+}
+
+// THE ORIENTATION DATUM. One extra through-hole whose position makes a 180-degree reading of the
+// coupon inconsistent with the geometry, so a measurer can tell which end is 3.00 mm by looking.
+//
+// EVERY NUMBER HERE IS DERIVED, and the one that matters most is the x. The datum sits at the SAME x
+// AS RUNG ZERO, so the physical relation it asserts is "this is the ordinal-zero end" and not the
+// weaker "there is a hole somewhere off centre". A datum that only proved the coupon was asymmetric
+// would still leave a measurer guessing which asymmetry meant which end.
+//
+// IT READS `hole_ladder_margin`, THE SAME ROW THE LADDER FOLD READS, and that is shared authority
+// rather than the second-derivation defect this module has already paid for once. The fold's term
+// for rung i is `margin + i * pitch`; at i = 0 that is `margin` itself, so there is one row and two
+// readers, not two computations of one law. The dangerous shape was recomputing the LADDER law --
+// base + i * step -- beside ladder_rungs, where the two could drift while both looked derived.
+//
+// An earlier cut of this function read rung zero's x back off the built feature list instead, to
+// make the correspondence structural. That was worse, and the substrate said so: `.first()` returns
+// an option, so it forced an `Absent` arm for a ladder that cannot be empty -- and the arm I wrote
+// fabricated a plausible datum at the margin. That is the absorbing fallback in miniature: an
+// unreachable branch answering with an invented value instead of refusing, sitting inside the one
+// function whose output the whole orientation guarantee rests on. Reading the shared row has no
+// unreachable branch to fabricate in.
+//
+// The correspondence is therefore asserted by a witness rather than by construction, and that is a
+// real if small step down the ladder: it is mechanically preventable, not structurally impossible.
+// The trigger that would close it is a ladder carrying its rung-zero origin as a value the datum can
+// take directly, which is a change to LengthLadder rather than to this function.
+//
+// Its DIAMETER is the ladder base rather than a fresh calibration number, because a diameter nobody
+// derived is a coincidence waiting to drift and the base is already the value this end is named for.
+//
+// Its y is off the ladder centre-line by construction. The rungs sit at y = 9000 and the widest is
+// 4000 across, so the ladder band is [7000, 11000]; the datum at y = 4000 with the base diameter
+// occupies [2500, 5500], which clears the band by 1500 um and the plate edge by 2500 um. Those two
+// clearances are asserted by witnesses rather than eyeballed here, because a clearance stated in an
+// annotation is a clearance nothing checks.
+data hole_ladder_datum_center_y: Micrometer = micrometer(count: 4000)
+
+fn hole_ladder_orientation_datum(l: LengthLadder) -> CouponOperation {
+  OpThroughHole {
+    diameter: ladder_base(l: l),
+    center_x: hole_ladder_margin,
+    center_y: hole_ladder_datum_center_y,
+  }
+}
+
+// The specimen's LADDER hole diameters, projected back out so a consumer can check that the geometry
+// and the ladder agree WITHOUT trusting this module's claim that they do. This is what the contract
+// layer must compare against — not ladder_rungs, which is the law rather than the artifact.
+//
+// IT READS `ladder_holes` AND NOTHING ELSE, and the rename from `specimen_hole_diameters` is the
+// point rather than tidying. The datum is a through-hole of exactly the base diameter, so a
+// projection over "the specimen's holes" would have silently returned twelve diameters beginning
+// 3.00, 3.00 -- turning the eleven-rung count into twelve, shifting every ordinal by one, and making
+// the first-divergent-rung comparison report position 1 for a fault at position 0. Every one of those
+// failures is silent and lands in the measurement the coupon exists to produce.
+fn specimen_ladder_hole_diameters(s: CouponSpecimen) -> List<Micrometer> {
+  fold(s.geometry.ladder_holes, init: [], f: fn(acc, op) {
+    match op {
+      OpThroughHole { diameter: d, center_x: _, center_y: _ } => concat(acc, [d])
+    }
+  })
+}
+
+// THE GENERIC MINT IS GONE AND THIS IS THE ONLY ONE. `coupon_specimen(id, revision, plate, features)`
+// had exactly one caller -- this function -- and every argument it accepted was a way to build a
+// specimen whose identity disagreed with its geometry. Deleting it costs nothing and removes the
+// whole class: a specimen can now only be produced by a function that derives its geometry from the
+// declaration it names.
+fn hole_ladder_specimen(l: LengthLadder) -> CouponSpecimen {
+  CouponSpecimen {
+    identity: HoleDiameterLadderR1 {},
+    geometry: HoleDiameterCouponGeometry {
+      plate: PlateDimensions {
+        size_x: hole_ladder_plate_width(l: l),
+        size_y: hole_ladder_plate_depth,
+        size_z: hole_ladder_plate_thickness,
+      },
+      orientation_datum: hole_ladder_orientation_datum(l: l),
+      ladder_holes: hole_ladder_features(l: l),
+    },
+  }
+}
+// MICROMETRES TO MILLIMETRES ROUNDS UP, AND THE DIRECTION IS THE WHOLE SAFETY ARGUMENT.
+//
+// The build envelope is stated in whole millimetres and the coupon is drawn in micrometres, so the
+// fit question needs a conversion. Truncating is the arithmetic default and is WRONG HERE: a part
+// 180_500 um across truncates to 180 mm, compares equal to a 180 mm envelope, and is reported as
+// fitting when it physically does not. The error is silent, it is in the unsafe direction, and it
+// appears only as a failed print.
+//
+// Rounding up cannot make that mistake. It can only ever over-state the part, so it may refuse a
+// part that would in fact have squeezed in — a wasted refusal, which is recoverable by measuring,
+// where a wasted print is not. This is the ordinary fail-closed asymmetry: the conservative
+// direction is the one whose error is visible.
+fn micrometer_to_millimeter_ceiling(m: Micrometer) -> Millimeter {
+  millimeter(count: (micrometer_count(m: m) + 999) / 1000)
+}
+
+// A specimen's printed extent is its plate's. Features are cut INTO the plate — a through-hole
+// removes material and a datum mark is engraved — so none of them can enlarge the bounding box.
+// That is a property of the closed v0 operation population, not a general truth, and it stops being
+// true the moment v0 admits an operation that adds material outside the plate. Whichever change
+// introduces such an operation owes this function a real bounding-box fold.
+fn specimen_extent(s: CouponSpecimen) -> PartExtent {
+  part_extent(
+    x: micrometer_to_millimeter_ceiling(m: s.geometry.plate.size_x),
+    y: micrometer_to_millimeter_ceiling(m: s.geometry.plate.size_y),
+    z: micrometer_to_millimeter_ceiling(m: s.geometry.plate.size_z)
+  )
+}
+
+fn specimen_fits(envelope: BuildEnvelope, s: CouponSpecimen) -> EnvelopeFit {
+  envelope_fit(envelope: envelope, part: specimen_extent(s: s))
+}

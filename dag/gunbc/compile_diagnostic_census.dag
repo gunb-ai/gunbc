@@ -1,0 +1,230 @@
+module gunbc.compile_diagnostic_census
+
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Map }
+import std.optional { Absent, Present }
+import std.algebra { empty_map, map_insert, map_lookup, map_support_keys }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE PROBE OBSERVATION SURFACE for the v1 compile path (roadmap node ladder-probe-corpus; gap
+// analysis sec 12 Stage 1a). The probe corpus must observe WHICH judgment a synthetic source
+// provoked, not merely that something refused: the Stage-0 receipt vocabulary
+// gunbc.guarantee_measurement carries RefusedTyped {diagnostic_class, count} and AcceptedCounted
+// {diagnostic_class, count}, and neither is inhabitable from a Bool. Before this surface the only
+// .dag-callable v1 compile was compile_dag_rust_emit_check, which counts diagnostics passing
+// compile_clean_diagnostic_is_hard and returns false when nonzero - so class identity, severity,
+// and every advisory were discarded inside the host. Three costs, each measured on the tests this
+// corpus migrates: a probe refusing for ANY hard reason (including a typo in the probe source)
+// reads as the wall firing; demoting a landed wall from blocking to advisory turns its RED silently
+// GREEN, because the filter IS the severity predicate; and a positive control cannot state
+// zero-diagnostics-of-ANY-severity, the assertion codex review 45357 added after an advisory
+// MethodExistenceUndecided passed unnoticed as a green control. MEASUREMENT ONLY: no arm here
+// judges acceptance. The rows carry what the compile decided, severity included AS DATA, and
+// callers filter.
+
+// SECTION 3 - this is a PROJECTION, not a second diagnostic vocabulary. diagnostic_class is exactly
+// the class half of the host's compile_clean_diagnostic_histogram_key, whose total match over
+// v1.std.core CompilerDiagnostic is the single authority for naming a variant; subject_name is that
+// key's name half. Redeclaring the variants here as a coproduct would fork the authority and drift
+// the moment a variant lands, so the class arrives as a projected string and the compiler's own
+// exhaustiveness keeps it total. blocking is likewise projected: the host reads it through the
+// existing compile_clean_diagnostic_is_hard delegation to is_interpreter_blocking_diagnostic, so
+// the severity POLICY has one home and this surface reports its verdict rather than re-deciding it.
+
+// THE ONE PATH THIS SURFACE MEASURES, stated so a receipt cannot claim coverage it does not have
+// (DESIGN 4b: a class's rung is the MINIMUM across its in-scope paths; citing the strongest path
+// while another stays silent is inflation). The census compiles a synthetic single-module source
+// through the v1 pipeline to the Rust render target - the same pipeline family
+// compile_dag_rust_emit_check uses - WITH type_ref_hit_ne_bind_measure_active armed for that nested
+// compile only (N1a; host bracket v1_rt::with_type_ref_hit_ne_bind_measure). That is a real path
+// split on masked type-reference sites: census can emit blocking UnresolvedType for pool-present
+// non-authority refs while compile_dag_rust_emit_check (measure off) stays on the production
+// fail-open / UnlistedImportUse advisory path. Census-derived receipts must not be read as
+// production compile-clean behavior for those positions (review 47457). In GuaranteePath axes that
+// is subject_grain SyntheticProgram and acceptance_boundary CompileAccept. The pipeline is v1,
+// stated as a fact about this surface rather than a path axis: compile_mode was deleted from the
+// path row (gunbc#7572, review 46308) because every landed control derives its pipeline from its
+// boundary, so storing it was dual representation. If a path is ever measured under two pipelines
+// at ONE boundary, that is the trigger returning the axis as a stored fact - not a reason to keep
+// a copy here meanwhile. It observes NOTHING about the interpreter's disposition of the same
+// program, other emission targets, or corpus-grain prevalence. A probe row keyed to a path this
+// surface does not measure must not carry a receipt derived from it.
+
+// CensusNotRunnable is a separate arm and NOT an empty row list, because an empty census is
+// byte-identical to a clean compile (DESIGN 5: top-as-answer conflated with top-as-ignorance is
+// the absorbing fallback). Could-not-measure must never read as the subject passing: the probe
+// layer maps this arm to guarantee_measurement ProbeObservation ProbeNotRunnable, whose
+// observed_is_verdict is false, without guessing precisely because the separation is preserved at
+// the host seam rather than reconstructed downstream. An infrastructural failure of the compile
+// itself - a harness error, an unreadable module index, a panic caught at the boundary - lands
+// here with its cause, never as a green census.
+
+data compile_diagnostic_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on for the HAND-RUST OBSERVATION SURFACE behind this vocabulary - cli_run compile_dag_diagnostic_census (the host census fold) and v1_interpreter compile_diagnostic_census_value (the substrate projection), together with the v1.compiler.infer_method builtin_function_registry row that types it. The registry row's own trigger is its sibling's, the PrimitiveDefinition identity join; THIS row covers the Rust surface itself, which that trigger does not reach. TRIGGER, one and checkable: the roadmap row v1-zero-hand-maintained-rust, the v1-exit lane's fourth finish line. Its acceptance condition is that no hand-maintained Rust remains in the seed, so this surface is gone when that row is accepted and still owed while it is not - a state readable from the roadmap authority rather than from anyone's judgment about how far v2 has got. An earlier cut of this row offered two open-ended alternatives instead - v2 self-hosting the pipeline 'far enough' that a probe could read modeled diagnostics, or a floor-enrolled diagnostic lens subsuming the projection - and named no row; neither was evaluable, and a trigger nobody can evaluate is indistinguishable from no trigger, which is exactly the untracked-stall shape DESIGN 4b forbids (codex review 46264). EARLIER REMOVAL IS PERMITTED AND EXPECTED, but it is not the trigger: if a diagnostic lens subsumes this projection, or v2 self-hosts the pipeline far enough to read modeled diagnostics directly, this surface should go then. A scaffold may always dissolve early; what a trigger fixes is the point by which it MUST be gone, and stating the early paths as alternatives was what made the obligation unfalsifiable. It does NOT dissolve merely because the registry is replaced: the projection is the scaffold, the registry row is only its type declaration. WHY IT IS A SCAFFOLD AND NOT A PERMANENT SURFACE: everything it computes already exists inside the compiler - compile_clean_diagnostic_histogram_key names the variant and compile_clean_diagnostic_is_hard decides severity - so this adds NO judgment, only a substrate-visible projection of judgments the compiler already made. That is precisely the shape that dissolves when the substrate can read them directly. Receipt while it stands: the surface has exactly one class of consumer, the guarantee probe corpus, and its executing evidence is dag/test/claim/compile_diagnostic_census_witness.dag.")
+
+data compile_diagnostic_census_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.compile_diagnostic_census",
+    decl_name: "compile_diagnostic_census_hand_rust_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}
+
+type CompileDiagnosticCensusRow {
+  diagnostic_class: NonEmptyStr
+  subject_name: String
+  blocking: Bool
+  count: Int
+}
+
+// THE ROW SET IS THE WHOLE COMPILE'S, NOT THE PROBED SOURCE'S. CensusObserved carries every
+// diagnostic that compile produced, the imported modules and their closure included, so a census
+// taken of a fixture that imports any production module carries that closure's rows - blocking ones
+// among them - and a CensusObserved is not evidence that the fixture itself compiled clean. A
+// witness reading census_total_count == 0 as "the fixture still compiles" is asserting a property of
+// the corpus, and on any importing fixture that assertion is permanently false: a check whose RED is
+// unauthorable, which DESIGN 4b names a decoration rather than a weak wall. Two forms ARE exact
+// here: a count scoped to a class AND subject_name, and a DIFFERENTIAL between two censuses whose
+// sources differ on one axis, where the shared closure cancels. Receipt for both:
+// test.claim.machine_intake.no_fallback_plan_ineligibility_wall.
+type CompileDiagnosticCensus
+  = CensusObserved { rows: List<CompileDiagnosticCensusRow> }
+  | CensusNotRunnable { cause: NonEmptyStr }
+
+// Pure reads over ROWS, never over the census. The selectors take List<CompileDiagnosticCensusRow>,
+// so the only way to obtain rows is to MATCH the coproduct - which makes reading a row list out of
+// a CensusNotRunnable structurally unwritable rather than warned against. An earlier cut exported
+// census_rows(c: CompileDiagnosticCensus) answering [] on the NotRunnable arm, with a prose caution
+// not to read a zero out of it. That was the fail-open this module exists to prevent, one layer up
+// in its own API: could-not-measure and observed-nothing became the same empty list at the export
+// boundary, and a prose warning is validation standing where construction was available (DESIGN 5;
+// caught by codex review 46144). The caution deleted WITH the accessor - a warning about a state
+// that can no longer be written is dead text. None of these decides acceptance: blocking and
+// advisory partition the SAME rows by the severity the host already reported, and
+// census_total_count sums counts rather than rows so a class occurring twice is two occurrences.
+
+fn census_blocking_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.blocking)
+}
+
+fn census_advisory_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => !r.blocking)
+}
+
+fn census_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => (r.diagnostic_class as String) == wanted)
+}
+
+fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
+  fold(rows, init: 0, f: (acc, r) => acc + r.count)
+}
+
+// THE KEYED COMPARATOR, HOMED HERE BECAUSE THE RULE ABOVE IS THIS MODULE'S.
+//
+// The annotation on CompileDiagnosticCensus names the two exact forms -- a count scoped to a class
+// AND subject_name, and a differential between two censuses whose sources differ on one axis -- and
+// cites test.claim.machine_intake.no_fallback_plan_ineligibility_wall as the receipt. That
+// receipt then had to implement the comparator itself, and the next battery that needed one
+// implemented it AGAIN and got it wrong in a way the first had already got right: it counted ROW
+// ENTRIES rather than summing r.count, so a red row with count 2 and a green row with count 1 at one
+// key cancelled, which is the exact multiplicity blindness the keyed form exists to remove. Two
+// implementations of one fact drifted apart on their second instance (DESIGN 3). Naming a receipt as
+// the authority for a form does not make the form reusable; the function does, and its home is the
+// module that owns the rule rather than any battery that consumes it.
+//
+// COUNTS ARE SUMMED, NEVER TALLIED AS ROWS. census_count_at_key delegates to census_total_count for
+// exactly the reason stated above it: a class occurring twice is two occurrences.
+//
+// THE NAME IS DELIBERATELY NOT THE ONE IT REPLACES. The receipt this was lifted out of called its
+// local copy census_key_count, and homing it under that same spelling would have REBOUND a name
+// already authored on both sides -- which the wave-admission wall, while it stood, classified as
+// TargetChanged and refused until admitted, correctly: a spelling that keeps its text and changes
+// which declaration it admits is invisible to a reader of either side alone. (The wall was deleted
+// by operator ruling 2026-09-19; the invisibility it policed is a fact about readers, not about
+// the gate.) A fresh spelling makes the move a deletion
+// and an addition rather than a silent rebind, which is what it actually is.
+fn census_count_at_key(
+  rows: List<CompileDiagnosticCensusRow>,
+  diagnostic_class: String,
+  subject_name: String,
+  blocking: Bool
+) -> Int {
+  census_total_count(
+    rows: rows
+      |> filter(r =>
+        (r.diagnostic_class as String) == diagnostic_class
+          && r.subject_name == subject_name
+          && r.blocking == blocking
+      )
+  )
+}
+
+// THE HISTOGRAM IS BUILT ONCE, AS AN INDEXED POPULATION. A census is compared as a Map from
+// (class, subject, blocking) to the SUMMED count at that key, one fold per row list, so a comparison
+// costs O(n) indexed map operations (O(n log n) total under the persistent-map realization std.algebra
+// Map currently has) rather than a re-filter of the whole list per row. Every comparator below reads
+// this one form: equality of two censuses and the one-key differential are the same walk over the
+// union of keys, and a key present on one side only is as visible as one present on both.
+type CensusKey {
+  diagnostic_class: String
+  subject_name: String
+  blocking: Bool
+}
+
+fn census_key_of(r: CompileDiagnosticCensusRow) -> CensusKey {
+  CensusKey { diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking }
+}
+
+fn census_histogram_count(h: Map<CensusKey, Int>, key: CensusKey) -> Int {
+  match map_lookup(m: h, key: key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn census_histogram(rows: List<CompileDiagnosticCensusRow>) -> Map<CensusKey, Int> {
+  let seed: Map<CensusKey, Int> = empty_map()
+  fold(rows, init: seed, f: (acc, r) => map_insert(m: acc, key: census_key_of(r: r), value: census_histogram_count(h: acc, key: census_key_of(r: r)) + r.count))
+}
+
+// Whether every key of `left` carries, in `right`, the count `expected(key)` away from its own.
+fn census_histogram_keys_all_offset(
+  left: Map<CensusKey, Int>,
+  right: Map<CensusKey, Int>,
+  offset: fn(CensusKey) -> Int
+) -> Bool {
+  map_support_keys(m: left) |> all(k => census_histogram_count(h: left, key: k) - census_histogram_count(h: right, key: k) == offset(k))
+}
+
+// EXACT EQUALITY OF TWO CENSUSES, key by key in BOTH directions. A total can hide an offsetting pair
+// (one diagnostic gone, another arrived); ranging over both key sets makes the union the domain.
+fn census_histograms_equal(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
+  let ha = census_histogram(rows: a)
+  let hb = census_histogram(rows: b)
+  census_histogram_keys_all_offset(left: ha, right: hb, offset: k => 0)
+    && census_histogram_keys_all_offset(left: hb, right: ha, offset: k => 0)
+}
+
+fn census_blocking_histograms_equal(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
+  census_histograms_equal(a: census_blocking_rows(rows: a), b: census_blocking_rows(rows: b))
+}
+
+// The red side exceeds the green by exactly one occurrence at the target key (class and subject,
+// blocking) and agrees at every other key of either side. The target is asserted separately from the
+// walk, so this still refuses when the target is absent from both sides -- a comparator that passes
+// on two identical censuses would establish nothing.
+fn censuses_differ_by_exactly_the_target_key(
+  red: List<CompileDiagnosticCensusRow>,
+  green: List<CompileDiagnosticCensusRow>,
+  target_class: String,
+  target_subject: String
+) -> Bool {
+  let hr = census_histogram(rows: red)
+  let hg = census_histogram(rows: green)
+  let target = CensusKey { diagnostic_class: target_class, subject_name: target_subject, blocking: true }
+  ((census_histogram_count(h: hr, key: target) - census_histogram_count(h: hg, key: target)) == 1)
+    && census_histogram_keys_all_offset(left: hr, right: hg, offset: k => if k == target { 1 } else { 0 })
+    && census_histogram_keys_all_offset(left: hg, right: hr, offset: k => if k == target { -1 } else { 0 })
+}

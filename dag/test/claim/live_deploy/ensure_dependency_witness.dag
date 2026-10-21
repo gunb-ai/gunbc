@@ -1,0 +1,456 @@
+module test.claim.live_deploy.ensure_dependency_witness
+
+// THE WITNESS FOR THE TYPED live_deploy ensure-dependency route (site:
+// realize_live_deploy_ensure_dependency_on_host). Precedent shape:
+// shell_dag_compile_pool_slice_install_witness -- pure folds and a pure plan builder that execute
+// NOTHING, so a refusal (which never started a process) can never be dressed up as an
+// observation, and an observation-shaped verdict can only come from an observed arm; one claim
+// through the REAL entry point over a transport that fails closed, so the entry is proved wired
+// and total over both subject arms; and an argv-shape claim over the plan, which is what replaced
+// the retired deployment_ensure_dependency_script.
+//
+// THE BOUNDARY VALUES ARE SUPPLIED, per DESIGN §3's witness rule: each fold's
+// RunArgvTransportOutcome arguments, the marker spec, the scratch directory, and the transport are
+// given at this interface -- deriving the folds' inputs by executing the legs would re-run
+// production the fold claims are not about. The inhabitance claim at the foot is what turns them
+// into a reading of the route: it dispatches through host_effect_apply itself, so an unwired fold
+// keeps every fold claim green while it reddens there.
+
+import std.types { Bool, String, Int }
+import std.optional { Optional, Present, Absent }
+import std.realization_reconcile { Converged, NotConverged }
+import gunbc.host.host_effect {
+  HostEffect,
+  HostEffectIntent,
+  HostEffectTransport,
+  HostOs,
+  LocalShell,
+  FleetSsh,
+  LiveDeployEnsureDependency,
+  ShellEffectApplied,
+  host_effect_identity_evidence,
+}
+import gunbc.host.host_effect_realize {
+  host_effect_apply,
+  live_deploy_ensure_package_fold,
+  live_deploy_ensure_ownership_marker_fold,
+  live_deploy_ensure_ownership_marker_plan,
+  live_deploy_ensure_stage_prefix,
+  live_deploy_ensure_stage_template,
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  ShellExecObserved,
+}
+import gunbc.host_command_binding { admitted_scratch_path }
+import gunbc.live_deploy.spec { DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
+import gunbc.fabric.fabric_storage_placement {
+  FabricStorageOwnershipMarkerSpec,
+  fabric_storage_ownership_marker_spec,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.managed_directory { srv1_dashboard_service_principal }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.exec.command { argv_words }
+import extdeps.package_managers.apt {
+  package_tailscale,
+  package_tmux,
+  apt_get_install_command,
+  AptGetInstallCommandReady,
+  AptGetInstallCommandRefused,
+}
+import extdeps.package_managers.dpkg { dpkg_query_status_command }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.ssh.known_hosts { openssh_standard_port }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_intent { srv1_host }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+// THE SUPPLIED OBSERVATIONS. success derives from the exit code the same way both transport
+// runners derive it, so a supplied observation is shaped exactly like a real one.
+fn observed(exit_code: Int, stdout: String, stderr: String) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved {
+    observed: ShellExecObserved { exit_code: exit_code, success: exit_code == 0, stdout: stdout, stderr: stderr },
+  }
+}
+
+fn refused(reason: String) -> RunArgvTransportOutcome {
+  RunArgvTransportRefused { reason: reason }
+}
+
+// THE BOUNDARY VALUES ARE SUPPLIED (DESIGN §3): the two subject arms with their real production
+// payloads -- the package names the spec's dependency arm carries, and the marker spec built by
+// its upstream constructor for the srv1 dashboard instance, so the witness pins against the one
+// spelling of the marker rather than a hand-copied path that could drift from production's.
+fn tmux_dep() -> DeploymentDependencyStep {
+  DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
+}
+
+fn tailscale_dep() -> DeploymentDependencyStep {
+  DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
+}
+
+fn marker_dep() -> DeploymentDependencyStep {
+  DeploymentDependencyStep {
+    kind: FabricStorageOwnershipMarker,
+    subject: EnsuredOwnershipMarker { marker: marker_spec() },
+  }
+}
+
+fn marker_spec() -> FabricStorageOwnershipMarkerSpec {
+  fabric_storage_ownership_marker_spec(instance: srv1_live_dashboard_instance())
+}
+
+fn fold_intent(dep: DeploymentDependencyStep) -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployEnsureDependency { dep: dep },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    privilege_denial: none,
+  }
+}
+
+// THE PACKAGE FOLD, THE VERDICT ANSWERS INSTALLED. The fold decides with the dpkg module's own
+// verdict procedure -- a `Status: install ok installed` stanza converges -- reporting the fold's OWN
+// observation, the probe's exit code, stdout and stderr, while the install is supplied as
+// never-run; the distinct stdout is what proves the convergence is the probe's and not a replayed
+// or imagined install. This is the idempotence evidence the retired script's
+// `if ! dpkg -s ... then apt-get install ... fi` carried, stated where the decision now lives --
+// decided on the stanza, not the exit code (the module's own comment says exit 0 cannot answer
+// "installed": it also covers config-files leftovers).
+test fn probe_answered_installed_converges_with_the_probes_own_observation() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tmux,
+    probe: observed(exit_code: 0, stdout: "Package: tmux\nStatus: install ok installed\n", stderr: ""),
+    install: refused("must never be consulted on this path"),
+    intent: fold_intent(dep: tmux_dep()),
+  ) {
+    Converged { evidence: e } =>
+      match e {
+        ShellEffectApplied { exit_code: c, stdout: out, stderr: err } => c == 0 && string_contains(s: out, pattern: "Status: install ok installed") && err == ""
+        _ => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// THE PACKAGE FOLD, A CONFIG-FILES LEFTOVER IS NOT INSTALLED. dpkg exits 0 for a package REMOVED
+// with its configuration files kept (`Status: deinstall ok config-files`) -- exactly the case the
+// retired `if ! dpkg -s` and any exit-code read answer WRONG, silently skipping the install while
+// the dependency is missing. The verdict says not-installed, so this route does NOT converge on
+// the probe; the install arm decides (supplied refused: not run, so the route refuses).
+test fn a_config_files_leftover_exits_zero_and_is_not_read_as_installed() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tailscale,
+    probe: observed(exit_code: 0, stdout: "Package: tailscale\nStatus: deinstall ok config-files\n", stderr: ""),
+    install: refused("supplied not-run for this claim"),
+    intent: fold_intent(dep: tailscale_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "apt-get install")
+        && !string_contains(s: r, pattern: "never read as absent")
+  }
+}
+
+// THE PACKAGE FOLD, AN UNREADABLE STATE REFUSES. Exit 0 with no Status line (or a corrupt one)
+// decodes to Undecidable, and Undecidable is NEVER read as absent: absent would authorize an
+// install and nothing was established, so the route refuses, names the probe, and says the install
+// was not attempted. This is where an exit-code read would have converged silently.
+test fn an_unreadable_probe_state_refuses_and_never_authorizes_an_install() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tmux,
+    probe: observed(exit_code: 0, stdout: "Package: tmux\n", stderr: ""),
+    install: refused("must never run on this path"),
+    intent: fold_intent(dep: tmux_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "state could not be read")
+        && string_contains(s: r, pattern: "never read as absent")
+        && string_contains(s: r, pattern: "the install was not attempted")
+  }
+}
+
+// THE PACKAGE FOLD, PROBE ANSWERS NOT-INSTALLED. Any non-zero takes the install arm -- dpkg -s
+// exits 1 for unknown and non-zero for errors, and the old `if ! dpkg -s` treated every non-zero
+// alike -- and the install's own success decides, reported as the install's observation (again
+// discriminated by its distinct stdout, so "reported the install" differs from "reported the
+// probe").
+test fn probe_answered_absent_installs_and_the_install_outcome_wins() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tmux,
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tmux' is not installed and no information is available"),
+    install: observed(exit_code: 0, stdout: "installing tmux", stderr: ""),
+    intent: fold_intent(dep: tmux_dep()),
+  ) {
+    Converged { evidence: e } =>
+      match e {
+        ShellEffectApplied { exit_code: c, stdout: out, stderr: _ } => c == 0 && out == "installing tmux"
+        _ => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// THE PACKAGE FOLD, THE INSTALL FAILS. The old `|| exit` after apt-get meant non-zero stops the
+// stage; here that becomes NotConverged carrying the exit status and the stderr, never a silent
+// success.
+test fn a_failing_install_refuses_with_the_installs_status() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tailscale,
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tailscale' is not installed and no information is available"),
+    install: observed(exit_code: 100, stdout: "", stderr: "E: Unable to locate package tailscale"),
+    intent: fold_intent(dep: tailscale_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "ran its apt-get install for tailscale")
+        && string_contains(s: r, pattern: "exited 100")
+        && string_contains(s: r, pattern: "Unable to locate package tailscale")
+  }
+}
+
+// THE PACKAGE FOLD, THE INSTALL REFUSES. A refused operation never started a process, so the
+// reason carries the refusal's own words and NOT an exit status: reporting "exited" would launder
+// a non-event into an observation.
+test fn install_refusal_refuses_without_claiming_an_exit_status() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tmux,
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tmux' is not installed and no information is available"),
+    install: refused("the typed transport declined to start apt-get"),
+    intent: fold_intent(dep: tmux_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "could not run its apt-get install")
+        && string_contains(s: r, pattern: "declined to start apt-get")
+        && !string_contains(s: r, pattern: "exited")
+  }
+}
+
+// THE PACKAGE FOLD, THE PROBE REFUSES. Nothing ran, so neither leg may be reported as having run
+// and the install must be named as never attempted -- the refusal happens before both.
+test fn probe_refusal_refuses_before_either_leg_ran() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tailscale,
+    probe: refused("probe transport declined"),
+    install: refused("install transport declined"),
+    intent: fold_intent(dep: tailscale_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused before the install-state probe for package tailscale ran")
+        && string_contains(s: r, pattern: "the install was not attempted either")
+        && !string_contains(s: r, pattern: "exited")
+  }
+}
+
+// THE MARKER FOLD, NO ADMITTED SCRATCH. A refused acquisition means NOTHING ran: the reason must
+// say no leg ran and must not claim a discard, and the supplied outcomes of the later legs are
+// the not-run refusals the leg passes on this path -- if the fold ever reports them, this reddens.
+test fn unadmitted_scratch_refuses_without_claiming_any_leg_ran() -> Bool {
+  match live_deploy_ensure_ownership_marker_fold(
+    marker: marker_spec(),
+    scratch: refused("mktemp transport declined"),
+    written: refused("must never be consulted"),
+    installed: refused("must never be consulted"),
+    discarded: refused("must never be consulted"),
+    intent: fold_intent(dep: marker_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused at scratch acquisition before any leg ran")
+        && string_contains(s: r, pattern: "no marker was staged, installed, or discarded")
+  }
+}
+
+// THE MARKER FOLD, A PATH OUTSIDE THE PREFIX. mktemp can answer 0 with a directory that is not
+// under the route's prefix (an ignored template, a substituted TMPDIR); admitted_scratch_path's
+// refusal must gate every leg, with the same no-leg-ran wording -- this is the fold's admission
+// standard, checked against the validator's own answer below.
+test fn an_unprefixable_scratch_answer_gates_every_leg() -> Bool {
+  match live_deploy_ensure_ownership_marker_fold(
+    marker: marker_spec(),
+    scratch: observed(exit_code: 0, stdout: "/var/tmp/somewhere-else\n", stderr: ""),
+    written: refused("must never be consulted"),
+    installed: refused("must never be consulted"),
+    discarded: refused("must never be consulted"),
+    intent: fold_intent(dep: marker_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused at scratch acquisition")
+        && string_contains(s: r, pattern: "this route will not admit")
+        && !string_contains(s: r, pattern: "exited")
+  }
+}
+
+// THE SCRATCH VALIDATOR, SUPPLIED. admitted_scratch_path is the house validator the route reuses
+// unchanged; this pins its two boundary answers against the route's own prefix -- a well-formed
+// path under it admits (trimmed of the trailing newline mktemp prints), a path outside it does
+// not. The prefix and template are the route's data: same prefix, X tail, so mktemp(1) has
+// something to make unique and a stray scratch directory is attributable to this route.
+test fn the_scratch_answer_is_validated_against_the_routes_prefix() -> Bool {
+  admitted_scratch_path(prefix: live_deploy_ensure_stage_prefix, stdout: "/tmp/gunbc-live-deploy-ensure-AAAABBBB\n")
+    == Present { value: "/tmp/gunbc-live-deploy-ensure-AAAABBBB" }
+    && admitted_scratch_path(prefix: live_deploy_ensure_stage_prefix, stdout: "/tmp/somebody-elses-dir\n") == none
+    && starts_with(s: live_deploy_ensure_stage_template as String, prefix: live_deploy_ensure_stage_prefix)
+    && ends_with(s: live_deploy_ensure_stage_template as String, suffix: "XXXXXXXXXX")
+}
+
+// THE MARKER FOLD KEEPS ITS DISCARD VISIBLE. When the staged write fails, the leg has already run
+// the discard before reporting (the compile-pool fold's cleanup-before-report discipline); the
+// fold's reason must carry BOTH the failed write and the discard's own outcome, so a scratch
+// directory that survived a failed cleanup is visible in the refusal instead of silently leaked.
+// This is the retired script's unconditional EXIT-trap `rm -rf`, without the trap.
+test fn a_failed_cleanup_survives_into_the_refusal() -> Bool {
+  match live_deploy_ensure_ownership_marker_fold(
+    marker: marker_spec(),
+    scratch: observed(exit_code: 0, stdout: "/tmp/gunbc-live-deploy-ensure-AAAABBBB", stderr: ""),
+    written: observed(exit_code: 1, stdout: "", stderr: "dd: no space left on device"),
+    installed: refused("not attempted: the staged write failed"),
+    discarded: observed(exit_code: 1, stdout: "", stderr: "rm: cannot remove"),
+    intent: fold_intent(dep: marker_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "ran its stage write for")
+        && string_contains(s: r, pattern: "no space left on device")
+        && string_contains(s: r, pattern: "the scratch discard exited 1")
+  }
+}
+
+// THE MARKER FOLD, ALL LEGS SUCCEED. Convergence reports the marker's path and the discard's
+// outcome -- the success receipt says WHERE the marker went and that the scratch is gone, so a
+// converged route can be audited from its evidence alone.
+test fn the_success_receipt_names_the_marker_and_the_discard() -> Bool {
+  match live_deploy_ensure_ownership_marker_fold(
+    marker: marker_spec(),
+    scratch: observed(exit_code: 0, stdout: "/tmp/gunbc-live-deploy-ensure-AAAABBBB", stderr: ""),
+    written: observed(exit_code: 0, stdout: "", stderr: ""),
+    installed: observed(exit_code: 0, stdout: "", stderr: ""),
+    discarded: observed(exit_code: 0, stdout: "", stderr: ""),
+    intent: fold_intent(dep: marker_dep()),
+  ) {
+    Converged { evidence: e } =>
+      match e {
+        ShellEffectApplied { exit_code: c, stdout: out, stderr: _ } =>
+          c == 0
+            && string_contains(s: out, pattern: "marker installed at ")
+            && string_contains(s: out, pattern: marker_spec().path as String)
+            && string_contains(s: out, pattern: "the scratch directory was discarded")
+        _ => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// THE ROUTE'S WHOLE ARGV SURFACE, AS THE LEG BUILDS IT -- the claim the retired builder's
+// string_contains test used to be, moved onto the pure plan the leg actually runs (the
+// compile-pool staging precedent). Pins, per argv position: the staged write is dd over a path
+// UNDER the admitted scratch directory, payload on stdin by construction (no payload word appears);
+// the install is the ONLY elevated leg (sudo -n) and carries mode, owner, group, source and dest
+// as PARAMETERS of install(1) -- the mode as the octal text of the marker's declared FileMode
+// (0644 from fabric_storage_ownership_marker_mode, derived by file_mode_octal rather than a
+// hand-rounded literal), the owner and group from the marker spec -- and the discard is the
+// unelevated one-file-system rm over the scratch directory itself.
+test fn the_plan_elevates_only_the_install_and_params_carry_policy() -> Bool {
+  let scratch = "/tmp/gunbc-live-deploy-ensure-AAAABBBB"
+  let marker = marker_spec()
+  let staged = "/tmp/gunbc-live-deploy-ensure-AAAABBBB/store-ownership-marker"
+  let plan = live_deploy_ensure_ownership_marker_plan(scratch_dir: scratch, marker: marker)
+  let write_words = argv_words(command: plan.stage_write)
+  let install_words = argv_words(command: plan.install)
+  let discard_words = argv_words(command: plan.discard)
+  write_words == ["dd", concat("of=", staged), "status=none"]
+    && install_words == [
+      "/usr/bin/sudo",
+      "-n",
+      "install",
+      "-m",
+      file_mode_octal(mode: marker.mode),
+      "-o",
+      marker.owner as String,
+      "-g",
+      marker.group as String,
+      staged,
+      marker.path as String,
+    ]
+    && file_mode_octal(mode: marker.mode) == "0644"
+    && discard_words == ["rm", "-rf", "--one-file-system", scratch]
+    && !string_contains(s: join(write_words, " "), pattern: marker.content as String)
+}
+
+// THE PACKAGE ARM'S TWO COMMANDS, DERIVED FROM THEIR ROWS. The probe is the dpkg module's own query
+// builder (dpkg_query_status_command, the one paired with the verdict procedure the fold reads), and
+// the install arrives through extdeps.package_managers' thin builder, which hands its row coordinates
+// to the ONE repartition -- extdeps.exec.command's operation_row_argv_command, materializing the
+// apt.PackageManager Install row through shell_materialize_operation_argv -- rather than repeating
+// any argv, or repeating the row-to-sealed-command match, anywhere. So these words exist once, in the
+// service declarations, and what this claim pins is the RESULT of that derivation at the boundary
+// values the route supplies (the two packages a live deploy asks for). The install carries NO elevation
+// word: the ensure-dependency route is the unprivileged one and `sudo -n` belongs to the marker's
+// install leg alone. A hand-rolled argv beside either row would keep a second authority alive -- and
+// so would a literal program WORD checked beside it: the builders carry no binary literal anywhere,
+// the sealed command's program identity IS the row's materialized executable token, so this pin
+// follows the row's head wherever it goes (changing the row's head changes these words; see the RED
+// evidence on the PR). The builders refuse typed -- a named cause, no process -- only when the row
+// materializes no argv or an empty executable token, and a fold claim above carries that refusal.
+test fn the_package_commands_derive_from_their_operation_rows() -> Bool {
+  match apt_get_install_command(package: package_tailscale) {
+    AptGetInstallCommandRefused { cause: _ } => false
+    AptGetInstallCommandReady { command: install } =>
+      argv_words(command: dpkg_query_status_command(package: package_tmux)) == ["dpkg-query", "-s", "tmux"]
+        && argv_words(command: install) == ["apt-get", "install", "--yes", "tailscale"]
+        && !string_contains(s: join(argv_words(command: install), " "), pattern: "sudo")
+  }
+}
+
+// THE ROUTE THROUGH ITS REAL ENTRY POINT, over both subject arms, on the transport the host-effect
+// seam fails closed on. THE CONTRAST IS WHAT DISCRIMINATES: pre-dissolve, the same entry point
+// shipped this route's script through realize_shell_on_host, whose FleetSsh arm refuses with "This
+// carrier is a shell script BODY"; the dissolved route builds typed argv, whose arm refuses with
+// "The command is typed argv" instead. So the claim asserts BOTH halves: it carries the argv
+// carrier's words and not the script carrier's. An unwired arm (a site that still called the
+// script, or was deleted) reddens this while no fold or plan claim above moves -- and the second
+// subject arm reddens on its own if the match over dep.subject loses a case.
+test fn both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body() -> Bool {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => false
+    Present { value: context } => {
+      let transport = FleetSsh {
+        target: witness_ssh_target(),
+        context: context,
+      }
+      argv_carrier_refusal(effect: LiveDeployEnsureDependency { dep: tmux_dep() }, transport: transport)
+        && argv_carrier_refusal(effect: LiveDeployEnsureDependency { dep: marker_dep() }, transport: transport)
+    }
+  }
+}
+
+fn argv_carrier_refusal(effect: HostEffect, transport: HostEffectTransport) -> Bool {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: effect,
+    evidence: host_effect_identity_evidence,
+    transport: transport
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "The command is typed argv")
+        && !string_contains(s: r, pattern: "This carrier is a shell script BODY")
+  }
+}
+
+fn witness_ssh_target() -> SshTarget {
+  SshTarget {
+    address: socket_address(
+      host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: 7)),
+      port: openssh_standard_port,
+    ),
+    principal: srv1_dashboard_service_principal().name,
+  }
+}

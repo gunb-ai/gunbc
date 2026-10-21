@@ -1,0 +1,206 @@
+module test.claim.operator_endpoint_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, operator_models_url, operator_chat_completions_url, operator_health_url,
+  operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
+  OperatorClassAdmitted, OperatorClassRefused,
+  OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
+}
+import gunbc.harness.harness_backend {
+  harness_operator_roster_step, harness_roster_of, HarnessRosterFold, HarnessBackendRoster,
+  HarnessBackendServing, HarnessBackendModelNotAdmitted,
+  HarnessRosterServing, HarnessRosterNoneServing, HarnessBackendUnreachable, HarnessBackendUnreadable,
+}
+import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat }
+import gunbc.harness.harness_turn { harness_backend_header_file }
+import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
+import gunbc.harness.harness_reasoning_wire {
+  Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  harness_unit_model_id, harness_unit_reasoning_field,
+}
+import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
+
+// SUPPLIED READINGS ONLY. The /health and /v1/models bodies below are values handed to the pure standing and
+// roster folds; the live probe (harness_observe_operator_reading) is effectful and its live reading is the
+// parent's, not a thing this file asserts. The tool-call and reasoning wire of ninfer-serve is deliberately not
+// asserted here beyond the one observed member name the reasoning-wire row declares.
+//
+// INHABITANCE FRONTIER: no claim here executes the real shell probe, so the pairing obligation (§3) for the
+// probe is owed to a live run on srv1 (the parent's roster gate), not discharged by this file.
+
+fn w_empty_fold() -> HarnessRosterFold {
+  HarnessRosterFold { serving: [], declined: [], unresolved: [] }
+}
+
+fn w_models_body(id: String) -> String {
+  join(["{\"data\":[{\"id\":\"", id, "\",\"max_model_len\":262144,\"owned_by\":\"ninfer\"}]}"], "")
+}
+
+fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
+  harness_roster_of(folded: harness_operator_roster_step(acc: w_empty_fold(), route: harness_operator_route, standing: operator_route_standing(route: harness_operator_route, reading: reading)))
+}
+
+// ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
+test fn the_roster_sees_the_operator_route_when_models_answers_with_its_model() -> Bool {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen") }) {
+    HarnessRosterServing { serving: s, declined: d, unresolved: _ } =>
+      count(s) == 1 && count(d) == 0
+    HarnessRosterNoneServing { declined: _, unresolved: _ } => false
+  }
+}
+
+// ── 2. A DEAD TUNNEL REFUSES TYPED, A REJECTED KEY IS NOT A DEAD TUNNEL ────────────────────────
+test fn an_unanswered_health_probe_reads_unreachable_and_leaves_none_serving() -> Bool {
+  match w_roster_after(reading: OperatorHealthUnanswered { url: "http://127.0.0.1:18090/health" }) {
+    HarnessRosterNoneServing { declined: d, unresolved: _ } =>
+      count(d) == 1 && fold(d, init: false, f: (hit, x) => hit || (match x.standing {
+        HarnessBackendUnreachable { url: _ } => true
+        HarnessBackendUnreadable { cause: _ } => false
+        HarnessBackendModelNotAdmitted { advertised: _ } => false
+        HarnessBackendServing { model: _, unit: _, readback: _ } => false
+      }))
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } => false
+  }
+}
+
+test fn a_healthy_server_that_refuses_the_authorised_list_reads_unreadable_not_unreachable() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "http://127.0.0.1:18090/v1/models" }) {
+    OperatorRouteUnreadable { cause: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
+}
+
+test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_advertises() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "something-else") }) {
+    OperatorRouteModelNotAdmitted { advertised: a } => a == "something-else"
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+    OperatorRouteUnreadable { cause: _ } => false
+  }
+}
+
+test fn an_unparseable_models_body_reads_unreadable() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "not json" }) {
+    OperatorRouteUnreadable { cause: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
+}
+
+// ── 3. THE REQUEST CARRIES THE BEARER HEADER FROM THE FILE'S TEXT, NEVER INLINED ───────────────
+test fn the_header_line_is_bearer_plus_the_trimmed_key_text() -> Bool {
+  match operator_header_line_from_key_text(text: "k-123\n") {
+    Present { value: l } => (l as String) == "Authorization: Bearer k-123\n"
+    Absent => false
+  }
+}
+
+test fn an_empty_credential_file_is_refused_not_sent_as_an_empty_bearer() -> Bool {
+  match operator_header_line_from_key_text(text: "\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_has_none() -> Bool {
+  let hf = "/tmp/hdr/authorization" as NonEmptyStr
+  (match harness_backend_header_file(access: BackendAdmittedByOperatorEndpoint { header_file: hf }) {
+    Present { value: f } => (f as String) == "/tmp/hdr/authorization"
+    Absent => false
+  }) && (match harness_backend_header_file(access: BackendAdmittedBySeat) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+// ── 4. ANY ADMITTED MODEL PLACES ON THE OPERATOR ROUTE (the operator's 2026-10-11 ruling) ──────
+test fn any_admitted_model_places_on_the_operator_endpoint_not_a_fleet_seat() -> Bool {
+  match harness_requirement_placement(requirement: AnyAdmittedModel, class: BatchQualityTolerant) {
+    RunOnOperatorEndpoint => true
+    PlacedOnFleetSeat => false
+    LeasedFromHostedQuota => false
+  }
+}
+
+test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
+  match harness_requirement_placement(requirement: AnyAdmittedModel, class: InteractiveQualitySensitive) {
+    PlacedOnFleetSeat => true
+    RunOnOperatorEndpoint => false
+    LeasedFromHostedQuota => false
+  }
+}
+
+// ── 5. THE QUALITY FLOOR IS NOT SILENT ──────────────────────────────────────────────────────────
+test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admits_batch() -> Bool {
+  (match operator_class_admission(route: harness_operator_route, class: InteractiveQualitySensitive) {
+    OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "27B")
+    OperatorClassAdmitted => false
+  }) && (match operator_class_admission(route: harness_operator_route, class: BatchQualityTolerant) {
+    OperatorClassAdmitted => true
+    OperatorClassRefused { detail: _ } => false
+  })
+}
+
+// ── 6. THE ROUTE'S DECLARED FACTS ───────────────────────────────────────────────────────────────
+test fn the_route_urls_are_the_tunnel_origin_plus_ninfers_declared_paths() -> Bool {
+  (match operator_models_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/v1/models"  Absent => false })
+    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/v1/chat/completions"  Absent => false })
+    && (match operator_health_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/health"  Absent => false })
+}
+
+test fn the_route_carries_the_servers_concurrency_ceiling_and_the_served_model_id() -> Bool {
+  harness_operator_route.concurrency_ceiling == 8
+    && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == "qwen"
+}
+
+test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_read() -> Bool {
+  (match harness_reasoning_kwargs_for(unit: Qwen3_8_27bOnNinfer, level: ReasoningOff) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => true
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  }) && (match harness_reasoning_kwargs_for(unit: Qwen3_8_27bOnNinfer, level: ReasoningMaximum) {
+    ReasoningKwargsAdmitted { kwargs: _ } => true
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+  })
+}
+
+test fn a_non_200_health_reading_is_unhealthy_server_not_a_rejected_key() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorHealthUnhealthy { url: "http://127.0.0.1:18090/health", status: "503" }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "503") && !string_contains(s: c, pattern: "key may be rejected")
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
+}
+
+test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
+    OperatorRouteUnreadable { cause: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
+}
+
+// ── 7. THE CARD'S ninfer, AS OBSERVED 2026-10-13 ──────────────────────────────────────────────
+// The card runs the same ninfer build and container as the 2026-10-11 pod, but its launch names the model
+// `qwen` (--model-id) where the pod left the container's own name, `qwen3.8-27b`. The request's model id is
+// therefore the launch's (gunbc.harness.operator_pod_launch), and a roster that asked for the container's name
+// would read the live card as ModelNotAdmitted. Its reasoning arrived split under reasoning_content, the
+// member ninfer's module already declares.
+test fn the_containers_own_name_is_not_admitted_by_the_cards_list() -> Bool {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen3.8-27b") }) {
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } => false
+    HarnessRosterNoneServing { declined: d, unresolved: _ } => count(d) == 1
+  }
+}
+
+test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
+  (harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) as String) == "reasoning_content"
+}

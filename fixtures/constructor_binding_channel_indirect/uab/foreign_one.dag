@@ -1,0 +1,5 @@
+module uab.foreign_one
+
+type Sq { totally_different_field: Int }
+
+fn one_marker() -> Int { 1 }

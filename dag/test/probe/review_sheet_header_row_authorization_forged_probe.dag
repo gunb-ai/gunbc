@@ -1,0 +1,28 @@
+module test.probe.review_sheet_header_row_authorization_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A HeaderRowWriteAuthorization is minted by
+// gunbc.review_sheet_header_init plan_header_init and by nothing else: it is sole_constructor, so
+// the record literal below -- a header-row write authorised beside the planner that is supposed to
+// derive it, over a tab no FORMULA observation vouched for, with header cells the author chose --
+// refuses as SoleConstructorViolation.
+//
+// This is gunbc#11613 finding 4 as a literal: that draft's header_row_write(tab, schema) returned
+// the write authorisation from a tab name and a schema with no observation at all. The helper is
+// not exported here; this probe keeps the state it would have produced enrolled as a RED.
+
+import std.types { NonEmptyStr }
+import gunbc.review_sheet_projection { A1RowSpan, A1Cell, A1Column }
+import gunbc.review_sheet_header_init { HeaderRowWriteAuthorization }
+
+fn forged_header_row_write() -> HeaderRowWriteAuthorization {
+  HeaderRowWriteAuthorization {
+    spreadsheet_id: "1forged-spreadsheet-id" as NonEmptyStr,
+    tab: "Buyer Review" as NonEmptyStr,
+    range: "'Buyer Review'!A1:B1",
+    span: A1RowSpan {
+      start: A1Cell { column: A1Column { letter: "A" as NonEmptyStr }, row: 1 },
+      end: A1Cell { column: A1Column { letter: "B" as NonEmptyStr }, row: 1 },
+    },
+    cells: ["Listing", "Title"],
+  }
+}

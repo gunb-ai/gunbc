@@ -1,0 +1,89 @@
+module gunbc.live_deploy.revision
+
+import std.types { NonEmptyStr }
+
+// WHAT THIS MODULE IS NOW: the ancestry RELATION between two revisions, and nothing about deploys.
+// gunbc.fleet.fleet_main_revision is its consumer: it projects a merge-base observation into
+// revision_relation_from_ancestry_facts. It does not consume a probe fold; there is none here.
+//
+// IT USED TO GATE DEPLOYS AND NO LONGER DOES (operator ruling 2026-09-07). The prose that stood
+// here argued for a freshness precondition on automated deploys: main-push runs are not cancelled,
+// GitHub orders queued jobs by when they began waiting rather than by ancestry, so an older run
+// finishing second would rsync its older tree, converge, green, and silently regress the live
+// dashboard. That argument was sound FOR AUTOMATED DEPLOYS and is now moot, because there are none:
+// an operator names the candidate, so no race produces a stale run to catch.
+//
+// AND IT WAS A SECOND AUTHORITY BESIDE A BETTER ONE. gunbc.live_deploy.member_identity decides,
+// per member, from OBSERVATION of the host, whether anything differs. This module decided for the
+// whole release from ANCESTRY. Two authorities for one question (DESIGN §3), and the coarse one
+// won: on 2026-09-07 it refused an operator deploy whose member plan would have converged
+// correctly, because the running host had been deployed from a side branch that main was not a
+// descendant of. The relation was right and the conclusion drawn from it was wrong.
+//
+// FOUR CASES ARE STILL DISTINGUISHED, and the reason survives its old consumer: a naive binary
+// descendant check cannot tell 'candidate is older' from 'unrelated', and those are different
+// facts about the world. SameRevision, DeployedIsAncestor, CandidateIsAncestor, UnrelatedHistories
+// and RelationUnverifiable stay separate variants so a consumer decides what each MEANS for it
+// rather than inheriting a verdict this module has no standing to give.
+
+// The relation is OBSERVED, not inferred from timestamps or run numbers. `git merge-base
+// --is-ancestor A B` answers it in one exit code — 0 for yes, 1 for no, 128 for a bad object — and
+// the exit-1 case is a legitimate ANSWER rather than an error, which is precisely what lets
+// UnrelatedHistories and RelationUnverifiable stay separate variants. Two probes are needed because
+// a single direction cannot distinguish 'candidate is older' from 'unrelated':
+// is_ancestor(deployed, candidate) and is_ancestor(candidate, deployed) together give
+// (true,true)=same, (true,false)=advance, (false,true)=superseded, (false,false)=unrelated.
+// Equality is decided by SHA comparison BEFORE any probe, because it is the common no-op case and
+// deserves neither a subprocess nor a chance to misclassify. Timestamps are explicitly NOT an
+// input: wall-clock ordering of CI runs is exactly the signal that is already inverted, and commit
+// dates are attacker- and rebase-controlled.
+
+type DeployRevisionRelation
+  = SameRevision
+  | DeployedIsAncestor
+  | CandidateIsAncestor
+  | UnrelatedHistories
+  | DivergedHistories
+  | RelationUnverifiable { cause: NonEmptyStr }
+
+// THE DEPLOY-ORDERING VERDICT LAYER WAS DELETED 2026-09-07 (operator ruling). It classified this
+// relation into proceed / terminal-no-op / refuse for gunbc.live_deploy, and its superseded arm
+// existed so that a SLOWER AUTOMATED RUN could not roll a host back -- "a superseded run is
+// indistinguishable from a healthy fleet". There is no automated deploy any more: an operator names
+// the candidate, so nothing produces that race, and the gate refused operator deploys that were
+// correct. It was also a SECOND AUTHORITY for a question gunbc.live_deploy.member_identity already
+// owns and answers better -- that one decides per member from OBSERVATION of the host, this one
+// decided for the whole release from ANCESTRY -- and when the two disagreed the coarse one won.
+//
+// WHAT SURVIVES HERE is the relation itself and revision_relation_from_ancestry_facts, which
+// gunbc.fleet.fleet_main_revision consumes via a merge-base observation. That consumer is unaffected: it
+// asks how two revisions relate, not whether a deploy may proceed.
+
+// THE CLASSIFICATION IS ONE AUTHORITY. The decision takes ANCESTRY FACTS and the merge-base
+// evidence shape in gunbc.fleet.fleet_main_revision projects into it. A deleted probe-pair projection
+// used to sit beside this fold; keeping both would have been the §3 fork of two places computing
+// one decision. Reusing the variant names was never enough -- the vocabulary was shared while the
+// policy was copied.
+//
+// DIVERGED IS NOT UNRELATED. The srv1 deploy of 2026-09-04 refused with 'share no ancestry' when the
+// running release was a sibling of the candidate with a merge base two commits back: the neither-
+// ancestor arm had been folded into the no-common-ancestor arm, so the refusal named a force-push
+// that never happened. revision_relation_from_ancestry_facts is reached only once a merge base was
+// REPORTED (relation_from_merge_base_oid), so 'neither' there means diverged; a merge-base exit of 1
+// reaches UnrelatedHistories on its own path.
+fn revision_relation_from_ancestry_facts(
+  same: Bool,
+  deployed_is_ancestor_of_candidate: Bool,
+  candidate_is_ancestor_of_deployed: Bool,
+) -> DeployRevisionRelation {
+  if same {
+    SameRevision
+  } else {
+    if deployed_is_ancestor_of_candidate {
+      if candidate_is_ancestor_of_deployed { SameRevision } else { DeployedIsAncestor }
+    } else {
+      if candidate_is_ancestor_of_deployed { CandidateIsAncestor } else { DivergedHistories }
+    }
+  }
+}
+

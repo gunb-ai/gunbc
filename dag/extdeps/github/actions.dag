@@ -1,0 +1,435 @@
+module extdeps.github.actions
+
+import std.unicode.scalar { ascii_lowercase }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.github.log_annotations {
+  LogAnnotation,
+  AnnotationError, AnnotationWarning, AnnotationNotice,
+  AnnotationGroup, AnnotationEndGroup,
+  SetOutput, AddMask, StopCommands,
+  annotation_error_prefix, annotation_warning_prefix, annotation_notice_prefix,
+  annotation_group_prefix, annotation_endgroup,
+  annotation_set_output_prefix, annotation_add_mask_prefix,
+  annotation_stop_commands_prefix
+}
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
+import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.measure { Second, second }
+import std.os.types { KernelFamily }
+import extdeps.toolchain.types { Architecture }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.github.action_release { ActionRelease }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
+}
+
+type GitHubActionsRuntime {
+  oidc_request_url_env: NonEmptyStr
+  oidc_request_token_env: NonEmptyStr
+}
+
+data github_actions_runtime: GitHubActionsRuntime = {
+  oidc_request_url_env: "ACTIONS_ID_TOKEN_REQUEST_URL"
+  oidc_request_token_env: "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+}
+
+// GITHUB_EVENT_NAME and GITHUB_BASE_REF are default environment variables GitHub Actions sets on
+// every job
+// (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read
+// 2026-07-24). GITHUB_EVENT_NAME carries the wire name of the triggering event (the runtime
+// projection of WorkflowTrigger: push / pull_request / workflow_dispatch / schedule / merge_group).
+// GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on
+// pull_request / pull_request_target events, empty for every other event. extdeps owns these names
+// (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer
+// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c)).
+
+data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
+
+data github_base_ref_env: NonEmptyStr = "GITHUB_BASE_REF"
+
+data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
+
+// GITHUB_EVENT_PATH is a GitHub Actions DEFAULT ENVIRONMENT VARIABLE — the path to the file holding
+// the full webhook payload for whatever event triggered the run
+// (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read
+// 2026-08-06). It is therefore a fact about the Actions RUNTIME, exactly like github_event_name_env
+// beside it, and not a fact about any one event. It previously lived in extdeps.github.push_event,
+// which made the push payload reader the authority for a variable that carries the pull_request,
+// schedule, and workflow_run payloads just as much. That homing only looked right while push was
+// the sole reader; adding a second event reader made it a §3 fork in waiting — two modules
+// declaring one upstream name, drifting independently. Moved here rather than copied: push_event
+// and workflow_run_event both import it, and there is exactly one declaration of this name in the
+// tree.
+
+data github_event_name_push: String = "push"
+
+data github_event_name_pull_request: String = "pull_request"
+
+data github_event_name_workflow_dispatch: String = "workflow_dispatch"
+
+data github_event_name_merge_group: String = "merge_group"
+
+data github_event_name_schedule: String = "schedule"
+
+data github_event_name_workflow_run: String = "workflow_run"
+
+// THE workflow_run ACTIVITY TYPES GitHub documents (docs.github.com/actions/reference/events-that-
+// trigger-workflows#workflow_run): a run being requested, in progress, or completed.
+type WorkflowRunActivity
+  = WorkflowRunRequestedActivity
+  | WorkflowRunInProgressActivity
+  | WorkflowRunCompletedActivity
+
+fn workflow_run_activity_name(activity: WorkflowRunActivity) -> String {
+  match activity {
+    WorkflowRunRequestedActivity => "requested"
+    WorkflowRunInProgressActivity => "in_progress"
+    WorkflowRunCompletedActivity => "completed"
+  }
+}
+
+type Workflow {
+  name: String
+  run_name: String?
+  on: List<WorkflowTrigger>
+  concurrency: ConcurrencySpec?
+  jobs: List<Job>
+
+  env: List<YamlKeyValue>?
+  permissions: WorkflowPermissions?
+}
+
+type WorkflowPermissions {
+  contents: PermissionLevel?
+  pull_requests: PermissionLevel?
+  issues: PermissionLevel?
+  actions: PermissionLevel?
+  id_token: PermissionLevel?
+}
+
+type PermissionLevel = PermRead | PermWrite | PermNone
+
+type WorkflowTrigger
+  = Push { branches: List<String>, paths: List<String> }
+  | PullRequest { branches: List<String>, types: List<PullRequestActivity>, paths: List<String> }
+  | Schedule { cron: CronSchedule }
+  | WorkflowDispatch { inputs: List<DispatchInput> }
+  | WorkflowCall { inputs: List<DispatchInput> }
+  | WorkflowRunTriggered { workflows: List<String>, branches: List<String>, activity: WorkflowRunActivity }
+  | MergeGroup
+
+// THE CONSTRUCTOR TEST LIVES BESIDE THE COPRODUCT, because "does this trigger list admit a
+// merge_group composition" is a fact about `WorkflowTrigger` and not about whoever is asking. It
+// was authored in `gunbc.merge_queue_admission`, where it was a second site that knew this type's
+// storage shape; the house form for exactly this question is `extdeps.github.checks`
+// `check_conclusion_is_success`, and this follows it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE AND THE WILDCARD IS THE DEFECT IT REPLACES. The original read
+// `MergeGroup => true _ => false`, so a new trigger constructor would have answered `false`
+// silently -- a fabricated default in the position DESIGN section 5 reserves for a refusal. Written
+// out, adding a constructor to this type fails to compile here until someone decides what it means,
+// which is the point of a closed vocabulary.
+fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
+  match trigger {
+    MergeGroup => true
+    Push { branches: _, paths: _ } => false
+    PullRequest { branches: _, types: _, paths: _ } => false
+    Schedule { cron: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
+  }
+}
+
+fn workflow_triggers_admit_merge_group(triggers: List<WorkflowTrigger>) -> Bool {
+  any(triggers, t => workflow_trigger_is_merge_group(trigger: t))
+}
+
+type PullRequestActivity
+  = Opened
+  | Synchronize
+  | Reopened
+  | ReadyForReview
+  | Closed
+
+// workflow_run is the event GitHub delivers when a workflow run of ANOTHER workflow reaches a
+// listed activity type
+// (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run,
+// read 2026-08-06). Two facts about the shape, both load-bearing. THE VARIANT IS COMPLETED-ONLY BY
+// NAME, not by a types field. GitHub documents three activity types (requested, in_progress,
+// completed) and the variant admits exactly one of them, so the activity is carried in the
+// CONSTRUCTOR rather than as a list — a workflow that also wanted `requested` is a different
+// trigger with a different admission story, not a longer list on this one, and an alert holding
+// issues: write must not be able to widen its own activation surface by appending to a list. The
+// day this repo needs a second activity, it is a second variant whose admission is argued
+// separately, and every serializer match answers it fail-closed. THE WORKFLOWS FIELD IS
+// List<String> AND NOT A MINTED WorkflowName. Workflow.name in this module is String, and the
+// workflows filter refers to exactly that name, so a WorkflowName alias would be a second name for
+// one carrier that adds no refinement — the hollow-alias class DESIGN carries as an open
+// construction-wall thread. The referent is the name, so it shares the name's carrier. If
+// Workflow.name ever gains a refinement, this field follows it there rather than being refined
+// separately.
+
+// merge_group is the event GitHub delivers when a merge queue needs checks on a queue-constructed
+// tree
+// (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#merge_group,
+// read 2026-07-16). The variant is nullary because checks_requested is the ONLY documented activity
+// type and GitHub's default when the types filter is omitted — a types parameter with exactly one
+// inhabitant carries no information (the phantom-parameter collapse ruling); the day upstream
+// documents a second activity, the field returns as a closed modeled enum and every serializer
+// match must answer it, fail-closed.
+
+type DispatchInput {
+  name: String
+  description: String?
+  required: Bool
+  default: String?
+  type: DispatchInputType
+}
+
+type DispatchInputType
+  = InputString
+  | InputBoolean
+  | InputChoice { options: List<String> }
+  | InputEnvironment
+
+type SecretScope = StepScope | JobScope | WorkflowScope
+
+type WorkflowSecret {
+  name: SecretName
+  scope: SecretScope
+}
+
+// `environment` is the job's deployment environment (docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment,
+// read 2026-09-23). It is a real job key with a security consequence: a job that names one carries it
+// in its OIDC token as the `environment` claim and its `sub` becomes
+// repo:<owner>/<repo>:environment:<name>, so a federation can pin one job by it.
+type Job {
+  id: String
+  name: String?
+  runner: RunnerSpec
+  environment: String?
+  steps: List<Step>
+  needs: List<String>
+
+  env: List<YamlKeyValue>?
+
+  outputs: List<YamlKeyValue>?
+  if_condition: String?
+  timeout_minutes: Int?
+  continue_on_error: Bool?
+  concurrency: ConcurrencySpec?
+
+  permissions: WorkflowPermissions?
+}
+
+type CancelInProgressSpec
+  = CancelInProgressBool { value: Bool }
+  | CancelInProgressExpression { expression: String }
+
+type CancelInProgressWhenQueueMax
+  = QueueMaxCancelInProgressFalse
+  | QueueMaxCancelInProgressExpression { expression: String }
+
+// THE `queue` KEY IS NOT IN GITHUB'S PUBLISHED WORKFLOW SYNTAX, AND ITS BEHAVIOUR HERE IS
+// GROUNDED BY OBSERVATION RATHER THAN BY CITATION. That is the honest position and it is stated on
+// the type rather than left for a reader to assume a doc link exists: raised in review 54384, which
+// asked whether GitHub silently ignores the key -- in which case the queueing guarantee reduces to
+// `cancel-in-progress: false` and the emitted yaml promises something the platform never consumes.
+//
+// Established by execution, not by reading: two workflows differing ONLY in this key, three rapid
+// pushes each, same repository and runner pool. With `queue: max` all four runs completed and none
+// was cancelled; without it, two of four were CANCELLED while pending. So the key is consumed and
+// it changes behaviour in exactly the direction the variant names. The measured receipt lives in
+// the observing layer, per the external-upstream rule that an observation this repository produces
+// is a receipt of ours and not a fact authored inside the upstream module. The first measurement
+// was taken on the withdrawn fleet-desired admission workflow; the surviving typed home is this
+// variant.
+//
+// WHAT IS STILL UNGROUNDED, named so it is not mistaken for settled: an undocumented key can change
+// or be withdrawn without a deprecation, and the 100-pending ceiling is read from GitHub's prose
+// about full queues rather than from a specification of this key. Next-rung trigger: GitHub
+// publishing `queue` in the workflow-syntax authority, at which point this note becomes an ordinary
+// citation row and the receipt becomes a regression control rather than the grounding itself.
+type ConcurrencySpec
+  = ConcurrencyScalar { group: String }
+  | ConcurrencyMappingQueueMax {
+      group: String
+
+      cancel_in_progress: CancelInProgressWhenQueueMax?
+    }
+  | ConcurrencyMappingQueueNotMax {
+      group: String
+
+      cancel_in_progress: CancelInProgressSpec?
+
+      explicit_single: Unit?
+    }
+
+// THE SELECTION SURFACE ITSELF, NAMED SO A LABEL CATALOG CAN SAY WHICH ONE IT ANSWERS FOR. A runner
+// label is a value written in ONE key of ONE CI system's configuration, and `runs-on` is this one.
+// Other systems have their own - CircleCI's resource_class is a different surface whose namespace
+// overlaps this one on ordinary words like small, medium and arm.medium - so a consumer resolving a
+// runs-on label must be able to exclude catalogs that answer for a different key. This row is what
+// they compare against; it lives here because RunnerSpec is what `runs-on` IS.
+data github_actions_runs_on_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.github.actions",
+  decl_name: "RunnerSpec",
+)
+
+type RunnerSpec
+  = HostedRunner { label: RunnerLabel }
+  | SelfHosted { labels: List<String> }
+
+  | RunsOnExpression { expression: String }
+
+// SELF-HOSTED RUNNER LABEL VOCABULARY - GitHub's names, cited, one authority.
+// The runner agent applies DEFAULT labels automatically at registration: "self-hosted"
+// on every self-hosted runner, an OS label, and an architecture label
+// (docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/
+// using-labels-with-self-hosted-runners, read 2026-08-30). runs-on requires a runner
+// carrying ALL listed labels (AND semantics), and label matching is case-insensitive;
+// the wire strings below are the lowercase forms our registered fleet observably
+// matches. CUSTOM labels (host names like srv1) are user-applied FLEET facts - they are
+// deliberately not enumerated here (an upstream module may not enumerate our hosts, and
+// the typed-topology question is owned by the fabric recut's Cut D program), so
+// self_hosted_labels takes them as an ordinary list.
+data self_hosted_provenance_label: String = "self-hosted"
+
+// THE DEFAULT-LABEL DIRECTORY (operator question 2026-08-30: "are self-hosted and those
+// platform labels like defaults?" - YES, and upstream's docs scatter rather than list
+// them, so THIS ROW IS THE DIRECTORY). Per the using-labels page, every self-hosted
+// runner automatically receives exactly three default labels at registration:
+//   self-hosted           - provenance, applied to every self-hosted runner
+//   linux | windows | macOS  - the runner host's operating system
+//   x64 | ARM | ARM64        - the runner host's processor architecture
+// Everything else a runner carries is a CUSTOM label somebody assigned.
+//
+// ASSIGNMENT MECHANICS, cited from the same page (read 2026-08-30):
+// - at INITIAL configuration only: ./config.sh --labels a,b,c (comma-separated; a label
+//   is created if it does not exist). config.sh CANNOT relabel an existing runner.
+// - for an EXISTING runner: the REST API only.
+// - REPLACING a runner drops its custom labels - reassignment is an obligation of every
+//   runner replacement, which matters for ephemeral/auto-scaled fleets.
+// - A LABEL IS A CLAIM, NOT A MEASUREMENT: default labels may be hand-assigned via
+//   --labels and GitHub "accepts them as given and does not validate that the runner is
+//   actually using that operating system or architecture." So runner labels ground
+//   ROUTING, never facts about the host - a host fact needs its own observation, and a
+//   workflow trusting an arch label on a mislabeled runner gets an Exec format error,
+//   not a refusal.
+
+fn runner_os_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn runner_arch_label(arch: Architecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    X86 => "x86"
+    Arm => "arm"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
+  }
+}
+
+// LABEL EQUIVALENCE IS GITHUB'S, NOT STRING EQUALITY. Label matching is case-insensitive (cited
+// above), so "Linux"/"linux" and "SRV4"/"srv4" are one label. Every comparison of runner labels --
+// membership, union, selector satisfaction, registration readback -- goes through this key.
+//
+// THE FOLD IS ASCII A-Z ONLY. The cited page states case-insensitivity without naming a Unicode
+// case mapping, so a non-ASCII case variant is compared exactly: two such spellings read as
+// DIFFERENT labels, which surfaces as a loud divergence rather than a silent match.
+fn runner_label_match_key(label: String) -> String {
+  ascii_lowercase(s: label)
+}
+
+fn runner_labels_equivalent(a: String, b: String) -> Bool {
+  runner_label_match_key(label: a) == runner_label_match_key(label: b)
+}
+
+fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
+  concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
+}
+
+type RunnerLabel
+  = UbuntuLatest
+  | Ubuntu2404
+  | Ubuntu2404Arm
+  | Ubuntu2204
+  | UbuntuSlim
+  | MacosLatest
+  | Macos14
+  | WindowsLatest
+
+type Step
+  = RunStep {
+      name: String?,
+      id: String?,
+      run: String,
+      shell: ShellType?,
+      env: List<YamlKeyValue>?,
+      working_directory: String?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+  | UsesStep {
+      name: String?,
+      id: String?,
+      uses: ActionRelease,
+
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+
+type ShellType = Bash | Sh | Pwsh | Python | Cmd
+
+type ArtifactOp
+  = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
+  | Download { name: String, path: String? }
+
+type MissingFilesBehavior = Warn | ErrorOut | Ignore
+
+
+data max_job_timeout_minutes: Int = 360
+
+data default_job_timeout_minutes: Int = 360
+
+// GitHub's cancellation timeout: when a run is cancelled, always() steps get five minutes and are then
+// force-cancelled (docs.github.com/en/actions/reference/workflows-and-actions/expressions, status check
+// functions, "cancelled" / "always").
+data cancelled_job_always_step_timeout: Second = second(count: 300)
+
+data max_matrix_combinations: Int = 256
+
+// THE INTEGRATION (GitHub App) ID GITHUB ACTIONS PUBLISHES ITS CHECK RUNS UNDER. It is an upstream
+// identity rather than a policy choice: a required_status_checks rule may pin a context to the app
+// allowed to satisfy it, and pinning to this id is what stops an arbitrary third party with commit
+// status write from publishing a green check under the same context name. Read from this
+// repository's own live ruleset row (GET /repos/gunb-ai/gunbc/rulesets, integration_id 15368,
+// 2026-08-27) and consistent with the documented app id for GitHub Actions.
+data github_actions_app_integration_id: Int = 15368
+
+// https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs
+// GitHub increased the top-level workflow_dispatch input limit from 10 to 25 on 2025-12-04.
+data workflow_dispatch_max_inputs: Int = 25

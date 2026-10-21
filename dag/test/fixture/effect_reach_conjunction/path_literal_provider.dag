@@ -1,0 +1,5 @@
+module test.fixture.effect_reach_conjunction.path_literal_provider
+
+// The path-literal half. It reaches nothing: a `data` row naming a repository path is a
+// storage fact, and on its own it says nothing about whether anything reads that path.
+data effect_reach_fixture_declared_path: String = "dag/test/fixture/effect_reach_conjunction/host_sink_provider.dag"

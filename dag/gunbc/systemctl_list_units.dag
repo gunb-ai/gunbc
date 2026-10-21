@@ -1,0 +1,80 @@
+module gunbc.systemctl_list_units
+
+import std.algebra { trim }
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.systemd.systemctl
+
+fn systemctl_list_units_local(instance_glob: NonEmptyStr) -> String? {
+  systemctl_list_units_local_typed(instance_glob: instance_glob, unit_type: "service")
+}
+
+fn systemctl_list_units_local_typed(instance_glob: NonEmptyStr, unit_type: String) -> String? {
+  let result = systemd.Systemctl.ListUnits(pattern: instance_glob, unit_type: unit_type)
+  if result.success {
+    Present { value: result.stdout }
+  } else {
+    none
+  }
+}
+
+fn systemctl_list_units_line_trimmed(line: String) -> String {
+  trim(line)
+}
+
+fn systemctl_list_units_line_nonempty(line: String) -> Bool {
+  systemctl_list_units_line_trimmed(line: line) != ""
+}
+
+// `first()` answers `String?` because the split may yield nothing, and this reached the token with
+// `as NonEmptyStr`, which does not eliminate the absence: a blank line produced a unit name whose
+// text was the word `Absent`. Callers filter blank lines through
+// `systemctl_list_units_line_nonempty`, so the absent arm is unreachable there; it is a loud word
+// rather than a plausible unit name so a receipt reader cannot mistake the failure for a unit.
+fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
+  match split(s: systemctl_list_units_line_trimmed(line: line), delimiter: " ").first() {
+    Present { value: unit } => unit as NonEmptyStr
+    Absent => "systemctl-unit-line-empty" as NonEmptyStr
+  }
+}
+
+fn systemctl_list_units_active_of_type(instance_glob: NonEmptyStr, unit_type: String) -> List<NonEmptyStr>? {
+  match systemctl_list_units_local_typed(instance_glob: instance_glob, unit_type: unit_type) {
+    Present { value: stdout } =>
+      let trimmed = trim(stdout)
+      if trimmed == "" {
+        Present { value: [] }
+      } else {
+        let lines = filter(split(s: trimmed, delimiter: "\n"), systemctl_list_units_line_nonempty)
+        Present { value: map(lines, systemctl_list_units_line_as_unit) }
+      }
+    Absent => none
+  }
+}
+
+fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+  systemctl_list_units_active_of_type(instance_glob: instance_glob, unit_type: "service")
+}
+
+fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? {
+  let result = systemd.Systemctl.ListUnitsAllLoaded(pattern: instance_glob)
+  if result.success {
+    Present { value: result.stdout }
+  } else {
+    none
+  }
+}
+
+fn systemctl_list_units_all_states(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+  match systemctl_list_units_all_states_local(instance_glob: instance_glob) {
+    Present { value: stdout } =>
+      let trimmed = trim(stdout)
+      if trimmed == "" {
+        Present { value: [] }
+      } else {
+        let lines = filter(split(s: trimmed, delimiter: "\n"), systemctl_list_units_line_nonempty)
+        Present { value: map(lines, systemctl_list_units_line_as_unit) }
+      }
+    Absent => none
+  }
+}

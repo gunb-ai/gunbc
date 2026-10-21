@@ -1,0 +1,211 @@
+module gunbc.serving.rented_allocation
+
+import std.types { String, NonEmptyStr, Port, EpochMs }
+import gunbc.principal_projection { PrincipalRef }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef }
+import product.host_identity { HostIdentity }
+import product.fabric.work { identity_frame }
+import product.fabric.supply { SupplierOffer }
+import product.supplier.vast_ai { VastAiAskReceipt }
+import std.measure { MoneyPerHour }
+import extdeps.network.endpoint { SocketAddress, render_uri_host }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch, ninfer_serve_program }
+import gunbc.serving.rented_ninfer_source { NinferEngineRelease }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
+import gunbc.serving.rented_replica { RentedGpuDevice, RentedReplicaIdentity }
+import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, CeilingFromRouteLaunch }
+import gunbc.serving.rented_enrollment { RentedEnrollment }
+
+// ONE RENTED CARD, FROM ACQUISITION TO SETTLEMENT, IS ONE ALLOCATION. The rented cohort already carries
+// what a replica is (gunbc.serving.rented_replica), how its host is reached (rented_host_access), who may
+// reach it (rented_host_grant) and how it is enrolled (rented_enrollment), and each answers for a moment of
+// the card's life. Nothing joined them: an enrollment row named no rental, so no fact about the rental (the
+// price, the contract, the end condition, which artifact and engine it was meant to run) could be read from
+// the route that serves through it, and spend or health could not be attributed to the card that incurred
+// it. This is that join. Every field is a type the cohort already owns; the allocation adds only its
+// identity and the facts no other carrier holds.
+//
+// THE CARRIER IS WHAT WAS DECIDED, NOT WHAT WAS SEEN. Provisioning, enrollment, release and settlement are
+// readings taken over the allocation's life, so each is its own standing keyed by
+// RentedAllocationIdentity and lands with the slice that produces it; a field of this record that held them
+// would be a stored copy of an observation, and a stored copy outlives the reading it copied.
+//
+// THE PROVIDER CONTRACT, WHEN READ, IS THE ACCEPTED OFFER, AS THE SUPPLIER BINDING ALREADY READS IT. Price, billing
+// quantum, provider route, isolation (which is where on-demand versus interruptible is stated, see
+// product.supplier.vast_ai vast_ai_isolation) and the instance shape are SupplierOffer fields; restating
+// any of them here would fork the binding, and gunbc.serving.rented_instance_offer
+// rented_replica_offer_reading already reads a replica's offer from exactly this value.
+
+// THE IDENTITY IS THE PROVIDER'S CONTRACT, and nothing this repository mints. A provider names each rental
+// (Vast's instance id is the contract create-instance returns), so two allocations differ exactly when the
+// provider says two rentals differ; a label or a hostname is a display fact the operator can change. The
+// provider is the extdeps authority the contract was read from, by declaration, so two providers' numeric
+// ids can never alias.
+type RentedAllocationIdentity sole_constructor {
+  provider: DeclarationRef
+  contract: NonEmptyStr
+}
+
+fn rented_allocation_identity(provider: DeclarationRef, contract: NonEmptyStr) -> RentedAllocationIdentity {
+  RentedAllocationIdentity { provider: provider, contract: contract }
+}
+
+// LENGTH-FRAMED, every component, because the contract is a provider's free string.
+fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
+  concat(
+    identity_frame(label: "provider-module", value: id.provider.module_path),
+    concat(
+      identity_frame(label: "provider-decl", value: id.provider.decl_name),
+      identity_frame(label: "contract", value: id.contract as String)),
+  ) as NonEmptyStr
+}
+
+// HOW THE ALLOCATION CAME TO BE HELD. Imported: the operator handed over a card they rented by hand, and
+// the record names the launch observation that says what the card was found running, so it is never
+// mistaken for one this repository provisioned. Acquired: a bidder this repository runs created it. The
+// receipt carries what the create was asked with, and never the contract id, which is the identity's.
+// owner is the label that isolates this bidder's rentals from another bidder on the same provider account.
+// asked_rate is the rate actually PUT, not the offer's advertised minimum. asked_at is the PUT time, the
+// same instant a rent cooldown starts from, because a create that timed out may still have rented.
+// The producer of Acquired is the flex bidder's wet create loop
+// (product.fabric.flex_vast_loop flex_acquired_allocation). It constructs on an answered
+// create (flex_created_outcome); a lost create whose reconcile finds the instance held is built by
+// flex_reconciled_allocation, which only the next pass's entry will call (flex_run_pass_caller_frontier); it never constructs on a refused
+// create. STATED DIVERGENCE (DESIGN 3, upstream decomposition): the provider ask is Vast's own receipt
+// type because Vast is the only bidder; a second acquiring provider makes it a per-provider receipt
+// rather than a widened field here.
+type RentedAllocationOrigin
+  = RentedAllocationImported { imported_by: PrincipalRef, imported_at: EpochMs, found_running: DeclarationRef }
+  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour, provider_ask: VastAiAskReceipt }
+
+// WHEN THE ALLOCATION IS MEANT TO END. An allocation with no stated end is an open-ended spend, so the end
+// is a required field, and "the operator decides" is a stated end rather than its absence. EVERY INSTANT
+// ON THIS CARRIER IS EpochMs, the magnitude extdeps.clock UnixMillis reads, because release and settlement
+// compare these instants with the clock; std.types Timestamp is rendered text and cannot be ordered.
+// Principals are gunbc.principal_projection PrincipalRef, the identity the auth layer authorizes against.
+type RentedEndCondition
+  = RentedEndsOnOperatorRelease { decided_by: PrincipalRef }
+  | RentedEndsBy { at: EpochMs }
+
+// THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a pinned release (gunbc.serving.rented_ninfer_source
+// ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
+// port. One arm because one engine is consumed; vLLM (gunbc.serving.rented_replica rented_replica_launch)
+// joins as an arm when an allocation that runs it is enrolled. The probe, not this field, decides the wire
+// behaviour a turn sees (gunbc.harness.harness_reasoning_wire HarnessServingUnit).
+type RentedDesiredEngine
+  = RentedNinferEngine { engine_release: NinferEngineRelease, launch: NinferServeLaunch, listen_port: Port }
+
+// HOW THE HARNESS REACHES THE ENGINE, AS ONE ROUTE WITH TWO REALIZATIONS. A port the provider publishes and
+// an ssh local forward placed on a harness host differ only in where the harness connects and which port on
+// the card it lands on, so both resolve to one ServingRouteEndpoint through rented_allocation_endpoint and
+// there is no second harness path. Each carries the card-side port it lands on, so a route that lands
+// anywhere but where the engine listens is refused when the endpoint is derived, never discovered by a
+// failed turn.
+type RentedAccessRoute
+  = RentedDirectPublishedPort { published: SocketAddress, card_port: Port }
+  | RentedSshLocalForward { forward_host: HostIdentity, forward: PortForwardSpec }
+
+// THE CONTRACT MAY BE UNREAD, AND THEN IT SAYS SO. An imported card is held before anyone has read its
+// price from the provider (the first import's rate, machine and start time need the provider API, and no
+// host holds that credential yet), so the allocation records the obligation that would read it rather than
+// a price nobody observed. Settlement refuses on this arm; nothing else does, because serving does not
+// depend on the price.
+type RentedContractStanding
+  = RentedContractRead { offer: SupplierOffer<NonEmptyStr> }
+  | RentedContractUnread { obligation: NonEmptyStr }
+
+// NO CREDENTIAL IS A FIELD YET. Credentials are grants bound to the allocation, so the credentials slice
+// adds them as a grant keyed by RentedAllocationIdentity that release revokes; a bare generation counter
+// here would name no grant and be revoked by nothing.
+type RentedServingAllocation {
+  identity: RentedAllocationIdentity
+  origin: RentedAllocationOrigin
+  contract: RentedContractStanding
+  card: RentedGpuDevice
+  end: RentedEndCondition
+  engine: RentedDesiredEngine
+  artifact: NinferModelRow
+  host: RentedHostAccessDeclaration
+  route: RentedAccessRoute
+}
+
+data rented_route_lands_off_engine_port_obligation: NonEmptyStr = "the allocation's access route lands on a card port the desired engine does not listen on, so a turn sent through it would reach no engine" as NonEmptyStr
+
+data rented_route_forward_not_local_obligation: NonEmptyStr = "the allocation's ssh forward is not a local forward, so the harness host has no listener to send a turn to" as NonEmptyStr
+
+type RentedAllocationEndpoint
+  = RentedEndpointDerived { endpoint: ServingRouteEndpoint }
+  | RentedEndpointRefused { allocation: RentedAllocationIdentity, obligation: NonEmptyStr }
+
+fn rented_engine_listen_port(engine: RentedDesiredEngine) -> Port {
+  match engine {
+    RentedNinferEngine { engine_release: _, launch: _, listen_port: p } => p
+  }
+}
+
+fn rented_engine_served_name(engine: RentedDesiredEngine) -> NonEmptyStr {
+  match engine {
+    RentedNinferEngine { engine_release: _, launch: l, listen_port: _ } => l.model_id
+  }
+}
+
+// THE REPLICA THE ALLOCATION SERVES AS: the card on the host's node, under the name the engine is launched
+// to answer to. The launch's model id, not the artifact's served id, because --model-id overrides the
+// container's own name and the id a request names is the launch's.
+fn rented_allocation_replica(a: RentedServingAllocation) -> RentedReplicaIdentity {
+  RentedReplicaIdentity { node: a.host.node, device_index: a.card.index, served_name: rented_engine_served_name(engine: a.engine) }
+}
+
+fn rented_endpoint_at(a: RentedServingAllocation, connect: SocketAddress, card_port: Port) -> RentedAllocationEndpoint {
+  if card_port != rented_engine_listen_port(engine: a.engine) {
+    RentedEndpointRefused { allocation: a.identity, obligation: rented_route_lands_off_engine_port_obligation }
+  } else {
+    RentedEndpointDerived { endpoint: ServingRouteEndpoint { replica: rented_allocation_replica(a: a), address: render_uri_host(host: connect.host), port: connect.port } }
+  }
+}
+
+// THE ONE DERIVATION OF WHERE A TURN IS SENT. A published port is connected to directly; a local forward
+// is connected to at its listener on the forward host, and lands on its target.
+fn rented_allocation_endpoint(a: RentedServingAllocation) -> RentedAllocationEndpoint {
+  match a.route {
+    RentedDirectPublishedPort { published: p, card_port: c } => rented_endpoint_at(a: a, connect: p, card_port: c)
+    RentedSshLocalForward { forward_host: _, forward: f } =>
+      match f.direction {
+        LocalForward => rented_endpoint_at(a: a, connect: f.listener, card_port: f.target.port)
+        _ => RentedEndpointRefused { allocation: a.identity, obligation: rented_route_forward_not_local_obligation }
+      }
+  }
+}
+
+type RentedAllocationEnrollment
+  = RentedAllocationEnrollable { allocation: RentedAllocationIdentity, enrollment: RentedEnrollment }
+  | RentedAllocationNotEnrollable { allocation: RentedAllocationIdentity, obligation: NonEmptyStr }
+
+// THE ENROLLMENT ROW AN ALLOCATION IMPLIES, derived rather than authored: the endpoint from the access
+// route, the ceiling from the engine's own concurrency flag, the host access from the allocation, and the
+// engine pattern from the engine's program name. DECLARED FRONTIER (DESIGN 3c): the consumer that puts
+// these rows in gunbc.serving.rented_enrollment rented_cohort_enrollments is the enroll-and-seat slice of
+// the rented-serving-allocation vertical (gunbc.harness.rented_allocation_seat consumes it for the seat);
+// gunbc.harness.harness_operator_route is KEPT as the last executing api-key path and retires on the frontier
+// row in gunbc.serving.serving_launch; until the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation the witnesses are the only caller.
+fn rented_allocation_enrollment(a: RentedServingAllocation) -> RentedAllocationEnrollment {
+  match rented_allocation_endpoint(a: a) {
+    RentedEndpointRefused { allocation: id, obligation: o } => RentedAllocationNotEnrollable { allocation: id, obligation: o }
+    RentedEndpointDerived { endpoint: e } =>
+      match a.engine {
+        RentedNinferEngine { engine_release: _, launch: l, listen_port: _ } =>
+          RentedAllocationEnrollable {
+            allocation: a.identity,
+            enrollment: RentedEnrollment {
+              endpoint: e,
+              ceiling: CeilingFromRouteLaunch { count: l.max_concurrency, basis: "ninfer-serve --max-concurrency of the allocation's desired engine launch" as NonEmptyStr },
+              access: a.host,
+              engine_pattern: ninfer_serve_program,
+            },
+          }
+      }
+  }
+}

@@ -1,0 +1,21 @@
+module test.claim.required_ci_host_verdict_census_witness
+
+import std.types { Bool }
+import gunbc.required_ci_host_verdict_census {
+  required_ci_redecision_phases,
+  required_ci_carrier_absent_phases,
+  required_ci_realization_only_phases
+}
+
+test fn deleting_the_regen_carrier_still_leaves_a_host_decision() -> Bool {
+  required_ci_redecision_phases() |> any(phase => phase == "regen")
+}
+
+test fn a_modeled_subject_without_a_terminal_verdict_is_a_carrier_gap() -> Bool {
+  required_ci_carrier_absent_phases() |> any(phase => phase == "emit-compile")
+}
+
+test fn host_effects_alone_do_not_make_a_second_semantic_authority() -> Bool {
+  (required_ci_realization_only_phases() |> any(phase => phase == "v2-emission"))
+    && !(required_ci_redecision_phases() |> any(phase => phase == "v2-emission"))
+}

@@ -1,0 +1,77 @@
+module gunbc.machine_intake.mtcollins1_kvm_observer_observe
+
+import std.types { NonEmptyStr, String }
+import std.algebra { trim }
+import std.measure { Second }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.megarac_kvm_observer_observe {
+  KvmObserverProbePaths, megarac_kvm_observer_observe, megarac_kvm_observer_release,
+  megarac_kvm_observer_probe_artifact_glob, megarac_kvm_observer_probe_bound,
+}
+
+// MT. COLLINS UNIT 1'S BINDING OF THE KVM OBSERVER PROBE (managed-host cut 5). The probe itself is
+// gunbc.machine_intake.megarac_kvm_observer_observe over an admitted MegaRAC host; what stays here is
+// only what the fleet-converge workflow names (ruling (a): the workflow surface moves in cut 7) -- the
+// two entry functions, the artifact glob and the step bound -- and the mtcollins1 row it binds: the host
+// label, the boot's observer-directory authority this unit's probes share a prefix with, the executor
+// host the unit hold store lives on, the workflow run id that owns the hold, and the credential file the
+// workflow prelude materializes.
+
+// The probe's directories share the boot's observer prefix (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
+// mtcollins1_kvm_observer_dir), derived from that authority rather than re-spelled.
+data mtcollins1_kvm_observer_probe_paths: KvmObserverProbePaths = KvmObserverProbePaths { dir_prefix: mtcollins1_kvm_observer_dir(attempt: "") }
+
+data mtcollins1_kvm_observer_probe_artifact_glob: String = megarac_kvm_observer_probe_artifact_glob(paths: mtcollins1_kvm_observer_probe_paths)
+
+fn mtcollins1_kvm_observer_probe_bound() -> Second {
+  megarac_kvm_observer_probe_bound()
+}
+
+// THE RUN ID THAT OWNS THE UNIT HOLD, read from the workflow run; empty when unset.
+fn mtcollins1_kvm_observer_run_id() -> String {
+  match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => trim(s: v)
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING: off srv1 (the hold store's host),
+// no run id, the host not admitted for the KVM canvas still, or no credential file.
+fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
+{
+  match mtcollins1_boot_host_admission() {
+    ExitSuccess => {}
+    other => return other
+  }
+  let run_id = mtcollins1_kvm_observer_run_id()
+  if run_id == "" {
+    return exit_failure(reason: concat(concat("mtcollins1 kvm observer: ", github_run_id_variable_name as String), " is unset or empty, so the unit hold has no owner to name; contacting NO host"))
+  }
+  match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacKvmCanvasStill) {
+    MegaRacHostRefused { cause: c } => exit_failure(reason: concat("mtcollins1 kvm observer: ", megarac_host_refusal_text(cause: c) as String))
+    MegaRacHostAdmitted { host: admitted } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset => exit_failure(reason: join(["mtcollins1 kvm observer: no ", mtcollins1_fan_credential_path_env as String, " in the environment; contacting NO host"], ""))
+        FanCredentialPathEmpty => exit_failure(reason: join(["mtcollins1 kvm observer: ", mtcollins1_fan_credential_path_env as String, " is set but empty; contacting NO host"], ""))
+        FanCredentialPathReady { path: p } =>
+          megarac_kvm_observer_observe(host: admitted, password_file: p, run_id: run_id as NonEmptyStr, paths: mtcollins1_kvm_observer_probe_paths)
+      }
+  }
+}
+
+fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
+{
+  let run_id = mtcollins1_kvm_observer_run_id()
+  if run_id == "" {
+    return exit_failure(reason: concat(concat("mtcollins1 kvm observer release: ", github_run_id_variable_name as String), " is unset or empty, so this run cannot name the hold it may release"))
+  }
+  megarac_kvm_observer_release(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr, paths: mtcollins1_kvm_observer_probe_paths)
+}

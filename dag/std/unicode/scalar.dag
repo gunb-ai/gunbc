@@ -1,0 +1,97 @@
+module std.unicode.scalar
+
+import std.algebra { Empty, list_snoc_item, collection_concat_shape, collection_join_shape }
+import std.coercion { unicode_scalar_fold }
+import std.error_primitives { Result, Ok, Err }
+import std.types { Char }
+import std.unicode.types { unicode_scalar, unicode_surrogate_first_code_point, unicode_surrogate_last_code_point }
+
+// Unicode Standard 17.0 Core Specification section 3.9, D76: the scalar values are U+0000..U+D7FF
+// and U+E000..U+10FFFF, so an Int code point names a scalar only when std.unicode.types
+// unicode_scalar holds. It fails in exactly two ways, one arm each, carrying the code point refused
+// so a caller reports WHICH value and WHY.
+type NotUnicodeScalar
+  = SurrogateCodePoint { code_point: Int }
+  | CodePointOutOfRange { code_point: Int }
+
+// THE ONE REFINEMENT Int -> Char, and it is partial. A Char is `Int where unicode_scalar`
+// (std.types), so this is the only place an arbitrary Int becomes one; the two refusals are the two
+// ways the predicate fails. This sibling of std.unicode.types holds it because std.types imports
+// std.unicode.types for Char, so declaring it there would cycle.
+fn scalar_of_code_point(cp: Int) -> Result<Char, NotUnicodeScalar> {
+  if unicode_scalar(code_point: cp) {
+    Ok { value: cp }
+  } else if (cp >= unicode_surrogate_first_code_point) && (cp <= unicode_surrogate_last_code_point) {
+    Err { value: SurrogateCodePoint { code_point: cp } }
+  } else {
+    Err { value: CodePointOutOfRange { code_point: cp } }
+  }
+}
+
+// The code point a refusal names, whichever way the scalar predicate failed.
+fn not_unicode_scalar_code_point(n: NotUnicodeScalar) -> Int {
+  match n {
+    SurrogateCodePoint { code_point: cp } => cp
+    CodePointOutOfRange { code_point: cp } => cp
+  }
+}
+
+// from_code_point: an Int is spelled as host text only if it is a scalar, otherwise it refuses
+// typed. It replaces the seed builtin of the same name, which was total over Int and answered a
+// different invented value per realization for a non-scalar (the interpreter U+0000, the emitted
+// runtimes the empty string) and wrapped through `cp as u32`, so -1 or 2^32 + 65 spelled a valid
+// scalar. the retired row is in git history (gunbc#13778).
+fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
+  match scalar_of_code_point(cp: cp) {
+    Ok { value: c } => Ok { value: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c)) }
+    Err { value: n } => Err { value: n }
+  }
+}
+
+// ASCII CASE FOLDING WITHOUT AN Int -> Char CROSSING. Spelling a shifted code point as text needs a
+// Char, which the seed does not enforce (gunbc.recurring_failure_mode char_brand_admits_any_int), so
+// the ASCII case folds are string rewrites over these 26
+// pairs instead: no code point is computed, so no non-scalar can be spelled.
+type AsciiLetterPair { upper: String, lower: String }
+
+data ascii_letter_pairs: List<AsciiLetterPair> = [
+  AsciiLetterPair { upper: "A", lower: "a" },
+  AsciiLetterPair { upper: "B", lower: "b" },
+  AsciiLetterPair { upper: "C", lower: "c" },
+  AsciiLetterPair { upper: "D", lower: "d" },
+  AsciiLetterPair { upper: "E", lower: "e" },
+  AsciiLetterPair { upper: "F", lower: "f" },
+  AsciiLetterPair { upper: "G", lower: "g" },
+  AsciiLetterPair { upper: "H", lower: "h" },
+  AsciiLetterPair { upper: "I", lower: "i" },
+  AsciiLetterPair { upper: "J", lower: "j" },
+  AsciiLetterPair { upper: "K", lower: "k" },
+  AsciiLetterPair { upper: "L", lower: "l" },
+  AsciiLetterPair { upper: "M", lower: "m" },
+  AsciiLetterPair { upper: "N", lower: "n" },
+  AsciiLetterPair { upper: "O", lower: "o" },
+  AsciiLetterPair { upper: "P", lower: "p" },
+  AsciiLetterPair { upper: "Q", lower: "q" },
+  AsciiLetterPair { upper: "R", lower: "r" },
+  AsciiLetterPair { upper: "S", lower: "s" },
+  AsciiLetterPair { upper: "T", lower: "t" },
+  AsciiLetterPair { upper: "U", lower: "u" },
+  AsciiLetterPair { upper: "V", lower: "v" },
+  AsciiLetterPair { upper: "W", lower: "w" },
+  AsciiLetterPair { upper: "X", lower: "x" },
+  AsciiLetterPair { upper: "Y", lower: "y" },
+  AsciiLetterPair { upper: "Z", lower: "z" },
+]
+
+fn ascii_lowercase(s: String) -> String {
+  fold(ascii_letter_pairs, init: s, f: (acc, p) => join(split(s: acc, delimiter: p.upper), p.lower))
+}
+
+fn ascii_uppercase(s: String) -> String {
+  fold(ascii_letter_pairs, init: s, f: (acc, p) => join(split(s: acc, delimiter: p.lower), p.upper))
+}
+
+fn ascii_uppercase_first(s: String) -> String {
+  let n = string_length(s: s)
+  if n == 0 { "" } else { concat(ascii_uppercase(s: substring(s: s, start: 0, end: 1)), substring(s: s, start: 1, end: n)) }
+}

@@ -1,0 +1,302 @@
+module gunbc.tools.card_intake
+
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.llm.anthropic_messages_api { AnthropicImageBlock, Base64Image, ImageJpeg, UserMessage, UserTextBlock }
+import extdeps.llm.anthropic_rest
+import extdeps.tcgplayer.catalog
+import extdeps.tcgplayer.pricing
+import extdeps.tcgplayer.store
+import extdeps.tcgplayer.tcgplayer
+import std.credentials { CredentialSource }
+import std.integer { int_to_decimal_string }
+
+data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
+
+data tcgplayer_client_secret_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
+
+data tcgplayer_store_key_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_STORE_KEY" }
+
+data default_recognition_model: String = "claude-sonnet-4-6-20250929"
+
+data default_high_value_threshold_usd: Float = 50.0
+
+data tcgplayer_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.tools.card_intake",
+    decl_name: "default_high_value_threshold_usd",
+    field: WholeDeclaration
+  }
+}
+
+data recognition_instruction: String = "Identify the single trading card in this photo. Reply with only the exact printed card name, nothing else. If no card is clearly identifiable, reply with only the word UNKNOWN."
+
+data unrecognized_card_sentinel: String = "UNKNOWN"
+
+data structural_coverage_gap_intake_recognition_residual: List<String> = [
+  "v0 recognition extracts the card name only; set, collector number, condition, and finish",
+  "enrichment (and per-condition sku selection from them) lands when the intake consumer",
+  "prices per-condition skus instead of products"
+]
+
+type CatalogMatch
+  = ExactMatch { product_id: Int }
+  | AmbiguousMatch { candidate_count: Int }
+  | NoMatch
+
+type RiskReason
+  = UnmatchedCard
+  | AmbiguousCatalogMatch
+  | UnpricedCard
+  | HighValue
+
+type IntakeDisposition
+  = ReadyToList
+  | NeedsReview { reasons: List<RiskReason> }
+
+fn classify_catalog_match(total_items: Int, first_product_id: Int) -> CatalogMatch {
+  if total_items == 0 { NoMatch }
+  else if total_items == 1 { ExactMatch { product_id: first_product_id } }
+  else { AmbiguousMatch { candidate_count: total_items } }
+}
+
+fn match_risk_reasons(card_match: CatalogMatch) -> List<RiskReason> {
+  match card_match {
+    NoMatch => [] |> list_push(UnmatchedCard)
+    AmbiguousMatch { candidate_count: _ } => [] |> list_push(AmbiguousCatalogMatch)
+    ExactMatch { product_id: _ } => []
+  }
+}
+
+fn price_risk_reasons(
+  base: List<RiskReason>,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> List<RiskReason> {
+  match market_price {
+    Present { value: p } =>
+      if p >= high_value_threshold { base |> list_push(HighValue) } else { base }
+    Absent => base |> list_push(UnpricedCard)
+  }
+}
+
+fn assess_intake(
+  card_match: CatalogMatch,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> IntakeDisposition {
+  let reasons = price_risk_reasons(
+    base: match_risk_reasons(card_match: card_match),
+    market_price: market_price,
+    high_value_threshold: high_value_threshold
+  )
+  if count(reasons) == 0 { ReadyToList } else { NeedsReview { reasons: reasons } }
+}
+
+type CardIntakeStep
+  = CardIntakeRecognizeCard
+  | CardIntakeSearchCatalog
+  | CardIntakeReadProductPrices
+  | CardIntakeMintBearerToken
+  | CardIntakeUpdateSkuPrice
+  | CardIntakeIncrementSkuQuantity { price_updated: Bool }
+
+type BinderPhotoRecognition
+  = BinderPhotoRecognized { card_name: String }
+  | BinderPhotoRecognitionRefused { step: CardIntakeStep, refusal: RestRefusal }
+
+type BinderPhotoIntake
+  = BinderPhotoAssessed { card_name: String, disposition: IntakeDisposition, product_id: Int, market_price: Float? }
+  | BinderPhotoIntakeRefused { step: CardIntakeStep, refusal: RestRefusal }
+
+type BinderIntake
+  = BinderIntakeCompleted { total: Int, flagged: Int }
+  | BinderIntakeRefused { step: CardIntakeStep, refusal: RestRefusal }
+
+type CardSkuListing
+  = CardSkuListed { price_updated: Bool, quantity_updated: Bool }
+  | CardSkuListingRefused { step: CardIntakeStep, refusal: RestRefusal }
+
+fn flagged_increment(disposition: IntakeDisposition) -> Int {
+  match disposition {
+    ReadyToList => 0
+    NeedsReview { reasons: _ } => 1
+  }
+}
+
+fn recognize_binder_photo(
+  photo_path: std.types.FilePath,
+  model: String = default_recognition_model
+) -> BinderPhotoRecognition {
+
+  photo = Filesystem.Read(path: photo_path)
+
+  match llm.Anthropic.Messages(
+    api_key: "",
+    model: model,
+    messages: [
+      UserMessage {
+        content: [
+          AnthropicImageBlock { source: Base64Image { media_type: ImageJpeg, data: photo.content } },
+          UserTextBlock { text: recognition_instruction }
+        ]
+      }
+    ],
+    max_tokens: 256,
+    temperature: none,
+    system: none
+  ) {
+    RestRefused { refusal } =>
+      return BinderPhotoRecognitionRefused { step: CardIntakeRecognizeCard, refusal: refusal }
+    RestAnswered { answer: response } =>
+      return BinderPhotoRecognized { card_name: response.content }
+  }
+}
+
+fn intake_binder_photo(
+  photo_path: std.types.FilePath,
+  bearer_token: Secret,
+  category_id: Int,
+  high_value_threshold: Float = default_high_value_threshold_usd
+) -> BinderPhotoIntake {
+
+  match recognize_binder_photo(photo_path: photo_path) {
+    BinderPhotoRecognitionRefused { step: step, refusal: refusal } =>
+      return BinderPhotoIntakeRefused { step: step, refusal: refusal }
+    BinderPhotoRecognized { card_name: card_name } =>
+      match tcgplayer.Catalog.SearchProducts(
+        bearer_token: bearer_token,
+        product_name: card_name,
+        category_id: category_id
+      ) {
+        RestRefused { refusal } =>
+          return BinderPhotoIntakeRefused { step: CardIntakeSearchCatalog, refusal: refusal }
+        RestAnswered { answer: search } =>
+          match tcgplayer.Pricing.GetProductPrices(
+            bearer_token: bearer_token,
+            product_ids: int_to_decimal_string(value: search.first_product_id)
+          ) {
+            RestRefused { refusal } =>
+              return BinderPhotoIntakeRefused { step: CardIntakeReadProductPrices, refusal: refusal }
+            RestAnswered { answer: prices } => {
+              card_match = classify_catalog_match(
+                total_items: search.total_items,
+                first_product_id: search.first_product_id
+              )
+
+              disposition = assess_intake(
+                card_match: card_match,
+                market_price: prices.market_price,
+                high_value_threshold: high_value_threshold
+              )
+
+              return BinderPhotoAssessed {
+                card_name: card_name,
+                disposition: disposition,
+                product_id: search.first_product_id,
+                market_price: prices.market_price
+              }
+            }
+          }
+      }
+  }
+}
+
+fn intake_binder_photos(
+  photo_paths: List<std.types.FilePath>,
+  bearer_token: Secret,
+  category_id: Int,
+  high_value_threshold: Float,
+  total: Int,
+  flagged: Int
+) -> BinderIntake {
+  match photo_paths.first() {
+    Absent => BinderIntakeCompleted { total: total, flagged: flagged }
+    Present { value: p } =>
+      match intake_binder_photo(
+        photo_path: p,
+        bearer_token: bearer_token,
+        category_id: category_id,
+        high_value_threshold: high_value_threshold
+      ) {
+        BinderPhotoIntakeRefused { step: step, refusal: refusal } =>
+          BinderIntakeRefused { step: step, refusal: refusal }
+        BinderPhotoAssessed { card_name: _, disposition: disposition, product_id: _, market_price: _ } =>
+          intake_binder_photos(
+            photo_paths: photo_paths.skip(n: 1),
+            bearer_token: bearer_token,
+            category_id: category_id,
+            high_value_threshold: high_value_threshold,
+            total: total + 1,
+            flagged: flagged + flagged_increment(disposition: disposition)
+          )
+      }
+  }
+}
+
+fn intake_binder(
+  photo_paths: List<std.types.FilePath>,
+  client_id: String,
+  client_secret: Secret,
+  category_id: Int,
+  high_value_threshold: Float = default_high_value_threshold_usd
+) -> BinderIntake {
+
+  match tcgplayer.Auth.MintBearerToken(
+    client_id: client_id,
+    client_secret: client_secret
+  ) {
+    RestRefused { refusal } =>
+      return BinderIntakeRefused { step: CardIntakeMintBearerToken, refusal: refusal }
+    RestAnswered { answer: token } =>
+      return intake_binder_photos(
+        photo_paths: photo_paths,
+        bearer_token: token.access_token as Secret,
+        category_id: category_id,
+        high_value_threshold: high_value_threshold,
+        total: 0,
+        flagged: 0
+      )
+  }
+}
+
+fn list_card_sku(
+  client_id: String,
+  client_secret: Secret,
+  store_key: NonEmptyStr,
+  sku_id: Int,
+  price: Float,
+  quantity: Int
+) -> CardSkuListing {
+
+  match tcgplayer.Auth.MintBearerToken(
+    client_id: client_id,
+    client_secret: client_secret
+  ) {
+    RestRefused { refusal } =>
+      return CardSkuListingRefused { step: CardIntakeMintBearerToken, refusal: refusal }
+    RestAnswered { answer: token } =>
+      match tcgplayer.Store.UpdateSkuPrice(
+        bearer_token: token.access_token as Secret,
+        store_key: store_key,
+        sku_id: sku_id,
+        price: price
+      ) {
+        RestRefused { refusal } =>
+          return CardSkuListingRefused { step: CardIntakeUpdateSkuPrice, refusal: refusal }
+        RestAnswered { answer: priced } =>
+          match tcgplayer.Store.IncrementSkuQuantity(
+            bearer_token: token.access_token as Secret,
+            store_key: store_key,
+            sku_id: sku_id,
+            quantity: quantity
+          ) {
+            RestRefused { refusal } =>
+              return CardSkuListingRefused { step: CardIntakeIncrementSkuQuantity { price_updated: priced.success }, refusal: refusal }
+            RestAnswered { answer: stocked } =>
+              return CardSkuListed { price_updated: priced.success, quantity_updated: stocked.success }
+          }
+      }
+  }
+}

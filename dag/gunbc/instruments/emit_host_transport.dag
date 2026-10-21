@@ -1,0 +1,416 @@
+module gunbc.instruments.emit_host_transport
+
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.rust.cargo_build
+import extdeps.python
+import extdeps.go
+import extdeps.node
+import extdeps.typescript
+import extdeps.gunbc
+import extdeps.communication.medium { Lossless, Medium }
+import std.measure { byte_size_count, second }
+import std.render_repeat_string_bootstrap { repeat_string }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host,
+  run_host_process,
+  runtime_value_parse
+}
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.extdeps.languages.c {
+  c_inject_fault_runtime_row,
+  c_source_text,
+  c_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.host_transport {
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent
+}
+import v2.std.node { Atom, Node, TypeNode }
+import gunbc.instruments.emit_host_fixtures {
+  rust_stdout_fixture_source,
+  python_stdout_fixture_source,
+  go_stdout_fixture_source,
+  ts_host_fixture_source,
+  ts_host_fixture_expected_sum,
+  stdout_byte_count,
+  ts_signed_i32_le_byte_count
+}
+import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
+import std.env_binding { EnvSet }
+import extdeps.posix.process
+import extdeps.posix.signal
+import extdeps.http.client
+import extdeps.tools.sleep
+import extdeps.exec.command { env_prefixed_command_in }
+import extdeps.tools.node { node_run_file_command, node_program }
+import extdeps.numeric.base16
+import std.content_hash { content_hash_atom }
+import std.algebra { list_at_optional }
+import std.host_text { chars }
+
+data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
+
+// run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each
+// step, so per the shell-emission-model rule they are typed service operations
+// (shell.Mktemp/Mkdir/Remove, Filesystem.Write, cargo.Build.BuildManifest, python.Interpreter.RunFile,
+// go.Toolchain.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count
+// check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable
+// output could pass a count check with wrong content; the expected string is built in-substrate from
+// the same stdout_byte_count authority (repeat_string of "\u{0}"), and NULs survive the
+// transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked
+// the tempdir on mid-script failure).
+//
+// run_go_smoke joins rust and python here: this commit migrates it from inline bash to
+// typed ops (go.Toolchain.RunFile). The previous provisioning conditional
+// (if ! command -v go; then curl go.dev tarball ...) was a DESIGN section 5 WIDEN:
+// instead of refusing when the precondition is unmet, it reached out to the network, fetched a pinned
+// go1.22.5 tarball, mutated PATH, and carried on. A failure arm must refuse, never widen; every
+// degradation is a typed, located, countable diagnostic. The conditional also carried version rot (the
+// go version was pinned in a bash string where nothing adjudicates it). Removing that widen is correct;
+// the cost is that the typed replacement has never been executed WET and cannot be until a modeled
+// toolchain-provision route puts Go on PATH without a runtime network fetch. go.Toolchain.RunFile
+// does not provision — if go is absent the operation fails with success: false, which propagates as a
+// correct RED. That RED is invisible: emit_host_gate_passes is never executed by any lane today — it
+// appears only as a string literal in a test fixture and in .dag comments. Nothing runs run_go_smoke,
+// so the migration cannot be falsified. Provisioning Go on runners would not help; the gate has no
+// executing consumer at all. The missing capability is therefore larger than a toolchain-provision
+// route: it is an enrolled lane that invokes the gate. A future PR addressing either the gate's
+// consumer or the TypeScript/Node arms must resolve the gap before this migration is exercised wet.
+//
+// run_ts_smoke now uses typed typescript.Compiler.Compile and node.Runtime.RunFile operations, with
+// Filesystem.Write and shell.Mktemp/Remove owning the fixture lifecycle. Its node
+// provisioning fallback and heredoc are gone. typescript.Compiler.Compile still fetches the
+// pinned compiler at runtime: the hermeticity gap remains open, and compiler failure
+// must refuse even when tsc has emitted JavaScript. run_node_http_serve_smoke still
+// owns the shared bootstrap carrier's remaining use and its separate lifecycle gap.
+
+data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: hermetic TypeScript compilation — run_ts_smoke now routes through typed Filesystem.Write, shell.Mktemp/Remove, typescript.Compiler.Compile and node.Runtime.RunFile; its concatenated heredoc and conditional node provisioning are dissolved. typescript.Compiler.Compile still uses npx to fetch typescript@5.9.2 at runtime: typing the operation does not discharge this compile hermeticity gap. DISSOLVES WHEN a hermetic TypeScript compilation authority compiles the fixture without runtime package fetch and run_ts_smoke consumes it.")
+
+fn expected_stdout_nul_run() -> String {
+  repeat_string(s: "\u{0}", n: byte_size_count(stdout_byte_count))
+}
+
+fn run_rust_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let manifest = Filesystem.Write(path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml)
+  let main_rs = Filesystem.Write(path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source)
+  let build = cargo.Build.BuildManifest(
+    workdir: dir.path,
+    manifest_path: concat(dir.path, "/Cargo.toml"),
+    target_dir: concat(dir.path, "/target"),
+    extra_args: ["--quiet"]
+  )
+  let run = gunbc.WitnessBin.Run(workdir: dir.path, bin_path: concat(dir.path, "/target/debug/fixture"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && src_dir.success && manifest.success && main_rs.success
+    && build.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
+}
+
+fn run_python_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let script = Filesystem.Write(path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source)
+  let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && script.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
+}
+
+// WHY THE OCTET COMPARISON LEFT THE SHELL SCRIPT.
+//
+// These three smokes used to end in a shell `test` of the byte count against the expected one (and,
+// for the http probe, a bare `process.exit(1)`), so the script's exit status was the only thing
+// that crossed into .dag. That status is true for a missing toolchain, a failed download, a compile
+// error AND a fixture emitting the wrong number of octets — four states with four owners, aliased
+// below the substrate where no carrier can reach them. A typed verdict at the .dag layer cannot
+// separate what the transport already collapsed.
+//
+// So the script now REPORTS rather than adjudicates: it prints the byte count (or the probe's
+// status marker) and exits, and the comparison is performed here against the same in-substrate
+// authority the fixtures are built from. The script's exit status keeps exactly one meaning — the
+// harness could not pose the question — and the comparison the other — the subject answered
+// wrongly. Both still fold into one Bool at the return type; that fold is the class-B migration,
+// deliberately not done here: splitting the two states must precede a carrier naming them, and this
+// change is the half no carrier shape depends on.
+
+// THE DECISION, TAKEN OVER SCALARS SO A HERMETIC CONTROL CAN AUTHOR ITS INPUTS.
+//
+// These take the reported stdout and the harness bit as plain values rather than the run record,
+// because shell.Exec.Run returns an anonymous output record no fixture can construct. Scalars make
+// the cause-swap control in test.claim.emit_host_reported_comparison_cause_swap authorable
+// with no host effect: the two failure causes it distinguishes are supplied directly, so the
+// control measures THE PREDICATE rather than the toolchain.
+fn emit_host_reported_octets_match(reported_stdout: String, expected_text: String) -> Bool {
+  reported_stdout == expected_text
+}
+
+// The fold that is still a fold. harness_ok false means the script could not pose the question;
+// octets_match false means the fixture answered with the wrong number of octets. Both still
+// collapse into one Bool HERE — the class-B migration's job, not this change's, which establishes
+// only that the two are separately computable, as they were not while the comparison lived inside
+// the script.
+fn emit_host_smoke_holds(harness_ok: Bool, reported_stdout: String, expected_text: String) -> Bool {
+  harness_ok && emit_host_reported_octets_match(reported_stdout: reported_stdout, expected_text: expected_text)
+}
+
+fn run_go_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let main_go = Filesystem.Write(path: concat(dir.path, "/main.go"), content: go_stdout_fixture_source)
+  let run = go.Toolchain.RunFile(workdir: dir.path, script_path: concat(dir.path, "/main.go"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && main_go.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
+}
+
+fn run_ts_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src = Filesystem.Write(path: concat(dir.path, "/fixture.ts"), content: ts_host_fixture_source)
+  let compile = typescript.Compiler.Compile(
+    workdir: dir.path,
+    source_path: concat(dir.path, "/fixture.ts"),
+    out_dir: dir.path,
+    target: "ES2022",
+    module: "commonjs"
+  )
+  let run = node.Runtime.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.js"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && src.success && compile.success && run.success && cleanup.success
+    && ts_host_stdout_is_the_sum(stdout: run.stdout)
+}
+
+// PORT BUDGET, and where the entropy went. The retired heredoc picked 19000 + ($ % 1000): the
+// shell's own pid as per-run entropy so concurrent runs did not collide. The typed route has no
+// pid in scope at fold time, but the host already gave this run its entropy: mktemp -d guarantees
+// the workdir path is unique per execution. The last 3 lower-hex code points of the path's FNV-1a
+// 64 structural digest (12 bits) are a stable seed per run and distinct across runs, mapping into
+// [19000, 23096) -- the same budget the heredoc had, with a citable entropy source instead of a
+// side effect of the harness.
+// One lower-hex code point of the digest, as its numeric value. The index is Optional (the digest
+// is always 16 code points, but the type does not know that) and the digit may be absent (a
+// non-hex code point); both absences answer none here: no seed.
+fn node_http_hex_digit_at(cps: List<Int>, index: Int) -> Int? {
+  match list_at_optional(xs: cps, index: index) {
+    Absent => none
+    Present { value: cp } => base16_digit_value_at(cp: cp)
+  }
+}
+
+fn node_http_serve_port_seed(workdir: NonEmptyStr) -> Int? {
+  let cps = content_hash_atom(value: workdir).digest as String |> chars
+  let n = length(xs: cps)
+  if n < 3 { none } else {
+    match node_http_hex_digit_at(cps: cps, index: n - 3) {
+      Absent => none
+      Present { value: h2 } =>
+        match node_http_hex_digit_at(cps: cps, index: n - 2) {
+          Absent => none
+          Present { value: h1 } =>
+            match node_http_hex_digit_at(cps: cps, index: n - 1) {
+              Absent => none
+              Present { value: h0 } => Present { value: 19000 + h2 * 256 + h1 * 16 + h0 }
+            }
+        }
+    }
+  }
+}
+
+// READINESS POLL, in the substrate. The retired heredoc's probe.js looped until a 5s deadline
+// with sleeps between attempts; the typed poll is the same iterate-never-concatenate shape with
+// the budget NAMED at the call site: bounded attempts, one bounded connection attempt each
+// (http.Client.Probe answers "nothing answered yet" as DATA mid-warmup instead of refusing, which
+// is why the poll composes Probe rather than StatusWithin), one bounded pause between attempts.
+// Every answer is kept so the timeout refusal can say what the server last looked like.
+type NodeServeReadiness
+  = ServeReady
+  | ServeNotReady { attempts_used: Int, last_status: String, last_exit_code: Int }
+
+fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: Int, last_status: String, last_exit_code: Int) -> NodeServeReadiness {
+  if attempts_left <= 0 { ServeNotReady { attempts_used: attempts_used, last_status: last_status, last_exit_code: last_exit_code } } else {
+    let probe = http.Client.Probe(url: url, connect_time: second(count: 1), max_time: second(count: 2))
+    if probe.answered && probe.status == "200" { ServeReady } else {
+      let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+      node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: probe.status, last_exit_code: probe.exit_code)
+    }
+  }
+}
+
+// KILL CONFIRMATION. The retired heredoc swallowed kill failures (`kill $SERVER_PID 2>/dev/null`
+// inside the trap), so a server that outlived the smoke left nothing behind but a lie. The typed
+// route does not swallow: TerminateProcess refuses loudly when the kill fails, and the kill is
+// CONFIRMED by reaping -- a process that answered readiness is alive, so after SIGTERM it either
+// dies by the signal (Reap reports Signaled { signal }) or the poll exhausts and the smoke is
+// red. Reap is parent-only (waitpid ECHILD otherwise), which is exactly the confirmation the
+// trap could never give; the closed ProcessReapOutcome keeps a signal death distinct from an
+// ordinary exit, so a smoke that passes on 128+15 would have to actually say so.
+fn node_http_await_reaped(pid: Int, attempts_left: Int) -> ProcessReapOutcome? {
+  if attempts_left <= 0 { none } else {
+    let reaped = posix.Process.Reap(pid: pid)
+    match reaped.reaped {
+      StillRunning => {
+        let _pause = sleep.Delay.Seconds(seconds: "0.1" as NonEmptyStr)
+        node_http_await_reaped(pid: pid, attempts_left: attempts_left - 1)
+      }
+      Exited { code: code } => Present { value: Exited { code: code } }
+      Signaled { signal: signal } => Present { value: Signaled { signal: signal } }
+      ReapRefused { cause: cause } => Present { value: ReapRefused { cause: cause } }
+    }
+  }
+}
+
+// A process that answered readiness is alive, so after SIGTERM the only honest outcome is a
+// confirmed SIGNAL death -- Signaled { signal: 15 }, not a folded exit code; anything else is a
+// red smoke, never a swallowed cleanup.
+fn run_node_http_serve_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
+      let inner_cmd = node_run_file_command(
+        node_binary: node_program().invocation,
+        script_path: concat(dir.path, "/server.js") as NonEmptyStr,
+        operands: []
+      )
+      let prefixed_cmd = env_prefixed_command_in(
+        directory: dir.path,
+        bindings: [
+          EnvSet { name: "HOST", value: "127.0.0.1" },
+          EnvSet { name: "PORT", value: to_string(port) }
+        ],
+        command: inner_cmd
+      )
+      let spawn = posix.Process.StartDetached(
+        program: prefixed_cmd.program.invocation,
+        arguments: prefixed_cmd.arguments,
+        stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
+      )
+      match spawn.spawn {
+        Spawned { pid: pid } => {
+          let readiness = node_http_await_ready(
+            url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
+            attempts_left: 40,
+            attempts_used: 0,
+            last_status: "",
+            last_exit_code: 0
+          )
+          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
+          let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+          let harness_ok = dir.success && server_js.success && cleanup.success
+          let lifecycle_ok = kill.success
+            && (match reaped {
+              Absent => false
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
+            })
+          harness_ok && lifecycle_ok
+            && (match readiness {
+              ServeReady => true
+              ServeNotReady { attempts_used: _, last_status: _, last_exit_code: _ } => false
+            })
+        }
+        SpawnRefused { program: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+fn c_run_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn c_run_inputs() -> Inputs {
+  inputs_root_only(root: c_run_probe_node())
+}
+
+fn c_run_source() -> Medium<String> {
+  Medium { carried: c_source_text, fidelity: Lossless }
+}
+
+fn c_expected_add_stdout_octets() -> List<Int> {
+  [0, 5, 0, 0, 0]
+}
+
+fn c_emit_host_green_holds() -> Bool {
+  match run_emit_host(
+    target: c_target_model(),
+    source: c_run_source(),
+    fixture_inputs: c_run_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: run, diagnostics: None } =>
+          match runtime_value_parse(target: c_target_model(), stdout: run.stdout) {
+            Accepted { value: _, diagnostics: _ } =>
+              run.stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+            Rejected { diagnostics: _ } => false
+          }
+        Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn c_emit_host_inject_fault_refuses_holds() -> Bool {
+  match c_inject_fault_runtime_row() {
+    HostRuntimeRowAbsent => false
+    HostRuntimeRowPresent { row: row } =>
+      match run_host_process(
+        row: row,
+        target: c_target_model(),
+        source: c_run_source(),
+        fixture_inputs: c_run_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+                Rejected { diagnostics: _ } => true
+                Accepted { value: _, diagnostics: _ } =>
+                  stdout.bytes != emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// Discriminating control for run_c_smoke (wet — exercised by emit_host_gate_passes, not hermetic
+// discovery): the inject-fault arm deliberately calls add(2,2) while the green oracle expects
+// add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops
+// the RED half goes RED here.
+
+fn run_c_smoke() -> Bool {
+  c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()
+}
+
+// The fixture's sum is spelled as text through std.unicode.scalar from_code_point, the typed
+// route, so a sum that were not a scalar refuses (false) instead of being dropped.
+fn ts_host_stdout_is_the_sum(stdout: String) -> Bool {
+  match from_code_point(cp: ts_host_fixture_expected_sum) {
+    Ok { value: sum_text } => stdout == concat(sum_text, repeat_string(s: "\u{0}", n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
+    Err { value: _ } => false
+  }
+}

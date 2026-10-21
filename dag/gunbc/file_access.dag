@@ -1,0 +1,87 @@
+module gunbc.file_access
+
+import std.host_text { chars }
+
+
+type FileTreeScope {
+  root_path: NonEmptyStr
+}
+
+type FileAccessObservation
+  = PathAbsent
+  | ReadOnlyWithinNamespace
+  | WritableWithinNamespace
+  | PathOutsideNamespace
+
+type FileAccessPlan
+  = ChmodOwnerWriteWithinTempTree
+  | CreateParent
+
+fn path_has_dotdot_segment(path: String) -> Bool {
+  path == ".."
+    || starts_with(s: path, prefix: "../")
+    || string_contains(s: path, pattern: "/../")
+    || string_contains(s: path, pattern: "/..")
+}
+
+// EVERY ANCESTOR DIRECTORY OF A PATH, AS PREFIXES ENDING JUST BEFORE EACH SEPARATOR. This lives
+// here rather than in either consumer because "what are the ancestor directories of this path" is
+// one fact, and this module already owns the other half of it -- whether a path lies within a
+// scope. It was authored twice: gunbc.runner.runner_host_file_converge runner_host_path_ancestors folded
+// it and then filtered to its own /etc scope, and gunbc.runner.runner_microvm_network_apply copied the
+// fold verbatim, bare separator codepoint and all, because the first one's scope filter made it
+// unreusable (review 69712). Two answers to one question drift independently -- on trailing
+// slashes, on the separator literal, on whether the leaf is included -- so the shared part is the
+// unfiltered fold and each caller composes what it actually needs on top.
+//
+// THE LEAF IS NOT INCLUDED, and the scope filter is not applied. A caller wanting the path itself
+// appends it; a caller wanting only the ancestors inside a write scope filters. Both are one
+// expression at the call site, and neither is a second derivation of the prefixes.
+fn path_ancestor_prefixes(path: String) -> List<String> {
+  map(
+    filter(enumerate(chars(text: path)), pair => pair.second == 47 && pair.first > 0),
+    pair => substring(s: path, start: 0, end: pair.first),
+  )
+}
+
+fn path_within_file_tree_scope(scope: FileTreeScope, path: NonEmptyStr) -> Bool {
+  let root = scope.root_path as String
+  let candidate = path as String
+  if path_has_dotdot_segment(path: candidate) {
+    false
+  } else {
+    if candidate == root {
+      true
+    } else {
+      starts_with(s: candidate, prefix: concat(root, "/"))
+    }
+  }
+}
+
+fn classify_file_access(obs: FileAccessObservation) -> ObservationVerdict {
+  match obs {
+    PathAbsent => Absent
+    ReadOnlyWithinNamespace => Drifted
+    WritableWithinNamespace => Converged
+    PathOutsideNamespace => Inaccessible
+  }
+}
+
+fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAccessPlan> {
+  match obs {
+    PathOutsideNamespace => Refuse { reason: "path outside file tree scope" as NonEmptyStr }
+    ReadOnlyWithinNamespace => Apply { plan: ChmodOwnerWriteWithinTempTree }
+    WritableWithinNamespace => Noop
+    PathAbsent => Apply { plan: CreateParent }
+  }
+}
+
+fn classify_file_access_upsert(
+  scope: FileTreeScope,
+  obs: FileAccessObservation,
+) -> std.upsert_decision.UpsertClassification<FileAccessPlan> {
+  UpsertClassification {
+    verdict: classify_file_access(obs: obs),
+    decision: decision_for_file_access(obs: obs),
+  }
+}

@@ -1,0 +1,283 @@
+module v2.test.claim.tokenize.lex_prefix_door
+
+import std.algebra { Cons, Empty }
+import std.types { Bool, List }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { LexPrefix, LexWalkUntil, tokenize_prefix_prepared, tokenize_prepared }
+import std.algebra { for_all, length }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE LEX PREFIX DOOR (v2.compiler.tokenize tokenize_prefix_prepared), the walk a reader
+// that needs only the start of a file asks for (v2.compiler.module_header). The oracle is the whole lex
+// of the same text (tokenize_prepared), which is the door under no limit, so each control compares the
+// door at a limit with that whole lex rather than with anything this claim authors.
+//
+// What the door owes, one control each: a prefix is the leading tokens of the whole lex, at every limit
+// and for texts spelled with trivia, annotations, multi-scalar tokens, string literals and a template
+// hole, so a token the limit falls inside is undecided and is not in the prefix, and no token of a prefix
+// differs from the same token of the whole lex; `complete` holds exactly when the prefix is the whole
+// lex, and a limit past the text always completes; a lexical error inside the walked part is the whole
+// lex's own first error, with its cause; an error beyond the walked part is not seen, which is why an
+// incomplete prefix says nothing about the rest; and the door never refuses a text at a limit that the
+// whole lex accepts, which a cut of the text lexed as if it were the file does (the contrast controls).
+
+// Every limit the controls sweep is below this and every text swept is shorter, so the last limits of a
+// sweep are past the end of the text.
+fn sweep_last() -> Int { 60 }
+
+fn swept_texts() -> List<String> {
+  [
+    "module a.b\n",
+    "module a.b // note\nfn f() -> Bool { true }\n",
+    "// lead\n\nmodule a.b.c\n",
+    "module a b\nfn f() {}\n",
+    "\r\nmodule a.b\r\n",
+    "module\ta.b\n\tdata s: Int = 1\n",
+    "module a.\n",
+    "modulex a.b\n",
+    "a == b\n",
+    "x -> y\n",
+    string_text(),
+    template_text()
+  ]
+}
+
+// The last two texts hold a string literal whose opening quote is the scalar 17 and whose closing quote is
+// the scalar 25, so every limit from 18 through 25 cuts it.
+fn string_text() -> String { "data s: String = \"abc def\"\n" }
+
+fn template_text() -> String { "data s: String = \"a \{x\} b\"\n" }
+
+fn string_cut_first() -> Int { 18 }
+
+fn string_cut_last() -> Int { 25 }
+
+// A text with a character the dag lexer matches no rule for, after a clean header.
+fn text_with_a_bad_character() -> String { "module a.b\n`bad\n" }
+
+fn probe_file() -> Symbol { ^lex_prefix_probe }
+
+fn whole_tokens(text: String) -> List<Token> {
+  match tokenize_prepared(text: text, file: probe_file(), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } => token_stream_remaining(stream: stream)
+  }
+}
+
+fn prefix_of(text: String, window: Int) -> Outcome<LexPrefix> {
+  tokenize_prefix_prepared(text: text, file: probe_file(), prepared: dag_prepared_lex(), limit: LexWalkUntil { scalars: window })
+}
+
+fn prefix_tokens(text: String, window: Int) -> List<Token> {
+  match prefix_of(text: text, window: window) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: prefix, diagnostics: _ } => token_stream_remaining(stream: prefix.stream)
+  }
+}
+
+fn prefix_complete(text: String, window: Int) -> Bool {
+  match prefix_of(text: text, window: window) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prefix, diagnostics: _ } => prefix.complete
+  }
+}
+
+// The class and extent of each token, which is what a token IS to every reader; the file and lexeme
+// are functions of the extent.
+fn leads(prefix: List<Token>, whole: List<Token>) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: p, tail: pt } =>
+      match whole {
+        Empty => false
+        Cons { head: w, tail: wt } => p.class == w.class && p.start == w.start && p.end == w.end && leads(prefix: pt, whole: wt)
+      }
+  }
+}
+
+fn leads_at_every_window(text: String, window: Int) -> Bool {
+  if window > sweep_last() {
+    true
+  } else {
+    leads(prefix: prefix_tokens(text: text, window: window), whole: whole_tokens(text: text)) && leads_at_every_window(text: text, window: window + 1)
+  }
+}
+
+// `complete` is exactly "the prefix is the whole lex": it implies the token counts agree, and a count
+// that agrees with the whole lex's for a text that the window cut implies complete.
+fn complete_means_whole_at_every_window(text: String, window: Int) -> Bool {
+  if window > sweep_last() {
+    true
+  } else {
+    (!prefix_complete(text: text, window: window) || length(xs: prefix_tokens(text: text, window: window)) == length(xs: whole_tokens(text: text)))
+      && complete_means_whole_at_every_window(text: text, window: window + 1)
+  }
+}
+
+test fn a_prefix_is_the_leading_tokens_of_the_whole_lex_at_every_limit() -> Bool {
+  length(xs: swept_texts()) > 5
+    && for_all(xs: swept_texts(), predicate: fn(text) { length(xs: whole_tokens(text: text)) > 1 })
+    && for_all(xs: swept_texts(), predicate: fn(text) { leads_at_every_window(text: text, window: 1) })
+}
+
+test fn complete_holds_exactly_when_the_prefix_is_the_whole_lex() -> Bool {
+  for_all(xs: swept_texts(), predicate: fn(text) { complete_means_whole_at_every_window(text: text, window: 1) })
+    && for_all(xs: swept_texts(), predicate: fn(text) { prefix_complete(text: text, window: sweep_last()) })
+    && for_all(xs: swept_texts(), predicate: fn(text) { length(xs: prefix_tokens(text: text, window: sweep_last())) == length(xs: whole_tokens(text: text)) })
+}
+
+// NON-VACUITY of the two controls above: the smallest window stops short of every text swept, with the
+// prefix strictly shorter than the whole lex, so the sweeps compare prefixes that really are cut.
+test fn the_smallest_window_stops_short_of_every_text() -> Bool {
+  for_all(
+    xs: swept_texts(),
+    predicate: fn(text) {
+      !prefix_complete(text: text, window: 1) && length(xs: prefix_tokens(text: text, window: 1)) < length(xs: whole_tokens(text: text))
+    }
+  )
+}
+
+fn first_token_end(tokens: List<Token>) -> Int {
+  match tokens {
+    Empty => -1
+    Cons { head: first, tail: _ } => first.end
+  }
+}
+
+// A TOKEN THE LIMIT FALLS INSIDE IS UNDECIDED, NOT EMITTED, AND A LARGER WINDOW DECIDES IT. `module` is
+// six scalars: with six of window the identifier run reaches the edge and the text might extend it, so
+// the prefix holds no token; with seven the next scalar is shown, the token ends at six, and it is the
+// whole lex's token.
+test fn a_token_the_limit_falls_inside_is_undecided_and_not_emitted() -> Bool {
+  length(xs: prefix_tokens(text: "module a.b\n", window: 1)) == 0
+    && length(xs: prefix_tokens(text: "module a.b\n", window: 6)) == 0
+    && !prefix_complete(text: "module a.b\n", window: 6)
+    && first_token_end(tokens: prefix_tokens(text: "module a.b\n", window: 7)) == 6
+    && first_token_end(tokens: prefix_tokens(text: "module a.b\n", window: 7)) == first_token_end(tokens: whole_tokens(text: "module a.b\n"))
+    && !prefix_complete(text: "module a.b\n", window: 7)
+}
+
+// A walk of a window that holds no scalar at all has read nothing and stops at once.
+test fn a_window_that_holds_nothing_reads_no_token() -> Bool {
+  length(xs: prefix_tokens(text: "module a.b\n", window: 0)) == 0 && !prefix_complete(text: "module a.b\n", window: 0)
+}
+
+fn refusal_reason_of_whole(text: String) -> Symbol {
+  match tokenize_prepared(text: text, file: probe_file(), prepared: dag_prepared_lex()) {
+    Accepted { value: _, diagnostics: _ } => ^lex_prefix_no_refusal
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+fn refusal_reason_of_prefix(text: String, window: Int) -> Symbol {
+  match prefix_of(text: text, window: window) {
+    Accepted { value: _, diagnostics: _ } => ^lex_prefix_no_refusal
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+// A LEXICAL ERROR INSIDE THE WALKED PART IS THE WHOLE LEX'S FIRST ERROR, with its own cause; one beyond
+// it is not seen. The text's bad character stands after a clean header, so the smallest window walks a
+// clean part and a window past the character walks it. The control is non-vacuous: the whole lex of
+// the text really is refused, for the cause asserted.
+test fn a_lexical_error_inside_the_window_is_the_whole_lexs_error_and_one_beyond_it_is_unseen() -> Bool {
+  refusal_reason_of_whole(text: text_with_a_bad_character()) == ^tokenize_lex_e1_unrecognized_char
+    && refusal_reason_of_prefix(text: text_with_a_bad_character(), window: sweep_last()) == ^tokenize_lex_e1_unrecognized_char
+    && refusal_reason_of_prefix(text: text_with_a_bad_character(), window: 15) == ^tokenize_lex_e1_unrecognized_char
+    && refusal_reason_of_prefix(text: text_with_a_bad_character(), window: 1) == ^lex_prefix_no_refusal
+    && !prefix_complete(text: text_with_a_bad_character(), window: 1)
+}
+
+// THE DOOR NEVER REFUSES WHAT THE WHOLE LEX DOES NOT, at any limit: a window refuses only with the whole
+// lex's own first error, and the texts the whole lex accepts are accepted at every window. The texts
+// include a string literal and a template hole, whose delimiters the limit falls inside.
+fn is_none_or_the_whole_lexs(reason: Symbol, text: String) -> Bool {
+  reason == ^lex_prefix_no_refusal || reason == refusal_reason_of_whole(text: text)
+}
+
+fn refuses_only_as_the_whole_lex_does(text: String, window: Int) -> Bool {
+  if window > sweep_last() {
+    true
+  } else {
+    is_none_or_the_whole_lexs(reason: refusal_reason_of_prefix(text: text, window: window), text: text)
+      && refuses_only_as_the_whole_lex_does(text: text, window: window + 1)
+  }
+}
+
+test fn no_window_refuses_a_text_the_whole_lex_accepts_or_refuses_for_another_cause() -> Bool {
+  for_all(xs: swept_texts(), predicate: fn(text) { refusal_reason_of_whole(text: text) == ^lex_prefix_no_refusal })
+    && for_all(xs: swept_texts(), predicate: fn(text) { refuses_only_as_the_whole_lex_does(text: text, window: 0) })
+    && refuses_only_as_the_whole_lex_does(text: text_with_a_bad_character(), window: 0)
+}
+
+// THE CONTRAST THE DOOR EXISTS FOR. The same cut of the text, lexed as if it were the file
+// (tokenize_prepared over the first `window` scalars), refuses at every limit that falls inside a string
+// literal: the delimited rule finds no close and the opening quote matches no rule, which is the cause
+// of every one of the 14 modules a 4096-scalar cut refused. The door over the same limits is accepted
+// and says it is incomplete, with the tokens it holds the whole lex's.
+fn cut_of(text: String, window: Int) -> String {
+  substring(s: text, start: 0, end: window)
+}
+
+fn window_is_open(text: String, window: Int) -> Bool {
+  match prefix_of(text: text, window: window) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prefix, diagnostics: _ } => !prefix.complete
+  }
+}
+
+fn cuts_refuse_for(text: String, window: Int, reason: Symbol) -> Bool {
+  if window > string_cut_last() {
+    true
+  } else {
+    refusal_reason_of_whole(text: cut_of(text: text, window: window)) == reason
+      && cuts_refuse_for(text: text, window: window + 1, reason: reason)
+  }
+}
+
+fn windows_are_open_across(text: String, window: Int) -> Bool {
+  if window > string_cut_last() {
+    true
+  } else {
+    window_is_open(text: text, window: window)
+      && refusal_reason_of_prefix(text: text, window: window) == ^lex_prefix_no_refusal
+      && windows_are_open_across(text: text, window: window + 1)
+  }
+}
+
+fn cuts_refuse_somehow(text: String, window: Int) -> Bool {
+  if window > string_cut_last() {
+    true
+  } else {
+    !(refusal_reason_of_whole(text: cut_of(text: text, window: window)) == ^lex_prefix_no_refusal)
+      && cuts_refuse_somehow(text: text, window: window + 1)
+  }
+}
+
+test fn a_cut_inside_a_string_literal_is_refused_where_the_door_is_open() -> Bool {
+  string_length(s: string_text()) > string_cut_last()
+    && refusal_reason_of_whole(text: string_text()) == ^lex_prefix_no_refusal
+    && cuts_refuse_for(text: string_text(), window: string_cut_first(), reason: ^tokenize_lex_e1_unrecognized_char)
+    && windows_are_open_across(text: string_text(), window: string_cut_first())
+}
+
+test fn a_cut_inside_a_template_hole_is_refused_where_the_door_is_open() -> Bool {
+  string_length(s: template_text()) > string_cut_last()
+    && refusal_reason_of_whole(text: template_text()) == ^lex_prefix_no_refusal
+    && cuts_refuse_somehow(text: template_text(), window: string_cut_first())
+    && windows_are_open_across(text: template_text(), window: string_cut_first())
+}
+
+// NON-VACUITY of the contrast: the cuts just outside the literal are not refused, so the refusals above
+// are the literal's and not the text's.
+test fn the_cuts_outside_the_literal_are_lexed_whole_by_the_naive_reading() -> Bool {
+  refusal_reason_of_whole(text: cut_of(text: string_text(), window: 17)) == ^lex_prefix_no_refusal
+    && refusal_reason_of_whole(text: cut_of(text: string_text(), window: 26)) == ^lex_prefix_no_refusal
+}

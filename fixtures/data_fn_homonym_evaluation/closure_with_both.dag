@@ -1,0 +1,18 @@
+module fixtures.data_fn_homonym_evaluation.closure_with_both
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import fixtures.data_fn_homonym_evaluation.data_declarer { read_homonym_field }
+import fixtures.data_fn_homonym_evaluation.fn_declarer { evaluation_homonym }
+
+// THE ENTRY. Both declarers in one evaluated closure. Correct evaluation is deterministic: the
+// data reference reads "data-side" and the call returns its argument. The defect makes the FIRST
+// conjunct nondeterministic -- the data reference evaluates to the function value in a fraction of
+// runs of this identical file set, and the field access then raises
+// TypeError "cannot access field 'field' on Fn".
+fn evaluation_main() -> ProcessExit {
+  if read_homonym_field() == "data-side" && evaluation_homonym(count: 2) == 2 {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "a bare homonym evaluated to the wrong declaration" }
+  }
+}

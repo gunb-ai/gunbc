@@ -1,0 +1,22 @@
+module test.fixture.rostered_row_join.collision_control_rostered
+
+import std.types { String }
+
+// THE ROSTERED HALF OF THE BARE-NAME COLLISION CONTROL. Its sibling
+// `test.fixture.rostered_row_join.collision_control_unrostered` declares a row with THE SAME BARE
+// NAME, `collision_row`, and is deliberately absent from the roster. The join must accept this one
+// and refuse that one, which it can only do by keying membership on the declaration identity --
+// module path included -- rather than on the spelling.
+//
+// WHY A PLAIN DROP-ONE-ROW CONTROL DOES NOT COVER THIS. `omitted_control_row_b` passes under BOTH
+// implementations: a bare-name key and an identity key agree whenever the names are distinct, which
+// they were across the whole corpus when this join first landed. Only a collision discriminates, so
+// only a collision is evidence. Found in review of gunbc#10496, where the bare-name key accepted an
+// unrostered row whose name matched a rostered one and every accounting equality still held.
+type CollisionControlRow {
+  subject: String
+}
+
+data collision_row: CollisionControlRow = CollisionControlRow {
+  subject: "the rostered half: this identity is named by collision_control_roster",
+}

@@ -1,0 +1,170 @@
+module gunbc.dag_grammar_fork_census
+
+import std.types { Int, String, NonEmptyStr, CommitSha, List, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.disposition { Disposition, Terminal }
+
+// THE RECEIPT OF ONE CENSUS OF THE DAG GRAMMAR FORK, taken before any line of it is deleted.
+//
+// The fork itself is measured and ruled elsewhere; this module carries only its POPULATION, and it
+// exists because the finding was written as a PHRASE -- "every grammar-relation row is grounded on
+// the flat table" -- where DESIGN section 4b(3) asks a replacement migration for a bounded
+// population at identity grain. A phrase cannot be checked against a later tree; a roster can.
+//
+// WHAT IT IS NOT: a gate, an instrument, or a repair. Nothing here executes on any push, nothing
+// refuses, and the population it bounds is free to grow the moment it is written. It is the input
+// to a cut lane that has not been authorised, and it deliberately performs no cut.
+data dag_grammar_fork_census_disposition: Disposition = Terminal {
+  reason: "The bounded population of the dag grammar fork, measured at one revision, so that a replacement migration has a roster to work against instead of a phrase. Receipt only: no gate, no instrument, no cut."
+}
+
+// WHAT THE FORK IS, restated at the grain this census counts, because a roster whose subject is
+// vague counts the wrong things. Two production tables answer one question -- what are the
+// productions of the dag surface language -- in one module.
+//
+// THE REACHABLE TABLE is dag_grammar_root, which v2.extdeps.languages.dag dag_language_model hands
+// to v2.compiler.parse parse_module. Its identifier terminals are dag_grammar_terminal_lexeme, so
+// v2.compiler.parse parse_stamp_terminal stamps a StampLexeme atom with the INTERNED LEXEME and
+// the token class is not recoverable from the atom afterwards.
+//
+// THE UNREACHABLE TABLE is the seven flat FormalProduction declarations rostered below. Each is a
+// straight-line token spine with no nonterminals, and no lhs symbol of any of them occurs anywhere
+// inside dag_grammar_root. They are what every grammar-relation row is grounded on.
+type ProductionTable
+  = ReachableFromGrammarRoot
+  | UnreachableFlatTable
+
+// A MEMBER IS CITED BY SYMBOL, never by position (DESIGN section 3). The lhs symbol is carried as
+// text rather than as a caret literal on purpose: it is the NAME of a symbol this census is
+// reporting on, not a symbol this module means to use, and minting it here would make the census
+// a second author of the very identity it is measuring.
+type FlatProductionRow {
+  production: DeclarationRef
+  lhs_symbol_name: NonEmptyStr
+  relation_row_rules_node: DeclarationRef
+  consumers_outside_language_module: Int
+}
+
+data flat_production_rows: List<FlatProductionRow> = [
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_add"),
+    lhs_symbol_name: "dag_production_fn_add" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_translation_rules_node"),
+    consumers_outside_language_module: 4
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_pick"),
+    lhs_symbol_name: "dag_production_fn_pick" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_pick_translation_rules_node"),
+    consumers_outside_language_module: 0
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_bind"),
+    lhs_symbol_name: "dag_production_fn_bind" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_bind_translation_rules_node"),
+    consumers_outside_language_module: 0
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_loop"),
+    lhs_symbol_name: "dag_production_fn_loop" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_loop_translation_rules_node"),
+    consumers_outside_language_module: 0
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_match"),
+    lhs_symbol_name: "dag_production_fn_match" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_match_translation_rules_node"),
+    consumers_outside_language_module: 0
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_rec"),
+    lhs_symbol_name: "dag_production_fn_rec" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_rec_translation_rules_node"),
+    consumers_outside_language_module: 0
+  },
+  FlatProductionRow {
+    production: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_formal_production_fn_field_access"),
+    lhs_symbol_name: "dag_production_fn_field_access" as NonEmptyStr,
+    relation_row_rules_node: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_field_access_translation_rules_node"),
+    consumers_outside_language_module: 0
+  }
+]
+
+// THE COUNT IS DERIVED, NEVER STORED. A stored total beside a roster is two accounts of one fact,
+// and the one that rots is always the number. There is no spelling here in which the count and the
+// roster can disagree.
+fn flat_production_count() -> Int {
+  list_length(items: flat_production_rows)
+}
+
+fn flat_production_rows_with_external_consumers() -> List<FlatProductionRow> {
+  filter(flat_production_rows, r => r.consumers_outside_language_module > 0)
+}
+
+// THE MEASUREMENT, AND ITS INSTRUMENT NAMED RATHER THAN ITS OUTPUT TRANSCRIBED IN PROSE. The
+// commands are rendered from the row's own fields, so a reader re-derives each figure from the
+// fact it produced instead of trusting a sentence beside it. They are text for a person to run;
+// nothing here executes them.
+type SymbolReachCensus {
+  source_revision: CommitSha
+  language_module_path: NonEmptyStr
+  lhs_symbol_references_inside_language_module: Int
+  lhs_symbol_references_anywhere_else: Int
+}
+
+data lhs_symbol_reach: SymbolReachCensus = SymbolReachCensus {
+  source_revision: "7ba8c8dc8aa1b8f2445582d11c73fbf8c25ad53d",
+  language_module_path: "src/v2/extdeps/languages/dag.dag" as NonEmptyStr,
+  lhs_symbol_references_inside_language_module: 15,
+  lhs_symbol_references_anywhere_else: 0
+}
+
+fn lhs_symbol_reach_corpus_invocation() -> List<String> {
+  [
+    "grep", "-rn",
+    "\\^dag_production_fn_(add|pick|bind|loop|match|rec|field_access)\\b",
+    "--include=*.dag", "."
+  ]
+}
+
+fn lhs_symbol_reach_inside_module_invocation(c: SymbolReachCensus) -> List<String> {
+  [
+    "grep", "-cn",
+    "\\^dag_production_fn_(add|pick|bind|loop|match|rec|field_access)\\b",
+    c.language_module_path as String
+  ]
+}
+
+// The lhs symbols are confined to one module (0 references elsewhere), and that bounds DELETION,
+// not BREAKAGE. The dependents of the rows built on those productions are reached through
+// dag_target_model, which 10 modules outside the language module name. Six of the seven relation
+// rows have zero consumers outside the language module; only the fn_add row is reached from
+// elsewhere, and by 4 references across 3 modules.
+
+// Bounding a population is not scoping a migration. This receipt says how many and which; it says
+// nothing about what the seven become, and it authorises nothing.
+// WHAT A ZERO IN THE RIGHT-HAND COLUMN DOES AND DOES NOT LICENSE, stated here because the
+// attractive misreading is the one this repository keeps recording. Zero references outside the
+// language module is a real and useful bound: it says the flat table's IDENTITIES are confined,
+// so deleting them cannot break a citation somewhere else in the corpus.
+//
+// IT IS NOT THE BLAST RADIUS OF A CUT. What breaks when the table dies is whatever consumes the
+// grammar-relation rows built ON it, and those are reached through dag_target_model rather than
+// through the lhs symbols -- ten modules outside the language module name it. Reading the symbol
+// census as the cut's denominator would be the reachability-read-as-occupancy error in its
+// cheapest form: counting the names rather than the dependents.
+//
+// SIX OF SEVEN ROWS HAVE NO CONSUMER OUTSIDE THE LANGUAGE MODULE AT ALL, which is a genuinely
+// asymmetric result and the most actionable thing in this census: the fn_add row is the only one
+// anything else reaches, so the population that a cut must adjudicate is far smaller than the
+// population that a cut must delete.
+// WHAT THIS CENSUS DOES NOT ANSWER, enumerated so a reader does not take a bounded population for
+// a scoped migration. It does not say what the seven productions should become; the target state
+// is demonstrated in-tree by the python language model, which uses grammar_formal_terminal and
+// parses one real production, so its atoms already carry token classes -- but establishing that
+// dag can converge onto that substrate is a separate measurement, not a corollary of this one.
+// And it does not authorise a cut: the language module is named load-bearing by DESIGN, and this
+// receipt is input to that decision rather than a substitute for it.
+fn flat_production_roster_invocation() -> List<String> {
+  ["grep", "-n", "^fn dag_formal_production_", "src/v2/extdeps/languages/dag.dag"]
+}

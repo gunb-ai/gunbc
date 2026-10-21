@@ -1,0 +1,129 @@
+module v2.test.claim.self_host_contract.source_authority_emitted_contract
+
+import std.algebra { Cons, Empty }
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  Sha1Digest,
+  Sha1DigestHex,
+  Sha1Family,
+  Sha256Digest,
+  Sha256DigestHex,
+  Sha256Family,
+  as_content_hash_cryptographic,
+  as_content_hash_sha1,
+  content_hash_of_value
+}
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRefContentHashStructuralNonFnv1a64,
+  SourceRefContentHashStructuralOk,
+  SourceRefListDigestNonStructuralRefused,
+  SourceRefListDigestOk,
+  SourceRootCoverage, SourceRootCoverageComplete, SourceRootManifestElided, SourceRootRowsMissing,
+  SourceRootManifestAbsent,
+  source_ref_content_hash_structural,
+  source_ref_list_digest_build,
+  source_root_coverage_is_complete, source_root_ref_transport_coverage_admits
+}
+import v2.std.cross_tree.import_model { V2Tree }
+
+// THE source_authority ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.source_authority source_root_coverage_is_complete admits only complete coverage, and
+// source_root_ref_transport_coverage_admits additionally admits an elided manifest and nothing
+// else. source_ref_content_hash_structural is a total ContentHash fold: Fnv1a64 inhabits the digest
+// combine; Sha256Hash and Sha1Hash refuse carrying distinct HashFamily payloads.
+fn sac_row(coverage: SourceRootCoverage, inline_expected: Bool, ref_expected: Bool) -> Bool {
+  source_root_coverage_is_complete(coverage: coverage) == inline_expected
+    && source_root_ref_transport_coverage_admits(coverage: coverage) == ref_expected
+}
+
+fn sac_sha256_hash() -> ContentHash {
+  as_content_hash_cryptographic(
+    digest: Sha256Digest {
+      hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex
+    }
+  )
+}
+
+fn sac_sha1_hash() -> ContentHash {
+  as_content_hash_sha1(
+    digest: Sha1Digest {
+      hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha1DigestHex
+    }
+  )
+}
+
+fn sac_ref(path: String, hash: ContentHash) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: V2Tree,
+    content_hash: hash
+  }
+}
+
+fn sac_positive_structural_digest_holds() -> Bool {
+  match source_ref_list_digest_build(
+    refs: Cons {
+      head: sac_ref(
+        path: "positive.dag",
+        hash: content_hash_of_value(value: "positive.dag" as NonEmptyStr)
+      ),
+      tail: Empty
+    }
+  ) {
+    SourceRefListDigestOk { digest: _ } => true
+    SourceRefListDigestNonStructuralRefused { path: _ } => false
+  }
+}
+
+fn sac_sha256_refusal_carries_sha256_family() -> Bool {
+  match source_ref_content_hash_structural(hash: sac_sha256_hash()) {
+    SourceRefContentHashStructuralNonFnv1a64 { family: family } =>
+      if (family == Sha256Family) { true } else { false }
+    SourceRefContentHashStructuralOk { digest: _ } => false
+  }
+}
+
+fn sac_sha1_refusal_carries_sha1_family() -> Bool {
+  match source_ref_content_hash_structural(hash: sac_sha1_hash()) {
+    SourceRefContentHashStructuralNonFnv1a64 { family: family } =>
+      if (family == Sha1Family) { true } else { false }
+    SourceRefContentHashStructuralOk { digest: _ } => false
+  }
+}
+
+fn sac_sha256_list_digest_refuses() -> Bool {
+  match source_ref_list_digest_build(
+    refs: Cons {
+      head: sac_ref(path: "sha256.dag", hash: sac_sha256_hash()),
+      tail: Empty
+    }
+  ) {
+    SourceRefListDigestNonStructuralRefused { path: path } => path == "sha256.dag"
+    SourceRefListDigestOk { digest: _ } => false
+  }
+}
+
+fn sac_content_hash_structural_contract_holds() -> Bool {
+  sac_positive_structural_digest_holds()
+    && sac_sha256_list_digest_refuses()
+    && sac_sha256_refusal_carries_sha256_family()
+    && sac_sha1_refusal_carries_sha1_family()
+}
+
+// The planted fault expects the elided manifest to count as complete inline coverage, so the
+// injected reading does not hold exactly when that coverage is refused.
+fn source_authority_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  sac_row(coverage: SourceRootCoverageComplete, inline_expected: true, ref_expected: true)
+    && sac_row(coverage: SourceRootManifestElided { read_count: 65, cap: 64 }, inline_expected: inject_fault, ref_expected: true)
+    && sac_row(coverage: SourceRootRowsMissing { read_count: 3, produced_row_count: 2 }, inline_expected: false, ref_expected: false)
+    && sac_row(coverage: SourceRootManifestAbsent, inline_expected: false, ref_expected: false)
+    && sac_content_hash_structural_contract_holds()
+}
+
+test fn source_authority_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  source_authority_emitted_contract_holds(inject_fault: false)
+    && !source_authority_emitted_contract_holds(inject_fault: true)
+}

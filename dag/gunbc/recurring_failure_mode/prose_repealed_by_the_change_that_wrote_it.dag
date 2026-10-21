@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.prose_repealed_by_the_change_that_wrote_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data prose_repealed_by_the_change_that_wrote_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "prose_repealed_by_the_change_that_wrote_it" as NonEmptyStr,
+
+  receipts: [
+    "**prose repealed by the change that wrote it** (INVALID STATE: an annotation or prose row states a fact about the tree -- what a roster carries, what a carrier cannot express, what a mechanism guarantees -- which the SAME CHANGE falsifies, either because a later hunk of that diff makes it false or because it was never true of the mechanism the diff ships. The sentence reads as rigor, cites an authority section, and is the thing a later reader trusts instead of checking. DESIGN section 4c: an annotation 'must not restate what the declaration structurally says', and one that states what the tree CONTRADICTS is worse than none.)",
+
+    "IT IS NOT `stale_claim_survives_its_own_correct_edit`, AND THE BOUNDARY IS THE WHOLE REASON THIS ROW EXISTS. That class covers a claim that was TRUE when written and became false through a correct edit made ELSEWHERE and LATER; its defences are interval-shaped -- a staleness sweep, a citation census, a re-read when the cited symbol moves. Here there is no interval. The falsifier ships in the same commit as the claim, so nothing that compares two points in time can see it, and in the worst instances the sentence was false at the moment it was authored.",
+
+    "HARM: it is the highest-confidence wrong statement in the corpus, because it sits in the file it describes and was written by the person who just changed that file. Every downstream reader -- reviewer, next author, this row's own audience -- takes a local annotation as the settled account of its neighbourhood. The cost is paid as a decision made on a false premise, not as a broken build.",
+
+    "DISTINGUISHING FACTS, so a reviewer can name it rather than feel it. The sentence asserts something about ANOTHER declaration's capability or membership ('the roster has no arm for X', 'these fields stay scalars because Y', 'this population is the projection of Z'). It cites a DESIGN section, which is what makes it read as diligence. And the counter-evidence is reachable from the same diff or the same file -- a sibling declaration, a later hunk, or the very authority the sentence names.",
+
+    "RECEIPTS, gunbc#11195, four consecutive review rounds on ONE change, which is what promoted this from an incident to a class. (1) A module header said re-pinning happens 'when the grounding check goes red -- the executing signal that the conversion has left its band', while the only check compared three literals in that same file and could not red from anything the sentence described. (2) A tracked gap declared that a COUNT could not be typed because `std.measure` had no arm for it, while the same roster carried `TokenCount`, `MergeQueueEntryCount` and `AllocatorBlockCount`, each a one-line alias added by its own consumer's lane. (3) The narrowed version of that same row declared the RATE un-typeable for want of a quotient former, and cited `MegatransfersPerSecond` as the proof -- an alias that is the template for doing exactly what the row said was impossible. (4) An annotation on the refusal decider said the eval-step fields stay scalars because the roster has no arm, in the same diff that ADDED the arm.",
+
+    "A FIFTH RECEIPT OF THE SAME CLASS IN A DIFFERENT SHAPE, WHICH IS WHY THE ROW IS NOT SCOPED TO ANNOTATIONS ABOUT TYPES. `v2.workflow.floor_grandfathered_roster` carried a header forbidding exactly the exemption its own generating cut had granted -- 'a roster that admitted rows would let every expensive new witness be grandfathered on the day it landed' -- while three witnesses added by that same change sat in the roster. The sibling calibration module stated the rule about one of those three BY NAME, recording that the specimen had been reduced so that 'grandfathering would have granted exactly that exemption'. Two paragraphs asserting the rule did not stop the mechanism from breaking it.",
+
+    "RUNG FOUND AT: below the ladder for the CLAIM, mitigatable for its consequences. No `Accepted` program reads an annotation (DESIGN section 4c), so a false one cannot be refused, only believed. What contains the harm today is review, which caught all five instances above and is the reason they are receipts rather than landed defects.",
+
+    "CEILING, AND IT IS NOT WHAT IT LOOKS LIKE. A lens over annotation TEXT is foreclosed by section 4c and would be the wrong wall anyway: the defect is not the prose, it is that a checkable assertion was made in a channel with no consumer. The attainable ceiling is STRUCTURAL IMPOSSIBILITY BY RELOCATION -- an assertion about another declaration's capability or membership is expressible as a predicate over the model, and a predicate has an executing consumer. The three repairs this class produced are all that shape: the count and rate gaps were closed by CONSUMING the carrier rather than describing its absence, and the roster header's rule became `the_calibration_specimen_is_not_grandfathered` and its two siblings, which go red when the rule is broken.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a change's prose assertions ABOUT THE TREE arrive with the consumer that would falsify them, in the same closure -- so that the claim is a declaration something folds over rather than a sentence in a channel nothing reads. That is the same derivability DESIGN section 3c names for dangling declarations, applied to the assertion instead of the symbol: which capabilities and memberships a change asserts is decidable from what it imports and declares, so plan admission can require the predicate beside the paragraph. A trigger naming an annotation linter, a prose grep, or a review checklist does NOT discharge this: each is a second reader of a channel the compiler cannot see, which is the condition being repaired rather than a repair of it.)",
+  ],
+
+  evidence: [],
+}

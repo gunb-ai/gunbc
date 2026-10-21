@@ -1,0 +1,5 @@
+module test.fixture.decl_facts_reflection.ambiguous_b_specimen
+
+import test.fixture.decl_facts_reflection.ambiguous_shared_b { SharedBareArm }
+
+data ambiguous_b_arm_specimen: SharedBareArm = SharedArm

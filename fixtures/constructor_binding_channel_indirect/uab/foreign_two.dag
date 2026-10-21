@@ -1,0 +1,5 @@
+module uab.foreign_two
+
+type Sq { yet_another_field: Int }
+
+fn two_marker() -> Int { 2 }

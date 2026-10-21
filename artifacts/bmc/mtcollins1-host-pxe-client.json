@@ -1,0 +1,37 @@
+{
+  "capture_subject": "mtcollins1-host-nic",
+  "captured_by": "tcpdump -i enP3p3s0f1 on srv2 (192.168.1.188), same /24 as the subject",
+  "controller_macs_for_contrast": {
+    "bmc_dedicated_192.168.1.228": "28:c1:3c:8a:d6:4c",
+    "bmc_second_nic_192.168.1.231": "28:c1:3c:8a:d6:4d"
+  },
+  "host_nic_mac": "28:c1:3c:8a:d6:4a",
+  "observed_at_utc": "2026-09-05T14:54Z",
+  "parameter_request_includes": [
+    "TFTP (66)",
+    "BF (67) bootfile-name",
+    "GUID (97)",
+    "128-135"
+  ],
+  "pxe_client_identification": {
+    "arch_meaning": "0x000B EFI ARM64 (aarch64)",
+    "dhcp_option_60_vendor_class": "PXEClient:Arch:00011:UNDI:003016",
+    "dhcp_option_93_arch": 11,
+    "dhcp_option_94_ndi": "1.3.16",
+    "guid_option_97_present": true
+  },
+  "raw_excerpt": "\t    Vendor-Class (60), length 12: \"udhcp 1.21.1\"\n14:53:58.927640 IP (tos 0x0, ttl 64, id 39529, offset 0, flags [none], proto UDP (17), length 375)\n    0.0.0.0.68 > 255.255.255.255.67: [udp sum ok] BOOTP/DHCP, Request from 28:c1:3c:8a:d6:4a, length 347, xid 0xb85a34d8, Flags [Broadcast] (0x8000)\n\t  Client-Ethernet-Address 28:c1:3c:8a:d6:4a\n\t  Vendor-rfc1048 Extensions\n\t    Magic Cookie 0x63825363\n\t    DHCP-Message (53), length 1: Discover\n\t    MSZ (57), length 2: 1472\n\t    Parameter-Request (55), length 35: \n\t      Subnet-Mask (1), Time-Zone (2), Default-Gateway (3), Time-Server (4)\n\t      IEN-Name-Server (5), Domain-Name-Server (6), Hostname (12), BS (13)\n\t      Domain-Name (15), RP (17), EP (18), RSZ (22)\n\t      TTL (23), BR (28), YD (40), YS (41)\n\t      NTP (42), Vendor-Option (43), Requested-IP (50), Lease-Time (51)\n\t      Server-ID (54), RN (58), RB (59), Vendor-Class (60)\n\t      TFTP (66), BF (67), GUID (97), Unknown (128)\n\t      Unknown (129), Unknown (130), Unknown (131), Unknown (132)\n\t      Unknown (133), Unknown (134), Unknown (135)\n\t    GUID (97), length 17: 0.70.14.184.213.58.144.0.16.1.230.76.214.138.60.193.40\n\t    NDI (94), length 3: 1.3.16\n\t    ARCH (93), length 2: 11\n\t    Vendor-Class (60), length 32: \"PXEClient:Arch:00011:UNDI:003016\"\n14:53:59.930347 IP (tos 0x10, ttl 128, id 0, offset 0, flags [none], proto UDP (17), length 362)\n    192.168.1.1.67 > 255.255.255.255.68: [udp sum ok] BOOTP/DHCP, Reply, length 334, xid 0xb85a34d8, Flags [Broadcast] (0x8000)\n\t  Your-IP 192.168.1.230\n\t  Client-Ethernet-Address 28:c1:3c:8a:d6:4a\n\t  Vendor-rfc1048 Extensions\n\t    Magic Cookie 0x63825363\n\t    DHCP-Message (53), length 1: Offer\n\t    Server-ID (54), length 4: 192.168.1.1\n\t    Lease-Time (51), length 4: 86400\n\t    Subnet-Mask (1), length 4: 255.255.255.0\n\t    Default-Gateway (3), length 4: 192.168.1.1\n\t    Domain-Name-Server (6), length 4: 192.168.1.1\n\t    Domain-Name (15), length 21: \"mynetworksettings.com\"\n\t    Unknown (125), length 35: 0.0.13.233.30.4.6.48.48.48.66.54.66.5.11.65.66.50.51.52.48.48.49.50.56.50.6.7.67.82.49.48.48.48.65\n14:54:02.602668 IP (tos 0x0, ttl 64, id 39530, offset 0, flags [none], proto UDP (17), length 375)\n    0.0.0.0.68 > 255.255.255.255.67: [udp sum ok] BOOTP/DHCP, Request from 28:c1:3c:8a:d6:4a, length 347, xid 0xb85a34d8, secs 4, Flags [Broadcast] (0x8000)\n\t  Client-Ethernet-Address 28:c1:3c:8a:d6:4a\n\t  Vendor-rfc1048 Extensions\n\t    Magic Cookie 0x63825363\n\t    DHCP-Message (53), length 1: Discover\n\t    MSZ (57), length 2: 1472\n\t    Parameter-Request (55), length 35: \n\t      Subnet-Mask (1), Time-Zone (2), Default-Gateway (3), Time-Server (4)\n\t      IEN-Name-Server (5), Domain-Name-Server (6), Hostname (12), BS (13)\n\t      Domain-Name (15), RP (17), EP (18), RSZ (22)\n\t      TTL (23), BR (28), YD (40), YS (41)\n\t      NTP (42), Vendor-Option (43), Requested-IP (50), Lease-Time (51)\n\t      Server-ID (54), RN (58), RB (59), Vendor-Class (60)\n\t      TFTP (66), BF (67), GUID (97), Unknown (128)\n\t      Unknown (129), Unknown (130), Unknown (131), Unknown (132)\n\t      Unknown (133), Unknown (134), Unknown (135)\n\t    GUID (97), length 17: 0.70.14.184.213.58.144.0.16.1.230.76.214.138.60.193.40\n\t    NDI (94), length 3: 1.3.16\n\t    ARCH (93), length 2: 11\n\t    Vendor-Class (60), length 32: \"PXEClient:Arch:00011:UNDI:003016\"\n14:54:02.603697 IP (tos 0x10, ttl 128, id 0, offset 0, flags [none], proto UDP (17), length 362)\n    192.168.1.1.67 > 255.255.255.255.68: [udp sum ok] BOOTP/DHCP, Reply, length 334, xid 0xb85a34d8, secs 4, Flags [Broadcast] (0x8000)\n\t  Your-IP 192.168.1.230\n",
+  "server_response": {
+    "boot_fields_offered": "none \u2014 no next-server, no bootfile-name (option 67) in any Offer",
+    "consequence": "the client asks for a boot file and nothing on this segment answers with one",
+    "offered": [
+      "Subnet-Mask",
+      "Default-Gateway",
+      "Domain-Name-Server",
+      "Lease-Time",
+      "Domain-Name"
+    ],
+    "offering_server": "192.168.1.1"
+  },
+  "trigger": "gunbc.machine_intake_mtcollins1_actuate mtcollins1_netboot_handoff \u2014 the modeled out-of-band arm set boot device pxe, verified boot parameter 5 read back Force PXE, and power-cycled the host"
+}

@@ -1,0 +1,54 @@
+module v2.test.claim.manual.constructor_tag_route_probe
+
+// v2-side twin of dag/test/claim/constructor_tag_route_probe.dag: the same controls, run on the
+// v2 route. Both trees import the ONE std model; neither declares a carrier.
+
+import std.primitives { ConstructorTag, tag_of, same_arm }
+
+type WideProbe
+  = W01 { a: Int }
+  | W02 { a: String }
+  | W03 { a: Int, b: Int }
+  | W04
+  | W05 { a: String }
+  | W06 { a: Int }
+  | W07 { a: String, b: String }
+  | W08
+  | W09 { a: Int }
+  | W10 { a: String }
+  | W11 { a: Int }
+  | W12 { a: String }
+
+test fn tag_matches_the_value_it_came_from() -> Bool {
+  same_arm(tag: tag_of(v: W11 { a: 1 }), v: W11 { a: 1 })
+}
+
+test fn wrong_arm_answers_false() -> Bool {
+  !same_arm(tag: tag_of(v: W10 { a: "x" }), v: W12 { a: "x" })
+}
+
+test fn distinct_unit_arms_answer_false() -> Bool {
+  !same_arm(tag: tag_of(v: W04), v: W08)
+}
+
+test fn payload_is_blind_on_a_match() -> Bool {
+  same_arm(tag: tag_of(v: W11 { a: 1 }), v: W11 { a: 2 })
+}
+
+test fn consumer_names_only_two_of_twelve_arms() -> Bool {
+  same_arm(tag: tag_of(v: W01 { a: 1 }), v: W12 { a: "s" }) == false
+    && same_arm(tag: tag_of(v: W03 { a: 1, b: 2 }), v: W03 { a: 9, b: 9 })
+}
+
+// The identity a tag carries IS what `discriminant` yields at the tag-reference position: a
+// PAYLOAD arm spelled `W11 {}` and a value of that arm give the same arm.
+test fn payload_arm_tag_reference_agrees_with_value_tag() -> Bool {
+  discriminant(v: W11 {}) == discriminant(v: W11 { a: 7 })
+    && same_arm(tag: tag_of(v: W11 { a: 7 }), v: W11 { a: 9 })
+}
+
+test fn unit_arm_tag_reference_agrees_and_discriminates() -> Bool {
+  discriminant(v: W08) == discriminant(v: W08)
+    && same_arm(tag: tag_of(v: W08), v: W08)
+    && !same_arm(tag: tag_of(v: W08), v: W04)
+}

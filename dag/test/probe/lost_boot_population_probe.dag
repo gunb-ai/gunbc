@@ -1,0 +1,77 @@
+module test.probe.lost_boot_population_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the
+// lost-boot sweep modules would otherwise (a) call the sweep's internals directly, (b) fabricate
+// the sealed current population -- a derived-EMPTY one in particular, which would read every
+// current-boot runner as a stranger -- or (e) reach the supplied-width constructors through a witness
+// helper. (The sweep takes no host argument, so a second host has no route to probe; the host
+// boundary is witnessed through the public sweep.) The witness
+// test.claim.runner.lost_boot_population_probe_witness hands this source to the compiler and
+// requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { List, NonEmptyStr, String, Int }
+import extdeps.transports.rest { RestResult }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import gunbc.auth.github_credential { GitHubCredentialAuthority }
+import gunbc.host.host_control_route { ControlledHost, HostControlStanding }
+import gunbc.runner.runner_slot_allocation { RunnerWidthResolution }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
+import gunbc.runner.runner_host_unit_slot {
+  CurrentServicePopulation, CurrentServicePopulationStanding, ServiceBootId, 
+  current_service_population_over,
+}
+import gunbc.host.managed_host { ManagedHost }
+import test.claim.runner.runner_jit_listed_registration_witness { population_over_host, population_over, derived, reg, reg5, sweep }
+import gunbc.runner.runner_jit_deregistration {
+  LostBootSweep, SweepClass, ListedRegistrationStanding, lost_boot_sweep, sweep_over, sweep_class,
+}
+
+// (a) THE SWEEP'S INTERNALS, CALLED FROM OUTSIDE. Each refuses at its callee.
+fn outside_sweep_class(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority) -> SweepClass {
+  sweep_class(organization: organization, population: population, authority: authority, listed: "victim-runner")
+}
+
+fn outside_sweep_over(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, runners: List<OrganizationRunnerWire>) -> LostBootSweep {
+  sweep_over(organization: organization, population: population, authority: authority, runners: runners)
+}
+
+// (a2) THE SUPPLIED-WIDTH-AND-LABELS CONSTRUCTOR, CALLED FROM OUTSIDE: the only route to a population
+// over a width the offer did not derive.
+fn outside_supplied_population(host: HostControlStanding, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding {
+  current_service_population_over(host: host, width: width, registration_labels: labels, boot: boot)
+}
+
+// (b) A FABRICATED DERIVED-EMPTY POPULATION. Refuses at CurrentServicePopulation.
+fn fabricated_empty_population(host: ControlledHost, boot: ServiceBootId) -> CurrentServicePopulation {
+  CurrentServicePopulation { host: host, boot: boot, units: [] }
+}
+
+// (e) THE SUPPLIED-INPUT CONSTRUCTORS, REACHED INDIRECTLY. A witness helper that supplies a width (or a
+// labels set) to a restricted constructor is itself a boundary: were it callable from anywhere, any
+// caller could make RunnerWidthDerived { slots: 1 } and read indices 1..4 as recoverable. Each helper
+// is admit_callers-restricted to its terminal claims, so each call below refuses AT THE HELPER.
+fn indirect_population_over_host(host: HostControlStanding, m: ManagedHost, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, id: String) -> CurrentServicePopulationStanding {
+  population_over_host(host: host, m: m, width: width, labels: labels, id: id)
+}
+
+fn indirect_population_over(m: ManagedHost, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, id: String) -> CurrentServicePopulationStanding {
+  population_over(m: m, width: width, labels: labels, id: id)
+}
+
+fn indirect_derived(m: ManagedHost, width: RunnerWidthResolution, id: String) -> CurrentServicePopulation? {
+  derived(m: m, width: width, id: id)
+}
+
+fn indirect_reg(m: ManagedHost, width: RunnerWidthResolution, listed: String) -> ListedRegistrationStanding? {
+  reg(m: m, width: width, listed: listed)
+}
+
+fn indirect_reg5(m: ManagedHost, listed: String) -> ListedRegistrationStanding? {
+  reg5(m: m, listed: listed)
+}
+
+fn indirect_sweep(m: ManagedHost, current: String, names: List<String>, total: Int) -> LostBootSweep? {
+  sweep(m: m, current: current, names: names, total: total)
+}

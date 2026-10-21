@@ -1,0 +1,37 @@
+module extdeps.rust.version
+
+import extdeps.version.semver { SemVerIdentity, SemVerConstraint }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { brand }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/manifest.html"
+  }
+}
+
+type CargoPackageVersion = SemVerIdentity
+
+type CargoVersionRequirement = SemVerConstraint
+
+type CargoToolVersionFloor = SemVerConstraint where brand("CargoToolVersionFloor")
+
+data default_stage0_package_version: CargoPackageVersion = "0.1.0"
+
+fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
+  concat("version = \"", version, "\"")
+}
+
+fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
+  concat("\"", req, "\"")
+}
+
+fn render_cargo_package_header_prefix(name: String) -> String {
+  concat(
+    "[package]\nname = \"", name, "\"\n",
+    render_cargo_package_version_field(version: default_stage0_package_version)
+  )
+}

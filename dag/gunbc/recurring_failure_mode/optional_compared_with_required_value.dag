@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.optional_compared_with_required_value
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data optional_compared_with_required_value: RecurringFailureMode = RecurringFailureMode {
+  identity: "optional_compared_with_required_value" as NonEmptyStr,
+
+  receipts: [
+    "optional compared with required value: `==` or `!=` between a `T?` operand and a `T` operand (std.filesystem is_text_readable: `entry.symlink_target == TargetFile`, with symlink_target: SymlinkTarget?). No declared coercion route lifts T into T? (DESIGN section 4, operator ruling 2026-09-26: implicit coercion is only the implicit-safe subset of declared routes), so the comparison has no single meaning, yet the checker accepted it with zero diagnostics.",
+
+    "INVALID STATE AND HARM, ONE PER REALIZATION, AND THEY DISAGREE. The interpreter answers by REPRESENTATION, not meaning: an optional held bare compares equal to the bare variant, while the same optional held as `Present { value: .. }` compares unequal. That is silent wrongness, which sits outside the ladder: one program, two answers, decided by how a value happened to be stored. The Rust emitter rendered `Option<T> == T`, which rustc refuses (E0308), so the emission path failed loudly while the interpretation path answered silently. Measured on the approval broker's native probe (wave 2C, class C4).",
+
+    "DISTINGUISHING FACT: the defect is at ACCEPTANCE, not at either realization. Teaching the emitter to lift (`== Some(..)`) would have legalized an undeclared conversion at the target layer -- a target's cast table is not the source language's conversion semantics -- and left the interpreter's representation-dependent answer standing. The earliest unjustified boundary (DESIGN 6b) is the checker admitting the comparison (gentle-dove-36 ruling A, 2026-10-03).",
+
+    "WALL: v1.compiler.infer equality_admission_diags refuses Eq/Ne when exactly one operand's resolved type is optional (CardOptional on the typed operand, the fact the emitter reads, or the nominal Optional coproduct), as the blocking EqualityOptionalityMismatch. The presence idiom (`== none`, `== Absent`, `== []`) is exempt before the arm runs, as it already was for the function-member wall. Each refused corpus site was rewritten to say the meaning it intends (an explicit Present comparison or a match), never by inserting a lift.",
+
+    "THE POPULATION IS WIDER THAN OPTIONAL FIELDS, measured by the floor's strict compile over 2565 modules once the arm landed: six sites, and five were not record fields at all but the two optional-returning list reads -- `.first()` (extdeps.github.expressions ingest_template_with; extdeps.sudo.nopasswd_execute_probe_check_op) and indexing `xs[i]` (three sites in gunbc.floor_cost_distribution). Each was written as if the read returned the element. The interpreter happened to answer them by the bare-representation arm, which is why they never failed: the program was right only because of how a value was stored.",
+
+    "EVIDENCE: test.claim.self_host_equality_admission_witness. Reds: a `Kind?` field compared with a bare variant in both operand orders, each refused once and blocking. Controls: an explicit `== Present { value: .. }`, a match on the optional, and two optionals compared with each other, all admitted.",
+
+    "RUNG FOUND AT: below the ladder on the interpretation path (silent, representation-dependent answer), 1 on the Rust emission path (rustc refusal).",
+
+    "RUNG NOW: 3, structurally guaranteed, AT THE BINARY-OPERATOR SEAM: no Accepted program contains `T? == T` or `T? != T` written as a binary operator, on either realization path, because acceptance refuses it before interpretation or emission. The discriminating red and positive controls are enrolled in the witness module above. Stated at its grain: equality reached through other routes -- a generic helper whose type parameter is instantiated at T? on one side and T on the other, or a host comparison inside a primitive -- is not judged by this arm.",
+
+    "CEILING: 4 is not attainable while the surface can spell an optional operand beside a required one. 3 is the honest ceiling for the operator form. NEXT-RUNG TRIGGER for the residual routes: instantiation-grain equality admission (the trigger equality_admission_wall_note already names), which would judge a generic `==` where its type arguments are known.",
+  ],
+
+  evidence: [],
+}

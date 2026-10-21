@@ -1,0 +1,195 @@
+module gunbc.payroll.period_accrual
+
+import std.types { NonEmptyStr, List }
+import std.measure { MoneyAmountMicro, money_amount_micro, measure_add }
+import extdeps.currency.currency { CurrencyCode }
+import extdeps.payroll.contribution {
+  ContributionSpec, AssessedPosition, ContributionOutcome, ContributionRefusal,
+  ContributionOriginated, ContributionRefused,
+  BearingParty, Employer, Worker,
+  contribution_for_period,
+}
+
+// One pay period, ACCRUED against whichever cited contribution rows apply to it.
+// extdeps.payroll.contribution owns what a contribution is and each tax authority owns its own
+// rates; the decision to run a period against a particular set of rows is a business fact and
+// lives here.
+//
+// THIS MODULE PRODUCES ACCRUALS AND DOES NOT SETTLE MONEY, AND THAT IS A CORRECTION RATHER THAN A
+// CAUTIOUS NAME. An earlier revision derived a gross, a residual and an employer cost, subtracting
+// a micro-floored figure from gross and naming the difference carefully. A review named the defect
+// exactly: naming a residual carefully does not make a floored micro accrual into money withheld.
+// Publication 15 rounds to the nearest cent per wage payment with a fractions-of-cents adjustment
+// on the quarterly return, so the statutory amount is not derivable until a rounding contract -
+// mode, grain and application scope - is resolved.
+//
+// So the residual fields are GONE rather than renamed. What remains is what the rows actually
+// support: an exact worker-borne accrual, an exact employer-borne accrual, and the lines that
+// produced them. A settled amount becomes derivable when the authority carries its rounding
+// contract; the accrual stays the exact intermediate it already is.
+//
+// The second reason they are gone is cardinality. Federal Social Security wages and Medicare wages
+// are different bases, so one period is SEVERAL positions and there is no single gross to subtract
+// from. Accrual totals compose across bases; a paycheck does not.
+
+// THE ACCRUAL CARRIES ITS CURRENCY BECAUSE MoneyAmountMicro CANNOT. That carrier is
+// Measure<Currency, Micro, Nat>, where Currency is the QUANTITY - the dimension - not a code, so
+// two amounts in different currencies add with nothing objecting. contribution_for_period already
+// refuses a spec whose currency disagrees with ITS OWN position, but that check is pairwise: two
+// specs in different currencies, each matched to a position in that same currency, both originate
+// and their amounts meet in the fold. The period declares one currency and every spec is held to
+// it, which is the same wall product.fabric.budget puts in front of its ledger and for the same
+// reason - a cross-currency line then has nowhere to land.
+type PeriodAccrual {
+  currency: CurrencyCode
+  worker_borne: MoneyAmountMicro
+  employer_borne: MoneyAmountMicro
+  lines: List<ContributionOutcome>
+}
+
+// A spec is matched to the position computed under ITS OWN base. A spec with no such position
+// refuses by name rather than borrowing whichever position happened to be passed - which is what a
+// single-position fold did implicitly, and is the fail-open that let a Medicare-based position
+// answer for a Social Security row.
+type AccrualRefusal =
+  | ContributionCause { cause: ContributionRefusal }
+  | PositionUnavailableForBase { spec: NonEmptyStr, required_base: NonEmptyStr }
+  | AccrualCurrencyMismatch {
+      spec: NonEmptyStr,
+      accrual_currency: CurrencyCode,
+      spec_currency: CurrencyCode
+    }
+
+// The accrual derives whole or refuses whole, carrying EVERY cause rather than the first. There is
+// no partially-accrued arm: a run that dropped one refused contribution and kept the rest would
+// report a total against a position the model just said it could not compute, and would look
+// exactly like a successful run doing it.
+type PeriodAccrualOutcome =
+  | AccrualDerived { accrual: PeriodAccrual }
+  | AccrualRefusedWhole { causes: List<AccrualRefusal> }
+
+// THE ACCUMULATOR CARRIES MEASURES, NOT SCALARS NAMED AFTER UNITS. An earlier revision held
+// `worker_micros: Nat` and `employer_micros: Nat`, stripping the carrier with
+// money_amount_micro_count on the way in and re-wrapping on the way out - a second money
+// representation inside the module that imports the first (review 58545). The public surface was
+// already right, which is exactly what made it easy to miss: a private accumulator is where two
+// amounts can be added with nothing objecting, so it is the one place the fork costs nothing to
+// write. product.rack_power carries the same correction for Watt and VoltAmpere.
+type AccrualAccumulator {
+  worker_borne: MoneyAmountMicro
+  employer_borne: MoneyAmountMicro
+  refusals: List<AccrualRefusal>
+  lines: List<ContributionOutcome>
+}
+
+fn positions_for_base(positions: List<AssessedPosition>, base: NonEmptyStr) -> List<AssessedPosition> {
+  filter(positions, p => p.contribution_base == base)
+}
+
+fn accumulate_borne(
+  acc: AccrualAccumulator,
+  borne_by: BearingParty,
+  amount: MoneyAmountMicro,
+) -> AccrualAccumulator {
+  match borne_by {
+    Worker => AccrualAccumulator {
+      worker_borne: measure_add(a: acc.worker_borne, b: amount),
+      employer_borne: acc.employer_borne,
+      refusals: acc.refusals,
+      lines: acc.lines,
+    }
+    Employer => AccrualAccumulator {
+      worker_borne: acc.worker_borne,
+      employer_borne: measure_add(a: acc.employer_borne, b: amount),
+      refusals: acc.refusals,
+      lines: acc.lines,
+    }
+  }
+}
+
+fn with_line(acc: AccrualAccumulator, outcome: ContributionOutcome) -> AccrualAccumulator {
+  AccrualAccumulator {
+    worker_borne: acc.worker_borne,
+    employer_borne: acc.employer_borne,
+    refusals: acc.refusals,
+    lines: concat(acc.lines, [outcome]),
+  }
+}
+
+fn accumulate_outcome(acc: AccrualAccumulator, outcome: ContributionOutcome) -> AccrualAccumulator {
+  match outcome {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      accumulate_borne(acc: with_line(acc: acc, outcome: outcome), borne_by: borne_by, amount: amount)
+    ContributionRefused { cause } => AccrualAccumulator {
+      worker_borne: acc.worker_borne,
+      employer_borne: acc.employer_borne,
+      refusals: concat(acc.refusals, [ContributionCause { cause: cause }]),
+      lines: concat(acc.lines, [outcome]),
+    }
+  }
+}
+
+// The currency wall runs BEFORE the spec reaches contribution_for_period, so a disagreeing spec
+// contributes a cause and never an amount.
+fn accumulate_spec(
+  acc: AccrualAccumulator,
+  spec: ContributionSpec,
+  positions: List<AssessedPosition>,
+  currency: CurrencyCode,
+) -> AccrualAccumulator {
+  if spec.currency != currency {
+    return AccrualAccumulator {
+      worker_borne: acc.worker_borne,
+      employer_borne: acc.employer_borne,
+      refusals: concat(acc.refusals, [
+        AccrualCurrencyMismatch {
+          spec: spec.name,
+          accrual_currency: currency,
+          spec_currency: spec.currency
+        }
+      ]),
+      lines: acc.lines,
+    }
+  }
+  match positions_for_base(positions: positions, base: spec.contribution_base).first() {
+    Absent => AccrualAccumulator {
+      worker_borne: acc.worker_borne,
+      employer_borne: acc.employer_borne,
+      refusals: concat(acc.refusals, [
+        PositionUnavailableForBase { spec: spec.name, required_base: spec.contribution_base }
+      ]),
+      lines: acc.lines,
+    }
+    Present { value: p } =>
+      accumulate_outcome(acc: acc, outcome: contribution_for_period(spec: spec, position: p))
+  }
+}
+
+fn accrue_period(
+  currency: CurrencyCode,
+  specs: List<ContributionSpec>,
+  positions: List<AssessedPosition>,
+) -> PeriodAccrualOutcome {
+  let acc = fold(
+    specs,
+    init: AccrualAccumulator {
+      worker_borne: money_amount_micro(count: 0),
+      employer_borne: money_amount_micro(count: 0),
+      refusals: [],
+      lines: [],
+    },
+    f: (a, s) => accumulate_spec(acc: a, spec: s, positions: positions, currency: currency)
+  )
+  return if count(acc.refusals) > 0 {
+    AccrualRefusedWhole { causes: acc.refusals }
+  } else {
+    AccrualDerived {
+      accrual: PeriodAccrual {
+        currency: currency,
+        worker_borne: acc.worker_borne,
+        employer_borne: acc.employer_borne,
+        lines: acc.lines,
+      }
+    }
+  }
+}

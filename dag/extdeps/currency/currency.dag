@@ -1,0 +1,50 @@
+module extdeps.currency.currency
+
+import std.types { Bool, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/iso-4217-currency-codes.html"
+  }
+}
+
+// ISO 4217:2015. Formerly std.currency; consolidated here 2026-08-28, dissolving
+// the iso_4217_cited_rows_scaffold Scaffold row that named this single authority.
+type CurrencyCode =
+    Eur
+  | Usd
+
+fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 2
+    Usd => 2
+  }
+}
+
+// THE ISO 4217 NUMERIC CODE, which exists here because currency IDENTITY was needed and the minor
+// unit exponent was reached for instead. Both EUR and USD have exponent 2, so an equality written
+// over that field answers TRUE for two different currencies - a silent conflation that let a euro
+// figure pass through a conversion untouched and be compared against dollars. The exponent
+// describes how a currency SUBDIVIDES; the numeric code is what NAMES it. Identity questions take
+// the identifier.
+fn currency_numeric_code(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 978
+    Usd => 840
+  }
+}
+
+// THE ISO 4217 ALPHABETIC CODE, the spelling APIs put on the wire ("USD").
+fn currency_alphabetic_code(c: CurrencyCode) -> String {
+  match c {
+    Eur => "EUR"
+    Usd => "USD"
+  }
+}
+
+fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> Bool {
+  currency_numeric_code(c: a) == currency_numeric_code(c: b)
+}

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.witness_oracle_transcribed_from_the_tree_it_measures
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data witness_oracle_transcribed_from_the_tree_it_measures: RecurringFailureMode = RecurringFailureMode {
+  identity: "witness_oracle_transcribed_from_the_tree_it_measures" as NonEmptyStr,
+
+  receipts: [
+    "a witness oracle transcribed from the tree it measures: a claim's expected value is a numeric literal copied from a producer that the same tree already carries -- a pinned calibration rate, a policy row, a width another fold derives -- so the assertion compares the producer's output to a stale copy of itself. DESIGN section 5 names the class (a measurement copied from the same current tree is not an oracle; automating the literal's update collapses the assertion to measure() == measure()) and section 6 names the remedy (name the instrument, never transcribe its output). The class is LAYER-AGNOSTIC: it is the same defect in a fleet witness, a floor witness or a compiler witness, and it is found today only by per-PR review reading the fixture against the producer.",
+
+    "SPECIMENS, gunbc#11722, found twice in one loop and never graduated between findings. Review 68543: the pinned eval-step rate 723 and the specimen step count 55,011 written into a throughput witness while `calibration_rate` and `calibration_specimen_eval_steps` were imported two claims earlier. Review 68620, after that repair: the slot width 8 asserted against `runner_slice_cap` over the LIVE `gunbc_runner_slot_desired().memory_max`, with the same file already carrying the CPU-axis correction that had transcribed 6 from stale prose one round before. Three transcriptions of three producers in one witness, each repaired individually, the class never named -- which is why the second and third were found by reviewers rather than by the author.",
+
+    "THE HARM is a witness that is green until the producer moves and then red for the wrong reason: a re-pin of the calibration, a re-tuning of the fleet slot, or a policy ruling (cores_per_slot 10 -> 1 on 2026-09-19, #11716) turns the claim red while the derivation under test is correct, and the repair reflex is to update the number -- the change-detector collapse section 5 describes. The inverse harm is quieter: while the copy happens to agree, the claim reads as a check of the derivation when it is only a check that a number was copied correctly.",
+
+    "RECOGNITION RULE. A literal in an assertion whose producer is IMPORTABLE from the witness -- a data row, a policy constant, a fold over fixture inputs -- is a transcription; a literal that is a controlled fixture INPUT (a host size, a thread count, a millisecond reading the fixture chooses) is not. The discriminating question is whether the number is an input the witness supplies or an output the tree already derives. The cheap test: could this literal be replaced by a call to the producer with the same fixture inputs? If yes it must be. The tell in the diff is a comment explaining WHY the number is what it is by reference to another module, which is the producer citation in prose where it should be a call.",
+
+    "RUNG found at 1, mitigatable: per-PR review catches instances when a reviewer reads the fixture against the producer, and nothing mechanical does. ATTAINABLE CEILING 2, mechanically preventable: a lens over witness modules that finds a numeric literal in an assertion position equal to a value some imported declaration evaluates to under the claim's own fixture inputs is decidable over the accepted tree, because both the literal and the producer are in the closure the floor already resolves. It is NOT structural: the substrate cannot distinguish a fixture input from a transcribed output by type, since both are Int, and forbidding all literals in assertions would outlaw the controlled fixtures section 5 explicitly permits.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: a witness-side lens that, for every claim, evaluates each imported data or fold-over-literals producer reachable from the claim and refuses an assertion literal that equals one of those values while not being one of the claim's own supplied inputs, enrolled with a fixture red that transcribes a producer and a control that supplies the same number as an input. Until it lands, the review question is the wall, and this row is what makes the class rank rather than be re-found one transcription at a time.",
+  ],
+
+  evidence: [],
+}

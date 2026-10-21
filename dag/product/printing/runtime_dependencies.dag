@@ -1,0 +1,30 @@
+module product.printing.runtime_dependencies
+import std.types {String,NonEmptyStr,List,Bool}
+import extdeps.printing.orca_slicer {orca_ubuntu2404_runtime_packages}
+import extdeps.opencascade.ocp {ocp_ubuntu2404_runtime_packages}
+import extdeps.package_managers.dpkg {DpkgPackageInstalled,DpkgPackageNotInstalled,DpkgPackageUnknown,DpkgQueryUndecidable,dpkg_query_status_command,dpkg_query_status_verdict_of}
+import extdeps.exec.command {LocalExec}
+import extdeps.shell.exec {ProcessRan,ProcessNotSpawned}
+import gunbc.command_runner {run_shell_command_observe_outcome}
+
+// One declared host-package population feeds both preparation admission and the
+// separate modeled convergence entry. Preparation itself performs no installs.
+// This is the Ubuntu 24.04 direct-host realization, not a claim about other routes.
+fn runtime_packages() -> List<NonEmptyStr> {
+ concat(ocp_ubuntu2404_runtime_packages,orca_ubuntu2404_runtime_packages)
+}
+fn ubuntu2404(text:String) -> Bool {
+ let lines=split(text,"\n")
+ let ids=filter(lines,l=>starts_with(s:l,prefix:"ID="))
+ let versions=filter(lines,l=>starts_with(s:l,prefix:"VERSION_ID="))
+ count(ids)==1 && count(versions)==1 && all(ids,l=>l=="ID=ubuntu"||l=="ID=\"ubuntu\"") && all(versions,l=>l=="VERSION_ID=24.04"||l=="VERSION_ID=\"24.04\"")
+}
+type RuntimePackageReading {package:NonEmptyStr,admitted:Bool,evidence:String}
+fn observe_package(package:NonEmptyStr) -> RuntimePackageReading {
+ match run_shell_command_observe_outcome(command:dpkg_query_status_command(package:package),transport:LocalExec) {
+  ProcessNotSpawned {program:_,cause:c}=>RuntimePackageReading {package:package,admitted:false,evidence:c as String}
+  ProcessRan {observation:o}=>RuntimePackageReading {package:package,admitted:match dpkg_query_status_verdict_of(exit_code:o.exit_code,stdout:o.stdout,stderr:o.stderr) {
+   DpkgPackageInstalled=>true DpkgPackageNotInstalled {status:_}=>false DpkgPackageUnknown=>false DpkgQueryUndecidable {reason:_}=>false
+  },evidence:concat(o.stdout,o.stderr)}
+ }
+}

@@ -1,0 +1,137 @@
+module gunbc.runner.runner_host_media_independence_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// ONE EXPERIMENT, THREE BOUNDARIES. Run on the Mt. Collins unit 2026-09-06, attempt
+// slice2-070adba6. It was designed as a single run because the three questions are entangled:
+// proving the host does not need its medium is only meaningful if the guest it then runs is the
+// admitted one, and only useful if the host can end that guest.
+//
+//   1. EXACT BYTES     -- Firecracker received guest artifacts VERIFIED by digest, not opened by name
+//   2. INDEPENDENCE    -- the guest ran after the virtual medium AND the export behind it were gone
+//   3. OWNED LIFETIME  -- the host's deadline ended the VMM, and no attempt process survived
+//
+// A THIRD RECEIPT, NOT AN EDIT OF EITHER EARLIER ONE. The first-boot and KVM-probe receipts remain
+// true statements about their own attempts, and their captures are byte-identical -- verified, not
+// assumed. This run has its own.
+data mtcollins1_independence_attempt: NonEmptyStr = "slice2-070adba6"
+data mtcollins1_independence_iso_sha256: NonEmptyStr = "33aeb67115d5b765825ef5c2acf5703cf36ef96210bb25e5b69ae56685b60bf0"
+data mtcollins1_independence_host_kernel_sha256: NonEmptyStr = "33b390dd157d16b1274ee363ff776006e546b1232f821263796036e6e059aacc"
+data mtcollins1_independence_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-media-independence-probe.log"
+data mtcollins1_independence_evidence_sha256: NonEmptyStr = "1afff2aa4d2f03313ee912f7308d39e477cf9e4bd374b82f46c5c7973a30e4f9"
+data mtcollins1_independence_evidence_byte_count: Int = 257731
+
+// ── 1. the guest bytes were verified, twice ─────────────────────────────────────────────────────
+
+// THE GAP THE PREVIOUS RECEIPT LEFT OPEN IS CLOSED. That run proved the ISO was published under a
+// known digest and that the host later opened files with the right names -- which is not the same
+// as Firecracker receiving the intended bytes. The guest kernel and rootfs enforce a job's
+// isolation, so they sit inside the trust boundary even though they are correctly outside the
+// immutable host artifact.
+//
+// VERIFIED AT BOTH ENDS OF THE COPY, deliberately. Checking only the source would leave the copy
+// itself unwitnessed; checking only the destination would not distinguish a bad medium from a bad
+// copy. Both read ok.
+type GuestArtifactVerification {
+  location: NonEmptyStr
+  kernel_verdict: NonEmptyStr
+  rootfs_verdict: NonEmptyStr
+}
+
+data mtcollins1_guest_artifacts_verified: List<GuestArtifactVerification> = [
+  GuestArtifactVerification {
+    location: "on the mounted ISO, before copying",
+    kernel_verdict: "ok",
+    rootfs_verdict: "ok",
+  },
+  GuestArtifactVerification {
+    location: "in attempt-owned tmpfs at /run/attempt/slice2-070adba6, after copying",
+    kernel_verdict: "ok",
+    rootfs_verdict: "ok",
+  },
+]
+
+// ── 2. the medium and the export were both taken away ───────────────────────────────────────────
+
+// THE HOST CANNOT DETACH ITS OWN VIRTUAL MEDIA, so the experiment is necessarily two-sided: the
+// host announces it no longer needs the medium and waits, and the fabric side removes it. What was
+// removed, in order: the ISO unmounted by the host, then the controller's media session stopped
+// (the configurations row went to an empty image_name with redirection_status 0), then the NFS
+// export unexported on the serving host. Only then was the guest launched.
+//
+// THE FIRST ATTEMPT AT THIS FAILED BY MY OWN TIMING and the failure is recorded because it looked
+// like a result. The operator side waited 180 seconds for the host's window; firmware POST alone is
+// about 150 seconds and copying 80 MiB off a virtual CD over NFS takes longer again. So the medium
+// was pulled during boot-option loading, the unit fell to the UEFI shell, and a self-inflicted
+// interruption would have read as "the host cannot survive detach". The budget now exceeds POST
+// plus the copy, and the detach fires on the host's OWN announcement rather than on a guess.
+type MediaIndependenceObservation {
+  medium_state_at_launch: NonEmptyStr
+  export_state_at_launch: NonEmptyStr
+  host_media_mounts_at_launch: Int
+  guest_started_afterwards: Bool
+}
+
+data mtcollins1_media_independence: MediaIndependenceObservation = MediaIndependenceObservation {
+  medium_state_at_launch: "controller media session stopped; configurations row carried an empty image_name with redirection_status 0",
+  export_state_at_launch: "the NFS export of /srv/bmc to this controller was unexported on the serving host",
+  host_media_mounts_at_launch: 0,
+  guest_started_afterwards: true,
+}
+
+// THE DEVICE NODE OUTLIVED THE MEDIUM, which is the same lesson as the earlier mount race seen from
+// the other side: after the medium was gone the host still enumerated sr0 among its block devices.
+// Presence of a node says nothing about backing state in either direction -- appearing before the
+// device is ready, and remaining after it is gone.
+data node_outlives_medium: NonEmptyStr = "sr0 remained in the host's block-device enumeration after the medium was detached; node presence is not medium presence"
+
+// ── 3. the host ended the guest ─────────────────────────────────────────────────────────────────
+
+// rc=137 IS THE RESULT, NOT A FAILURE, and it needs saying because 137 reads as an error. It is
+// 128+9: the host's `timeout -s KILL 120` fired and SIGKILLed the VMM. The guest did not exit on
+// its own and was not asked to -- a guest that must cooperate to be stopped is exactly what a
+// runner host cannot rely on, so the host ending it unilaterally is the property under test.
+//
+// WHAT IT ALSO MEANS, stated so the same line is not read as two good things at once: the guest did
+// NOT complete its boot. It reached its kernel and was still running when the deadline arrived, so
+// root mounting and guest userspace remain unobserved exactly as they were after the previous
+// probe. The deadline working and the guest finishing are different facts and only the first is
+// established here.
+type AttemptTermination {
+  launcher_exit_code: Int
+  terminated_by: NonEmptyStr
+  surviving_hypervisor_processes: Int
+  attempt_state_removed: Bool
+}
+
+data mtcollins1_attempt_termination: AttemptTermination = AttemptTermination {
+  launcher_exit_code: 137,
+  terminated_by: "the host's own 120-second deadline, via SIGKILL; the guest neither exited nor was asked to",
+  surviving_hypervisor_processes: 0,
+  attempt_state_removed: true,
+}
+
+// THE CENSUS WAS PRINTED, NOT COUNTED. A count of zero is satisfied by a process the counter did not
+// recognise, so the full population was enumerated to the console and the surviving-hypervisor
+// figure is a projection of it rather than the evidence. What the census showed after the attempt:
+// PID 1, two busybox processes for the console shell, and kernel threads. No Firecracker, no jailer,
+// no orphan under any name.
+data attempt_census_form: NonEmptyStr = "the process population was enumerated by pid, ppid and command rather than counted; the zero is a projection of that census"
+
+// ── what this run still does not establish ──────────────────────────────────────────────────────
+
+data independence_not_established: List<NonEmptyStr> = [
+  "that the guest mounted its root filesystem or reached userspace -- it was killed at the deadline while still early in boot",
+  "any production containment: the jailer was in the image and NOT in the launch path, as the qualification profile permits",
+  "any networking, on the host or in the guest",
+  "that a SECOND attempt can run after the first, which is what a runner actually does",
+  "that the host recovers if the deadline itself fails to fire",
+]
+
+// AND THE ONE THING THE RUN QUIETLY DEPENDS ON, named because it is easy to miss: the guest
+// artifacts were copied into tmpfs BEFORE the medium went away. That is the intended design -- a
+// runner host stages what it needs and then owes the medium nothing -- but it means this receipt
+// establishes independence for an attempt whose inputs were already resident. An attempt that needs
+// artifacts it has not yet staged still requires a delivery path, and that path is the network this
+// slice does not have.
+data independence_scope: NonEmptyStr = "independence is established for an attempt whose artifacts were staged before detach; an unstaged attempt still needs a delivery path this image has no network for"

@@ -1,0 +1,124 @@
+module v2.test.claim.namespace_xl2_subject_tree_id_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0SubjectMember }
+import v2.workflow.namespace_xl2_subject_tree_id {
+  Xl2ManifestEntry,
+  Xl2ManifestMalformed,
+  Xl2MemberBlobMismatch,
+  Xl2MemberNotInManifest,
+  Xl2TreeMismatch,
+  Xl2TreeVerdict,
+  Xl2TreeVerified,
+  xl2_verify_subject_tree
+}
+
+// A REAL GIT TREE, authored by an independent implementation: `git ls-tree -r` over a three-file
+// repository (a/b/h, executable a/g, f) and `git rev-parse HEAD^{tree}` gave the claimed id and each
+// blob id, so the oracle is not this module.
+fn xl2_real_manifest() -> List<Xl2ManifestEntry> {
+  [
+    Xl2ManifestEntry { mode: "100644", components: ["a", "b", "h"], oid_hex: "1d19714ffbc272ba0da6eb419d66123c20527174" },
+    Xl2ManifestEntry { mode: "100755", components: ["a", "g"], oid_hex: "f719efd430d52bcfc8566a43b2eb655688d38871" },
+    Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }
+  ]
+}
+
+fn xl2_real_tree_hex() -> String {
+  "e9e10a2c458c53857aeebfbb0a41bf26bde91e9f"
+}
+
+fn xl2_member(path: String, content: String, blob_hex: String) -> List<Step0SubjectMember> {
+  match git_sha1_object_id(hex: blob_hex) {
+    Present { value: oid } => [Step0SubjectMember { path: path as NonEmptyStr, blob: oid, content: content }]
+    _ => []
+  }
+}
+
+fn xl2_real_members() -> List<Step0SubjectMember> {
+  append(
+    xl2_member(path: "f", content: "one\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171"),
+    items: xl2_member(path: "a/b/h", content: "three", blob_hex: "1d19714ffbc272ba0da6eb419d66123c20527174")
+  )
+}
+
+test fn the_real_git_tree_is_re_derived_and_verified() -> Bool {
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: xl2_real_manifest(), members: xl2_real_members()) {
+    Xl2TreeVerified { tree_hex: hex } => hex == xl2_real_tree_hex()
+    _ => false
+  }
+}
+
+// RED: one changed content byte in a member is refused as that member's blob mismatch.
+test fn a_tampered_member_byte_is_refused_as_a_blob_mismatch() -> Bool {
+  let tampered = xl2_member(path: "f", content: "onE\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171")
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: xl2_real_manifest(), members: tampered) {
+    Xl2MemberBlobMismatch { path: p, claimed: _, recomputed: _ } => p == "f"
+    _ => false
+  }
+}
+
+// RED: a manifest row with a different blob id yields a different root, refused as a tree mismatch.
+test fn a_tampered_manifest_oid_is_refused_as_a_tree_mismatch() -> Bool {
+  let tampered = [
+    Xl2ManifestEntry { mode: "100644", components: ["a", "b", "h"], oid_hex: "1d19714ffbc272ba0da6eb419d66123c20527175" },
+    Xl2ManifestEntry { mode: "100755", components: ["a", "g"], oid_hex: "f719efd430d52bcfc8566a43b2eb655688d38871" },
+    Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }
+  ]
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: tampered, members: []) {
+    Xl2TreeMismatch { claimed: _, recomputed: _ } => true
+    _ => false
+  }
+}
+
+// RED: the executable bit is part of the identity.
+test fn a_changed_mode_is_refused_as_a_tree_mismatch() -> Bool {
+  let tampered = [
+    Xl2ManifestEntry { mode: "100644", components: ["a", "b", "h"], oid_hex: "1d19714ffbc272ba0da6eb419d66123c20527174" },
+    Xl2ManifestEntry { mode: "100644", components: ["a", "g"], oid_hex: "f719efd430d52bcfc8566a43b2eb655688d38871" },
+    Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }
+  ]
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: tampered, members: []) {
+    Xl2TreeMismatch { claimed: _, recomputed: _ } => true
+    _ => false
+  }
+}
+
+// RED: a member the manifest does not name is refused, not skipped.
+test fn a_member_outside_the_manifest_is_refused() -> Bool {
+  let stray = xl2_member(path: "z", content: "x", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171")
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: xl2_real_manifest(), members: stray) {
+    Xl2MemberNotInManifest { path: p } => p == "z"
+    _ => false
+  }
+}
+
+// RED (the review's collision): a leaf row 'a' carrying f's blob id beside the real a/ directory leaves
+// the recomputed root unchanged, so a member 'a' used to be Verified though absent from the tree.
+// The manifest is refused as malformed before any member consults it.
+test fn a_leaf_that_is_also_a_directory_is_refused_as_malformed() -> Bool {
+  let colliding = append([Xl2ManifestEntry { mode: "100644", components: ["a"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }], items: xl2_real_manifest())
+  let member = xl2_member(path: "a", content: "one\n", blob_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171")
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: colliding, members: member) {
+    Xl2ManifestMalformed { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_duplicate_leaf_path_is_refused_as_malformed() -> Bool {
+  let duplicated = append(xl2_real_manifest(), items: [Xl2ManifestEntry { mode: "100644", components: ["f"], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: duplicated, members: []) {
+    Xl2ManifestMalformed { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_empty_path_row_is_refused_as_malformed() -> Bool {
+  let empty = append(xl2_real_manifest(), items: [Xl2ManifestEntry { mode: "100644", components: [], oid_hex: "5626abf0f72e58d7a153368ba57db4c673c0e171" }])
+  match xl2_verify_subject_tree(claimed_tree_hex: xl2_real_tree_hex(), manifest: empty, members: []) {
+    Xl2ManifestMalformed { reason: _ } => true
+    _ => false
+  }
+}

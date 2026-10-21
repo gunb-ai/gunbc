@@ -1,0 +1,27 @@
+module fixtures.free_call_pool_binding.subject_with_import
+
+// THE REFUSING SUBJECT, AND IT IS THE WHOLE INSTRUMENT: it differs from `subject_module` by ONE
+// IMPORT LINE NAMING AN UNRELATED MODULE. The call, the definer, the source roots and the entry
+// shape are the same, and the call flips from resolved to
+//
+//   error: function 'pool_specimen_free_call' not found in scope
+//
+// So the manufactured edge is not a property of the call, of the definer, or of the pool: a module
+// with ZERO import lines has its cross-module dependencies derived from its bare references, and a
+// module with AT LEAST ONE import line does not
+// (`v1.compiler.cli_run` `ModuleGraphFactsLive::reference_only_direct_import_paths` -- reference
+// edges are `selection_adjacency` minus `adjacency`, and the two agree on an import-bearing file).
+//
+// Which is why the same bare call is accepted in one corpus module and refused in another with no
+// difference at the call site, and why `src/v2/lens/grounding.dag` -- three import lines, thirty
+// bare cross-module calls -- resolves only when some OTHER module in the entry's closure happens
+// to import its definers.
+import fixtures.free_call_pool_binding.unrelated_module { UnrelatedTag }
+
+fn subject_with_import_use() -> Int {
+  pool_specimen_free_call(n: 7)
+}
+
+fn unrelated_tag() -> UnrelatedTag {
+  UnrelatedTag { u: 1 }
+}

@@ -1,0 +1,197 @@
+module extdeps.provisioning.ubuntu_install_media
+
+import std.os.types { NobleNumbat2404Lts }
+import std.types { List, NonEmptyStr, Sha256, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https, uri_wire }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
+  }
+}
+
+type UbuntuInstallMediaFlavor = | UbuntuLiveServer
+
+type UbuntuInstallMediaArchitecture
+  = Aarch64
+  | Amd64
+
+type UbuntuInstallMediaMirrorHost
+  = ReleasesUbuntuCom
+  | CdimageUbuntuCom
+  | OldReleasesUbuntuCom
+
+type UbuntuInstallMediaMirrorRow {
+  host: UbuntuInstallMediaMirrorHost
+  locator: NonEmptyStr
+}
+
+type UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts
+  point_release: NonEmptyStr
+  architecture: UbuntuInstallMediaArchitecture
+  flavor: UbuntuInstallMediaFlavor
+  content_sha256: Sha256
+  sha256sums_authority: ExternalAuthority
+}
+
+fn ubuntu_install_media_architecture_wire(arch: UbuntuInstallMediaArchitecture) -> NonEmptyStr {
+  match arch {
+    Aarch64 => "arm64"
+    Amd64 => "amd64"
+  }
+}
+
+fn ubuntu_install_media_flavor_wire(flavor: UbuntuInstallMediaFlavor) -> NonEmptyStr {
+  match flavor {
+    UbuntuLiveServer => "live-server"
+  }
+}
+
+fn ubuntu_install_media_filename(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(
+    concat(
+      concat(
+        concat("ubuntu-", artifact.point_release as String),
+        "-",
+      ),
+      ubuntu_install_media_flavor_wire(flavor: artifact.flavor) as String,
+    ),
+    concat(
+      "-",
+      concat(
+        ubuntu_install_media_architecture_wire(arch: artifact.architecture) as String,
+        ".iso",
+      ),
+    ),
+  ) as NonEmptyStr
+}
+
+fn ubuntu_install_media_mirror_path_segment(host: UbuntuInstallMediaMirrorHost) -> NonEmptyStr {
+  match host {
+    ReleasesUbuntuCom => "24.04"
+    CdimageUbuntuCom => "releases/24.04/release"
+    OldReleasesUbuntuCom => "releases/24.04/release"
+  }
+}
+
+fn ubuntu_install_media_mirror_url(
+  artifact: UbuntuInstallMediaArtifactRow,
+  mirror: UbuntuInstallMediaMirrorRow,
+) -> NonEmptyStr {
+  let filename = ubuntu_install_media_filename(artifact: artifact)
+  uri_wire(uri: Uri {
+    scheme: Https,
+    locator: concat(
+      concat(
+        concat(mirror.locator as String, "/"),
+        ubuntu_install_media_mirror_path_segment(host: mirror.host) as String,
+      ),
+      concat("/", filename as String),
+    ) as NonEmptyStr,
+  })
+}
+
+data ubuntu_install_media_mirror_rows: List<UbuntuInstallMediaMirrorRow> = [
+  UbuntuInstallMediaMirrorRow {
+    host: ReleasesUbuntuCom,
+    locator: "releases.ubuntu.com",
+  },
+  UbuntuInstallMediaMirrorRow {
+    host: CdimageUbuntuCom,
+    locator: "cdimage.ubuntu.com",
+  },
+  UbuntuInstallMediaMirrorRow {
+    host: OldReleasesUbuntuCom,
+    locator: "old-releases.ubuntu.com",
+  },
+]
+
+fn ubuntu_install_media_mirror_urls(artifact: UbuntuInstallMediaArtifactRow) -> List<NonEmptyStr> {
+  map(
+    ubuntu_install_media_mirror_rows,
+    m => ubuntu_install_media_mirror_url(artifact: artifact, mirror: m),
+  )
+}
+
+fn ubuntu_install_media_artifacts_dir() -> NonEmptyStr {
+  "/var/lib/gunbc/artifacts" as NonEmptyStr
+}
+
+fn ubuntu_install_media_install_path(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(
+    concat(ubuntu_install_media_artifacts_dir() as String, "/"),
+    ubuntu_install_media_filename(artifact: artifact) as String,
+  ) as NonEmptyStr
+}
+
+fn ubuntu_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {
+  concat(install_path as String, ".part") as NonEmptyStr
+}
+
+data ubuntu_noble_2404_sha256sums_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
+  }
+}
+
+data noble_numbat_2404_3_live_server_arm64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts,
+  point_release: "24.04.3",
+  architecture: Aarch64,
+  flavor: UbuntuLiveServer,
+  content_sha256: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
+  sha256sums_authority: ubuntu_noble_2404_sha256sums_authority,
+}
+
+// The 24.04.5 point release, listed beside 24.04.3 in the same SHA256SUMS and served from the same
+// release directory. Both rows cite the one release-series authority above.
+data noble_numbat_2404_5_live_server_arm64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts,
+  point_release: "24.04.5",
+  architecture: Aarch64,
+  flavor: UbuntuLiveServer,
+  content_sha256: "f12484464c7d4d73e2167e0a7dbda1e669f8fae9bcf778dc0944937034b320cb",
+  sha256sums_authority: ubuntu_noble_2404_sha256sums_authority,
+}
+
+// The live-server ISO's casper directory is a layout Canonical authors: the kernel and initrd a
+// network boot serves are these members. Their digests are not Canonical's (no upstream file lists
+// them), so the pins live with the observer, gunbc.provisioning.ubuntu_arm64_network_origin_observation.
+fn ubuntu_casper_kernel_member_path() -> NonEmptyStr {
+  "casper/vmlinuz"
+}
+
+fn ubuntu_casper_initrd_member_path() -> NonEmptyStr {
+  "casper/initrd"
+}
+
+// THE STOCK MEDIUM'S BOOT CONFIGURATION, AS A MEMBER OF THE PINNED ARTIFACT. /boot/grub/grub.cfg of
+// ubuntu-24.04.3-live-server-arm64.iso (the artifact above, sha256 2ee2163c...) is fixed by that
+// digest, so its bytes are an upstream fact like the digest itself: read once from the artifact
+// (2026-09-28) and carried here with their own sha256. A builder that edits this file checks the
+// extracted member against `content_sha256` on the host where it runs and writes its edit of
+// `content`, rather than reading the file back through a process whose captured stdout is not the
+// file's exact bytes.
+type UbuntuInstallMediaGrubConfig {
+  artifact_sha256: NonEmptyStr
+  content: String
+  content_sha256: NonEmptyStr
+}
+
+data noble_numbat_2404_3_live_server_arm64_grub_cfg: UbuntuInstallMediaGrubConfig = UbuntuInstallMediaGrubConfig {
+  artifact_sha256: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555",
+  content: "set timeout=30\n\nloadfont unicode\n\nset menu_color_normal=white/black\nset menu_color_highlight=black/light-gray\n\nmenuentry \"Try or Install Ubuntu Server\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/vmlinuz  --- console=tty0\n\tinitrd\t/casper/initrd\n\}\nmenuentry \"Ubuntu Server with the HWE kernel\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/hwe-vmlinuz  --- console=tty0\n\tinitrd\t/casper/hwe-initrd\n\}\nmenuentry 'Boot from next volume' \{\n\texit 1\n\}\nmenuentry 'UEFI Firmware Settings' \{\n\tfwsetup\n\}\n",
+  content_sha256: "e1280b6cab9d57cf5a1e3b67153164cda0f730f85ebdcda14eda629995ecafe7",
+}
+
+data ubuntu_install_media_grub_configs: List<UbuntuInstallMediaGrubConfig> = [noble_numbat_2404_3_live_server_arm64_grub_cfg]
+
+// The grub.cfg member of a pinned artifact, or none: an artifact with no carried member has no
+// modeled boot configuration to edit, and a builder refuses it rather than reading one back.
+fn ubuntu_install_media_grub_cfg_for(artifact: UbuntuInstallMediaArtifactRow) -> UbuntuInstallMediaGrubConfig? {
+  first(flat_map(ubuntu_install_media_grub_configs, g => if (g.artifact_sha256 as String) == (artifact.content_sha256 as String) { [g] } else { [] }))
+}

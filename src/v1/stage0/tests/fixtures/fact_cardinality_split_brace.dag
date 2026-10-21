@@ -1,0 +1,8 @@
+data split_brace_sample: SplitBraceSample =
+SplitBraceSample {
+  field: "x"
+}
+
+type SplitBraceSample {
+  field: String
+}

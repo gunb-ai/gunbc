@@ -1,0 +1,463 @@
+module gunbc.spark.oobe_screen_observation
+
+import std.types { NonEmptyStr, Bool, List, HttpStatus, brand }
+import extdeps.uri { Uri, Http }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
+import extdeps.automation.playwright {
+  PlaywrightBuild,
+  PlaywrightBrowserBinaryProvenance,
+  PlaywrightManagedChromiumDownload,
+  playwright_1_62_1,
+}
+import extdeps.systems.nvidia_dgx_spark_setup {
+  OobeSetupField,
+  OobeLanguage,
+  OobeTimeZone,
+  OobeKeyboardLayout,
+  OobeTermsAndConditions,
+  OobeUserAccount,
+  OobeAnalytics,
+  OobeWirelessNetwork,
+  OobeHostnameAssignment,
+  dgx_spark_oobe_fields,
+  dgx_spark_oobe_offers_field,
+  TestId,
+  PlaceholderText,
+  FormFieldName,
+  ControlLabel,
+  SubmittedValueRepresentation,
+  OobeControlIdentity,
+  EntrySecrecy,
+  PlainTextEntry,
+  MaskedSecretEntry,
+  FieldRequiredness,
+  RequiredField,
+  OptionalField,
+  OobeControl,
+  TextEntryField,
+  ObservedValidationMessage,
+  ObservedFieldValidationRule,
+  FieldRequiredNonEmpty,
+  FieldMinimumLength,
+  FieldMustEqual,
+  OobeAdvanceGate,
+  ForwardControlEnabledWhenFieldsValidate,
+  OobeScreenEffect,
+  CreatesDeviceAccount,
+  OobeScreenRoute,
+  OobeScreenHeading,
+  ObservedOobeScreen,
+  oobe_screen_welcome,
+  oobe_screen_settings,
+  oobe_screen_eula,
+  oobe_screen_account,
+  ClientUsernameAdmission,
+  ClientAdmittedUsername,
+  ClientRefusedUsername,
+}
+
+// SPARK-OOBE-OBSERVE-0 (2026-09-02). WHAT THIS REPOSITORY ACTUALLY WATCHED THE FIRST-BOOT
+// WIZARD DO, as opposed to what NVIDIA's documentation says it does.
+//
+// THE LAYER BOUNDARY IS THE WHOLE REASON THIS MODULE EXISTS SEPARATELY FROM
+// extdeps.systems.nvidia_dgx_spark_setup. That module owns the vendor's DOCUMENTED setup
+// surface and is cited to docs.nvidia.com. Everything here is a RECEIPT PRODUCED BY US by
+// driving one physical unit, and DESIGN section 3 (external upstream decomposition) is
+// explicit that observations produced by this repository are receipts in the observing
+// layer, never facts authored into the observed upstream's module. Writing an observed
+// screen into the extdeps module would make our measurement masquerade as vendor
+// documentation, and the next reader could not tell which claims NVIDIA stands behind.
+//
+// THE OBSERVED SUBJECT IS ONE UNIT AT ONE MOMENT, and every row below is scoped to that.
+// A second unit, a firmware revision, or a different regional image may present a
+// different wizard; this module claims nothing about them.
+
+// ------------------------------------------------------------------------------------------
+// THE ELEMENT ADDRESS.
+//
+// The wizard is an NVIDIA design-system SPA and every control it renders carries a
+// data-testid. That is the ADDRESS WE OBSERVED, so it is what this model names -- a CSS path
+// or an nth-child index would be a second, positional naming scheme for something the
+// document already names, and it decays the moment NVIDIA reflows the layout (the same
+// objection DESIGN section 3's standing rule makes against file:line citations).
+//
+// TestIdAddress is NOT a claim that the testid is a stable NVIDIA contract. It is a claim
+// about what we saw. If a future image renames these, the witness that reads this model goes
+// red at the address, which is the loud failure we want, rather than a silent mis-click.
+// ------------------------------------------------------------------------------------------
+
+data observed_account_username_probes: List<ClientUsernameAdmission> = [
+  ClientAdmittedUsername { username: "fleetadmin" },
+  ClientAdmittedUsername { username: "root" },
+]
+
+// ------------------------------------------------------------------------------------------
+// A ROUTE THAT RENDERS IS NOT A WIZARD THAT HAS PROGRESSED.
+//
+// /welcome/account was reached by navigating DIRECTLY to it, on a unit whose root still resolves
+// to /welcome -- so the account screen rendered without its predecessor screens having been
+// completed. The SPA does not gate its routes on progress.
+//
+// This is carried because it cuts both ways and both matter. It is why the screen above could be
+// modeled without accepting a licence or creating an account: the observation cost nothing on the
+// device. It is also a hazard for anything that infers state from location -- arriving at a route
+// establishes that the route renders, and nothing about what the unit has been configured with.
+// A workflow that treated "I am at /welcome/account" as "the EULA has been accepted" would be
+// reading a client-side path as device state.
+type ObservedRouteGating
+  = RouteRequiresPredecessorCompletion
+  | RouteRenderedWithoutPredecessorCompletion
+
+type ObservedDirectRouteNavigation {
+  requested_route: OobeScreenRoute
+  resulting_route: OobeScreenRoute
+  root_still_resolves_to: OobeScreenRoute
+  gating: ObservedRouteGating
+}
+
+data account_route_direct_navigation: ObservedDirectRouteNavigation = ObservedDirectRouteNavigation {
+  requested_route: "/welcome/account" as OobeScreenRoute,
+  resulting_route: "/welcome/account" as OobeScreenRoute,
+  root_still_resolves_to: "/welcome" as OobeScreenRoute,
+  gating: RouteRenderedWithoutPredecessorCompletion,
+}
+
+// ------------------------------------------------------------------------------------------
+// THE WALK, AND ITS HONEST END.
+//
+// THIS LIST IS A PREFIX OF THE WIZARD, NOT THE WIZARD. The walk stopped at the EULA because
+// advancing past it means accepting a license on the operator's behalf. Every screen NVIDIA's
+// page says comes later -- user account, analytics, wireless network -- is therefore
+// UNOBSERVED BY US, and this module must not be read as saying they do not exist or that the
+// flow ends here.
+//
+// The distinction is the one DESIGN section 4b keeps off the ladder: a screen we have not
+// watched is outside the modeled guarantee, not a screen we have proven absent. Recording the
+// prefix as if it were the population is the failure mode this repository already names
+// (selection_view_read_as_population), and it would be especially cheap to commit here
+// because the observed rows are real and the missing ones leave no trace.
+// ------------------------------------------------------------------------------------------
+// DERIVED FROM THE RUNS, and it has to be, now that there is more than one. The prefix used to be
+// hand-listed here while the single run row cited IT -- one authority, read backwards, which was
+// fine while one run produced every screen. A second run breaks that: a hand-listed union would
+// let a screen be observed by no run, or a run to claim a screen it never watched, with both
+// tables staying type-correct while they disagree. So the runs are the authority and the prefix
+// is folded out of them (DESIGN section 3).
+// THE UNION OF WHAT THE RUNS WATCHED -- A POPULATION, NOT A ROUTE. It was named ..._prefix, which
+// asserted an order across two runs that never composed into one walk. Coverage folds want exactly
+// this union; nothing may read it as a sequence.
+fn observed_screens_across_runs() -> List<ObservedOobeScreen> {
+  flat_map(oobe_observation_runs, run => run.screens)
+}
+
+// ------------------------------------------------------------------------------------------
+// THE INITIAL NAVIGATION, which the first revision asserted in prose and never modeled.
+//
+// The PR text claimed "the root redirects to /welcome", and a list whose first element is
+// /welcome does not establish that. Worse, the word was wrong in kind: the measurement says the
+// root answers HTTP 200 with NO HTTP REDIRECT, and /welcome is reached by a CLIENT-SIDE route
+// inside the SPA. An actuator that expected a 3xx, or that waited for a redirect chain, would
+// wait forever on a page that already arrived.
+//
+// This is carried structurally because an actuator depends on it: it decides what "navigate to
+// the portal" is allowed to assume about where it lands.
+type InitialRouteResolution
+  = ResolvedByHttpRedirect
+  | ResolvedByClientSideRoute
+
+type ObservedInitialNavigation {
+  requested_path: OobeScreenRoute
+  http_status: HttpStatus
+  resolution: InitialRouteResolution
+  resulting_route: OobeScreenRoute
+}
+
+data initial_navigation_observation: ObservedInitialNavigation = ObservedInitialNavigation {
+  requested_path: "/" as OobeScreenRoute,
+  http_status: 200,
+  resolution: ResolvedByClientSideRoute,
+  resulting_route: "/welcome" as OobeScreenRoute,
+}
+
+type OobeWalkTermination
+  = WalkReachedFlowCompletion
+  | WalkHaltedAwaitingOperatorAuthority { at_route: OobeScreenRoute }
+
+data observed_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperatorAuthority {
+  at_route: "/welcome/eula" as OobeScreenRoute,
+}
+
+// The second run halted one screen further on, and for a different reason than the first. Run 1
+// stopped in front of a legal act. Run 2 reached the account screen WITHOUT performing one --
+// the route renders directly -- and stopped in front of a credential act: filling the form is
+// free, pressing Continue creates an account. Both are the same shape of refusal and they are
+// separate rows because they are separate runs; a single termination would have to pick one.
+data observed_account_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperatorAuthority {
+  at_route: "/welcome/account" as OobeScreenRoute,
+}
+
+// ------------------------------------------------------------------------------------------
+// DOCUMENTED VERSUS OBSERVED.
+//
+// The coverage half is now folded from the observed prefix (screen_presents_field), so the two
+// structures that used to answer "was this field observed" have become one.
+//
+// Both halves are now modeled -- the vendor's prompted-field list in the extdeps module, and
+// our prefix here -- so the divergence is DERIVABLE rather than asserted. This function is the
+// join: it answers, for one field, whether the screens we actually watched prompted for it.
+//
+// It deliberately does NOT compare itself against dgx_spark_oobe_offers_field and report a
+// verdict, because the two predicates answer different questions over different populations:
+// the vendor's covers the whole wizard, ours covers a prefix that stops at the EULA. A
+// difference between them is only evidence of vendor error where our walk was complete, and
+// observed_walk_termination says it is not. Presenting the difference as a defect list would
+// be the undecided fraction read as a denominator.
+fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> Bool {
+  fold(
+    screen.presented_subjects,
+    init: false,
+    f: (acc, presented) => acc || presented == field
+  )
+}
+
+// DERIVED, and this time the word is true. The fold ranges over the observed prefix itself, so
+// appending a screen with its presented_subjects retires that screen's pending fields with no
+// second edit anywhere. The predicate this replaced was a hand-maintained match over every
+// OobeSetupField; it is deleted rather than kept beside this one, because leaving both would
+// preserve the exact fork the repair exists to remove.
+fn observed_screen_covers_field(field: OobeSetupField) -> Bool {
+  fold(
+    observed_screens_across_runs(),
+    init: false,
+    f: (acc, screen) => acc || screen_presents_field(screen: screen, field: field)
+  )
+}
+
+// A field the vendor page says is prompted and our prefix has not reached. This is the
+// COVERAGE OBLIGATION -- the list of things still to watch -- and it is computed from the two
+// models rather than hand-listed, so finishing the walk retires rows here by construction.
+fn field_is_pending_observation(field: OobeSetupField) -> Bool {
+  dgx_spark_oobe_offers_field(field: field) && !observed_screen_covers_field(field: field)
+}
+
+// ------------------------------------------------------------------------------------------
+// THE RECEIPT: what produced the rows above.
+//
+// A screen model with no provenance is an assertion. This records the browser that rendered
+// the SPA, the unit whose access point served it, and when -- so a future reader can decide
+// whether the observation still applies rather than assuming it does.
+//
+// THE ACCESS POINT IS NAMED AND THE CREDENTIAL IS NOT. The SSID is a per-unit vendor-derived
+// label and is safe to record; the passphrase arrives on a printed sticker and is a per-unit
+// secret, which is precisely why extdeps.systems.nvidia_dgx_spark_setup models the carrier as
+// PrintedQuickStartGuideSticker and holds no password. No field here can carry one.
+//
+// THE RENDERING HOST IS NOT THE RADIO HOST, and the honest reason is narrower than the one
+// this comment first gave. It said the Pi's memory was "far below what Chromium needs", which
+// asserts a CAUSE that was never measured: the attempt on the Pi timed out at rc=124 with no
+// stderr, on the portal AND on an example.com control, with roughly 550MB shown available at
+// one sampled moment. No RSS, swap-pressure, PSI or OOM observation was taken, so memory is a
+// hypothesis and not a finding, and nothing here establishes that a Pi 3B+ cannot run a
+// browser.
+//
+// What the evidence DOES establish is target-independent: that attempted realization, on that
+// host, failed regardless of what it was pointed at -- which is enough to select a different
+// rendering host and nothing more. The topology below therefore records a host that was tried
+// and a host that worked; it does not license a capability rule about the hardware.
+//
+// The half that IS established structurally is the portal: it is a client-rendered SPA, so a
+// plain HTTP fetch cannot drive it and a browser is required somewhere.
+// ------------------------------------------------------------------------------------------
+
+type ObservedUnitAccessPointSsid = NonEmptyStr where brand("ObservedUnitAccessPointSsid")
+type RadioRelayHost = NonEmptyStr where brand("RadioRelayHost")
+type RenderingHost = NonEmptyStr where brand("RenderingHost")
+
+type OobePortalObservationEnvironment {
+  chromium_build: ChromiumBuild
+  playwright_build: PlaywrightBuild
+  browser_binary_provenance: PlaywrightBrowserBinaryProvenance
+  rendering_host: RenderingHost
+  radio_relay_host: RadioRelayHost
+  unit_access_point: ObservedUnitAccessPointSsid
+  portal_origin: Uri
+}
+
+// HOW THE RENDERER REACHED THE PORTAL, which run 1's environment could not say and run 2 forced
+// into the open. The renderer, the radio relay and the origin the browser actually loaded are
+// three facts, and run 2 has a fourth participant between them: the browser on srv4 loaded a
+// LOOPBACK listener on its own host, forwarded through this session, forwarded again through the
+// relay, to the unit. srv4 holds no key to the relay, so it cannot open that channel itself --
+// measured, not assumed, and it is why a proxy locus exists at all rather than being an
+// implementation detail of "srv4 reaches the unit".
+//
+// The browser origin is recorded separately from the unit origin because they are not the same
+// string under forwarding, and same-origin behaviour is a property of what the browser loaded.
+//
+// PortalReachUnrecorded is for run 1 and is not a claim that it was direct. That run recorded
+// the unit's address as the origin and did not record the mechanism, so the mechanism is
+// unobserved -- the column DESIGN section 4b keeps off the ladder, declared rather than
+// backfilled from what seems likely now.
+type OobePortalReach
+  = PortalReachUnrecorded
+  | RendererThroughForwardedEndpoint {
+      proxy_locus: NonEmptyStr,
+      renderer_origin: Uri,
+      unit_origin: Uri,
+    }
+
+// A TRANSITION IS OBSERVED OR IT DOES NOT EXIST, and this carrier arrived from a reviewer's
+// objection that the screen list was quietly asserting one. Two runs concatenated into a four-screen
+// "prefix" read as a walk: welcome, settings, eula, account. Three of those screens came from a run
+// that HALTED at the EULA, and the account screen came from a later run that navigated DIRECTLY to
+// /welcome/account. No eula -> account edge was ever crossed, and an actuator that read the list as
+// a route would have driven a transition nobody has evidence for.
+//
+// The transitions are OUR receipt, not NVIDIA's interface: the wizard presumably has that edge, and
+// the claim here is only about what we watched. So they live per-run in this module, and the vendor
+// module's revision stays a population of screens with no order asserted.
+type ObservedScreenTransition {
+  from_route: OobeScreenRoute
+  to_route: OobeScreenRoute
+}
+
+// ONE RUN IS ONE SITTING, SO THE RUN IS THE SESSION -- there is no second screen list to keep
+// honest. Two earlier shapes were wrong in opposite directions. The first pointed every run at a
+// shared four-screen revision dated 09-03, so the 09-02 receipt claimed a screen first observed the
+// next day. The second gave each run its own session row in the VENDOR module, which both inverted
+// the layer -- when we looked is our fact, not NVIDIA's -- and authored each sitting's screens
+// twice, needing a join to keep the copies agreeing. The join compared ROUTE SPELLING, so two
+// materially different /welcome/account screens would have satisfied it.
+//
+// What a receipt cites is therefore its own screen list, and the vendor rows those screens ARE.
+type OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment
+  portal_reach: OobePortalReach
+  observed_on: Rfc3339Timestamp
+  screens: List<ObservedOobeScreen>
+  observed_transitions: List<ObservedScreenTransition>
+  termination: OobeWalkTermination
+}
+
+data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment {
+    chromium_build: chromium_151_0_7922_34,
+    playwright_build: playwright_1_62_1,
+    browser_binary_provenance: PlaywrightManagedChromiumDownload,
+    rendering_host: "srv4" as RenderingHost,
+    radio_relay_host: "pi1" as RadioRelayHost,
+    unit_access_point: "spark-0c75" as ObservedUnitAccessPointSsid,
+    portal_origin: Uri {
+      scheme: Http,
+      locator: "10.92.7.127",
+    },
+  },
+  portal_reach: PortalReachUnrecorded,
+  observed_on: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
+  screens: [
+    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_welcome,
+    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
+    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_eula,
+  ],
+  observed_transitions: [
+    ObservedScreenTransition {
+      from_route: "/welcome" as OobeScreenRoute,
+      to_route: "/welcome/settings" as OobeScreenRoute,
+    },
+    ObservedScreenTransition {
+      from_route: "/welcome/settings" as OobeScreenRoute,
+      to_route: "/welcome/eula" as OobeScreenRoute,
+    },
+  ],
+  termination: gunbc.spark.oobe_screen_observation.observed_walk_termination,
+}
+
+// RUN 2 -- the account screen, reached without crossing either boundary run 1 stopped at.
+//
+// ITS observed_transitions IS EMPTY, AND THAT IS THE FINDING. This run reached /welcome/account by
+// direct navigation, so it crossed no edge at all; the account screen's presence in the population
+// is not evidence that anything leads to it.
+//
+// Same unit, same relay, same renderer and the same pinned Playwright build; a different route to
+// it, and a different halt. The renderer is srv4 again deliberately: srv1 carries browser binaries
+// but no Playwright package, so it is not a qualified renderer, and re-observing under a different
+// browser build would have made any selector difference ambiguous between "the image changed" and
+// "we looked with a different tool".
+data dgx_spark_0c75_oobe_account_run: OobeScreenObservationRun = OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment {
+    chromium_build: chromium_151_0_7922_34,
+    playwright_build: playwright_1_62_1,
+    browser_binary_provenance: PlaywrightManagedChromiumDownload,
+    rendering_host: "srv4" as RenderingHost,
+    radio_relay_host: "pi1" as RadioRelayHost,
+    unit_access_point: "spark-0c75" as ObservedUnitAccessPointSsid,
+    portal_origin: Uri {
+      scheme: Http,
+      locator: "127.0.0.1:18082",
+    },
+  },
+  portal_reach: RendererThroughForwardedEndpoint {
+    proxy_locus: "sleek-bear-442",
+    renderer_origin: Uri {
+      scheme: Http,
+      locator: "127.0.0.1:18082",
+    },
+    unit_origin: Uri {
+      scheme: Http,
+      locator: "10.92.7.127",
+    },
+  },
+  observed_on: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
+  screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
+  observed_transitions: [],
+  termination: gunbc.spark.oobe_screen_observation.observed_account_walk_termination,
+}
+
+data oobe_observation_runs: List<OobeScreenObservationRun> = [
+  gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_prefix_run,
+  gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
+]
+
+// EVERY EDGE ANY RUN CROSSED. A consumer asking "can we get from here to there" must fold this and
+// find the edge; an empty answer is a refusal to claim, not a claim of absence in the wizard.
+fn observed_transitions_across_runs() -> List<ObservedScreenTransition> {
+  flat_map(oobe_observation_runs, run => run.observed_transitions)
+}
+
+// WHETHER THE TWO SITTINGS SAW ONE INTERFACE IS UNOBSERVED, AND THIS SAYS SO RATHER THAN ASSUMING IT.
+//
+// The wizard never displayed a firmware or image version and the probe never asked for one, so no
+// measured fact joins the 2026-09-02 screens to the 2026-09-03 account screen. The convenient
+// assumption -- same unit, one day apart, nothing was flashed -- is exactly the fabricated temporal
+// certainty a receipt may not carry. An actuator that needs the four screens to be one interface
+// must first RETIRE this row by re-observing, not by reasoning about it.
+type InterfaceContinuityEvidence
+  = SittingsProvenSameInterface { earlier: Rfc3339Timestamp, later: Rfc3339Timestamp, firmware_identity: NonEmptyStr }
+  | SittingContinuityUnobserved { earlier: Rfc3339Timestamp, later: Rfc3339Timestamp, missing: NonEmptyStr }
+
+data spark_0c75_sitting_continuity: InterfaceContinuityEvidence = SittingContinuityUnobserved {
+  earlier: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
+  later: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
+  missing: "no firmware or image identity was displayed by the wizard or requested by the probe" as NonEmptyStr,
+}
+
+// AND IT HAS A CONSUMER, WHICH IS THE WHOLE POINT OF DECLARING IT. The historical union may answer
+// "which screens have ever been observed"; it may NOT answer "which screens form one verified
+// interface, or one traversable walk". Anything that needs the second question answered enters here
+// and is refused with the reason, so the refusal cannot be routed around by folding the union
+// instead.
+type VerifiedInterfaceRequest
+  = VerifiedInterfaceRefused { cause: InterfaceContinuityEvidence }
+  | VerifiedInterfaceAcross { screens: List<ObservedOobeScreen> }
+
+fn verified_interface_across_sittings() -> VerifiedInterfaceRequest {
+  match spark_0c75_sitting_continuity {
+    SittingsProvenSameInterface { earlier: _, later: _, firmware_identity: _ } =>
+      VerifiedInterfaceAcross { screens: observed_screens_across_runs() }
+    SittingContinuityUnobserved { earlier: e, later: l, missing: m } =>
+      VerifiedInterfaceRefused {
+        cause: SittingContinuityUnobserved { earlier: e, later: l, missing: m },
+      }
+  }
+}

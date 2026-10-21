@@ -1,0 +1,42 @@
+module gunbc.uefi_boot_config
+
+import std.types { NonEmptyStr, Int, List }
+import extdeps.firmware.uefi_shell {
+  UefiShellCommand,
+  BcfgDump,
+  BcfgAdd,
+  BcfgMove,
+  MapDevices,
+  Reset,
+  BcfgBoot,
+  ResetWarm,
+  uefi_shell_script,
+}
+
+type DesiredBootSource
+  = BootFromInstallMedia { efi_file: NonEmptyStr }
+  | BootFromPxeEntry { boot_index: Int }
+
+fn uefi_boot_config_commands(desired: DesiredBootSource) -> List<UefiShellCommand> {
+  match desired {
+    BootFromInstallMedia { efi_file: f } => [
+      MapDevices { refresh: true },
+      BcfgDump { target: BcfgBoot },
+      BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as NonEmptyStr },
+      Reset { mode: ResetWarm },
+    ]
+    BootFromPxeEntry { boot_index: i } => [
+      BcfgDump { target: BcfgBoot },
+      BcfgMove { target: BcfgBoot, from_index: i, to_index: 0 },
+      Reset { mode: ResetWarm },
+    ]
+  }
+}
+
+fn uefi_boot_config_script(desired: DesiredBootSource) -> String {
+  uefi_shell_script(commands: uefi_boot_config_commands(desired: desired))
+}
+
+data srv4_uefi_install_boot: DesiredBootSource = BootFromInstallMedia {
+  efi_file: "fs0:\\EFI\\BOOT\\BOOTAA64.EFI",
+}

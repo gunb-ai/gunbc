@@ -1,0 +1,62 @@
+module v2.workflow.floor_discovery_row
+
+import std.types { String, Bool, List }
+import std.live_tree { LiveTreeDisposition }
+
+// THE DISCOVERY ROW VOCABULARY AND THE WIRE-CONTRACT PLACEMENT VERDICT: what discovery enrols, and
+// where a wire-contract declaration is allowed to live.
+//
+// WHY IT IS ITS OWN MODULE. Its sibling half — the discovery REQUEST and its subject binding —
+// identifies the tested tree by git commit and tree object (extdeps.git.object_store), and that
+// import reaches extdeps.git and extdeps.exec.command. The row vocabulary needs none of it, and
+// the per-file authority that consumes these rows is now COMPILED inside the emitted native
+// compiler (the required-v2-native lane's universe derivation), where those three modules emit
+// Rust that does not build. One module, two facts, one of them effectful: the row half is the one
+// the compiled route needs, so it is separable and now separate.
+//
+// WHAT A TEST IS IS NOT DECIDED HERE. A test is a declaration carrying the authored `test` marker,
+// and nothing else: no file name, suffix or directory says so. The marker is read from the
+// canonical parse (v2.std.declaration_marker TestMarkerChannel, captured by
+// v2.compiler.test_marker_capture into the normalized tree's test_markers), and discovery receives
+// the marked names as a SUPPLIED VALUE (FloorMarkedSource) instead of re-deriving them from the
+// text of a file it deliberately does not parse.
+
+type FloorDiscoveryRow {
+  label: String
+  entry: String
+  function: String
+  reads_live_tree: LiveTreeDisposition
+}
+
+// The marker fact for ONE source: the declaration names that carry the `test` marker in the file at
+// repo_path. A producer that walks a file for which no such fact was supplied has no answer and
+// refuses; it never reads an absent fact as an empty list.
+type FloorMarkedSource {
+  repo_path: String
+  marked: List<String>
+}
+
+// The one placement rule that still keys on a file name. Wire-contract declarations are not a test
+// identification: the seed emitter composes a module's wire contracts from the sidecar named by this
+// suffix (contracts_items_for_module), so the sidecar is a module-composition convention of the
+// emitter, kept until the emitter reads the declaration instead of the file.
+data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"
+
+fn floor_path_strip_dot_slash_prefix(path: String) -> String {
+  if starts_with(s: path, prefix: "./") {
+    substring(s: path, start: 2, end: string_length(s: path))
+  } else {
+    path
+  }
+}
+
+fn floor_entry_requires_wire_contract_sidecar(entry_path: String) -> Bool {
+  ends_with(
+    s: floor_path_strip_dot_slash_prefix(path: entry_path),
+    suffix: floor_wire_contract_sidecar_suffix
+  )
+}
+
+fn floor_wire_contract_decl_allowed_in_entry(entry_path: String) -> Bool {
+  floor_entry_requires_wire_contract_sidecar(entry_path: entry_path)
+}

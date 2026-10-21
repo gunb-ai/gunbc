@@ -1,0 +1,35 @@
+module v2.test.fixture.rung_5_6_common
+
+
+data rung56_emit_host_python_target_model: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
+  produced_decl_support: ProducedDeclUnwired,
+  bundle: rung34_emit_host_rust_target_model.bundle,
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: python_source_text,
+  runtime_row: python_runtime_row()
+}
+
+data rung56_emit_host_go_target_model: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
+  produced_decl_support: ProducedDeclUnwired,
+  bundle: rung34_emit_host_rust_target_model.bundle,
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: go_source_text,
+  runtime_row: go_runtime_row()
+}
+
+fn rung56_emit_vs_eval_run(
+  claim: TestClaim,
+  fixture_subject: Node,
+  target: TargetModel
+) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: rung34_test_claim_subject(claim: claim, evaluator_input: fixture_subject),
+    target: target
+  )
+}

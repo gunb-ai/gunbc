@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.uses_clause_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data uses_clause_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "uses_clause_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a fn declaration's `uses` clause (`uses net: Network, fs: Filesystem`) states the resources the fn requires, and v2 has no carrier for that requirement: no field of the lowered Arrow, no effect-requirement type the declaration lowers onto. v1 reads it (`v1` `02_parse` `parse_uses_clause`, a resource-use node per entry) and v1's CLI admits a resource method only where the fn declares that resource there, so it is a semantic fact, not trivia -- a fact D13 assigns to derived demand rather than to the header.",
+    "HARM: a lowering that parsed the clause and dropped it would erase an effect requirement silently -- a fn would lower as if it used no resource, and nothing downstream could refuse a resource method it calls. Until this lands, such fns cannot be observed by the v2 route at all.",
+    "CONTAINED, NOT SILENT: the grammar parses the clause (`v2.extdeps.languages.dag` `dag_grammar_uses_clause_expr`) and body lowering refuses every fn carrying one on BOTH arms, full and census, located at the clause, as `body_lowering_reason_uses_clause_unmodeled` (`v2.compiler.body_lowering_fold` `body_lower_fn_uses_refusal_optional`). The module refuses at normalize; it never lowers without its requirement. These modules are therefore outside the XL-2 reference census until the carrier exists.",
+    "RUNG FOUND AT: mitigated (typed, located refusal; the module refuses at normalize). CEILING: structurally impossible -- an undeclared resource requirement cannot be written, because for a transparent body the requirement is DERIVED (DependencyDemand, produced once by resolution) and never authored. NO V2 CARRIER IS BUILT FOR THE AUTHORED ROW: operator D13 (gunbc.plans.demand_engine_program, 2026-09-18) rules that 'for a transparent (visible-body) function, dependency demand is DERIVED from resolved dependency and operation references, not authored in the header' and that 'restating rows are deleted because they are derived', so a signature carrier for the row would be a second authority for DependencyDemand (XL-2 ruling, docs/plans/service-interface-and-uses-carriers.md). The refusal stays and walls out new restatement rows. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY, IN ORDER: (1) PREREQUISITE -- D13's DependencyDemand carrier derives each resource requirement keyed on the resource DECLARATION's identity, so that the derived demand of every function that authors `uses net: Network` names Network (the restoration trigger of gunbc.rung_drop network_requirement_unrepresented_after_uses_cut; today derived demand names the services a Network effect reaches and never Network itself, so a Network row is NOT yet a restatement and deleting it would repeat that silent rung loss); then (2) the authored rows that restate the derived demand are retired under D13's criterion, so that no fn reaching normalize carries a `uses` row that restates derived demand. A binder, opaque-contract or policy row, if one ever appears, refuses here until its own carrier exists.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_refuses_at_the_clause_holds", field: WholeDeclaration },
+  ],
+}

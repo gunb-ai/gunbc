@@ -1,0 +1,42 @@
+module gunbc.spark.serving_subject
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import product.host_identity { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.serving_arm_placement { glm_group_b_serving_arm }
+
+// SERVING-SUBJECT IDENTITY KEPT FOR HOST-COMMITMENT JOINS. Production Spark serving is retired
+// (all units sold). Reservations are empty; types remain so host_commitment still names a subject
+// when admitting an effect on a historical host identity.
+
+type ServingSubject
+  = PairServingUnitOn { group: FabricGroup }
+  | PlacedServingArm { arm: DeclarationRef }
+
+fn serving_subject_wire(s: ServingSubject) -> NonEmptyStr {
+  match s {
+    PairServingUnitOn { group: g } => join(["pair-unit@", fabric_group_wire(g: g) as String], "") as NonEmptyStr
+    PlacedServingArm { arm: a } => join(["arm@", declaration_ref_display_key(ref: a)], "") as NonEmptyStr
+  }
+}
+
+fn serving_subject_eq(a: ServingSubject, b: ServingSubject) -> Bool {
+  (serving_subject_wire(s: a) as String) == (serving_subject_wire(s: b) as String)
+}
+
+data glm_group_b_serving_subject: ServingSubject = PlacedServingArm { arm: glm_group_b_serving_arm }
+
+type ServingRulingCitation {
+  decider: NonEmptyStr
+  ruled_on: NonEmptyStr
+  ruled: NonEmptyStr
+}
+
+type SparkServingReservation {
+  subject: ServingSubject
+  hosts: List<HostIdentity>
+  basis: ServingRulingCitation
+}
+
+data spark_serving_reservations: List<SparkServingReservation> = []

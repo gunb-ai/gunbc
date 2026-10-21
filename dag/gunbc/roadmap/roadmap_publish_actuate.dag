@@ -1,0 +1,320 @@
+module gunbc.roadmap.roadmap_publish_actuate
+
+import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha, Secret, GitRef }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git {
+  git_dir_fetch_source_grant, git_local_fetch_upload_pack_command, git_isolated_home_netrc_path,
+  git_dir_path_from_gitfile, resolve_git_dir_pointer, git_non_bare_git_dir_name,
+}
+import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
+import extdeps.github.pulls
+import extdeps.github.github { github_https_host, github_installation_token_git_login }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+import gunbc.auth.netrc_binding {
+  place_netrc_binding, shred_netrc_binding, NetrcBindingPlaced, NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains, NetrcBinding,
+}
+
+// PUBLICATION ACTUATION: stage an already-captured candidate SHA into a helper-owned bare mirror,
+// then (after the caller mints) push and open the pull request.
+//
+// WHY GIT PUSH AND NOT heal's REST Git Database route. Heal fast-forwards one admitted bot commit
+// by updating a ref through the Git Database API. A roadmap candidate is an arbitrary multi-commit
+// history whose captured SHA must remain that SHA on the published branch. REST create/update-ref
+// of a single commit object cannot carry that history; git push of the captured objects can.
+//
+// THE PUSH OPERATION IS THE INTERFACE; which remote URL and which ref are POLICY parameters
+// (DESIGN §3). The credential never appears in argv or in a URL (gunbc.credential_argv_exposure):
+// it travels in a netrc under a private HOME. That HOME is an argv `env` prefix on the push
+// (extdeps.git git_isolated_home_env_argv), not a Map the spawn ignores, and is shredded on every arm.
+//
+// THE MIRROR IS HELPER-OWNED AND PERSISTENT. Staging fetch from the worker git dir happens with NO
+// token in the process. The git dir is read from the worktree's `.git` as data (gitrepository-layout(5)),
+// never via `git -C <worker worktree> …`, so the worker's config is not consulted to find it.
+// GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1 apply to the push in the helper-owned
+// mirror (and null only global and system config). upload-pack still reads the source git dir's own
+// config; that process must not hold the token.
+
+type PublishActuation
+  = PublishActuated { pr_number: Int, url: NonEmptyStr }
+  | PushRefused { exit_code: Int, stderr: String }
+  | PullRequestRefused { detail: String }
+  | PublishNetrcResidueRemains { detail: String }
+
+type CapturedShaPush
+  = CapturedShaPushed
+  | CapturedShaPushRefused { exit_code: Int, stderr: String }
+  | CapturedShaPushNetrcResidueRemains { captured_sha_on_remote: Bool, exit_code: Int, stderr: String }
+
+type CapturedShaStage
+  = CapturedShaStaged
+  | CapturedShaStageRefused { exit_code: Int, stderr: String }
+
+type PublicationGitDir
+  = PublicationGitDirResolved { git_dir: NonEmptyStr }
+  | PublicationGitDirRefused { stderr: String }
+
+fn attempt_branch_refspec(branch: NonEmptyStr) -> String {
+  join([branch as String, ":refs/heads/", branch as String], "")
+}
+
+fn pull_request_created_outcome(number: Int, html_url: NonEmptyStr) -> PublicationReceiptOutcome {
+  ReceiptBound { pr_number: number, url: html_url, draft: false }
+}
+
+fn pull_request_refusal_detail(outcome: RestRefusal) -> String {
+  match outcome {
+    RestStatusRefused { status: _, body } => join(["GitHub refused the pull request: ", body], "")
+    RestTransportRefused { cause } => join(["the pull request request did not reach GitHub: ", cause as String], "")
+    RestBodyUndecodable { status: _, cause } => join(["GitHub answered but the pull request body was undecodable: ", cause as String], "")
+  }
+}
+
+fn publication_mirror_ref(branch: NonEmptyStr) -> String {
+  join(["refs/heads/", branch as String], "")
+}
+
+fn captured_sha_push_after_cleanup(shredded: Bool, home_removed: Bool, result: CapturedShaPush) -> CapturedShaPush {
+  if shredded && home_removed {
+    result
+  } else {
+    match result {
+      CapturedShaPushed =>
+        CapturedShaPushNetrcResidueRemains {
+          captured_sha_on_remote: true,
+          exit_code: 0,
+          stderr: "the publication netrc or private HOME could not be removed after the push",
+        }
+      CapturedShaPushRefused { exit_code, stderr } =>
+        CapturedShaPushNetrcResidueRemains {
+          captured_sha_on_remote: false,
+          exit_code: exit_code,
+          stderr: join(["the publication netrc or private HOME could not be removed after a refused push: ", stderr], ""),
+        }
+      CapturedShaPushNetrcResidueRemains { captured_sha_on_remote, exit_code, stderr } =>
+        CapturedShaPushNetrcResidueRemains { captured_sha_on_remote: captured_sha_on_remote, exit_code: exit_code, stderr: stderr }
+    }
+  }
+}
+
+fn shred_publication_netrc_then(binding: NetrcBinding, home: FilePath, result: CapturedShaPush) -> CapturedShaPush {
+  captured_sha_push_after_cleanup(
+    shredded: shred_netrc_binding(binding: binding),
+    home_removed: shell.Remove.RecursiveForce(path: home).success,
+    result: result,
+  )
+}
+
+fn refuse_captured_push_after_home_cleanup(home: FilePath, exit_code: Int, stderr: String) -> CapturedShaPush {
+  captured_sha_push_after_cleanup(
+    shredded: true,
+    home_removed: shell.Remove.RecursiveForce(path: home).success,
+    result: CapturedShaPushRefused { exit_code: exit_code, stderr: stderr },
+  )
+}
+
+fn publication_source_git_dir(source_worktree: FilePath) -> PublicationGitDir {
+  let marker = join([source_worktree as String, "/", git_non_bare_git_dir_name], "") as FilePath
+  if shell.Test.IsDirectory(path: marker).is_directory {
+    PublicationGitDirResolved { git_dir: marker as String as NonEmptyStr }
+  } else if !shell.Test.IsFile(path: marker).is_file {
+    PublicationGitDirRefused { stderr: "the worktree has neither a .git directory nor a gitdir file" }
+  } else {
+    let read = Filesystem.Read(path: marker)
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        PublicationGitDirRefused { stderr: join(["the worktree .git file could not be read: ", error], "") }
+      FilesystemReadSucceeded { content } =>
+        match git_dir_path_from_gitfile(contents: content) {
+          Absent => PublicationGitDirRefused { stderr: "the worktree .git file is not a gitdir pointer" }
+          Present { value: pointer } =>
+            PublicationGitDirResolved { git_dir: resolve_git_dir_pointer(worktree: source_worktree, pointer: pointer) }
+        }
+    }
+  }
+}
+
+fn ensure_publication_bare_mirror(mirror: FilePath) -> CapturedShaStage {
+  let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: mirror }, path: mirror)
+  if init.exit_code != 0 {
+    CapturedShaStageRefused { exit_code: init.exit_code, stderr: init.stderr }
+  } else {
+    CapturedShaStaged
+  }
+}
+
+fn stage_captured_candidate_sha(
+  source_worktree: FilePath,
+  mirror: FilePath,
+  expected_head: CommitSha,
+) -> CapturedShaStage {
+  match publication_source_git_dir(source_worktree: source_worktree) {
+    PublicationGitDirRefused { stderr } => CapturedShaStageRefused { exit_code: 128, stderr: stderr }
+    PublicationGitDirResolved { git_dir } =>
+      match ensure_publication_bare_mirror(mirror: mirror) {
+        CapturedShaStageRefused { exit_code, stderr } => CapturedShaStageRefused { exit_code: exit_code, stderr: stderr }
+        CapturedShaStaged =>
+          let fetched = git.Core.FetchForcedRefInRepoTrustingSource(
+            repo: mirror,
+            remote: git_dir as String,
+            refspec: expected_head as String,
+            upload_pack: git_local_fetch_upload_pack_command(grant: git_dir_fetch_source_grant(git_dir: git_dir)),
+          )
+          if fetched.exit_code != 0 {
+            CapturedShaStageRefused { exit_code: fetched.exit_code, stderr: fetched.stderr }
+          } else {
+            let present = git.Plumbing.CatFileExists(
+              address: GitDirectoryAt { path: mirror, run_in: mirror },
+              object: expected_head as String,
+            )
+            if present.exit_code != 0 {
+              CapturedShaStageRefused { exit_code: present.exit_code, stderr: present.stderr }
+            } else {
+              CapturedShaStaged
+            }
+          }
+      }
+  }
+}
+
+fn publication_mirror_expected_old(mirror: FilePath, branch: NonEmptyStr) -> String {
+  let parsed = git.Core.RevParseInRepo(repo: mirror, target: publication_mirror_ref(branch: branch) as GitRef)
+  if parsed.exit_code != 0 {
+    ""
+  } else {
+    trim(s: parsed.revision)
+  }
+}
+
+fn push_captured_sha_from_bare_mirror(
+  mirror: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
+  token: Secret,
+) -> CapturedShaPush {
+  let expected_old = publication_mirror_expected_old(mirror: mirror, branch: branch)
+  if expected_old == (expected_head as String) {
+    push_captured_sha_with_netrc(mirror: mirror, remote: remote, branch: branch, token: token)
+  } else {
+    let swapped = git.Core.UpdateRefCompareAndSwapInRepo(
+      repo: mirror,
+      ref: publication_mirror_ref(branch: branch),
+      new_value: expected_head as String,
+      expected_old: expected_old,
+    )
+    if swapped.exit_code != 0 {
+      CapturedShaPushRefused { exit_code: swapped.exit_code, stderr: swapped.stderr }
+    } else {
+      push_captured_sha_with_netrc(mirror: mirror, remote: remote, branch: branch, token: token)
+    }
+  }
+}
+
+fn push_captured_sha_with_netrc(
+  mirror: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  token: Secret,
+) -> CapturedShaPush {
+  let home = shell.Mktemp.Dir()
+  if !home.success {
+    CapturedShaPushRefused { exit_code: 1, stderr: "no private HOME could be created for the publication netrc" }
+  } else {
+    match place_netrc_binding(
+      path: git_isolated_home_netrc_path(home: home.path),
+      machine: github_https_host,
+      login: github_installation_token_git_login,
+      password: token,
+    ) {
+      NetrcBindingRefused { cause } => refuse_captured_push_after_home_cleanup(home: home.path, exit_code: 1, stderr: cause as String)
+      NetrcBindingRefusedResidueRemains { cause } => refuse_captured_push_after_home_cleanup(home: home.path, exit_code: 1, stderr: cause as String)
+      NetrcBindingPlaced { binding } => {
+        let pushed = git.Core.PushRefInRepo(
+          repo: mirror,
+          remote: remote as String,
+          refspec: attempt_branch_refspec(branch: branch),
+          home: home.path,
+        )
+        if pushed.exit_code != 0 {
+          shred_publication_netrc_then(
+            binding: binding,
+            home: home.path,
+            result: CapturedShaPushRefused { exit_code: pushed.exit_code, stderr: pushed.stderr },
+          )
+        } else {
+          shred_publication_netrc_then(
+            binding: binding,
+            home: home.path,
+            result: CapturedShaPushed,
+          )
+        }
+      }
+    }
+  }
+}
+
+fn open_publication_pull_request(
+  owner: String,
+  repo_name: String,
+  branch: NonEmptyStr,
+  base: NonEmptyStr,
+  title: NonEmptyStr,
+  body: String,
+  token: Secret,
+) -> PublishActuation {
+  match github.Pulls.Create(
+    auth_token: token,
+    owner: owner,
+    repo: repo_name,
+    title: title,
+    head: branch,
+    base: base,
+    body: body,
+    draft: false,
+  ) {
+    RestAnswered { answer } => PublishActuated { pr_number: answer.number, url: answer.html_url }
+    RestRefused { refusal } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: refusal) }
+  }
+}
+
+fn publish_staged_attempt(
+  mirror: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
+  base: NonEmptyStr,
+  owner: String,
+  repo_name: String,
+  title: NonEmptyStr,
+  body: String,
+  token: Secret,
+) -> PublishActuation {
+  match push_captured_sha_from_bare_mirror(
+    mirror: mirror,
+    remote: remote,
+    branch: branch,
+    expected_head: expected_head,
+    token: token,
+  ) {
+    CapturedShaPushRefused { exit_code, stderr } => PushRefused { exit_code: exit_code, stderr: stderr }
+    CapturedShaPushNetrcResidueRemains { captured_sha_on_remote: _, exit_code, stderr } =>
+      PublishNetrcResidueRemains { detail: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+    CapturedShaPushed =>
+      open_publication_pull_request(
+        owner: owner,
+        repo_name: repo_name,
+        branch: branch,
+        base: base,
+        title: title,
+        body: body,
+        token: token,
+      )
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory",
+  "@odata.type": "#SoftwareInventoryCollection.SoftwareInventoryCollection",
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory/bios_active"
+    },
+    {
+      "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory/c1789ba5"
+    }
+  ],
+  "Members@odata.count": 2,
+  "Name": "Software Inventory Collection"
+}

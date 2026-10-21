@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_step_timeout_shorter_than_the_wait_it_encloses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_step_timeout_shorter_than_the_wait_it_encloses: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_step_timeout_shorter_than_the_wait_it_encloses" as NonEmptyStr,
+
+  receipts: [
+    "A STEP TIMEOUT SHORTER THAN THE WAIT IT ENCLOSES KILLS THE TRANSACTION BETWEEN APPLY AND VERDICT, leaving neither commit nor rollback. The fleet-converge arm launch step carries timeout-minutes from gunbc.fleet.fleet_workflow_steps gunbc_ci_spark_serving_step_timeout_minutes (60), a literal, while the transaction it runs waits for the front door up to the engine's VLLM_ENGINE_READY_TIMEOUT_S (3600 s) AFTER a preflight, preserve and apply that already take minutes. The runner kills the process; the transaction's commit and rollback legs never run; the hosts keep the new units, the preserved incumbent and the fence.",
+
+    "SPECIMEN, 2026-10-04, gunbc#13040, Group A nvfp4-8 launch run 37190290418: apply legs complete by 09:03:38, the front-door leg polled until the step was killed at 09:53:01 ('has timed out after 60 minutes'), while the NVFP4 engine -- not hung -- was in a FlashInfer JIT autotune phase (weights loaded 33/33 in 8m44s; trtllm fused_moe gemm tuning passes). The dangling transaction is refused by the next preflight by design, so the failure is loud -- but the arm's verdict was never taken.",
+
+    "THE TELL: a timeout literal on a CI step whose body contains a wait with its own declared bound. The enclosing bound must be DERIVED from the enclosed ones (apply budget + readiness deadline + rollback budget) from one authority, or the inner wait's careful bound is dead code. An earlier check of this lane read the JOB timeout (295 min) and missed the STEP timeout -- the bound that actually fires is the innermost enclosing one.",
+
+    "RUNG FOUND AT: mitigatable (the preflight refuses the leftovers; nothing silent). CEILING: structurally guaranteed -- the step timeout is computable from the arm's readiness deadline and the transaction's stage budgets. NEXT-RUNG TRIGGER: the arm launch step's timeout_minutes derived in gunbc.fleet.fleet_converge_workflow from the arm's single readiness-deadline authority (the same value that renders VLLM_ENGINE_READY_TIMEOUT_S and bounds the front-door wait) plus declared apply and rollback budgets, with a witness that the step bound exceeds the enclosed waits.",
+  ],
+
+  evidence: [],
+}

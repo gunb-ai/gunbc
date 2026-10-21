@@ -1,0 +1,129 @@
+module v2.extdeps.frameworks.react
+
+type ReactCrossDeclRef
+
+type ReactOptRef
+  = RefPresent { ref: ReactCrossDeclRef }
+  | RefAbsent
+
+type ReactOptKey
+  = KeyPresent { key_ref: ReactCrossDeclRef }
+  | KeyAbsent
+
+type ReactOptValue
+  = ValuePresent { value_ref: ReactCrossDeclRef }
+  | ValueAbsent
+
+type ReactEffectCleanupSite
+  = NoCleanup
+  | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
+
+type ReactHookInlineDependenciesArgument
+  = DependenciesArgOmitted
+  | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
+
+type ReactModuleSurface
+  = ReactClientModule
+  | ReactServerComponentsModule
+
+type ReactHookSite
+  = UseState { initial_ref: ReactCrossDeclRef }
+  | UseReducer {
+      reducer_ref: ReactCrossDeclRef
+      initial_arg_ref: ReactCrossDeclRef
+      init: ReactOptValue
+    }
+  | UseContext { context_ref: ReactCrossDeclRef }
+  | UseRef { initial_ref: ReactCrossDeclRef }
+  | UseImperativeHandle {
+      ref_target: ReactCrossDeclRef
+      factory_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+    }
+  | UseEffect {
+      setup_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+      cleanup: ReactEffectCleanupSite
+    }
+  | UseLayoutEffect {
+      setup_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+      cleanup: ReactEffectCleanupSite
+    }
+  | UseInsertionEffect {
+      setup_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+      cleanup: ReactEffectCleanupSite
+    }
+  | UseEffectEvent { callback_ref: ReactCrossDeclRef }
+  | UseMemo {
+      factory_ref: ReactCrossDeclRef
+      dependencies: List<ReactCrossDeclRef>
+    }
+  | UseCallback {
+      callback_ref: ReactCrossDeclRef
+      dependencies: List<ReactCrossDeclRef>
+    }
+  | UseTransition
+  | UseDeferredValue {
+      value_ref: ReactCrossDeclRef
+      initial_value: ReactOptValue
+    }
+  | UseId
+  | UseSyncExternalStore {
+      subscribe_ref: ReactCrossDeclRef
+      get_snapshot_ref: ReactCrossDeclRef
+      get_server_snapshot: ReactOptValue
+    }
+  | UseDebugValue { value_ref: ReactCrossDeclRef, format: ReactOptValue }
+  | UseActionState {
+      action_ref: ReactCrossDeclRef
+      initial_state_ref: ReactCrossDeclRef
+      permalink: ReactOptValue
+    }
+  | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptValue }
+  | CustomHook { implementation_ref: ReactCrossDeclRef }
+
+type ReactUseCallSite
+  = UseResource { resource_ref: ReactCrossDeclRef }
+
+type ReactPropsSite {
+  props_type_ref: ReactCrossDeclRef
+  props_value_ref: ReactCrossDeclRef
+}
+
+type ReactFunctionComponent {
+  surface: ReactModuleSurface
+  props: ReactPropsSite
+  render_root_ref: ReactCrossDeclRef
+}
+
+type ReactHostElement {
+  tag_ref: ReactCrossDeclRef
+  key: ReactOptKey
+  ref: ReactOptRef
+  props: ReactPropsSite
+  children: List<ReactCreateElementChild>
+}
+
+type ReactCompositeElement {
+  component_ref: ReactCrossDeclRef
+  key: ReactOptKey
+  ref: ReactOptRef
+  props: ReactPropsSite
+  children: List<ReactCreateElementChild>
+}
+
+type ReactElement
+  = Host { host: ReactHostElement }
+  | Composite { composite: ReactCompositeElement }
+  | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
+
+type ReactCreateElementChild
+  = Element { element: ReactElement }
+  | Text { text_value_ref: ReactCrossDeclRef }
+
+type ReactContextBinding {
+  context_ref: ReactCrossDeclRef
+  default_value_ref: ReactCrossDeclRef
+}

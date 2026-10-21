@@ -1,0 +1,230 @@
+module gunbc.native_product_shared_transfer
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.fabric_blob { FabricBlobAddress, FabricBlobFetched, FabricBlobAbsent, FabricBlobGetUnavailable, FabricBlobStored, FabricBlobOccupied, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown, FabricBlobPutRefusedTooLarge, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob, fabric_blob_reading_path, fabric_blob_fault_text }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import extdeps.shell
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.tar { tar_create_from_list_command, tar_extract_command, tar_list_command }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source }
+import gunbc.fabric.fabric_blob_r2 { release_fabric_blob_staging, FabricBlobStaging }
+import gunbc.native_product_shared_store {
+  NativeProductRunStanding, ForkPullRequestRun, SameRepoPullRequestRun, MergeGroupRun, UnattributedRun,
+  native_product_blob_address, native_product_shared_get, native_product_shared_put,
+  NativeProductSharedGetNotAdmitted, NativeProductSharedGetAnswered,
+  NativeProductSharedPutNotAdmitted, NativeProductSharedPutAnswered,
+}
+
+// THE EXECUTING CONSUMER OF gunbc.native_product_shared_store (CI programme row R3, DESIGN 3c).
+// Two entries, run by the seed (cli_run native_lane_runner) around its own L1: RESTORE on an L1 miss,
+// SAVE after the lane on the merge queue. They move one directory, <root>/native-products/<key>
+// (the two files native_product_cache commits: executable and manifest.json), as one tar object whose
+// R2 address is the SEED'S product key -- passed in, never re-derived here (one key authority).
+// What the bytes MEAN is the seed's: it re-hashes the restored executable against its manifest and
+// the key on lookup, exactly as for a locally committed entry, so a restore only fills the
+// job-private store and decides nothing. Every failure here exits nonzero with a located reason; the
+// seed counts it as a MISS, names it on stderr and builds cold. Nothing in this module can fail a lane.
+
+data native_product_key_variable: NonEmptyStr = "GUNBC_NATIVE_PRODUCT_KEY"
+data native_product_root_variable: NonEmptyStr = "GUNBC_NATIVE_CACHE_ROOT"
+data native_product_event_variable: NonEmptyStr = "GITHUB_EVENT_NAME"
+data native_product_executable_name: String = "executable"
+data native_product_manifest_name: String = "manifest.json"
+
+data native_product_head_repository_variable: NonEmptyStr = "GUNBC_PULL_REQUEST_HEAD_REPOSITORY"
+
+data native_product_repository_variable: NonEmptyStr = "GITHUB_REPOSITORY"
+
+// A fork's pull request is handed no workload identity, so the token source is unavailable and the
+// run proceeds cold; a same-repo pull request is read-only; the queue's composed revision reads and writes.
+// A pull request is attributed by where its head lives against the repository the run belongs to; a head
+// that cannot be read is not guessed to be this repository.
+fn native_product_standing_for(event: String, head: String, repository: String) -> NativeProductRunStanding {
+  if event == "pull_request" {
+    if head == "" || repository == "" { UnattributedRun }
+    else if head == repository { SameRepoPullRequestRun }
+    else { ForkPullRequestRun }
+  }
+  else if event == "merge_group" { MergeGroupRun }
+  else { UnattributedRun }
+}
+
+fn native_product_run_standing() -> NativeProductRunStanding {
+  native_product_standing_for(
+    event: actions_variable_trimmed(name: native_product_event_variable as String),
+    head: actions_variable_trimmed(name: native_product_head_repository_variable as String),
+    repository: actions_variable_trimmed(name: native_product_repository_variable as String))
+}
+
+fn native_product_store_dir(root: String) -> String {
+  join([root, "/native-products"], "")
+}
+
+fn native_product_expected_members(key: String) -> List<String> {
+  [join([key, "/", native_product_executable_name], ""), join([key, "/", native_product_manifest_name], "")]
+}
+
+// THE ARCHIVE'S MEMBERSHIP IS EXACTLY THE TWO FILES UNDER THE KEY, NOTHING ELSE: a listing carrying
+// any other path (including .. or an absolute path) is refused before anything is extracted.
+fn native_product_listing_is_exactly(key: String, listing: String) -> Bool {
+  match filter(split(listing, separator: "\n"), l => l != "") {
+    Cons { head: a, tail: Cons { head: b, tail: Empty } } =>
+      a == join([key, "/", native_product_executable_name], "") && b == join([key, "/", native_product_manifest_name], "")
+    other => false
+  }
+}
+
+fn native_product_finish(staging: FabricBlobStaging, outcome: ProcessExit) -> ProcessExit {
+  let _ = release_fabric_blob_staging(staging: staging)
+  outcome
+}
+
+fn native_product_run_ok(run: ProcessRunOutcome) -> String? {
+  match run {
+    ProcessNotSpawned { program: p, cause: c } => Present { value: join([p as String, " did not run: ", c as String], "") }
+    ProcessRan { observation: o } => if o.exit_code == 0 { none } else { Present { value: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+  }
+}
+
+// RESTORE: fetch the object at the seed's key, check its listing, extract into a private scratch
+// directory and move the key directory into the store with mv -T (which fails if the entry already
+// exists: an existing entry is the seed's, left as it is).
+fn native_product_restore_extract(key: String, store: String, archive: String) -> String? {
+  match run_shell_command_observe_outcome(command: tar_list_command(archive: archive), transport: LocalExec) {
+    ProcessNotSpawned { program: p, cause: c } => Present { value: join(["tar listing did not run: ", c as String], "") }
+    ProcessRan { observation: o } =>
+      if o.exit_code != 0 { Present { value: concat("tar listing refused: ", o.stderr) } }
+      else if !native_product_listing_is_exactly(key: key, listing: o.stdout) { Present { value: "restored archive does not hold exactly the two entry files under the key; refused unextracted" } }
+      else {
+        let scratch = shell.Mktemp.Dir()
+        if scratch.success == false { Present { value: "no private scratch directory could be minted" } }
+        else {
+          let dir = scratch.path as String
+          let outcome = match native_product_run_ok(run: run_shell_command_observe_outcome(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: 0), transport: LocalExec)) {
+            Present { value: why } => Present { value: concat("tar extract refused: ", why) }
+            Absent => native_product_run_ok(run: run_shell_command_observe_outcome(command: mv_exact_destination_command(source: join([dir, "/", key], ""), destination: join([store, "/", key], "")), transport: LocalExec))
+          }
+          let _ = shell.Remove.RecursiveForce(path: scratch.path)
+          outcome
+        }
+      }
+  }
+}
+
+fn native_product_restore_wet() -> ProcessExit {
+  let key = actions_variable_trimmed(name: native_product_key_variable as String)
+  let root = actions_variable_trimmed(name: native_product_root_variable as String)
+  match native_product_blob_address(key_hex: key) {
+    Absent => exit_failure(reason: "native product restore: GUNBC_NATIVE_PRODUCT_KEY is not a lower-hex SHA-256 key; nothing restored")
+    Present { value: address } =>
+      if root == "" { exit_failure(reason: "native product restore: GUNBC_NATIVE_CACHE_ROOT is unset; there is no job-private store to restore into") }
+      else {
+        match select_access_token_source() {
+          AccessTokenSourceUnavailable { cause: c } => exit_failure(reason: concat("native product restore: no credential, building cold: ", c as String))
+          AccessTokenSourceSelected { source: source } =>
+            match native_product_shared_get(standing: native_product_run_standing(), address: address, token_source: source) {
+              NativeProductSharedGetNotAdmitted { cause: c } => exit_failure(reason: concat("native product restore: not admitted: ", c as String))
+              NativeProductSharedGetAnswered { result: r } =>
+                match r.verdict {
+                  FabricBlobAbsent { address: _ } => native_product_finish(staging: r.staging, outcome: exit_failure(reason: "native product restore: MISS, the shared store holds no object at this key"))
+                  FabricBlobGetUnavailable { address: _, fault: f } => native_product_finish(staging: r.staging, outcome: exit_failure(reason: concat("native product restore: shared store unavailable: ", fabric_blob_fault_text(fault: f))))
+                  FabricBlobFetched { address: _, reading: reading } =>
+                    match native_product_restore_extract(key: key, store: native_product_store_dir(root: root), archive: fabric_blob_reading_path(reading: reading) as String) {
+                      Present { value: why } => native_product_finish(staging: r.staging, outcome: exit_failure(reason: concat("native product restore: ", why)))
+                      Absent => native_product_finish(staging: r.staging, outcome: ExitSuccess)
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// SAVE: run on the merge queue after the lane. Every directory under <root>/native-products whose
+// name is a product key is an entry the seed committed under publication_admitted (completed red,
+// merge_group), because nothing else writes the job-private store; each is packed to a tar of exactly
+// its two files and created-if-absent at its key. An occupied address is a success (a peer won).
+// THE MARKER THE SEED WRITES INSIDE AN ENTRY IT COMMITTED THIS RUN FROM ITS OWN VERIFIED BUILD (the
+// seed's `native_product_cache::COMMITTED_MARKER`). Save publishes only marked entries: a restored
+// entry, a peer's entry or a refused one carries no marker, so nothing this run did not build and verify
+// is republished. The marker is outside the two-member archive, so it is never uploaded.
+data native_product_committed_marker_name: String = "committed-this-run"
+
+fn native_product_save_one(key: String, store: String, token_source: AccessTokenSource) -> String? {
+  match native_product_blob_address(key_hex: key) {
+    Absent => none
+    Present { value: address } => if shell.Test.IsFile(path: join([store, "/", key, "/", native_product_committed_marker_name], "") as FilePath).is_file == false { none } else {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false { Present { value: join([key, ": no private staging directory"], "") } }
+      else {
+        let list_path = join([staging.path as String, "/members"], "")
+        let archive = join([staging.path as String, "/entry.tar"], "")
+        let listed = Filesystem.Write(path: list_path, content: concat(join(native_product_expected_members(key: key), "\n"), "\n"))
+        let outcome = if listed.success == false { Present { value: concat(key, ": member list unwritten") } }
+        else {
+          match native_product_run_ok(run: run_shell_command_observe_outcome(command: tar_create_from_list_command(archive: archive, from_directory: store, member_list: list_path), transport: LocalExec)) {
+            Present { value: why } => Present { value: join([key, ": tar refused: ", why], "") }
+            Absent =>
+              match read_staged_fabric_blob(path: archive as NonEmptyStr) {
+                FabricBlobReadRefused { fault: f } => Present { value: join([key, ": ", fabric_blob_fault_text(fault: f)], "") }
+                FabricBlobRead { reading: reading } =>
+                  match native_product_shared_put(standing: native_product_run_standing(), address: address, reading: reading, token_source: token_source) {
+                    NativeProductSharedPutNotAdmitted { cause: c } => Present { value: join([key, ": not admitted: ", c as String], "") }
+                    NativeProductSharedPutAnswered { result: r } =>
+                      match r.verdict {
+                        FabricBlobStored { address: _ } => none
+                        FabricBlobOccupied { address: _ } => none
+                        FabricBlobPutRefused { address: _, fault: f } => Present { value: join([key, ": ", fabric_blob_fault_text(fault: f)], "") }
+                        FabricBlobPutOutcomeUnknown { address: _, cause: c } => Present { value: join([key, ": outcome unknown: ", c as String], "") }
+                        FabricBlobPutRefusedTooLarge { address: _, size: _, bound: _ } => Present { value: concat(key, ": over the object bound") }
+                      }
+                  }
+              }
+          }
+        }
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
+        outcome
+      }
+    }
+  }
+}
+
+fn native_product_save_entries(keys: List<String>, store: String, token_source: AccessTokenSource, failures: List<String>) -> List<String> {
+  match keys {
+    Empty => failures
+    Cons { head: k, tail: rest } =>
+      native_product_save_entries(keys: rest, store: store, token_source: token_source, failures: match native_product_save_one(key: k, store: store, token_source: token_source) {
+        Present { value: why } => concat(failures, [why])
+        Absent => failures
+      })
+  }
+}
+
+fn native_product_save_wet() -> ProcessExit {
+  let root = actions_variable_trimmed(name: native_product_root_variable as String)
+  if root == "" { exit_failure(reason: "native product save: GUNBC_NATIVE_CACHE_ROOT is unset; nothing to save") }
+  else {
+    let store = native_product_store_dir(root: root)
+    let listed = Filesystem.List(path: store)
+    match filesystem_listing_observation(directory: store, success: listed.success, entries: listed.entries, error: listed.error) {
+      FilesystemDirectoryListingRefused { directory: _, error: e } => exit_failure(reason: concat("native product save: store unlistable: ", e))
+      FilesystemDirectorySubjectRefused { directory: _, cause: c } => exit_failure(reason: concat("native product save: store subject refused: ", c))
+      FilesystemDirectoryListed(listing) =>
+        match select_access_token_source() {
+          AccessTokenSourceUnavailable { cause: c } => exit_failure(reason: concat("native product save: no credential: ", c as String))
+          AccessTokenSourceSelected { source: source } =>
+            match native_product_save_entries(keys: filesystem_listing_entry_names(listing: listing), store: store, token_source: source, failures: []) {
+              Empty => ExitSuccess
+              failures => exit_failure(reason: join(concat(["native product save: some entries were not saved:"], failures), "\n"))
+            }
+        }
+    }
+  }
+}

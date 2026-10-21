@@ -1,0 +1,56 @@
+module std.shell_stream_capture
+
+import std.types { String, Bool, Int }
+import std.measure { byte_size, byte_size_count, measure_le, ByteSize }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+// INTERIM v1_interpreter seed host-effect only (operator ruling #8087, 2026-08-09): dispatch_shell
+// drains child stdout/stderr concurrently while the child runs — never
+// wait_with_output-then-truncate. Enforcement constants and CapturedStreamEvidence (total_bytes,
+// retained_bytes, truncated, digest_hex, retained_text) live ONLY in v1_interpreter
+// bounded_shell_host_drain / shell_result_from_capture. This module records scaffold prose and pure
+// predicate helpers for witness tests — NOT a parallel constant authority.
+
+// HAND-RUST EXPANSION RECEIPT (review 57725 finding 3): the stderr_capture policy realization —
+// reading WitnessStderrCapturePolicy (Complete | BoundedTail{bytes: ByteSize}) out of the bound
+// input environment and selecting the drain policy — is hand Rust inside the SAME
+// v1_interpreter bounded_shell_host_drain seam the row below already governs, not a second seam.
+// It is admitted under that row's trigger and dies with it: when the production host-effect seam
+// carries CapturedProcessStream evidence natively, both the module and the policy-selection hand
+// code are deleted together. Until then the selection is fail-closed at the seam: a BoundedTail
+// whose bytes field is not a ByteSize record refuses with a typed InterpError — it never falls
+// through to the default tail bound.
+data seed_host_stderr_policy_realization_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: same trigger as seed_host_shell_stream_bounded_drain_dissolve_on — the stderr_capture policy selection in v1_interpreter dispatch_shell is part of the bounded_shell_host_drain seam and is deleted with it.")
+
+data seed_host_shell_stream_bounded_drain_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: roadmap-serve-emitted-realization emit-on-demand native serve lands AND bounded shell stream capture is enforced on the production host-effect seam with CapturedProcessStream evidence consumed by the channel provider adapter — then delete this scaffold module and the v1_interpreter bounded_shell_host_drain child module.")
+
+// Per-invocation stderr retention is a caller-owned cost decision. Complete retains
+// the entire stream or refuses at the active GUNBC_MEMORY_BUDGET_BYTES authority;
+// it never denotes an unmarked truncation.
+type WitnessStderrCapturePolicy
+  = BoundedTail { bytes: ByteSize }
+  | Complete
+
+fn seed_host_stderr_tail_within_bound(
+  total_bytes: ByteSize,
+  retained_bytes: ByteSize,
+  tail_limit: ByteSize,
+) -> Bool {
+  measure_le(a: retained_bytes, b: tail_limit)
+    && measure_le(a: retained_bytes, b: total_bytes)
+}
+
+fn seed_host_stdout_complete_within_bound(
+  total_bytes: ByteSize,
+  limit: ByteSize,
+) -> Bool {
+  measure_le(a: total_bytes, b: limit)
+}
+
+fn seed_host_stdout_overflow_would_refuse(
+  total_bytes: ByteSize,
+  limit: ByteSize,
+) -> Bool {
+  measure_le(a: limit, b: total_bytes)
+    && !measure_le(a: total_bytes, b: limit)
+}

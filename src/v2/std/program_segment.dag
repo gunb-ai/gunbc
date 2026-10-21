@@ -1,0 +1,32 @@
+module v2.std.program_segment
+
+import v2.std.node { Node, Path, Symbol }
+
+type ProgramSegment
+  = WholeProgram
+  | SubtreeAtPath { path: Path }
+  | SubtreeRoot { root: Node }
+
+type PartitionBoundaryPolicy
+  = FailClosedOnFreeRefs
+  | AmbientContextAvailable
+
+fn program_segment_whole_program() -> ProgramSegment {
+  WholeProgram
+}
+
+fn program_segment_subtree_at_path(path: Path) -> ProgramSegment {
+  SubtreeAtPath { path: path }
+}
+
+fn program_segment_subtree_root(root: Node) -> ProgramSegment {
+  SubtreeRoot { root: root }
+}
+
+fn partition_boundary_fail_closed() -> PartitionBoundaryPolicy {
+  FailClosedOnFreeRefs
+}
+
+fn partition_boundary_ambient_context() -> PartitionBoundaryPolicy {
+  AmbientContextAvailable
+}

@@ -1,0 +1,34 @@
+module test.claim.class_b_trim_wire_projection_specimen
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// Discriminating specimen for the service-op wire-projection class.
+//
+// WHY THIS FILE EXISTS. That class was registered with monoid_specimen.dag named as its pinning
+// witness, and monoid_specimen cannot see it: its subject is a HAND-DECLARED FreeMonoid<String>
+// parameter, while the class's subject is a String field MINTED BY A WIRE PROJECTION.
+//
+// THE SUBJECT. Filesystem.Read declares `content: String from "content"` — the same
+// `T from "wire_key"` projection the class named (its example key was "stdout"; the mint is
+// the projection, not the key spelling). os.Hostname.ReadShort and shell.Exec.Run are not in
+// this pool: the former imports v2 compiler surfaces this fixture pool does not carry, and
+// TransportScript is sole_constructor-sealed so Exec.Run cannot be minted here.
+//
+// THE DISCRIMINATOR IS THE PAIR, NOT EITHER ARM. wire_field_method_form is the subject;
+// wire_field_free_call holds the pool and the value constant and varies only the call form.
+//
+// Re-measured 2026-09-07 after RustCorpusRepr deletion: the method form compiles. The
+// neighbouring fact that trim does not attach to a hand-declared FreeMonoid<String> still
+// holds on monoid_specimen.dag.
+
+fn wire_field_method_form(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  read.content.trim()
+}
+
+fn wire_field_free_call(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  trim(read.content)
+}

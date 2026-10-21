@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.reference_conservation_population_omits_class_stamped_terminals
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data reference_conservation_population_omits_class_stamped_terminals: RecurringFailureMode = RecurringFailureMode {
+  identity: "reference_conservation_population_omits_class_stamped_terminals" as NonEmptyStr,
+
+  receipts: [
+    "THE INSTRUMENT BUILT TO CATCH A SILENT DROP DID NOT SEE ONE. On main b1b7aea9aa7, `v2.std.compilers.target_model` `ordering_predicate_from_wire_symbol` (`if id == ^ordering_predicate_is_less {..} else if id == ^ordering_predicate_is_less_or_equal {..}`) normalizes ACCEPTED with both conditions lowered to `id == ^`: the normalized tree carries `^dag_token_caret` and neither `^ordering_predicate_is_less` nor `^ordering_predicate_is_less_or_equal` (measured by a seed-interpreted probe of tokenize -> parse -> normalize, branch probe/snappy-swift-136-mq1-caret @ 2349f5371d4, claims q_ordering_*). `v2.compiler.reference_conservation` reported no drop for it.",
+    "WHY: the population is not every authored terminal but every atom whose identity is NOT a declared token class (`v2.compiler.reference_conservation` `authored_atom_from_identity`): a class-stamped terminal publishes its class, so it is excluded, with only int and float literals admitted back by their own predicates. Before MQ-1 PR-2 a caret symbol's name terminal was class-stamped (by `dag_grammar_ident_or_type_decl_modifier_generic_ident_identity` in `v2.extdeps.languages.dag`, since deleted) and published `^dag_token_ident`, so the one terminal whose loss WAS the defect was never a member, and its drop was invisible by construction rather than missed by the comparison.",
+    "THE GENERAL CLASS: any class-stamped terminal that nonetheless carries meaning -- the authored text distinguishes programs -- is outside the population. The caret symbol is the measured instance; the population's own exclusion test cannot tell a punctuation terminal (meaningless beyond its class) from a class-stamped name (meaningful), because the grammar publishes the same kind of identity for both.",
+    "RUNG FOUND AT: below the floor for the caret instance (a silent drop the instrument reports as conserved). CEILING: structurally guaranteed -- every terminal that distinguishes programs publishes its lexeme, so it is a population member and its drop is a counted row. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the dag grammar stamps every meaning-bearing terminal with its lexeme (for the caret symbol: `dag_grammar_caret_symbol_expr`'s name terminal, the part (a) of the MQ-1 symbol-literal slice), so the population's class-exclusion removes only terminals whose class is their whole meaning.",
+    "THE CARET INSTANCE IS DISCHARGED (MQ-1 PR-2): `dag_grammar_caret_symbol_expr`'s name terminal is lexeme-stamped, so it publishes the authored symbol, falls into the population by `authored_atom_from_identity`'s own rule (its identity is no declared token class), and is carried with its occurrence as a symbol literal's payload -- a conserved member, and a counted row if a later lowering drops it. The general class stays open: any OTHER class-stamped terminal that carries meaning is still outside the population, and no gate enumerates them.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.reference_conservation", decl_name: "authored_atom_from_identity", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,407 @@
+module v1.tests.claim.annotation_gap_round_trip_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment, render_annotation_block }
+import std.types { String, List, Int, Bool, SourceSpan }
+import std.source_annotation {
+  KeyedAnnotationRow,
+  SourceAnnotationGraph,
+  SourceAnnotationDebt,
+  LeadingAfterLineIndent,
+  TrailingAfterSemanticToken,
+  UnboundAnnotationCapture,
+  keyed_annotation_rows_agree,
+  source_annotation_graph_rows
+}
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.compiler.annotation_bind {
+  KeyedAnnotationRegion,
+  bind_annotations,
+  keyed_annotation_regions,
+  keyed_annotation_rows
+}
+import v1.std.core { build_newline_index, empty_intern_table }
+
+// ROADMAP NODE parse-comment-gap-attachment, v1 realization, asserted through the production
+// tokenizer, parser and binder. These controls import v1.compiler.*, so no witness under
+// dag/test/claim can call them and they run on no required path; direct execution is evidence they
+// hold, not evidence CI runs them.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/annotation_gap_round_trip_test.dag --function <test fn>
+
+data gap_fixture_file: String = "zqxgap_fixture.dag"
+
+// Every position a comment can occupy, once: above the header, above an item, trailing a
+// statement, between statements, between call arguments, two identical blocks in one gap split by a
+// blank line, before a closing brace, and after the last item.
+data gap_fixture_source: String = "// banner above the header\nmodule zqxgap.user\n\n// about the record\ntype ZqxRecord \{\n  first: Int\n\}\n\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = a // trailing after x\n  // between the statements\n  let y = zqx_g(\n    a,\n    // between the arguments\n    b\n  )\n  // twice\n\n  // twice\n  x + y\n  // before the closing brace\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n// after the last item\n"
+
+// THE NEGATIVE CONTROL'S SOURCE. Identical shape and identical comments, so every occurrence ordinal
+// matches the fixture's; only the called declaration is renamed. A key built from ordinals would
+// agree with the fixture; a structural key must not.
+data gap_renamed_source: String = "// banner above the header\nmodule zqxgap.user\n\n// about the record\ntype ZqxRecord \{\n  first: Int\n\}\n\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = a // trailing after x\n  // between the statements\n  let y = zqx_h(\n    a,\n    // between the arguments\n    b\n  )\n  // twice\n\n  // twice\n  x + y\n  // before the closing brace\n\}\n\nfn zqx_h(p: Int, q: Int) -> Int \{\n  p\n\}\n// after the last item\n"
+
+type GapParse {
+  source: String
+  parsed: ParseWithTableResult
+  captures: List<UnboundAnnotationCapture>
+  graph: SourceAnnotationGraph
+  keys: List<KeyedAnnotationRow>
+}
+
+fn gap_parse(source: String) -> GapParse {
+  let artifact = tokenize_artifact(source: source, file: gap_fixture_file, env: dag_parse_environment)
+  let parsed = parse_with_table(
+    tokens: artifact.tokens,
+    source_indices: map_insert(empty_map(), gap_fixture_file, build_newline_index(file: gap_fixture_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+  let graph = bind_annotations(transport: parsed.occurrence_transport, extents: parsed.source_extents, captures: artifact.annotations)
+  GapParse {
+    source: source,
+    parsed: parsed,
+    captures: artifact.annotations,
+    graph: graph,
+    keys: keyed_annotation_rows(transport: parsed.occurrence_transport, extents: parsed.source_extents, graph: graph),
+  }
+}
+
+fn parsed_ok(p: GapParse) -> Bool {
+  match p.parsed.result.error {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn key_of(p: GapParse, text: String) -> KeyedAnnotationRow? {
+  p.keys |> filter(k => k.text == text) |> first
+}
+
+fn optional_text(s: String?) -> String {
+  match s {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// EVERY COMMENT IN THE FILE BINDS, in order and with its multiplicity: nine blocks, the two identical
+// `twice` blocks kept as two rows.
+test fn every_comment_lands_in_a_gap_holds() -> Bool {
+  let p = gap_parse(source: gap_fixture_source)
+  parsed_ok(p: p)
+    && (source_annotation_graph_rows(graph: p.graph) |> map(r => r.text)) == [
+      "banner above the header",
+      "about the record",
+      "trailing after x",
+      "between the statements",
+      "between the arguments",
+      "twice",
+      "twice",
+      "before the closing brace",
+      "after the last item",
+    ]
+}
+
+// A COMMENT INSIDE zqx_f's BODY STAYS IN zqx_f. Its scope's path runs through zqx_f, and neither
+// neighbour is zqx_g -- the next declaration a proximity rule would hand it to.
+test fn a_body_comment_never_attaches_to_the_next_declaration_holds() -> Bool {
+  let p = gap_parse(source: gap_fixture_source)
+  match key_of(p: p, text: "between the statements") {
+    Absent => false
+    Present { value: k } =>
+      string_contains(s: k.scope_key, pattern: ":zqx_f")
+        && string_contains(s: optional_text(s: k.before_key), pattern: ":zqx_f")
+        && string_contains(s: optional_text(s: k.after_key), pattern: ":zqx_f")
+        && !ends_with(s: optional_text(s: k.after_key), suffix: ":zqx_g")
+  }
+}
+
+// BETWEEN TWO ARGUMENTS THE SCOPE IS THE CALL and the neighbours are its two argument children:
+// both neighbour keys are one step below the scope key, and they differ.
+fn one_step_below(scope: String, key: String?) -> Bool {
+  match key {
+    Absent => false
+    Present { value: k } =>
+      starts_with(s: k, prefix: concat(scope, "/"))
+        && !string_contains(s: substring(s: k, start: string_length(s: scope) + 1, end: string_length(s: k)), pattern: "/")
+  }
+}
+
+test fn an_argument_comment_lands_between_the_arguments_holds() -> Bool {
+  let p = gap_parse(source: gap_fixture_source)
+  match key_of(p: p, text: "between the arguments") {
+    Absent => false
+    Present { value: k } =>
+      string_contains(s: k.scope_key, pattern: "zqx_g")
+        && one_step_below(scope: k.scope_key, key: k.before_key)
+        && one_step_below(scope: k.scope_key, key: k.after_key)
+        && k.before_key != k.after_key
+  }
+}
+
+test fn file_scope_holds_the_banner_and_the_epilogue_holds() -> Bool {
+  let p = gap_parse(source: gap_fixture_source)
+  match key_of(p: p, text: "banner above the header") {
+    Absent => false
+    Present { value: banner } =>
+      match key_of(p: p, text: "after the last item") {
+        Absent => false
+        Present { value: epilogue } =>
+          banner.scope_key == "/" && banner.before_key == none && banner.after_key != none
+            && epilogue.scope_key == "/" && epilogue.after_key == none && epilogue.before_key != none
+      }
+  }
+}
+
+// THE DEFINITIONAL ERASURE PROPERTY (DESIGN 4c) at the identity layer: the fixture and the same source
+// with every comment removed mint the same occurrences, with the same authored names, in the same
+// containment. Offsets differ, so diagnostic spans are left out of the comparison.
+fn identity_rows(p: GapParse) -> List<String> {
+  p.parsed.occurrence_transport.index.entries
+    |> map(e => concat(to_string(e.projection.occurrence.value), ":", e.projection.authored_name, ":", to_string(count(e.containment.ancestors))))
+}
+
+test fn comments_leave_occurrence_identities_unchanged_holds() -> Bool {
+  let annotated = gap_parse(source: gap_fixture_source)
+  let bare = gap_parse(source: strip_comments(source: gap_fixture_source, captures: annotated.captures))
+  parsed_ok(p: bare)
+    && (source_annotation_graph_rows(graph: bare.graph) |> count) == 0
+    && identity_rows(p: annotated) == identity_rows(p: bare)
+}
+
+// ---- The render half of the round trip: strip every comment, then write each row back into its gap
+// in the stripped source, located by the stripped parse's structural keys. It is a test route, not a
+// formatter: a leading block goes on its own line above its `after` neighbour (or below its
+// `before` one), a trailing block after its `before` neighbour on the same line, and consecutive
+// rows in one gap are separated by a blank line, the renderer's obligation in std.source_annotation.
+
+type CharEdit {
+  start: Int
+  end: Int
+  text: String
+}
+
+fn line_start(source: String, offset: Int) -> Int {
+  if offset <= 0 { 0 } else {
+    if substring(s: source, start: offset - 1, end: offset) == "\n" { offset } else { line_start(source: source, offset: offset - 1) }
+  }
+}
+
+fn line_end(source: String, offset: Int) -> Int {
+  if offset >= string_length(s: source) { offset } else {
+    if substring(s: source, start: offset, end: offset + 1) == "\n" { offset } else { line_end(source: source, offset: offset + 1) }
+  }
+}
+
+fn indent_at(source: String, offset: Int) -> String {
+  let start = line_start(source: source, offset: offset)
+  indent_from(source: source, at: start, acc: "")
+}
+
+fn indent_from(source: String, at: Int, acc: String) -> String {
+  if at >= string_length(s: source) { acc } else {
+    let c = substring(s: source, start: at, end: at + 1)
+    if c == " " || c == "\t" { indent_from(source: source, at: at + 1, acc: concat(acc, c)) } else { acc }
+  }
+}
+
+// A comment alone on its line takes the whole line with it; a trailing one takes the spaces before it.
+fn comment_edit(source: String, capture: UnboundAnnotationCapture) -> CharEdit {
+  match capture.placement {
+    LeadingAfterLineIndent =>
+      CharEdit { start: line_start(source: source, offset: capture.origin.start), end: line_end(source: source, offset: capture.origin.end) + 1, text: "" }
+    TrailingAfterSemanticToken =>
+      CharEdit { start: trailing_space_start(source: source, at: capture.origin.start), end: capture.origin.end, text: "" }
+  }
+}
+
+fn trailing_space_start(source: String, at: Int) -> Int {
+  if at <= 0 { 0 } else {
+    if substring(s: source, start: at - 1, end: at) == " " { trailing_space_start(source: source, at: at - 1) } else { at }
+  }
+}
+
+// Applies edits from the end of the source backwards, so earlier offsets stay valid; edits at one
+// offset apply in reverse so the first-listed text ends up first.
+fn apply_edits(source: String, edits: List<CharEdit>) -> String {
+  edits
+    |> enumerate
+    |> sort_by(pair => 0 - (pair.second.start * 100000 + pair.first))
+    |> fold(init: source, f: (s, pair) =>
+      concat(substring(s: s, start: 0, end: pair.second.start), pair.second.text, substring(s: s, start: pair.second.end, end: string_length(s: s))))
+}
+
+fn strip_comments(source: String, captures: List<UnboundAnnotationCapture>) -> String {
+  apply_edits(source: source, edits: captures |> map(c => comment_edit(source: source, capture: c)))
+}
+
+// The region in `target` whose structural key is `key`, by its extent.
+fn extent_for_key(target: GapParse, key: String?) -> SourceSpan? {
+  match key {
+    Absent => none
+    Present { value: k } =>
+      match keyed_annotation_regions(transport: target.parsed.occurrence_transport, extents: target.parsed.source_extents) |> filter(r => r.key == k) |> first {
+        Present { value: r } => Present { value: r.extent }
+        Absent => none
+      }
+  }
+}
+
+fn render_row(stripped: String, target: GapParse, row: KeyedAnnotationRow, placement_trailing: Bool, separate: Bool) -> CharEdit? {
+  let block_lines = render_annotation_block(text: row.text)
+  if placement_trailing {
+    match extent_for_key(target: target, key: row.before_key) {
+      Present { value: before } => Present { value: CharEdit { start: before.end, end: before.end, text: concat(" ", block_lines) } }
+      Absent => none
+    }
+  } else {
+    match extent_for_key(target: target, key: row.after_key) {
+      Present { value: after } =>
+        let at = line_start(source: stripped, offset: after.start)
+        let indent = indent_at(source: stripped, offset: after.start)
+        let lines = split(s: block_lines, delimiter: "\n") |> map(l => concat(indent, l, "\n")) |> join(separator: "")
+        Present { value: CharEdit { start: at, end: at, text: if separate { concat("\n", lines) } else { lines } } }
+      Absent =>
+        match extent_for_key(target: target, key: row.before_key) {
+          Present { value: before } =>
+            let at = line_end(source: stripped, offset: before.end)
+            let indent = indent_at(source: stripped, offset: before.start)
+            let lines = split(s: block_lines, delimiter: "\n") |> map(l => concat("\n", indent, l)) |> join(separator: "")
+            Present { value: CharEdit { start: at, end: at, text: if separate { concat("\n", lines) } else { lines } } }
+          Absent => none
+        }
+    }
+  }
+}
+
+fn row_is_trailing(row: SourceAnnotationDebt) -> Bool {
+  match row.placement {
+    TrailingAfterSemanticToken => true
+    LeadingAfterLineIndent => false
+  }
+}
+
+// Renders `original`'s graph into the comment-free source. Returns Absent when some row's gap has
+// no counterpart in the stripped parse -- the round trip then fails rather than dropping prose.
+fn render_round_trip(original: GapParse) -> String? {
+  let stripped = strip_comments(source: original.source, captures: original.captures)
+  let target = gap_parse(source: stripped)
+  let rows = source_annotation_graph_rows(graph: original.graph)
+  let paired = rows |> enumerate |> map(pair =>
+    let keyed = original.keys |> get(pair.first)
+    let previous = if pair.first == 0 { none } else { original.keys |> get(pair.first - 1) }
+    let previous_leading = if pair.first == 0 { false } else {
+      match rows |> get(pair.first - 1) {
+        Present { value: prev_row } => !row_is_trailing(row: prev_row)
+        Absent => false
+      }
+    }
+    match keyed {
+      Absent => none
+      Present { value: k } =>
+        let separate = match previous {
+          Present { value: prev } => previous_leading && prev.scope_key == k.scope_key && prev.before_key == k.before_key && prev.after_key == k.after_key
+          Absent => false
+        }
+        render_row(stripped: stripped, target: target, row: k, placement_trailing: row_is_trailing(row: pair.second), separate: separate)
+    })
+  if paired |> all(e => e != none) {
+    Present { value: apply_edits(source: stripped, edits: paired |> flat_map(e => match e { Present { value: v } => [v]  Absent => [] })) }
+  } else {
+    none
+  }
+}
+
+// THE ROUND TRIP: parse, strip, render back, reparse. The reparsed graph agrees with the original on
+// every row's structural scope and neighbour keys and its text, in order, duplicates included.
+test fn render_and_reparse_agrees_on_structural_keys_holds() -> Bool {
+  let original = gap_parse(source: gap_fixture_source)
+  match render_round_trip(original: original) {
+    Absent => false
+    Present { value: rendered } =>
+      let reparsed = gap_parse(source: rendered)
+      parsed_ok(p: reparsed) && keyed_annotation_rows_agree(left: original.keys, right: reparsed.keys)
+  }
+}
+
+// THE NEGATIVE CONTROL: same shape, same comments, same occurrence ordinals, one declaration renamed.
+// The structural keys must DISAGREE, which a key built from occurrence ordinals would not.
+test fn renamed_target_with_equal_ordinals_disagrees_holds() -> Bool {
+  let original = gap_parse(source: gap_fixture_source)
+  let renamed = gap_parse(source: gap_renamed_source)
+  identity_ordinals(p: original) == identity_ordinals(p: renamed)
+    && !keyed_annotation_rows_agree(left: original.keys, right: renamed.keys)
+}
+
+fn identity_ordinals(p: GapParse) -> List<Int> {
+  p.parsed.occurrence_transport.index.entries |> map(e => e.projection.occurrence.value)
+}
+
+
+// ---- Scope controls for erased regions the semantic tree absorbed. Each resolves the row's scope
+// and neighbours to the SOURCE TEXT of their recorded extents, so the assertion is about where the
+// comment sits, not about a row count or a round trip that would agree on the same wrong answer.
+
+fn text_of_key(p: GapParse, key: String?) -> String {
+  match key {
+    Absent => "<none>"
+    Present { value: k } =>
+      if k == "/" { "<file>" } else {
+        match keyed_annotation_regions(transport: p.parsed.occurrence_transport, extents: p.parsed.source_extents) |> filter(r => r.key == k) |> first {
+          Present { value: r } => substring(s: p.source, start: r.extent.start, end: r.extent.end)
+          Absent => "<unresolved>"
+        }
+      }
+  }
+}
+
+// [scope, before, after] of the row carrying `text`, as source text.
+fn gap_texts(p: GapParse, text: String) -> List<String> {
+  match key_of(p: p, text: text) {
+    Absent => ["<no row>"]
+    Present { value: k } => [text_of_key(p: p, key: Present { value: k.scope_key }), text_of_key(p: p, key: k.before_key), text_of_key(p: p, key: k.after_key)]
+  }
+}
+
+// `(a.b)(x)`: the call absorbs the field access but KEEPS the receiver `a` as its child. The comment
+// is inside the parentheses, after `b`: its scope is the erased parentheses, with `a` -- which lies
+// inside them -- before it and nothing after. A roster placing the parentheses beside `a` under the
+// call lands it in the call between `a` and the argument.
+data absorbed_receiver_source: String = "module zqxgap.recv\n\nfn zqx_f(zqx_a: Int, zqx_x: Int) -> Int \{\n  (zqx_a.zqx_b // inside callee\n  )(zqx_x)\n\}\n"
+
+test fn a_comment_inside_absorbed_callee_parentheses_lands_in_them_holds() -> Bool {
+  let p = gap_parse(source: absorbed_receiver_source)
+  parsed_ok(p: p)
+    && gap_texts(p: p, text: "inside callee") == ["(zqx_a.zqx_b // inside callee\n  )", "zqx_a", "<none>"]
+}
+
+// `g((1), (2))()`: the final call absorbs the first call and both its arguments, and both
+// parentheses survive as DISJOINT regions inside it. The comment is inside the first; its scope is
+// those parentheses, and with `1` absorbed it has no neighbours. Chaining the two scopes would hand
+// it to the final call before the second parentheses.
+data absorbed_siblings_source: String = "module zqxgap.sib\n\nfn zqx_f() -> Int \{\n  zqx_g(( // in first argument\n    1), (2))()\n\}\n"
+
+test fn disjoint_absorbed_parentheses_stay_siblings_holds() -> Bool {
+  let p = gap_parse(source: absorbed_siblings_source)
+  parsed_ok(p: p)
+    && gap_texts(p: p, text: "in first argument") == ["( // in first argument\n    1)", "<none>", "<none>"]
+}
+
+
+// AN ARGUMENT AND ITS PARENTHESES SHARE AN EXTENT, and the argument is the outer one: `g((x))` is a
+// call whose argument wraps `(x)`, whose parentheses wrap `x`. A comment inside the parentheses lands
+// in them, not in the argument -- the two have the same source text, so the scope is told apart by
+// its structural key, whose last step names an erased region `()`.
+data parenthesised_argument_source: String = "module zqxgap.arg\n\nfn zqx_f(zqx_x: Int) -> Int \{\n  zqx_g(( // in a parenthesised argument\n    zqx_x))\n\}\n"
+
+test fn a_comment_in_argument_parentheses_lands_in_the_parentheses_holds() -> Bool {
+  let p = gap_parse(source: parenthesised_argument_source)
+  parsed_ok(p: p)
+    && match key_of(p: p, text: "in a parenthesised argument") {
+      Absent => false
+      Present { value: k } =>
+        ends_with(s: k.scope_key, suffix: ":()")
+          && gap_texts(p: p, text: "in a parenthesised argument") == ["( // in a parenthesised argument\n    zqx_x)", "<none>", "zqx_x"]
+    }
+}

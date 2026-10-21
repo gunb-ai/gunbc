@@ -1,0 +1,307 @@
+module v2.std.provenance
+
+import std.types { List, Map }
+import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
+import std.algebra { fold_list, empty_map, map_insert }
+import std.content_hash { Fnv1a64Structural }
+import v2.std.diagnostic {
+  ByteRange,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Textual,
+  Unavailable,
+  invariant_port_locus
+}
+import v2.std.node { Node, NodeOccurrenceIdentity, Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceRef,
+  scoped_occurrence_ref_in_scope
+}
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
+
+type OriginEvent
+  = FromSource { locus: Locus }
+  | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
+  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> }
+
+fn origin_event_from_source(locus: Locus) -> OriginEvent {
+  FromSource { locus: locus }
+}
+
+// A SOURCE EXTENT IS A THIRD FACT BESIDE ORIGIN AND DIAGNOSTIC FOCUS. `entries` says how an
+// occurrence came about; for a node the parser composed, that is lineage (DerivedBy), and lineage
+// resolves to the FIRST source token under it -- the right focus for a diagnostic and the wrong
+// answer to "does this node contain that position". `extents` records the whole range a parser
+// consumed while building the node, written once when the production completes, from the first
+// consumed token's start to the last consumed token's end. A terminal's extent is its FromSource
+// locus and is not recorded twice. Consumers that need containment read span_index_extent; nobody
+// reconstructs a range from descendants (DESIGN 6b: the parser held it, so the parser publishes it).
+//
+// DECLARED FRONTIER (DESIGN 3c). No production fold reads `extents` in this change. Its consumer is
+// roadmap node parse-comment-gap-attachment (gunbc.roadmap.roadmap_authority): attaching a comment
+// to the gap between ordered source children of its innermost containing scope reads
+// span_index_extent for containment. Trigger: that node's change lands; until it does, the only
+// readers are v2.test.provenance.parse_production_extent.
+//
+// A composite that consumed input but whose children's ranges do not compose into one range (they
+// lie in different files, or one is not a byte range) records SourceExtentUnrepresentable rather
+// than nothing. Absence means the occurrence consumed nothing; the two must stay distinct, or an
+// enclosing composite reads the unrepresentable child as empty and publishes a range that omits it.
+type RecordedSourceExtent
+  = SourceExtentKnown { locus: Locus }
+  | SourceExtentUnrepresentable
+
+type SpanIndex {
+  entries: Map<OccurrenceId, OriginEvent>
+  extents: Map<OccurrenceId, RecordedSourceExtent>
+  scope: Optional<Fnv1a64Structural>
+}
+
+fn span_index_empty() -> SpanIndex {
+  SpanIndex { entries: empty_map(), extents: empty_map(), scope: optional_absent() }
+}
+
+fn span_index_with_scope(scope: Fnv1a64Structural) -> SpanIndex {
+  SpanIndex { entries: empty_map(), extents: empty_map(), scope: optional_present(value: scope) }
+}
+
+// THE INGEST'S ALLOCATOR DOMAIN ON AN INDEX THAT PARSE ALREADY FILLED. Parse records FromSource
+// entries against a running mark; normalize states every projected cause in the ingest's source-ref
+// digest (v2.compiler.program_assembly program_assembly_ingest_scope). Binding that digest here is
+// the production consumer of span_index_with_scope: without it the index's scope stays Absent and
+// node_authored_projected_cause_in_index can never recover a same-graph cause (DESIGN §3c).
+fn span_index_in_scope(index: SpanIndex, scope: Fnv1a64Structural) -> SpanIndex {
+  span_index_merge(base: span_index_with_scope(scope: scope), incoming: index)
+}
+
+fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
+  SpanIndex {
+    entries: index.entries,
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentKnown { locus: extent }),
+    scope: index.scope
+  }
+}
+
+fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> SpanIndex {
+  SpanIndex {
+    entries: index.entries,
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentUnrepresentable),
+    scope: index.scope
+  }
+}
+
+
+// THE WHOLE RANGE AN OCCURRENCE COVERS IN ITS SOURCE, three-valued. A composed node answers with what
+// its parser recorded -- a known range, or Unrepresentable when it consumed input no single range
+// covers; a terminal answers Known with its own FromSource locus. Anything else -- a node a later
+// stage derived, a generated node, a production that consumed no token -- answers Absent, because
+// no producer recorded a range for it and inventing one from its causes is the reconstruction the
+// extents table exists to replace. Unrepresentable is never folded into Absent: a containment reader
+// told "no extent" for a node that consumed input would answer as if it were empty (DESIGN 5).
+fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<RecordedSourceExtent> {
+  match index.extents.lookup(id) {
+    Present { value: recorded } => Present { value: recorded }
+    Absent =>
+      match index.entries.lookup(id) {
+        Present { value: event } =>
+          match event {
+            FromSource { locus } => Present { value: SourceExtentKnown { locus: locus } }
+            DerivedBy { producer: _, from: _ } => Absent
+            GeneratedBy { generator: _, from: _ } => Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
+  SpanIndex {
+    extents: index.extents,
+    entries: map_insert(m: index.entries, key: id, value: event),
+    scope: index.scope
+  }
+}
+
+fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^span_index_occurrence_absent,
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_occurrence_absent),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
+}
+
+fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
+  SpanIndex {
+    scope: match base.scope {
+      Present { value: _ } => base.scope
+      Absent => incoming.scope
+    },
+    entries: fold_list(
+      xs: map_keys(incoming.entries),
+      empty: base.entries,
+      cons: fn(acc, id) {
+        match acc.lookup(id) {
+          Present { value: _ } => acc
+          Absent =>
+            match incoming.entries.lookup(id) {
+              Present { value: event } => map_insert(m: acc, key: id, value: event)
+              Absent => acc
+            }
+        }
+      }
+    ),
+    extents: fold_list(
+      xs: map_keys(incoming.extents),
+      empty: base.extents,
+      cons: fn(acc, id) {
+        match acc.lookup(id) {
+          Present { value: _ } => acc
+          Absent =>
+            match incoming.extents.lookup(id) {
+              Present { value: extent } => map_insert(m: acc, key: id, value: extent)
+              Absent => acc
+            }
+        }
+      }
+    )
+  }
+}
+
+fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^span_index_origin_chain_exhausted,
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_origin_chain_exhausted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_resolve_textual_locus_from_ids(
+  index: SpanIndex,
+  ids: List<OccurrenceId>
+) -> Witness<Locus> {
+  fold_list(
+    xs: ids,
+    empty: witness_violates(diagnostic: span_index_origin_chain_exhausted_diagnostic()),
+    cons: fn(acc, id) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          span_index_resolve_textual_locus(index: index, id: id)
+      }
+    }
+  )
+}
+
+fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus } =>
+          match locus {
+            Textual { file: _, extent: _ } => Holds { value: locus }
+            NodeLocus { anchor: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            SourcePortLocus { anchor: _, file: _, extent: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            InvariantPortLocus { anchor: _, invariant: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            DeclarationLocus { declaration: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+          }
+        DerivedBy { producer: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+        GeneratedBy { generator: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// A NODE'S OCCURRENCE ID, IF IT HAS ONE. Both arms that carry an id answer with it and a synthetic
+// node answers Absent -- which is the question every consumer of the span index asks first, because
+// the index is keyed by OccurrenceId and a Node is what a diagnostic actually holds.
+//
+// IT LIVES HERE RATHER THAN AT EACH CONSUMER (review 70027). This diff first minted the same
+// three-arm projection twice, arm for arm -- once in `v2.std.lens_verdict` for the renderer and
+// once in the attribution claim -- which is DESIGN section 3's nickname: a second name for one
+// concept, duplicating work at the meaning layer. That is the same reasoning the sibling below
+// already states for the resolution rule ("a consumer re-deciding it would be a second authority"),
+// and it applies to this projection for the same reason. The home is this module because the join
+// it feeds is this module's: `NodeOccurrenceIdentity` is `v2.std.node`'s, `OccurrenceId` is
+// `std.occurrence_identity`'s, and the place those two meet a SpanIndex is here.
+fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
+  occurrence_identity_id_optional(identity: node.occurrence_id)
+}
+
+// THE SAME PROJECTION FOR AN IDENTITY HELD APART FROM ITS NODE -- a binder site resolve recorded
+// (v2.compiler.resolve LexicalBinding.binder_site) -- so a consumer joining that site to the tree's
+// nodes keys both sides through one rule.
+fn occurrence_identity_id_optional(identity: NodeOccurrenceIdentity) -> Optional<OccurrenceId> {
+  match identity {
+    OccurrenceSynthetic => Absent
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+// THE AUTHORED SPAN OF A NODE. A projected identity is a later-stage id; the SpanIndex is keyed
+// by the parse-minted ids that actually have FromSource entries. Following OccurrenceProjected.caused_by
+// to that authored occurrence is ONE fact (DESIGN 6b: repair at the earliest link), and it is
+// lawful only in the allocator domain the cause names: an ordinal is not a name across graphs
+// (std.occurrence_identity ScopedOccurrenceRef). Looking up caused_by.occurrence while dropping
+// .scope fabricates a local span when another domain minted the same ordinal. When the index has
+// no scope, or the cause's scope is not that graph, the answer is Absent — never a neighbouring
+// span. Cross-graph callers use the existing transport/join.
+fn node_authored_projected_cause_in_index(cause: ScopedOccurrenceRef, index: SpanIndex) -> Optional<OccurrenceId> {
+  match index.scope {
+    Absent => optional_absent()
+    Present { value: scope } =>
+      if scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: scope) {
+        optional_present(value: cause.occurrence)
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn node_authored_span_optional(node: Node, index: SpanIndex) -> Optional<Locus> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => span_index_textual_locus_optional(index: index, id: id)
+    OccurrenceProjected { id: _, caused_by: cause } =>
+      match node_authored_projected_cause_in_index(cause: cause, index: index) {
+        Absent => optional_absent()
+        Present { value: id } => span_index_textual_locus_optional(index: index, id: id)
+      }
+    OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
+  }
+}
+
+// THE OPTIONAL-SHAPED DOOR, FOR A CONSUMER THAT RENDERS RATHER THAN REFUSES. The Witness-returning
+// resolver above is the authority and this is its projection: a renderer asking "does this
+// occurrence have a source position" wants presence or absence, not a second diagnostic to fold
+// into the one it is already rendering. Collapsing the refusal here loses nothing, because the only
+// information in it is the absence this arm already reports.
+//
+// It exists as a projection rather than as a re-match on the index because the resolution RULE --
+// follow a DerivedBy or GeneratedBy origin to its causes, accept only a Textual locus -- is one
+// fact, and a consumer re-deciding it would be a second authority for where an occurrence comes
+// from (DESIGN section 3).
+fn span_index_textual_locus_optional(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
+  match span_index_resolve_textual_locus(index: index, id: id) {
+    Holds { value: locus } => Present { value: locus }
+    Violates { diagnostic: _ } => Absent
+  }
+}
+
+fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
+  NodeArtifactProvenance { node: node, artifact: artifact }
+}

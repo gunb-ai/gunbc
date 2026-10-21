@@ -1,0 +1,16 @@
+module fixture.bare_service_provider.provider
+
+import std.types { Bool, String }
+
+// THE PROVIDER HALF OF THE PAIR. It is reachable from the consumer ONLY through a bare service
+// reference, so a loader that runs only the module-path reference closure never pulls it.
+service fixture.BareServiceEcho {
+  operation Say {
+    input { word: String }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["echo", "{word}"] }
+  }
+}

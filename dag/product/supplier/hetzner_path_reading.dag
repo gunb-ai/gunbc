@@ -1,0 +1,93 @@
+module product.supplier.hetzner_path_reading
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cloud.hetzner {
+  hetzner_technical_organizational_measures_page,
+  hetzner_data_protection_overview_page,
+}
+
+// WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
+// REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
+// nine-path questions and recording TYPED SILENCES. DESIGN section 3: observations produced
+// by this repository are receipts in the observing product layer, never Unobserved
+// properties authored inside the upstream module.
+//
+// THE TWO CARRIERS ARE NOT TWO NAMES FOR ONE CONCEPT. HetznerPublishedReading in
+// extdeps.cloud.hetzner transcribes a sentence upstream DID publish -- those rows are
+// Located.evidence and contract_terms, vendor facts with a dated statement.
+// HetznerPathDocumentReading records that a page was read against a path question and
+// DID NOT ANSWER it; the silences are OUR questions (FinlandOrHelsinkiUnmentioned is
+// not Hetzner vocabulary). consulted lists may cite both because a document that
+// answered another path can fail to answer this one; that is one DeclarationRef
+// vocabulary, not a merged type. A statement blob on THIS carrier would either
+// duplicate the silences or sit unread (DESIGN section 4c). Consuming these rows as
+// ProviderPathLocated.evidence would invent an answer they explicitly do not give.
+//
+// Production consumption of these readings as unread consulted citations is
+// product.supplier.hetzner nine-path closures, not this annotation.
+
+type HetznerPathDocumentSilence
+  = LogSystemCountryUnstated
+  | AdministrativeAccessJurisdictionUnstated
+  | FinlandOrHelsinkiUnmentioned
+
+type HetznerPathDocumentReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  silences: List<HetznerPathDocumentSilence>
+}
+
+data hetzner_technical_organizational_measures_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_technical_organizational_measures_page,
+  read_on: "2026-09-12",
+  silences: [
+    LogSystemCountryUnstated,
+    AdministrativeAccessJurisdictionUnstated,
+    FinlandOrHelsinkiUnmentioned,
+  ],
+}
+
+data hetzner_data_protection_overview_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_data_protection_overview_page,
+  read_on: "2026-09-12",
+  silences: [],
+}
+
+fn hetzner_published_readings() -> List<HetznerPathDocumentReading> {
+  [
+    hetzner_technical_organizational_measures_reading,
+    hetzner_data_protection_overview_reading,
+  ]
+}
+
+fn hetzner_published_reading_locators() -> List<NonEmptyStr> {
+  map(hetzner_published_readings(), r => r.authority.uri.locator)
+}
+
+fn hetzner_path_document_silence_eq(a: HetznerPathDocumentSilence, b: HetznerPathDocumentSilence) -> Bool {
+  match a {
+    LogSystemCountryUnstated =>
+      match b {
+        LogSystemCountryUnstated => true
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    AdministrativeAccessJurisdictionUnstated =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => true
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    FinlandOrHelsinkiUnmentioned =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => true
+      }
+  }
+}
+
+fn hetzner_reading_records_silence(r: HetznerPathDocumentReading, silence: HetznerPathDocumentSilence) -> Bool {
+  count(filter(r.silences, s => hetzner_path_document_silence_eq(a: s, b: silence))) == 1
+}

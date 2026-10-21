@@ -1,0 +1,79 @@
+module v2.test.fixture.spice_rc_tran_deck
+
+import std.algebra { Cons, Empty }
+import v2.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckDirective,
+  DeckStatement,
+  Ground,
+  InitialCondition,
+  Named,
+  NamedNode,
+  NodeVoltageBinding,
+  NodeVoltageBindings,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  Tran,
+  VoltageSource,
+  spice_emit_ngspice
+}
+
+data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
+  title: "* rc tran witness",
+  body: Cons {
+    head: DeckComponent {
+      component: VoltageSource {
+        name: "1",
+        n_plus: Named { node: NamedNode { name: "n1" } },
+        n_minus: Ground,
+        value: SpiceValue { lexeme: "DC 5" }
+      }
+    },
+    tail: Cons {
+      head: DeckComponent {
+        component: Resistor {
+          name: "1",
+          n_plus: Named { node: NamedNode { name: "n1" } },
+          n_minus: Named { node: NamedNode { name: "n2" } },
+          value: SpiceValue { lexeme: "1000" }
+        }
+      },
+      tail: Cons {
+        head: DeckComponent {
+          component: Capacitor {
+            name: "1",
+            n_plus: Named { node: NamedNode { name: "n2" } },
+            n_minus: Ground,
+            value: SpiceValue { lexeme: "1e-6" }
+          }
+        },
+        tail: Cons {
+          head: DeckDirective {
+            directive: InitialCondition {
+              assignments: NodeVoltageBindings {
+                first: NodeVoltageBinding {
+                  node: Named { node: NamedNode { name: "n2" } },
+                  value: SpiceValue { lexeme: "0" }
+                },
+                rest: []
+              }
+            }
+          },
+          tail: Cons {
+            head: DeckDirective {
+              directive: Tran {
+                tstep: SpiceValue { lexeme: "1us" },
+                tstop: SpiceValue { lexeme: "10ms" }
+              }
+            },
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+data spice_rc_tran_deck_ngspice_golden: String = "* rc tran witness\nV1 n1 0 DC 5\nR1 n1 n2 1000\nC1 n2 0 1e-6\n.ic v(n2)=0\n.tran 1us 10ms\n.control\nrun\nquit\n.endc\n.end"

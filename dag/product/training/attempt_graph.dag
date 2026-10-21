@@ -1,0 +1,266 @@
+module product.training.attempt_graph
+
+import product.training.readback { TrainingRunSubject }
+import product.fabric.execution {
+  Attempt, ExecutionAttemptLineage,
+  InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+}
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.types { NonEmptyStr, List, Bool }
+
+// AN AXIS WRAPPER'S SUBJECT DOES NOT VOUCH FOR THE MEMBERS INSIDE IT. The readback binds each of
+// its five populations to the run's Demand/Work subject, which stops a whole population being filed
+// against the wrong run — and stops nothing about individual members, because each process,
+// checkpoint, terminal, output and manifest receipt carries a freely supplied execution attempt
+// identity. A member naming an attempt from another run passes every check the readback can
+// perform: the wrapper is honest, the member is foreign, and the subject comparison cannot see one
+// level down.
+//
+// So membership must be decided against an admitted graph of the attempts this run actually has,
+// NEVER inferred from a shared materialization path, a similar key, adjacency in time, or the
+// wrapper's asserted subject. Each is a resemblance, and a resemblance admitted as identity is how
+// another run's artifact becomes this run's output.
+type TrainingRunAttemptGraph<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  attempts: List<Attempt<P>>
+}
+
+// EVERY WAY THE GRAPH CAN BE WRONG IS ITS OWN NAMED REFUSAL, because the remedies differ. An
+// attempt under a foreign work is a routing defect; an absent predecessor a lost observation; a
+// duplicate identity a producer emitting twice; an unrooted chain a lineage that never reaches the
+// demand and cannot be an attempt at this run at all.
+type AttemptGraphRefusal<P>
+  = AttemptWorkOutsideSubject {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      declared_work: FabricIdentity<P, WorkKey>,
+    }
+  | AttemptRootsInAnotherDemand {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      declared_demand: FabricIdentity<P, DemandKey>,
+    }
+  | AttemptPredecessorAbsent {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      predecessor: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | DuplicateAttemptIdentity { attempt: FabricIdentity<P, ExecutionAttemptKey> }
+  | AttemptLineageUnrooted { attempt: FabricIdentity<P, ExecutionAttemptKey> }
+
+// THE REFUSAL CARRIES EVERY DEFECT, NOT THE FIRST FOUND. An ordered refusal hides the second defect
+// until the first is repaired, so a graph with three problems would take three round trips to
+// admit. first + more is a non-empty population, not a ranking.
+type AttemptGraphAdmission<P>
+  = AttemptGraphAdmitted { graph: TrainingRunAttemptGraph<P> }
+  | AttemptGraphRefused {
+      first: AttemptGraphRefusal<P>,
+      more: List<AttemptGraphRefusal<P>>,
+    }
+
+fn attempt_graph_seal<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> TrainingRunAttemptGraph<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.attempt_graph", decl_name: "admit_attempt_graph"),
+  ]
+  = TrainingRunAttemptGraph { subject: subject, attempts: attempts }
+
+fn lineage_predecessor<P>(
+  lineage: ExecutionAttemptLineage<P>,
+) -> FabricIdentity<P, ExecutionAttemptKey>? {
+  match lineage {
+    InitialAttempt { initiating_demand: _ } => none
+    RequestedReexecution { initiating_demand: _ } => none
+    InfrastructureRetry { prior_attempt: p, cause_receipt: _ } => Present { value: p }
+    CapabilityEscalation { prior_attempt: p, cause_receipt: _ } => Present { value: p }
+  }
+}
+
+fn lineage_demand<P>(lineage: ExecutionAttemptLineage<P>) -> FabricIdentity<P, DemandKey>? {
+  match lineage {
+    InitialAttempt { initiating_demand: d } => Present { value: d }
+    RequestedReexecution { initiating_demand: d } => Present { value: d }
+    InfrastructureRetry { prior_attempt: _, cause_receipt: _ } => none
+    CapabilityEscalation { prior_attempt: _, cause_receipt: _ } => none
+  }
+}
+
+fn contains_attempt<P>(
+  ids: List<FabricIdentity<P, ExecutionAttemptKey>>,
+  id: FabricIdentity<P, ExecutionAttemptKey>,
+) -> Bool {
+  ids.any(x => fabric_identity_eq(left: x, right: id))
+}
+
+fn work_refusals<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> List<AttemptGraphRefusal<P>> {
+  attempts
+    .filter(a => !fabric_identity_eq(left: a.work, right: subject.work))
+    .map(a => AttemptWorkOutsideSubject { attempt: a.id, declared_work: a.work })
+}
+
+fn demand_refusals<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> List<AttemptGraphRefusal<P>> {
+  attempts.flat_map(a =>
+    match lineage_demand(lineage: a.lineage) {
+      none => []
+      Present { value: d } =>
+        if fabric_identity_eq(left: d, right: subject.demand) {
+          []
+        } else {
+          [AttemptRootsInAnotherDemand { attempt: a.id, declared_demand: d }]
+        }
+    }
+  )
+}
+
+fn predecessor_refusals<P>(attempts: List<Attempt<P>>) -> List<AttemptGraphRefusal<P>> {
+  let ids = attempts.map(a => a.id)
+  attempts.flat_map(a =>
+    match lineage_predecessor(lineage: a.lineage) {
+      none => []
+      Present { value: p } =>
+        if contains_attempt(ids: ids, id: p) {
+          []
+        } else {
+          [AttemptPredecessorAbsent { attempt: a.id, predecessor: p }]
+        }
+    }
+  )
+}
+
+// A DUPLICATED IDENTITY IS REPORTED ONCE PER OCCURRENCE, deliberately not reduced to one refusal
+// per repeated identity. Which occurrence is "the original" is not a fact the graph has — members
+// arrive as a population with no authored order — so nominating one as legitimate would be the fold
+// inventing a precedence it cannot establish. Every occurrence of an ambiguous identity is equally
+// unusable.
+fn duplicate_refusals<P>(attempts: List<Attempt<P>>) -> List<AttemptGraphRefusal<P>> {
+  let ids = attempts.map(a => a.id)
+  attempts.flat_map(a =>
+    if ids.filter(x => fabric_identity_eq(left: x, right: a.id)).length() > 1 {
+      [DuplicateAttemptIdentity { attempt: a.id }]
+    } else {
+      []
+    }
+  )
+}
+
+// first + more is a NON-EMPTY population expressed structurally, so a refusal carrying no defect is
+// unrepresentable. Splitting the head off drops exactly one element, which the fold below does with
+// an explicit accumulator rather than by position.
+type RefusalSplit<P> {
+  head_taken: Bool
+  more: List<AttemptGraphRefusal<P>>
+}
+
+fn refusals_after_head<P>(
+  refusals: List<AttemptGraphRefusal<P>>,
+) -> List<AttemptGraphRefusal<P>> {
+  refusals
+    .fold(
+      RefusalSplit { head_taken: false, more: [] },
+      (acc, r) =>
+        if acc.head_taken {
+          RefusalSplit { head_taken: true, more: [acc.more, [r]].flat_map(x => x) }
+        } else {
+          RefusalSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+// ROOTEDNESS IS A BOUNDED FIXPOINT, NOT A WALK. An attempt is rooted when its lineage reaches this
+// run's demand: directly, for an initial attempt or a requested re-execution, or through a
+// predecessor that is itself rooted. Each pass roots at least one further attempt or the set has
+// stabilized, so folding over the attempt list — whose length bounds the longest chain — reaches
+// the fixpoint without recursion and without a cycle running forever.
+//
+// What stays unrooted after the fixpoint, once absent predecessors are separately accounted for, is
+// exactly a lineage cycle or a chain rooted in another demand: either way not an attempt at THIS
+// run, the fact the graph exists to establish.
+fn directly_rooted<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> List<FabricIdentity<P, ExecutionAttemptKey>> {
+  attempts
+    .filter(a =>
+      match lineage_demand(lineage: a.lineage) {
+        none => false
+        Present { value: d } => fabric_identity_eq(left: d, right: subject.demand)
+      }
+    )
+    .map(a => a.id)
+}
+
+fn expand_rooted<P>(
+  attempts: List<Attempt<P>>,
+  rooted: List<FabricIdentity<P, ExecutionAttemptKey>>,
+) -> List<FabricIdentity<P, ExecutionAttemptKey>> {
+  let added =
+    attempts
+      .filter(a =>
+        !contains_attempt(ids: rooted, id: a.id)
+          && match lineage_predecessor(lineage: a.lineage) {
+               none => false
+               Present { value: p } => contains_attempt(ids: rooted, id: p)
+             }
+      )
+      .map(a => a.id)
+  [rooted, added].flat_map(x => x)
+}
+
+fn rooted_attempts<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> List<FabricIdentity<P, ExecutionAttemptKey>> {
+  attempts.fold(
+    directly_rooted(subject: subject, attempts: attempts),
+    (rooted, _each) => expand_rooted(attempts: attempts, rooted: rooted),
+  )
+}
+
+fn unrooted_refusals<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> List<AttemptGraphRefusal<P>> {
+  let rooted = rooted_attempts(subject: subject, attempts: attempts)
+  attempts
+    .filter(a => !contains_attempt(ids: rooted, id: a.id))
+    .map(a => AttemptLineageUnrooted { attempt: a.id })
+}
+
+fn admit_attempt_graph<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<Attempt<P>>,
+) -> AttemptGraphAdmission<P> {
+  let refusals =
+    [
+      work_refusals(subject: subject, attempts: attempts),
+      demand_refusals(subject: subject, attempts: attempts),
+      predecessor_refusals(attempts: attempts),
+      duplicate_refusals(attempts: attempts),
+      unrooted_refusals(subject: subject, attempts: attempts),
+    ].flat_map(r => r)
+  match refusals.first() {
+    none => AttemptGraphAdmitted { graph: attempt_graph_seal(subject: subject, attempts: attempts) }
+    Present { value: head } =>
+      AttemptGraphRefused {
+        first: head,
+        more: refusals_after_head(refusals: refusals),
+      }
+  }
+}
+
+// MEMBERSHIP IS DECIDED AGAINST THE ADMITTED GRAPH AND NOTHING ELSE — the predicate every readback
+// member must pass before its evidence may be joined at attempt grain.
+fn graph_admits_attempt<P>(
+  graph: TrainingRunAttemptGraph<P>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+) -> Bool {
+  contains_attempt(ids: graph.attempts.map(a => a.id), id: attempt)
+}

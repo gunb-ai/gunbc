@@ -1,0 +1,182 @@
+module test.claim.snapshot_receipt_metadata_witness
+
+import std.logic { Bool }
+import std.types { String }
+import std.optional { Present, Absent }
+import std.filesystem { path_parent_directory }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.access.posix { file_mode_of_octal_text, FileMode, PermissionBits }
+import gunbc.worker_turn_snapshot_custody { cursor_worker_turn_snapshot_custody }
+import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.dispatch_credential_snapshot {
+  snapshot_receipt_metadata_decision,
+  snapshot_receipt_directory_decision,
+  snapshot_receipt_version_join,
+  SnapshotReceiptObservedMetadata,
+  SnapshotReceiptObservedRegular,
+  SnapshotReceiptObservedNotRegular,
+  SnapshotReceiptMetadataAsDeclared,
+  SnapshotReceiptMetadataRefused,
+  SnapshotReceiptDirectoryAsDeclared,
+  SnapshotReceiptDirectoryDecisionRefused,
+  SnapshotReceiptNotRegularFile,
+  SnapshotReceiptWrongOwner,
+  SnapshotReceiptGroupOrOtherWritable,
+  SnapshotReceiptDirectoryWrongOwner,
+  SnapshotReceiptDirectoryGroupOrOtherWritable,
+  SnapshotReceiptSecretProjectMismatch,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fx_zero_mode() -> FileMode {
+  FileMode {
+    owner: PermissionBits { read: false, write: false, execute: false },
+    group: PermissionBits { read: false, write: false, execute: false },
+    other: PermissionBits { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: false,
+    sticky: false,
+  }
+}
+
+fn fx_mode(octal: String) -> FileMode {
+  match file_mode_of_octal_text(text: octal) {
+    Absent => fx_zero_mode()
+    Present { value: m } => m
+  }
+}
+
+fn fx_regular_obs(file_owner: String, file_octal: String) -> SnapshotReceiptObservedMetadata {
+  SnapshotReceiptObservedRegular {
+    file_owner: file_owner,
+    file_mode: fx_mode(octal: file_octal),
+  }
+}
+
+test fn a_regular_receipt_as_declared_is_admitted() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  match snapshot_receipt_metadata_decision(
+    observed: fx_regular_obs(file_owner: d.publisher as String, file_octal: "640"),
+    declared: d,
+  ) {
+    SnapshotReceiptMetadataAsDeclared => true
+    SnapshotReceiptMetadataRefused { reason: _ } => false
+  }
+}
+
+test fn a_symlink_observation_is_not_a_regular_file() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  match snapshot_receipt_metadata_decision(
+    observed: SnapshotReceiptObservedNotRegular,
+    declared: d,
+  ) {
+    SnapshotReceiptMetadataRefused { reason } =>
+      match reason { SnapshotReceiptNotRegularFile => true  _ => false }
+    SnapshotReceiptMetadataAsDeclared => false
+  }
+}
+
+test fn a_wrong_file_owner_or_group_writable_file_is_refused() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  let owner = match snapshot_receipt_metadata_decision(
+    observed: fx_regular_obs(file_owner: "operator", file_octal: "640"),
+    declared: d,
+  ) {
+    SnapshotReceiptMetadataRefused { reason } =>
+      match reason { SnapshotReceiptWrongOwner { observed: _, declared: _ } => true  _ => false }
+    SnapshotReceiptMetadataAsDeclared => false
+  }
+  let writable = match snapshot_receipt_metadata_decision(
+    observed: fx_regular_obs(file_owner: d.publisher as String, file_octal: "660"),
+    declared: d,
+  ) {
+    SnapshotReceiptMetadataRefused { reason } =>
+      match reason { SnapshotReceiptGroupOrOtherWritable => true  _ => false }
+    SnapshotReceiptMetadataAsDeclared => false
+  }
+  owner && writable
+}
+
+test fn a_reader_owned_or_group_writable_directory_is_refused() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  let owned = match snapshot_receipt_directory_decision(
+    dir_owner: d.reader as String,
+    dir_mode: fx_mode(octal: "755"),
+    declared: d,
+  ) {
+    SnapshotReceiptDirectoryDecisionRefused { reason } =>
+      match reason { SnapshotReceiptDirectoryWrongOwner { observed: _, declared: _ } => true  _ => false }
+    SnapshotReceiptDirectoryAsDeclared => false
+  }
+  let writable = match snapshot_receipt_directory_decision(
+    dir_owner: d.publisher as String,
+    dir_mode: fx_mode(octal: "770"),
+    declared: d,
+  ) {
+    SnapshotReceiptDirectoryDecisionRefused { reason } =>
+      match reason { SnapshotReceiptDirectoryGroupOrOtherWritable => true  _ => false }
+    SnapshotReceiptDirectoryAsDeclared => false
+  }
+  owned && writable
+}
+
+test fn a_publisher_owned_nonwritable_directory_is_admitted() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  match snapshot_receipt_directory_decision(
+    dir_owner: d.publisher as String,
+    dir_mode: fx_mode(octal: "750"),
+    declared: d,
+  ) {
+    SnapshotReceiptDirectoryAsDeclared => true
+    SnapshotReceiptDirectoryDecisionRefused { reason: _ } => false
+  }
+}
+
+fn fx_fleet_numeric_receipt_version() -> SmResolvedVersionIdentity {
+  join(
+    ["projects/", fleet_secrets_project_number, "/secrets/", cursor_worker_turn_snapshot_custody.secret.secret as String, "/versions/", cursor_worker_turn_snapshot_custody.secret.version as String],
+    "",
+  ) as SmResolvedVersionIdentity
+}
+
+test fn path_parent_directory_drops_the_last_segment() -> Bool {
+  path_parent_directory(path: "/a/b") == "/a"
+    && path_parent_directory(path: "/a") == "/"
+    && path_parent_directory(path: "/") == "/"
+    && path_parent_directory(path: "a") == "."
+}
+
+test fn the_fleet_project_id_joins_the_canonical_numeric_receipt() -> Bool {
+  match snapshot_receipt_version_join(
+    declared: cursor_worker_turn_snapshot_custody,
+    observed: fx_fleet_numeric_receipt_version(),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_declared_foreign_project_refuses_a_fleet_number_receipt() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  let foreign = SnapshotCustodyDeclaration {
+    path: d.path,
+    secret: SecretRef {
+      project: "another-project",
+      secret: d.secret.secret,
+      version: d.secret.version,
+      hash_state: HashPending,
+    },
+    host: d.host,
+    reader: d.reader,
+    publisher: d.publisher,
+  }
+  match snapshot_receipt_version_join(declared: foreign, observed: fx_fleet_numeric_receipt_version()) {
+    Present { value: r } =>
+      match r { SnapshotReceiptSecretProjectMismatch => true  _ => false }
+    Absent => false
+  }
+}

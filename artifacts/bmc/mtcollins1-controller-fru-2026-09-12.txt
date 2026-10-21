@@ -1,0 +1,26 @@
+GUNBC-FRU-READ mtcollins1 2026-09-12T03:15:25Z
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin fru print 0
+ Chassis Type          : Rack Mount Chassis
+ Chassis Part Number   : 1A624RA00-600-G
+ Chassis Serial        : NULL
+ Chassis Extra         : XXXXXXXXXXXX
+ Chassis Extra         : YYYYYYYYYYYY
+ Chassis Extra         : ZZZZZZZZZZZZ
+ Board Mfg Date        : Mon 18 Oct 2021 06:36:00 PM UTC UTC
+ Board Mfg             : FOXCONN
+ Board Product         : Mt. Collins
+ Board Serial          : 02030A800TEXFT02L
+ Board Part Number     : 02030A800-600-G
+ Board Extra           : 28C13C8AD64C
+ Board Extra           : PCBAVer:EX
+ Board Extra           : XXXXXXXXXXXX
+ Product Manufacturer  : FOXCONN
+ Product Name          : Mt. Collins
+ Product Part Number   : 1A62AT100-600-G
+ Product Version       : Ver 0.01
+ Product Serial        : MXX2080619
+ Product Asset Tag     : XXXXXXXXXXXXXXXXXX
+ Product Extra         : XXQQQQQQQQQQ
+ Product Extra         : XXXXXXXXXXXX
+ Product Extra         : XXXXXXXXXXXX
+exit=0

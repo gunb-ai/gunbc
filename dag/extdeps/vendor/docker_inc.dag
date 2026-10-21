@@ -1,0 +1,29 @@
+module extdeps.vendor.docker_inc
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.software { Software }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Docker,_Inc."
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.docker_inc",
+      decl_name: "docker_inc",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.vendor.docker_inc.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data docker_inc: Vendor<Software> = Vendor { legal_name: "Docker, Inc." }

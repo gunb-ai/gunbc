@@ -1,0 +1,306 @@
+module extdeps.languages.json.emit
+
+import std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
+import extdeps.numeric.base16 { int_to_upper_hex }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.coercion { unicode_scalar_unfold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8259"
+  }
+}
+
+// Reading: RFC 8259 owns the JSON value grammar; type JsonValue's six variants (null, bool, number-as-lexeme, string, array, object) transcribe exactly those forms with no repo extensions, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.languages.json.emit", decl_name: "JsonValue", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type JsonKeyValue {
+  key: String
+  value: JsonValue
+}
+
+type JsonValue
+  = JsonNull
+  | JsonBool { value: Bool }
+  | JsonNumber { lexeme: JsonNumberLexeme }
+  | JsonString { value: String }
+  | JsonArray { elements: List<JsonValue> }
+  | JsonObject { members: List<JsonKeyValue> }
+
+fn json_kv(key: String, value: JsonValue) -> JsonKeyValue {
+  JsonKeyValue { key: key, value: value }
+}
+
+fn json_null() -> JsonValue {
+  JsonNull
+}
+
+fn json_bool(b: Bool) -> JsonValue {
+  JsonBool { value: b }
+}
+
+fn json_int(n: Int) -> JsonValue {
+  JsonNumber { lexeme: json_int_lexeme(n: n) }
+}
+
+fn json_number_from_lexeme_string(s: String) -> JsonValue? {
+  match json_number_lexeme(s: s) {
+    Present { value: l } => Present { value: JsonNumber { lexeme: l } }
+    none => Absent
+  }
+}
+
+fn json_string(s: String) -> JsonValue {
+  JsonString { value: s }
+}
+
+fn json_array(elements: List<JsonValue>) -> JsonValue {
+  JsonArray { elements: elements }
+}
+
+fn json_object(members: List<JsonKeyValue>) -> JsonValue {
+  JsonObject { members: members }
+}
+
+fn json_unicode_escape_hex4(cp: Int) -> String {
+  let h = int_to_upper_hex(n: cp)
+  let len = h.length()
+  if len == 1 { concat("000", h) }
+  else if len == 2 { concat("00", h) }
+  else if len == 3 { concat("0", h) }
+  else { h }
+}
+
+fn escape_json_string(s: String) -> String {
+  json_escape_via_passes(s: s)
+}
+
+// JSON ESCAPING AS NATIVE SPLIT/JOIN PASSES, NOT A PER-CHAR INTERPRETED FOLD. The per-char fold
+// (measured 2026-09-21 on the srv2-deploy instance) rendered at roughly a million characters a
+// second, and a whole-corpus envelope -- ~7,050 authored sources, ~140MB of JSON -- never finished
+// serializing: the belt's capture could stage and mint but never PERSIST. The same RFC 8259 §7
+// rules run here as ~32 native passes over the bytes, which finish in seconds. ORDER IS LOAD-
+// BEINGING: the backslash leads so escapes introduced by later passes are never re-escaped, the
+// quote follows, then the five named controls, then the remaining control range as \u00XX -- every
+// code point below 0x20 is covered by construction, and none of the replacement texts contains a
+// code point a later pass splits on, so each original character escapes exactly once. Output bytes
+// are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
+// Each row is ONE fact, the control character spelled as a text literal. Its code point is DERIVED from
+// that spelling through the declared Unicode scalar unfold (std.coercion unicode_scalar_unfold), so the
+// number and the character cannot drift apart (review 79227) and no Int is asked to be a Char at run time
+// (gunbc.recurring_failure_mode char_brand_admits_any_int). A row of other than one scalar is not a
+// control character; the witness holds every row to one scalar and the two lists to 0..31 exactly.
+fn json_escape_row_code_point(spelled: String) -> Int {
+  fold(unicode_scalar_unfold(s: spelled), init: 0, f: (_acc, c) => c)
+}
+
+fn json_named_escape_rows() -> List<String> {
+  [
+  "\u{8}",
+  "\u{9}",
+  "\u{a}",
+  "\u{c}",
+  "\u{d}",
+  ]
+}
+
+fn json_control_escape_rows() -> List<String> {
+  [
+  "\u{0}",
+  "\u{1}",
+  "\u{2}",
+  "\u{3}",
+  "\u{4}",
+  "\u{5}",
+  "\u{6}",
+  "\u{7}",
+  "\u{b}",
+  "\u{e}",
+  "\u{f}",
+  "\u{10}",
+  "\u{11}",
+  "\u{12}",
+  "\u{13}",
+  "\u{14}",
+  "\u{15}",
+  "\u{16}",
+  "\u{17}",
+  "\u{18}",
+  "\u{19}",
+  "\u{1a}",
+  "\u{1b}",
+  "\u{1c}",
+  "\u{1d}",
+  "\u{1e}",
+  "\u{1f}",
+  ]
+}
+
+fn json_escape_replace(s: String, delimiter: String, replacement: String) -> String {
+  join(split(s: s, delimiter: delimiter), replacement)
+}
+
+fn json_escape_named_replacement(code_point: Int) -> String {
+  if code_point == 8 { "\\b" }
+  else if code_point == 9 { "\\t" }
+  else if code_point == 10 { "\\n" }
+  else if code_point == 12 { "\\f" }
+  else { "\\r" }
+}
+
+fn json_escape_control_replacement(code_point: Int) -> String {
+  concat("\\u", json_unicode_escape_hex4(cp: code_point))
+}
+
+fn json_escape_via_passes(s: String) -> String {
+  let unslashed = json_escape_replace(s: s, delimiter: "\u{5c}", replacement: "\\\\")
+  let quoted = json_escape_replace(s: unslashed, delimiter: "\u{22}", replacement: "\\\"")
+  let named = fold(
+    json_named_escape_rows(),
+    init: quoted,
+    f: fn(acc, row) {
+      json_escape_replace(
+        s: acc,
+        delimiter: row,
+        replacement: json_escape_named_replacement(code_point: json_escape_row_code_point(spelled: row)),
+      )
+    },
+  )
+  fold(
+    json_control_escape_rows(),
+    init: named,
+    f: fn(acc, row) {
+      json_escape_replace(
+        s: acc,
+        delimiter: row,
+        replacement: json_escape_control_replacement(code_point: json_escape_row_code_point(spelled: row)),
+      )
+    },
+  )
+}
+
+// SERIALIZATION IS CHUNK-FLUSHED, NOT CONCAT-ACCUMULATED (measured 2026-09-21 on the srv2-deploy
+// instance: saving a project envelope -- ~7,050 authored sources, ~140MB of JSON -- never
+// completed, because folding `concat(acc, part)` copies the whole accumulator per element and a
+// whole-corpus document made every save quadratic in its own size; the belt's capture could stage
+// but could never PERSIST). The flush accumulator keeps a small pending list and concatenates it
+// once per granularity window, so the copy work stays proportional to the document size times a
+// small factor instead of to its square. Output bytes are identical; only the building cost
+// changes (DESIGN section 6: a proven cost-shape defect is always fixed).
+data json_emit_flush_granularity: Int = 128
+
+// PENDING IS CARRIED AS A COUNT, NOT RE-DERIVED WITH count(parts) PER PUSH: count is a list fold,
+// and at whole-corpus document scale (measured 2026-09-21: a ~140MB envelope render) the re-derivation
+// multiplied every character's cost by the flush window and the render never finished. The two
+// facts are updated in one place, so they cannot drift.
+type JsonEmitAcc {
+  out: String
+  parts: List<String>
+  pending: Int
+}
+
+fn json_emit_push(acc: JsonEmitAcc, part: String) -> JsonEmitAcc {
+  if acc.pending >= json_emit_flush_granularity {
+    JsonEmitAcc {
+      out: concat(acc.out, join(reverse(acc.parts), "")),
+      parts: [part],
+      pending: 1,
+    }
+  } else {
+    JsonEmitAcc { out: acc.out, parts: concat([part], acc.parts), pending: acc.pending + 1 }
+  }
+}
+
+fn json_emit_finish(acc: JsonEmitAcc) -> String {
+  concat(acc.out, join(reverse(acc.parts), ""))
+}
+
+fn quote_json_string(s: String) -> String {
+  concat("\"", concat(escape_json_string(s: s), "\""))
+}
+
+fn serialize_json_string(s: String) -> String {
+  quote_json_string(s: s)
+}
+
+fn join_json_values(items: List<JsonValue>) -> String {
+  json_emit_finish(acc: fold(
+    items,
+    init: JsonEmitAcc { out: "", parts: [], pending: 0 },
+    f: (acc, v) =>
+      json_emit_push(
+        acc: acc,
+        part: if count(acc.parts) == 0 && acc.out == "" {
+          serialize_json(v: v)
+        } else {
+          concat(", ", serialize_json(v: v))
+        },
+      ),
+  ))
+}
+
+fn serialize_json_array(elements: List<JsonValue>) -> String {
+  concat("[", concat(join_json_values(items: elements), "]"))
+}
+
+fn serialize_json_object_members(members: List<JsonKeyValue>) -> String {
+  json_emit_finish(acc: fold(
+    members,
+    init: JsonEmitAcc { out: "", parts: [], pending: 0 },
+    f: (acc, kv) =>
+      json_emit_push(
+        acc: acc,
+        part: if count(acc.parts) == 0 && acc.out == "" {
+          concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
+        } else {
+          concat(", ", concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value)))
+        },
+      ),
+  ))
+}
+
+// serialize_json_object_prefix is the canonical serialization of an object's OPENING plus its
+// leading members, no closing brace — the exact byte prefix every document beginning with those
+// members must carry. A consumer can thus identify a document by its leading members POSITIONALLY
+// (starts_with) instead of scanning for a fragment: a nested value can carry any fragment a scan
+// looks for, but none can occupy the document's prefix. serialize_json_object is defined as this
+// prefix plus the closing brace, so the two cannot drift.
+
+fn serialize_json_object_prefix(members: List<JsonKeyValue>) -> String {
+  concat("{", serialize_json_object_members(members: members))
+}
+
+fn serialize_json_object(members: List<JsonKeyValue>) -> String {
+  concat(serialize_json_object_prefix(members: members), "}")
+}
+
+fn serialize_json(v: JsonValue) -> String {
+  match v {
+    JsonNull => "null"
+    JsonBool { value: b } => if b { "true" } else { "false" }
+    JsonNumber { lexeme: l } => l
+    JsonString { value: s } => quote_json_string(s: s)
+    JsonArray { elements: els } => serialize_json_array(elements: els)
+    JsonObject { members: m } => serialize_json_object(members: m)
+  }
+}
+
+fn json_int_list(nums: List<Int>) -> String {
+  serialize_json_array(elements: nums |> map(n => json_int(n: n)))
+}
+
+fn json_str_list(items: List<String>) -> String {
+  serialize_json_array(elements: items |> map(s => json_string(s: s)))
+}

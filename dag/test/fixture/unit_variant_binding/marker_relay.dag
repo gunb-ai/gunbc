@@ -1,0 +1,6 @@
+module test.fixture.unit_variant_binding.marker_relay
+
+import std.types { Int }
+import test.fixture.unit_variant_binding.marker_provider { Marker }
+
+fn relay() -> Int { 0 }

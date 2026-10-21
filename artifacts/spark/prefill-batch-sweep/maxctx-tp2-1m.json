@@ -1,0 +1,10 @@
+{
+  "label": "tp2-1m",
+  "requested_tokens": 1048575,
+  "admitted": true,
+  "prompt_tokens": 1048575,
+  "wall_s": 1598.1,
+  "ms_per_token": 1.5241,
+  "steps": 512,
+  "preemptions_delta": 0
+}

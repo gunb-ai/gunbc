@@ -1,0 +1,30 @@
+module fixture.closure.rustc_function_value_let_probe
+
+// THE RED ARM OF THE FUNCTION-VALUE ADAPTER PAIR, and a KNOWN HOLE rather than a desired
+// behavior. It is the same program as function_value_adapter_probe.dag with ONE authored
+// difference: the producer's result is bound to a local and the BINDING is passed, instead of the
+// call standing in argument position. v1.compiler.emit_rust rust_call_arg_function_value_adapt
+// fires only on a call expression, so no forwarding closure is emitted here, and the
+// Rc<dyn Fn(..) -> ..> value meets the parameter's `impl Fn(..) -> .. + Clone` bound with no
+// blanket impl to satisfy it.
+//
+// WHAT IT ESTABLISHES: gunbc accepts this source with zero blocking diagnostics and emits a crate
+// rustc refuses -- gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target, at the
+// function-value seam rather than at that row's coproduct-variant construction, and committed as
+// a runnable file, which that row records its own specimen never was.
+//
+// WHEN THE HOLE CLOSES -- the emitter adapting a let-bound arrow value, or the front end refusing
+// the construction -- THIS ARM FLIPS AND IS KEPT as a permanent regression control (DESIGN
+// §4b(4)). What changes then is this pair's expectation, not this file.
+//
+// NO IMPORTS, deliberately: the emitted closure is this module plus the runtime, so the red rustc
+// reports is attributable to this file and nothing else.
+
+fn let_add(k: Int) -> fn(Int) -> Int { fn(n) { n + k } }
+
+fn let_apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+
+fn let_probe() -> Int {
+  let staged = let_add(k: 1)
+  let_apply(f: staged, x: 41)
+}

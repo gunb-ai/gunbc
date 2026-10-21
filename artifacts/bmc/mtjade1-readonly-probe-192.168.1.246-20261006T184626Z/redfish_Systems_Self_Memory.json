@@ -1,0 +1,2 @@
+{"@odata.context":"/redfish/v1/$metadata#MemoryCollection.MemoryCollection","@odata.etag":"\"952010547\"","@odata.id":"/redfish/v1/Systems/Self/Memory","@odata.type":"#MemoryCollection.MemoryCollection","Description":"Collection of Memories for this system","Members":[],"Members@odata.count":0,"Name":"Memory Collection"}
+HTTP_CODE:200

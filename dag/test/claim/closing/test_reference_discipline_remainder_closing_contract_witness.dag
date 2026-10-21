@@ -1,0 +1,23 @@
+module test.claim.closing.test_reference_discipline_remainder_closing_contract_witness
+
+// CLOSING CONTRACT for roadmap node test-reference-discipline-remainder after the ledger
+// was deleted: TestCodeReferenced is the wall. The remaining live obligation on this
+// witness is placement -- the wall module is enrolled on the required gate at exact
+// module grain. Ledger census, budget, admission, and orphan arms have no consumer.
+
+import v2.workflow.required_floor { required_gate_authored_modules, required_gate_prefixes }
+
+data wall_module: String = "test.claim.test_reference_wall_witness"
+
+fn test_reference_closing_roster_contains(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn gate_enrollment_holds() -> Bool {
+  test_reference_closing_roster_contains(xs: required_gate_authored_modules(), needle: wall_module)
+    && !any(required_gate_prefixes(), p => starts_with(s: wall_module, prefix: p))
+}
+
+test fn test_reference_discipline_remainder_closing_contract_holds() -> Bool {
+  gate_enrollment_holds()
+}

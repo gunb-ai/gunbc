@@ -1,0 +1,169 @@
+module gunbc.runner.runner_cgroup_placement_receipt
+
+import std.types { Bool, List, NonEmptyStr, String, FilePath }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.runner.runner_guest_egress_attempt {
+  CpuBoundStanding, CpuBoundWrittenButUnread,
+}
+
+// THE ATTEMPT IS BOUNDED NOW, AND THE BOUND WAS OBSERVED FROM BOTH SIDES WHILE IT HELD. Attempt
+// slice5b-cgroup-77e659df on the Mt. Collins unit, 2026-09-06. The live census had found the VMM
+// running in the root cgroup -- a dedicated guest kernel with no host resource boundary at all --
+// and this closes that.
+//
+// THE SUPERVISOR OWNS PLACEMENT RATHER THAN ASKING THE JAILER FOR IT. --cgroup-version 2 selects an
+// implementation; it does not request a cgroup, which is why the earlier attempt moved into
+// nothing. The supervisor now creates a leaf, writes the limits, and puts the launching identity
+// into that leaf BEFORE exec -- and because the jailer execs in place, the identity that ends up
+// running Firecracker is already inside the bound. There is no window in which the VMM runs
+// unbounded.
+data placement_attempt: NonEmptyStr = "slice5b-cgroup-77e659df"
+data placement_evidence: FilePath = "artifacts/bmc/mtcollins1-cgroup-placement.log" as FilePath
+data placement_evidence_sha256: Sha256Digest = Sha256Digest {
+  hex: "d3445167c1cc22d9dc3607374c402407f7fb37e23ce15a5428368d0f2281504d" as Sha256DigestHex,
+}
+data placement_evidence_byte_count: ByteSize = byte_size(7931)
+
+// ── placement, read from both ends ──────────────────────────────────────────────────────────────
+
+// PLACEMENT IS BIDIRECTIONAL OR IT IS NOT ESTABLISHED. The process naming a cgroup and that cgroup
+// listing the process are different readings, and only the pair rules out a stale or root
+// placement. Both were taken while the guest was alive; neither can be taken afterwards.
+type CgroupPlacementVerdict
+  = PlacementBidirectional { cgroup_path: NonEmptyStr, pid: Nat }
+  | PlacementForwardOnly { detail: String }
+  | PlacementReverseOnly { detail: String }
+  | PlacementNotEstablished { detail: String }
+
+data placement_verdict: CgroupPlacementVerdict = PlacementBidirectional {
+  cgroup_path: "0::/gunbc/attempt-slice5b-cgroup-77e659df",
+  pid: 1694,
+}
+
+// THE ACCOUNTING IS A READING, NOT A SETTING. memory.current at 88 MiB against a 1 GiB max is the
+// kernel charging the attempt's pages to the attempt's cgroup -- which is the fact that separates a
+// limit that applies from a limit that was merely written to a file.
+type CgroupAccounting {
+  memory_current: ByteSize
+  memory_max: ByteSize
+  pids_max: Nat
+}
+
+data placement_accounting: CgroupAccounting = CgroupAccounting {
+  memory_current: byte_size(88010752),
+  memory_max: byte_size(1073741824),
+  pids_max: 64,
+}
+
+// THE WATCHER IS IN THE CGROUP TOO, which is correct rather than incidental: it is attempt-scoped,
+// so it belongs inside the attempt's bound. The leaf held exactly the two attempt identities.
+type CgroupMemberRole
+  = AttemptExecution
+  | AttemptDeadlineWatcher
+
+type CgroupMember {
+  pid: Nat
+  role: CgroupMemberRole
+}
+
+fn placement_cgroup_members_from_verdict() -> List<CgroupMember> {
+  match placement_verdict {
+    PlacementBidirectional { cgroup_path: _, pid: p } => [
+      CgroupMember { pid: p, role: AttemptExecution },
+      CgroupMember { pid: 1729, role: AttemptDeadlineWatcher },
+    ]
+    PlacementForwardOnly { detail: _ } => []
+    PlacementReverseOnly { detail: _ } => []
+    PlacementNotEstablished { detail: _ } => []
+  }
+}
+
+data placement_cgroup_members: List<CgroupMember> = placement_cgroup_members_from_verdict()
+
+// ── retirement, read in the order that makes it mean something ──────────────────────────────────
+
+// EMPTY FIRST, THEN REMOVED. An empty cgroup that was never removed is a leak; a removed cgroup
+// that still held a process could not have been removed at all. Reading procs before the rmdir is
+// what makes the removal evidence rather than a side effect.
+type CgroupRetirement {
+  empty: Bool
+  removed: Bool
+}
+
+data placement_retirement: CgroupRetirement = CgroupRetirement {
+  empty: true,
+  removed: true,
+}
+
+// ── the defect the bidirectional check caught ───────────────────────────────────────────────────
+
+// $$ DOES NOT CHANGE IN A SUBSHELL, and the first attempt at this proved it the expensive way. The
+// launcher read `( echo $$ > cgroup.procs; exec ... )`, and in POSIX sh $$ expands to the INVOKING
+// shell's pid inside a subshell -- so it wrote 1. The attempt cgroup was created and bounded
+// correctly, and then INIT was moved into it while the VMM stayed in the root.
+//
+// A FORWARD-ONLY CHECK WOULD HAVE REPORTED ONLY "not placed". The reverse read is what localised
+// it: cgroup.procs listed pid 1, which is not a plausible member of an attempt cgroup and named the
+// bug immediately. That is the whole argument for reading both directions rather than the cheaper
+// one, and it is recorded because the check earned its keep on its first use.
+//
+// THE FIX IS A FRESH SHELL. sh -c gives the new process its own $$, and exec preserves that
+// identity through timeout, jailer and firecracker -- so the process that joins the cgroup is the
+// process that runs the VMM.
+type PlacementDefect {
+  attempt: NonEmptyStr
+  written_pid: Nat
+  intended_pid: NonEmptyStr
+  found_by: NonEmptyStr
+}
+
+data placement_defect_found: PlacementDefect = PlacementDefect {
+  attempt: "slice5-cgroup-ae62a97c",
+  written_pid: 1,
+  intended_pid: "the launching subshell, which would become the VMM",
+  found_by: "the reverse read of cgroup.procs; the forward read said only that placement was absent",
+}
+
+// AND THE SIDE EFFECT IT CAUSED, recorded rather than passed over: that run left init inside the
+// attempt cgroup, so the leaf could not be emptied or removed at retirement. It was cleared by the
+// next boot, but a supervisor doing this on a long-lived host would have leaked a cgroup holding
+// pid 1.
+type PlacementDefectRetirement
+  = LeafHeldInit { pid: Nat, emptied: Bool, removed: Bool, cleared_by: NonEmptyStr }
+  | LeafRetiredCleanly
+
+data placement_defect_retirement: PlacementDefectRetirement = LeafHeldInit {
+  pid: placement_defect_found.written_pid,
+  emptied: false,
+  removed: false,
+  cleared_by: "the next boot, not retirement",
+}
+
+// ── this attempt's cpu.max write did not stick ──────────────────────────────────────────────────
+
+// ON THIS PLACEMENT RUN the leaf listed cpu in cgroup.controllers and cpu.max still read back
+// empty. The cause is CpuBoundStanding on the attempt receipt (later refused with EPERM, then an
+// interface after the CFS-bandwidth rebuild). This row is that earlier standing, not a second type
+// and not a still-open fleet question.
+data placement_cpu_bound: CpuBoundStanding = CpuBoundWrittenButUnread {
+  leaf_controllers: "cpu memory pids",
+}
+
+data placement_open: List<NonEmptyStr> = [
+  "an OOM policy for the attempt, which no run has set",
+  "whether the bound is ENFORCED rather than merely accounted -- nothing has yet exceeded it on purpose",
+  "the post-cleanup identity join, which still compares by name rather than by launch/exec identity",
+]
+
+// WHAT IS CLOSED, and deliberately narrow: the attempt is placed, bounded and accounted, and the
+// cgroup is emptied and removed at retirement. Enforcement is not claimed -- no attempt has yet
+// tried to exceed memory.max, so the bound is observed to ACCOUNT rather than observed to STOP.
+data placement_closed: List<NonEmptyStr> = [
+  "the VMM runs inside an attempt-owned leaf cgroup, established from both directions while alive",
+  "memory.max and pids.max applied and were read back",
+  "the kernel charges the attempt's pages to the attempt's cgroup",
+  "the deadline watcher is inside the same bound",
+  "at retirement the cgroup is empty and then removed, read in that order",
+]

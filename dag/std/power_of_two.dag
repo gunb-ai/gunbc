@@ -1,0 +1,26 @@
+module std.power_of_two
+
+import std.types { Int, List }
+
+// 2^n over bit positions, below std.machine_word and std.machine_width_range so neither has an import cycle.
+// NOT std.induction int_pow_bounded: that is a PARTIAL, linear, capped pow (Int? answer), a different
+// contract; callers here (shifts, rotations, word moduli) need a TOTAL 2^n for n in [0, 62], and
+// shr/rotr are hot. The domain is a comment because no bounded-exponent type exists yet.
+fn bitwise_pow2_defined(n: Int) -> Int {
+  if n <= 0 { 1 } else { 2 * bitwise_pow2_defined(n: n - 1) }
+}
+
+// 2^0 .. 2^62, derived from the definition above so the hot paths index rather than recurse.
+data bitwise_pow2_table: List<Int> = fold(
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+   32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62],
+  init: [], f: (acc, n) => acc |> list_push(bitwise_pow2_defined(n: n)))
+
+// The Absent arm is the definition itself, reached only for n outside [0, 62]; it answers the same
+// value the table would, so it is not a fallback to something else.
+fn bitwise_pow2(n: Int) -> Int {
+  match get(bitwise_pow2_table, n) {
+    Present { value: v } => v
+    Absent => bitwise_pow2_defined(n: n)
+  }
+}

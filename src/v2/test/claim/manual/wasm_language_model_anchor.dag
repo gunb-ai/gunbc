@@ -1,0 +1,8 @@
+module v2.test.claim.manual.wasm_language_model_anchor
+
+
+type wasm_anchor_language_model = LanguageModel
+
+data wasm_anchor: wasm_anchor_language_model = wasm_language_model()
+data wasm_anchor_i32: Node = wasm_inhabitant_i32_node()
+data wasm_anchor_core: ModelCore = wasm_model_core()

@@ -1,0 +1,57 @@
+module gunbc.generated_artifact_registry
+
+import std.types { String, List, Bool }
+import gunbc.os_install { fleet_autoinstall_specs }
+import gunbc.plan_registry { all_plans }
+import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
+import gunbc.generated_artifact {
+  GeneratedArtifact, GeneratedArtifactProducerRow,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
+  artifact_path, artifact_is_committed, artifact_eq, artifact_producer_row,
+  artifact_is_project_documentation
+}
+
+// THE POPULATION, APART FROM THE VOCABULARY (DESIGN section 3: a fact's home is its layer).
+// gunbc.generated_artifact says what an artifact IS -- its variant, location, commit policy and
+// producer. Which artifacts EXIST is this module's fact, and it enumerates every plan through
+// gunbc.plan_registry, whose plan bodies project censuses derived from the live tree. While the two
+// shared a module, a consumer that needed one artifact's PATH (gunbc.fleet.fleet_revision_acceptance, and
+// through it the approval broker) compiled every plan and the v2 resolver behind them.
+
+data generated_artifact_registry: List<GeneratedArtifact> = concat(
+  concat(
+    concat(
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact],
+      map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+    ),
+    map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
+  ),
+  map(all_plans, pl => PlanArtifact { plan: pl })
+)
+
+fn committed_generated_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
+}
+
+fn committed_generated_artifact_paths() -> List<String> {
+  map(committed_generated_artifacts(), a => artifact_path(a: a))
+}
+
+// ON-DEMAND DOCUMENTATION, DERIVED FROM THE REGISTRY AND THE COMMIT POLICY. main_wet writes
+// only committed_generated_artifacts(), so a NotCommitted ProjectDocumentation row has no
+// completing actuator there. This list is that remainder: every documentation-family artifact
+// the checkout must not carry. documentation_wet folds it; it must not be restored to the
+// committed roster to make main_wet write it.
+fn uncommitted_project_documentation_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_project_documentation(a: a) && !artifact_is_committed(a: a))
+}
+
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}
+
+fn generated_artifact_producer_rows() -> List<GeneratedArtifactProducerRow> {
+  map(generated_artifact_registry, a => artifact_producer_row(a: a))
+}
+

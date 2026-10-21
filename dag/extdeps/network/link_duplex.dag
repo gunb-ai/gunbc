@@ -1,0 +1,30 @@
+module extdeps.network.link_duplex
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ieee802.org/3/",
+  }
+}
+
+// IEEE 802.3 MAC duplex: a station either transmits and receives at once, or one direction at a
+// time. There is no third mode, so a NonEmptyStr "full" is an anemic restatement of this coproduct.
+type LinkDuplex
+  = FullDuplex
+  | HalfDuplex
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.network.link_duplex",
+      decl_name: "LinkDuplex",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

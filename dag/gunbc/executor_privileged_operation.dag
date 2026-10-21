@@ -1,0 +1,560 @@
+module gunbc.executor_privileged_operation
+
+// WHY THIS MODULE EXISTS. A sudo grant and the command that consumes it are two renderings of ONE
+// fact, and the repository previously authored them twice: a roster of BINARY PATHS in
+// gunbc.fleet.fleet_posix_accounts, and an argv built independently at each call site. Nothing related
+// them, so the srv3 apply could hold a grant for /usr/bin/install and still be refused for the
+// exact argv it ran -- which is what happened, measured 2026-08-24.
+//
+// THE CONSTRUCTION. An operation is declared ONCE, and both renderings are DERIVED from it: the
+// argv the host executes, and the sudoers command match that authorizes it. The sudoers match is
+// literally the argv joined by spaces, so a grant that does not authorize its own command has no
+// spelling. This is a §5 construction wall, not a check: drift is unrepresentable rather than
+// detected.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO. It does not decide WHO may hold the grant, WHICH host it is
+// installed on, or whether the installed set is exact. Those are separate facts -- the antagonist
+// review of 2026-08-24 (side chat, "Consolidate the transaction, not the concepts") establishes
+// that capability intent, sudoers command, sudoers file, and installation transaction are four
+// facts, not one carrier. This module owns exactly the second, and projects from the first.
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.access.posix { FileMode }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv, sudo_elevate_command, sudo_elevate_as_command }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.sha256sum { sha256sum_binary_path }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.tools.env { env_prefixed_argv }
+import std.env_binding { EnvSet }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.owned_directory { owned_directory_stat_format }
+import std.algebra { fold_list }
+import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag }
+import gunbc.fleet.fleet_posix_accounts {
+  ci_runner_sudo_binary_path,
+  SudoInstall,
+  SudoRm,
+  SudoUseradd,
+  SudoUsermod,
+  SudoSystemctl,
+  SudoNft,
+  SudoConntrack,
+  SudoIptablesLegacySave,
+  SudoNfct,
+  SudoStat,
+  SudoLs,
+}
+import extdeps.tools.conntrack { conntrack_list_expectations_arguments }
+import extdeps.nftables.ruleset { nft_list_ruleset_arguments, nft_list_table_arguments_wire }
+import extdeps.netfilter.iptables_legacy { iptables_legacy_save_arguments }
+import extdeps.netfilter.nfct { nfct_helper_list_arguments }
+
+// A GRANTED READ IS AN OPERATION TOO. ReadNftTable mutates nothing, and it is here because the
+// sudoers roster is derived from this type: listing a table needs CAP_NET_ADMIN, so a readback that
+// is not an operation is a command nobody authorized -- and a converge that cannot READ what it
+// installed can only report that the install returned zero, which is the inference DESIGN section 5
+// forbids standing in for evidence.
+//
+// THE OPERATION, PARAMETERIZED. Not a nullary enum of binaries: a binary path alone cannot say
+// which directory it may create or who ends up owning it, and granting whole /usr/bin/install is
+// granting root. Every field here narrows the authorization.
+type ExecutorPrivilegedOperation
+  = EnsureOwnedDirectory {
+      path: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: FileMode
+    }
+  | RemoveDirectoryTree { path: NonEmptyStr }
+  | SystemdDaemonReload
+  | SystemdEnableUnit { unit: NonEmptyStr }
+  | SystemdStartUnit { unit: NonEmptyStr }
+  | SystemdMaskNowUnit { unit: NonEmptyStr }
+  | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
+  | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
+  | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
+  | InstallFile {
+      source: NonEmptyStr
+      destination: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: NonEmptyStr
+    }
+  | SystemdReloadUnit { unit: NonEmptyStr }
+  | SystemdRestartUnit { unit: NonEmptyStr }
+  | ReadNftTable { family: NonEmptyStr, table: NonEmptyStr }
+  | ReadNftRuleset
+  | ReadFileSha256 { path: NonEmptyStr }
+  | ReadConntrackExpectations
+  | ReadLegacyXtablesRules
+  | ReadUserspaceConntrackHelpers
+  | ReadDirectoryIdentity { path: NonEmptyStr }
+  | ListDirectoryEntries { path: NonEmptyStr }
+  | RunGunbcEntryAs {
+      run_as: NonEmptyStr
+      workspace_root: NonEmptyStr
+      binary: NonEmptyStr
+      source_roots: List<NonEmptyStr>
+      entry: NonEmptyStr
+      function: NonEmptyStr
+    }
+
+// THE PRINCIPAL AN OPERATION RUNS AS IS A FACT OF THE OPERATION, not of the renderer. Every
+// operation above needs root. RunGunbcEntryAs names its exact service principal: it runs a released
+// gunbc entry as the service account whose authority it needs (the commissioning adapter is root;
+// the approval broker's ntfy runtime
+// observation reads /proc/<MainPID> of gunbc-ntfy's own process, which that uid can read and the
+// operator's cannot). Before this, executor_sudoers_run_as was a constant, and the elevation always
+// had -n and no -u. Both the sudoers `(run_as)` field and the `sudo -u` word are now read from this
+// one match. So a grant cannot name one principal while the command elevates to another.
+type OperationPrincipal
+  = RunsAsRoot
+  | RunsAsAccount { login: NonEmptyStr }
+
+// A gunbc ENTRY RUN IS ALSO AN OPERATION, and its argv is gunbc.cli_invoke's one `gunbc run` shape.
+// It is not re-spelled here. The words are exact and argument-free: no --arg, so the sudoers
+// match (which is this argv) leaves no value open for the grantee to choose. The binary and every
+// path are absolute and name one release directory, so the grant authorizes one build over one
+// tree, and a sudoers wildcard is never needed to name it.
+//
+// IT RUNS WITH ITS LOCUS AS ITS CHECKOUT ROOT. The seed resolves a workspace root before any verb,
+// from gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name or by walking up from the
+// working directory. sudo keeps the caller's working directory, which is no checkout, so without the
+// binding the entry refuses before it reads anything (found running the approval broker's ntfy
+// observation helper by hand on srv1, 2026-09-28). The binding is part of the argv, so the sudoers
+// match covers it and the grantee cannot point the root elsewhere. It goes through env(1) because
+// sudo's env_reset drops anything set outside the command.
+fn gunbc_entry_run_argv(
+  workspace_root: NonEmptyStr,
+  binary: NonEmptyStr,
+  source_roots: List<NonEmptyStr>,
+  entry: NonEmptyStr,
+  function: NonEmptyStr,
+) -> List<NonEmptyStr> {
+  concat(
+    map(env_prefixed_argv(bindings: [EnvSet { name: gunbc_workspace_root_env_name, value: workspace_root as String }], command_argv: [binary as String]), w => w as NonEmptyStr),
+    map(
+      invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+        source_roots: map(source_roots, r => r as String),
+        entry: entry as String,
+        functions: [function as String],
+        claim_run: false,
+        arguments: [],
+      )),
+      w => w as NonEmptyStr,
+    ),
+  )
+}
+
+// THE ONE PROJECTION. Everything else in this module derives from this function, so there is
+// exactly one place where an operation becomes words.
+fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<NonEmptyStr> {
+  match op {
+    EnsureOwnedDirectory { path: p, owner: o, group: g, mode: m } =>
+      concat(
+        [ci_runner_sudo_binary_path(b: SudoInstall)],
+        coreutils_install_directory_owned_arguments(mode: m, owner: o, group: g, path: p as String) |> map(a => a as NonEmptyStr),
+      )
+    RemoveDirectoryTree { path: p } => [
+      ci_runner_sudo_binary_path(b: SudoRm),
+      "-rf" as NonEmptyStr,
+      p
+    ]
+    EnsureSystemAccount { login: l, shell: sh } => [
+      ci_runner_sudo_binary_path(b: SudoUseradd),
+      "--system" as NonEmptyStr,
+      "--no-create-home" as NonEmptyStr,
+      "--shell" as NonEmptyStr,
+      sh,
+      l
+    ]
+    EnsureSupplementaryGroupMembership { login: l, group: g } => [
+      ci_runner_sudo_binary_path(b: SudoUsermod),
+      "-aG" as NonEmptyStr,
+      g,
+      l
+    ]
+    InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
+      ci_runner_sudo_binary_path(b: SudoInstall),
+      "-m" as NonEmptyStr,
+      m,
+      "-o" as NonEmptyStr,
+      o,
+      "-g" as NonEmptyStr,
+      g,
+      src,
+      dst
+    ]
+    SystemdReloadUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_reload_verb,
+      u
+    ]
+    SystemdRestartUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_restart_verb,
+      u
+    ]
+    ReadFileSha256 { path: p } => concat([sha256sum_binary_path], map(sha256sum_file_command(path: p as String).arguments, word => word as NonEmptyStr))
+    ReadNftRuleset => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_ruleset_arguments)
+    ReadConntrackExpectations => concat([ci_runner_sudo_binary_path(b: SudoConntrack)], conntrack_list_expectations_arguments)
+    ReadLegacyXtablesRules => concat([ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)], iptables_legacy_save_arguments)
+    ReadUserspaceConntrackHelpers => concat([ci_runner_sudo_binary_path(b: SudoNfct)], nfct_helper_list_arguments)
+    ReadDirectoryIdentity { path: p } => [ci_runner_sudo_binary_path(b: SudoStat), "-c" as NonEmptyStr, owned_directory_stat_format as NonEmptyStr, "--" as NonEmptyStr, p]
+    ListDirectoryEntries { path: p } => [ci_runner_sudo_binary_path(b: SudoLs), "-1A" as NonEmptyStr, "--" as NonEmptyStr, p]
+    ReadNftTable { family: f, table: t } => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_table_arguments_wire(family_wire: f, name: t))
+    SystemdDaemonReload => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      "daemon-reload" as NonEmptyStr
+    ]
+    SystemdEnableUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_enable_verb,
+      u
+    ]
+    SystemdStartUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_start_verb,
+      u
+    ]
+    SystemdMaskNowUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_mask_verb,
+      systemctl_now_flag,
+      u
+    ]
+    SystemdSetUnitProperty { unit: u, assignment: a } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_set_property_verb,
+      u,
+      a
+    ]
+    RunGunbcEntryAs { run_as: _, workspace_root: w, binary: b, source_roots: rs, entry: e, function: f } =>
+      gunbc_entry_run_argv(workspace_root: w, binary: b, source_roots: rs, entry: e, function: f)
+  }
+}
+
+// EXHAUSTIVE, NO WILDCARD: a new operation must say whom it runs as instead of inheriting root.
+fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> OperationPrincipal {
+  match op {
+    RunGunbcEntryAs { run_as: u, workspace_root: _, binary: _, source_roots: _, entry: _, function: _ } => RunsAsAccount { login: u }
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => RunsAsRoot
+    RemoveDirectoryTree { path: _ } => RunsAsRoot
+    SystemdDaemonReload => RunsAsRoot
+    SystemdEnableUnit { unit: _ } => RunsAsRoot
+    SystemdStartUnit { unit: _ } => RunsAsRoot
+    SystemdMaskNowUnit { unit: _ } => RunsAsRoot
+    SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
+    EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => RunsAsRoot
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => RunsAsRoot
+    SystemdReloadUnit { unit: _ } => RunsAsRoot
+    SystemdRestartUnit { unit: _ } => RunsAsRoot
+    ReadNftTable { family: _, table: _ } => RunsAsRoot
+    ReadFileSha256 { path: _ } => RunsAsRoot
+    ReadNftRuleset => RunsAsRoot
+    ReadConntrackExpectations => RunsAsRoot
+    ReadLegacyXtablesRules => RunsAsRoot
+    ReadUserspaceConntrackHelpers => RunsAsRoot
+    ReadDirectoryIdentity { path: _ } => RunsAsRoot
+    ListDirectoryEntries { path: _ } => RunsAsRoot
+  }
+}
+
+fn operation_principal_sudoers_run_as(p: OperationPrincipal) -> NonEmptyStr {
+  match p {
+    RunsAsRoot => executor_sudoers_run_as
+    RunsAsAccount { login: l } => l
+  }
+}
+
+// THE ELEVATED INVOCATION, from the same principal the sudoers line reads. The root arm is
+// sudo_elevate unchanged (-n, no -u), so no emitted byte for an existing operation moves.
+fn executor_privileged_operation_elevated(op: ExecutorPrivilegedOperation) -> ElevatedInvocation {
+  let argv = map(executor_privileged_operation_argv(op: op), w => w as String)
+  match executor_privileged_operation_principal(op: op) {
+    RunsAsRoot => sudo_elevate(command: argv)
+    RunsAsAccount { login: l } => sudo_elevate_as(user: l, command: argv)
+  }
+}
+
+fn executor_privileged_operation_elevated_argv(op: ExecutorPrivilegedOperation) -> List<String> {
+  let e = executor_privileged_operation_elevated(op: op)
+  concat([e.bin_path], e.args)
+}
+
+// THE SAME ELEVATION AS AN ArgvCommand, for a caller that RUNS the operation through the command
+// transport (gunbc.command_runner) rather than rendering it: the principal dispatch is the one above,
+// so the words run are the words the sudoers line grants.
+fn executor_privileged_operation_elevated_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
+  let argv = map(executor_privileged_operation_argv(op: op), w => w as String)
+  match executor_privileged_operation_principal(op: op) {
+    RunsAsRoot => sudo_elevate_command(command: argv)
+    RunsAsAccount { login: l } => sudo_elevate_as_command(user: l, command: argv)
+  }
+}
+
+// WHY SystemdSetUnitProperty IS ADMISSIBLE WHERE A PRIVILEGED FILE-INSTALL WAS VETOED (parent
+// ruling, warm-seal-35, 2026-08-29). A privileged operation must not copy bytes an unprivileged
+// principal can author: a granted `install <staged> /etc/systemd/system/<unit>` has a constant argv
+// but the CONTENT is the payload, so a job-user-writable staged source is root escalation from any
+// CI job. Here the payload IS the argv: one `Property=value` word, derived from the modeled
+// directive authority and pinned exactly by the sudoers match, and systemd renders and owns the
+// persisted drop-in under its own authority. A grantee can apply exactly the pinned assignment to
+// exactly the pinned unit, and nothing else. The unit and assignment are parameters and every
+// granted pair is named in full, for the same reason the directory operations name their paths.
+
+// THE TWO SERVICE TRANSITIONS ARE TWO OPERATIONS, AND THE GRANT IS WHY THAT IS STRUCTURAL RATHER
+// THAN STYLISTIC. A single SystemdEnableNowUnit variant would render one sudoers line authorizing
+// `systemctl enable --now <unit>`, and a host holding it could activate a unit immediately with no
+// separate authorization for doing so -- the two transitions would be one grant, so no policy could
+// ever permit durable boot intent while withholding immediate activity, or the reverse. Naming them
+// separately makes each transition its own authorization, and the sudoers match derived from each is
+// exact: neither line matches the fused argv, so `enable --now` has no grant on any executor host and
+// is refused by sudo rather than by anybody remembering not to write it.
+//
+// THE UNIT IS A PARAMETER AND EVERY GRANTED UNIT IS NAMED IN FULL, for the same reason the directory
+// operations name their paths: a sudoers wildcard over unit names would authorize activating units
+// this fleet does not model, and `systemctl enable` accepts a path as a unit argument.
+
+// THE SUDOERS COMMAND MATCH IS THE ARGV. Derived, never authored beside it, and spelled in sudoers'
+// own grammar. sudoers(5), "Command line arguments": the characters `,` `:` `=` and `\` must be
+// escaped with a backslash when used in a command's arguments, because unescaped they are Cmnd_Spec
+// grammar (list separators, a run-as/tag delimiter, an assignment, the escape itself). The escaped
+// spelling is the one the grammar documents, and it matches the same argv word. A bare `=` in these
+// arguments is evidently accepted by the sudo installed today: the systemctl set-property grants below
+// were rendered bare and passed the visudo gate. So this is the documented spelling replacing a
+// tolerated one, not a repair of grants known to mis-match. The backslash is escaped first so the
+// escapes added for the other three are not escaped again.
+// First consumers of the escape: the env(1) binding in a gunbc entry run (`GUNBC_WORKSPACE_ROOT=<dir>`,
+// see RunGunbcEntryAs) and a systemctl set-property assignment (`<Property>=<value>`,
+// gunbc.runner.runner_host_grants).
+data sudoers_argument_escaped_characters: List<String> = ["\\", ",", ":", "="]
+
+fn sudoers_argument_word(w: String) -> String {
+  fold(sudoers_argument_escaped_characters, init: w, f: (acc, c) => join(split(s: acc, delimiter: c), join(["\\", c], "")))
+}
+
+fn executor_privileged_operation_sudoers_command(op: ExecutorPrivilegedOperation) -> NonEmptyStr {
+  join(map(executor_privileged_operation_argv(op: op), w => sudoers_argument_word(w: w as String)), " ") as NonEmptyStr
+}
+
+// RUN-AS IS root, NOT ALL. The executor previously rendered ALL=(ALL), which authorizes the
+// grantee to run the command as ANY user including other service accounts; Spark already rendered
+// ALL=(root). These were two different grants wearing one vocabulary. root is the narrower of the
+// two, and it is what every root operation here needs. An operation that runs as another account
+// names that account through executor_privileged_operation_principal. It is never ALL.
+data executor_sudoers_run_as: NonEmptyStr = "root" as NonEmptyStr
+
+fn executor_privileged_operation_sudoers_line(
+  grantee: NonEmptyStr,
+  op: ExecutorPrivilegedOperation,
+) -> NonEmptyStr {
+  join([
+    grantee as String,
+    " ALL=(",
+    operation_principal_sudoers_run_as(p: executor_privileged_operation_principal(op: op)) as String,
+    ") NOPASSWD: ",
+    executor_privileged_operation_sudoers_command(op: op) as String
+  ], "") as NonEmptyStr
+}
+
+fn executor_privileged_operations_sudoers_body(
+  grantee: NonEmptyStr,
+  ops: List<ExecutorPrivilegedOperation>,
+) -> String {
+  fold_list(
+    xs: ops,
+    empty: "",
+    cons: (acc, op) =>
+      join([
+        acc,
+        executor_privileged_operation_sudoers_line(grantee: grantee, op: op) as String,
+        "\n"
+      ], "")
+  )
+}
+
+// THE POPULATION IS DERIVED FROM THE SLOT ROSTER, NOT HAND-LISTED. Each managed slot contributes
+// exactly the two operations the provisioner runs against it, so a slot added to the roster brings
+// its own authorization and a slot removed takes it away. The set is EXACT and finite -- every path
+// is named in full, and no wildcard appears anywhere. That is deliberate: a sudoers wildcard such
+// as /opt/actions-runner/* matches `..` (fnmatch's * declines to cross `/` but `..` contains none),
+// so `rm -rf /opt/actions-runner/..` would be authorized by it. Naming the slots exactly costs a
+// longer generated file and removes the traversal entirely.
+data executor_managed_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+
+fn runner_slot_install_operations(
+  slot_dirs: List<NonEmptyStr>,
+  slot_owner: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  map(slot_dirs, d => EnsureOwnedDirectory {
+    path: d,
+    owner: slot_owner,
+    group: slot_owner,
+    mode: executor_managed_directory_mode,
+  })
+}
+
+fn runner_slot_privileged_operations(
+  slot_dirs: List<NonEmptyStr>,
+  slot_owner: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  fold_list(
+    xs: slot_dirs,
+    empty: [] as List<ExecutorPrivilegedOperation>,
+    cons: (acc, d) =>
+      acc + [
+        RemoveDirectoryTree { path: d },
+        EnsureOwnedDirectory {
+          path: d,
+          owner: slot_owner,
+          group: slot_owner,
+          mode: executor_managed_directory_mode,
+        }
+      ]
+  )
+}
+
+// THE STRING RENDERING IS A TRANSPORT SCAFFOLD, MARKED AS ONE. Review 55676 is right that a modeled
+// argv must not launder an unmarked string realization: shell is one transport among N, and a
+// function that concatenates a program is a realization detail that the canonical emitter should
+// eventually own.
+//
+// WHAT THIS CHANGE ACTUALLY DID TO THE STRING SURFACE, because "introduces" would overstate it:
+// extdeps.github.actions_runner on main already carries THREE inline join(["sudo ", ...])
+// concatenations, under this module's sibling scaffold row
+// (actions_runner_slot_extract_script_scaffold), and this PR replaced them with ONE derived
+// rendering. The debt predates the diff and the diff reduces its authorings from three to one; what
+// was missing was the marker on the new home, which is what this row supplies.
+//
+// It binds to the same dissolution target the sibling binds to, because they dissolve together or
+// not at all: when host_effect_apply owns the actuation, neither this renderer nor the extract
+// script needs to spell a program.
+data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
+
+// THE SHELL RENDERING IS THE ELEVATED ARGV, QUOTED. Quoting is a property of the shell that carries the
+// words, not of the authorization: sudo receives argv AFTER the shell has parsed it, so
+// `sudo -n '/usr/bin/rm' '-rf' '/opt/actions-runner/srv3-09'` presents sudo with exactly the words the
+// sudoers match names, unquoted. That is why one argv can ground both renderings without either
+// having to know about the other's escaping.
+//
+// ROUTED THROUGH sudo_elevate, NOT HAND-SPELLED. This function previously carried its own "sudo "
+// prefix, which meant the -n (non-interactive) flag that makes a missing NOPASSWD grant fail closed
+// rather than hang was absent from every shell invocation it produced. Elevation is a module-level
+// fact about an invocation — the binary, the non-interactive flag, the flag's position — and the
+// hand-spelling was a §3 fork: a second authorship of the same calling convention, duplicating the
+// binary path and omitting the flag that distinguishes refusal from a deadlocked tty wait.
+// IDEMPOTENCE IS A PROPERTY OF THE OPERATION, NOT A FAVOUR ITS CALLER DOES IT. `useradd` exits 9
+// when the account exists, so EnsureSystemAccount -- whose name promises the opposite -- fails on
+// every convergence after the first. That was invisible because its ONE caller
+// (live_deploy.emit deploy_publication_principal_ensure_command) wrapped it in `id -u ... ||`, so
+// the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
+// re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
+//
+// EXACTLY ONE OPERATION NEEDS A PRECONDITION, and that was established by measurement rather than
+// assumed. An earlier revision also guarded EnsureSupplementaryGroupMembership with an
+// `id -nG | tr | grep -qx` pipeline -- a hand-authored program smuggled into a string, solving a
+// problem that does not exist: `usermod -aG` appending a group the user already has exits 0
+// (measured on srv1, twice). Deleting that arm removed the pipeline rather than modeling it, which
+// is the better outcome for a check that was never needed.
+type OperationPrecondition
+  = NoPrecondition
+  | AccountExistsCheck { login: NonEmptyStr }
+
+// THE MATCH IS EXHAUSTIVE WITH NO WILDCARD ARM, so a new operation must decide whether it needs a
+// precondition rather than defaulting to "none" and inheriting the same silent non-idempotence
+// this type exists to end.
+fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
+  match op {
+    EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
+    RemoveDirectoryTree { path: _ } => NoPrecondition
+    SystemdDaemonReload => NoPrecondition
+    SystemdEnableUnit { unit: _ } => NoPrecondition
+    SystemdStartUnit { unit: _ } => NoPrecondition
+    SystemdMaskNowUnit { unit: _ } => NoPrecondition
+    SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
+    SystemdReloadUnit { unit: _ } => NoPrecondition
+    SystemdRestartUnit { unit: _ } => NoPrecondition
+    ReadNftTable { family: _, table: _ } => NoPrecondition
+    ReadFileSha256 { path: _ } => NoPrecondition
+    ReadNftRuleset => NoPrecondition
+    ReadConntrackExpectations => NoPrecondition
+    ReadLegacyXtablesRules => NoPrecondition
+    ReadUserspaceConntrackHelpers => NoPrecondition
+    ReadDirectoryIdentity { path: _ } => NoPrecondition
+    ListDirectoryEntries { path: _ } => NoPrecondition
+    RunGunbcEntryAs { run_as: _, workspace_root: _, binary: _, source_roots: _, entry: _, function: _ } => NoPrecondition
+  }
+}
+
+// THE CHECK IS AN ARGV, quoted by the SAME authority that quotes the operation itself rather than
+// interpolated raw. The prior revision spelled `"id -u " + login` with the login unquoted, which
+// is a second authorship of this module's own calling convention -- the §3 fork its annotation
+// below already records having made once.
+fn operation_precondition_argv(p: OperationPrecondition) -> List<NonEmptyStr> {
+  match p {
+    NoPrecondition => []
+    AccountExistsCheck { login: l } => ["id" as NonEmptyStr, "-u" as NonEmptyStr, l]
+  }
+}
+
+// RESIDUE, NAMED: the redirection and the `||` join below are shell CONTROL FLOW authored as text,
+// which is the no-smuggled-programs boundary -- a join belongs in extdeps/languages rows, not in a
+// string literal here. It is one shape rather than a family, and it is the same shape live_deploy
+// already carries as modeled orchestration intent: If-Not-ExitZero(check) then Do(operation), per
+// gunbc.live_deploy.emit's dependency-ensure note.
+//
+// dissolve-on: this renderer is DELETED, not edited, when the precondition is carried as that
+// If-Not-ExitZero orchestration intent through v2.compiler.emit_orchestration orch_emit_pipeline --
+// the path live_deploy's apply already uses -- so the join is emitted from grammar rows and no
+// operator-facing string is assembled by concatenation here. Until then this is the one place the
+// shape is written, so consolidating it later is one deletion rather than a census.
+data executor_privileged_operation_converge_command_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.emit_orchestration",
+    decl_name: "orch_emit_pipeline",
+    field: WholeDeclaration,
+  }
+}
+
+fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
+  let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
+  if list_length(items: check) == 0 {
+    executor_privileged_operation_shell_command(op: op)
+  } else {
+    join([
+      join(map(check, w => posix_single_quote(spelling: w as String)), " "),
+      " >/dev/null 2>&1 || ",
+      executor_privileged_operation_shell_command(op: op),
+    ], "")
+  }
+}
+
+fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
+  join(
+    map(
+      executor_privileged_operation_elevated_argv(op: op),
+      w => posix_single_quote(spelling: w),
+    ),
+    " ",
+  )
+}

@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.refinement_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "refinement_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE (historical): a where clause refining a fn parameter, record field or io field, which v1 reads, while v2 dropped the clause on the lowered binder because body_lower_kept_where_clause served only a type variant.",
+    "OBSERVED: lowering is implemented. Fields (body_lower_field_binder_edges) and parameters (body_lower_typed_param_optional via body_lower_binder_edge_read) wrap through body_lower_binder_type_carrying_optional_where; the two-edge list is body_lower_where_refined_type_edges; the clause reader is body_lower_kept_where_clause. Not v2.std.refinement Refined<B>. body_lowering_reason_field_refinement_unmodeled and body_lowering_reason_parameter_refinement_unmodeled have no producer.",
+    "OBSERVED CARRIER (controls): a named field n / io input n / parameter seconds keeps base Int, predicate range, and the authored min literal; an unrefined binder, a differently named field, a brand clause, or a different min fails those checks.",
+    "OBSERVED NATIVE: emit --entry v2.cli.compile_cli on origin/main 7aa350329a5 (includes #13833 7c9319cbaf) + #13803 + this PR; native v1_compiled sha256 ea4237a4f59fb214d44064212c07be3196d7cf4ae4d3f69ff3549c685788f9ff. std.decimal is past body_lowering_reason_field_refinement_unmodeled. First fatal is infer_reason_sole_constructor_modifiers_unreadable at v2.cli.compile_cli.dag bytes 29902..29913 (ExitFailure). An earlier receipt used a main from before #13833 and reported filesystem_io body_lowering_reason_service_realization_unreachable, which #13833 deleted.",
+    "NOT CLAIMED: structurally guaranteed for the carrier. Predicate enforcement is the sibling gunbc.recurring_failure_mode refinement_predicate_enforced_only_where_the_value_is_a_literal. Off the merge path: isolated native emit --entry std.decimal / extdeps.languages.go.go_mod refuse resolve_reason_unbound_symbol (closure without their imports).",
+    "CEILING for a dropped clause remains structurally impossible once no constructor can omit it; this row does not sit there yet. NEXT-RUNG TRIGGER for PREDICATE checking stays with refinement_predicate_enforced_only_where_the_value_is_a_literal.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_lowers_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_seconds_is_int_where_range_min_one_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "an_unrefined_parameter_does_not_carry_the_where_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_parameter_range_min_zero_is_not_min_one_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_lowers_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_n_is_int_where_range_min_zero_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "an_unrefined_field_n_does_not_carry_the_where_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_named_m_is_not_read_as_n_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_brand_clause_on_n_is_not_range_min_zero_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_range_min_one_on_n_is_not_min_zero_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_io_field_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_io_field_n_is_int_where_range_min_zero_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "an_inline_field_and_a_type_alias_assemble_with_declared_range_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_violating_minus_one_is_not_yet_a_fatal_on_either_spelling_holds", field: WholeDeclaration },
+  ],
+}

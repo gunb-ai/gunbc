@@ -1,0 +1,414 @@
+module extdeps.tailscale.serve
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { NonEmptyStr, Port, List, Bool, Unit }
+import std.algebra { Less, Equal, Greater }
+import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label, semver_version_parse }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import std.host_text { chars }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/kb/1242/tailscale-serve"
+  }
+}
+
+// THE CONFIGURATION KEY, which this module previously did not carry. EnableBackground took a local port and nothing else, so two deployments on one node were indistinguishable to the model while being indistinguishable to tailscale for a different reason: a bare `serve --bg <port>` binds the DEFAULT HTTPS listener at the ROOT mount path, so the second one issued rebinds `/` from the first backend to the second. The model could not express the difference because it did not carry the thing tailscale actually keys on.\n\nThe upstream tells you what the key is by what `off` requires. Per tailscale.com/kb/1242, turning one mapping off is the original command with `off` appended, and 'in off commands, the <target> argument is optional, but all original flags are required' — so the identity is (listener port x mount path x service), not the backend. That is why the backend is a field here rather than the identity: two endpoints differing only in backend are the SAME endpoint being reassigned, which is exactly the collision.\n\nThe root mount is a distinct VARIANT rather than a path string of \"/\", because the upstream spells them differently — the root is the absence of --set-path, not --set-path=/ — and the docs do not state that --set-path=/ is accepted at all. Inventing that equivalence would be the same uncited capability claim this module is being corrected for.
+type TailscaleServeMount
+  = ServeRootMount
+  | ServeSetPath { path: NonEmptyStr }
+
+type TailscaleServeEndpoint {
+  https_port: Port
+  mount: TailscaleServeMount
+  backend: NonEmptyStr
+}
+
+fn tailscale_serve_mount_argv(mount: TailscaleServeMount) -> List<String> {
+  match mount {
+    ServeRootMount => []
+    ServeSetPath { path } => [concat("--set-path=", path as String)]
+  }
+}
+
+fn tailscale_serve_endpoint_flags(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    [concat("--https=", to_string(endpoint.https_port))],
+    tailscale_serve_mount_argv(mount: endpoint.mount),
+  )
+}
+
+// OFF IS THE SAME COMMAND WITH off APPENDED, which is why this projects from the same endpoint value rather than being authored beside it. The upstream requires every original flag on the off form, so an off argv built from a second spelling of the endpoint would silently fail to match the mapping it meant to remove — removing nothing, reporting success. Deriving both directions from one value makes that unwritable.\n\nThe target is omitted deliberately: the docs state it is optional on off commands, and including it would add a second thing that has to agree.
+fn tailscale_serve_enable_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    concat(["serve", "--bg"], tailscale_serve_endpoint_flags(endpoint: endpoint)),
+    [endpoint.backend as String],
+  )
+}
+
+fn tailscale_serve_off_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    concat(["serve"], tailscale_serve_endpoint_flags(endpoint: endpoint)),
+    ["off"],
+  )
+}
+
+fn tailscale_serve_status_json_argv() -> List<String> {
+  ["serve", "status", "--json"]
+}
+
+// The status read as a command. The program is PATH-resolved, as the operations below spell it.
+fn tailscale_program() -> ProgramIdentity = uncataloged_program(invocation: "tailscale")
+
+fn tailscale_serve_status_json_command() -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_serve_status_json_argv())
+}
+
+// FUNNEL IS PUBLIC EXPOSURE. The serve config's AllowFunnel member (tailscale ipn.ServeConfig
+// AllowFunnel, map[HostPort]bool; tailscale.com/kb/1223) names each listener the node publishes to
+// the public internet; a listener absent or false there is reachable only from the tailnet. The
+// projection answers every HostPort mapped to true, or that the document could not be read -- the
+// same unreadable-is-not-empty line tailscale_serve_status_proxy_targets draws.
+type TailscaleFunnelProjection
+  = FunnelListeners { host_ports: List<String> }
+  | FunnelStatusUnreadable
+
+fn tailscale_serve_status_funnel_listeners(status_json: String) -> TailscaleFunnelProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentUnreadable { gap: _ } => FunnelStatusUnreadable
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "AllowFunnel") {
+        Absent => FunnelListeners { host_ports: [] }
+        Present { value: JsonObject { members: ms } } =>
+          FunnelListeners { host_ports: map(filter(ms, m => match m.value { JsonBool { value: b } => b  JsonNull => true  JsonNumber { lexeme: _ } => true  JsonString { value: _ } => true  JsonArray { elements: _ } => true  JsonObject { members: _ } => true }), m => m.key) }
+        Present { value: _ } => FunnelStatusUnreadable
+      }
+  }
+}
+
+// THE BACKEND IS TAILSCALE'S OWN TARGET WORD: a loopback port, or a unix socket spelled
+// "unix:<path>" (tailscale ipn/serve.go ExpandProxyTargetValue: `unix:` is handled before URL
+// parsing and kept verbatim as the handler's Proxy; since v1.98.9 a unix target may be configured
+// only by root, TS-2026-005). So the status projection of a unix target is the target itself, and
+// of a port it is the http://127.0.0.1 URL the docs state is the only proxy form for ports.
+data tailscale_serve_unix_target_prefix: String = "unix:"
+
+fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
+  concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
+}
+
+// The socket path a unix target names, or nothing for a port backend: the inverse of
+// tailscale_serve_unix_target.
+fn tailscale_serve_unix_target_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr? {
+  let backend = endpoint.backend as String
+  if starts_with(s: backend, prefix: tailscale_serve_unix_target_prefix) && length(backend) > length(tailscale_serve_unix_target_prefix) {
+    Present { value: substring(s: backend, start: length(tailscale_serve_unix_target_prefix), end: length(backend)) as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+// The backend word that produces a status proxy target: the inverse of tailscale_serve_proxy_url.
+// A unix target is its own word and a loopback port URL is its port; any other target (another
+// host, another scheme) is not a backend this module's endpoint form can restate, and answers
+// nothing rather than an approximation.
+data tailscale_serve_port_proxy_prefix: String = "http://127.0.0.1:"
+
+fn tailscale_serve_backend_of_proxy_target(target: String) -> NonEmptyStr? {
+  if starts_with(s: target, prefix: tailscale_serve_unix_target_prefix) && length(target) > length(tailscale_serve_unix_target_prefix) {
+    Present { value: target as NonEmptyStr }
+  } else if starts_with(s: target, prefix: tailscale_serve_port_proxy_prefix) {
+    let port = substring(s: target, start: length(tailscale_serve_port_proxy_prefix), end: length(target))
+    match parse_int(s: port) {
+      Present { value: n } => if n > 0 && to_string(n) == port { Present { value: port as NonEmptyStr } } else { none }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+// THE PEER A UNIX TARGET SEES. tailscaled runs as root and it is tailscaled that dials the target,
+// so a connection Serve proxies to a unix socket arrives with root as its kernel-attested peer;
+// since v1.98.9 only root may configure a unix target at all (TS-2026-005).
+data tailscale_serve_unix_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+
+fn tailscale_serve_backend_is_unix_target(endpoint: TailscaleServeEndpoint) -> Bool {
+  starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix)
+}
+
+fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
+  if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
+  else { concat(tailscale_serve_port_proxy_prefix, endpoint.backend as String) }
+}
+
+fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {
+  match mount {
+    ServeRootMount => "/"
+    ServeSetPath { path } => path as String
+  }
+}
+
+fn json_unique_member_value(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value } => Present { value: value }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn tailscale_status_handler_proxy(handler: JsonValue) -> List<String> {
+  match json_unique_member_value(v: handler, key: "Proxy") {
+    Present { value: JsonString { value: proxy } } => [proxy]
+    Present { value: _ } => []
+    Absent => []
+  }
+}
+
+fn tailscale_status_web_entry_proxies(entry: JsonValue, mount: TailscaleServeMount) -> List<String> {
+  match json_unique_member_value(v: entry, key: "Handlers") {
+    Present { value: handlers } =>
+      match json_unique_member_value(v: handlers, key: tailscale_serve_mount_status_key(mount: mount)) {
+        Present { value: handler } => tailscale_status_handler_proxy(handler: handler)
+        Absent => []
+      }
+    Absent => []
+  }
+}
+
+fn tailscale_status_web_proxies(web: JsonValue, mount: TailscaleServeMount) -> List<String> {
+  match web {
+    JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+// Tailscale documents `serve status --json` as the machine-readable status surface. For the legacy
+// node Serve configuration used by srv1, Web.<dns:port>.Handlers.<mount>.Proxy names the currently
+// routed backend. DNS is intentionally not treated as identity here: it is a map key derived by
+// tailscaled and the owned endpoint is listener x mount. Duplicate or wrong-shaped members yield no
+// proxy.
+//
+// That sentence used to end 'which the blue/green selector refuses before mutation; they never
+// select a plausible slot', citing srv1_blue_green_slot_selection. That selector was deleted with
+// the blue/green pair on 2026-08-19, so the citation named a symbol that no longer resolves -- the
+// DESIGN section 3 stale-citation class, in an extdeps module. The projection's own behaviour is
+// unchanged: a wrong-shaped member still yields no proxy. What is gone is the consumer that acted
+// on it, and this module states the upstream fact rather than who reads it.
+// tailscale_serve_status_proxy_targets and tailscale_serve_status_json_argv now have no production
+// consumer at all and are held open only by test.claim.tailscale_serve_status.
+
+// AN UNREADABLE STATUS IS NOT AN EMPTY ONE. This projection previously answered [] when
+// parse_json refused the document, which is the empty-observation narrow DESIGN names: "I could not
+// read the status" rendered as the verdict "no proxy is configured". A consumer deciding whether a
+// backend is routed cannot distinguish those, and they have opposite remedies -- an empty status
+// means configure a proxy, an unreadable one means look at why the status surface changed shape.
+//
+// THE INNER Absent ARMS ARE LEFT AS THEY WERE, deliberately. A document that parses but carries no
+// "Web" member, or no handler at this mount, genuinely HAS no proxy there: that arm sits downstream
+// of a member LOOKUP that returned absent, which is not-applicable rather than malformed, and
+// DESIGN's recognition rule for that class puts it on the other side of the line. Only the arm that
+// could not read the document at all is a refusal.
+//
+// The refusal is a DOMAIN fact -- this status surface was unreadable -- rather than a re-spelling of
+// the parse cause, so it stays true and stays useful when parse_json later distinguishes empty,
+// not-JSON and truncated; that change enriches WHY this arm fired without replacing it.
+type TailscaleServeStatusProjection
+  = ServeStatusProxies { targets: List<String> }
+  | ServeStatusUnreadable
+
+fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleServeMount) -> TailscaleServeStatusProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "Web") {
+        Present { value: web } =>
+          ServeStatusProxies { targets: tailscale_status_web_proxies(web: web, mount: mount) }
+        Absent => ServeStatusProxies { targets: [] }
+      }
+    JsonDocumentUnreadable { gap: _ } => ServeStatusUnreadable
+  }
+}
+
+// THE SAME PROJECTION, KEYED BY THE ROUTE RATHER THAN THE MOUNT ALONE. Web is tailscale
+// ipn.ServeConfig Web, map[HostPort]*WebServerConfig, so every member key is "<dns>:<port>" and the
+// port after the last colon is the listener. tailscale_serve_status_proxy_targets reads a mount
+// across every listener, which cannot answer whether THIS route (listener x mount) is proxied: a
+// handler at the same mount on another listener would read as this one. Only members whose
+// HostPort ends in the key's listener port contribute here; DNS is still not identity.
+fn tailscale_status_web_listener_proxies(web: JsonValue, key: TailscaleServeRouteKey) -> List<String> {
+  match web {
+    JsonObject { members } => flat_map(
+      filter(members, member => ends_with(s: member.key, suffix: concat(":", to_string(key.https_port)))),
+      member => tailscale_status_web_entry_proxies(entry: member.value, mount: key.mount),
+    )
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+fn tailscale_serve_status_route_proxy_targets(status_json: String, key: TailscaleServeRouteKey) -> TailscaleServeStatusProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "Web") {
+        Present { value: web } =>
+          ServeStatusProxies { targets: tailscale_status_web_listener_proxies(web: web, key: key) }
+        Absent => ServeStatusProxies { targets: [] }
+      }
+    JsonDocumentUnreadable { gap: _ } => ServeStatusUnreadable
+  }
+}
+
+// SCOPED REMOVAL IS A VERSION-OBSERVED CAPABILITY, NOT A CONSTANT — and the constant it replaces
+// was wrong. This module's consumer previously asserted that tailscale serve has no per-port
+// removal and only a node-global reset, built a refusal arm on that premise, and cited nothing. The
+// upstream documents scoped removal via `off`, and separately notes that the Serve CLI CHANGED in
+// client 1.52 (review, 2026-07-30; tailscale.com/kb/1242).\n\nSo the capability is a fact about the
+// client installed on a particular host at a particular time, which is why it is a function of an
+// observed version rather than a row. The verdict is three-valued because an unobserved version is
+// neither capable nor incapable, and collapsing that to either pole is what produced the false
+// claim above. A consumer must refuse BEFORE mutating rather than after, because the failure this
+// guards is a teardown that silently removes nothing and reports success.\n\nThe boundary is stated
+// as the version the upstream itself names, not as a version this repo picked.
+
+// THE BOUNDARY IS THE PARSE RESULT, never a hand-built record: the fields of a SemVerVersion
+// are confined code-point runs (semver_numeric_field is the only admission), so the boundary
+// arrives through the parser and an unadmitted label is carried as a refusal to every
+// consumer, not a fabricated version (review 77150).
+data tailscale_scoped_serve_off_minimum: SemVerVersion? = semver_version_parse(cps: chars(text: "1.52.0" as String))
+
+type TailscaleServeCapability
+  = ScopedRemovalSupported { observed: SemVerVersion }
+  | ScopedRemovalUnsupported { observed: SemVerVersion }
+  | ScopedRemovalUnobserved { reason: String }
+
+// THE VERDICT CARRIES WHAT IT WAS COMPUTED FROM. A Bool capability cannot be re-derived when the boundary moves or the host is upgraded, and cannot say WHICH client it is describing — so the observed version rides on both decided arms and only the undecided arm carries prose.\n\nIt is a SemVerVersion rather than the version string tailscale prints, grounded on extdeps.version.semver, because an earlier draft of this row held both a display string and a parsed major/minor pair — two representations of one fact, free to disagree, which is the exact defect class this module is being repaired for. The label is a projection (semver_version_label), so there is nothing to keep in sync.\n\nComparison is semver_compare rather than a hand-written major/minor ladder, for the same reason: the ordering is already modeled, and a second ladder would be a second answer.
+fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServeCapability {
+  match tailscale_scoped_serve_off_minimum {
+    Absent => ScopedRemovalUnobserved { reason: "the serve-off boundary label failed to parse — a defect in the boundary row, not an observation gap" }
+    Present { value: minimum } =>
+      match semver_compare(a: observed, b: minimum) {
+        Less => ScopedRemovalUnsupported { observed: observed }
+        Equal => ScopedRemovalSupported { observed: observed }
+        Greater => ScopedRemovalSupported { observed: observed }
+      }
+  }
+}
+
+fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+}
+
+fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: endpoint))
+}
+
+// THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
+type TailscaleServeRouteKey {
+  https_port: Port
+  mount: TailscaleServeMount
+}
+
+fn tailscale_serve_route_key(endpoint: TailscaleServeEndpoint) -> TailscaleServeRouteKey {
+  TailscaleServeRouteKey {
+    https_port: endpoint.https_port,
+    mount: endpoint.mount,
+  }
+}
+
+fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> Bool {
+  match a {
+    ServeRootMount =>
+      match b {
+        ServeRootMount => true
+        ServeSetPath { path: _ } => false
+      }
+    ServeSetPath { path: pa } =>
+      match b {
+        ServeRootMount => false
+        ServeSetPath { path: pb } => pa as String == pb as String
+      }
+  }
+}
+
+fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> Bool {
+  a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
+}
+
+fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
+  join(
+    [
+      to_string(key.https_port),
+      ":",
+      tailscale_serve_mount_status_key(mount: key.mount),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  endpoint.backend
+}
+
+fn tailscale_endpoint_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a == b
+}
+
+fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> Bool {
+  tailscale_endpoint_state_eq(
+    a: tailscale_endpoint_state_of(endpoint: a),
+    b: tailscale_endpoint_state_of(endpoint: b),
+  )
+}
+
+// EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.
+service tailscale.Serve {
+  operation Status {
+    requires none
+    input {}
+    output { stdout: String from "stdout" }
+    readonly
+    transport shell { argv: ["tailscale", "serve", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "tailscale serve status failed"
+    }
+  }
+
+  operation StatusJson {
+    requires none
+    input {}
+    output { stdout: String from "stdout" }
+    readonly
+    transport shell { argv: ["tailscale", "serve", "status", "--json"] }
+    exit {
+      0 => Unit
+      nonzero => String "tailscale serve status --json failed"
+    }
+  }
+}

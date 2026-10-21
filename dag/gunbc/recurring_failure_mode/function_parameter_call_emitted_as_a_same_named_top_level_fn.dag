@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.function_parameter_call_emitted_as_a_same_named_top_level_fn
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data function_parameter_call_emitted_as_a_same_named_top_level_fn: RecurringFailureMode = RecurringFailureMode {
+  identity: "function_parameter_call_emitted_as_a_same_named_top_level_fn" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a call through a function-typed PARAMETER whose name matches a top-level fn declared in another module is emitted by the Rust emitter as a call to that top-level fn. The local binding loses to the module-level name, even though the interpreter and the checker bind the parameter correctly.",
+
+    "RECEIPT 2026-10-12, gunbc#13782: v2.compiler.parse parse_module_authored took `normalize: fn(String) -> String`. The emitted crate called v2.compiler.normalize normalize, a later stage, and the crate plan refused it as EmitterReverseEdge. The claims passed under the interpreter. The parameter was renamed `annotation_text`, which avoids the refusal and does not repair the emitter.",
+
+    "HARM: the refusal in the receipt is INCIDENTAL. It fired only because the mis-bound target sat in a later stage, which forms a reverse edge. Where the same-named fn is reachable without a cycle, and its signature fits, the emitted program calls the wrong function silently. That is below the ladder.",
+
+    "DISTINGUISHING FACTS: the wrong binding appears only in emission, never in interpretation, so no claim run observes it. The control that would discriminate is an emitted-and-executed program whose parameter shadows a reachable top-level fn of the same signature, asserting that the parameter's value is the one called.",
+
+    "RUNG FOUND AT: below the ladder (silent) in general; mechanically refused only by accident when the mis-bound target forms a reverse crate edge. CEILING: structurally guaranteed -- name resolution is decidable and the emitter must consume the resolved binding the checker already computed rather than re-resolving by spelling. NEXT TRIGGER: the Rust emitter reads each call's callee from the resolved binding of its occurrence (local parameter before module scope), plus an emitted-and-executed shadowing control enrolled under the required gate."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.parse", decl_name: "parse_module_authored", field: WholeDeclaration },
+  ],
+}

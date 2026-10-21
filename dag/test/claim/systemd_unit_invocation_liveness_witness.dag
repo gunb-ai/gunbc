@@ -1,0 +1,26 @@
+module test.claim.systemd_unit_invocation_liveness_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
+import gunbc.systemd_unit_invocation_liveness {
+  UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, unit_invocation_holder_liveness,
+}
+
+data recorded: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr
+
+test fn a_reused_unit_name_with_a_different_invocation_id_is_not_the_same_holder() -> Bool {
+  let live = unit_invocation_holder_liveness(recorded_invocation: recorded, observed: UnitInvocationPresent { invocation_id: recorded })
+  let moved = unit_invocation_holder_liveness(
+    recorded_invocation: recorded,
+    observed: UnitInvocationPresent { invocation_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr },
+  )
+  let gone = unit_invocation_holder_liveness(recorded_invocation: recorded, observed: UnitInvocationAbsent)
+  let unread = unit_invocation_holder_liveness(
+    recorded_invocation: recorded,
+    observed: UnitInvocationUnreadable { cause: "systemctl show refused" as NonEmptyStr },
+  )
+  (match live { HolderObservedLive { evidence: _ } => true  _ => false })
+    && (match moved { HolderObservedDead { evidence: e } => (e as String) != ""  _ => false })
+    && (match gone { HolderObservedDead { evidence: _ } => true  _ => false })
+    && (match unread { HolderLivenessUnobservable { cause: c } => (c as String) == "systemctl show refused"  _ => false })
+}

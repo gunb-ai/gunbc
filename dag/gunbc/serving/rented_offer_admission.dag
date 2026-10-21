@@ -1,0 +1,243 @@
+module gunbc.serving.rented_offer_admission
+
+import std.types { List, Bool, String, NonEmptyStr, EpochSecs, Timestamp }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision, provider_route_eq }
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, DispositionStanding, refusal_reason,
+}
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness { RouteExercise, RequireExercisedRoute }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.selection { CandidateOffer }
+import product.fabric.capacity_admission {
+  CapacityRefusal, CapacityRouteNotModeled, CapacityRouteAmbiguous, CapacityRouteFactsNameAnotherRoute,
+  CapacitySupplyUnobserved, CapacityRouteNeverExercised, CapacityRouteExerciseExpired,
+  CapacityNodeNotQualified, CapacityDeliveryClaimNamesAnotherOffer, CapacityDeliveryClaimReceiptMismatch,
+  CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
+  CapacityPermitNamesAnotherRoute, CapacityPermitNamesAnotherWork, CapacityPermitNamesAnotherDemand,
+}
+import product.fabric.candidate_field {
+  FieldRequest, FieldEntry, FieldAdmitted, FieldExcluded, FieldExclusion, field_entry,
+  FieldCapacityRefused, FieldDispatchInputsNameAnotherOffer,
+}
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+
+// POSTURE IS AN OPERATOR JUDGEMENT, SO IT IS AN ATTESTED ROW OR IT IS UNREAD. Whether a provider's
+// jurisdictions and data handling are acceptable for a customer's data is not derivable from a
+// rental record or an API, and no module may mint it: the compliance posture, the customer and
+// data-handling profiles, the agreement and the three dispositions (prohibited use, sanctions,
+// export) are what the operator attested, by name, on a date, relying on named provider terms.
+// A route with no attestation, or with two, has no posture and admits nothing. This is the
+// operator-attested posture row the capacity admission consumes; it is not a parallel authority
+// to CompliancePostureRevision, it is where one comes from.
+//
+// THE ATTESTING DECLARATION IS THE DECISION RECEIPT the provider-use permit records, so a permit
+// re-derives to the operator's own row. The terms relied on are a first-and-further pair so that an
+// attestation citing no provider terms has no spelling.
+type OperatorPostureAttestation {
+  attestation: DeclarationRef
+  route: ProviderRoute
+  attested_by: NonEmptyStr
+  attested_at: Timestamp
+  posture: CompliancePostureRevision
+  customer_profile: DeclarationRef
+  data_handling_profile: DeclarationRef
+  agreement: DeclarationRef
+  terms_relied_on: DeclarationRef
+  further_terms_relied_on: List<DeclarationRef>
+}
+
+data rented_posture_unattested_obligation: NonEmptyStr = "no operator has attested a compliance posture for this provider route; the operator must attest jurisdictions, data classes and the provider terms relied on before the route can admit work" as NonEmptyStr
+
+data rented_posture_attested_twice_obligation: NonEmptyStr = "more than one operator attestation answers for this provider route; roster order must not decide a compliance posture, so the operator must settle which attestation is current" as NonEmptyStr
+
+type PostureStanding
+  = PostureAttested { attestation: OperatorPostureAttestation }
+  | PostureUnattested { route: ProviderRoute, obligation: NonEmptyStr }
+  | PostureAmbiguous { route: ProviderRoute, claimed: List<OperatorPostureAttestation>, obligation: NonEmptyStr }
+
+fn rented_posture_standing(attestations: List<OperatorPostureAttestation>, route: ProviderRoute) -> PostureStanding {
+  let rows = filter(attestations, a => provider_route_eq(a: a.route, b: route))
+  if count(rows) > 1 {
+    PostureAmbiguous { route: route, claimed: rows, obligation: rented_posture_attested_twice_obligation }
+  } else {
+    match rows.first() {
+      Absent => PostureUnattested { route: route, obligation: rented_posture_unattested_obligation }
+      Present { value: only } => PostureAttested { attestation: only }
+    }
+  }
+}
+
+fn rented_attestation_sanction(a: OperatorPostureAttestation) -> RouteScopeSanction {
+  RouteScopeSanction {
+    route: a.route,
+    posture: a.posture,
+    customer_profile: a.customer_profile,
+    data_handling_profile: a.data_handling_profile,
+    requires_agreement: a.agreement,
+  }
+}
+
+// THE WORK'S PROVIDER-USE SCOPE IS A WORK-SIDE FACT, independent of the offer and of the attestation.
+// What the workload is -- which customer profile its data belongs to, which data handling it needs,
+// which agreement it is performed under, and whether its use is prohibited, sanctioned or export
+// controlled -- is declared by the party that owns the workload. Deriving it from the attestation
+// made the sanction/scope comparison in admit_capacity compare a value with itself and so always
+// succeed; here the attestation is what the PROVIDER was judged to offer, this is what the WORK
+// requires, and a mismatch in profile, handling or agreement refuses. Until the operator declares the
+// scope of the internal warm-session workload it is unread, and an unread scope admits nothing.
+type RentedWorkScope {
+  customer_profile: DeclarationRef
+  data_handling_profile: DeclarationRef
+  agreement: DeclarationRef
+  prohibited_use_disposition: DispositionStanding
+  sanctions_disposition: DispositionStanding
+  export_disposition: DispositionStanding
+}
+
+type RentedWorkScopeReading
+  = RentedWorkScopeDeclared { scope: RentedWorkScope }
+  | RentedWorkScopeUnread { obligation: NonEmptyStr }
+
+data rented_work_scope_unread_obligation: NonEmptyStr = "the provider-use scope of the internal warm-session workload (customer profile, data handling, agreement and the prohibited-use, sanctions and export dispositions) has not been declared by the operator, so no rented offer can be compared against it" as NonEmptyStr
+
+fn rented_work_scope(scope: RentedWorkScope, demand: FabricIdentity<NonEmptyStr, DemandKey>, work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: demand,
+    work: work,
+    customer_profile: scope.customer_profile,
+    data_handling_profile: scope.data_handling_profile,
+    agreement: scope.agreement,
+    prohibited_use_disposition: scope.prohibited_use_disposition,
+    sanctions_disposition: scope.sanctions_disposition,
+    export_disposition: scope.export_disposition,
+  }
+}
+
+// THE RENTAL RECORD IS THE ONLY SOURCE OF A REPLICA'S OFFER, and none is read yet. A rented replica's
+// supplier offer (provider route, shape, quote, evidence) is what the provider's own API returned for
+// the rental the operator holds, bound through the provider's supplier module; a replica with no read
+// rental record has no offer, and the offer is never inferred from the replica's engine reading.
+// DECLARED FRONTIER (DESIGN 3c): the rental-record reader that yields RentedOfferRead lands with the
+// warm-trace qualification vertical (it runs against a real rental). Until then production reads
+// RentedOfferNotRead for every replica, which is the typed refusal this seam ends in.
+type RentedOfferReading
+  = RentedOfferRead { replica: RentedReplicaIdentity, request: FieldRequest<NonEmptyStr> }
+  | RentedOfferNotRead { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
+
+data rented_rental_record_unread_obligation: NonEmptyStr = "no provider rental record has been read for this replica, so no supplier offer exists to bind it; read the rental from the provider and bind its offer" as NonEmptyStr
+
+fn rented_offer_reading(replica: RentedReplicaIdentity) -> RentedOfferReading {
+  RentedOfferNotRead { replica: replica, obligation: rented_rental_record_unread_obligation }
+}
+
+data rented_route_roster: List<OfferRouteRow<NonEmptyStr>> = []
+
+data rented_posture_attestations: List<OperatorPostureAttestation> = []
+
+data rented_route_exercises: List<RouteExercise> = []
+
+type RentedAdmissionSources {
+  reading: RentedOfferReading
+  work_scope: RentedWorkScopeReading
+  roster: List<OfferRouteRow<NonEmptyStr>>
+  attestations: List<OperatorPostureAttestation>
+  exercises: List<RouteExercise>
+}
+
+fn rented_production_sources(replica: RentedReplicaIdentity) -> RentedAdmissionSources {
+  RentedAdmissionSources {
+    reading: rented_offer_reading(replica: replica),
+    work_scope: RentedWorkScopeUnread { obligation: rented_work_scope_unread_obligation },
+    roster: rented_route_roster,
+    attestations: rented_posture_attestations,
+    exercises: rented_route_exercises,
+  }
+}
+
+type RentedAdmission
+  = RentedCandidateAdmitted { candidate: CandidateOffer<NonEmptyStr> }
+  | RentedAdmissionRefused { detail: String }
+
+fn rented_capacity_refusal_text(r: CapacityRefusal<NonEmptyStr>) -> String {
+  match r {
+    CapacityRouteNotModeled { offer: o } => join(["no provider route facts are modeled for offer ", o.key as String], "")
+    CapacityRouteAmbiguous { offer: o, claimed: _ } => join(["more than one route-facts row answers for offer ", o.key as String], "")
+    CapacityRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "the route facts govern a different route than the offer runs on"
+    CapacitySupplyUnobserved { offer: o, obligation: _ } => join(["the supply behind offer ", o.key as String, " is unobserved"], "")
+    CapacityRouteNeverExercised { offer: o, route: _ } => join(["the route of offer ", o.key as String, " has never been exercised"], "")
+    CapacityRouteExerciseExpired { offer: o, route: _, latest_valid_through: _, at: _ } => join(["the route exercise of offer ", o.key as String, " has expired"], "")
+    CapacityNodeNotQualified { offer: o, refusals: _ } => join(["the delivery claim of offer ", o.key as String, " is not qualified"], "")
+    CapacityDeliveryClaimNamesAnotherOffer { offer: o, claim_names: _ } => join(["the delivery claim does not name offer ", o.key as String], "")
+    CapacityDeliveryClaimReceiptMismatch { offer: o, claim_names: _, receipt_names: _ } => join(["the delivery claim receipt names another offer than ", o.key as String], "")
+    CapacityNotFungibleForWork { offer: o, fungibility: _ } => join(["offer ", o.key as String, " is not fungible for this work"], "")
+    CapacityUseRefused { offer: o, cause: c } => join(["provider-use admission refused offer ", o.key as String, ": ", refusal_reason(c: c)], "")
+    CapacityPermitNamesAnotherOffer { offer: o, permit_names: _ } => join(["wiring fault: the permit names another offer than ", o.key as String], "")
+    CapacityPermitNamesAnotherRoute { offer: o } => join(["wiring fault: the permit names another route than offer ", o.key as String], "")
+    CapacityPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "wiring fault: the permit names another work"
+    CapacityPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "wiring fault: the permit names another demand"
+  }
+}
+
+fn rented_entry_admission(entry: FieldEntry<NonEmptyStr>) -> RentedAdmission {
+  match entry {
+    FieldAdmitted { candidate: c } => RentedCandidateAdmitted { candidate: c }
+    FieldExcluded { exclusion: x } =>
+      match x.cause {
+        FieldCapacityRefused { refusal: r } => RentedAdmissionRefused { detail: rented_capacity_refusal_text(r: r) }
+        FieldDispatchInputsNameAnotherOffer { inputs_name: n } =>
+          RentedAdmissionRefused { detail: join(["wiring fault: dispatch inputs name offer ", n.key as String, " for offer ", x.offer.key as String], "") }
+      }
+  }
+}
+
+// THE ONE ADMISSION OF A RENTED OFFER INTO THE CANDIDATE FIELD. An unread rental record, an
+// unattested route and every refusal admit_capacity itself produces (route not modeled, supply
+// unobserved, route never exercised, provider-use refused, ...) end in a typed, located refusal; the
+// only admitted arm is a CandidateOffer sealed by product.fabric.selection from an admitted
+// capacity. Readiness is always RequireExercisedRoute: the exercise of a route is a scheduler's work,
+// never a customer turn's.
+fn admit_rented_offer(
+  replica: RentedReplicaIdentity,
+  sources: RentedAdmissionSources,
+  at: EpochSecs,
+  requirements: ExecutionRequirements,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> RentedAdmission {
+  match sources.reading {
+    RentedOfferNotRead { replica: _, obligation: o } =>
+      RentedAdmissionRefused { detail: o as String }
+    RentedOfferRead { replica: read_for, request: request } =>
+      if rented_replica_wire(id: read_for) != rented_replica_wire(id: replica) {
+        RentedAdmissionRefused { detail: join(["wiring fault: the rental record read for replica ", rented_replica_wire(id: read_for), " cannot place replica ", rented_replica_wire(id: replica)], "") }
+      } else {
+      match sources.work_scope {
+      RentedWorkScopeUnread { obligation: o } => RentedAdmissionRefused { detail: o as String }
+      RentedWorkScopeDeclared { scope: work_scope } =>
+      match rented_posture_standing(attestations: sources.attestations, route: request.offer.route) {
+        PostureUnattested { route: _, obligation: o } =>
+          RentedAdmissionRefused { detail: join(["offer ", request.offer.id.key as String, ": ", o as String], "") }
+        PostureAmbiguous { route: _, claimed: _, obligation: o } =>
+          RentedAdmissionRefused { detail: join(["offer ", request.offer.id.key as String, ": ", o as String], "") }
+        PostureAttested { attestation: a } =>
+          rented_entry_admission(entry: field_entry(
+            routes: sources.roster,
+            sanctions: [rented_attestation_sanction(a: a)],
+            active: a.posture,
+            scope: rented_work_scope(scope: work_scope, demand: demand, work: work),
+            decision_receipt: a.attestation,
+            exercises: sources.exercises,
+            readiness: RequireExercisedRoute,
+            at: at,
+            requirements: requirements,
+            request: request,
+          ))
+      }
+      }
+      }
+  }
+}

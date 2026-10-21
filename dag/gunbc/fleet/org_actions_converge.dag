@@ -1,0 +1,34 @@
+module gunbc.fleet.org_actions_converge
+
+import std.process { ProcessExit, exit_failure }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_ensure_for, secret_accessor_grant }
+import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+
+// This module's org-actions READ path moved to gunbc.fleet.org_actions_inspection, which binds it
+// to std.goal_assessment inspect_goal: it only ever read. What remains is a genuine converge -- the
+// Secret Manager accessor binding below gets policy, sets it and reads the grant back.
+
+// THE ACCESSOR BINDING FOR THE App KEY IS A CONVERGE, RUN BY THE CONTROL-PLANE PRINCIPAL. The
+// workload principal (fleet-cloud-convergence) may read secrets it is bound to and may not bind
+// itself, so this entry takes an operator-supplied access token (GUNBC_GCP_ACCESS_TOKEN_FILE, the
+// same channel gunbc.auth.gcp_secret_access uses) and reconciles roles/secretmanager.secretAccessor
+// on ci-github-app-private-key for that principal: get policy, delta, set policy, read back the
+// grant. Once it has run, the org-actions step's in-run mint stops answering 403.
+// THE CELL THIS CEREMONY BINDS, read by the trust-root binder join.
+fn org_admin_app_key_ceremony_grant() -> SecretAccessGrant {
+  secret_accessor_grant(target: gunbai_ci_app_pem_secret)
+}
+
+fn org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
+{
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+    SuppliedTokenReady { token: t } =>
+      secret_access_ensure_for(grant: org_admin_app_key_ceremony_grant(), token_source: OperatorSuppliedToken { token: t })
+  }
+}
+
+// THIS IS THE KEY'S ONLY BINDER, AND IT IS THE CEREMONY'S: the gunbai-ci App key is a trust root
+// (gunbc.auth.gcp_iam_trust_roots) until the deployment-gate App is decided, so no approval-gated route
+// may own its IAM. The approval entries that stood here are deleted with gunbc.auth.approved_secret_grants.

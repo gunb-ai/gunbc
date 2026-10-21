@@ -1,0 +1,259 @@
+module gunbc.workspace_commissioning_executor_journal
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.content_hash { content_hash_validate_lower_hex_length, parse_content_hash }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, json_field_int, FieldRead, FieldMalformed, JsonDocumentUnreadable }
+
+// This journal belongs to the enclosing fleet transaction. It is NOT the controller's
+// Prepared/Committed readiness journal, and a journal record by itself is never a start permit.
+// ReadbackAccepted must be durable before releasing the mutation guard. ReleaseObserved must
+// be durable before publishing fleet generation; replay uses these recorded obligations rather
+// than repeating commissioning after a slot has legitimately admitted its first allocation.
+type WorkspaceExecutorPhase
+  = ExecutorSubmissionRecorded
+  | ExecutorSubmissionFenced
+  | ExecutorInvocationRecorded
+  | ExecutorControllerRetryFenced
+  | ExecutorReadbackAccepted
+  | ExecutorReleaseObserved
+  | ExecutorGenerationCommitted
+
+// The credential plan identity and the reviewed fleet bundle digest are different subjects:
+// the bundle includes the credential, so its digest cannot be embedded in that credential.
+// Recovery joins both instead of comparing a credential identity with a bundle publication.
+type WorkspaceExecutorSubject {
+  slot: NonEmptyStr
+  plan_hash: NonEmptyStr
+  fleet_bundle_hash: NonEmptyStr
+  prior_fleet_generation: Int
+  planned_fleet_generation: Int
+  mutation_generation: CasGeneration
+}
+
+type WorkspaceExecutorRecord {
+  subject: WorkspaceExecutorSubject
+  submitter: NonEmptyStr
+  previous_invocation: String
+  invocation: String
+  phase: WorkspaceExecutorPhase
+}
+
+fn workspace_executor_phase_wire(phase: WorkspaceExecutorPhase) -> String {
+  match phase {
+    ExecutorSubmissionRecorded => "submission-recorded"
+    ExecutorSubmissionFenced => "submission-fenced"
+    ExecutorInvocationRecorded => "invocation-recorded"
+    ExecutorControllerRetryFenced => "controller-retry-fenced"
+    ExecutorReadbackAccepted => "readback-accepted"
+    ExecutorReleaseObserved => "release-observed"
+    ExecutorGenerationCommitted => "generation-committed"
+  }
+}
+
+fn workspace_executor_phase_from_wire(text: String) -> WorkspaceExecutorPhase? {
+  match text {
+    "submission-recorded" => Present { value: ExecutorSubmissionRecorded }
+    "submission-fenced" => Present { value: ExecutorSubmissionFenced }
+    "invocation-recorded" => Present { value: ExecutorInvocationRecorded }
+    "controller-retry-fenced" => Present { value: ExecutorControllerRetryFenced }
+    "readback-accepted" => Present { value: ExecutorReadbackAccepted }
+    "release-observed" => Present { value: ExecutorReleaseObserved }
+    "generation-committed" => Present { value: ExecutorGenerationCommitted }
+    _ => none
+  }
+}
+
+fn workspace_executor_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
+  let subject = record.subject
+  (subject.slot as String) != "" && (subject.plan_hash as String) != ""
+    && (match parse_content_hash(wire: subject.fleet_bundle_hash as String) { Present { value: _ } => true Absent => false })
+    && subject.prior_fleet_generation >= 0 && subject.planned_fleet_generation > 0
+    && subject.prior_fleet_generation == subject.planned_fleet_generation - 1
+    && cas_generation_count(g: subject.mutation_generation) > 0
+    && content_hash_validate_lower_hex_length(text: record.submitter as String, expected_hex_digits: 32)
+    && (record.previous_invocation == "" || content_hash_validate_lower_hex_length(text: record.previous_invocation, expected_hex_digits: 32))
+    && (match record.phase {
+      ExecutorSubmissionRecorded => record.invocation == ""
+      ExecutorSubmissionFenced => record.invocation == ""
+      ExecutorInvocationRecorded => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorControllerRetryFenced => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorReadbackAccepted => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorReleaseObserved => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorGenerationCommitted => workspace_executor_invoked_record_coherent(record: record)
+    })
+}
+
+// Every phase after invocation names a fresh controller invocation distinct from the drained one.
+fn workspace_executor_invoked_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
+  content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+    && record.invocation != record.previous_invocation
+}
+
+// The reviewed subject and mutation generation never change. A replacement submitter can
+// be published only after a fenced submission, with the actual drained predecessor recorded.
+// The privileged drainage adapter owns that transition; a normal retry cannot rearm a start.
+// A failed controller's retry fence is replaced only by a fresh submission from another actor
+// that names the fenced invocation as its drained predecessor.
+fn workspace_executor_record_follows(previous: WorkspaceExecutorRecord, next: WorkspaceExecutorRecord) -> Bool {
+  workspace_executor_record_coherent(record: previous) && workspace_executor_record_coherent(record: next)
+    && previous.subject == next.subject
+    && (previous == next || (match previous.phase {
+      ExecutorSubmissionFenced => next.phase == ExecutorSubmissionRecorded
+        && previous.submitter != next.submitter
+      ExecutorControllerRetryFenced => next.phase == ExecutorSubmissionRecorded
+        && previous.submitter != next.submitter && next.previous_invocation == previous.invocation
+      ExecutorSubmissionRecorded => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorInvocationRecorded => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorReadbackAccepted => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorReleaseObserved => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorGenerationCommitted => workspace_executor_same_submitter_advance(previous: previous, next: next)
+    }))
+}
+
+// An unfenced record advances only by one phase, under the same submitter and drained
+// predecessor, and every phase after invocation keeps the exact controller invocation.
+fn workspace_executor_same_submitter_advance(previous: WorkspaceExecutorRecord, next: WorkspaceExecutorRecord) -> Bool {
+  previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+    && (match previous.phase {
+      ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded || next.phase == ExecutorSubmissionFenced
+      ExecutorInvocationRecorded => (next.phase == ExecutorReadbackAccepted || next.phase == ExecutorControllerRetryFenced)
+        && previous.invocation == next.invocation
+      ExecutorControllerRetryFenced => false
+      ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
+      ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
+      ExecutorSubmissionFenced => false
+      ExecutorGenerationCommitted => false
+    })
+}
+
+fn workspace_executor_record_json(record: WorkspaceExecutorRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "workspace-executor/v2")),
+    json_kv(key: "slot", value: json_string(s: record.subject.slot as String)),
+    json_kv(key: "plan_hash", value: json_string(s: record.subject.plan_hash as String)),
+    json_kv(key: "fleet_bundle_hash", value: json_string(s: record.subject.fleet_bundle_hash as String)),
+    json_kv(key: "prior_fleet_generation", value: json_int(n: record.subject.prior_fleet_generation)),
+    json_kv(key: "planned_fleet_generation", value: json_int(n: record.subject.planned_fleet_generation)),
+    json_kv(key: "mutation_generation", value: json_int(n: cas_generation_count(g: record.subject.mutation_generation))),
+    json_kv(key: "submitter", value: json_string(s: record.submitter as String)),
+    json_kv(key: "previous_invocation", value: json_string(s: record.previous_invocation)),
+    json_kv(key: "invocation", value: json_string(s: record.invocation)),
+    json_kv(key: "phase", value: json_string(s: workspace_executor_phase_wire(phase: record.phase))),
+  ])
+}
+
+fn workspace_executor_record_text(record: WorkspaceExecutorRecord) -> NonEmptyStr {
+  serialize_json(v: workspace_executor_record_json(record: record)) as NonEmptyStr
+}
+
+fn workspace_executor_record_decode(text: String) -> WorkspaceExecutorRecord? {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: body } => workspace_executor_record_decode_body(body: body)
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}
+
+fn workspace_executor_record_decode_body(body: JsonValue) -> WorkspaceExecutorRecord? {
+  match json_field_string(obj: body, key: "fleet_bundle_hash") {
+    FieldRead { value: bundle } => match parse_content_hash(wire: bundle) {
+      Present { value: _ } => workspace_executor_record_decode_bound(body: body, bundle: bundle as NonEmptyStr)
+      Absent => none
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn workspace_executor_record_decode_bound(body: JsonValue, bundle: NonEmptyStr) -> WorkspaceExecutorRecord? {
+  match json_field_string(obj: body, key: "slot") {
+    FieldRead { value: slot } => {
+  match json_field_string(obj: body, key: "plan_hash") {
+    FieldRead { value: plan_hash } => {
+  match json_field_int(obj: body, key: "prior_fleet_generation") {
+    FieldRead { value: prior_fleet_generation } => {
+  match json_field_int(obj: body, key: "planned_fleet_generation") {
+    FieldRead { value: planned_fleet_generation } => {
+  match json_field_int(obj: body, key: "mutation_generation") {
+    FieldRead { value: mutation_generation } => {
+  match json_field_string(obj: body, key: "submitter") {
+    FieldRead { value: submitter } => {
+  match json_field_string(obj: body, key: "previous_invocation") {
+    FieldRead { value: previous_invocation } => {
+  match json_field_string(obj: body, key: "invocation") {
+    FieldRead { value: invocation } => {
+  match json_field_string(obj: body, key: "phase") {
+    FieldRead { value: phase } => {
+      if slot == "" || plan_hash == "" || submitter == "" { none } else {
+      match workspace_executor_phase_from_wire(text: phase) {
+        Absent => none
+        Present { value: decoded_phase } => {
+          let record = WorkspaceExecutorRecord {
+            subject: WorkspaceExecutorSubject { slot: slot as NonEmptyStr, plan_hash: plan_hash as NonEmptyStr, fleet_bundle_hash: bundle,
+              prior_fleet_generation: prior_fleet_generation, planned_fleet_generation: planned_fleet_generation,
+              mutation_generation: mutation_generation },
+            submitter: submitter as NonEmptyStr, previous_invocation: previous_invocation,
+            invocation: invocation, phase: decoded_phase,
+          }
+          if workspace_executor_record_coherent(record: record)
+            && serialize_json(v: body) == (workspace_executor_record_text(record: record) as String) {
+            Present { value: record }
+          } else { none }
+        }
+      }
+      }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+
+// This projection never returns start. A persisted submission may already have reached systemd;
+// recovering it requires actual submitting-actor and queued-operation evidence.
+fn workspace_executor_recorded_directive(record: WorkspaceExecutorRecord) -> String? {
+  if !workspace_executor_record_coherent(record: record) { none } else {
+    match record.phase {
+      ExecutorSubmissionRecorded => none
+      ExecutorSubmissionFenced => none
+      ExecutorControllerRetryFenced => none
+      ExecutorInvocationRecorded => Present { value: concat("wait:", record.invocation) }
+      ExecutorReadbackAccepted => Present { value: concat("settle:", record.invocation) }
+      ExecutorReleaseObserved => Present { value: concat("settle:", record.invocation) }
+      ExecutorGenerationCommitted => Present { value: concat("complete:", record.invocation) }
+    }
+  }
+}

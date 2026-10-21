@@ -1,0 +1,451 @@
+module v2.lens.fn_index_depth_agreement
+
+import std.types { List }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.algebra { list_snoc_item, contains, fold_list, length }
+import std.optional { Absent, Present }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count, symbol_eq }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
+}
+import v2.std.text { String, string_eq }
+import v2.std.fn_index {
+  FnArrowDecl,
+  atom_identities_in_node,
+  atom_identities_in_subtree,
+  callees_from_decl,
+  fn_arrow_decl_facts_live,
+  param_names_of
+}
+
+// THE INSTRUMENT BEHIND TWO CLAIMS IN v2.std.fn_index, so that neither is a transcribed number.
+//
+// CLAIM ONE — the depth-one `atom_identities_in_node` is extensionally the fold_node reader that
+// #10156 replaced. `legacy_atoms` below is that reader reconstructed exactly, discarded child atoms
+// and all; `disagreeing_with_legacy` is the count of live declarations on which the two differ, and
+// it is what the exit verdict reads. This is the claim's discriminating control: change either
+// reader's grain and the run refuses.
+//
+// CLAIM TWO — depth one is the wrong grain at a declaration ROOT. `root_callees_lost_to_depth_one`
+// counts live declarations whose callees are invisible to a depth-one read of `decl.output` but
+// visible to a transitive one. It is the population `call_reachable_decls` could not leave before
+// `callees_from_decl` was moved onto `atom_identities_in_subtree`.
+//
+// CLAIM THREE -- the size of the over-approximation the deeper read inherits.
+// `param_collisions` counts live declarations that reference one of their OWN parameters by a
+// lexeme that also names a declaration, which is the one sender in the shared atom channel that
+// `callees_from_decl` can now exclude from declared structure. It is the population that would
+// become false call edges without that exclusion; the residue (record constructors, variant
+// values, non-path literals) is not measurable here for the same reason it is not excludable --
+// the skeleton gives it no distinguishing shape.
+//
+// NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live` over the two
+// source roots the required lanes pass, and that whole-tree cost is the standing blocker recorded in
+// v2.test.claim.enforcement.determinism_transitive_witness; enrolling a whole-corpus subject on the
+// per-subject line would repeat exactly the finding that file documents. The grain claims are held
+// at the floor by fixture rows there; this is the re-derivation entry point for the corpus numbers.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+// Next-rung: gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall.
+
+data empty_symbol_list: List<Symbol> = []
+data empty_string_list: List<String> = []
+data no_terminal_callees: List<String> = []
+
+// THE SUBJECT IS CALLER-NAMED SINCE gunbc#10245, so this instrument states the pools it measures
+// rather than inheriting whatever the acquisition used to walk. These are the two source roots the
+// required lanes pass, which is the population every claim in this repository is judged over.
+data agreement_pool_roots: List<String> = ["dag", "src/v2"]
+data agreement_pool_files: List<String> = []
+
+fn snoc_unique(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if contains(xs: xs, item: sym, eq: symbol_eq) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: sym)
+  }
+}
+
+type LegacyAtomState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn legacy_init(n: Node) -> LegacyAtomState {
+  LegacyAtomState { node: n, atoms: empty_symbol_list }
+}
+
+fn legacy_step(acc: LegacyAtomState, _edge: Edge, child: LegacyAtomState) -> LegacyAtomState {
+  let atoms = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } => snoc_unique(xs: acc.atoms, sym: sym)
+    Absent => acc.atoms
+  }
+  LegacyAtomState { node: acc.node, atoms: atoms }
+}
+
+fn legacy_atoms(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(
+    n: node,
+    algebra: NodeFold { init: legacy_init, step: legacy_step }
+  ).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => snoc_unique(xs: from_descendants, sym: sym)
+    Absent => from_descendants
+  }
+}
+
+fn decl_named(decls: List<FnArrowDecl>, name: String) -> Bool {
+  any(xs: decls, predicate: fn(d) { string_eq(a: d.name, b: name) })
+}
+
+fn param_collides_with_a_declaration(
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  any(
+    xs: param_names_of(decl: decl),
+    predicate: fn(pname) { decl_named(decls: decls, name: pname) }
+  )
+}
+
+// THE CALL-CHANNEL READER THE #10282 CARRIER MADE POSSIBLE, measured beside the atom scan rather
+// than swapped in on the strength of the trigger having fired. The counts below are the sharpest
+// form of the question review 60065 asks: how many nodes of a LIVE fn-arrow skeleton does
+// v2.std.compilers.body_lowering `application_read` admit as applications, and of those, how many
+// have a named (Atom) head. A zero in the first column is not a small over-approximation traded for a
+// small under-approximation -- it is a reader that cannot see any edge on this substrate.
+//
+// COUNTED AS Int, NOT COLLECTED AS A LIST, deliberately. The first form of this measurement
+// deduplicated lexemes with a linear `contains` inside a per-node fold, which is quadratic in the
+// accumulated list over a 60k-node corpus and did not terminate in twenty minutes. A cost shape
+// that bad is fixed rather than tolerated even in an instrument (DESIGN section 6, bare minimum
+// cost), and the distinct-callee refinement buys nothing a raw count does not already decide.
+// ONE application_read PER NODE, three counts. `refused_applications` is the population
+// the old node_query reader folded into "not a call": a Transform whose shape the read refuses.
+// It is counted, not dropped, so a non-zero is visible in the tally and refused by the verdict.
+type ChannelState {
+  node: Node
+  call_nodes: Int
+  resolved_callees: Int
+  refused_applications: Int
+}
+
+fn channel_init(n: Node) -> ChannelState {
+  ChannelState { node: n, call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
+}
+
+type ChannelCounts {
+  call_nodes: Int
+  resolved_callees: Int
+  refused_applications: Int
+}
+
+fn channel_counts_of(node: Node) -> ChannelCounts {
+  match application_read(site: node) {
+    NotApplication => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
+    ApplicationRefused { diagnostics: _ } => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 1 }
+    Application { view: v } =>
+      match v.head_identity {
+        AtomHead { identity: _ } => ChannelCounts { call_nodes: 1, resolved_callees: 1, refused_applications: 0 }
+        ArrowHead => ChannelCounts { call_nodes: 1, resolved_callees: 0, refused_applications: 0 }
+      }
+  }
+}
+
+fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelState {
+  let here = channel_counts_of(node: child.node)
+  ChannelState {
+    node: acc.node,
+    call_nodes: acc.call_nodes + child.call_nodes + here.call_nodes,
+    resolved_callees: acc.resolved_callees + child.resolved_callees + here.resolved_callees,
+    refused_applications: acc.refused_applications + child.refused_applications + here.refused_applications
+  }
+}
+
+fn channel_subtree(decl: FnArrowDecl) -> ChannelState {
+  let node = decl.output
+  let below = fold_node(
+    n: node,
+    algebra: NodeFold { init: channel_init, step: channel_step }
+  )
+  let root = channel_counts_of(node: node)
+  ChannelState {
+    node: node,
+    call_nodes: below.call_nodes + root.call_nodes,
+    resolved_callees: below.resolved_callees + root.resolved_callees,
+    refused_applications: below.refused_applications + root.refused_applications
+  }
+}
+
+// THE ONE-DECLARATION PROBE, because the question review 60065 raises is STRUCTURAL, not
+// statistical. If `application_read` admits no node of a live fn-arrow skeleton, it accepts none in
+// any of them for the same reason, and one declaration exhibits that at a thousandth of the cost.
+// `subtree_nodes` is carried beside `call_shaped` so the zero is readable: a zero over zero nodes
+// would be an empty probe, and a zero over a populated subtree is the finding.
+type FirstDeclChannel {
+  decl_name: String
+  subtree_nodes: Int
+  call_shaped: Int
+  atom_callees: Int
+}
+
+data empty_first_decl_channel: FirstDeclChannel = FirstDeclChannel {
+  decl_name: "",
+  subtree_nodes: 0,
+  call_shaped: 0,
+  atom_callees: 0
+}
+
+// FIRST BY FOLD, NOT BY LIST PATTERN, because a `[first, ...rest]` match arm is not admitted here
+// -- the parser refuses it with `expected FatArrow, found LBracket`.
+//
+// THE GUARD IS `atom_callees`, NOT `subtree_nodes`, AND THE DIFFERENCE IS THE WHOLE PROBE. The
+// corpus's first declaration is `add`, whose subtree is five nodes and which calls nothing; its
+// call-shaped count and its atom-callee count are both zero, which discriminates nothing. The
+// declaration this question needs is the first one the ATOM reader finds callees in, because only
+// there does a zero from the CALL-CHANNEL reader mean the channel lost an edge the atom scan saw.
+fn pick_first_decl(acc: FirstDeclChannel, decl: FnArrowDecl) -> FirstDeclChannel {
+  if acc.atom_callees > 0 {
+    acc
+  } else {
+    FirstDeclChannel {
+      decl_name: decl.name,
+      subtree_nodes: node_subtree_count(n: decl.output),
+      call_shaped: channel_subtree(decl: decl).call_nodes,
+      atom_callees: length(
+        xs: callees_from_decl(
+          decl: decl,
+          terminal_callee_symbols: no_terminal_callees
+        ).texts
+      )
+    }
+  }
+}
+
+fn first_decl_channel() -> FirstDeclChannel {
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
+  fold_list(xs: decls, empty: empty_first_decl_channel, cons: pick_first_decl)
+}
+
+// THE BOUNDED COMPARISON, AND WHY IT IS BOUNDED RATHER THAN CORPUS-WIDE. Running the call-channel
+// reader beside the atom reader over all live declarations did not finish in 85 minutes, against a
+// 2-minute baseline for the same tally without it. That 40x is not an artifact of collecting: the
+// list-collecting form was already replaced by Int counts. The cost is the per-node application read itself, per node, over 60k nodes -- and
+// that is not merely an inconvenience for this instrument, it is a fact about what review 60065
+// proposes, because routing production `callees_from_decl` through the same predicate imports the
+// same per-node cost into every consumer of call reachability.
+//
+// SO THE COMPARISON IS TAKEN OVER A FIXED PREFIX OF THE LIVE CORPUS. The population is stated in
+// the result rather than assumed, and `compared` beside `channel_fewer` is what makes a zero
+// readable: zero disagreements over zero declarations is an empty run, and zero over a stated
+// population is the finding.
+type BoundedChannelCompare {
+  compared: Int
+  atom_callee_total: Int
+  channel_call_shaped_total: Int
+  channel_callee_total: Int
+  channel_fewer: Int
+  channel_none_atom_some: Int
+  channel_refused_total: Int
+}
+
+data empty_bounded_compare: BoundedChannelCompare = BoundedChannelCompare {
+  compared: 0,
+  atom_callee_total: 0,
+  channel_call_shaped_total: 0,
+  channel_callee_total: 0,
+  channel_fewer: 0,
+  channel_none_atom_some: 0,
+  channel_refused_total: 0
+}
+
+data bounded_compare_limit: Int = 150
+
+fn bounded_compare_step(
+  acc: BoundedChannelCompare,
+  decl: FnArrowDecl
+) -> BoundedChannelCompare {
+  if acc.compared >= bounded_compare_limit {
+    acc
+  } else {
+    let channel = channel_subtree(decl: decl)
+    let atom = length(
+      xs: callees_from_decl(
+        decl: decl,
+        terminal_callee_symbols: no_terminal_callees
+      ).texts
+    )
+    BoundedChannelCompare {
+      compared: acc.compared + 1,
+      atom_callee_total: acc.atom_callee_total + atom,
+      channel_call_shaped_total: acc.channel_call_shaped_total + channel.call_nodes,
+      channel_callee_total: acc.channel_callee_total + channel.resolved_callees,
+      channel_fewer: bump_when(
+        count: acc.channel_fewer,
+        flag: channel.resolved_callees < atom
+      ),
+      channel_none_atom_some: bump_when(
+        count: acc.channel_none_atom_some,
+        flag: channel.resolved_callees == 0 && atom > 0
+      ),
+      channel_refused_total: acc.channel_refused_total + channel.refused_applications
+    }
+  }
+}
+
+fn bounded_channel_compare() -> BoundedChannelCompare {
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
+  fold_list(xs: decls, empty: empty_bounded_compare, cons: bounded_compare_step)
+}
+
+type DepthAgreementTally {
+  decls: Int
+  disagreeing_with_legacy: Int
+  depth_one_atom_total: Int
+  subtree_atom_total: Int
+  root_callees_lost_to_depth_one: Int
+  param_collisions: Int
+  channel_call_shaped_total: Int
+  channel_callee_total: Int
+  atom_callee_total: Int
+  decls_channel_finds_fewer: Int
+  decls_channel_finds_none_atom_some: Int
+  subtree_node_total: Int
+}
+
+data empty_tally: DepthAgreementTally = DepthAgreementTally {
+  decls: 0,
+  disagreeing_with_legacy: 0,
+  depth_one_atom_total: 0,
+  subtree_atom_total: 0,
+  root_callees_lost_to_depth_one: 0,
+  param_collisions: 0,
+  channel_call_shaped_total: 0,
+  channel_callee_total: 0,
+  atom_callee_total: 0,
+  decls_channel_finds_fewer: 0,
+  decls_channel_finds_none_atom_some: 0,
+  subtree_node_total: 0
+}
+
+fn bump_when(count: Int, flag: Bool) -> Int {
+  match flag {
+    true => count + 1
+    false => count
+  }
+}
+
+fn tally_decl(
+  acc: DepthAgreementTally,
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> DepthAgreementTally {
+  let depth_one = length(xs: atom_identities_in_node(node: decl.output))
+  let legacy = length(xs: legacy_atoms(node: decl.output))
+  let subtree = length(xs: atom_identities_in_subtree(node: decl.output))
+  let channel = channel_subtree(decl: decl)
+  let channel_count = channel.resolved_callees
+  let deep_callees = length(
+    xs: callees_from_decl(
+      decl: decl,
+      terminal_callee_symbols: no_terminal_callees
+    ).texts
+  )
+  DepthAgreementTally {
+    decls: acc.decls + 1,
+    disagreeing_with_legacy: bump_when(
+      count: acc.disagreeing_with_legacy,
+      flag: !(depth_one == legacy)
+    ),
+    depth_one_atom_total: acc.depth_one_atom_total + depth_one,
+    subtree_atom_total: acc.subtree_atom_total + subtree,
+    root_callees_lost_to_depth_one: bump_when(
+      count: acc.root_callees_lost_to_depth_one,
+      flag: depth_one == 0 && deep_callees > 0
+    ),
+    param_collisions: bump_when(
+      count: acc.param_collisions,
+      flag: param_collides_with_a_declaration(decl: decl, decls: decls)
+    ),
+    channel_call_shaped_total: acc.channel_call_shaped_total + channel.call_nodes,
+    channel_callee_total: acc.channel_callee_total + channel_count,
+    atom_callee_total: acc.atom_callee_total + deep_callees,
+    decls_channel_finds_fewer: bump_when(
+      count: acc.decls_channel_finds_fewer,
+      flag: channel_count < deep_callees
+    ),
+    decls_channel_finds_none_atom_some: bump_when(
+      count: acc.decls_channel_finds_none_atom_some,
+      flag: channel_count == 0 && deep_callees > 0
+    ),
+    subtree_node_total: acc.subtree_node_total + node_subtree_count(n: decl.output)
+  }
+}
+
+fn fn_index_depth_agreement_tally() -> DepthAgreementTally {
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
+  fold_list(
+    xs: decls,
+    empty: empty_tally,
+    cons: fn(acc, decl) { tally_decl(acc: acc, decl: decl, decls: decls) }
+  )
+}
+
+// THE VERDICT ENFORCES EVERY CLAIM THIS MODULE ADVERTISES, which review 60220 correctly found it
+// did not. It previously read `decls` and `disagreeing_with_legacy` only, so claims two and three
+// were computed, printed and enforced by nothing -- specification without execution (DESIGN section
+// 5) sitting inside the very instrument built to answer that charge.
+//
+// THE TWO ADDED ARMS ARE DISCRIMINATING, NOT DECORATIVE, and it matters which direction each runs.
+// `root_callees_lost_to_depth_one` and `param_collisions` are refused at ZERO rather than above a
+// threshold, because each is the population that MAKES its claim true: if no live declaration hid a
+// callee below depth one, then #10156's reader was adequate and the change this PR makes to
+// `callees_from_decl` was unnecessary; if no live declaration references its own parameter by a
+// lexeme that also names a declaration, then the parameter exclusion excludes nothing and is dead
+// code defended by prose. Either zero falsifies the PR rather than the corpus, which is exactly the
+// direction a claim's own instrument should be able to fail in.
+fn fn_index_depth_agreement() -> ProcessExit {
+  let tally = fn_index_depth_agreement_tally()
+  if tally.decls == 0 {
+    exit_failure(
+      reason: "fn_arrow_decl_facts_live returned no declarations; the agreement verdict would be vacuous"
+    )
+  } else if tally.disagreeing_with_legacy > 0 {
+    exit_failure(
+      reason: "atom_identities_in_node no longer agrees with the fold_node reader #10156 replaced"
+    )
+  } else if tally.root_callees_lost_to_depth_one == 0 {
+    exit_failure(
+      reason: "no live declaration hides a callee below depth one, so claim two is false and the move off atom_identities_in_node bought nothing"
+    )
+  } else if tally.param_collisions == 0 {
+    exit_failure(
+      reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_decl excludes nothing"
+    )
+  } else if bounded_channel_compare().channel_refused_total > 0 {
+    exit_failure(
+      reason: "application_read refused an application in a live fn-arrow skeleton; the call walk over it is incomplete"
+    )
+  } else {
+    ExitSuccess
+  }
+}

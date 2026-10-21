@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.enforcement_exhibits_the_shape_it_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data enforcement_exhibits_the_shape_it_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "enforcement_exhibits_the_shape_it_refuses" as NonEmptyStr,
+
+  receipts: [
+    "**the machinery that enforces an invariant is itself written in the shape that invariant refuses** (INVALID STATE: a gate, lens or fold rejects a construction, and the code performing that rejection contains the same construction. The check is correct, the refusal is real, and the enforcement is a standing instance of the class it exists to eliminate -- so the corpus's own worst example of the defect lives in the one place that cannot report it.",
+
+    "**THE DISCRIMINATOR: the subject of the check and the implementation of the check exhibit the same property, and only the subject is judged.** DESIGN section 7 states the general obligation -- every principle governs the system that implements it -- and this is the failure of that obligation in the direction nobody looks, because the enforcement's own code is read as infrastructure rather than as a subject.",
+
+    "HARM, and it is not hypothetical cost. The enforcement runs on EVERY subject, so its own violation is multiplied by the corpus while each judged instance is paid once. A quadratic fold inside a linear-cost lens is the lens's dominant cost, and it is charged to every compile that the lens protects.",
+
+    "SPECIMEN (2026-09-12, gunbc#11004, review 64245, found by review). `v2.compiler.compile`'s required-lens machinery enforces the accumulator-copy complexity lens, and its own witness accumulation had the accumulator-copy shape. Half was repaired and half stands. The subtree fold was rewritten to prepend-then-reverse rather than append-in-step, which is the repair. What stands is the concat itself: `list_append` costs its LEFT operand and the carrier's `rc_list_concat` copies its RIGHT one, and since neither the accumulator nor a child's subtree accumulation is reliably the shorter, a fold over a tree stays superlinear whichever way it is written. No argument order fixes it.",
+
+    "WHAT THE SPECIMEN NEEDS, NAMED AS A CAPABILITY RATHER THAN AN ARTIFACT: a list concatenation primitive that copies NEITHER operand -- structural sharing, so a fold may combine two accumulations at a cost independent of both lengths. That is carrier work in the list algebra, not a local edit at the fold, and until it exists every fold in the corpus that combines two accumulations pays a copy. A rewrite of call sites does NOT satisfy it; `docs/plans/emit-type-surface-traversal-cost.md` records that exact substitution attempted at 215 sites plus `rc_list_concat` to a structurally-sharing vector, measured BYTE-IDENTICAL OUTPUT AND NO MEASURABLE CHANGE at the emit seam -- which is evidence about that seam and not this one, and is recorded here so the next author does not re-run a falsified experiment believing it is the repair.",
+
+    "RECOGNITION RULE: when a gate, lens or fold refuses a construction, read the gate's OWN body for that construction before reading anything else. The tell is a fold that accumulates with a binary combine over the accumulator -- concat, append, union, merge -- inside the enforcement of a cost, shape or complexity law.",
+
+    "DISTINCT FROM ITS NEIGHBOURS. It is not `a_constant_enforces_a_law_narrower_than_its_own_annotation`, where the check is weaker than its description; here the check is exactly as strong as described and the DEFECT IS IN ITS OWN CODE. It is not `observer_inside_its_own_observed_population`, where the observer's presence perturbs a measurement; here nothing is measured and the enforcement is not a member of the judged set -- it is the judge, exempt by construction from the question it asks. It is not `lens_prices_the_authority_while_the_lane_runs_the_realization`, which is about WHICH artifact a cost is charged to; here there is no misattribution, only an unjudged implementation.",
+
+    "RUNG FOUND AT: mitigation by review. Nothing asks the question -- the enforcement is not in the corpus the lens walks, so no run could have reported it, and both halves of the specimen were found by a reviewer reading the door's own fold.",
+
+    "CEILING: structurally guaranteed. Whether a declaration exhibits a modelled shape is exactly the question the lenses already answer, so the enforcement becoming a SUBJECT of the lens it implements is a coverage question rather than a new capability -- the lens walks a corpus, and the corpus can include the compiler.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the required-lens gates applied to the compiler's own modules as ordinary subjects, so `v2.compiler.compile` is judged by the roster it runs. Self-application is what DESIGN section 7 already claims; this trigger is that claim made executable rather than asserted.)",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,93 @@
+module extdeps.languages.css.font_face
+
+import std.types { Int, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https, uri_wire }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-fonts-4/#font-face-rule"
+  }
+}
+
+// Cited upstream: W3C CSS Fonts Module Level 4, the `@font-face` at-rule (#font-face-rule) and its
+// descriptors font-family (#font-family-desc), src (#src-desc) and font-display
+// (#font-display-desc), plus font-weight and font-style, whose descriptor forms take the property
+// values. Anchors verified live 2026-10-05.
+//
+// THE BOUNDED GRAIN: one face per rule, ONE src entry (a url() with its format() hint), a single
+// numeric weight, and the closed keyword sets the spec defines for font-style and font-display.
+// The format() keyword set is cut to the one format this repository serves (woff2); the spec's
+// other keywords (woff, truetype, opentype, collection, embedded-opentype, svg), local() sources,
+// unicode-range, and weight ranges are the named next grammar, not representable today. A face is
+// a typed row, never authored CSS text, so its family name is quoted exactly once, here.
+
+type FontFaceStyle
+  = FontStyleNormal
+  | FontStyleItalic
+
+fn font_face_style_token(s: FontFaceStyle) -> String {
+  match s {
+    FontStyleNormal => "normal"
+    FontStyleItalic => "italic"
+  }
+}
+
+type FontDisplay
+  = FontDisplayAuto
+  | FontDisplayBlock
+  | FontDisplaySwap
+  | FontDisplayFallback
+  | FontDisplayOptional
+
+fn font_display_token(d: FontDisplay) -> String {
+  match d {
+    FontDisplayAuto => "auto"
+    FontDisplayBlock => "block"
+    FontDisplaySwap => "swap"
+    FontDisplayFallback => "fallback"
+    FontDisplayOptional => "optional"
+  }
+}
+
+type FontFormat
+  = | FontFormatWoff2
+
+fn font_format_token(f: FontFormat) -> String {
+  match f {
+    FontFormatWoff2 => "woff2"
+  }
+}
+
+type FontFaceSource {
+  url: Uri
+  format: FontFormat
+}
+
+type FontFaceRule {
+  family: String
+  weight: Int
+  style: FontFaceStyle
+  display: FontDisplay
+  source: FontFaceSource
+}
+
+fn font_face_source_wire(s: FontFaceSource) -> String {
+  join(["url(", uri_wire(uri: s.url) as String, ") format(\"", font_format_token(f: s.format), "\")"], "")
+}
+
+fn font_face_rule_wire(r: FontFaceRule) -> String {
+  join([
+    "@font-face { font-family: \"", r.family,
+    "\"; font-style: ", font_face_style_token(s: r.style),
+    "; font-weight: ", to_string(value: r.weight),
+    "; font-display: ", font_display_token(d: r.display),
+    "; src: ", font_face_source_wire(s: r.source),
+    " }",
+  ], "")
+}
+
+fn font_face_rules_wire(rules: List<FontFaceRule>) -> String {
+  join(map(rules, r => font_face_rule_wire(r: r)), "\n")
+}

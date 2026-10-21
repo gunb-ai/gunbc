@@ -1,0 +1,231 @@
+module v1.compiler.annotation_bind
+// The .dag realization of annotation attachment: it turns what the tokenizer captured into gap-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like — or a projection of facts the parser already published: the occurrence index and the source-extent table. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
+//
+// It is a PURE DOWNSTREAM READER of the parse result. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
+
+import std.types { Bool, Int, String, SourceSpan, List }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  OccurrenceTransport
+}
+import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
+import std.source_annotation {
+  AnnotationGap,
+  AnnotationRegion,
+  AnnotationScope,
+  FileScope,
+  OccurrenceScope,
+  ErasedSourceRegion,
+  NormalizedAnnotationCapture,
+  SourceAnnotationGraph,
+  KeyedAnnotationRow,
+  SourceAnnotationDebt,
+  UnboundAnnotationCapture,
+  attach_annotations,
+  source_annotation_graph_rows
+}
+import v1.compiler.parse {
+  ParsedSourceExtents
+}
+
+// THE REGION ROSTER IS THE PARSER'S PUBLISHED SOURCE STRUCTURE, read, never rebuilt. Every occurrence the index carries contributes its RECORDED extent (v1.compiler.parse ParsedSourceExtents, roadmap parse-node-source-extent), and every erased scope the parser published -- the parentheses of `(x)`, the braces of a one-statement block -- contributes its own region. Nothing here derives a range from descendants: an occurrence without a recorded extent contributes no region.
+//
+// THE PARENTS COME FROM CONTAINMENT, in one interval sweep, because the semantic tree cannot supply them for erased scopes. An erased scope may sit between a node and its parent (`((x))`), inside an occurrence that absorbed what it enclosed while that occurrence kept other children (`(a.b)(x)` keeps the receiver `a`, which lies INSIDE the parentheses), or beside another erased scope absorbed by the same occurrence (`g((1), (2))()`). The parser's extents nest -- the whole-population control in v1.tests.claim.parse_source_extent_control_test holds every occurrence inside its parent -- so sorting all regions by start, then by end descending, and keeping a stack of the regions still open gives each region the innermost one containing it. Two regions of EQUAL extent are a wrapper and what it wraps (an argument and its expression, a property and its value): the shallower occurrence, by containment depth, is the outer one; an erased scope is wider than what it encloses, so it can only tie with that node's wrappers, and it is inside them. One sort and one pass: O(n log n) per source.
+fn ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
+  count(entry.containment.ancestors)
+}
+
+type SweptRegion {
+  scope: AnnotationScope
+  extent: SourceSpan
+  depth: Int
+}
+
+type RegionSweepAcc {
+  open: List<SweptRegion>
+  regions: List<AnnotationRegion>
+}
+
+// The order the sweep reads regions in: by start; at one start the wider first; at one extent the
+// shallower first. ONE sort over a fixed-width decimal key, compared as text: the sequence sort is
+// not stable (the realized list sorts by quicksort), so successive single-key sorts could undo one
+// another, and packing the components into one Int overflows at large offsets. Each component is a
+// non-negative Int below 10^12, zero-padded to twelve digits. An erased scope sorts after every
+// occurrence of the same extent: when an argument `(x)` and its parentheses share an extent, the
+// argument wraps the parentheses, which wrap x.
+fn erased_region_depth() -> Int {
+  1000000000
+}
+
+fn zero_padded(n: Int, width: Int) -> String {
+  let digits = to_string(n)
+  if string_length(s: digits) >= width { digits } else { zero_padded_with(digits: concat("0", digits), width: width) }
+}
+
+fn zero_padded_with(digits: String, width: Int) -> String {
+  if string_length(s: digits) >= width { digits } else { zero_padded_with(digits: concat("0", digits), width: width) }
+}
+
+fn swept_region_key(r: SweptRegion) -> String {
+  concat(zero_padded(n: r.extent.start, width: 12), zero_padded(n: 999999999999 - r.extent.end, width: 12), zero_padded(n: r.depth, width: 12))
+}
+
+fn swept_region_order(regions: List<SweptRegion>) -> List<SweptRegion> {
+  regions |> sort_by(r => swept_region_key(r: r))
+}
+
+fn close_regions_ending_by(open: List<SweptRegion>, at: Int) -> List<SweptRegion> {
+  match open |> last {
+    Present { value: top } =>
+      if top.extent.end <= at { close_regions_ending_by(open: open |> take(count(open) - 1), at: at) } else { open }
+    Absent => open
+  }
+}
+
+fn region_sweep_step(acc: RegionSweepAcc, region: SweptRegion) -> RegionSweepAcc {
+  let open = close_regions_ending_by(open: acc.open, at: region.extent.start)
+  let parent = match open |> last {
+    Present { value: top } => top.scope
+    Absent => FileScope
+  }
+  RegionSweepAcc {
+    open: list_push(open, region),
+    regions: list_push(acc.regions, AnnotationRegion { scope: region.scope, extent: region.extent, parent: parent }),
+  }
+}
+
+fn annotation_regions(transport: OccurrenceTransport, extents: ParsedSourceExtents) -> List<AnnotationRegion> {
+  let recorded = fold(extents.extents, init: empty_map(), f: (acc, row) => map_insert(acc, row.occurrence.value, row.extent))
+  let occurrences = fold(transport.index.entries, init: [], f: (acc, entry) =>
+    match map_get(recorded, entry.projection.occurrence.value) {
+      Present { value: extent } => list_push(acc, SweptRegion { scope: OccurrenceScope { occurrence: entry.projection.occurrence }, extent: extent, depth: ancestor_depth(entry: entry) })
+      Absent => acc
+    })
+  let erased = extents.erased_scopes |> map(scope => SweptRegion { scope: ErasedSourceRegion { extent: scope.extent }, extent: scope.extent, depth: erased_region_depth() })
+  let swept = fold(
+    swept_region_order(regions: concat(occurrences, erased)),
+    init: RegionSweepAcc { open: [], regions: [] },
+    f: (acc, region) => region_sweep_step(acc: acc, region: region)
+  )
+  swept.regions
+}
+
+// THE SPELLING HALF -- stripping and rendering the `//` delimiter -- is the .dag language's, so it
+// lives in extdeps.languages.dag.syntax where both this realization and v2's attachment read it.
+
+// THE STRUCTURAL KEY OF A REGION, stable across parses: its path from the file root, each step the region's ordinal among its parent's children in source order and its authored name (an erased scope's name is `()`). Two parses of the same structure produce the same key; the same ordinals over different syntax produce different names and disagree, which is what an occurrence ordinal cannot do.
+type RegionKeyIndex {
+  parent_of: Map<AnnotationScope, AnnotationScope>
+  step_of: Map<AnnotationScope, String>
+}
+
+fn region_label(scope: AnnotationScope, names: Map<Int, String>) -> String {
+  match scope {
+    FileScope => ""
+    OccurrenceScope { occurrence: o } =>
+      match map_get(names, o.value) {
+        Present { value: n } => n
+        Absent => "?"
+      }
+    ErasedSourceRegion { extent: _ } => "()"
+  }
+}
+
+fn region_key_index(transport: OccurrenceTransport, regions: List<AnnotationRegion>) -> RegionKeyIndex {
+  let names = fold(transport.index.entries, init: empty_map(), f: (acc, entry) =>
+    map_insert(acc, entry.projection.occurrence.value, entry.projection.authored_name))
+  let ordered = regions |> sort_by(r => r.extent.start)
+  let stepped = fold(ordered, init: RegionKeyStepAcc { seen: empty_map(), step_of: empty_map() }, f: (acc, region) =>
+    let parent_key = region.parent
+    let ordinal = match map_get(acc.seen, parent_key) { Present { value: n } => n  Absent => 0 }
+    RegionKeyStepAcc {
+      seen: map_insert(acc.seen, parent_key, ordinal + 1),
+      step_of: map_insert(acc.step_of, region.scope, concat(to_string(ordinal), ":", region_label(scope: region.scope, names: names))),
+    })
+  RegionKeyIndex {
+    parent_of: fold(regions, init: empty_map(), f: (acc, region) => map_insert(acc, region.scope, region.parent)),
+    step_of: stepped.step_of,
+  }
+}
+
+type RegionKeyStepAcc {
+  seen: Map<AnnotationScope, Int>
+  step_of: Map<AnnotationScope, String>
+}
+
+// Walks parent links to the file; `depth` bounds the walk by the roster's size, so a malformed parent cycle ends rather than loops.
+fn region_structural_key(index: RegionKeyIndex, scope: AnnotationScope, depth: Int) -> String {
+  match scope {
+    FileScope => "/"
+    _ =>
+      if depth <= 0 { "?" } else {
+        let key = scope
+        let step = match map_get(index.step_of, key) { Present { value: s } => s  Absent => "?" }
+        match map_get(index.parent_of, key) {
+          Present { value: parent } => concat(region_structural_key(index: index, scope: parent, depth: depth - 1), "/", step)
+          Absent => concat("/?", step)
+        }
+      }
+  }
+}
+
+fn optional_region_key(index: RegionKeyIndex, scope: AnnotationScope?, depth: Int) -> String? {
+  match scope {
+    Present { value: s } => Present { value: region_structural_key(index: index, scope: s, depth: depth) }
+    Absent => none
+  }
+}
+
+// Projects a graph's rows onto the cross-parse structural keys std.source_annotation's agreement is defined over.
+fn keyed_annotation_rows(
+  transport: OccurrenceTransport,
+  extents: ParsedSourceExtents,
+  graph: SourceAnnotationGraph
+) -> List<KeyedAnnotationRow> {
+  let regions = annotation_regions(transport: transport, extents: extents)
+  let index = region_key_index(transport: transport, regions: regions)
+  let depth = count(regions) + 1
+  source_annotation_graph_rows(graph: graph)
+    |> map(row => KeyedAnnotationRow {
+      scope_key: region_structural_key(index: index, scope: row.gap.scope, depth: depth),
+      before_key: optional_region_key(index: index, scope: row.gap.before, depth: depth),
+      after_key: optional_region_key(index: index, scope: row.gap.after, depth: depth),
+      text: row.text,
+    })
+}
+
+// Every region's structural key with its extent, from the same index keyed_annotation_rows reads. Its consumer is the render half of the round trip (v1.tests.claim.annotation_gap_round_trip_test), which writes a row back at the region its key names in a re-parsed source.
+type KeyedAnnotationRegion {
+  key: String
+  extent: SourceSpan
+}
+
+fn keyed_annotation_regions(transport: OccurrenceTransport, extents: ParsedSourceExtents) -> List<KeyedAnnotationRegion> {
+  let regions = annotation_regions(transport: transport, extents: extents)
+  let index = region_key_index(transport: transport, regions: regions)
+  let depth = count(regions) + 1
+  regions |> map(r => KeyedAnnotationRegion { key: region_structural_key(index: index, scope: r.scope, depth: depth), extent: r.extent })
+}
+
+fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: strip_line_comment_delimiter(lexeme: capture.lexeme),
+    origin: capture.origin,
+    placement: capture.placement,
+    preceded_by_blank_line: capture.preceded_by_blank_line,
+    preceded_by_annotation_line: capture.preceded_by_annotation_line,
+  }
+}
+
+// The .dag entry point: normalize, roster, attach. The attach step is the shared fold, so a change to the attachment rule reaches every realization together. It cannot refuse -- every comment has a gap -- so it returns the graph and nothing beside it.
+fn bind_annotations(
+  transport: OccurrenceTransport,
+  extents: ParsedSourceExtents,
+  captures: List<UnboundAnnotationCapture>
+) -> SourceAnnotationGraph {
+  attach_annotations(
+    captures: captures |> map(capture => normalize_dag_annotation(capture: capture)),
+    regions: annotation_regions(transport: transport, extents: extents)
+  )
+}

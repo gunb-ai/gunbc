@@ -1,0 +1,111 @@
+module extdeps.transceiver.fs_145681
+
+import std.types { Int, Bool, NonEmptyStr }
+import std.measure { Millimeter, millimeter }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  CitedFigureStanding, TranscribedUncited,
+}
+import extdeps.uri { Uri, Https }
+
+// FS SKU 145681: A 400G QSFP-DD TO 4 x 100G QSFP56 PASSIVE COPPER BREAKOUT, CODED FOR BOTH ENDS AT
+// THE FACTORY.
+//
+// This is the part that retires the field reprogramming extdeps.transceiver.sff_8636 exists because
+// of. The generic breakout (FS #139217) ships with legs whose EEPROM coding the ConnectX-7 reads as a
+// 50G ceiling, so every leg of it must be re-flashed by hand before the rail can run at 100G. This
+// SKU is built "Dual Compatibility" from the factory -- End A coded for the switch, End B coded for
+// the NIC -- so no leg needs touching. That is a PROCUREMENT fact with a maintenance consequence,
+// and it is the kind that rots in an inbox, which is why it is a row and not a memory. The burden it
+// retires is priced in product.breakout_leg_programming, not here: what this fleet has to do by hand
+// is a fact about this fleet.
+//
+// ONE SUBJECT, AND A READING RATHER THAN A REDEFINITION. Per DESIGN section 3's external upstream
+// decomposition this module owns this one orderable part. It owns no byte meanings -- those are
+// sff_8636's -- and no observation: nothing here says anyone has read a delivered leg.
+//
+// EVERY FIELD RESTS ON VENDOR CORRESPONDENCE, NOT ON A DATASHEET. The row was transcribed from an FS
+// sales exchange with the operator on 2026-09-11. An email is not a citation the way a published
+// document is, so the row carries its standing as TranscribedUncited with the read that would ground
+// it, rather than presenting a sales reply as a specification. The anchor names the listing locator
+// FS uses for every SKU; that page was fetched while writing this module and returned no readable
+// content (it renders client-side), so it is the obligation's target, not its discharge.
+//
+// NO FS COMPANY ENTITY IS MINTED HERE. extdeps.vendor rows carry a legal name, and no FS legal name
+// was read -- the same client-side page withheld it. A Vendor row with a guessed name would be the
+// fabricated plausible output DESIGN section 5 forbids, so the entity is a frontier: it lands as
+// extdeps.vendor.fs when a document naming the legal entity is read, and this row gains its vendor
+// field then.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "fs.com/products/145681.html"
+  }
+}
+
+// ONE END OF THE BREAKOUT, as FS labels it. The coding profile is FS's own compatibility label --
+// a vendor name for a set of EEPROM contents, not an SFF-8636 field -- so it is carried verbatim.
+// The host is the modelled declaration FS's "hardware part" names, cited by symbol so the pairing
+// resolves in the containment tree rather than by a second spelling of a product name.
+type BreakoutCableEnd {
+  connector: NonEmptyStr
+  coding_profile: NonEmptyStr
+  host: DeclarationRef
+}
+
+// `factory_coded_for_both_ends` is the field the part is bought for: whether the legs arrive coded
+// for both hosts. product.breakout_leg_programming reads it to decide whether any leg owes a hand
+// re-flash.
+type FsBreakoutCablePart {
+  sku: Int
+  title: NonEmptyStr
+  length: Millimeter
+  leg_count: Int
+  end_a: BreakoutCableEnd
+  end_b: BreakoutCableEnd
+  factory_coded_for_both_ends: Bool
+  standing: CitedFigureStanding
+}
+
+data fs_145681: FsBreakoutCablePart = FsBreakoutCablePart {
+  sku: 145681,
+  title: "Customized 400G QSFP-DD to 4 x 100G QSFP56 Passive Copper Breakout Cable" as NonEmptyStr,
+  length: millimeter(500),
+  leg_count: 4,
+  end_a: BreakoutCableEnd {
+    connector: "QSFP-DD" as NonEmptyStr,
+    coding_profile: "Generic" as NonEmptyStr,
+    host: DeclarationRef {
+      module_path: "extdeps.network.mikrotik_crs812",
+      decl_name: "crs812_catalog",
+      field: WholeDeclaration
+    },
+  },
+  end_b: BreakoutCableEnd {
+    connector: "QSFP56" as NonEmptyStr,
+    coding_profile: "NVIDIA (ETH)" as NonEmptyStr,
+    host: DeclarationRef {
+      module_path: "extdeps.systems.nvidia",
+      decl_name: "dgx_spark_network_ports",
+      field: WholeDeclaration
+    },
+  },
+  factory_coded_for_both_ends: true,
+  standing: TranscribedUncited {
+    read_obligation: "FS's published listing or datasheet for SKU 145681 stating the 0.5 m length, the 4 x 100G QSFP56 legs and the Dual Compatibility coding (End A Generic for the CRS812-8DS-2DQ-2DDQ, End B NVIDIA (ETH) for the ConnectX-7); until then the row rests on FS sales correspondence of 2026-09-11, and a delivered leg's EEPROM read is what would ground its coding" as NonEmptyStr
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.transceiver.fs_145681",
+      decl_name: "fs_145681",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

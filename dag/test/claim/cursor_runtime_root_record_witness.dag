@@ -1,0 +1,64 @@
+module test.claim.cursor_runtime_root_record_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import gunbc.compute.attempt_lifecycle { AttemptReserved }
+import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
+import gunbc.dispatch_credential_acquisition {
+  CredentialAcquisitionRecord, credential_acquisition_reference, credential_record_decode, credential_record_json,
+  AttemptClaude, AttemptCursor, AttemptExecutor, CursorRuntimeRootRegistered, CursorRuntimeRootUnregistered,
+  credential_attempt_executor_for,
+}
+
+fn cursor_reference() -> String {
+  credential_acquisition_reference(identity: "id1", executor: CursorFromSnapshot) as String
+}
+
+fn record(executor: AttemptExecutor, reference: String) -> CredentialAcquisitionRecord {
+  CredentialAcquisitionRecord {
+    identity: "id1", node_id: "n", reference: reference, executor: executor, snapshot_path: "/s",
+    belt_unit: "u.service", control_group: "/g", opened_at: 10, launch_deadline: 40, state: AttemptReserved,
+  }
+}
+
+fn decoded_executor(text: String) -> String {
+  match credential_record_decode(text: text) {
+    Absent => "undecodable"
+    Present { value: back } =>
+      match back.executor {
+        AttemptClaude => "claude"
+        AttemptCursor { runtime_root: CursorRuntimeRootUnregistered } => "cursor-unregistered"
+        AttemptCursor { runtime_root: CursorRuntimeRootRegistered } => "cursor-registered"
+      }
+  }
+}
+
+fn wire(executor_word: String, member: String) -> String {
+  join(["{\"identity\":\"id1\",\"node_id\":\"n\",\"reference\":\"id1-x\",\"executor\":\"", executor_word, "\",\"snapshot_path\":\"/s\",\"belt_unit\":\"u.service\",\"control_group\":\"/g\",\"opened_at\":10,\"launch_deadline\":40,\"state\":\"reserved\",\"detail\":\"\"", member, "}"], "")
+}
+
+// A cursor record in the format before the field existed (the key set credential_record_json emitted)
+// decodes as unregistered; srv1 production and lab hold such records. Verbatim current-format text.
+test fn a_record_in_the_format_before_the_field_decodes_with_no_root() -> Bool {
+  decoded_executor(text: wire(executor_word: "cursor", member: "")) == "cursor-unregistered"
+    && decoded_executor(text: wire(executor_word: "claude", member: "")) == "claude"
+}
+
+test fn a_cursor_registration_round_trips_and_a_claude_record_cannot_carry_one() -> Bool {
+  decoded_executor(text: credential_record_json(r: record(executor: credential_attempt_executor_for(executor: CursorFromSnapshot), reference: cursor_reference()))) == "cursor-registered"
+    && decoded_executor(text: credential_record_json(r: record(executor: credential_attempt_executor_for(executor: ClaudeFromSnapshot), reference: "id1-claude"))) == "claude"
+}
+
+test fn only_a_registered_cursor_record_writes_the_member() -> Bool {
+  string_contains(s: credential_record_json(r: record(executor: AttemptCursor { runtime_root: CursorRuntimeRootRegistered }, reference: cursor_reference())), pattern: "cursor_runtime_root")
+    && !string_contains(s: credential_record_json(r: record(executor: AttemptCursor { runtime_root: CursorRuntimeRootUnregistered }, reference: cursor_reference())), pattern: "cursor_runtime_root")
+    && !string_contains(s: credential_record_json(r: record(executor: AttemptClaude, reference: "id1-claude")), pattern: "cursor_runtime_root")
+}
+
+test fn a_claude_record_with_the_member_or_a_malformed_member_is_refused() -> Bool {
+  decoded_executor(text: wire(executor_word: "claude", member: ",\"cursor_runtime_root\":true")) == "undecodable"
+    && decoded_executor(text: wire(executor_word: "cursor", member: ",\"cursor_runtime_root\":false")) == "undecodable"
+    && decoded_executor(text: wire(executor_word: "cursor", member: ",\"cursor_runtime_root\":\"cursor-attempt-runtime\"")) == "undecodable"
+    && decoded_executor(text: wire(executor_word: "other", member: "")) == "undecodable"
+}

@@ -1,0 +1,5 @@
+module test.fixture.decl_facts_reflection.ambiguous_shared_b
+
+type SharedBareArm
+  = SharedArm
+  | OtherTwo

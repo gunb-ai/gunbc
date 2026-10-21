@@ -1,0 +1,37 @@
+module test.fixture.rostered_row_join.omitted_control
+
+import std.types { String, List }
+
+// THE DISCRIMINATING RED FOR THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN, and it is a PERMANENT
+// control rather than a probe that retires when the wall lands (section 4b(4)).
+//
+// TWO ROWS ARE DECLARED HERE AND THE ROSTER BELOW NAMES ONE. The join, executing in the required-CI
+// parse phase over `gunbc.rostered_row_join`, must report `omitted_control_row_b` as declared and
+// unrostered, located at this file and named at declaration identity. A run in which this control
+// reports NOTHING stops the line: that is exactly the green-by-construction state a merge-blocking
+// check may never reach quietly, and it is the state that a join keyed on COUNTS, a subject silently
+// narrowed to nothing, or a producer that stopped seeing this file would all produce.
+//
+// WHY THE CONTROL IS A FIXTURE HOME AND NOT A FLAG. Eligibility is derived from the roster module's
+// own carrier class, so this fixture roster ranges over fixture declarations and the production
+// rosters range over production declarations. Nothing here declares that it is a control; it is one
+// because of where it lives, which is a fact the corpus already decides in one place
+// (`module_is_fixture_carrier`).
+//
+// KEEP THE OMISSION. Adding `omitted_control_row_b` to the roster below does not fix anything -- it
+// deletes the only executing evidence that the join can go red.
+type OmittedControlRow {
+  subject: String
+}
+
+data omitted_control_row_a: OmittedControlRow = OmittedControlRow {
+  subject: "the rostered half of the control: this row is named by the roster below",
+}
+
+data omitted_control_row_b: OmittedControlRow = OmittedControlRow {
+  subject: "the omitted half of the control: declared here and deliberately absent from the roster below",
+}
+
+data omitted_control_roster: List<OmittedControlRow> = [
+  omitted_control_row_a,
+]

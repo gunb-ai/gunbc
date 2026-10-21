@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_dead_ranks_cause_lived_only_in_its_removed_container
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_dead_ranks_cause_lived_only_in_its_removed_container: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dead_ranks_cause_lived_only_in_its_removed_container" as NonEmptyStr,
+
+  receipts: [
+    "CORRECTED 2026-10-04 -- THE PREMISE OF THIS ROW AS FIRST FILED WAS FALSE, and the row is kept to record the correction rather than deleted. It claimed the nvfp4-8 head's exit cause was unrecoverable because its log lived only in the --rm container. It did not: the arm unit appends the container's output to a HOST log file (/var/log/gunbc/glm53-stair-head.log on the head, -rank.log on the ranks; gunbc.spark.glm53_arm_staircase glm53_staircase_units head_log_path / rank_log_path), and that file survived. Read on srv6 it gives the chain: 09:54:37 Worker_TP0 'gloo ... Connection closed by peer [192.168.110.13]:31146' inside _initialize_kv_caches -> 'EngineCore failed to start'; 10:11:17 the worker died; the APIServer reported 'Engine core initialization failed'. Rank 3 (srv7) dropped a gloo connection during KV-cache init after the autotune -- NOT a readiness timeout, which is what the first filing inferred from timing.",
+
+    "THE REAL CLASS: the evidence survives on the host, but the NEXT launch of the same arm truncates it (the unit's start writes `: > <log>`), and a rollback that restarts a restored unit sharing that log path does the same. So the defect is that a terminal-state diagnostic is overwritten by the transaction that resolves it. RUNG FOUND AT: mitigatable only by an operator reading the file in time. CEILING: mechanically preventable. NEXT-RUNG TRIGGER: the arm's transaction captures each rank's log tail into its receipt (or rotates the file under the transaction id) BEFORE any leg that restarts or truncates a unit with that log path -- rollback, adoption and fresh apply alike.",
+
+    "THE SECOND LESSON IS THE FILER'S: 'the log died with the container' was asserted from the container's --rm without reading the unit's own log path, which the arm declares by name. Read the declared artifact before declaring it lost.",
+  ],
+
+  evidence: [],
+}

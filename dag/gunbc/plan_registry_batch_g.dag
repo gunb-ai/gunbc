@@ -1,0 +1,48 @@
+module gunbc.plan_registry_batch_g
+
+import gunbc.plan { Plan }
+import gunbc.plans.deploy_convergence_observed_side { deploy_convergence_observed_side_plan }
+import gunbc.plans.v2_corpus_self_host { v2_corpus_self_host_plan }
+import gunbc.plans.resolver_type_name_collision_wall { resolver_type_name_collision_wall_plan }
+import gunbc.plans.host_effect_orchestration { host_effect_orchestration_plan }
+import gunbc.plans.reference_grounding_migration { reference_grounding_migration_plan }
+import gunbc.plans.typescript_gap_census { typescript_gap_census_plan }
+import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
+import gunbc.plans.structural_quadratic_wall_coverage_audit { structural_quadratic_wall_coverage_audit_plan }
+import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan }
+import gunbc.plans.v2_complexity_capability_parity { v2_complexity_capability_parity_plan }
+import gunbc.plans.joint_incompatibility_claim_join { joint_incompatibility_claim_join_plan }
+import gunbc.plans.for_while_loop_sugar { for_while_loop_sugar_plan }
+import gunbc.plans.demand_engine_program { demand_engine_program_plan }
+import gunbc.plans.ensure_closure_design { ensure_closure_design_plan }
+import gunbc.plans.convergence_coverage_program { convergence_coverage_program_plan }
+import gunbc.plans.harness_session_lifecycle { harness_session_lifecycle_plan }
+import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
+import gunbc.plans.durable_work_handoff { durable_work_handoff_plan }
+import gunbc.plans.source_layout_authority { source_layout_authority_plan }
+import gunbc.plans.physical_machine_boot_program { physical_machine_boot_program_plan }
+import gunbc.plans.gunb_ai_projection { gunb_ai_projection_plan }
+
+data batch_g_plans: List<Plan> = [
+  resolver_type_name_collision_wall_plan,
+  host_effect_orchestration_plan,
+  reference_grounding_migration_plan,
+  typescript_gap_census_plan,
+  cli_run_hollowing_plan,
+  structural_quadratic_wall_coverage_audit_plan,
+  extdeps_modeling_preflight_plan,
+  v2_complexity_capability_parity_plan,
+  deploy_convergence_observed_side_plan,
+  v2_corpus_self_host_plan,
+  joint_incompatibility_claim_join_plan,
+  for_while_loop_sugar_plan,
+  demand_engine_program_plan,
+  ensure_closure_design_plan,
+  convergence_coverage_program_plan,
+  harness_session_lifecycle_plan,
+  v2_compiler_architecture_plan,
+  durable_work_handoff_plan,
+  source_layout_authority_plan,
+  physical_machine_boot_program_plan,
+  gunb_ai_projection_plan
+]

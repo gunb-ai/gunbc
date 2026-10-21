@@ -1,0 +1,173 @@
+module gunbc.auth.gcp_operation_wait
+
+import std.types { Int, Bool, String, Secret, NonEmptyStr }
+import std.measure { Second, second, second_count }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.cloud.gcp.gcp {
+  GcpProjectId, GoogleRpcStatus, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
+  WifOperationSubject, WifPoolOperation, WifProviderOperation, WifOperationName, WifOperationNamed, WifOperationNameMismatch, wif_operation_name_parse,
+}
+import extdeps.cloud.gcp.iam_admin
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+
+// ── WAITING FOR A CREATE'S LONG-RUNNING OPERATION BEFORE ANYTHING IS READ BACK ────────────────────
+// A WIF pool or provider create answers 200 with a google.longrunning.Operation, not with the
+// resource: the resource may not be visible to a get or list until that operation is done. A run that
+// read back straight after the create refused ("a created subject is not yet visible on readback")
+// over a create that had succeeded -- fleet-converge runs 38758599437 (mtjade1-arrival provider) and
+// 38671697905 (printer-lan), the rerun 38761692372 succeeding with no change -- and each refusal
+// cost a whole rerun and another operator approval
+// (gunbc.recurring_failure_mode created_resource_read_back_before_its_operation_reported_done).
+//
+// THE CONTRACT: issue the create; observe the operation until Done, Failed or the declared budget;
+// only then read the resource back. A spent budget, an unreadable operation and an operation name that
+// does not name the subject just created are typed refusals, and NONE is permission to issue the
+// create again -- the create has been committed and the operator's rerun re-observes before it writes.
+
+// THE BUDGET IS DATA AND THE TICKS ARE DERIVED from it and the cadence, the same shape as
+// gunbc.auth.gcp_iam_converge_run gcp_iam_converge_poll_ticks. Cadence and budget are chosen so one
+// create's wait fits inside the apply step's actuation allowance
+// (gcp_operation_budget_fits_actuation_allowance, witnessed). THE TOKEN IS THE WHOLE BOUND: all of a
+// step's waits share one impersonated token of iam_converge_token_lifetime, so many slow creates can
+// outlast it; a read after expiry is refused as OperationWaitUnreadable (typed, the create is never
+// reissued) and the operator's rerun re-observes before it writes.
+data gcp_operation_poll_cadence: Second = second(count: 5)
+
+data gcp_operation_poll_budget: Second = second(count: 120)
+
+// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
+// provisioning run (creates, one impersonation reconcile, a handful of secret grants, each with
+// readback) and ends before a leaked token is worth much. It lives here because the waits are bounded
+// by it and gunbc.auth.gcp_iam_converge, which imports this module, cannot be imported back.
+data iam_converge_token_lifetime: Second = second(count: 600)
+
+fn gcp_operation_poll_ticks() -> Int {
+  second_count(s: gcp_operation_poll_budget) / second_count(s: gcp_operation_poll_cadence)
+}
+
+fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
+  second_count(s: gcp_operation_poll_budget) <= second_count(s: iam_converge_token_lifetime)
+}
+
+// ── ONE READ, and the pure decision after it ─────────────────────────────────────────────────────
+type OperationReading
+  = OperationRead { returned_name: String, standing: GcpOperationStanding }
+  | OperationUnreadable { refusal: RestRefusal }
+
+type OperationWaitOutcome
+  = OperationWaitDone
+  | OperationWaitFailed { operation_name: String, code: Int, message: String }
+  | OperationWaitBudgetSpent { operation_name: String }
+  | OperationWaitUnreadable { operation_name: String, refusal: RestRefusal }
+  | OperationWaitIdentityMismatch { operation_name: String, returned_name: String }
+  | OperationWaitPacingRefused { operation_name: String }
+  | OperationWaitNameUnparsed { reason: String }
+
+type OperationWaitStep
+  = OperationWaitReturn { outcome: OperationWaitOutcome }
+  | OperationWaitSleepAndContinue { next_remaining: Int }
+
+// Pure, so the ordering the bounded wait depends on is a witnessed fact: a finished operation returns
+// as read whatever the budget (done on the last tick is done); a running one continues while ticks
+// remain and is the SPENT BUDGET when none do; an unreadable one returns at once. AN ANSWER THAT NAMES
+// A DIFFERENT OPERATION is never evidence about this one (review of 2026-10-17): the returned name must
+// equal the accepted original name, else a typed identity mismatch and never Done.
+fn operation_wait_step(operation_name: String, reading: OperationReading, remaining: Int) -> OperationWaitStep {
+  match reading {
+    OperationUnreadable { refusal: r } => OperationWaitReturn { outcome: OperationWaitUnreadable { operation_name: operation_name, refusal: r } }
+    OperationRead { returned_name: rn, standing: st } =>
+      if rn != operation_name { OperationWaitReturn { outcome: OperationWaitIdentityMismatch { operation_name: operation_name, returned_name: rn } } } else {
+      match st {
+        OperationDone => OperationWaitReturn { outcome: OperationWaitDone }
+        OperationFailed { code: c, message: m } => OperationWaitReturn { outcome: OperationWaitFailed { operation_name: operation_name, code: c, message: m } }
+        OperationRunning =>
+          if remaining <= 0 { OperationWaitReturn { outcome: OperationWaitBudgetSpent { operation_name: operation_name } } }
+          else { OperationWaitSleepAndContinue { next_remaining: remaining - 1 } }
+      }
+      }
+  }
+}
+
+// THE PACE IS PART OF THE ELAPSED TIME. The sleep answers false on an invalid duration or a failed
+// sleep, and then no interval elapsed: recursing anyway would burst the remaining reads and report
+// "still running after N seconds" falsely. So the budget is spent only by a pace that happened, and a
+// failed pace is its own terminal refusal.
+fn operation_wait_after_pace(operation_name: String, paced: Bool, next_remaining: Int) -> OperationWaitStep {
+  if paced { OperationWaitSleepAndContinue { next_remaining: next_remaining } }
+  else { OperationWaitReturn { outcome: OperationWaitPacingRefused { operation_name: operation_name } } }
+}
+
+// The transport refusal is rendered by the caller's own text fold (render_refusal), because the one in
+// use lives in gunbc.auth.heal_publisher_provision, which imports this module.
+fn operation_wait_refusal(outcome: OperationWaitOutcome, render_refusal: fn(RestRefusal) -> String) -> String {
+  match outcome {
+    OperationWaitDone => ""
+    OperationWaitFailed { operation_name: n, code: c, message: m } =>
+      join([n, " finished with error (code ", to_string(c), "): ", m, "; the operation failed; the create is not reissued, and a rerun observes before writing"], "")
+    OperationWaitBudgetSpent { operation_name: n } =>
+      join([n, " was still running after ", to_string(second_count(s: gcp_operation_poll_budget)), " seconds; the create is committed and is not reissued -- rerun once it is done"], "")
+    OperationWaitUnreadable { operation_name: n, refusal: r } =>
+      join([n, " could not be read (the create is not reissued): ", render_refusal(r)], "")
+    OperationWaitIdentityMismatch { operation_name: n, returned_name: rn } =>
+      join([n, " was polled but the answer names a different operation, ", rn, "; the create is not reissued and a rerun observes before writing"], "")
+    OperationWaitPacingRefused { operation_name: n } =>
+      join([n, " could not be paced (the ", to_string(second_count(s: gcp_operation_poll_cadence)), "-second sleep failed), so no interval elapsed; the create is not reissued -- rerun once it is done"], "")
+    OperationWaitNameUnparsed { reason: r } => r
+  }
+}
+
+// ── THE WET READ AND THE BOUNDED WAIT ────────────────────────────────────────────────────────────
+fn read_wif_operation(token: Secret, subject: WifOperationSubject, operation_id: String) -> OperationReading
+{
+  match subject {
+    WifPoolOperation { pool_id: p } =>
+      match gcp.IamAdmin.GetWorkloadIdentityPoolOperation(access_token: token, project_id: fleet_secrets_project_number as GcpProjectId, pool_id: p as NonEmptyStr, operation_id: operation_id as NonEmptyStr) {
+        RestAnswered { answer: a } => OperationRead { returned_name: a.operation_name, standing: gcp_operation_standing(done: a.done, error: a.error) }
+        RestRefused { refusal } => OperationUnreadable { refusal: refusal }
+      }
+    WifProviderOperation { pool_id: p, provider_id: v } =>
+      match gcp.IamAdmin.GetWorkloadIdentityPoolProviderOperation(access_token: token, project_id: fleet_secrets_project_number as GcpProjectId, pool_id: p as NonEmptyStr, provider_id: v as NonEmptyStr, operation_id: operation_id as NonEmptyStr) {
+        RestAnswered { answer: a } => OperationRead { returned_name: a.operation_name, standing: gcp_operation_standing(done: a.done, error: a.error) }
+        RestRefused { refusal } => OperationUnreadable { refusal: refusal }
+      }
+  }
+}
+
+fn wif_operation_wait_ticks(remaining: Int, token: Secret, subject: WifOperationSubject, operation_id: String, operation_name: String) -> OperationWaitOutcome
+{
+  match operation_wait_step(operation_name: operation_name, reading: read_wif_operation(token: token, subject: subject, operation_id: operation_id), remaining: remaining) {
+    OperationWaitReturn { outcome: o } => o
+    OperationWaitSleepAndContinue { next_remaining: n } => {
+      let paced = sleep_delay_seconds_second_carrier_projection(duration: gcp_operation_poll_cadence)
+      match operation_wait_after_pace(operation_name: operation_name, paced: paced, next_remaining: n) {
+        OperationWaitReturn { outcome: o } => o
+        OperationWaitSleepAndContinue { next_remaining: m } => wif_operation_wait_ticks(remaining: m, token: token, subject: subject, operation_id: operation_id, operation_name: operation_name)
+      }
+    }
+  }
+}
+
+// WHAT A CREATE SITE CALLS with the three facts its answer carried. "" means the operation is done and
+// the resource may be read back; anything else is the refusal text. An answer that is already done (or
+// already failed) skips the poll.
+fn wif_create_operation_wait(token: Secret, subject: WifOperationSubject, operation_name: String, done: Bool?, error: GoogleRpcStatus?, render_refusal: fn(RestRefusal) -> String) -> String
+{
+  operation_wait_refusal(outcome: wif_create_operation_outcome(token: token, subject: subject, operation_name: operation_name, done: done, error: error), render_refusal: render_refusal)
+}
+
+// THE SAME WAIT, TYPED: a caller that must not read success from an empty string (the bootstrap delta's
+// privileged write path, review 82849) matches OperationWaitDone and nothing else.
+fn wif_create_operation_outcome(token: Secret, subject: WifOperationSubject, operation_name: String, done: Bool?, error: GoogleRpcStatus?) -> OperationWaitOutcome
+{
+  match gcp_operation_standing(done: done, error: error) {
+    OperationDone => OperationWaitDone
+    OperationFailed { code: c, message: m } => OperationWaitFailed { operation_name: operation_name, code: c, message: m }
+    OperationRunning =>
+      match wif_operation_name_parse(name: operation_name, project_number: fleet_secrets_project_number, subject: subject) {
+        WifOperationNameMismatch { reason: r } => OperationWaitNameUnparsed { reason: r }
+        WifOperationNamed { operation_id: id } =>
+          wif_operation_wait_ticks(remaining: gcp_operation_poll_ticks(), token: token, subject: subject, operation_id: id, operation_name: operation_name)
+      }
+  }
+}

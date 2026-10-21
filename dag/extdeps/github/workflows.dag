@@ -1,0 +1,92 @@
+module extdeps.github.workflows
+
+import extdeps.ietf.http_semantics { POST }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import std.types { NonEmptyStr, Secret, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.transports.rest { RestResult }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
+  }
+}
+
+data workflows_api_version: NonEmptyStr = "2026-03-10"
+
+// Create Workflow Dispatch has two live response contracts across GitHub REST versions. Requests
+// without X-GitHub-Api-Version default to 2022-11-28 and return 204 No Content. Version 2026-03-10
+// returns 200 with workflow_run_id, run_url, and html_url. This service explicitly pins 2026-03-10
+// in the transport header, so WorkflowDispatchReceipt is the cited response rather than a
+// fabricated body projected from an unversioned 204. Authority:
+// docs.github.com/en/rest/about-the-rest-api/api-versions and the Create a workflow dispatch event
+// response schema, read 2026-08-01.
+
+type WorkflowDispatchReceipt {
+  workflow_run_id: Int
+  run_url: NonEmptyStr
+  html_url: NonEmptyStr
+}
+
+// CreateDispatch is the cited GitHub REST shape (Create a workflow dispatch event), not a heal
+// coproduct. It is intentionally single-attempt: silently retrying 401/403/429/5xx into a
+// WorkflowDispatchReceipt would fabricate a run that was refused. The owning workflow may be
+// retriggered after diagnosis; this operation never assumes a git push created a run.
+//
+// `inputs` IS THE UPSTREAM'S OWN SHAPE: an object of input name to value, at most 25 properties,
+// each key a workflow_dispatch input the target workflow declares (extdeps.github.actions
+// DispatchInput). It once carried exactly one key, expected_healed_sha, because the deleted
+// tools.ci_heal_dispatch was its only caller -- a consumer's policy fused into the interface
+// (DESIGN section 3). Which keys a dispatch carries is the dispatching workflow's fact, so the
+// caller supplies the object and this module names no key. GitHub answers an undeclared key with
+// 422, which is the refusal arm below, never a silently dropped input.
+//
+// THE CREDENTIAL IS AN INPUT, NOT AN AMBIENT VARIABLE. It once read GITHUB_TOKEN from the
+// environment, which fixed the executing credential to whichever job happened to run the call.
+// Which credential performs a dispatch is the caller's authorization fact (gunbc.auth), so the
+// operation takes the bearer as auth_token, as the self-hosted-runner and gist services do.
+service github.Workflows {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation CreateDispatch {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      workflow_id: String
+      ref: String
+      inputs: Map<String, String>
+    }
+    output {
+      result: WorkflowDispatchReceipt
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_id\}/dispatches",
+      headers: { "X-GitHub-Api-Version": workflows_api_version },
+      body: {
+        ref: ref,
+        inputs: inputs
+      }
+    }
+    response {
+      200 => WorkflowDispatchReceipt
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      429 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

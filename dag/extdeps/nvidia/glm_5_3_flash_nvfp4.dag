@@ -1,0 +1,65 @@
+module extdeps.nvidia.glm_5_3_flash_nvfp4
+
+import std.types { NonEmptyStr }
+import std.measure { byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8 }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_model_id }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
+
+// ── NVIDIA's NVFP4 QUANTIZATION OF GLM-5.3-FLASH, ITS OWN UPSTREAM ─────────────────────────────────
+//
+// nvidia/GLM-5.3-Flash-NVFP4 is NVIDIA's artifact -- its own Hub repository, revision history and
+// quantization producer (ModelOpt) -- so it is its own module (DESIGN section 3, external upstream
+// decomposition), exactly as RadixArk's redistribution of GLM-5.3 is. The base model is Z.ai's, cited
+// as a further citation; the architecture class and parsers are the base's and are not restated here.
+//
+// THE PIN IS da920bb0, read 2026-10-02: the commit "fix: declare NextN (MTP) layer 45 as BF16 in
+// quantization ignore lists (#11)", 2026-09-29. Earlier revisions quantize the MTP layer the runtime
+// expects in BF16, so following `main` or an older pin would serve a different artifact.
+data glm_5_3_flash_nvfp4_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "nvidia/GLM-5.3-Flash-NVFP4" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: glm_5_3_flash_nvfp4_hub_repo),
+}
+
+// THE BASE MODEL'S IDENTITY IS Z.ai's ROW (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_model_id), consumed
+// here rather than re-spelled, so the two modules cannot disagree about which repository was quantized.
+data glm_5_3_flash_base_authority: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: HubRepoId { kind: HubModelRepo, path: glm_5_3_flash_model_id }),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.glm_5_3_flash_nvfp4",
+      decl_name: "glm_5_3_flash_nvfp4_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [glm_5_3_flash_base_authority],
+}
+
+data glm_5_3_flash_nvfp4_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
+  revision: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr,
+  safetensors_shard_count: 33,
+  safetensors_bytes: byte_size(count: 204439103396),
+  repository_total_bytes: byte_size(count: 204476278199),
+  read_by: "the Hub model API for nvidia/GLM-5.3-Flash-NVFP4, tree at that exact revision, summed over the safetensors siblings, read 2026-10-02; the revision is the repository's main head on that date" as NonEmptyStr,
+)
+
+// THE QUANTIZATION AS ITS OWN CONFIG STATES IT (config.json quantization_config and hf_quant_config.json
+// at the pin): ModelOpt (quant_method, read by the checkpoint row) with NVFP4 weights in groups of 16,
+// and the KV cache in FP8 (below, as the launch request).
+data glm_5_3_flash_nvfp4_quant_method: NonEmptyStr = "modelopt" as NonEmptyStr
+// THE KV CACHE SCHEME AS THE REQUEST IT IS: config.json's kv_cache_scheme at the pin is
+// {"num_bits": 8, "type": "float"} and hf_quant_config.json's kv_cache_quant_algo is "FP8" -- an 8-bit
+// float KV cache, which is extdeps.vllm.engine_args KvFp8 in the launch vocabulary. The checkpoint's launch
+// policy reads THIS value, so a re-pin to another scheme changes the request, and the capability join
+// (extdeps.vllm.kv_dtype_capability) is what admits or refuses it for a backend.
+data glm_5_3_flash_nvfp4_kv_cache_dtype: VllmKvCacheDtypeRequest = KvFp8

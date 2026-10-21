@@ -1,0 +1,640 @@
+module test.claim.bmc.megarac_operation_surface_witness
+
+import std.types { Bool, Int, List }
+import std.optional { Present, Absent }
+import std.measure { celsius, percent, percent_count, rpm }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
+  MegaRacFanSlotDriven,
+  MegaRacFanSlotJoinUnexplained,
+  MegaRacFanSlotPhysicallyAbsent,
+  MegaRacManagerDisabledAdmitted,
+  MegaRacManagerDisabledRefused,
+  MegaRacSdrFanPresenceAbsent,
+  MegaRacSdrFanRotatingInBand,
+  megarac_fan_pwm_all_body,
+  megarac_fan_pwm_all_of,
+  megarac_fan_slot_standing,
+  megarac_manager_disabled_of_wire,
+  megarac_set_manager_status_body,
+}
+import gunbc.machine_intake.megarac_fan_mode_observation {
+  BootThroughTerminal,
+  HostBringupAndAfter,
+  MegaRacDutyConvergedEchoTachUnfaithful,
+  MegaRacDutyConvergedTachMoved,
+  MegaRacDutyNotConvergedEchoMismatch,
+  MegaRacDutyNotConvergedGuardOpen,
+  MegaRacDutyNotConvergedTachPopulationMismatch,
+  MegaRacDutyNotConvergedTachUnmoved,
+  MegaRacTachFidelityEstablished,
+  MegaRacTachFidelityUnestablished,
+  megarac_duty_converge_verdict,
+  megarac_fan_boot_phase_desire,
+  megarac_fan_boot_pwm_admitted,
+  megarac_fan_bringup_phase_desire,
+  HandSetDeclaredUnobserved,
+  HandSetObserved,
+  MegaRacDutyAudible,
+  MegaRacDutyInaudible,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14_220918,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14_222352,
+  mtcollins1_megarac_operator_hand_set_2026_10_14_2200,
+  mtcollins1_megarac_tach_fidelity,
+  mtcollins1_operator_duty_audibility_2026_10_14_2220,
+  mtcollins1_megarac_thermal_snapshot_2026_10_14,
+}
+import gunbc.machine_intake.megarac_fan_thermal_guard {
+  MegaRacTempObserved,
+  MegaRacTempReading,
+  MegaRacTempUnreadable,
+  MegaRacThermalGuardHolds,
+  MegaRacThermalGuardTrip,
+  MegaRacThermalGuardUnread,
+  MegaRacThermalGuardCeilingUnestablished,
+  CeilingUnestablished,
+  ReEnableCoolingManager,
+  RunExited,
+  TemperatureUnreadable,
+  ThermalGuardTripped,
+  MegaRacFanPhasePwmRefused,
+  MegaRacFanPhaseWritesReady,
+  megarac_fan_boot_phase_write_plan,
+  megarac_fan_exit_manager_readback_body,
+  megarac_fan_run_exit_restore,
+  megarac_fan_safety_restore,
+  megarac_thermal_guard_verdict,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.megarac {
+  megarac_api_operations,
+  megarac_op_fan_get_fan_info,
+  megarac_op_fan_get_manager_status,
+  megarac_op_fan_set_fan_speed,
+  megarac_op_fan_set_manager_status,
+  MegaRacIpmiSelPayloadPreserved,
+  MegaRacWebEventLogOemEmptySelData,
+  RedirectionConnecting,
+  RedirectionKnownStopped,
+  RedirectionPresentationUnknown,
+  RedirectionPresenting,
+  RedirectionStartedConnectionAccepted,
+  RedirectionStatusFirmwareUncatalogued,
+  RedirectionStatusKnown,
+  RedirectionStopped,
+  RedirectionWireUncatalogued,
+  megarac_firmware_0_32,
+  megarac_ipmi_sel_layout,
+  megarac_redirection_presentation_standing,
+  megarac_redirection_status_of_wire,
+  megarac_web_event_log_layout,
+}
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.ampere.oem_sel {
+  AmpereBootSyndromeOemSel,
+  AmpereOemSelManufacturerIdNotThisPen,
+  AmpereOemSelSensorOutsideLayout,
+  ampere_oem_sel_producer_layout,
+  ampere_oem_sel_record_match,
+}
+import gunbc.machine_intake.sol_collector_observation {
+  CollectorTerminatedExitZeroStdinEof,
+  SolCollectorDidNotEstablishCoverage,
+  SolCollectorSessionAcknowledged,
+  SolCollectorSessionNotAcknowledged,
+  SolCoverageComplete,
+  SolCoverageNeverEstablished,
+  SolCoverageStillRunningPastDeadline,
+  SolHostPayloadAdmitted,
+  SolHostPayloadNotReceived,
+  SolHostPayloadReceived,
+  SolHostProducedNoConsoleBytes,
+  SolCollectorObservation,
+  SolSessionNeverAcknowledged,
+  sol_host_fact_from_collector,
+}
+import gunbc.machine_intake.megarac_pre_os_channel {
+  megarac_sol_collector_terminate_deadline,
+  megarac_sol_host_payload_positive_control,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
+  match mtcollins1_megarac_fan_mode_observation_2026_10_14.manager {
+    CoolingManagerAutomatic =>
+      mtcollins1_megarac_fan_mode_observation_2026_10_14.fans.length() == 6
+        && match mtcollins1_megarac_fan_mode_observation_2026_10_14.fans.skip(n: 4).first() {
+          Present { value: row } => percent_count(p: row.fan_pwm) == 20
+          Absent => false
+        }
+        && match megarac_manager_disabled_of_wire(manager_disabled: 1) {
+          MegaRacManagerDisabledAdmitted { standing: s } =>
+            s == CoolingManagerDisabledManual
+              && megarac_fan_boot_phase_desire.phase == BootThroughTerminal
+              && megarac_fan_bringup_phase_desire.phase == HostBringupAndAfter
+              && megarac_fan_bringup_phase_desire.manager == CoolingManagerAutomatic
+              && (megarac_set_manager_status_body(standing: CoolingManagerAutomatic) as String)
+                == "{\"manager_disabled\":0}"
+              && mtcollins1_megarac_thermal_snapshot_2026_10_14.system_inlet_suspect
+              && match megarac_manager_disabled_of_wire(manager_disabled: 2) {
+                MegaRacManagerDisabledRefused { wire: w } => w == 2
+                MegaRacManagerDisabledAdmitted { standing: _ } => false
+              }
+              && match mtcollins1_megarac_operator_hand_set_2026_10_14_2200 {
+                HandSetObserved { observation: o } =>
+                  o.manager == CoolingManagerDisabledManual
+                    && (o.observed_at as String) == "2026-10-14T22:09:18Z"
+                HandSetDeclaredUnobserved { declared_at: _, read_obligation: _ } => false
+              }
+          MegaRacManagerDisabledRefused { wire: _ } => false
+        }
+    CoolingManagerDisabledManual => false
+  }
+}
+
+test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
+  match megarac_duty_converge_verdict(
+    fidelity: mtcollins1_megarac_tach_fidelity,
+    pwm_echo_matches_desired: true,
+    guard_holds_over_dwell: true,
+    tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+    tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5800)],
+  ) {
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: f } =>
+      match f {
+        MegaRacTachFidelityUnestablished { clears_when: _ } =>
+          match megarac_duty_converge_verdict(
+            fidelity: MegaRacTachFidelityEstablished,
+            pwm_echo_matches_desired: true,
+            guard_holds_over_dwell: true,
+            tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+            tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5800)],
+          ) {
+            MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: echo } =>
+              echo
+                && mtcollins1_megarac_fan_mode_observation_2026_10_14_222352.fans
+                  == mtcollins1_megarac_fan_mode_observation_2026_10_14_220918.fans
+                && match mtcollins1_operator_duty_audibility_2026_10_14_2220.first() {
+                  Present { value: MegaRacDutyInaudible { pwm: p20 } } =>
+                    p20 == percent(20)
+                      && match mtcollins1_operator_duty_audibility_2026_10_14_2220.skip(n: 1).first() {
+                        Present { value: MegaRacDutyAudible { pwm: p40 } } => p40 == percent(40)
+                        Present { value: MegaRacDutyInaudible { pwm: _ } } => false
+                        Absent => false
+                      }
+                  Present { value: MegaRacDutyAudible { pwm: _ } } => false
+                  Absent => false
+                }
+            MegaRacDutyConvergedTachMoved => false
+            MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+            MegaRacDutyNotConvergedEchoMismatch => false
+            MegaRacDutyNotConvergedGuardOpen => false
+            MegaRacDutyNotConvergedTachPopulationMismatch => false
+          }
+        MegaRacTachFidelityEstablished => false
+      }
+    MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedEchoMismatch => false
+    MegaRacDutyNotConvergedGuardOpen => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
+  }
+}
+
+test fn open_dwell_guard_refuses_converge_on_both_fidelity_arms() -> Bool {
+  match megarac_duty_converge_verdict(
+    fidelity: mtcollins1_megarac_tach_fidelity,
+    pwm_echo_matches_desired: true,
+    guard_holds_over_dwell: false,
+    tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+    tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(6000)],
+  ) {
+    MegaRacDutyNotConvergedGuardOpen =>
+      match megarac_duty_converge_verdict(
+        fidelity: MegaRacTachFidelityEstablished,
+        pwm_echo_matches_desired: true,
+        guard_holds_over_dwell: false,
+        tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+        tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(6000)],
+      ) {
+        MegaRacDutyNotConvergedGuardOpen => true
+        MegaRacDutyConvergedTachMoved => false
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+        MegaRacDutyNotConvergedEchoMismatch => false
+        MegaRacDutyNotConvergedTachPopulationMismatch => false
+      }
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+    MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedEchoMismatch => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
+  }
+}
+
+test fn established_echo_mismatch_and_tach_population_mismatch_refuse() -> Bool {
+  match megarac_duty_converge_verdict(
+    fidelity: MegaRacTachFidelityEstablished,
+    pwm_echo_matches_desired: false,
+    guard_holds_over_dwell: true,
+    tach_before_rpm: [rpm(5700)],
+    tach_after_rpm: [rpm(6000), rpm(6000)],
+  ) {
+    MegaRacDutyNotConvergedEchoMismatch =>
+      match megarac_duty_converge_verdict(
+        fidelity: MegaRacTachFidelityEstablished,
+        pwm_echo_matches_desired: true,
+        guard_holds_over_dwell: true,
+        tach_before_rpm: [rpm(5700)],
+        tach_after_rpm: [rpm(6000), rpm(6000)],
+      ) {
+        MegaRacDutyNotConvergedTachPopulationMismatch => true
+        MegaRacDutyConvergedTachMoved => false
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+        MegaRacDutyNotConvergedEchoMismatch => false
+        MegaRacDutyNotConvergedGuardOpen => false
+      }
+    MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedGuardOpen => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
+  }
+}
+
+test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
+  (megarac_op_fan_get_manager_status.path as String) == "/api/fan_control/get_manager_status"
+    && (megarac_op_fan_get_fan_info.path as String) == "/api/fan_control/get_fan_info"
+    && (megarac_op_fan_set_manager_status.path as String) == "/api/fan_control/set_manager_status"
+    && (megarac_op_fan_set_fan_speed.path as String) == "/api/fan_control/set_fan_speed"
+    && (megarac_op_fan_get_manager_status.http_method as String) == "GET"
+    && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
+}
+
+test fn executed_megarac_ops_exclude_all_four_cited_fan_rows() -> Bool {
+  filter(megarac_api_operations, op => op == megarac_op_fan_get_manager_status).length() == 0
+    && filter(megarac_api_operations, op => op == megarac_op_fan_get_fan_info).length() == 0
+    && filter(megarac_api_operations, op => op == megarac_op_fan_set_manager_status).length() == 0
+    && filter(megarac_api_operations, op => op == megarac_op_fan_set_fan_speed).length() == 0
+}
+
+test fn missing_socket1_fans_are_physically_absent_not_zero_duty() -> Bool {
+  match megarac_fan_slot_standing(pwm: percent(0), sdr: MegaRacSdrFanPresenceAbsent) {
+    MegaRacFanSlotPhysicallyAbsent =>
+      match megarac_fan_slot_standing(
+        pwm: percent(20),
+        sdr: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+      ) {
+        MegaRacFanSlotDriven { pwm: p, min_rpm: _, max_rpm: _ } =>
+          percent_count(p: p) == 20
+            && match megarac_fan_slot_standing(pwm: percent(20), sdr: MegaRacSdrFanPresenceAbsent) {
+              MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => true
+              MegaRacFanSlotPhysicallyAbsent => false
+              MegaRacFanSlotDriven { pwm: _, min_rpm: _, max_rpm: _ } => false
+            }
+        MegaRacFanSlotPhysicallyAbsent => false
+        MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => false
+      }
+    MegaRacFanSlotDriven { pwm: _, min_rpm: _, max_rpm: _ } => false
+    MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => false
+  }
+}
+
+fn megarac_guard_readable_fixture(soc: Int) -> List<MegaRacTempReading> {
+  [
+    MegaRacTempObserved { sensor: "CPU0_SOC_Temp", value: celsius(soc) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(34) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+}
+
+// The M128-30 catalog row has datasheet limits, so the SoC trip is derivable here; the Q80-30 case
+// (no limits row) is witness_unestablished_ceiling_is_not_a_temperature_trip.
+test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
+  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85), cpu: altra_max_m12830_catalog) {
+    MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
+      (s as String) == "CPU0_SOC_Temp"
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84), cpu: altra_max_m12830_catalog) {
+          MegaRacThermalGuardHolds =>
+            match megarac_fan_safety_restore(
+              verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
+            ) {
+              Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+                true
+              Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+                false
+              Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+                false
+              Present { value: ReEnableCoolingManager { cause: RunExited } } => false
+              Absent => false
+            }
+          MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+          MegaRacThermalGuardUnread { sensor: _ } => false
+          MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardUnread { sensor: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
+  }
+}
+
+test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
+  let readings = [
+    MegaRacTempUnreadable { sensor: "CPU0_SOC_Temp" },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(34) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+  match megarac_thermal_guard_verdict(readings: readings, cpu: altra_max_m12830_catalog) {
+    MegaRacThermalGuardUnread { sensor: s } =>
+      (s as String) == "CPU0_SOC_Temp"
+        && match megarac_fan_safety_restore(
+          verdict: MegaRacThermalGuardUnread { sensor: s },
+        ) {
+          Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+            true
+          Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: RunExited } } => false
+          Absent => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
+  }
+}
+
+test fn boot_job_admits_the_fan_pwm_all_write_plan() -> Bool {
+  match megarac_fan_boot_phase_write_plan() {
+    MegaRacFanPhaseWritesReady { manager_body: m, pwm_body: p } =>
+      (m as String) == "{\"manager_disabled\":1}"
+        && match p {
+          Present { value: b } => (b as String) == "{\"fan_pwm_all\":\"20\"}"
+          Absent => false
+        }
+    MegaRacFanPhasePwmRefused { duty: _ } => false
+  }
+}
+
+test fn mid_boot_exit_leaves_the_cooling_manager_enabled() -> Bool {
+  match megarac_fan_run_exit_restore() {
+    ReEnableCoolingManager { cause: RunExited } =>
+      (megarac_fan_exit_manager_readback_body() as String) == "{\"manager_disabled\":0}"
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36), cpu: altra_max_m12830_catalog) {
+          MegaRacThermalGuardHolds => true
+          MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+          MegaRacThermalGuardUnread { sensor: _ } => false
+          MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
+        }
+    ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } => false
+    ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } => false
+    ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } => false
+  }
+}
+
+test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
+  let readings = [
+    MegaRacTempObserved { sensor: "CPU0_SOC_Temp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(85) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+  match megarac_thermal_guard_verdict(readings: readings, cpu: altra_max_m12830_catalog) {
+    MegaRacThermalGuardTrip { sensor: s, temperature: _ } =>
+      (s as String) == "CPU0_DIMMG0_Temp"
+        && match megarac_fan_safety_restore(
+          verdict: MegaRacThermalGuardTrip { sensor: s, temperature: celsius(85) },
+        ) {
+          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+            true
+          Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: RunExited } } => false
+          Absent => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardUnread { sensor: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
+  }
+}
+
+test fn set_fan_speed_body_is_fan_pwm_all_as_a_string() -> Bool {
+  match megarac_fan_pwm_all_of(duty: percent(25)) {
+    MegaRacFanPwmAllAdmitted { wire: w } =>
+      (w as String) == "25"
+        && match megarac_fan_pwm_all_body(pwm: MegaRacFanPwmAllAdmitted { wire: w }) {
+          Present { value: body } => (body as String) == "{\"fan_pwm_all\":\"25\"}"
+          Absent => false
+        }
+        && megarac_fan_boot_pwm_admitted(duty: percent(20))
+        && megarac_fan_boot_pwm_admitted(duty: percent(30))
+        && !megarac_fan_boot_pwm_admitted(duty: percent(35))
+        && match megarac_fan_pwm_all_of(duty: percent(22)) {
+          MegaRacFanPwmAllRefused { duty: _ } => true
+          MegaRacFanPwmAllAdmitted { wire: _ } => false
+        }
+    MegaRacFanPwmAllRefused { duty: _ } => false
+  }
+}
+
+test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
+  match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1) {
+    RedirectionStatusKnown { firmware: _, status: RedirectionStartedConnectionAccepted } =>
+      match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100) {
+        RedirectionStatusKnown { firmware: _, status: RedirectionConnecting } =>
+          match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0) {
+            RedirectionStatusKnown { firmware: _, status: RedirectionStopped } =>
+              match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7) {
+                RedirectionStatusKnown { firmware: _, status: RedirectionWireUncatalogued { wire: 7 } } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn redirection_status_refuses_an_uncatalogued_firmware() -> Bool {
+  let other = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.31")
+  match megarac_redirection_status_of_wire(firmware: other, wire: 1) {
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: 1 } => true
+    _ => false
+  }
+}
+
+test fn uncatalogued_wire_cannot_confirm_attachment() -> Bool {
+  megarac_redirection_presentation_standing(
+    lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1),
+  ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100),
+    ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0),
+    ) == RedirectionKnownStopped
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 2),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 5),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(
+        firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.31"),
+        wire: 1,
+      ),
+    ) == RedirectionPresentationUnknown
+}
+
+test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {
+  megarac_web_event_log_layout == MegaRacWebEventLogOemEmptySelData
+    && megarac_ipmi_sel_layout == MegaRacIpmiSelPayloadPreserved
+    && megarac_web_event_log_layout != megarac_ipmi_sel_layout
+}
+
+fn collector_without_coverage() -> SolCollectorObservation {
+  SolCollectorSessionAcknowledged {
+    coverage: SolCoverageNeverEstablished { termination: CollectorTerminatedExitZeroStdinEof },
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }
+}
+
+fn collector_with_host_payload() -> SolCollectorObservation {
+  SolCollectorSessionAcknowledged {
+    coverage: SolCoverageComplete,
+    host_payload: SolHostPayloadReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }
+}
+
+test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
+  match sol_host_fact_from_collector(obs: collector_without_coverage()) {
+    SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished { termination: CollectorTerminatedExitZeroStdinEof } } => true
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: collector_with_host_payload()) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageComplete,
+      host_payload: SolHostPayloadNotReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolHostProducedNoConsoleBytes => true
+      _ => false
+    }
+}
+
+test fn unacknowledged_session_never_claims_the_host_produced_no_bytes() -> Bool {
+  match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+    termination: CollectorTerminatedExitZeroStdinEof,
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }) {
+    SolSessionNeverAcknowledged => true
+    SolHostProducedNoConsoleBytes => false
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolSessionNeverAcknowledged => true
+      SolHostPayloadAdmitted => false
+      _ => false
+    }
+}
+
+test fn ampere_oem_sel_layout_does_not_cover_sensor_0xde() -> Bool {
+  match ampere_oem_sel_record_match(
+    layout: ampere_oem_sel_producer_layout,
+    sensor: 235,
+    manufacturer_id_byte0: 58,
+    manufacturer_id_byte1: 205,
+    manufacturer_id_byte2: 0,
+  ) {
+    AmpereBootSyndromeOemSel =>
+      match ampere_oem_sel_record_match(
+        layout: ampere_oem_sel_producer_layout,
+        sensor: 222,
+        manufacturer_id_byte0: 58,
+        manufacturer_id_byte1: 205,
+        manufacturer_id_byte2: 0,
+      ) {
+        AmpereOemSelSensorOutsideLayout { sensor: 222 } =>
+          match ampere_oem_sel_record_match(
+            layout: ampere_oem_sel_producer_layout,
+            sensor: 235,
+            manufacturer_id_byte0: 0,
+            manufacturer_id_byte1: 0,
+            manufacturer_id_byte2: 0,
+          ) {
+            AmpereOemSelManufacturerIdNotThisPen => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> Bool {
+  match sol_host_fact_from_collector(obs: megarac_sol_host_payload_positive_control) {
+    SolHostPayloadAdmitted => true
+    _ => false
+  }
+    && match megarac_sol_host_payload_positive_control {
+      SolCollectorSessionAcknowledged {
+        coverage: SolCoverageStillRunningPastDeadline,
+        host_payload: SolHostPayloadReceived,
+        terminate_deadline: _,
+      } => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageComplete,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageStillRunningPastDeadline,
+      host_payload: SolHostPayloadNotReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageStillRunningPastDeadline } => true
+      _ => false
+    }
+}

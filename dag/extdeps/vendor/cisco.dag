@@ -1,0 +1,30 @@
+module extdeps.vendor.cisco
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Cisco"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.cisco",
+      decl_name: "cisco",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+
+data cisco: Vendor<Hardware> = Vendor { legal_name: "Cisco Systems, Inc." }

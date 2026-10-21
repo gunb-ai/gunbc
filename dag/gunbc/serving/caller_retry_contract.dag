@@ -1,0 +1,152 @@
+module gunbc.serving.caller_retry_contract
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.algebra { length }
+import gunbc.serving.caller_backlog {
+  persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
+  no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
+}
+
+// ── THE BACKLOG IS THE CALLER'S, AND WHAT THAT OWES IS A CONTRACT (operator ruling, 2026-10-02) ────────
+//
+// A turn the route cannot take now is refused, not queued: there is no server-side queue, and the route
+// offer (retired gunbc.spark.group_b_serving_capacity (deleted #13779) group_b_route_offer) never exceeds the engine's ceiling, so
+// no turn waits inside the engine either. What waits is the caller's. The ruling declares that backlog
+// caller-owned and names what makes it DURABLE rather than merely retried: each property below.
+// gunbc.serving.caller_backlog is the executing model of those properties. caller_backlog_standing
+// derives DurableCallerBacklog only from a roster that has established every row. The SERVING ROUTE
+// does not yet establish any of the seven: the belt places its work on the operator endpoint, which takes no
+// seat, so the belt entry is unactivated and serving_route_caller_retry_rows holds every row unestablished
+// (see its comment for the trigger). serving_route_caller_backlog is therefore an EXTERNAL RETRY OBLIGATION
+// naming all seven. Declaring the route durable while that holds would be a meaning fork (DESIGN §3) and rung
+// inflation (DESIGN §4b).
+//
+// THE STANDING IS DERIVED, NEVER AUTHORED. Adding a server queue is not the trigger; the executing
+// basis is the caller's persisted snapshot, not a router-local queue, and the route names DurableCallerBacklog
+// only when it actually calls those folds.
+type DurableRetryProperty
+  = PersistBeforeOffer
+  | RetriableRefusal
+  | StableTurnIdentity
+  | IdempotentRetryDuplicateSuppression
+  | NoExpiryOnLongWait
+  | DurableCancellation
+  | NoDoubleExecution
+
+fn durable_retry_property_wire(p: DurableRetryProperty) -> NonEmptyStr {
+  match p {
+    PersistBeforeOffer => "persist-before-offer" as NonEmptyStr
+    RetriableRefusal => "retriable-refusal" as NonEmptyStr
+    StableTurnIdentity => "stable-turn-identity" as NonEmptyStr
+    IdempotentRetryDuplicateSuppression => "idempotent-retry" as NonEmptyStr
+    NoExpiryOnLongWait => "no-expiry-on-long-wait" as NonEmptyStr
+    DurableCancellation => "durable-cancellation" as NonEmptyStr
+    NoDoubleExecution => "no-double-execution" as NonEmptyStr
+  }
+}
+
+type DurableRetryPropertyStanding
+  = RetryPropertyEstablished { basis: NonEmptyStr }
+  | RetryPropertyUnestablished { obligation: NonEmptyStr }
+
+type DurableRetryPropertyRow {
+  property: DurableRetryProperty
+  standing: DurableRetryPropertyStanding
+}
+
+type CallerBacklogStanding
+  = DurableCallerBacklog
+  | ExternalRetryObligation { unmet: List<DurableRetryProperty> }
+  | CallerBacklogRosterMalformed { duplicated: List<DurableRetryProperty> }
+
+fn durable_retry_property_eq(a: DurableRetryProperty, b: DurableRetryProperty) -> Bool {
+  durable_retry_property_wire(p: a) as String == durable_retry_property_wire(p: b) as String
+}
+
+// THE STANDING IS DERIVED AGAINST THE CANONICAL SEVEN, NOT AGAINST WHATEVER ROWS WERE SUPPLIED (side-chat
+// review): a property with no row is unmet, never vacuously satisfied, and a property with two rows is a
+// malformed roster that refuses rather than letting either row decide. DurableCallerBacklog exists only
+// when every one of the seven has exactly one row and that row is established.
+fn caller_backlog_standing(rows: List<DurableRetryPropertyRow>) -> CallerBacklogStanding {
+  let duplicated = filter(durable_retry_properties, p => length(filter(rows, r => durable_retry_property_eq(a: r.property, b: p))) > 1)
+  let unmet = filter(durable_retry_properties, p => !any(rows, r => durable_retry_property_eq(a: r.property, b: p) && match r.standing {
+    RetryPropertyEstablished { basis: _ } => true
+    RetryPropertyUnestablished { obligation: _ } => false
+  }))
+  if length(duplicated) > 0 {
+    CallerBacklogRosterMalformed { duplicated: duplicated }
+  } else if length(unmet) == 0 {
+    DurableCallerBacklog
+  } else {
+    ExternalRetryObligation { unmet: unmet }
+  }
+}
+
+data durable_retry_properties: List<DurableRetryProperty> = [
+  PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
+  NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution,
+]
+
+// ── THE MODEL'S OWN ROSTER: every property established against the executing folds ─────────────
+//
+// This is the roster caller_backlog_standing folds to DurableCallerBacklog. It is not the serving
+// route; serving_route_caller_retry_rows takes these bases where execution establishes them.
+// A router-local queue is still
+// forbidden (gunbc.serving.router_realization MaintainAuthoritativeBindingLedger).
+data modeled_caller_retry_rows: List<DurableRetryPropertyRow> = [
+  DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyEstablished { basis: persist_before_offer_basis } },
+  DurableRetryPropertyRow { property: RetriableRefusal, standing: RetryPropertyEstablished { basis: retriable_refusal_basis } },
+  DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyEstablished { basis: stable_turn_identity_basis } },
+  DurableRetryPropertyRow { property: IdempotentRetryDuplicateSuppression, standing: RetryPropertyEstablished { basis: idempotent_retry_basis } },
+  DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyEstablished { basis: no_expiry_on_long_wait_basis } },
+  DurableRetryPropertyRow { property: DurableCancellation, standing: RetryPropertyEstablished { basis: durable_cancellation_basis } },
+  DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyEstablished { basis: no_double_execution_basis } },
+]
+
+fn modeled_caller_backlog() -> CallerBacklogStanding {
+  caller_backlog_standing(rows: modeled_caller_retry_rows)
+}
+
+// ── WHAT THE SERVING ROUTE'S CALLERS ESTABLISH TODAY ─────────────────────────────────────────────
+//
+// One row per property, switched to the model's basis ONLY where execution on this route establishes it.
+// The belt-spawned worker binds BatchQualityTolerant with AnyAdmittedModel, which gunbc.harness.harness_seat
+// harness_requirement_placement places on the operator endpoint, and that endpoint takes no seat. The
+// durable folds (admit, rebind, fenced completion) run only on a fleet-seat placement, so a worker turn
+// cannot reach them: harness_bind_seat refuses a durable turn placed on the operator endpoint before any
+// work is offered, rather than running it and failing the exit. Every property stays unestablished
+// until the belt places a durable turn on a fleet seat. The belt entry (gunbc.roadmap.roadmap_dispatch_actuator)
+// is therefore UNACTIVATED: it passes no turn, so a belt worker keeps the operator-route behaviour and claims no
+// durability. FRONTIER, trigger: a fleet-seat placement for BatchQualityTolerant belt work (rented card to seat,
+// #13915); the activating change has the belt pass the dispatch node, the turn ordinal and the instance's
+// host_layout state root, and switches these rows only where that execution establishes them. The fail-closed
+// refusal in gunbc.harness.harness_cli harness_durable_worker_cli stays for any entry that does pass a turn (the fold wiring itself is exercised by the
+// harness_seat and caller_backlog witnesses on a fleet binding).
+data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
+  DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: RetriableRefusal, standing: RetryPropertyUnestablished {
+    obligation: "a pending placement exits with the same status as a refusal (gunbc.harness.harness_cli harness_placement_pending_exit), so a belt reading the exit cannot tell come-back-later from terminal; the typed arm gunbc.serving.caller_backlog caller_retry_disposition is read inside the bind, not at the exit" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: IdempotentRetryDuplicateSuppression, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: DurableCancellation, standing: RetryPropertyUnestablished {
+    obligation: "a turn withdrawn by its caller has no durable record a later retry would honour on this route: no entry point calls gunbc.serving.caller_backlog cancel_work_durable, though the rebind and commit folds already refuse cancelled work" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+]
+
+fn caller_backlog_wire(s: CallerBacklogStanding) -> String {
+  match s {
+    DurableCallerBacklog => "the backlog is the caller's and is durable: every durable-retry property is established"
+    ExternalRetryObligation { unmet: us } =>
+      join(["the backlog is the caller's -- an EXTERNAL RETRY OBLIGATION, not a durable backlog; unmet: ",
+        join(map(us, u => durable_retry_property_wire(p: u) as String), ", ")], "")
+    CallerBacklogRosterMalformed { duplicated: ds } =>
+      join(["the caller's durable-retry roster is malformed (a property has more than one row: ",
+        join(map(ds, d => durable_retry_property_wire(p: d) as String), ", "), "), so no backlog standing is derived"], "")
+  }
+}
+
+fn serving_route_caller_backlog() -> CallerBacklogStanding {
+  caller_backlog_standing(rows: serving_route_caller_retry_rows)
+}

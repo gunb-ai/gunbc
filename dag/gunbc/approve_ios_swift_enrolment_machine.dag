@@ -1,0 +1,186 @@
+module gunbc.approve_ios_swift_enrolment_machine
+
+import std.types { NonEmptyStr, String, List }
+import std.logic { Bool }
+import std.algebra { list_append }
+import std.optional { Present }
+import gunbc.auth.approval_device_wire { EnrolmentRefusalWire, EnrolmentRefusalCodeExpired, EnrolmentRefusalCodeNotIssued, enrolment_refusal_wire_label }
+import gunbc.approve_ios_enrolment_machine {
+  EnrolmentPhase, EnrolmentAnswer, AnswerGranted, AnswerRefused, AnswerUnanswered,
+  PhaseUnenrolled, PhaseSubmissionUnknown, PhaseEnrolled,
+  enrolment_phases, enrolment_answers, enrolment_next, phase_name,
+}
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftPattern, SwiftSwitchCase, SwiftStaticModifier, SwiftImportDecl, SwiftAttribute,
+  SwiftFinalModifier, SwiftClassDecl, SwiftTuplePattern, SwiftNotEqualOperator,
+  sw_tuple, sw_if, sw_cond, sw_op,
+  sw_t, sw_tel, sw_id, sw_dot, sw_mem, sw_path, sw_call, sw_calln, sw_pos, sw_arg, sw_str, sw_strs, sw_arr, sw_eq, sw_ternary,
+  sw_expr, sw_ret, sw_let, sw_let_typed, sw_for, sw_switch, sw_case, sw_default, sw_pexpr,
+  sw_cases, sw_case_payload, sw_param, sw_func, sw_enum, sw_doc, sw_cmt, sw_import, sw_tg
+}
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+
+// TWO GENERATED SWIFT FILES FOR THE APP'S ENROLMENT STATE MACHINE (gunbc.approve_ios_enrolment_machine):
+//   apps/approve-ios/Approve/EnrolmentMachine.swift       the transition table, PRINTED BY EVALUATING
+//     enrolment_next over the closed phase x answer product: only the cells that move become cases, the
+//     rest fall to `default: return from`, so an edit to a transition in the .dag changes the table;
+//   apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift   the discriminating test.
+//
+// THE TEST'S ORACLE IS NOT THE TABLE. A test printed from the same rows it checks is green after any
+// edit to them. This one states the ruling itself, independently, in leaves_submission_unknown below:
+// the two refusals that prove the submitted code minted no enrolment are the only ones that leave
+// SubmissionUnknown; every other arm of the wire type (iterated through allCases, so a new arm is
+// covered), a transport failure and every non-SubmissionUnknown phase stay. Changing one transition
+// in the machine .dag therefore turns the regenerated test red; skipping the regeneration turns the
+// drift gate red.
+//
+// STANDING: nothing on the merge path compiles Swift (gunbc.approve_ios_app
+// approve_ios_vector_check_unenrolled_frontier); the XCTest is executed by an operator on a Mac.
+// What the merge path does check is the printed bytes, by the drift gate.
+
+data leaves_submission_unknown: List<EnrolmentRefusalWire> = [
+  EnrolmentRefusalCodeExpired,
+  EnrolmentRefusalCodeNotIssued,
+]
+
+// ── The table ────────────────────────────────────────────────────────────────────────────────
+fn em_phase_expr(p: EnrolmentPhase) -> SwiftExpr { sw_dot(n: phase_name(p: p) as String) }
+
+fn em_answer_expr(a: EnrolmentAnswer) -> SwiftExpr {
+  match a {
+    AnswerGranted => sw_dot(n: "granted")
+    AnswerUnanswered => sw_dot(n: "unanswered")
+    AnswerRefused { kind: k } => sw_call(f: sw_dot(n: "refused"), a: [sw_pos(v: sw_dot(n: enrolment_refusal_wire_label(k: k) as String))])
+  }
+}
+
+fn em_moves(from: EnrolmentPhase, a: EnrolmentAnswer) -> Bool {
+  (phase_name(p: enrolment_next(from: from, answer: a)) as String) != (phase_name(p: from) as String)
+}
+
+fn em_case(from: EnrolmentPhase, a: EnrolmentAnswer) -> SwiftSwitchCase {
+  sw_case(
+    p: [SwiftTuplePattern { elements: [sw_pexpr(e: em_phase_expr(p: from)), sw_pexpr(e: em_answer_expr(a: a))] }],
+    s: [sw_ret(e: em_phase_expr(p: enrolment_next(from: from, answer: a)))]
+  )
+}
+
+fn em_cases() -> List<SwiftSwitchCase> {
+  list_append(
+    left: flat_map(enrolment_phases(), from => map(filter(enrolment_answers(), a => em_moves(from: from, a: a)), a => em_case(from: from, a: a))),
+    right: [sw_default(s: [sw_ret(e: sw_id(n: "from"))])]
+  )
+}
+
+fn em_phase_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine EnrolmentPhase, spelled by phase_name."],
+    d: sw_enum(n: "EnrolmentPhase", i: [sw_t(n: "String"), sw_t(n: "CaseIterable")], m: [sw_cases(n: map(enrolment_phases(), p => phase_name(p: p) as String))])
+  )
+}
+
+fn em_answer_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine EnrolmentAnswer: what the enrol POST taught the app."],
+    d: sw_enum(n: "EnrolmentAnswer", i: [sw_t(n: "Equatable")], m: [
+      sw_cases(n: ["granted", "unanswered"]),
+      sw_case_payload(n: "refused", a: [sw_tel(t: sw_t(n: "EnrolmentRefusalKind"))]),
+    ])
+  )
+}
+
+fn em_machine_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine enrolment_next. The app's UI glue calls this and persists the result; it decides nothing itself."],
+    d: sw_enum(n: "EnrolmentMachine", i: [], m: [
+      sw_func(m: [SwiftStaticModifier], n: "next", p: [sw_param(l: Present { value: "_" }, n: "from", t: sw_t(n: "EnrolmentPhase")), sw_param(l: Present { value: "on" }, n: "answer", t: sw_t(n: "EnrolmentAnswer"))], th: false, r: Present { value: sw_t(n: "EnrolmentPhase") }, b: [
+        sw_switch(e: sw_tuple(e: [sw_pos(v: sw_id(n: "from")), sw_pos(v: sw_id(n: "answer"))]), c: em_cases()),
+      ]),
+    ])
+  )
+}
+
+data em_header: List<String> = [
+  "The app's enrolment state machine, printed from gunbc.approve_ios_enrolment_machine: which phase follows which answer",
+  "of the enrol POST. EnrolmentState (hand-written) keeps the payloads and persistence and calls this.",
+  "GENERATED from gunbc.approve_ios_swift_enrolment_machine from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_enrolment_machine_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [sw_cmt(c: em_header, d: sw_import(n: "Foundation")), em_phase_enum(), em_answer_enum(), em_machine_enum()] }
+}
+
+fn expected_approve_ios_enrolment_machine_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_enrolment_machine_swift_file())
+}
+
+// ── The test ─────────────────────────────────────────────────────────────────────────────────
+fn em_next(from: SwiftExpr, answer: SwiftExpr) -> SwiftExpr {
+  sw_call(f: sw_path(b: "EnrolmentMachine", m: "next"), a: [sw_pos(v: from), sw_arg(l: "on", v: answer)])
+}
+
+fn em_assert(a: SwiftExpr, b: SwiftExpr, msg: SwiftExpr) -> SwiftStmt {
+  sw_expr(e: sw_calln(f: "XCTAssertEqual", a: [sw_pos(v: a), sw_pos(v: b), sw_pos(v: msg)]))
+}
+
+fn em_test(doc: List<String>, n: String, b: List<SwiftStmt>) -> SwiftDecl {
+  sw_doc(c: doc, d: sw_func(m: [], n: n, p: [], th: false, r: none, b: b))
+}
+
+fn em_tests() -> List<SwiftDecl> {
+  [
+    em_test(
+      doc: ["code_expired and code_not_issued prove the code minted no enrolment: they, and only they, leave SubmissionUnknown. Every other arm stays."],
+      n: "testOnlyTheTwoNoEnrolmentRefusalsLeaveSubmissionUnknown",
+      b: [
+        sw_let(n: "leaves", e: sw_strs(e: map(leaves_submission_unknown, k => enrolment_refusal_wire_label(k: k) as String))),
+        sw_for(n: "kind", e: sw_path(b: "EnrolmentRefusalKind", m: "allCases"), s: [
+          sw_let_typed(n: "expected", t: sw_t(n: "EnrolmentPhase"), e: sw_ternary(c: sw_call(f: sw_path(b: "leaves", m: "contains"), a: [sw_pos(v: sw_path(b: "kind", m: "rawValue"))]), t: sw_dot(n: "unenrolled"), e: sw_dot(n: "submissionUnknown"))),
+          em_assert(a: em_next(from: sw_dot(n: "submissionUnknown"), answer: sw_call(f: sw_dot(n: "refused"), a: [sw_pos(v: sw_id(n: "kind"))])), b: sw_id(n: "expected"), msg: sw_path(b: "kind", m: "rawValue")),
+        ]),
+      ]
+    ),
+    em_test(
+      doc: ["A transport failure, an undecodable body or any answer the app may not act on leaves SubmissionUnknown standing."],
+      n: "testAnUnansweredSubmissionStaysUnknown",
+      b: [em_assert(a: em_next(from: sw_dot(n: "submissionUnknown"), answer: sw_dot(n: "unanswered")), b: sw_dot(n: "submissionUnknown"), msg: sw_str(s: "unanswered"))]
+    ),
+    em_test(
+      doc: ["A grant is the one way SubmissionUnknown becomes Enrolled."],
+      n: "testAGrantEnrols",
+      b: [em_assert(a: em_next(from: sw_dot(n: "submissionUnknown"), answer: sw_dot(n: "granted")), b: sw_dot(n: "enrolled"), msg: sw_str(s: "granted"))]
+    ),
+    em_test(
+      doc: ["No answer to the enrol POST moves any other phase: the answer is only about a submission in flight."],
+      n: "testNoOtherPhaseMoves",
+      b: [
+        sw_for(n: "phase", e: sw_path(b: "EnrolmentPhase", m: "allCases"), s: [
+          sw_if(c: [sw_cond(e: sw_op(l: sw_id(n: "phase"), o: SwiftNotEqualOperator, r: sw_dot(n: "submissionUnknown")))], s: [
+            em_assert(a: em_next(from: sw_id(n: "phase"), answer: sw_dot(n: "granted")), b: sw_id(n: "phase"), msg: sw_path(b: "phase", m: "rawValue")),
+            em_assert(a: em_next(from: sw_id(n: "phase"), answer: sw_dot(n: "unanswered")), b: sw_id(n: "phase"), msg: sw_path(b: "phase", m: "rawValue")),
+            sw_for(n: "kind", e: sw_path(b: "EnrolmentRefusalKind", m: "allCases"), s: [
+              em_assert(a: em_next(from: sw_id(n: "phase"), answer: sw_call(f: sw_dot(n: "refused"), a: [sw_pos(v: sw_id(n: "kind"))])), b: sw_id(n: "phase"), msg: sw_path(b: "phase", m: "rawValue")),
+            ]),
+          ]),
+        ]),
+      ]
+    ),
+  ]
+}
+
+data em_tests_header: List<String> = [
+  "The enrolment machine against the ruling, stated independently of the table (leaves_submission_unknown in the generator).",
+  "GENERATED from gunbc.approve_ios_swift_enrolment_machine from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_enrolment_machine_tests_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [
+    sw_cmt(c: em_tests_header, d: sw_import(n: "XCTest")),
+    SwiftImportDecl { attributes: [SwiftAttribute { name: "testable", arguments: [] }], module_name: "Approve" },
+    SwiftClassDecl { attributes: [], modifiers: [SwiftFinalModifier], name: "EnrolmentMachineTests", inherits: [sw_t(n: "XCTestCase")], members: em_tests() },
+  ] }
+}
+
+fn expected_approve_ios_enrolment_machine_tests_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_enrolment_machine_tests_swift_file())
+}

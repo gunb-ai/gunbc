@@ -1,0 +1,10 @@
+module v2.cli.population_verb_names
+
+import std.types { String }
+
+// THE SPELLING OF THE TWO WHOLE-POPULATION CLI VERBS, one place. v2.cli.compile_cli parses them.
+// Putting the strings in compile_cli forced every consumer either to import that closure or to mint
+// a second copy (DESIGN §3). The contract epoch does not hash these spellings: it hashes the
+// values check_layout / parse_population consume (layout policy, declared refusal classes).
+data cli_verb_check_layout: String = "check-layout"
+data cli_verb_parse_population: String = "parse-population"

@@ -1,0 +1,99 @@
+module std.kernel_type_denotation
+
+import std.types { Bool, List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.kernel_type_name { KernelTypeName, KernelTypeNameAdmission, KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
+import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
+
+// WHAT A KERNEL TYPE NAME MEANS, INDEPENDENT OF ANY TARGET. The kernel names are rostered in
+// std.types kernel_type_set; how each one is REALIZED on a target is that target's binding (for
+// Rust, gunbc.rust_source_type_bindings and extdeps.languages.rust.representation), and none of
+// those is the definition. This module is the one home for the definition: one row per kernel name
+// whose meaning is a cited external authority. It carries one row today, Float -> IEEE 754-2019
+// binary64 (operator ruling relayed 2026-09-28, the Float de-fork). A later row for String, Int or
+// Bool is an ADDITION HERE -- a new KernelTypeMeaning arm and a row -- never a new home. Every
+// target's check reads its expected semantics from kernel_type_denotation_for, so two targets
+// realizing one kernel name are checked against the same denotation rather than against each other.
+//
+// It lives above std.types and std.algebra rather than inside them because both sit below
+// std.decl_ref and below every extdeps module in the import graph; carrying the denotation there
+// would need an import cycle or a stringly reference (the two alternatives refused on the ruling).
+
+type KernelTypeMeaning
+  = BinaryInterchangeFormatMeaning { format: BinaryInterchangeFormat }
+
+// THE DECLARATION THE MEANING IS OF (operator kernel-type layer rule, 2026-10-18): a denotation is joined to
+// the one language-facing declaration by identity, so a target binding keyed on that declaration is checked
+// against THIS meaning (gunbc.rust_declaration_realization rust_declaration_float_verdict), not against a row
+// found by spelling. The kernel name is kept for the readers that still key on it.
+type KernelTypeDenotation {
+  kernel_name: KernelTypeName
+  declaration: DeclarationRef
+  meaning: KernelTypeMeaning
+}
+
+type KernelTypeDenotationAdmission
+  = KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation }
+  | KernelTypeDenotationRefused { refusal: KernelTypeNameAdmission }
+
+fn kernel_type_denotation_row(kernel_name: String, declaration: DeclarationRef, meaning: KernelTypeMeaning) -> KernelTypeDenotationAdmission {
+  let admission = kernel_type_name(name: kernel_name)
+  match admission {
+    KernelTypeNameAdmitted { kernel_name: k } => KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: k, declaration: declaration, meaning: meaning } }
+    NotAKernelTypeName { name: _ } => KernelTypeDenotationRefused { refusal: admission }
+  }
+}
+
+data kernel_type_denotation_rows: List<KernelTypeDenotationAdmission> = [
+  kernel_type_denotation_row(kernel_name: "Float", declaration: decl_ref(module_path: "std.float", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary64 })
+]
+
+fn kernel_type_denotation_rows_admitted(rows: List<KernelTypeDenotationAdmission>) -> Bool {
+  rows |> all(r => match r {
+    KernelTypeDenotationAdmitted { denotation: _ } => true
+    KernelTypeDenotationRefused { refusal: _ } => false
+  })
+}
+
+type KernelTypeDenotationLookup
+  = KernelTypeDenoted { meaning: KernelTypeMeaning }
+  | KernelTypeUndenoted { kernel_name: KernelTypeName }
+
+// The rows are a parameter so a claim can supply a planted table at this one interface; the
+// production reading is kernel_type_denotation_for(kernel_name, rows: kernel_type_denotation_rows).
+fn kernel_type_denotation_for(kernel_name: KernelTypeName, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDenotationLookup {
+  rows |> fold(init: KernelTypeUndenoted { kernel_name: kernel_name }, f: (acc, r) => match acc {
+    KernelTypeDenoted { meaning: _ } => acc
+    KernelTypeUndenoted { kernel_name: _ } => match r {
+      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name.name == kernel_name.name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
+      KernelTypeDenotationRefused { refusal: _ } => acc
+    }
+  })
+}
+
+// WHAT ONE DECLARATION MEANS, by its identity: zero, one or several rows, and only one is an answer. A
+// declaration with no row is undenoted; nothing is read from its spelling. A declaration with SEVERAL rows is
+// ambiguous whether or not they agree: the meaning has one authority, so a second row is a contradiction or a
+// duplicate to remove, and refusing keeps the answer independent of row order. The rows are a parameter so a
+// claim can plant a table at this one interface.
+type KernelTypeDeclarationDenotationLookup
+  = DeclarationDenoted { meaning: KernelTypeMeaning }
+  | DeclarationUndenoted { declaration: DeclarationRef }
+  | DeclarationDenotationAmbiguous { declaration: DeclarationRef }
+
+fn kernel_type_denotation_denotes(d: KernelTypeDenotation, declaration: DeclarationRef) -> Bool {
+  (d.declaration.module_path as String) == (declaration.module_path as String) && (d.declaration.decl_name as String) == (declaration.decl_name as String)
+}
+
+fn kernel_type_denotation_for_declaration(declaration: DeclarationRef, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDeclarationDenotationLookup {
+  let meanings = rows |> fold(init: [], f: (acc, r) => match r {
+    KernelTypeDenotationAdmitted { denotation: d } => if kernel_type_denotation_denotes(d: d, declaration: declaration) { list_snoc_item(xs: acc, item: d.meaning) } else { acc }
+    KernelTypeDenotationRefused { refusal: _ } => acc
+  })
+  match meanings {
+    Empty => DeclarationUndenoted { declaration: declaration }
+    Cons { head: meaning, tail: Empty } => DeclarationDenoted { meaning: meaning }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => DeclarationDenotationAmbiguous { declaration: declaration }
+  }
+}

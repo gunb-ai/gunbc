@@ -1,0 +1,29 @@
+module extdeps.firmware.tianocore_edk2.sdram_spd_ddr4
+
+import std.types { Int }
+import std.integer { UInt8 }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.uri { Uri, Https }
+import extdeps.firmware.tianocore_edk2.subject { tianocore_edk2_model_scope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "raw.githubusercontent.com/tianocore/edk2/edk2-stable202508/MdePkg/Include/IndustryStandard/SdramSpdDdr4.h" },
+}
+data extdeps_model_scope: ExternalModelScope = tianocore_edk2_model_scope
+
+// EDK II edk2-stable202508, SPD DDR4 Document Release 4: the Data member is the
+// authority; bit fields are projections, so they cannot disagree with its value.
+// This definition carries no firmware acceptance condition.
+type SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT {
+  Data: UInt8
+}
+
+fn spd4_primary_package_type(value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT) -> Int {
+  value.Data / 128
+}
+fn spd4_primary_die_count_encoding(value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT) -> Int {
+  (value.Data / 16) % 8
+}
+fn spd4_primary_signal_loading(value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT) -> Int {
+  value.Data % 4
+}

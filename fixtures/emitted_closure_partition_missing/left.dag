@@ -1,0 +1,7 @@
+module test.fixture.emitted_closure_partition.missing.left
+
+import test.fixture.emitted_closure_partition.missing.sink { missing_sink_value }
+
+fn missing_left_value() -> Int {
+  missing_sink_value()
+}

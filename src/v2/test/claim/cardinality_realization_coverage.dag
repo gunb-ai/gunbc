@@ -1,0 +1,610 @@
+module v2.test.claim.cardinality_realization_coverage
+
+import std.algebra { FreeMonoid, fold_list, length }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_eq }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.types { List }
+import v2.std.integer { Int }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import v2.test.claim.cardinality_realization_specimens { specimen_tags }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REALIZATION-SUPPORT ROWS of roadmap node cardinality-realization-conformance: for each
+// (target, specimen) pair, what the target is EXPECTED to do with that specimen of
+// v2.test.claim.cardinality_realization_specimens. A pair with no row is a typed refusal
+// (RealizationUndeclared), never an unobserved pair.
+//
+// THIS IS AN OBSERVING-LAYER COVERAGE FACT, not a field of v2.std.compilers.target_model TargetModel:
+// TargetModel is the grammar and serialization row set of one language (hundreds of constructor
+// sites) and does not model what a path can realize; and what a path does with a specimen is a
+// claim THIS repository makes about it (DESIGN section 3, external upstream decomposition).
+//
+// ROWS DECLARE THE EXPECTATION, NEVER THE RESULT. A hand-authored "Executed" is a transcribed result
+// that rots; the evidence is running each path and comparing its outcome with the row. Two keys are
+// identities, not text: the target is the DeclarationRef of the path's realization authority and the
+// specimen is the DeclarationRef of the specimen's own declaration, so a renamed or deleted specimen
+// is a DECLARED identity; the guarantee is explicit DeclarationRef identity coverage, NOT that each
+// reference resolves: renaming a key and its row to one nonexistent declaration still joins. No
+// parallel shape enum forks the specimens.
+//
+// WHAT EXECUTES WHAT, honestly, per path (DESIGN 4b, rung honesty: a class's rung is the minimum
+// across its in-scope paths):
+//   evaluator       the claims in this module and in the specimens module execute the specimens'
+//                   tag functions on the claim evaluator and join the declared Realizes rows. They do
+//                   NOT invoke eval_test_claim_subject, which is the target's identity key, not a
+//                   called route; the required workflow does not run this population either.
+//   seed Rust emit  `gunbc test //gunbc/instruments:cardinality-realization` emits each specimen entry
+//                   (cardinality_realization_entry_*), builds and runs it, and joins the printed tag.
+//   native v2 CLI   the same instrument runs `compile_cli emit --entry <specimen module>` and reads the
+//                   entry module's own refusal. Emission is never read as execution.
+// THE INSTRUMENT EXISTS AND IS NOT GATED: no job runs it (the roster is closed, and CI runs only the two
+// emitted closures), so it is a measurement taken by label, locally. The class rung stays mitigation
+// until a gate runs it. Trigger: a required row that runs this label.
+
+type RealizationExpectation
+  = Realizes
+  | RefusesWith { causes: List<Symbol> }
+  | ExpectedRed { defects: List<Symbol>, owner: DeclarationRef }
+
+type RealizationSupportRow {
+  target: DeclarationRef
+  specimen: DeclarationRef
+  expectation: RealizationExpectation
+}
+
+type RealizationLookup
+  = RealizationDeclared { expectation: RealizationExpectation }
+  | RealizationUndeclared { target: DeclarationRef, specimen: DeclarationRef }
+  | RealizationDuplicated { target: DeclarationRef, specimen: DeclarationRef }
+
+data specimens_module: String = "v2.test.claim.cardinality_realization_specimens"
+
+data list_specimen_module: String = "v2.test.claim.cardinality_realization_list_specimen"
+
+fn specimen_ref(name: String) -> DeclarationRef { decl_ref(module_path: specimens_module, decl_name: name) }
+
+data evaluator_target: DeclarationRef = decl_ref(module_path: "v2.compiler.eval", decl_name: "eval_test_claim_subject")
+
+data seed_rust_target: DeclarationRef = decl_ref(module_path: "std.languages", decl_name: "rust_language")
+
+data native_v2_target: DeclarationRef = decl_ref(module_path: "v2.cli.compile_cli", decl_name: "cli_run_bound")
+
+data specimen_1_absent: DeclarationRef = specimen_ref(name: "specimen_absent")
+
+data specimen_2_present_absent: DeclarationRef = specimen_ref(name: "specimen_present_absent")
+
+data specimen_3_present_present: DeclarationRef = specimen_ref(name: "specimen_present_present")
+
+data specimen_4_absent_collection: DeclarationRef = specimen_ref(name: "specimen_absent_collection")
+
+data specimen_5_present_empty_collection: DeclarationRef = specimen_ref(name: "specimen_present_empty_collection")
+
+data specimen_6_present_absent_entries: DeclarationRef = specimen_ref(name: "specimen_present_absent_entries")
+
+data specimen_6_list_present_absent_list_entries: DeclarationRef = decl_ref(module_path: list_specimen_module, decl_name: "specimen_present_absent_list_entries")
+
+data specimen_7_foreign_missing: DeclarationRef = specimen_ref(name: "specimen_foreign_member_missing_text")
+
+data specimen_8_foreign_null: DeclarationRef = specimen_ref(name: "specimen_foreign_member_null_text")
+
+data specimen_9_foreign_invalid: DeclarationRef = specimen_ref(name: "specimen_foreign_member_invalid_text")
+
+data all_specimens: List<DeclarationRef> = [
+  specimen_1_absent,
+  specimen_2_present_absent,
+  specimen_3_present_present,
+  specimen_4_absent_collection,
+  specimen_5_present_empty_collection,
+  specimen_6_present_absent_entries,
+  specimen_6_list_present_absent_list_entries,
+  specimen_7_foreign_missing,
+  specimen_8_foreign_null,
+  specimen_9_foreign_invalid
+]
+
+data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, native_v2_target]
+
+// The tag the evaluator path answers for each of nine specimens is asserted by the specimens module and the
+// List spelling's by v2.test.claim.cardinality_realization_list_specimen; the evaluator rows below
+// are the declared expectation that all ten are realized.
+// SPECIMEN 6 OVER List on seed Rust: a List nested under an Optional is left unstamped by seed
+// inference and the expected element type is not pushed into the literal, so
+// render_rust_optional_carrier_inner falls back to () and the payload is lost. The emitted type is
+// Option<Rc<Vec<Option<()>>>> and the emitted crate fails rustc E0308; the FreeMonoid spelling is
+// stamped and realizes. Repair lanes at the time of writing (inference stamping, the renderer) are
+// not recorded as owners; the owner is list_erasure_owner.
+// THE OWNER OF AN EXPECTED RED is the durable carrier that tracks the defect, by identity: the
+// recurring_failure_mode row whose class the defect instantiates. Sessions are ephemeral and are not
+// owners. A red row cannot be written without one (the field is required, with no absent arm).
+data list_erasure_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target", decl_name: "accepted_source_emits_uncompilable_target")
+
+data seed_rust_list_defects: List<Symbol> = [^render_rust_optional_carrier_inner]
+
+// NATIVE v2 CLI, every specimen: the source roots do not yield an exact closure. The entry's
+// closure does not front-end (std.decimal, via the JSON decoder import); a module importing only
+// v2.std.integer refuses at that module; one importing neither refuses on grounding. Located and
+// typed but CLOSURE-WIDE: it fires before any cardinality shape is reached, so it does not
+// discriminate the shapes.
+data native_closure_causes: List<Symbol> = [
+  ^body_lowering_reason_field_refinement_unmodeled,
+  ^normalized_tree_reason_wrapper_retention_not_normalized,
+  ^infer_grounding_not_derived
+]
+
+fn refuses(target: DeclarationRef, specimen: DeclarationRef, causes: List<Symbol>) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: RefusesWith { causes: causes } }
+}
+
+fn supported(target: DeclarationRef, specimen: DeclarationRef) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: Realizes }
+}
+
+fn expected_red(target: DeclarationRef, specimen: DeclarationRef, defects: List<Symbol>, owner: DeclarationRef) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { defects: defects, owner: owner } }
+}
+
+data realization_support_rows: List<RealizationSupportRow> = [
+  supported(target: evaluator_target, specimen: specimen_1_absent),
+  supported(target: evaluator_target, specimen: specimen_2_present_absent),
+  supported(target: evaluator_target, specimen: specimen_3_present_present),
+  supported(target: evaluator_target, specimen: specimen_4_absent_collection),
+  supported(target: evaluator_target, specimen: specimen_5_present_empty_collection),
+  supported(target: evaluator_target, specimen: specimen_6_present_absent_entries),
+  supported(target: evaluator_target, specimen: specimen_6_list_present_absent_list_entries),
+  supported(target: evaluator_target, specimen: specimen_7_foreign_missing),
+  supported(target: evaluator_target, specimen: specimen_8_foreign_null),
+  supported(target: evaluator_target, specimen: specimen_9_foreign_invalid),
+  supported(target: seed_rust_target, specimen: specimen_1_absent),
+  supported(target: seed_rust_target, specimen: specimen_2_present_absent),
+  supported(target: seed_rust_target, specimen: specimen_3_present_present),
+  supported(target: seed_rust_target, specimen: specimen_4_absent_collection),
+  supported(target: seed_rust_target, specimen: specimen_5_present_empty_collection),
+  supported(target: seed_rust_target, specimen: specimen_6_present_absent_entries),
+  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects, owner: list_erasure_owner),
+  supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
+  supported(target: seed_rust_target, specimen: specimen_8_foreign_null),
+  supported(target: seed_rust_target, specimen: specimen_9_foreign_invalid),
+  refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_4_absent_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_5_present_empty_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_present_absent_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_list_present_absent_list_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_8_foreign_null, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes)
+]
+
+fn row_matches(row: RealizationSupportRow, target: DeclarationRef, specimen: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: row.target, b: target) && declaration_ref_eq(a: row.specimen, b: specimen)
+}
+
+fn realization_support(rows: List<RealizationSupportRow>, target: DeclarationRef, specimen: DeclarationRef) -> RealizationLookup {
+  fold_list(
+    xs: rows,
+    empty: RealizationUndeclared { target: target, specimen: specimen },
+    cons: fn(acc, row) {
+      if row_matches(row: row, target: target, specimen: specimen) {
+        match acc {
+          RealizationUndeclared { target: _, specimen: _ } => RealizationDeclared { expectation: row.expectation }
+          RealizationDeclared { expectation: _ } => RealizationDuplicated { target: target, specimen: specimen }
+          RealizationDuplicated { target: _, specimen: _ } => acc
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn lookup_is_declared(l: RealizationLookup) -> Bool {
+  match l {
+    RealizationDeclared { expectation: _ } => true
+    RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
+  }
+}
+
+fn target_is_covered(rows: List<RealizationSupportRow>, target: DeclarationRef) -> Bool {
+  fold_list(
+    xs: all_specimens,
+    empty: true,
+    cons: fn(acc, s) { acc && lookup_is_declared(l: realization_support(rows: rows, target: target, specimen: s)) }
+  )
+}
+
+fn expectation_is_realizes(l: RealizationLookup) -> Bool {
+  match l {
+    RealizationDeclared { expectation: Realizes } => true
+    RealizationDeclared { expectation: RefusesWith { causes: _ } } => false
+    RealizationDeclared { expectation: ExpectedRed { defects: _, owner: _ } } => false
+    RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
+  }
+}
+
+fn target_realizes_all(rows: List<RealizationSupportRow>, target: DeclarationRef) -> Bool {
+  fold_list(
+    xs: all_specimens,
+    empty: true,
+    cons: fn(acc, s) { acc && expectation_is_realizes(l: realization_support(rows: rows, target: target, specimen: s)) }
+  )
+}
+
+// The evaluator's executed answers: one tag per original specimen, in specimen order. The ten
+// specimens are nine tags plus the List spelling, whose answer is asserted in the specimens module.
+test fn the_evaluator_realizes_what_its_rows_declare() -> Bool {
+  target_realizes_all(rows: realization_support_rows, target: evaluator_target)
+    && specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92]
+}
+
+// COMPLETENESS BY IDENTITY, not by count: every (target, specimen) pair of the declared rosters has a
+// row. A specimen added to all_specimens, or a target added to all_targets, without its rows reds here.
+test fn every_target_specimen_pair_has_a_declared_row() -> Bool {
+  fold_list(
+    xs: all_targets,
+    empty: true,
+    cons: fn(acc, t) { acc && target_is_covered(rows: realization_support_rows, target: t) }
+  )
+}
+
+fn rows_without_pair(rows: List<RealizationSupportRow>, target: DeclarationRef, specimen: DeclarationRef) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    if declaration_ref_eq(a: r.target, b: target) && declaration_ref_eq(a: r.specimen, b: specimen) { acc } else { acc + [r] }
+  })
+}
+
+// THE DISCRIMINATING CONTROL: dropping one row makes that pair a typed refusal, so a missing pair
+// cannot read as support. The control filters the one seed Rust specimen-4 row out of realization_support_rows.
+test fn a_missing_pair_is_a_typed_refusal_not_support() -> Bool {
+  !lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_4_absent_collection))
+    && lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_3_present_present))
+    && lookup_is_declared(l: realization_support(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection))
+}
+
+fn rows_reversed(rows: List<RealizationSupportRow>) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) { [r] + acc })
+}
+
+// EXACTLY ONE ROW PER PAIR. A second row for a pair that is declared ExpectedRed (here a Realizes row
+// for seed Rust specimen 8) makes the pair Duplicated, which is not declared and not support, in
+// either row order; and the unique rows give the same answer whatever their order.
+test fn a_duplicate_pair_is_refused_in_either_order() -> Bool {
+  let dup = supported(target: seed_rust_target, specimen: specimen_8_foreign_null)
+  let a = realization_support_rows + [dup]
+  let b = [dup] + realization_support_rows
+  !lookup_is_declared(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !lookup_is_declared(l: realization_support(rows: b, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !target_is_covered(rows: a, target: seed_rust_target)
+    && !expectation_is_realizes(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: evaluator_target)
+    && !target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: seed_rust_target)
+}
+
+// A path that is expected to be red is not green: the seed Rust target does not realize every
+// specimen, and the rows say so.
+test fn the_seed_rust_path_is_not_declared_to_realize_everything() -> Bool {
+  !target_realizes_all(rows: realization_support_rows, target: seed_rust_target)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE STANDING of the wet instrument `gunbc test //gunbc/instruments:cardinality-realization`
+// (gunbc.instrument_targets), decided HERE and not in the host that observed. The host runs the
+// seed Rust route (emit, cargo build, run, per specimen program below) and the native v2 CLI, and
+// hands this fold one ObservationRecord per (target, specimen) pair it was asked about by
+// instrument_plan; this fold joins them to realization_support_rows by DeclarationRef identity.
+//
+//   exit 1  a pair whose live outcome disagrees with its row: a Realizes row that refused, was red or
+//           answered another tag; a RefusesWith row that realized or refused for a cause it does not
+//           declare; an ExpectedRed row that now realizes (the row must be updated, never left red).
+//   exit 2  no observation: a pair with no record, a duplicated record, or a route that was not
+//           reached. A disagreement elsewhere still reports exit 1: evidence outranks absence.
+//   exit 0  every instrumented pair agrees.
+//
+// WHAT AN OBSERVATION CAN AND CANNOT SAY. An ExpectedRed row is held by any red of the target (a
+// failed emit or cargo build, a nonzero status): the defect symbols of the row name SEED FUNCTIONS
+// that rustc and a panic never print, so they are the row's attribution and are not re-derived here.
+// A native pair is observed by `compile_cli emit` and so can only be `emitted` or `refused`; an
+// `emitted` outcome NEVER satisfies Realizes, because emission is not execution of the emitted
+// program. The evaluator pairs are the claims above, not this instrument. RUNNING THIS INSTRUMENT
+// LOCALLY IS NOT GATING IT: no required job runs the label, so the class rung stays the minimum
+// across paths.
+// ---------------------------------------------------------------------------------------------
+
+// ONE SPECIMEN AS A PROGRAM: the entry module the seed emits, builds and runs (a NativeClaimDriver
+// that prints `tag=<n>`), and the tag the REALIZED program must print. The tags are the specimens
+// module's own answers (specimen_tags), transcribed once here because the realized program is the
+// thing being compared with them.
+type SpecimenProgram {
+  specimen: DeclarationRef
+  entry: String
+  tag: String
+}
+
+data specimen_programs: List<SpecimenProgram> = [
+  SpecimenProgram { specimen: specimen_1_absent, entry: "src/v2/test/claim/cardinality_realization_entry_1.dag", tag: "1" },
+  SpecimenProgram { specimen: specimen_2_present_absent, entry: "src/v2/test/claim/cardinality_realization_entry_2.dag", tag: "20" },
+  SpecimenProgram { specimen: specimen_3_present_present, entry: "src/v2/test/claim/cardinality_realization_entry_3.dag", tag: "37" },
+  SpecimenProgram { specimen: specimen_4_absent_collection, entry: "src/v2/test/claim/cardinality_realization_entry_4.dag", tag: "40" },
+  SpecimenProgram { specimen: specimen_5_present_empty_collection, entry: "src/v2/test/claim/cardinality_realization_entry_5.dag", tag: "50" },
+  SpecimenProgram { specimen: specimen_6_present_absent_entries, entry: "src/v2/test/claim/cardinality_realization_entry_6.dag", tag: "71" },
+  SpecimenProgram { specimen: specimen_6_list_present_absent_list_entries, entry: "src/v2/test/claim/cardinality_realization_entry_6l.dag", tag: "71" },
+  SpecimenProgram { specimen: specimen_7_foreign_missing, entry: "src/v2/test/claim/cardinality_realization_entry_7.dag", tag: "80" },
+  SpecimenProgram { specimen: specimen_8_foreign_null, entry: "src/v2/test/claim/cardinality_realization_entry_8.dag", tag: "81" },
+  SpecimenProgram { specimen: specimen_9_foreign_invalid, entry: "src/v2/test/claim/cardinality_realization_entry_9.dag", tag: "92" }
+]
+
+fn program_field(specimen: DeclarationRef, want_entry: Bool) -> String {
+  fold_list(
+    xs: specimen_programs,
+    empty: "",
+    cons: fn(acc, p) {
+      if declaration_ref_eq(a: p.specimen, b: specimen) { if want_entry { p.entry } else { p.tag } } else { acc }
+    }
+  )
+}
+
+fn is_instrumented_target(t: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: t, b: seed_rust_target) || declaration_ref_eq(a: t, b: native_v2_target)
+}
+
+// WHAT THE HOST IS ASKED TO OBSERVE, one typed row per instrumented pair. The route says how: a seed
+// entry module the host emits, builds and runs, or a native module the CLI emits. The host reads the
+// route and echoes the target and specimen references back unchanged, so the join is by DeclarationRef
+// identity and no text encoding of the plan exists.
+type PlannedRoute
+  = SeedRoute { entry: String }
+  | NativeRoute { module: String }
+
+type PlannedObservation {
+  route: PlannedRoute
+  target: DeclarationRef
+  specimen: DeclarationRef
+}
+
+fn instrument_plan_over(rows: List<RealizationSupportRow>) -> List<PlannedObservation> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      if declaration_ref_eq(a: row.target, b: seed_rust_target) {
+        acc + [PlannedObservation { route: SeedRoute { entry: program_field(specimen: row.specimen, want_entry: true) }, target: row.target, specimen: row.specimen }]
+      } else if declaration_ref_eq(a: row.target, b: native_v2_target) {
+        acc + [PlannedObservation { route: NativeRoute { module: row.specimen.module_path as String }, target: row.target, specimen: row.specimen }]
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn instrument_plan() -> List<PlannedObservation> { instrument_plan_over(rows: realization_support_rows) }
+
+// ONE LIVE OUTCOME, one variant per thing the host can observe: the program printed a tag, the entry
+// refused with its own cause, the emitted program failed to build or run, no route could observe it,
+// or the native module only emitted (which is never execution).
+type ObservationKind
+  = ObservedRealized { tag: String }
+  | ObservedRefused { cause: Symbol }
+  | ObservedRed { detail: String }
+  | ObservedUnreached { detail: String }
+  | ObservedEmitted
+
+type ObservationRecord {
+  target: DeclarationRef
+  specimen: DeclarationRef
+  outcome: ObservationKind
+}
+
+type RowJudgment
+  = RowHeld
+  | RowDisagrees { why: String }
+  | RowUnobserved { why: String }
+
+fn causes_include(causes: List<Symbol>, cause: Symbol) -> Bool {
+  fold_list(xs: causes, empty: false, cons: fn(acc, c) { acc || c == cause })
+}
+
+fn judge_outcome(row: RealizationSupportRow, o: ObservationRecord) -> RowJudgment {
+  match o.outcome {
+    ObservedUnreached { detail: d } => RowUnobserved { why: concat("unreached: ", d) }
+    ObservedRealized { tag: t } =>
+      match row.expectation {
+        Realizes =>
+          if t == program_field(specimen: row.specimen, want_entry: false) {
+            RowHeld
+          } else {
+            RowDisagrees { why: concat("printed tag ", concat(t, concat(" where ", concat(program_field(specimen: row.specimen, want_entry: false), " is the specimen's answer")))) }
+          }
+        RefusesWith { causes: _ } => RowDisagrees { why: "realized where a refusal is declared" }
+        ExpectedRed { defects: _, owner: _ } => RowDisagrees { why: "realized where a red is declared: the row must be updated" }
+      }
+    ObservedRefused { cause: c } =>
+      match row.expectation {
+        Realizes => RowDisagrees { why: concat("refused (", concat(symbol_lexeme(sym: c), ") where Realizes is declared")) }
+        RefusesWith { causes: cs } =>
+          if causes_include(causes: cs, cause: c) { RowHeld } else { RowDisagrees { why: concat("refused for ", concat(symbol_lexeme(sym: c), ", a cause the row does not declare")) } }
+        ExpectedRed { defects: _, owner: _ } => RowDisagrees { why: concat("refused (", concat(symbol_lexeme(sym: c), ") where a red is declared")) }
+      }
+    ObservedRed { detail: d } =>
+      match row.expectation {
+        Realizes => RowDisagrees { why: concat("red (", concat(d, ") where Realizes is declared")) }
+        RefusesWith { causes: _ } => RowDisagrees { why: concat("red (", concat(d, ") where a typed refusal is declared")) }
+        ExpectedRed { defects: _, owner: _ } => RowHeld
+      }
+    ObservedEmitted =>
+      match row.expectation {
+        Realizes => RowDisagrees { why: "emission observed, execution of the emitted program is not" }
+        RefusesWith { causes: _ } => RowDisagrees { why: "emitted where a refusal is declared" }
+        ExpectedRed { defects: _, owner: _ } => RowDisagrees { why: "emitted where a red is declared" }
+      }
+  }
+}
+
+fn observations_of_row(observations: List<ObservationRecord>, row: RealizationSupportRow) -> List<ObservationRecord> {
+  fold_list(
+    xs: observations,
+    empty: [],
+    cons: fn(acc, o) {
+      if declaration_ref_eq(a: o.target, b: row.target) && declaration_ref_eq(a: o.specimen, b: row.specimen) { acc + [o] } else { acc }
+    }
+  )
+}
+
+fn judge_row(row: RealizationSupportRow, observations: List<ObservationRecord>) -> RowJudgment {
+  let found = observations_of_row(observations: observations, row: row)
+  let n = length(xs: found)
+  if n == 0 {
+    RowUnobserved { why: "no observation record" }
+  } else if n > 1 {
+    RowUnobserved { why: "more than one observation record" }
+  } else {
+    fold_list(xs: found, empty: RowUnobserved { why: "no observation record" }, cons: fn(acc, o) { judge_outcome(row: row, o: o) })
+  }
+}
+
+fn judgment_line(row: RealizationSupportRow, j: RowJudgment, want_disagreement: Bool) -> List<String> {
+  match j {
+    RowHeld => []
+    RowDisagrees { why: w } =>
+      if want_disagreement { [concat(declaration_ref_display_key(ref: row.target), concat(" x ", concat(declaration_ref_display_key(ref: row.specimen), concat(": ", w))))] } else { [] }
+    RowUnobserved { why: w } =>
+      if want_disagreement { [] } else { [concat(declaration_ref_display_key(ref: row.target), concat(" x ", concat(declaration_ref_display_key(ref: row.specimen), concat(": ", w))))] }
+  }
+}
+
+fn judgment_lines(rows: List<RealizationSupportRow>, observations: List<ObservationRecord>, want_disagreement: Bool) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      if is_instrumented_target(t: row.target) { acc + judgment_line(row: row, j: judge_row(row: row, observations: observations), want_disagreement: want_disagreement) } else { acc }
+    }
+  )
+}
+
+fn joined_lines(lines: List<String>) -> String {
+  fold_list(xs: lines, empty: "", cons: fn(acc, l) { if acc == "" { l } else { concat(acc, concat("; ", l)) } })
+}
+
+fn cardinality_realization_standing_over(rows: List<RealizationSupportRow>, observations: List<ObservationRecord>) -> ProcessExit {
+  let disagreements = judgment_lines(rows: rows, observations: observations, want_disagreement: true)
+  let unobserved = judgment_lines(rows: rows, observations: observations, want_disagreement: false)
+  if length(xs: disagreements) > 0 {
+    ExitFailure { code: 1, reason: concat("not held: ", joined_lines(lines: disagreements)) }
+  } else if length(xs: unobserved) > 0 {
+    ExitFailure { code: 2, reason: concat("no observation: ", joined_lines(lines: unobserved)) }
+  } else {
+    ExitSuccess
+  }
+}
+
+fn cardinality_realization_standing(observations: List<ObservationRecord>) -> ProcessExit {
+  cardinality_realization_standing_over(rows: realization_support_rows, observations: observations)
+}
+
+// ---- the standing's own flip-reds, over a hand-built green observation set ----------------------
+
+fn observed(target: DeclarationRef, specimen: DeclarationRef, outcome: ObservationKind) -> ObservationRecord {
+  ObservationRecord { target: target, specimen: specimen, outcome: outcome }
+}
+
+fn seed_observed(specimen: DeclarationRef, outcome: ObservationKind) -> ObservationRecord {
+  observed(target: seed_rust_target, specimen: specimen, outcome: outcome)
+}
+
+fn native_refused(specimen: DeclarationRef) -> ObservationRecord {
+  observed(target: native_v2_target, specimen: specimen, outcome: ObservedRefused { cause: ^infer_grounding_not_derived })
+}
+
+// What the live instrument is expected to see today, written as observations and not derived from the
+// rows, so it is an independent referent for the join.
+data green_observations: List<ObservationRecord> = [
+  seed_observed(specimen: specimen_1_absent, outcome: ObservedRealized { tag: "1" }),
+  seed_observed(specimen: specimen_2_present_absent, outcome: ObservedRealized { tag: "20" }),
+  seed_observed(specimen: specimen_3_present_present, outcome: ObservedRealized { tag: "37" }),
+  seed_observed(specimen: specimen_4_absent_collection, outcome: ObservedRealized { tag: "40" }),
+  seed_observed(specimen: specimen_5_present_empty_collection, outcome: ObservedRealized { tag: "50" }),
+  seed_observed(specimen: specimen_6_present_absent_entries, outcome: ObservedRealized { tag: "71" }),
+  seed_observed(specimen: specimen_6_list_present_absent_list_entries, outcome: ObservedRed { detail: "emitted crate does not compile" }),
+  seed_observed(specimen: specimen_7_foreign_missing, outcome: ObservedRealized { tag: "80" }),
+  seed_observed(specimen: specimen_8_foreign_null, outcome: ObservedRed { detail: "emitted program panicked" }),
+  seed_observed(specimen: specimen_9_foreign_invalid, outcome: ObservedRed { detail: "emitted program panicked" }),
+  native_refused(specimen: specimen_1_absent),
+  native_refused(specimen: specimen_2_present_absent),
+  native_refused(specimen: specimen_3_present_present),
+  native_refused(specimen: specimen_4_absent_collection),
+  native_refused(specimen: specimen_5_present_empty_collection),
+  native_refused(specimen: specimen_6_present_absent_entries),
+  native_refused(specimen: specimen_6_list_present_absent_list_entries),
+  native_refused(specimen: specimen_7_foreign_missing),
+  native_refused(specimen: specimen_8_foreign_null),
+  native_refused(specimen: specimen_9_foreign_invalid)
+]
+
+fn exit_code_of(e: ProcessExit) -> Int {
+  match e {
+    ExitSuccess => 0
+    ExitFailure { code: c, reason: _ } => c
+  }
+}
+
+fn without_pair(obs: List<ObservationRecord>, target: DeclarationRef, specimen: DeclarationRef) -> List<ObservationRecord> {
+  fold_list(xs: obs, empty: [], cons: fn(acc, o) {
+    if declaration_ref_eq(a: o.target, b: target) && declaration_ref_eq(a: o.specimen, b: specimen) { acc } else { acc + [o] }
+  })
+}
+
+fn replaced_pair(obs: List<ObservationRecord>, record: ObservationRecord, target: DeclarationRef, specimen: DeclarationRef) -> List<ObservationRecord> {
+  without_pair(obs: obs, target: target, specimen: specimen) + [record]
+}
+
+fn standing_code(obs: List<ObservationRecord>) -> Int {
+  exit_code_of(e: cardinality_realization_standing(observations: obs))
+}
+
+test fn the_instrument_plan_names_every_seed_and_native_row_once() -> Bool {
+  length(xs: instrument_plan()) == 20
+    && fold_list(xs: all_specimens, empty: true, cons: fn(acc, s) { acc && program_field(specimen: s, want_entry: true) != "" && program_field(specimen: s, want_entry: false) != "" })
+}
+
+test fn agreeing_observations_hold() -> Bool {
+  standing_code(obs: green_observations) == 0
+}
+
+// A Realizes row that answers another tag is a disagreement; so is one that goes red or refuses.
+test fn a_realizes_row_flipped_goes_red() -> Bool {
+  standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_2_present_absent, outcome: ObservedRealized { tag: "10" }), target: seed_rust_target, specimen: specimen_2_present_absent)) == 1
+    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRed { detail: "x" }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
+    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^x }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
+}
+
+// An ExpectedRed that passes is red, and so is a native refusal for a cause the row does not declare.
+test fn an_expected_red_that_passes_goes_red() -> Bool {
+  standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_8_foreign_null, outcome: ObservedRealized { tag: "81" }), target: seed_rust_target, specimen: specimen_8_foreign_null)) == 1
+    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_6_list_present_absent_list_entries, outcome: ObservedRealized { tag: "71" }), target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries)) == 1
+}
+
+test fn a_refusal_row_flipped_goes_red() -> Bool {
+  standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^some_other_cause }), target: native_v2_target, specimen: specimen_1_absent)) == 1
+    && standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedEmitted), target: native_v2_target, specimen: specimen_1_absent)) == 1
+}
+
+test fn a_pair_with_no_observation_is_exit_two_and_a_disagreement_outranks_it() -> Bool {
+  standing_code(obs: without_pair(obs: green_observations, target: seed_rust_target, specimen: specimen_3_present_present)) == 2
+    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_3_present_present, outcome: ObservedUnreached { detail: "build infra" }), target: seed_rust_target, specimen: specimen_3_present_present)) == 2
+    && standing_code(obs: green_observations + [seed_observed(specimen: specimen_3_present_present, outcome: ObservedRealized { tag: "37" })]) == 2
+    && standing_code(obs: replaced_pair(obs: without_pair(obs: green_observations, target: seed_rust_target, specimen: specimen_3_present_present), record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRed { detail: "x" }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
+}
+
+// A CAUSE IS JOINED BY SYMBOL IDENTITY: the declared spelling holds, and the same cause respelled
+// by its producer goes red rather than reading as unobserved or as a match by prefix.
+test fn a_respelled_refusal_cause_goes_red() -> Bool {
+  standing_code(obs: green_observations) == 0
+    && standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^infer_grounding_not_derived_ }), target: native_v2_target, specimen: specimen_1_absent)) == 1
+}

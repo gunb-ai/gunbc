@@ -1,0 +1,11 @@
+module fixtures.if_join_pool_binding.closure_without_collision
+
+// THE UNCOLLIDED CONTROL. Entry here reaches the SAME BYTES of `declaring_module` with
+// `colliding_module` absent from the closure, and the compile reports 0 blocking errors. Without
+// this arm a reader could not tell a collided-arm refusal (or a later regression) from a specimen
+// that is simply ill-typed.
+import fixtures.if_join_pool_binding.declaring_module { PoolSpecimenShape, pick_shape }
+
+fn accepting_use(c: Bool) -> PoolSpecimenShape {
+  pick_shape(c: c)
+}

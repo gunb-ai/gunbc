@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.call_result_of_a_declared_return_type_unjudged_in_v2_infer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data call_result_of_a_declared_return_type_unjudged_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "call_result_of_a_declared_return_type_unjudged_in_v2_infer" as NonEmptyStr,
+
+  receipts: [
+    "**In v2 infer, the result of a call whose callee returns a DECLARED (non-kernel) type is judged where it is used (climbed, sunny-wolf-624).** Re-measured on main 1f25232cdc through the production assembly route with a std.nat peer (v2.test.claim.compiler.declared_return_result drr_the_real_route_judges_a_projected_generic_call_result): `fn mk() -> Nat { 0 }` used at `fn f() -> Bool { mk() }` REFUSES `arrow_body_does_not_inhabit_declared_return`; the generic `fn mk<T>(xs: List<T>) -> Nat` counterpart refuses the same; `wants_bool(mk())` refuses `application_argument_does_not_inhabit`; an instantiated generic coproduct `Out<Int>` at Bool refuses the declared-return reason; `fn f() -> Nat { mk() }` is accepted. The kernel Int-at-Bool control refuses the same declared-return reason. The original filing (session/stern-swift-290-literal) had Nat-at-Bool ACCEPTED; #13325's `infer_application_result_type` plus later main is what closed the specimens.",
+
+    "DISTINGUISHING FACTS, AS FILED (now closed on the production route). The kernel/declared split was the discriminator: kernel Int was judged and a declared Nat was not. Independent of generics. Distinct from comparison_operands_never_judged_in_v2_infer. XL-2's collection size row still states Int until BOTH this class (now judged) AND literal elaboration at Nat hold -- see gunbc.rung_drop collection_count_result_stated_int_until_declared_results_are_judged.",
+
+    "N7 RELEVANCE (calm-boar-904 asked). NOT N7's current wall: all 8 N7 tests (//v2/test/claim/parse/expression_bodied_fn_decl_parse:all) stop at infer_reason_projection_receiver_declaration_unavailable on `root.children` in g_tree_has_arrow_body, whose receiver is a PARAMETER declared Node -- its declaration is unavailable because v2.std.node itself fails to resolve (the chain's preceding resolve link is a bare `count` in v2.std.node, the collection-size wall gunbc#13307 addresses). LIKELY THE NEXT ONE: the same test reads `artifact.tree` off a match binder of parse_module_prepared's result, a callee returning the declared Outcome<ParseArtifact>; once v2.std.node resolves, that projection's receiver is a declaration-typed call result -- this class -- and is expected to be where the chain stops next. To be confirmed by the N7 re-measure after #13307 lands.",
+
+    "RUNG FOUND AT (HISTORY; do not overwrite): below the floor -- silently admitted. Measured on session/stern-swift-290-literal: `fn mk() -> Nat { Zero }` at `fn f() -> Bool { mk() }` ACCEPTED; generic Nat the same; kernel Int refused. DESIGN section 4b floor (values inhabit declared types) was not held.",
+
+    "CURRENT (2026-10-11, PR #13747, merged main 1f25232cdc), PER PATH (DESIGN section 4b(1): the class rung is the minimum across in-scope paths). PATH 1 -- callee whose Arrow grounds, covering all four specimen shapes (Nat, generic Nat, Out<Int>, kernel Int): STRUCTURALLY GUARANTEED (rung 3). The compiler derives the inhabitance refusal from modeled structure (`arrow_body_does_not_inhabit_declared_return` / `application_argument_does_not_inhabit`); evidenced by the production-route REDs folded into v2.test.claim.compiler.declared_return_result drr_the_real_route_judges_a_projected_generic_call_result. Those claims are off the required witnesses path (gunbc.rung_drop v1_required_lanes_withdrawn) and stay enrolled as regression controls, not as the mechanism that holds rung 3. PATH 2 -- callee Arrow whose grounding is Rejected for a compiler-capability gap, rewritten by infer_reference_facts_or_frontier to GroundingNotDerived: COUNTED FRONTIER (typed, not silent), on the ladder MITIGATABLE (rung 1). NEXT-RUNG TRIGGER ON PATH 2, NAMING THE CAPABILITY: a Rejected Arrow grounding from a compiler-capability gap remains a first-class typed capability-frontier outcome at the reference-facts boundary rather than being rewritten to GroundingNotDerived, SUFFICIENT FOR the class minimum to become structurally guaranteed. CLASS RUNG: mitigatable (the minimum of the two). A single 'mechanically preventable' both undersells path 1 and hides path 2.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_application_result_type", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_declaration_reference_facts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_reference_facts_or_frontier", field: WholeDeclaration },
+  ],
+}

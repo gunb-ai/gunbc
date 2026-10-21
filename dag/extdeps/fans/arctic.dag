@@ -1,0 +1,176 @@
+module extdeps.fans.arctic
+
+import std.types { List }
+import std.measure {Celsius,celsius}
+import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  FanMountingPattern,
+  fan_mounting_pattern,
+  ConventionUnverified, ReadFromVendorDrawing,
+  FanCatalogRow,
+  FanSpeedRangePublished,
+  FanStopsBelowPwm,
+  FluidDynamicBearing,
+}
+import extdeps.vendor.arctic { arctic }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arctic.de/en/P8-PWM-PST/ACFAN00150A"
+  }
+}
+
+// THE PUBLISHED FIGURES ARE A SPEED RANGE AND NOTHING ELSE, AND THAT IS THE WHOLE ROW.
+//
+// The listing gives 200-3000 rpm, 4-pin PWM, 12 V, 1.08 W, an 80 x 80 x 25 mm frame (now declared
+// as arctic_p8_mounting_pattern below rather than left in this sentence), and a noise
+// figure of 0.3 SONES. Two duty points are therefore authorable - the bottom and the top of the
+// controllable range - and neither carries a sound pressure level.
+//
+// 0.3 SONES IS NOT A dBA ANCHOR AND IS DELIBERATELY NOT CONVERTED. Sone is a loudness scale and
+// dBA is a sound pressure level; the mapping between them is psychoacoustic, depends on the
+// spectrum, and inverting it for a single broadband figure requires assumptions the vendor did not
+// publish. Writing tenths_dba(...) here from 0.3 sone would manufacture an anchor - a number that
+// looks like a measurement, is not one, and would then feed the acoustic law as though a vendor had
+// printed it. This lane already made that mistake once in the opposite direction (treating a sone
+// figure as an available dBA anchor) and was corrected in review, which is why the refusal is
+// recorded here rather than left as an omission a later author would try to helpfully fill in.
+//
+// The consequence is visible and intended: fan_acoustic_evidence returns
+// FanAcousticUnderdetermined at published_level_count 0. This fan cannot ground an acoustic law,
+// and the model says so instead of guessing.
+//
+// THE RANGE IS CARRIED AS A RANGE. An earlier revision of this row spelled 200-3000 rpm as two
+// FanPublishedOperatingPoint rows at percent(0) and percent(100). ARCTIC publishes no duty
+// pairing at all, so both duties were invented, and fan_max_speed then read 3000 rpm through a
+// fabricated row - a correct number reached by a route that had manufactured its own premise.
+// Caught in review; the carrier now has no duty field on this arm, so the invention has nowhere
+// to go.
+//
+// THE PAGE ALSO REFUTES THE INVENTED ROW DIRECTLY. The full string is "200-3000 rpm (0 rpm below
+// 5 % PWM)", so at percent(0) this fan reads 0 rpm and not 200 - the fabricated point was not
+// merely unpublished, it was wrong, and the stop behavior is now carried as its own fact.
+// THE MODEL IS "P8 PWM PST", NOT THE PACKAGE AND NOT THE CO VARIANT. The purchase is a five-pack,
+// whose own identifier names a shipment rather than a part; the fan inside it is one model and that
+// is what a header carries. "P8 PWM PST CO" is a separate ARCTIC product with a different bearing
+// intended for continuous operation, and the base name does not imply it - so binding a header to
+// this row asserts the base part specifically.
+//
+// THE BEARING IS PUBLISHED AND AN EARLIER REVISION OF THIS ROW SAID IT WAS NOT. The manufacturer
+// page prints "Fluid Dynamic Bearing" for the ordinary P8 PWM PST; this row previously carried
+// FanBearingUnpublished on the reasoning that only the CO variant's bearing was stated. That was a
+// FABRICATED ABSENCE - the same class as a fabricated value and harder to see, because a missing
+// fact reads as conservatism rather than as a claim. It asserts "the vendor did not say", which is
+// checkable and was false. Caught in review, verified against the cited page.
+data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
+  model: "P8 PWM PST",
+  manufacturer: arctic,
+  frame_size: millimeter(80),
+  bearing: FluidDynamicBearing,
+  pwm_controlled: true,
+  published_points: [],
+  published_speed_range: FanSpeedRangePublished {
+    nonzero_minimum: rpm(200),
+    maximum: rpm(3000),
+  },
+  published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.arctic",
+      decl_name: "arctic_p8_pwm_pst_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE MOUNTING PATTERN, LIFTED OUT OF THE ANNOTATION ABOVE INTO A ROW A CONSUMER CAN READ.
+//
+// The frame edge is the listing's own 80 mm. The 71.5 mm pitch and 4.4 mm clearance are the 80 mm
+// axial convention and are NOT from the listing, which is why the evidence arm says convention
+// rather than relayed -- the grades differ and collapsing them would report an unverified number as
+// a vendor statement. The first printed fan mount is the discriminating test: the fan bolts up or it
+// does not, and a caliper on a held fan retires the row outright.
+data arctic_p8_mounting_pattern: FanMountingPattern = fan_mounting_pattern(
+  frame_edge: micrometer(count: 80000),
+  hole_pitch: micrometer(count: 71500),
+  hole_clearance_diameter: micrometer(count: 4400),
+  evidence: ConventionUnverified {
+    convention: "80 mm axial fan square mounting pattern, unverified against a held part",
+  },
+)
+
+// Published axial frame depth, separate from the conventional mounting-hole pattern.
+data arctic_p8_frame_depth: Micrometer = micrometer(count: 25000)
+
+// ---------------------------------------------------------------------------------------------
+// THE FIGURES A CHASSIS MODEL CONSUMES BEYOND THE SPEED RANGE, each with its own standing.
+//
+// Airflow, mass, current, cable length and ambient range cite the primary PDF
+// directly read 2026-10-04. Maximum free-air flow is not installed airflow.
+data arctic_p8_rated_power: Milliwatt = milliwatt(count: 1080)
+data arctic_p8_rated_power_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+data arctic_p8_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/84/14/68/1697784882/Spec_Sheet_P8_PWM_PST_EN.pdf"}}
+// First-party PDF read 2026-10-04: 39.76 m3/h, not reseller 40.3. Maximum free-air flow.
+data arctic_p8_operating_ambient_max: Celsius = celsius(count:40)
+data arctic_p8_published_airflow: MillilitrePerSecond = millilitre_per_second(count: 11044)
+data arctic_p8_published_airflow_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_mass: Gram = gram(count: 81)
+data arctic_p8_mass_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_rated_current: Milliampere = milliampere(count: 90)
+data arctic_p8_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_cable_length: Millimeter = millimeter(400)
+data arctic_p8_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+// PWM SHARING TECHNOLOGY: the "PST" in the model name. Each fan carries a pass-through 4-pin
+// socket, so a bank of P8 PWM PST fans chains fan-to-fan and reaches the board on ONE header
+// cable. The chassis harness census counts the bank as one header cable plus (n - 1) short links
+// because of this row. The maximum chain length ARCTIC supports is not stated on the listings
+// read; the header's own current limit is the board's unresolved row, not this one.
+type PwmSharingChain
+  = PstPassThrough { max_chained_standing: CitedFigureStanding }
+  | NoPassThrough
+
+data arctic_p8_pwm_sharing: PwmSharingChain = PstPassThrough {
+  max_chained_standing: TranscribedUncited {
+    read_obligation: "Read ARCTIC's PST statement for the maximum number of fans per chain; the model name and the listings establish the pass-through exists, not its limit.",
+  },
+}
+
+// Publisher mounting drawings visually read on 2026-10-04. Nominal dimensions;
+// drawing tolerance is +/- 0.3 mm on these frame edges and pitches. Printed fit is separate.
+data arctic_p14_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p14-pwm-pst/techdocs/140mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p14_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:140000),hole_pitch:micrometer(count:125000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p14_mounting_authority})
+data arctic_p12_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p12-pwm-pst/techdocs/120mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p12_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:120000),hole_pitch:micrometer(count:105000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p12_mounting_authority})
+data arctic_f9_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/f9-pwm-pst/techdocs/92mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_f9_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:92000),hole_pitch:micrometer(count:82500),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_f9_mounting_authority})
+
+// P14 PWM PST sheet, technical specifications p.1, directly read 2026-10-04.
+data arctic_p14_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/1d/98/04/1693306037/Spec_Sheet_P14_PWM_PST_EN.pdf"}}
+data arctic_p14_frame_depth: Micrometer = micrometer(count:27000)
+
+// Technical specifications p.1, publisher PDF re-read 2026-10-05. These are
+// P14 rows even where a number happens to equal the P8 specification.
+data arctic_p14_cable_length: Millimeter = millimeter(count:400)
+data arctic_p14_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_rated_current: Milliampere = milliampere(count:120)
+data arctic_p14_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_pwm_sharing: PwmSharingChain = PstPassThrough {max_chained_standing:TranscribedUncited {read_obligation:"P14 sheet establishes a four-pin plug and pass-through socket, not an allowed chain current or fan count. Resolve the board header limit before chaining."}}
+data arctic_p14_wiring_model_scope: ExternalModelScope = ExternalModelScope {
+ subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration}},
+ first_citation:arctic_p14_spec_authority,
+ further_citations:[],
+}

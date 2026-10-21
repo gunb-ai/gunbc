@@ -1,0 +1,504 @@
+module v2.test.claim.tokenize.lex_window_beyond
+
+import std.algebra { Cons, Empty, length }
+import std.coercion { unicode_scalar_unfold }
+import std.types { Bool, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.tokenize {
+  LexCursor,
+  LexHeadBeyond,
+  LexHeadEnd,
+  LexHeadFound,
+  LexPrefix,
+  LexRuleAnnotation,
+  LexRuleApply,
+  LexRuleBeyond,
+  LexRuleModalToken,
+  LexRuleNoMatch,
+  LexRuleToken,
+  LexRuleTrivia,
+  LexWalkLimit,
+  LexWalkUntil,
+  LexWalkWhole,
+  PreparedLexRules,
+  PreparedVoidLexRules,
+  lex_cursor_head,
+  lex_rule_apply_lexeme_length,
+  lex_try_rule_window,
+  lex_try_rules_prefer_longer,
+  prepare_lex_rules,
+  tokenize_prefix_prepared,
+  tokenize_prepared
+}
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.extdeps.languages.dag { dag_string_literal_lex_rule, dag_string_template_head_lex_rule }
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexMode,
+  LexRule,
+  LexRuleSet,
+  LiteralPattern,
+  ModeTransitionTokenRule,
+  ModeledLexRules,
+  NotFollowedByPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  PopLexMode,
+  PushLexMode,
+  RepeatPattern,
+  SequencePattern,
+  StringTextChar,
+  Token,
+  TokenRule,
+  TokenStream,
+  TriviaRule,
+  WhitespaceChar,
+  token_stream_remaining
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.node { Symbol }
+import v2.std.text { Char, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE THIRD LEX STATE (v2.compiler.tokenize LexHeadBeyond, LexRuleBeyond). A lexer shown a
+// WINDOW of a longer text meets, at the window's edge, a position that is neither a scalar nor the end of
+// the text, and a matcher that reads it as the end answers wrongly in a way nothing downstream can tell
+// from a right answer: a delimited lexeme the text goes on to close is rejected, an identifier the text
+// goes on to extend is cut, a longer literal loses to its prefix. Each control here holds one rule shape
+// to the answer it owes at the edge, paired with the answer for the same text read as the whole text, so
+// a control that passed because the matcher ignored the window would fail the pairing:
+//
+//   * at the edge a rule answers Beyond whenever its outcome, accepted or rejected, or the extent it
+//     would accept, depends on a scalar the window does not hold, and decided (matched or not) when the
+//     scalars it needs are in the window;
+//   * Beyond dominates the longest-match fold, since the rule the edge cut off might have been the
+//     longer one;
+//   * the walk halts before a Beyond position without emitting, refusing or opening a mode for it, and
+//     a mode left open at the edge is not an unterminated mode, since the text may close it.
+
+fn window_apply(rule: LexRule, text: String) -> LexRuleApply {
+  lex_try_rule_window(rule: rule, source: unicode_scalar_unfold(s: text), truncated: true)
+}
+
+fn whole_apply(rule: LexRule, text: String) -> LexRuleApply {
+  lex_try_rule_window(rule: rule, source: unicode_scalar_unfold(s: text), truncated: false)
+}
+
+fn is_beyond(apply: LexRuleApply) -> Bool {
+  match apply {
+    LexRuleBeyond => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
+    LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } => false
+  }
+}
+
+fn is_no_match(apply: LexRuleApply) -> Bool {
+  match apply {
+    LexRuleNoMatch => true
+    LexRuleBeyond => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
+    LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } => false
+  }
+}
+
+// A match the rule decided, of this many scalars.
+fn is_matched_of(apply: LexRuleApply, scalars: Int) -> Bool {
+  !is_beyond(apply: apply) && !is_no_match(apply: apply) && lex_rule_apply_lexeme_length(apply: apply) == scalars
+}
+
+// ---- the cursor ----------------------------------------------------------------------------------------------------
+
+fn head_is_scalar(cursor: LexCursor, scalar: Char) -> Bool {
+  match lex_cursor_head(cursor: cursor) {
+    LexHeadFound { value: v } => v == scalar
+    LexHeadEnd => false
+    LexHeadBeyond => false
+  }
+}
+
+fn head_is_end(cursor: LexCursor) -> Bool {
+  match lex_cursor_head(cursor: cursor) {
+    LexHeadEnd => true
+    LexHeadFound { value: _ } => false
+    LexHeadBeyond => false
+  }
+}
+
+fn head_is_beyond(cursor: LexCursor) -> Bool {
+  match lex_cursor_head(cursor: cursor) {
+    LexHeadBeyond => true
+    LexHeadEnd => false
+    LexHeadFound { value: _ } => false
+  }
+}
+
+// The position past a window's last scalar is Beyond, and past a whole text's it is the End, which are
+// two heads for one absent scalar; inside the carrier it is the scalar either way.
+test fn the_cursor_reports_the_windows_edge_as_its_own_head_and_the_texts_end_as_another() -> Bool {
+  let two = unicode_scalar_unfold(s: "ab")
+  head_is_scalar(cursor: LexCursor { source: two, index: 1, truncated: true }, scalar: 98)
+    && head_is_scalar(cursor: LexCursor { source: two, index: 1, truncated: false }, scalar: 98)
+    && head_is_beyond(cursor: LexCursor { source: two, index: 2, truncated: true })
+    && head_is_end(cursor: LexCursor { source: two, index: 2, truncated: false })
+    && head_is_beyond(cursor: LexCursor { source: unicode_scalar_unfold(s: ""), index: 0, truncated: true })
+    && head_is_end(cursor: LexCursor { source: unicode_scalar_unfold(s: ""), index: 0, truncated: false })
+}
+
+// ---- one rule shape at a time ----------------------------------------------------------------------------------
+
+fn rule_run() -> LexRule {
+  TokenRule { token_class: ^w_run, pattern: OneOrMorePattern { element: CharPattern { char: 97 } } }
+}
+
+fn rule_literal() -> LexRule {
+  TokenRule { token_class: ^w_literal, pattern: LiteralPattern { text: unicode_scalar_unfold(s: "==") } }
+}
+
+fn rule_keyword() -> LexRule {
+  TokenRule { token_class: ^w_keyword, pattern: KeywordPattern { text: unicode_scalar_unfold(s: "fn") } }
+}
+
+fn rule_string() -> LexRule {
+  TokenRule {
+    token_class: ^w_string,
+    pattern: DelimitedPattern {
+      open: CharPattern { char: 34 },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: CharPattern { char: 34 }
+    }
+  }
+}
+
+fn rule_choice() -> LexRule {
+  TokenRule {
+    token_class: ^w_choice,
+    pattern: ChoicePattern {
+      left: LiteralPattern { text: unicode_scalar_unfold(s: "ab") },
+      right: LiteralPattern { text: unicode_scalar_unfold(s: "ac") }
+    }
+  }
+}
+
+fn rule_optional() -> LexRule {
+  TokenRule {
+    token_class: ^w_optional,
+    pattern: SequencePattern {
+      left: LiteralPattern { text: unicode_scalar_unfold(s: "a") },
+      right: OptionalPattern { element: LiteralPattern { text: unicode_scalar_unfold(s: "b") } }
+    }
+  }
+}
+
+fn rule_not_followed() -> LexRule {
+  TokenRule {
+    token_class: ^w_not_followed,
+    pattern: SequencePattern {
+      left: LiteralPattern { text: unicode_scalar_unfold(s: "a") },
+      right: NotFollowedByPattern { element: LiteralPattern { text: unicode_scalar_unfold(s: "b") } }
+    }
+  }
+}
+
+fn rule_sequence() -> LexRule {
+  TokenRule {
+    token_class: ^w_sequence,
+    pattern: SequencePattern {
+      left: LiteralPattern { text: unicode_scalar_unfold(s: "a") },
+      right: LiteralPattern { text: unicode_scalar_unfold(s: "b") }
+    }
+  }
+}
+
+// A repeat takes as much as there is, so a run that reaches the edge might go on and its extent is
+// undecided; the same run followed by a scalar that is not its element is decided.
+test fn a_repeat_that_reaches_the_edge_is_beyond_and_one_that_stops_inside_the_window_is_decided() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_run(), text: "aa"))
+    && is_matched_of(apply: whole_apply(rule: rule_run(), text: "aa"), scalars: 2)
+    && is_matched_of(apply: window_apply(rule: rule_run(), text: "aab"), scalars: 2)
+    && is_no_match(apply: window_apply(rule: rule_run(), text: "b"))
+    && is_beyond(apply: window_apply(rule: rule_run(), text: ""))
+    && is_no_match(apply: whole_apply(rule: rule_run(), text: ""))
+}
+
+// A literal that is cut by the edge is undecided (the text might complete it), one the scalars already
+// refute is decided, and one the window holds whole is decided with no scalar beyond it needed.
+test fn a_literal_cut_by_the_edge_is_beyond_and_one_the_window_refutes_or_holds_is_decided() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_literal(), text: "="))
+    && is_no_match(apply: whole_apply(rule: rule_literal(), text: "="))
+    && is_no_match(apply: window_apply(rule: rule_literal(), text: "=x"))
+    && is_matched_of(apply: window_apply(rule: rule_literal(), text: "=="), scalars: 2)
+    && is_matched_of(apply: whole_apply(rule: rule_literal(), text: "=="), scalars: 2)
+    && is_beyond(apply: window_apply(rule: rule_literal(), text: ""))
+}
+
+// A keyword is a literal that must not run on into an identifier, so its decision needs the scalar after
+// it: at the edge the keyword `fn` is undecided, since `fna` is an identifier and `fn ` is the keyword.
+test fn a_keyword_at_the_edge_is_beyond_until_the_scalar_after_it_is_shown() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_keyword(), text: "fn"))
+    && is_matched_of(apply: whole_apply(rule: rule_keyword(), text: "fn"), scalars: 2)
+    && is_matched_of(apply: window_apply(rule: rule_keyword(), text: "fn "), scalars: 2)
+    && is_no_match(apply: window_apply(rule: rule_keyword(), text: "fna"))
+    && is_beyond(apply: window_apply(rule: rule_keyword(), text: "f"))
+    && is_no_match(apply: window_apply(rule: rule_keyword(), text: "fx"))
+}
+
+// THE CASE THAT REFUSED 14 MODULES. A delimited lexeme whose close is not in the window is undecided: the
+// whole text is the one that says whether it closes, and read as the end of the text it is rejected, so
+// its opening delimiter matches no rule at all.
+test fn a_delimited_lexeme_whose_close_is_beyond_the_edge_is_beyond_not_rejected() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_string(), text: "\"ab"))
+    && is_no_match(apply: whole_apply(rule: rule_string(), text: "\"ab"))
+    && is_matched_of(apply: window_apply(rule: rule_string(), text: "\"ab\""), scalars: 4)
+    && is_matched_of(apply: window_apply(rule: rule_string(), text: "\"ab\"x"), scalars: 4)
+    && is_beyond(apply: window_apply(rule: rule_string(), text: "\""))
+    && is_no_match(apply: window_apply(rule: rule_string(), text: "x\""))
+}
+
+// The same cases through the dag language's own string rule, the rule the 14 refusals came from, and its
+// template head, whose lookahead for the hole's first scalar is the edge's other way to bite.
+test fn the_dag_string_rule_and_template_head_answer_beyond_at_the_edge() -> Bool {
+  is_beyond(apply: window_apply(rule: dag_string_literal_lex_rule(), text: "\"abc def"))
+    && is_no_match(apply: whole_apply(rule: dag_string_literal_lex_rule(), text: "\"abc def"))
+    && is_matched_of(apply: window_apply(rule: dag_string_literal_lex_rule(), text: "\"abc def\""), scalars: 9)
+    && is_beyond(apply: window_apply(rule: dag_string_template_head_lex_rule(), text: "\"a \{"))
+    && is_matched_of(apply: window_apply(rule: dag_string_template_head_lex_rule(), text: "\"a \{x"), scalars: 4)
+}
+
+// An ordered choice that its first arm has not decided is undecided; one its first arm refutes inside the
+// window falls to the second; one its first arm accepts is that arm's, with no lookahead past it.
+test fn a_choice_is_beyond_while_its_first_arm_is_undecided_and_decided_once_that_arm_is() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_choice(), text: "a"))
+    && is_matched_of(apply: window_apply(rule: rule_choice(), text: "ac"), scalars: 2)
+    && is_matched_of(apply: window_apply(rule: rule_choice(), text: "ab"), scalars: 2)
+    && is_no_match(apply: window_apply(rule: rule_choice(), text: "ad"))
+    && is_no_match(apply: whole_apply(rule: rule_choice(), text: "a"))
+}
+
+test fn an_optional_part_is_beyond_at_the_edge_and_decided_when_the_next_scalar_is_shown() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_optional(), text: "a"))
+    && is_matched_of(apply: whole_apply(rule: rule_optional(), text: "a"), scalars: 1)
+    && is_matched_of(apply: window_apply(rule: rule_optional(), text: "ac"), scalars: 1)
+    && is_matched_of(apply: window_apply(rule: rule_optional(), text: "ab"), scalars: 2)
+}
+
+// Negative lookahead reads the scalar after the position, so at the edge it is undecided; it succeeds
+// only against the text's end, which the window does not show.
+test fn a_negative_lookahead_at_the_edge_is_beyond_and_decided_once_the_scalar_is_shown() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_not_followed(), text: "a"))
+    && is_matched_of(apply: whole_apply(rule: rule_not_followed(), text: "a"), scalars: 1)
+    && is_matched_of(apply: window_apply(rule: rule_not_followed(), text: "ac"), scalars: 1)
+    && is_no_match(apply: window_apply(rule: rule_not_followed(), text: "ab"))
+}
+
+test fn a_sequence_is_beyond_while_a_part_is_cut_and_refused_as_soon_as_a_part_is_refuted() -> Bool {
+  is_beyond(apply: window_apply(rule: rule_sequence(), text: "a"))
+    && is_matched_of(apply: window_apply(rule: rule_sequence(), text: "ab"), scalars: 2)
+    && is_no_match(apply: window_apply(rule: rule_sequence(), text: "ac"))
+    && is_no_match(apply: whole_apply(rule: rule_sequence(), text: "a"))
+}
+
+// ---- the longest match -----------------------------------------------------------------------------------------------
+
+// Beyond dominates in either order and whatever else matched: the rule the edge cut off might have been
+// the longer, or the later of two equals.
+test fn a_beyond_rule_dominates_the_longest_match_in_either_order() -> Bool {
+  let token = window_apply(rule: rule_run(), text: "aab")
+  let cut = window_apply(rule: rule_run(), text: "aa")
+  is_matched_of(apply: token, scalars: 2)
+    && is_beyond(apply: cut)
+    && is_beyond(apply: lex_try_rules_prefer_longer(acc: token, candidate: cut))
+    && is_beyond(apply: lex_try_rules_prefer_longer(acc: cut, candidate: token))
+    && is_beyond(apply: lex_try_rules_prefer_longer(acc: LexRuleNoMatch, candidate: cut))
+    && is_beyond(apply: lex_try_rules_prefer_longer(acc: cut, candidate: LexRuleNoMatch))
+    && is_matched_of(apply: lex_try_rules_prefer_longer(acc: LexRuleNoMatch, candidate: token), scalars: 2)
+}
+
+fn equals_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+      TokenRule { token_class: ^w_ident, pattern: SequencePattern { left: CharClassPattern { class: IdentStartChar }, right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } } } },
+      TokenRule { token_class: ^w_eq, pattern: LiteralPattern { text: unicode_scalar_unfold(s: "=") } },
+      TokenRule { token_class: ^w_eqeq, pattern: LiteralPattern { text: unicode_scalar_unfold(s: "==") } }
+    ],
+    modes: []
+  }
+}
+
+fn equals_tokens_at(text: String, window: Int) -> List<Token> {
+  match tokenize_prefix_prepared(
+    text: text,
+    file: ^w_probe,
+    prepared: prepare_lex_rules(rules: ModeledLexRules { root: equals_rules() }),
+    limit: LexWalkUntil { scalars: window }
+  ) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: prefix, diagnostics: _ } => token_stream_remaining(stream: prefix.stream)
+  }
+}
+
+// The end of the last token, and none for a stream of none.
+fn last_end(tokens: List<Token>) -> Int {
+  match tokens {
+    Empty => -1
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => first.end
+        Cons { head: _, tail: _ } => last_end(tokens: rest)
+      }
+  }
+}
+
+// `=` and `==` start alike. With one scalar of `== x` shown the shorter rule has matched and the longer is
+// cut, so the walk must emit nothing; emitting `=` would be a token the whole text never produces.
+test fn the_walk_does_not_emit_the_shorter_of_two_rules_while_the_longer_is_cut_by_the_edge() -> Bool {
+  length(xs: equals_tokens_at(text: "== x", window: 1)) == 0
+    && last_end(tokens: equals_tokens_at(text: "== x", window: 2)) == 2
+    && last_end(tokens: equals_tokens_at(text: "== x", window: 3)) == 2
+    && length(xs: equals_tokens_at(text: "== x", window: 4)) == 2
+    && last_end(tokens: equals_tokens_at(text: "= x", window: 1)) == -1
+    && last_end(tokens: equals_tokens_at(text: "= x", window: 2)) == 1
+}
+
+// ---- modes ---------------------------------------------------------------------------------------------------------------
+
+fn hole_rules() -> List<LexRule> {
+  [
+    TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+    TokenRule { token_class: ^w_ident, pattern: SequencePattern { left: CharClassPattern { class: IdentStartChar }, right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } } } },
+    ModeTransitionTokenRule { token_class: ^w_rbrace, pattern: CharPattern { char: 125 }, transition: PopLexMode },
+    ModeTransitionTokenRule { token_class: ^w_close, pattern: LiteralPattern { text: unicode_scalar_unfold(s: "}>") }, transition: PopLexMode }
+  ]
+}
+
+fn modal_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+      TokenRule { token_class: ^w_ident, pattern: SequencePattern { left: CharClassPattern { class: IdentStartChar }, right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } } } },
+      ModeTransitionTokenRule { token_class: ^w_open, pattern: LiteralPattern { text: unicode_scalar_unfold(s: "<{") }, transition: PushLexMode { mode: ^w_hole } }
+    ],
+    modes: [LexMode { mode: ^w_hole, rules: hole_rules() }]
+  }
+}
+
+fn modal_prepared() -> PreparedLexRules {
+  prepare_lex_rules(rules: ModeledLexRules { root: modal_rules() })
+}
+
+fn modal_window(text: String, window: Int) -> Outcome<LexPrefix> {
+  tokenize_prefix_prepared(text: text, file: ^w_probe, prepared: modal_prepared(), limit: LexWalkUntil { scalars: window })
+}
+
+fn modal_tokens_at(text: String, window: Int) -> List<Token> {
+  match modal_window(text: text, window: window) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: prefix, diagnostics: _ } => token_stream_remaining(stream: prefix.stream)
+  }
+}
+
+fn modal_window_is_open(text: String, window: Int) -> Bool {
+  match modal_window(text: text, window: window) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prefix, diagnostics: _ } => !prefix.complete
+  }
+}
+
+fn refusal_of_modal(result: Outcome<TokenStream>) -> Symbol {
+  match result {
+    Accepted { value: _, diagnostics: _ } => ^w_no_refusal
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+fn modal_whole_refusal(text: String) -> Symbol {
+  refusal_of_modal(result: tokenize_prepared(text: text, file: ^w_probe, prepared: modal_prepared()))
+}
+
+// The cut of the text lexed as if it were the file: what a reader that took a plain prefix would have.
+fn modal_cut_refusal(text: String, window: Int) -> Symbol {
+  modal_whole_refusal(text: substring(s: text, start: 0, end: window))
+}
+
+fn modal_cut_tokens(text: String, window: Int) -> List<Token> {
+  match tokenize_prepared(text: substring(s: text, start: 0, end: window), file: ^w_probe, prepared: modal_prepared()) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } => token_stream_remaining(stream: stream)
+  }
+}
+
+// A MODE LEFT OPEN AT THE EDGE IS NOT AN UNTERMINATED MODE: the text may close it. `a <{ b` opens a hole
+// the text never closes, so the whole text refuses at the end with the unterminated-mode cause; the
+// windows that end inside the hole are accepted, incomplete, and the same windows cut and lexed as if
+// they were the file are refused with that cause.
+test fn a_mode_open_at_the_edge_is_accepted_incomplete_where_a_cut_of_the_text_is_refused() -> Bool {
+  modal_whole_refusal(text: "a <{ b") == ^tokenize_lex_e4_mode_unterminated
+    && modal_cut_refusal(text: "a <{ b", window: 4) == ^tokenize_lex_e4_mode_unterminated
+    && modal_window_is_open(text: "a <{ b", window: 4)
+    && modal_window_is_open(text: "a <{ b", window: 5)
+    && length(xs: modal_tokens_at(text: "a <{ b", window: 4)) == 2
+}
+
+// `}` and `}>` both pop. With `}` shown and `>` not, the longer rule is cut, so the walk emits neither;
+// a cut of the text lexed as the file is accepted and emits `}`, which ends at 8, where the whole text's
+// token is `}>` ending at 9. That is a plausible, wrong, silent answer, which is why it is asserted against.
+test fn a_longer_closer_cut_by_the_edge_is_not_replaced_by_its_shorter_prefix() -> Bool {
+  last_end(tokens: modal_tokens_at(text: "a <{ b }>", window: 8)) == 6
+    && modal_window_is_open(text: "a <{ b }>", window: 8)
+    && last_end(tokens: modal_tokens_at(text: "a <{ b }>", window: 9)) == 9
+    && last_end(tokens: modal_tokens_at(text: "a <{ b }> c", window: 10)) == 9
+    && modal_cut_refusal(text: "a <{ b }>", window: 8) == ^w_no_refusal
+    && last_end(tokens: modal_cut_tokens(text: "a <{ b }>", window: 8)) == 8
+    && modal_whole_refusal(text: "a <{ b }>") == ^w_no_refusal
+}
+
+// ---- the doors at the extremes ------------------------------------------------------------------------------
+
+fn dag_prefix_complete(text: String, window: Int) -> Bool {
+  match tokenize_prefix_prepared(text: text, file: ^w_probe, prepared: dag_prepared_lex(), limit: LexWalkUntil { scalars: window }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prefix, diagnostics: _ } => prefix.complete
+  }
+}
+
+fn void_prefix_reason(text: String, limit: LexWalkLimit) -> Symbol {
+  match tokenize_prefix_prepared(text: text, file: ^w_probe, prepared: PreparedVoidLexRules, limit: limit) {
+    Accepted { value: prefix, diagnostics: _ } => if prefix.complete { ^w_complete } else { ^w_incomplete }
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+// A window of exactly the text's length is the whole text, and one scalar less is not; a negative window
+// holds nothing; an empty text is complete under any window.
+test fn a_window_is_the_whole_text_exactly_when_it_holds_all_of_it() -> Bool {
+  dag_prefix_complete(text: "module a.b\n", window: 11)
+    && !dag_prefix_complete(text: "module a.b\n", window: 10)
+    && dag_prefix_complete(text: "module a.b\n", window: 12)
+    && !dag_prefix_complete(text: "module a.b\n", window: -3)
+    && dag_prefix_complete(text: "", window: 0)
+    && dag_prefix_complete(text: "", window: 5)
+}
+
+// A rule set with no rules matches no scalar, so a text it is shown is refused and an empty text is
+// complete; a window cut from a non-empty text is a refusal too, since the scalars it holds are not
+// consumed by anything.
+test fn the_void_rule_set_refuses_any_scalar_in_the_window_and_completes_an_empty_text() -> Bool {
+  void_prefix_reason(text: "", limit: LexWalkWhole) == ^w_complete
+    && void_prefix_reason(text: "", limit: LexWalkUntil { scalars: 0 }) == ^w_complete
+    && void_prefix_reason(text: "a", limit: LexWalkWhole) == ^tokenize_lex_e0_source_not_exhausted
+    && void_prefix_reason(text: "a", limit: LexWalkUntil { scalars: 0 }) == ^tokenize_lex_e0_source_not_exhausted
+    && void_prefix_reason(text: "abc", limit: LexWalkUntil { scalars: 2 }) == ^tokenize_lex_e0_source_not_exhausted
+}

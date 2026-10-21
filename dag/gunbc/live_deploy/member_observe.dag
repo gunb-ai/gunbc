@@ -1,0 +1,799 @@
+module gunbc.live_deploy.member_observe
+
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
+import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
+import std.measure { Second }
+import std.optional { Optional, Present, Absent }
+import std.algebra { trim }
+import std.content_hash { content_hash_atom }
+import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
+import extdeps.crypto.hash
+import extdeps.systemd { systemd_unit_property_wire, parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
+import extdeps.systemd.systemctl
+import extdeps.git.inspect
+import extdeps.shell
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_observation, filesystem_entry_presence, filesystem_read_outcome, filesystem_file_observation,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.host.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
+  deployment_directory_demands,
+}
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ListDirectoryEntries, ReadDirectoryIdentity, executor_privileged_operation_elevated_command, executor_privileged_operation_elevated_argv }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.access.posix { file_mode_octal }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
+  owned_directory_observe, owned_directory_decide,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverExited,
+}
+import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_placement, tracker_web_oidc_config_document, TrackerWebOidcServeConfig,
+  tracker_web_oidc_deploy_now_epoch,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
+}
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
+import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }
+import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_revision_argv, deployed_tree_read_tree_argv, deployed_tree_status_argv, deployed_tree_ignored_argv,
+  deployed_tree_content_reading, ContentRead, ContentUnreadable,
+  DeployedScopeMatchesCommit, DeployedScopeDiverged,
+}
+import gunbc.live_deploy.member_identity {
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, OidcConfigFile,
+  TreePublicationIdentity, UnitFileIdentity, UnitManagerStanding, ManagerLoadedCurrent, ManagerNeedsReload,
+  ServiceProcessIdentity, ProcessRunningRelease, ProcessNotRunning, ProcessObservedUnhealthy,
+  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt, OidcConfigAt, OidcConfigFileIdentity,
+  ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
+  MemberDecision, MemberRefused, DesiredExecutableUnreadable, DesiredExecutableAbsent, DesiredIdentityIsForAnotherMember,
+  decide_member, release_member_roster, MemberDecision, ConvergedMember, ReleaseTarget,
+  DirectoryRoot, DirectoryRootIdentity, RootAt, DirectoryRootStanding, RootConverged, RootModeRepairable, MemberRefusedOnHost,
+  EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
+}
+
+// THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
+// the mutation are one evaluation (operator direction, 2026-09-06: one semantic evaluation per
+// convergence transaction; nothing here starts a second evaluator on the host). Each observation is
+// ONE interface with TWO realizations, which is DESIGN section 3's rule for transport: when the
+// executor is the host (LocalShell) the read is the tool's own typed operation -- extdeps.git.inspect,
+// extdeps.crypto.hash, extdeps.systemd.systemctl, extdeps.filesystem, extdeps.shell -- and when the
+// host is behind ssh the same invocation goes as argv through gunbc.host.host_effect_realize
+// run_typed_argv_transport, which rightly refuses LocalShell because it has no remote target. The
+// argv builders and the operations spell one invocation each; that pair is the extdeps seam every
+// shell-transported operation carries today, and it folds when an operation's transport row can be
+// read back.
+type ObservationArm
+  = OnTheHostItself
+  | OverTransport { transport: HostEffectTransport }
+
+fn observation_arm(transport: HostEffectTransport) -> ObservationArm {
+  match transport {
+    LocalShell => OnTheHostItself
+    SshShell { ssh_host: _ } => OverTransport { transport: transport }
+    FleetSsh { target: _, context: _ } => OverTransport { transport: transport }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => OverTransport { transport: transport }
+  }
+}
+
+// A REMOTE LEG: one argv, its stdout on exit zero, a typed refusal otherwise.
+type Leg
+  = LegOut { stdout: String }
+  | LegRefused { cause: String }
+
+fn remote_leg(transport: HostEffectTransport, argv: List<String>, leg: String) -> Leg {
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecRefused { reason } => LegRefused { cause: join([leg, ": ", reason], "") }
+    TypedArgvExecConverged { result: r } =>
+      if r.exit_code != 0 { LegRefused { cause: join([leg, " failed (exit ", to_string(value: r.exit_code), "): ", r.stderr], "") } }
+      else { LegOut { stdout: r.stdout } }
+  }
+}
+
+fn leg_of(success: Bool, stdout: String, stderr: String, leg: String) -> Leg {
+  if success { LegOut { stdout: stdout } } else { LegRefused { cause: join([leg, " failed: ", stderr], "") } }
+}
+
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING OF THE PARENT, never by a failed read of the child
+// (extdeps.filesystem.filesystem_io's rule). Locally that is the modeled listing observation; over a
+// transport it is `ls -1 -A` of the parent and membership of the basename in its lines.
+//
+// AN ABSENT ANCESTOR ESTABLISHES ABSENCE TOO. On a host that has never been deployed the executable's
+// parent directory does not exist, so listing it refuses -- and the first cut read that refusal as
+// indeterminate and refused the whole plan before the effect that creates the directory could run
+// (review on PR #10696). A listing that refuses is followed by the presence question one level up:
+// an ancestor that is itself absent (established by listing ITS parent) means the child is absent;
+// an ancestor that is present but cannot be listed is a real refusal and stays indeterminate. The
+// walk is bounded by the path's depth and stops at the root, which is listed directly.
+type EntryPresence
+  = EntryPresent
+  | EntryAbsent
+  | EntryPresenceIndeterminate { cause: String }
+
+fn path_parent(path: String) -> String {
+  let parts = split(s: path, delimiter: "/")
+  let kept = fold(parts, init: ParentWalk { count: count(parts), at: 0, acc: [] }, f: (acc, seg) =>
+    ParentWalk { count: acc.count, at: acc.at + 1, acc: if acc.at + 1 < acc.count { concat(acc.acc, [seg]) } else { acc.acc } })
+  let joined = join(kept.acc, "/")
+  if joined == "" { "/" } else { joined }
+}
+
+type ParentWalk {
+  count: Int
+  at: Int
+  acc: List<String>
+}
+
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+// THE TWO PURE HALVES OF A TRANSPORT LISTING, named so a caller that must supply its OWN transport
+// consumes them rather than re-minting them. The elevated arms of the fleet converges cannot use
+// entry_presence itself -- it reaches the far side as the bootstrap principal, and a root:root 0700
+// parent refuses that listing -- but the argv and the membership read are the same facts whichever
+// principal runs them, and two copies of a membership predicate can drift into two answers about
+// one question (DESIGN §2: net concepts must not grow by re-invention).
+fn parent_listing_argv(parent: String) -> List<String> {
+  ["ls", "-1", "-A", "--", parent]
+}
+
+fn listing_contains_entry(stdout: String, name: String) -> Bool {
+  any(split(s: stdout, delimiter: "\n"), entry => entry == name)
+}
+
+fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
+  match arm {
+    OnTheHostItself => {
+      let listing = Filesystem.List(path: parent)
+      match filesystem_entry_presence(
+        listing: filesystem_listing_observation(directory: parent, success: listing.success, entries: listing.entries, error: listing.error),
+        name: name,
+      ) {
+        FilesystemEntryAbsent(_) => EntryAbsent
+        FilesystemEntryListed { directory: _, name: _ } => EntryPresent
+        FilesystemEntryPresenceIndeterminate { cause } => EntryPresenceIndeterminate { cause: cause }
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause } => EntryPresenceIndeterminate { cause: cause }
+      }
+    }
+    OverTransport { transport } => match remote_leg(transport: transport, argv: parent_listing_argv(parent: parent), leg: join(["listing ", parent], "")) {
+      LegRefused { cause } => EntryPresenceIndeterminate { cause: cause }
+      LegOut { stdout } => if listing_contains_entry(stdout: stdout, name: name) { EntryPresent } else { EntryAbsent }
+    }
+  }
+}
+
+fn entry_presence(arm: ObservationArm, path: String) -> EntryPresence {
+  entry_presence_above(arm: arm, path: path, below: Absent)
+}
+
+// The ancestor walk in tail position, so the Rust realization lowers it to a loop. `below` is the
+// cause read one level down: an ancestor that is present answers with that cause, an absent one
+// answers absent, and the root answers with its own cause -- the same answers the nested walk gave.
+fn entry_presence_above(arm: ObservationArm, path: String, below: Optional<String>) -> EntryPresence {
+  let parent = path_parent(path: path)
+  let name = path_basename(path: path)
+  match entry_presence_in_parent(arm: arm, parent: parent, name: name) {
+    EntryPresent => match below {
+      Absent => EntryPresent
+      Present { value: cause } => EntryPresenceIndeterminate { cause: cause }
+    }
+    EntryAbsent => EntryAbsent
+    EntryPresenceIndeterminate { cause } =>
+      if parent == "/" {
+        EntryPresenceIndeterminate { cause: cause }
+      } else {
+        entry_presence_above(arm: arm, path: parent, below: Present { value: cause })
+      }
+  }
+}
+
+// THE EXECUTABLE: the host's own sha256 of the installed file (coreutils sha256sum, cited in
+// extdeps.crypto.hash), read the same way on both arms and parsed once.
+fn sha256_leg(arm: ObservationArm, path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = crypto.Sha256Sum.File(path: path)
+      leg_of(success: r.success, stdout: r.line, stderr: r.stderr, leg: join(["sha256sum ", path], ""))
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: sha256sum_argv(path: path), leg: join(["sha256sum ", path], ""))
+  }
+}
+
+fn observe_executable(arm: ObservationArm, path: String) -> ObservedMember {
+  match entry_presence(arm: arm, path: path) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: Executable, cause: cause }
+    EntryAbsent => MemberAbsentOnHost { member: Executable }
+    EntryPresent => match sha256_leg(arm: arm, path: path) {
+      LegRefused { cause } => MemberUnobservable { member: Executable, cause: cause }
+      LegOut { stdout } => match sha256sum_line_digest(line: stdout) {
+        Absent => MemberUnobservable { member: Executable, cause: join(["sha256sum output is not a digest line: ", stdout], "") }
+        Present { value: digest } => MemberObserved { identity: ExecutableIdentity { digest: digest } }
+      }
+    }
+  }
+}
+
+// The release's executable is the deploying checkout's build, the same source the install step
+// copies from; its digest is read where the evaluator runs, whatever transport the host is behind.
+// The emitter verifies the source against this digest again immediately before the copy, so a build
+// that changes between planning and actuation stops the line rather than installing under a stale
+// identity (gunbc.live_deploy.emit emit_release_member_effects).
+data release_executable_source_path: String = "target/release/gunbc"
+
+fn desired_executable() -> ObservedMember {
+  observe_executable(arm: OnTheHostItself, path: release_executable_source_path)
+}
+
+// THE UNIT FILE: the installed document's content hash.
+fn unit_document_leg(arm: ObservationArm, path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let parent = path_parent(path: path)
+      let listing = Filesystem.List(path: parent)
+      let read = Filesystem.Read(path: path)
+      match filesystem_file_observation(
+        listing: filesystem_listing_observation(directory: parent, success: listing.success, entries: listing.entries, error: listing.error),
+        name: path_basename(path: path),
+        path: path,
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      ) {
+        FilesystemFileRead { path: _, content } => LegOut { stdout: content }
+        FilesystemFileAbsent(_) => LegRefused { cause: join([path, " vanished between listing and read"], "") }
+        FilesystemFileIndeterminate { cause } => LegRefused { cause: cause }
+        FilesystemFileObservationsDisagree { path: _, cause } => LegRefused { cause: cause }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => LegRefused { cause: cause }
+      }
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading ", path], ""))
+  }
+}
+
+fn observe_unit_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMember {
+  let unit = spec.service.unit_name
+  let path = deployment_systemd_unit_path(names: spec.names) as String
+  match entry_presence(arm: arm, path: path) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: UnitFile, cause: cause }
+    EntryAbsent => MemberAbsentOnHost { member: UnitFile }
+    EntryPresent => match unit_document_leg(arm: arm, path: path) {
+      LegRefused { cause } => MemberUnobservable { member: UnitFile, cause: cause }
+      LegOut { stdout: document } =>
+        MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit, document: content_hash_atom(value: document as NonEmptyStr) } } }
+    }
+  }
+}
+
+fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease, now_epoch: Second?) -> MemberIdentity {
+  UnitFileAt { file: UnitFileIdentity {
+    unit: spec.service.unit_name,
+    document: content_hash_atom(value: live_deploy_systemd_unit_for(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision }, now_epoch: now_epoch) as NonEmptyStr),
+  } }
+}
+
+fn observe_oidc_config_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMember {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcServeReady { config: cfg } => {
+      let path = cfg.config_path as String
+      match entry_presence(arm: arm, path: path) {
+        EntryPresenceIndeterminate { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
+        EntryAbsent => MemberAbsentOnHost { member: OidcConfigFile }
+        EntryPresent => match unit_document_leg(arm: arm, path: path) {
+          LegRefused { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
+          LegOut { stdout: document } =>
+            MemberObserved { identity: OidcConfigAt { file: OidcConfigFileIdentity {
+              path: cfg.config_path,
+              document: content_hash_atom(value: document as NonEmptyStr),
+            } } }
+        }
+      }
+    }
+  }
+}
+
+fn desired_oidc_config_file(cfg: TrackerWebOidcServeConfig) -> MemberIdentity {
+  OidcConfigAt { file: OidcConfigFileIdentity {
+    path: cfg.config_path,
+    document: content_hash_atom(value: tracker_web_oidc_config_document(cfg: cfg) as NonEmptyStr),
+  } }
+}
+
+// THE MANAGER: systemd's own answer to whether the loaded unit matches the file on disk. The wire
+// values are `yes` and `no` (measured on srv1, 2026-09-06, for a loaded unit and for a not-found
+// one, which also answers `no`); anything else is a vocabulary the model does not know and refuses.
+fn manager_standing_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: NeedDaemonReload))
+      leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=NeedDaemonReload", "--value"], leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
+  }
+}
+
+fn observe_unit_manager(arm: ObservationArm, unit: NonEmptyStr) -> ObservedMember {
+  match manager_standing_leg(arm: arm, unit: unit) {
+    LegRefused { cause } => MemberUnobservable { member: UnitManager, cause: cause }
+    LegOut { stdout: raw } => {
+      let answer = trim(s: raw)
+      if answer == "no" { MemberObserved { identity: UnitManagerAt { standing: ManagerLoadedCurrent } } }
+      else if answer == "yes" { MemberObserved { identity: UnitManagerAt { standing: ManagerNeedsReload } } }
+      else { MemberUnobservable { member: UnitManager, cause: join(["NeedDaemonReload is neither yes nor no: ", answer], "") } }
+    }
+  }
+}
+
+fn desired_unit_manager() -> MemberIdentity {
+  UnitManagerAt { standing: ManagerLoadedCurrent }
+}
+
+// THE PROCESS: its ActiveState from the manager and, when Active, the release it reports over
+// /healthz through the same probe readiness uses (gunbc.live_deploy.readiness), read through
+// gunbc.running_release_identity so a body the identity channel cannot decode refuses here with the
+// same cause readiness would give. An Active process that cannot be probed is unobservable, not
+// stale: refusing is the honest answer, and a plan that restarted it would be acting on a guess.
+fn active_state_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ActiveState))
+      leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show ActiveState ", unit as String], ""))
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=ActiveState", "--value"], leg: join(["systemctl show ActiveState ", unit as String], ""))
+  }
+}
+
+// THE ACTIVE STATE TRAVELS WITH THE ANSWER, because the two together are the incident's shape:
+// Active and answering-503 is a service the manager believes in and the network says is not
+// serving, which is a different thing from Failed-and-silent. A restart policy makes that pair the
+// normal look of a crash-loop, and the pair is what decide_member judges.
+fn running_process_identity(active: SystemdUnitActiveState, spec: DeploymentSpec, transport: HostEffectTransport) -> ObservedMember {
+  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), spec: spec, transport: transport) {
+    HealthzProbeRefused { probe_error } => MemberUnobservable { member: ServiceProcess, cause: join(["the process is active but /healthz refused: ", probe_error], "") }
+    // THE ARM THE LEDGER'S THIRD OCCURRENCE TURNED ON. systemd said Active (a service in a
+    // restart-flurry is Active) and /healthz ANSWERED, and the pair was reported as "could not
+    // observe the host" -- the same arm as an unreachable host -- so decide_member refused and the
+    // only modeled route to repair the service required the service to be healthy. It was observed:
+    // what was observed was that it is not serving. That is a fact the plan may act on, and it is
+    // not an inability to look (the annotation above this function's caller's own words: an Active
+    // process that cannot be probed is unobservable, NOT stale -- and this one could be probed).
+    // Whether it means a replacement is decide_member's domain assessment, over the member's own
+    // revision; nothing is decided here (DESIGN 6b, D14).
+    HealthzAnsweredUnhealthy { status, detail } =>
+      MemberObserved { identity: ProcessAt { process: ProcessObservedUnhealthy { active: active, status: status, detail: detail } } }
+    HealthzBodyRead { body } => match observe_running_release_identity(healthz_body: body) {
+      RunningReleaseUnidentified { cause } =>
+        MemberUnobservable { member: ServiceProcess, cause: healthz_refusal_reason(cause: healthz_release_identity_refusal(body: body, cause: cause)) }
+      RunningReleaseIdentified { observation } =>
+        MemberObserved { identity: ProcessAt { process: ProcessRunningRelease { revision: observation.revision } } }
+    }
+  }
+}
+
+fn observe_service_process(spec: DeploymentSpec, transport: HostEffectTransport) -> ObservedMember {
+  let arm = observation_arm(transport: transport)
+  match active_state_leg(arm: arm, unit: spec.service.unit_name) {
+    LegRefused { cause } => MemberUnobservable { member: ServiceProcess, cause: cause }
+    LegOut { stdout: raw } => match parse_systemd_unit_active_state(raw: trim(s: raw)) {
+      Absent => MemberUnobservable { member: ServiceProcess, cause: join(["ActiveState not in the systemd vocabulary: ", trim(s: raw)], "") }
+      Present { value: active } => match active {
+        Active => running_process_identity(active: active, spec: spec, transport: transport)
+        Inactive => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Activating => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Deactivating => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Reloading => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+        Failed => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: active } } }
+      }
+    }
+  }
+}
+
+fn desired_service_process(candidate: CandidateRelease) -> MemberIdentity {
+  ProcessAt { process: ProcessRunningRelease { revision: candidate.revision } }
+}
+
+// THE PUBLISHED TREE: HEAD, then the three-leg tracked-projection comparison the deployed-tree record
+// established as the instrument (read-tree into a private index, status against it, ignored paths),
+// reusing its argv builders and its reading so two observers cannot disagree about what clean means.
+//
+// THE PRIVATE INDEX IS A SCRATCH FILE THE OBSERVATION OWNS: minted by mktemp so two observations --
+// of the same release, under two principals, from the workflow and the operator path at once --
+// never share a path or a lock, and removed after the reads on every arm, including the refusing
+// ones. The first cut used one fixed path per revision under /tmp and never removed it, and declared
+// the write readonly (review on PR #10696). The scratch's creation and removal are effects and are
+// modeled as such (extdeps.shell shell.Mktemp, extdeps.filesystem Filesystem.Delete, coreutils rm -f
+// over a transport); a scratch that could not be removed refuses the observation, because an
+// observation that leaves state on the host has not finished.
+fn head_leg(arm: ObservationArm, repo: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = git.Inspect.HeadCommitIn(repository_path: repo)
+      leg_of(success: r.success, stdout: r.sha, stderr: r.stderr, leg: "head")
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_revision_argv(repo: repo as NonEmptyStr), leg: "head")
+  }
+}
+
+type ScratchPath
+  = ScratchAt { path: String }
+  | ScratchRefused { cause: String }
+
+data scratch_index_directory: String = "/tmp"
+
+fn scratch_index(arm: ObservationArm) -> ScratchPath {
+  match arm {
+    OnTheHostItself => {
+      let r = shell.Mktemp.FileInDirectory(dir: scratch_index_directory as FilePath)
+      if r.success { ScratchAt { path: trim(s: r.path as String) } } else { ScratchRefused { cause: "mktemp for the scratch index failed" } }
+    }
+    OverTransport { transport } => match remote_leg(transport: transport, argv: ["mktemp", "-p", scratch_index_directory], leg: "scratch index") {
+      LegRefused { cause } => ScratchRefused { cause: cause }
+      LegOut { stdout } => ScratchAt { path: trim(s: stdout) }
+    }
+  }
+}
+
+fn scratch_release(arm: ObservationArm, path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = Filesystem.Delete(path: path)
+      leg_of(success: r.success, stdout: "", stderr: r.error, leg: join(["scratch index removal ", path], ""))
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: coreutils_rm_force_argv(paths: [path]), leg: join(["scratch index removal ", path], ""))
+  }
+}
+
+fn read_tree_leg(arm: ObservationArm, repo: NonEmptyStr, revision_hex: String, index_path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = git.Inspect.ReadTreeIntoIndex(repository_path: repo as String, revision_hex: revision_hex, index_path: index_path)
+      leg_of(success: r.success, stdout: "", stderr: r.stderr, leg: "index materialization")
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_read_tree_argv(repo: repo, revision_hex: revision_hex, index_path: index_path), leg: "index materialization")
+  }
+}
+
+fn status_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = git.Inspect.StatusAgainstIndex(repository_path: repo as String, index_path: index_path)
+      leg_of(success: r.success, stdout: r.entries_nul, stderr: r.stderr, leg: "worktree comparison")
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_status_argv(repo: repo, index_path: index_path), leg: "worktree comparison")
+  }
+}
+
+fn ignored_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = git.Inspect.IgnoredAgainstIndex(repository_path: repo as String, index_path: index_path)
+      leg_of(success: r.success, stdout: r.paths_nul, stderr: r.stderr, leg: "ignored deployed paths")
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_ignored_argv(repo: repo, index_path: index_path), leg: "ignored deployed paths")
+  }
+}
+
+type ProjectionReading
+  = ProjectionClean
+  | ProjectionDirty
+  | ProjectionUnreadable { cause: String }
+
+fn projection_legs(arm: ObservationArm, repo: NonEmptyStr, revision_hex: String, index_path: String) -> ProjectionReading {
+  match read_tree_leg(arm: arm, repo: repo, revision_hex: revision_hex, index_path: index_path) {
+    LegRefused { cause } => ProjectionUnreadable { cause: cause }
+    LegOut { stdout: _ } => match status_leg(arm: arm, repo: repo, index_path: index_path) {
+      LegRefused { cause } => ProjectionUnreadable { cause: cause }
+      LegOut { stdout: status } => match ignored_leg(arm: arm, repo: repo, index_path: index_path) {
+        LegRefused { cause } => ProjectionUnreadable { cause: cause }
+        LegOut { stdout: ignored } => match deployed_tree_content_reading(entries_nul: status, ignored_nul: ignored) {
+          ContentUnreadable { detail } => ProjectionUnreadable { cause: detail }
+          ContentRead { state: DeployedScopeMatchesCommit } => ProjectionClean
+          ContentRead { state: DeployedScopeDiverged { changed_paths: _ } } => ProjectionDirty
+        }
+      }
+    }
+  }
+}
+
+// Mint, read, release, then answer: the reading is computed before the scratch is removed, and the
+// removal's outcome is adjudicated before the reading is returned, so a leaked scratch cannot ride
+// under a clean answer.
+fn tracked_projection(arm: ObservationArm, repo: NonEmptyStr, revision_hex: String) -> ProjectionReading {
+  match scratch_index(arm: arm) {
+    ScratchRefused { cause } => ProjectionUnreadable { cause: cause }
+    ScratchAt { path } => {
+      let reading = projection_legs(arm: arm, repo: repo, revision_hex: revision_hex, index_path: path)
+      match scratch_release(arm: arm, path: path) {
+        LegRefused { cause } => ProjectionUnreadable { cause: join(["the observation left a scratch index behind: ", cause], "") }
+        LegOut { stdout: _ } => reading
+      }
+    }
+  }
+}
+
+fn tree_at(local: String, clean: Bool) -> ObservedMember {
+  MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: local as CommitSha, tracked_projection_clean: clean } } }
+}
+
+fn observe_tree(arm: ObservationArm, spec: DeploymentSpec, candidate: CandidateRelease) -> ObservedMember {
+  let repo = spec.service.repo_root
+  let revision_hex = candidate.revision as String
+  match entry_presence(arm: arm, path: repo as String) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: TreePublication, cause: cause }
+    EntryAbsent => MemberAbsentOnHost { member: TreePublication }
+    EntryPresent => match head_leg(arm: arm, repo: repo as String) {
+      LegRefused { cause } => MemberUnobservable { member: TreePublication, cause: cause }
+      LegOut { stdout: head } => {
+        let local = trim(s: head)
+        if local != revision_hex {
+          tree_at(local: local, clean: false)
+        } else {
+          match tracked_projection(arm: arm, repo: repo, revision_hex: revision_hex) {
+            ProjectionUnreadable { cause } => MemberUnobservable { member: TreePublication, cause: cause }
+            ProjectionClean => tree_at(local: local, clean: true)
+            ProjectionDirty => tree_at(local: local, clean: false)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
+  TreeIdentity { tree: TreePublicationIdentity { revision: candidate.revision, tracked_projection_clean: true } }
+}
+
+// THE DECISIONS ARE MAPPED FROM THE ROSTER, not assembled slot by slot. Naming each member on the
+// left of an assignment made the roster and the decisions two lists an author had to keep in step;
+// mapping the roster makes them one. Adding a member is a row in the roster and an arm in each of
+// these two total functions -- the compiler names the arm it is missing, which a record of slots
+// could not do because a slot left unwritten is a type error somewhere else entirely.
+// THE ROOT ROSTER IS THE DEPLOYMENT'S DIRECTORY DEMANDS, not a list here and not the steps. Every
+// directory the deployment creates is an owned-directory target in
+// gunbc.live_deploy.spec deployment_directory_demands -- the instance's consumers' demands
+// (gunbc.roadmap.dashboard_instance_directories) and the host's -- and each joins the roster as one
+// DirectoryRoot, so the directories created and the directories read back are one list. The first
+// roster read the dispatch roots and the compute root off the step kinds and the provider-state root
+// off the spec, and left out every auth store, the event worktree and the inbox: the production route
+// neither created nor read them back.
+fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
+  concat(
+    concat(
+      release_member_roster(),
+      map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+    ),
+    deployment_oidc_config_members(spec: spec),
+  )
+}
+
+fn deployment_oidc_config_members(spec: DeploymentSpec) -> List<ConvergedMember> {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: _ } => [OidcConfigFile]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
+// THE DIRECTORY'S METADATA, READ UNDER THE DEPLOY PRINCIPAL'S PINNED READ-ONLY GRANTS. A managed
+// directory may admit only its owner (the fabric store's root derives owner-execute alone), so the job
+// user can neither list it nor stat what is under it, while a correctly protected tree must still read
+// as converged in planning and readback. Both reads are gunbc.executor_privileged_operation operations
+// bound to one named directory -- ListDirectoryEntries and ReadDirectoryIdentity -- rendered into the
+// runner host's sudoers by gunbc.runner.runner_host_grants for exactly the directories this deployment
+// demands and their ancestors, the same authorization machinery every other root operation of this
+// principal goes through; no path-unrestricted grant is added. The local arm runs the elevated command
+// with its spawn as a value (gunbc.command_runner run_shell_command_observe_outcome); the remote arm
+// sends the same elevated argv through the transport. Either way the read's origin stays typed
+// (gunbc.owned_directory ObserverFailure) and presence and absence are the provider's to decide.
+fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperation) -> ObserverRead {
+  match arm {
+    OnTheHostItself =>
+      match run_shell_command_observe_outcome(command: executor_privileged_operation_elevated_command(op: op), transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause } => ObserverReadFailed { origin: ObserverNotSpawned { cause: cause as String } }
+        ProcessRan { observation: o } =>
+          if o.exit_code == 0 { ObserverReadOut { stdout: o.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } } }
+      }
+    OverTransport { transport } =>
+      match run_typed_argv_transport(argv: executor_privileged_operation_elevated_argv(op: op), transport: transport) {
+        TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        TypedArgvExecConverged { result: r } =>
+          if r.exit_code == 0 { ObserverReadOut { stdout: r.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
+      }
+  }
+}
+
+fn owned_directory_observation_on_host(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path as FilePath,
+    list: p => privileged_directory_read(arm: arm, op: ListDirectoryEntries { path: p as String as NonEmptyStr }),
+    stat: p => privileged_directory_read(arm: arm, op: ReadDirectoryIdentity { path: p as String as NonEmptyStr }),
+  )
+}
+
+// THE PROVIDER DECIDES; THIS ONLY PROJECTS ITS DECISION ONTO THE MEMBER VOCABULARY. The decision is
+// gunbc.owned_directory owned_directory_decide's -- the same one the dashboard apply's provider makes --
+// so a directory is converged, created, repaired or refused here for exactly the reasons it would be
+// there:
+//   Noop                          -> observed at RootConverged (the desired identity: keep)
+//   Apply, the directory absent   -> MemberAbsentOnHost (Create -> CreateRoot)
+//   Apply, the directory present  -> observed at RootModeRepairable (Replace -> RepairRootMode)
+//   Refuse, nothing could be read -> MemberUnobservable (refuses the derivation)
+//   Refuse, a state it will not change (another principal's directory, a non-directory, a mode that
+//          cannot be derived)      -> MemberRefusedOnHost (refuses the derivation; never re-owned)
+// The post-apply readback (deployment_identity_readback) re-derives through this same function, so
+// the readback is a second independent observation of every demanded directory.
+fn observe_owned_directory(arm: ObservationArm, spec: DeploymentSpec, path: NonEmptyStr) -> ObservedMember {
+  let member = DirectoryRoot { path: path }
+  match owned_directory_demand_at(ts: deployment_directory_demands(spec: spec), path: path as String) {
+    Absent => MemberRefusedOnHost { member: member, cause: join(["no owned-directory demand names ", path as String], "") }
+    Present { value: target } => {
+      let observation = owned_directory_observation_on_host(arm: arm, path: path as String)
+      match observation {
+        EnsureInaccessible { reason } => MemberUnobservable { member: member, cause: reason }
+        EnsureAbsent { reason: _ } => owned_directory_member_of_decision(member: member, path: path, target: target, observation: observation)
+        EnsureObserved { evidence: _ } => owned_directory_member_of_decision(member: member, path: path, target: target, observation: observation)
+      }
+    }
+  }
+}
+
+fn owned_directory_member_of_decision(
+  member: ConvergedMember,
+  path: NonEmptyStr,
+  target: OwnedDirectoryTarget,
+  observation: EnsureObservation<OwnedDirectoryReading>,
+) -> ObservedMember {
+  match owned_directory_decide(policy: EnsureMayApply, target: target, observation: observation) {
+    Noop => MemberObserved { identity: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
+    Refuse { reason } => match observation {
+      EnsureInaccessible { reason: why } => MemberUnobservable { member: member, cause: why }
+      EnsureObserved { evidence: _ } => MemberRefusedOnHost { member: member, cause: reason as String }
+      EnsureAbsent { reason: _ } => MemberRefusedOnHost { member: member, cause: reason as String }
+    }
+    Apply { plan: _ } => match observation {
+      EnsureObserved { evidence } =>
+        MemberObserved { identity: RootAt { root: DirectoryRootIdentity {
+          path: path,
+          standing: RootModeRepairable { observed_mode: file_mode_octal(mode: evidence.mode) as NonEmptyStr },
+        } } }
+      EnsureAbsent { reason: _ } => MemberAbsentOnHost { member: member }
+      EnsureInaccessible { reason } => MemberUnobservable { member: member, cause: reason }
+    }
+  }
+}
+
+fn desired_member_identity(
+  member: ConvergedMember,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  desired_bin: MemberIdentity,
+  now_epoch: Second?,
+) -> MemberIdentity? {
+  match member {
+    Executable => Present { value: desired_bin }
+    TreePublication => Present { value: desired_tree(candidate: candidate) }
+    UnitFile => Present { value: desired_unit_file(spec: spec, candidate: candidate, now_epoch: now_epoch) }
+    UnitManager => Present { value: desired_unit_manager() }
+    ServiceProcess => Present { value: desired_service_process(candidate: candidate) }
+    DirectoryRoot { path } => Present { value: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
+    OidcConfigFile => match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+      TrackerWebOidcServeReady { config: cfg } => Present { value: desired_oidc_config_file(cfg: cfg) }
+      TrackerWebOidcPlacementUnassigned { instance_id: _ } => none
+      TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => none
+      TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => none
+    }
+  }
+}
+
+fn observed_member_on_host(
+  member: ConvergedMember,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  arm: ObservationArm,
+) -> ObservedMember {
+  match member {
+    Executable => observe_executable(arm: arm, path: fixed_serve_binary_path(binary: spec.service.serve_binary))
+    TreePublication => observe_tree(arm: arm, spec: spec, candidate: candidate)
+    UnitFile => observe_unit_file(arm: arm, spec: spec)
+    UnitManager => observe_unit_manager(arm: arm, unit: spec.service.unit_name)
+    ServiceProcess => observe_service_process(spec: spec, transport: transport)
+    DirectoryRoot { path } => observe_owned_directory(arm: arm, spec: spec, path: path)
+    OidcConfigFile => observe_oidc_config_file(arm: arm, spec: spec)
+  }
+}
+
+fn release_member_plan(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  desired_bin: MemberIdentity,
+  target: ReleaseTarget,
+  now_epoch: Second?,
+) -> EffectDerivation {
+  let arm = observation_arm(transport: transport)
+  derive_member_plan(
+    roster: deployment_member_roster(spec: spec),
+    desired: m => desired_member_identity(member: m, spec: spec, candidate: candidate, desired_bin: desired_bin, now_epoch: now_epoch),
+    observed: m => observed_member_on_host(member: m, spec: spec, candidate: candidate, transport: transport, arm: arm),
+    target: target,
+  )
+}
+
+// THE DESIRED EXECUTABLE READ BACK AS ANOTHER MEMBER'S IDENTITY: one refusal, shared by every
+// non-executable MemberIdentity arm of deployment_effect_plan.
+fn desired_executable_is_another_member(desired_bin: MemberIdentity) -> EffectDerivation {
+  EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredIdentityIsForAnotherMember { desired: gunbc.live_deploy.member_identity.member_identity_member(i: desired_bin) } }] }
+}
+
+fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> EffectDerivation {
+  let now_epoch = tracker_web_oidc_deploy_now_epoch()
+  match desired_executable() {
+    MemberUnobservable { member: _, cause } =>
+      EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableUnreadable { cause: cause } }] }
+    MemberAbsentOnHost { member: _ } =>
+      EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableAbsent }] }
+    MemberRefusedOnHost { member: _, cause } =>
+      EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableUnreadable { cause: cause } }] }
+    MemberObserved { identity: desired_bin } => match desired_bin {
+      ExecutableIdentity { digest } =>
+        release_member_plan(
+          spec: spec,
+          candidate: candidate,
+          transport: transport,
+          desired_bin: desired_bin,
+          target: ReleaseTarget { revision: candidate.revision, executable: digest, unit: spec.service.unit_name },
+          now_epoch: now_epoch,
+        )
+      TreeIdentity { tree: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      UnitFileAt { file: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      UnitManagerAt { standing: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      ProcessAt { process: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      RootAt { root: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      OidcConfigAt { file: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+    }
+  }
+}
+
+// THE READBACK AFTER MUTATION IS THE SAME OBSERVATION RUN AGAIN. Process readiness proves the unit
+// answers as the candidate; it cannot prove the executable and unit file on disk are the identities
+// the plan declared, because an equivalent binary or a rewritten unit would answer the same. So
+// after the readiness gate the deploy re-derives its plan and requires it empty: every member is
+// AlreadyConverged, or the transaction did not converge and says which members still differ.
+type IdentityReadback
+  = IdentityReadbackConverged
+  | IdentityReadbackDrift { remaining: List<String> }
+  | IdentityReadbackRefused { refusals: List<MemberDecision> }
+
+fn deployment_identity_readback(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> IdentityReadback {
+  match deployment_effect_plan(spec: spec, candidate: candidate, transport: transport) {
+    EffectsRefused { refusals } => IdentityReadbackRefused { refusals: refusals }
+    EffectsDerived { plan } =>
+      if plan_mutation_count(plan: plan) == 0 { IdentityReadbackConverged }
+      else { IdentityReadbackDrift { remaining: effect_labels(plan: plan) } }
+  }
+}

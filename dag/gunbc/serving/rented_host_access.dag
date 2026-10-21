@@ -1,0 +1,81 @@
+module gunbc.serving.rented_host_access
+
+import std.types { String, NonEmptyStr }
+import product.host_identity { HostIdentity }
+import extdeps.ssh.keys { SshPublicKey }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label, known_host_row_field }
+import extdeps.network.endpoint { SocketAddress }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused,
+}
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+
+// HOW THE OPERATOR HANDS A RENTED NODE OVER, and everything it contains is public. The node's address
+// and login principal, the host key its provider reports, and the PUBLIC half of the key the operator
+// authorized on the rental. The private half is never a value here: it stays in the operator's
+// ssh-agent, and gunbc.fleet.fleet_ssh_locus verifies that the agent holds the declared fingerprint before
+// any leg runs, so a rental whose key is not loaded refuses instead of falling back to ambient
+// credentials. Nothing secret enters the repository because nothing secret is an input.
+//
+// THE HOST KEY ROW CARRIES ITS PROVENANCE, so a key the operator read off the provider's console
+// (IndependentlyAnchored, naming the console) is distinguishable in the receipt from one scanned at
+// first contact. A rental is a host the fleet has never seen, so it has no enrolled key to compare to;
+// the row is the whole trust anchor and the declaration is refused when it names another endpoint.
+type RentedHostAccessDeclaration {
+  node: NonEmptyStr
+  address: SocketAddress
+  principal: NonEmptyStr
+  host_key: KnownHostKeyRow
+  operator_key: SshPublicKey
+  operator_key_fingerprint: NonEmptyStr
+}
+
+type RentedHostAccess
+  = RentedHostAccessReady { node: NonEmptyStr, transport: HostEffectTransport, receipt: String }
+  | RentedHostAccessRefused { node: NonEmptyStr, cause: String }
+
+// THE TRANSPORT IS THE EXISTING FleetSsh ARM, built from a context sealed over THIS rental's registry
+// and credential, so a rented node is reached through the same anchored, credential-verified leg the
+// fleet uses and no parallel transport exists. The attempt identity is the caller's, because only the
+// caller knows what one attempt is, and the anchor path it owns is derived from the registry's digest
+// so two rentals' registries never share a file.
+//
+// THE LEG DIALS THE DECLARED ADDRESS, PORT INCLUDED. A rental behind a provider's port mapping is a
+// different sshd from port 22 on the same host; the target carries the address the key row is pinned
+// under, so the anchor and the dial name one daemon.
+fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: String) -> RentedHostAccess {
+  let declared = known_hosts_host_field(address: declaration.address) as String
+  if known_host_row_field(k: declaration.host_key) != declared {
+    RentedHostAccessRefused {
+      node: declaration.node,
+      cause: join([
+        "rented host access refused: the host key row is for endpoint `", known_host_row_field(k: declaration.host_key),
+        "` but the node is declared at `", declared, "`, so the key would anchor a different host",
+      ], ""),
+    }
+  } else {
+    match prepare_ssh_agent_context(
+      attempt_raw: attempt_raw,
+      key: declaration.operator_key,
+      fingerprint: declaration.operator_key_fingerprint,
+      rows: [declaration.host_key],
+    ) {
+      FleetSshContextRefused { cause: why } =>
+        RentedHostAccessRefused { node: declaration.node, cause: why }
+      FleetSshContextReady { context: context, receipt: receipt } =>
+        RentedHostAccessReady {
+          node: declaration.node,
+          transport: FleetSsh {
+            target: SshTarget { address: declaration.address, principal: declaration.principal },
+            context: context,
+          },
+          receipt: join([
+            "rented host ", declaration.node as String, " host_key_provenance=",
+            host_key_provenance_label(p: declaration.host_key.provenance), "\n", receipt,
+          ], ""),
+        }
+    }
+  }
+}

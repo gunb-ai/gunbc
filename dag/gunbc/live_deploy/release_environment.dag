@@ -1,0 +1,20 @@
+module gunbc.live_deploy.release_environment
+
+import std.types { String, NonEmptyStr }
+import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, Environment }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+
+fn installed_release_environment(release_dir: String) -> SystemdServiceDirective {
+  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
+}
+
+// Installation and readback consume the same wrapped unit bytes. A raw template omits the
+// installed spawn-root row and cannot stand for the unit the installer actually wrote.
+fn installed_release_unit(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
+  match file {
+    ServiceUnitFile { unit, service, install } => ServiceUnitFile {
+      unit: unit, service: [installed_release_environment(release_dir: release_dir)] + service, install: install,
+    }
+    other => other
+  }
+}

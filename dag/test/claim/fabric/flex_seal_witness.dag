@@ -1,0 +1,44 @@
+module test.claim.fabric.flex_seal_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data forged_mint_instances_source: String = "module probe_flex_mint_instances\nimport product.fabric.flex_vast_shadow { flex_mint_complete_instances, FlexInstancesStanding }\nfn forged() -> FlexInstancesStanding {\n  flex_mint_complete_instances(rows: [], total: 0)\n}\n"
+
+data forged_mint_charges_source: String = "module probe_flex_mint_charges\nimport product.fabric.flex_vast_shadow { flex_mint_complete_charges, FlexChargesStanding }\nfn forged() -> FlexChargesStanding {\n  flex_mint_complete_charges(rows: [], total: 0)\n}\n"
+
+data forged_release_admit_source: String = "module probe_flex_release_admit\nimport std.nat { Zero }\nimport product.fabric.flex_market { flex_release_admit, FlexCapUnreadable, FlexReleaseAdmit }\nfn forged() -> FlexReleaseAdmit {\n  flex_release_admit(running_count: Zero, cap: FlexCapUnreadable, no_room: false, replacement_serving: false)\n}\n"
+
+data forged_price_fungible_source: String = "module probe_flex_price_fungible\nimport std.types { NonEmptyStr }\nimport std.measure { MoneyAmountMicro }\nimport extdeps.currency.currency { CurrencyCode }\nimport product.fabric.supply { SupplierOffer }\nimport product.fabric.selection { DispatchInputs }\nimport product.fabric.flex_policy { flex_price_fungible_offer, FlexPolicy, FlexBidAttempt, FlexPricedHorizon }\nfn forged(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>, policy: FlexPolicy, attempt: FlexBidAttempt<NonEmptyStr>, budget: CurrencyCode, cap: MoneyAmountMicro) -> FlexPricedHorizon {\n  flex_price_fungible_offer(offer: offer, inputs: inputs, policy: policy, attempt: attempt, budget_currency: budget, maximum_buy_order: cap)\n}\n"
+
+fn blocking_of_class(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn w_RED_a_foreign_call_to_the_complete_instance_mint_refuses() -> Bool {
+  blocking_of_class(source: forged_mint_instances_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn w_RED_a_foreign_call_to_the_complete_charge_mint_refuses() -> Bool {
+  blocking_of_class(source: forged_mint_charges_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn w_RED_a_foreign_call_to_flex_release_admit_refuses() -> Bool {
+  blocking_of_class(source: forged_release_admit_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn w_RED_a_foreign_call_past_the_fungibility_screen_refuses() -> Bool {
+  blocking_of_class(source: forged_price_fungible_source, class: "ConstructorCallAdmissionRefused") >= 1
+}

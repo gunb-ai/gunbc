@@ -1,0 +1,140 @@
+module v2.test.claim.compiler.fold_domain_alias
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
+import v2.test.claim.compiler.callback_argument_formal { caf_correction_type, caf_same_type }
+import v2.compiler.infer { infer }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.node { Node, Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_snoc_item }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a collection fold's member is typed from its domain's element when the domain's declared
+// type reaches std.algebra FreeMonoid through ANY alias, not only through the one spelling
+// v2.std.collection List (v2.compiler.infer infer_fold_member_frame, v2.compiler.fold_lowering
+// fold_collection_member_type). v2.std.node declares `children: List<Edge>` with List imported from
+// std.types -- `type List<element> = FreeMonoid<element>` -- so native-seven's
+// `fold(root.children, .., f: fn(found, e) { .. e.target .. })` left `e` untyped
+// (infer_reason_fold_member_domain_not_a_collection) and refused `e.target` as
+// infer_reason_projection_receiver_declares_no_fields.
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
+//
+// MUTATION: reading the domain type without infer_type_alias_normalized in infer_fold_member_frame turns
+// the three aliased claims red; the std.types List claim and the assembly control stay green.
+
+data fda_types_artifact: Artifact = Artifact { kind: SourceFile, id: ^fda_types_artifact, file_path: "src/v2/pilot/fda_types.dag" }
+
+data fda_types_source: String = "module q.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n"
+
+fn fda_peers() -> List<DagSourceReadWitness> {
+  list_snoc_item(xs: fmi_list_peers(), item: bla_source(src: fda_types_source, artifact: fda_types_artifact, cu: ^fda_types_cu))
+}
+
+// The fold's verdict: ^fda_assembly_refused when the source never reached infer, ^accepted when infer
+// accepted it, otherwise the fatal reason. An assembly or resolve failure is its own value, so no
+// claim below can read a fixture that stopped compiling as "the member was typed".
+fn fda_reason(src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: src, peers: fda_peers()) {
+    Rejected { diagnostics: _ } => ^fda_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+fn fda_fatal(src: String) -> Optional<Diagnostic> {
+  match bla_assemble_with_peers(p_src: src, peers: fda_peers()) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => optional_present(value: diagnostics_fatal(d: d))
+      }
+  }
+}
+
+// The type `e.target` reached need_bool's formal with: present only when the fatal refusal is that
+// argument check at `b` (v2.std.inhabitance application_argument_does_not_inhabit_diagnostic carries
+// the produced type under ^inhabitance_produced_type).
+fn fda_produced_at_b(src: String) -> Optional<Node> {
+  match fda_fatal(src: src) {
+    Absent => optional_absent()
+    Present { value: x } =>
+      match caf_correction_type(d: x, name: ^b) {
+        Absent => optional_absent()
+        Present { value: _ } =>
+          if x.reason == ^application_argument_does_not_inhabit { caf_correction_type(d: x, name: ^inhabitance_produced_type) } else { optional_absent() }
+      }
+  }
+}
+
+// THE ORACLE for the member's type: the same projection off a parameter DECLARED Pair. The fold's member
+// must reach need_bool exactly as typed as an authored `p: Pair` does, so the types are compared, not spelled.
+data fda_declared_member: String = "module p\n\ntype Pair {\n  target: Int\n}\n\nfn need_bool(b: Bool) -> Int {\n  0\n}\n\nfn g(p: Pair) -> Int {\n  need_bool(b: p.target)\n}\n"
+
+// THE ROUTE: an untyped member leaves `e.target` underived, so the call is accepted undecided and no
+// produced type exists to compare.
+fn fda_member_typed(import_line: String) -> Bool {
+  caf_same_type(a: fda_produced_at_b(src: fda_fold(import_line: import_line, step: "need_bool(b: e.target)")), b: fda_produced_at_b(src: fda_declared_member))
+}
+
+// The fold that uses the member at its declared type is accepted, with neither member refusal on it.
+fn fda_member_use_accepted(import_line: String) -> Bool {
+  match bla_assemble_with_peers(p_src: fda_fold(import_line: import_line, step: "need_int(n: e.target)"), peers: fda_peers()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } =>
+          !diagnostics_has_reason(d: d, reason: ^infer_reason_fold_member_domain_not_a_collection)
+            && !diagnostics_has_reason(d: d, reason: ^infer_reason_projection_receiver_declares_no_fields)
+      }
+  }
+}
+
+// The member's projection is passed straight to an Int formal: no comparison, no Boolean composition,
+// so the claim does not ride on how `==` or `||` are judged.
+fn fda_fold(import_line: String, step: String) -> String {
+  join(["module p\n\n", import_line, "\ntype Pair {\n  target: Int\n}\n\nfn need_int(n: Int) -> Int {\n  n\n}\n\nfn need_bool(b: Bool) -> Int {\n  0\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(acc, e) { ", step, " })\n}\n"], "")
+}
+
+data fda_alias_import: String = "import q.types { List }\n"
+
+data fda_std_types_import: String = "import std.types { List }\n"
+
+// THE SAME FOLD over a list whose type arrives through q.types's alias of FreeMonoid: its member's field
+// reaches a Bool formal as the Int an authored Pair's does.
+test fn fda_a_fold_over_an_aliased_list_types_its_member() -> Bool {
+  fda_member_typed(import_line: fda_alias_import)
+}
+
+test fn fda_a_fold_over_an_aliased_list_uses_its_member_at_its_declared_type() -> Bool {
+  fda_member_use_accepted(import_line: fda_alias_import)
+}
+
+test fn fda_the_std_types_list_fold_still_types_its_member() -> Bool {
+  fda_member_typed(import_line: fda_std_types_import) && fda_member_use_accepted(import_line: fda_std_types_import)
+}
+
+// A WRONG FIELD on the aliased domain's member still refuses at the projection: the member is typed,
+// not waved through.
+test fn fda_a_wrong_field_on_an_aliased_list_member_refuses_at_the_field() -> Bool {
+  fda_reason(src: fda_fold(import_line: fda_alias_import, step: "need_int(n: e.nope)")) == ^infer_reason_field_not_declared_on_receiver
+}
+
+// CONTROL: a fixture that never reaches infer -- here its List import names nothing q.types declares --
+// is neither typed nor accepted, and is told apart from an infer verdict.
+test fn fda_a_fixture_that_does_not_assemble_is_not_member_typed() -> Bool {
+  let bad = "import q.types { Lisst }\n"
+  !fda_member_typed(import_line: bad) && !fda_member_use_accepted(import_line: bad)
+    && fda_reason(src: fda_fold(import_line: bad, step: "need_int(n: e.target)")) == ^fda_assembly_refused
+}

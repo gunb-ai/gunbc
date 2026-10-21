@@ -1,0 +1,24 @@
+{
+  "arm": "2048",
+  "prefill_tokens": 16385,
+  "prefill_wall_ms": 17671.0,
+  "decode_alone": {
+    "n": 119,
+    "median_ms": 30.0,
+    "p95_ms": 31.5,
+    "max_ms": 372.7
+  },
+  "decode_during_prefill": {
+    "n": 14,
+    "median_ms": 2171.6,
+    "p95_ms": 2190.3,
+    "max_ms": 2190.3
+  },
+  "attribution": {
+    "own_prompt_tokens": 16449,
+    "engine_booked_prompt_tokens": 16451,
+    "max_running_observed": 2.0
+  },
+  "construction": "victim: 64-token prompt, max_tokens 2000, streamed; 4s warm-up before the prefill; every victim token timestamped and partitioned by the prefill's own start and end; running count polled at 1Hz throughout and the engine-wide prompt-token delta booked against this window's own two requests. Identical construction to the 8192 and 16384 arms, plus the attribution guard they lacked.",
+  "supersedes": "the itl_* fields in arm-2048.json, produced by the first co-tenant test whose victim finished before the prefill was submitted"
+}

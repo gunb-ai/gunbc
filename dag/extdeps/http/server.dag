@@ -1,0 +1,617 @@
+module extdeps.http.server
+
+import extdeps.uri_path { PathTemplate, PathParamBinding }
+import std.types { HttpStatus, Port, List, NonEmptyStr, Bool, String }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.uri_path {
+  PathTemplateMatch, PathMatched, PathNotMatched,
+  match_path_template,
+  ParsedPathTemplate, MalformedPathTemplate, parse_path_template,
+}
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
+
+data media_type_grammar_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-8.3.1"
+  }
+}
+
+data media_top_level_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc6838#section-4.2"
+  }
+}
+
+data media_type_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/media-types/media-types.xhtml"
+  }
+}
+
+data charset_registry_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/character-sets/character-sets.xhtml"
+  }
+}
+
+// Cited upstream: a media type is type "/" subtype with optional "; " parameters (RFC 9110 section
+// 8.3.1 media-type grammar; the Content-Type header carries exactly one). The top-level type is a
+// CLOSED registry (RFC 6838 section 4.2 + the IANA media-types registry:
+// application/audio/example/font/image/message/model/multipart/text/video); the subtype is an
+// upstream-spelled string (each its own IANA registration); parameters are name=value pairs, of
+// which charset (value from the IANA character-sets registry, utf-8 per RFC 3629) is the one this
+// served stack uses. The WIRE STRING is a SERIALIZATION of this structure (DESIGN section 2,
+// decompress the string): the fused HttpContentType enum that hid media-type x charset inside
+// variant NAMES is deleted, media_type_wire_label is the sole serializer, and
+// ApplicationOctetStream's charset-less form falls out as an EMPTY parameter list rather than a
+// special variant. Forward reading (parsing an incoming Content-Type through these same rows) is
+// the NAMED later direction (DESIGN section 4, one grammar both ways), not built here.
+
+type MediaTopLevel
+  = TopLevelApplication
+  | TopLevelAudio
+  | TopLevelExample
+  | TopLevelFont
+  | TopLevelImage
+  | TopLevelMessage
+  | TopLevelModel
+  | TopLevelMultipart
+  | TopLevelText
+  | TopLevelVideo
+
+fn media_top_level_token(t: MediaTopLevel) -> String {
+  match t {
+    TopLevelApplication => "application"
+    TopLevelAudio => "audio"
+    TopLevelExample => "example"
+    TopLevelFont => "font"
+    TopLevelImage => "image"
+    TopLevelMessage => "message"
+    TopLevelModel => "model"
+    TopLevelMultipart => "multipart"
+    TopLevelText => "text"
+    TopLevelVideo => "video"
+  }
+}
+
+type MediaTypeParameter {
+  name: String
+  value: String
+}
+
+data charset_utf8: MediaTypeParameter = MediaTypeParameter { name: "charset", value: "utf-8" }
+
+type MediaType {
+  top_level: MediaTopLevel
+  subtype: String
+  parameters: List<MediaTypeParameter>
+}
+
+fn media_type_parameter_wire(p: MediaTypeParameter) -> String {
+  join(["; ", p.name, "=", p.value], "")
+}
+
+fn media_type_wire_label(m: MediaType) -> String {
+  join([
+    media_top_level_token(t: m.top_level),
+    "/",
+    m.subtype,
+    join(map(m.parameters, p => media_type_parameter_wire(p: p)), ""),
+  ], "")
+}
+
+data text_html_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "html", parameters: [charset_utf8] }
+data text_plain_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "plain", parameters: [charset_utf8] }
+data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
+data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
+data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
+data text_css_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "css", parameters: [charset_utf8] }
+data font_woff2: MediaType = MediaType { top_level: TopLevelFont, subtype: "woff2", parameters: [] }
+
+// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set http_method_label below reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
+type HttpMethodParse
+  = KnownMethod { method: HttpMethod }
+  | UnknownMethod { label: String }
+
+// THE BACKWARD READING OF THE SAME CLOSED SET, beside the forward one, because they are one grammar
+// read in two directions rather than two mappings that happen to agree (DESIGN section 4: emit
+// selects from the SAME rows backward -- the structural inverse, not a second emitter).
+//
+// IT WAS SPELLED THREE TIMES BEFORE THIS (review 68357): gunbc.node_http_server_emit
+// emit_http_method_label, gunbc.roadmap.roadmap_serve http_method_label_join, and -- copied out of the
+// roadmap during the approval-broker extraction -- gunbc.auth.approval_broker_serve
+// broker_http_method_label_join. All three inlined the same seven arms while the forward reading
+// was already consumed from here, in the same files. The broker's copy was the sharpest: that
+// module's own annotation says the adapter "MOVED here; it was not copied", and this helper was
+// copied.
+fn http_method_label(method: HttpMethod) -> String {
+  match method {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    PATCH => "PATCH"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+    CONNECT => "CONNECT"
+    TRACE => "TRACE"
+  }
+}
+
+// THE 405 ALLOW SET, rendered once. Every serving adapter answers MethodNotAllowed by listing the
+// methods a path does admit, so the join is part of that answer rather than each adapter's own
+// formatting choice.
+fn http_method_label_join(methods: List<HttpMethod>) -> String {
+  join(map(methods, m => http_method_label(method: m)), ", ")
+}
+
+fn parse_http_method_label(label: String) -> HttpMethodParse {
+  if label == "GET" { KnownMethod { method: GET } }
+  else if label == "POST" { KnownMethod { method: POST } }
+  else if label == "PUT" { KnownMethod { method: PUT } }
+  else if label == "PATCH" { KnownMethod { method: PATCH } }
+  else if label == "DELETE" { KnownMethod { method: DELETE } }
+  else if label == "HEAD" { KnownMethod { method: HEAD } }
+  else if label == "OPTIONS" { KnownMethod { method: OPTIONS } }
+  else if label == "CONNECT" { KnownMethod { method: CONNECT } }
+  else if label == "TRACE" { KnownMethod { method: TRACE } }
+  else { UnknownMethod { label: label } }
+}
+
+type HttpRequestBodyKind
+  = NoRequestBody
+  | JsonRequestBody
+  | TextRequestBody
+  | BinaryRequestBody
+  | FormRequestBody
+
+type HttpInputLocation
+  = PathInput
+  | QueryInput
+  | HeaderInput
+  | BodyInput
+
+type HttpServerParameter {
+  name: String
+  location: HttpInputLocation
+  required: Bool
+}
+
+type HttpStatusResponse {
+  status: HttpStatus
+  body_kind: HttpRequestBodyKind
+}
+
+type HttpServerRoute {
+  operation_name: String
+  method: HttpMethod
+  path_template: PathTemplate
+  request_body: HttpRequestBodyKind
+  parameters: List<HttpServerParameter>
+  responses: List<HttpStatusResponse>
+}
+
+type HttpServerEmissionTarget {
+  service_name: String
+  routes: List<HttpServerRoute>
+}
+
+type NodeHttpRequestListener {
+  handler_name: String
+}
+
+type HttpServerListenConfig {
+  host: String
+  port: Port
+}
+
+type NodeHttpServerRouteBinding {
+  route: HttpServerRoute
+  listener: NodeHttpRequestListener
+}
+
+type NodeHttpCreateServerServe {
+  route_bindings: List<NodeHttpServerRouteBinding>
+}
+
+type NodeHttpCreateServerEffectChain {
+  serve: NodeHttpCreateServerServe
+  listen: HttpServerListenConfig
+}
+
+type NodeHttpCreateServerEmissionTarget {
+  service_name: String
+  effects: NodeHttpCreateServerEffectChain
+}
+
+type ServedStaticRoute {
+  method: HttpMethod
+  path_pattern: PathTemplate
+  body: String
+  content_type: MediaType
+  status_on_hit: HttpStatus
+}
+
+type ServedStaticRouteTable {
+  routes: List<ServedStaticRoute>
+}
+
+// THE REQUEST-SECURITY CONTEXT, carried ON the request for the same reason identity was: a
+// route that needs to know how a request arrived and what evidence it carries needs both at the
+// same moment it needs the path, and a second channel would let the two disagree. It is TWO
+// FACTS, NEVER ONE:
+//
+//   access_path      -- HOW the request reached the handler: DirectHttps, TailnetProxy, or
+//     LocalDev. Transport is not identity: the tailnet arm carries the observed login as
+//     TRANSPORT metadata (audit vocabulary, never authentication evidence — a
+//     Tailscale-User-Login header is unauthenticated on the wire and trustworthy only when the
+//     proxy is provably the sole route, which is a deployment fact modeled by the readback
+//     below, never assumed from the header).
+//   authentication   -- WHAT evidence the request presents: the consumer's own vocabulary
+//     (gunbc.auth.request_authentication projects GoogleOidcSession | FabricServiceEvidence |
+//     AuthAbsent), supplied as the type argument. Absent is a real inhabitant and the correct
+//     one for a request that presented no session; it is not anonymity and it authorizes
+//     nothing.
+//
+// THE ACCESS PATH IS A TYPE ARGUMENT for the reason authentication is: which proxies and front
+// doors a deployment routes through, and the readback that proves it, are facts about THAT
+// deployment, not about HTTP. This module used to enumerate them (a tailnet-proxy arm carrying a
+// Tailscale identity and serve route key), which made the generic HTTP interface import the
+// Tailscale modules and, through them, a command-execution and network-topology closure no
+// HTTP program needs (DESIGN section 3, external upstream decomposition: a hub may not enumerate
+// concrete products). The vocabulary now lives with its consumer,
+// gunbc.auth.request_authentication RequestAccessPath, which supplies it here.
+type RequestSecurityContext<AccessPath, Authentication> {
+  access_path: AccessPath
+  authentication: Authentication
+}
+
+// THE AUTHENTICATION EVIDENCE IS A TYPE ARGUMENT because extdeps owns the request SHAPE and the
+// interface stays realization-free (DESIGN 3): it cannot name gunbc's session vocabulary. A
+// handler that needs nothing ignores the field; a handler that writes consults the law in
+// gunbc.auth.request_authentication, which is where the two facts stay separate.
+type ServeHttpRequest<AccessPath, Authentication> {
+  method: HttpMethod
+  path: String
+  body: String
+  security: RequestSecurityContext<AccessPath, Authentication>
+}
+
+// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and a
+// value). The name is lowercased by the seam because field names are case-insensitive (section
+// 5.1), so a handler compares against one spelling; the value is the field value with its
+// surrounding whitespace removed and nothing else interpreted. A served entry that reads headers
+// DECLARES `request_headers: List<ServeRequestHeader>` and receives every field of the request in
+// arrival order; an entry that declares no such parameter receives none. Which fields mean
+// anything is the handler's fact, never the seam's.
+type ServeRequestHeader {
+  name: String
+  value: String
+}
+
+// What a request carried under one field name. Three answers, because a field may repeat (section
+// 5.3) and whether repetition is admissible belongs to the field's owner, not to the reader:
+// absent, exactly one value, or more than one.
+type ServeRequestHeaderReading
+  = ServeRequestHeaderAbsent
+  | ServeRequestHeaderSingle { value: String }
+  | ServeRequestHeaderRepeated { occurrences: Int }
+
+fn serve_request_header_reading(headers: List<ServeRequestHeader>, name: String) -> ServeRequestHeaderReading {
+  let values = headers |> flat_map(h => if h.name == name { [h.value] } else { [] })
+  if count(values) > 1 {
+    ServeRequestHeaderRepeated { occurrences: count(values) }
+  } else {
+    match values |> first {
+      Absent => ServeRequestHeaderAbsent
+      Present { value: v } => ServeRequestHeaderSingle { value: v }
+    }
+  }
+}
+
+// THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body —
+// and the response HEADERS a route sets, as the typed carrier above. Headers live here rather
+// than on the wire projection because a redirect IS a Location header plus a status and a
+// session is a Set-Cookie header: they are the handler's answer, not the socket's. Handlers
+// that set none construct the empty list (serve_text_response); the wire projection renders
+// them to lines.
+type ServeHttpResponse {
+  status: HttpStatus
+  content_type: MediaType
+  body: String
+  headers: List<ServeResponseHeader>
+}
+
+// The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers.
+//
+// RESPONSE HEADERS RIDE THE WIRE AS TYPED (name, value) PAIRS, in WRITE ORDER: the name is a
+// closed set -- exactly the headers a handler can set (ServeResponseHeader below) -- so a framing
+// header the seed owns (Content-Length, Content-Type, Connection, Transfer-Encoding) has no
+// constructor here, and the seed renders "Name: value" itself. The value is the handler's datum;
+// that it carries no CR, LF or NUL is the realization boundary's refusal (a value is external
+// data -- a return path, a session id -- not a name the model can close over).
+type ServeWireResponse {
+  status: Int
+  content_type_label: String
+  body: String
+  headers: List<ServeWireHeader>
+}
+
+// THE ONE HEADER VOCABULARY THE SURFACES NEED, as a closed coproduct a handler matches rather
+// than a string it concatenates: the login redirect and the session cookie are the two
+// production arms, and a header outside this set is a new arm with its own construction rule,
+// never an unadmitted line.
+type ServeResponseHeader
+  = ServeResponseHeaderLocation { location: NonEmptyStr }
+  | ServeResponseHeaderSetCookie { cookie: SetCookie }
+  | ServeResponseHeaderNoStore
+  | ServeResponseHeaderCacheImmutable { max_age_seconds: Int }
+
+// RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
+// cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
+// SameSite from RFC 6265bis section 4.1.2.7). A handler constructs the value; the one rendering
+// below spells the header, so an attribute cannot be misspelled or dropped by a caller.
+type CookieSameSite
+  = CookieSameSiteLax
+  | CookieSameSiteStrict
+  | CookieSameSiteNone
+
+type SetCookie {
+  name: NonEmptyStr
+  value: String
+  path: NonEmptyStr
+  secure: Bool
+  http_only: Bool
+  same_site: CookieSameSite?
+  max_age_seconds: Nat
+}
+
+fn cookie_same_site_wire(s: CookieSameSite) -> String {
+  match s {
+    CookieSameSiteLax => "Lax"
+    CookieSameSiteStrict => "Strict"
+    CookieSameSiteNone => "None"
+  }
+}
+
+// The Set-Cookie field VALUE (RFC 6265 section 4.1.1 set-cookie-string); the field name is the
+// wire header's.
+fn set_cookie_value(cookie: SetCookie) -> String {
+  join(
+    [
+      cookie.name as String,
+      "=",
+      cookie.value,
+      if cookie.secure { "; Secure" } else { "" },
+      if cookie.http_only { "; HttpOnly" } else { "" },
+      match cookie.same_site {
+        Present { value: s } => concat("; SameSite=", cookie_same_site_wire(s: s))
+        Absent => ""
+      },
+      "; Path=",
+      cookie.path as String,
+      "; Max-Age=",
+      to_string(value: cookie.max_age_seconds),
+    ],
+    "",
+  )
+}
+
+type ServeWireHeaderName
+  = WireHeaderLocation
+  | WireHeaderSetCookie
+  | WireHeaderCacheControl
+
+type ServeWireHeader {
+  name: ServeWireHeaderName
+  value: String
+}
+
+// RFC 9110 field names, the seed's one spelling of each wire name.
+fn serve_wire_header_name_label(name: ServeWireHeaderName) -> String {
+  match name {
+    WireHeaderLocation => "Location"
+    WireHeaderSetCookie => "Set-Cookie"
+    WireHeaderCacheControl => "Cache-Control"
+  }
+}
+
+fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
+  match header {
+    ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: WireHeaderLocation, value: l as String }
+    ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: WireHeaderSetCookie, value: set_cookie_value(cookie: c) }
+    ServeResponseHeaderNoStore => ServeWireHeader { name: WireHeaderCacheControl, value: "no-store" }
+    ServeResponseHeaderCacheImmutable { max_age_seconds: n } =>
+      ServeWireHeader { name: WireHeaderCacheControl, value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
+  }
+}
+
+fn serve_response_headers_wire(headers: List<ServeResponseHeader>) -> List<ServeWireHeader> {
+  map(headers, h => serve_response_header_wire(header: h))
+}
+
+fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: media_type_wire_label(m: r.content_type),
+    body: r.body,
+    headers: serve_response_headers_wire(headers: r.headers),
+  }
+}
+
+// THE PROJECTION WITH HEADERS: the same record with the header lines attached in the caller's
+// order; the no-header projection above is this fold at the empty list, so the two spellings
+// cannot drift.
+fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeResponseHeader>) -> ServeWireResponse {
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: media_type_wire_label(m: r.content_type),
+    body: r.body,
+    headers: serve_response_headers_wire(headers: headers),
+  }
+}
+
+// The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
+type ServedRoute<H>
+  = StaticRoute { route: ServedStaticRoute }
+  | DynamicRoute { method: HttpMethod, path_pattern: PathTemplate, handler: H }
+
+type ServedRouteTable<H> {
+  routes: List<ServedRoute<H>>
+}
+
+type RouteSelection<H>
+  = SelectedStatic { route: ServedStaticRoute }
+  | SelectedDynamic { handler: H, params: List<PathParamBinding> }
+  | MethodNotAllowed { allowed: List<HttpMethod> }
+  | NoRouteMatched
+
+fn served_route_method<H>(r: ServedRoute<H>) -> HttpMethod {
+  match r {
+    StaticRoute { route: s } => s.method
+    DynamicRoute { method: m, path_pattern: _, handler: _ } => m
+  }
+}
+
+fn served_route_pattern<H>(r: ServedRoute<H>) -> PathTemplate {
+  match r {
+    StaticRoute { route: s } => s.path_pattern
+    DynamicRoute { method: _, path_pattern: p, handler: _ } => p
+  }
+}
+
+// Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (DESIGN 5). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions.
+fn serve_route_hit<H>(r: ServedRoute<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+  if !(served_route_method(r: r) == method) {
+    NoRouteMatched
+  } else {
+    match match_path_template(template: served_route_pattern(r: r), path: path) {
+      PathNotMatched => NoRouteMatched
+      PathMatched { params: ps } =>
+        match r {
+          StaticRoute { route: s } => SelectedStatic { route: s }
+          DynamicRoute { method: _, path_pattern: _, handler: h } =>
+            SelectedDynamic { handler: h, params: ps }
+        }
+    }
+  }
+}
+
+fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<HttpMethod> {
+  table.routes
+    |> filter(r => match match_path_template(template: served_route_pattern(r: r), path: path) {
+      PathMatched { params: _ } => true
+      PathNotMatched => false
+    })
+    |> map(r => served_route_method(r: r))
+}
+
+fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+  let hit = fold(table.routes, init: NoRouteMatched, f: (acc, r) =>
+    match acc {
+      SelectedStatic { route: _ } => acc
+      SelectedDynamic { handler: _, params: _ } => acc
+      MethodNotAllowed { allowed: _ } => acc
+      NoRouteMatched => serve_route_hit(r: r, method: method, path: path)
+    }
+  )
+  match hit {
+    NoRouteMatched => {
+      let allowed = serve_allowed_methods(table: table, path: path)
+      if count(allowed) == 0 {
+        NoRouteMatched
+      } else {
+        MethodNotAllowed { allowed: allowed }
+      }
+    }
+    SelectedStatic { route: _ } => hit
+    SelectedDynamic { handler: _, params: _ } => hit
+    MethodNotAllowed { allowed: _ } => hit
+  }
+}
+
+// ── Building a table from authored route literals, fail-closed ───────────────────────────────
+// THIS FOLD USED TO HAVE ONE INSTANTIATION AND WAS SPELLED AT IT. It lived in
+// gunbc.roadmap.roadmap_serve, monomorphic over that module's handler vocabulary, and the moment a second
+// serving process needed the same fail-closed construction the choice was to copy it or to lift
+// it. Copying would have been DESIGN section 2's duplicated work at the exact seam where a divergence
+// is invisible: two builds agree about malformed literals until one of them is edited.
+//
+// It belongs HERE rather than beside either consumer because it is the same layer as
+// serve_select_route -- it manipulates the route SHAPE and the path-template grammar and names no
+// handler. H stays the consumer's vocabulary, so this module still cannot see a concrete route.
+//
+// WHY IT REFUSES THE WHOLE TABLE ON THE FIRST BAD LITERAL (review 40286, the section 5 catch that
+// produced it): mapping a malformed template to an EMPTY template silently makes it a second
+// matcher for '/', so a typo in any literal becomes a wrong route rather than a loud one. The build
+// therefore folds to a typed, located refusal carrying the raw literal, the offending segment and
+// the reason, and a serving entry answers every request with that refusal until the literal is
+// fixed -- a loudly broken server, never a silently miswired one.
+type ServedRouteSpec<H> {
+  method: HttpMethod
+  raw: String
+  handler: H
+}
+
+type ServedRouteTableBuild<H>
+  = ServedRouteTableBuilt { table: ServedRouteTable<H> }
+  | ServedRouteTableBuildRefused { raw: String, segment: String, reason: String }
+
+type ServedRouteBuildRow<H>
+  = ServedRouteRowBuilt { route: ServedRoute<H> }
+  | ServedRouteRowRefused { raw: String, segment: String, reason: String }
+
+fn served_route_build_row<H>(spec: ServedRouteSpec<H>) -> ServedRouteBuildRow<H> {
+  match parse_path_template(raw: spec.raw) {
+    MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+      ServedRouteRowRefused { raw: r, segment: s, reason: why }
+    ParsedPathTemplate { template: tpl } =>
+      ServedRouteRowBuilt { route: DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
+  }
+}
+
+// Cost-shape per DESIGN section 6 bare-minimum-cost (review 40297 note on the fold this lifts: the
+// first cut grew the route list by concat inside a fold -- the copied-accumulator class that is
+// always fixed regardless of realized n): map (per-spec row) + a scalar first-refusal fold (no list
+// accumulation) + flat_map projection, linear by construction. The projection's refused arm
+// contributes nothing and is reached only in the refusal-free branch, so it is a projection, never
+// a fabricated value.
+fn serve_build_route_table<H>(specs: List<ServedRouteSpec<H>>) -> ServedRouteTableBuild<H> {
+  let rows = map(specs, spec => served_route_build_row(spec: spec))
+  let first_refusal = fold(rows, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => acc
+      Absent =>
+        match r {
+          ServedRouteRowRefused { raw: rr, segment: s, reason: why } =>
+            Present { value: ServedRouteTableBuildRefused { raw: rr, segment: s, reason: why } }
+          ServedRouteRowBuilt { route: _ } => Absent
+        }
+    }
+  )
+  match first_refusal {
+    Present { value: refusal } => refusal
+    Absent =>
+      ServedRouteTableBuilt {
+        table: ServedRouteTable {
+          routes: rows |> flat_map(r => match r {
+            ServedRouteRowBuilt { route: rt } => [rt]
+            ServedRouteRowRefused { raw: _, segment: _, reason: _ } => []
+          })
+        }
+      }
+  }
+}

@@ -1,0 +1,442 @@
+module v2.extdeps.runtimes.v2_effect_io_pure
+
+import std.types { List, Map }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty, empty_map, map_insert }
+import std.optional { Absent, Present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  invariant_port_locus,
+  node_locus,
+  outcome_rejected
+}
+import v2.std.model_core { EffectSignature, PrimitiveOperationRef }
+import v2.std.node { Atom, Node, Symbol, TypeNode, Hash, content_hash }
+import v2.std.runtime {
+  EffectHandler,
+  EffectHandlerBinding,
+  EffectReceipt,
+  EffectReceiptLog,
+  OperationCall,
+  OperationCallKind,
+  EvaluationEnvironment,
+  EvaluationFrame,
+  ReadResource,
+  RuntimeValue,
+  RuntimeValueNodeProjected,
+  RuntimeValueNodeUnrepresentable,
+  WriteResource,
+  effect_handler_for_kind,
+  runtime_value_node_projection
+}
+import v2.std.witness { Holds, Violates, Witness, list_nth, map_get_checked }
+
+type EffectIoResourceBackend
+  = FileResourceBackend
+  | HttpResourceBackend
+  | StorageResourceBackend
+
+type EffectIoResourceLocator {
+  backend: EffectIoResourceBackend
+  identity: Hash
+}
+
+type EffectIoFixtureStore {
+  backend: EffectIoResourceBackend
+  entries: Map<Hash, RuntimeValue>
+}
+
+type EffectIoPureHandlerBundle {
+  fixture_store: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+}
+
+type V4EffectIoPureRuntime {
+  bundle_identity: Symbol
+  declared_backend: EffectIoResourceBackend
+  fixture_store: EffectIoFixtureStore
+  handlers: EffectHandlerBinding
+}
+
+fn effect_io_pure_unit_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_unit_type } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn effect_io_pure_operation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_operation } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn effect_io_pure_effect_signature_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_effect_signature } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn effect_io_pure_operation_ref() -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: effect_io_pure_operation_node(),
+    effect_signature: EffectSignature {
+      signature: effect_io_pure_effect_signature_node()
+    }
+  }
+}
+
+fn effect_io_pure_empty_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: empty_map()
+  }
+}
+
+fn effect_io_pure_empty_frame() -> EvaluationFrame {
+  EvaluationFrame {
+    current: effect_io_pure_unit_type_node(),
+    environment: effect_io_pure_empty_environment()
+  }
+}
+
+fn effect_io_pure_args_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_pure_args_absent,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn effect_io_pure_locator_from_args(
+  backend: EffectIoResourceBackend,
+  args: List<RuntimeValue>
+) -> Witness<EffectIoResourceLocator> {
+  match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
+    Holds { value: locator_value } =>
+      match effect_io_pure_locator_identity(value: locator_value) {
+        Holds { value: digest } =>
+          Holds {
+            value: EffectIoResourceLocator {
+              backend: backend,
+              identity: digest
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn effect_io_pure_locator_unrepresentable_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_pure_locator_unrepresentable,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn effect_io_pure_locator_identity(value: RuntimeValue) -> Witness<Hash> {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: reified } =>
+      Holds { value: content_hash(n: reified) }
+    RuntimeValueNodeUnrepresentable =>
+      Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
+  }
+}
+
+fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<RuntimeValue> {
+  match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
+    Holds { value: payload } => Holds { value: payload }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn effect_io_pure_backends_match(
+  left: EffectIoResourceBackend,
+  right: EffectIoResourceBackend
+) -> Bool {
+  match left {
+    FileResourceBackend =>
+      match right {
+        FileResourceBackend => true
+        HttpResourceBackend => false
+        StorageResourceBackend => false
+      }
+    HttpResourceBackend =>
+      match right {
+        HttpResourceBackend => true
+        FileResourceBackend => false
+        StorageResourceBackend => false
+      }
+    StorageResourceBackend =>
+      match right {
+        StorageResourceBackend => true
+        FileResourceBackend => false
+        HttpResourceBackend => false
+      }
+  }
+}
+
+fn effect_io_pure_store_lookup(
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator
+) -> Outcome<RuntimeValue> {
+  if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
+    match map_get_checked(m: store.entries, key: locator.identity) {
+      Accepted { value: opt, diagnostics: d } =>
+        match opt {
+          Present { value: payload } =>
+            Accepted { value: payload, diagnostics: d }
+          Absent =>
+            outcome_rejected(
+              d: Diagnostic {
+                reason: ^effect_io_pure_resource_absent,
+                at: node_locus(node: effect_io_pure_operation_node()),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
+        }
+      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    }
+  } else {
+    outcome_rejected(
+      d: Diagnostic {
+        reason: ^effect_io_pure_backend_mismatch,
+        at: node_locus(node: effect_io_pure_operation_node()),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
+  }
+}
+
+fn effect_io_pure_handle_read(
+  store: EffectIoFixtureStore,
+  request: OperationCall
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+    Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+fn effect_io_pure_handle_write(
+  store: EffectIoFixtureStore,
+  request: OperationCall
+) -> Outcome<RuntimeValue> {
+  match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
+    Holds { value: locator } =>
+      match effect_io_pure_write_payload_from_args(args: request.arguments) {
+        Holds { value: payload } =>
+          if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
+            Accepted { value: payload, diagnostics: None }
+          } else {
+            outcome_rejected(
+              d: Diagnostic {
+                reason: ^effect_io_pure_backend_mismatch,
+                at: node_locus(node: effect_io_pure_operation_node()),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
+          }
+        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+fn effect_io_pure_invoke_handler(
+  handler: EffectHandler,
+  request: OperationCall
+) -> Outcome<RuntimeValue> {
+  match handler {
+    EffectHandler { handle: h } => h(request)
+  }
+}
+
+fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHandlerBundle {
+  EffectIoPureHandlerBundle {
+    fixture_store: store,
+    handlers: EffectHandlerBinding {
+      read_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_pure_handle_read(store: store, request: request)
+        }
+      },
+      write_resource: EffectHandler {
+        handle: fn(request) {
+          effect_io_pure_handle_write(store: store, request: request)
+        }
+      }
+    }
+  }
+}
+
+fn effect_io_pure_fixture_store(
+  backend: EffectIoResourceBackend,
+  entries: Map<Hash, RuntimeValue>
+) -> EffectIoFixtureStore {
+  EffectIoFixtureStore {
+    backend: backend,
+    entries: entries
+  }
+}
+
+fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> EffectIoFixtureStore {
+  effect_io_pure_fixture_store(backend: backend, entries: empty_map())
+}
+
+fn effect_io_pure_request(
+  kind: OperationCallKind,
+  args: List<RuntimeValue>
+) -> OperationCall {
+  OperationCall {
+    kind: kind,
+    operation: effect_io_pure_operation_ref(),
+    arguments: args,
+    continuation: effect_io_pure_empty_frame()
+  }
+}
+
+fn effect_io_pure_read_request(args: List<RuntimeValue>) -> OperationCall {
+  effect_io_pure_request(kind: ReadResource, args: args)
+}
+
+fn effect_io_pure_write_request(args: List<RuntimeValue>) -> OperationCall {
+  effect_io_pure_request(kind: WriteResource, args: args)
+}
+
+fn effect_io_pure_append_receipt(
+  log: EffectReceiptLog,
+  request: OperationCall,
+  result: Outcome<RuntimeValue>
+) -> EffectReceiptLog {
+  EffectReceiptLog {
+    entries: Cons {
+      head: EffectReceipt { request: request, result: result },
+      tail: log.entries
+    }
+  }
+}
+
+fn effect_io_pure_runtime(
+  backend: EffectIoResourceBackend,
+  store: EffectIoFixtureStore
+) -> V4EffectIoPureRuntime {
+  let bundle = effect_io_pure_handler_binding(store: store)
+  V4EffectIoPureRuntime {
+    bundle_identity: ^v2_effect_io_pure_runtime_id,
+    declared_backend: backend,
+    fixture_store: bundle.fixture_store,
+    handlers: bundle.handlers
+  }
+}
+
+fn effect_io_pure_runtime_from_backend(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
+  effect_io_pure_runtime(
+    backend: backend,
+    store: effect_io_pure_empty_fixture_store(backend: backend)
+  )
+}
+
+fn effect_io_pure_apply_write(
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator,
+  payload: RuntimeValue
+) -> EffectIoFixtureStore {
+  EffectIoFixtureStore {
+    backend: store.backend,
+    entries: map_insert(m: store.entries, key: locator.identity, value: payload)
+  }
+}
+
+fn effect_io_pure_read_write_roundtrip(
+  backend: EffectIoResourceBackend,
+  payload: RuntimeValue,
+  locator_arg: RuntimeValue
+) -> Witness<Bool> {
+  match effect_io_pure_locator_from_args(
+    backend: backend,
+    args: Cons { head: locator_arg, tail: Empty }
+  ) {
+    Holds { value: locator } =>
+      effect_io_pure_roundtrip_through_store(
+        backend: backend,
+        locator: locator,
+        payload: payload,
+        locator_arg: locator_arg
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// The two Unavailable arms below carry the reason runtime_value_equality could not decide the
+// comparison. v2.std.runtime declares that this verdict is never collapsed to a decidable answer
+// and deliberately supplies no Bool adapter; v2.lens.undecidable_verdict_collapse refuses such an
+// arm at compile. The reason travels out as a located Diagnostic and is collapsed once, at the
+// harness boundary, where the declared residual is recorded.
+fn effect_io_pure_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(
+      port: ^effect_io_pure_roundtrip_equality,
+      invariant: ^runtime_value_equality_decides
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn effect_io_pure_roundtrip_through_store(
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator,
+  payload: RuntimeValue,
+  locator_arg: RuntimeValue
+) -> Witness<Bool> {
+  let store0 = effect_io_pure_empty_fixture_store(backend: backend)
+  let bundle0 = effect_io_pure_handler_binding(store: store0)
+  let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
+  let write_request = effect_io_pure_write_request(args: write_args)
+  let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
+  match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
+    Accepted { value: written, diagnostics: None } =>
+      match runtime_value_equality(a: written, b: payload) {
+        RuntimeValuesEqual =>
+          let store1 = effect_io_pure_apply_write(
+            store: store0,
+            locator: locator,
+            payload: written
+          )
+          let bundle1 = effect_io_pure_handler_binding(store: store1)
+          let read_args = Cons { head: locator_arg, tail: Empty }
+          let read_request = effect_io_pure_read_request(args: read_args)
+          let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
+          match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
+            Accepted { value: read_back, diagnostics: None } =>
+              match runtime_value_equality(a: read_back, b: written) {
+                RuntimeValuesEqual => Holds { value: true }
+                RuntimeValuesDiffer => Holds { value: false }
+                RuntimeValueEqualityUnavailable { reason: r } =>
+                  Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
+              }
+            Accepted { value: _, diagnostics: _ } => Holds { value: false }
+            Rejected { diagnostics: _ } => Holds { value: false }
+          }
+        RuntimeValuesDiffer => Holds { value: false }
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
+      }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
+  }
+}

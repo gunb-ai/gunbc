@@ -1,0 +1,16 @@
+module test.fixture.defork_type_name_census.v2_side.planted
+
+import std.types { Int, Bool }
+
+// v2-side half of the planted fork: the same shared names, declared independently.
+type CensusShared = Wide | Narrow
+
+type CensusAliased = Bool
+
+type CensusV2Only {
+  flag: Bool
+}
+
+fn census_shared_fn(x: Int) -> Int {
+  x
+}

@@ -1,0 +1,45 @@
+module extdeps.kmod.libkmod
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+// libkmod v31 (the version in the Ubuntu 24.04.3 live-server initrd, `kmod version 31`).
+// kmod_module_insert_module logs a failed insertion at INFO with the module FILE PATH:
+//   INFO(mod->ctx, "Failed to insert module '%s': %s\n", path, strerror(-err));
+// and a context's log priority defaults to LOG_ERR unless the KMOD_LOG environment variable names
+// another (libkmod.c kmod_new: secure_getenv("KMOD_LOG") -> kmod_set_log_priority). So by default the
+// path-bearing line is filtered inside libkmod before any caller's log function sees it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/kmod-project/kmod/blob/v31/libkmod/libkmod-module.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.kmod.libkmod",
+      decl_name: "libkmod_insert_failed_prefix",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data libkmod_insert_failed_prefix: NonEmptyStr = "Failed to insert module '"
+
+// The stem without the opening quote: a line carrying it but not a complete quoted path and errno is
+// a truncated record of this INFO line.
+data libkmod_insert_failed_stem: NonEmptyStr = "Failed to insert module"
+
+// The separator after the quoted path, before strerror(-err).
+data libkmod_insert_failed_path_end: NonEmptyStr = "': "
+
+data libkmod_log_priority_env_name: NonEmptyStr = "KMOD_LOG"
+
+// log_priority() accepts a syslog name or a number; "info" selects LOG_INFO, the INFO() level.
+data libkmod_log_priority_info: NonEmptyStr = "info"

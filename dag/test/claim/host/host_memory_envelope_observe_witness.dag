@@ -1,0 +1,129 @@
+module test.claim.host.host_memory_envelope_observe_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data envelope_meminfo_complete: String = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:       2097152 kB\nSwapFree:         524288 kB\n"
+
+data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
+
+fn hermetic_slice_pair() -> List<SliceMemoryReading> {
+  [
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+  ]
+}
+
+test fn witness_envelope_from_complete_meminfo_observes() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_complete,
+    active_runner_unit_count: 10,
+    slice_readings: hermetic_slice_pair(),
+    standing: hermetic_envelope_standing(),
+  ) {
+    HostMemoryEnvelopeRefused { host: _, reason: _ } => false
+    HostMemoryEnvelopeObserved { observation: obs } =>
+      host_identity_eq(a: obs.host, b: operator_host_srv1)
+        && (obs.probed_at as String) == (gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at as String)
+        && byte_size_count(b: obs.mem_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 16777216)))
+        && byte_size_count(b: obs.mem_available) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 8388608)))
+        && byte_size_count(b: obs.swap_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 2097152)))
+        && byte_size_count(b: obs.swap_free) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 524288)))
+        && obs.active_runner_unit_count == 10
+        && length(obs.slice_readings) == 2
+  }
+}
+
+test fn witness_envelope_missing_memavailable_refuses_not_widens() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_without_available,
+    active_runner_unit_count: 10,
+    slice_readings: [],
+    standing: hermetic_envelope_standing(),
+  ) {
+    HostMemoryEnvelopeObserved { observation: _ } => false
+    HostMemoryEnvelopeRefused { host: h, reason: why } =>
+      host_identity_eq(a: h, b: operator_host_srv1)
+        && string_contains(s: why, pattern: "MemAvailable")
+  }
+}
+
+test fn witness_top_level_slice_is_direct_child_of_root_cgroup() -> Bool {
+  is_top_level_slice_unit(unit: "system.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "sessions.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "user.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "gunbc.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "gunbc-roadmap.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "-.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
+}
+
+test fn witness_runner_parent_slice_is_read_though_not_top_level() -> Bool {
+  !is_top_level_slice_unit(unit: runner_parent_slice_unit)
+    && host_memory_envelope_includes_slice(unit: runner_parent_slice_unit)
+    && (runner_parent_slice_unit as String) == "system-actions-runner.slice"
+}
+
+test fn witness_envelope_projects_host_mem_available_observation() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_complete,
+    active_runner_unit_count: 0,
+    slice_readings: [],
+    standing: hermetic_envelope_standing(),
+  ) {
+    HostMemoryEnvelopeRefused { host: _, reason: _ } => false
+    HostMemoryEnvelopeObserved { observation: obs } =>
+      let proj = host_mem_available_projection(obs: obs)
+      host_identity_eq(a: proj.host, b: obs.host)
+        && byte_size_count(b: proj.host_total) == byte_size_count(b: obs.mem_total)
+        && byte_size_count(b: proj.mem_available) == byte_size_count(b: obs.mem_available)
+  }
+}
+
+test fn witness_sleek_owl_397_receipt_instant_is_the_srv1_reading() -> Bool {
+  (gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at as String) == "2026-10-14T00:10:39Z"
+}
+
+fn standing_is_sleek_owl_first(s: CitedFigureStanding) -> Bool {
+  match s {
+    TranscribedUncited { read_obligation: o } =>
+      string_contains(s: o as String, pattern: "sleek-owl-397")
+        && string_contains(s: o as String, pattern: "2026-10-14T00:10:39Z")
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values() -> Bool {
+  let obs = gunbc_srv1_memory_envelope_sleek_owl_397_first
+  host_identity_eq(a: obs.host, b: operator_host_srv1)
+    && (obs.probed_at as String) == "2026-10-14T00:10:39Z"
+    && byte_size_count(b: obs.mem_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 526641732)))
+    && byte_size_count(b: obs.mem_available) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 168249292)))
+    && byte_size_count(b: obs.swap_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 260046840)))
+    && byte_size_count(b: obs.swap_free) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 248930848)))
+    && obs.active_runner_unit_count == 11
+    && length(obs.slice_readings) == 4
+    && any(obs.slice_readings, r => (r.slice_unit as String) == "gunbc.slice" && byte_size_count(b: r.memory_current) == 87153995776)
+    && any(obs.slice_readings, r =>
+      (r.slice_unit as String) == "sessions.slice"
+        && byte_size_count(b: r.memory_current) == 29314482176
+        && slice_limit_is_bytes(lim: r.memory_high, n: 120259084288)
+        && slice_limit_is_bytes(lim: r.memory_max, n: 137438953472))
+    && any(obs.slice_readings, r =>
+      (r.slice_unit as String) == "user.slice"
+        && byte_size_count(b: r.memory_current) == 175093350400
+        && slice_limit_is_unbounded(lim: r.memory_high)
+        && slice_limit_is_unbounded(lim: r.memory_max))
+    && any(obs.slice_readings, r =>
+      (r.slice_unit as String) == "system-actions-runner.slice"
+        && byte_size_count(b: r.memory_current) == 129190301696)
+    && standing_is_sleek_owl_first(s: obs.standing)
+}
+

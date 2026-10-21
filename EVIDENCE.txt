@@ -1,0 +1,69 @@
+# sunny-bee-153: base receipt run 39567833829 vs shard 0/4 run 39596324658 (artifacts instrument-dispatch-receipt-base / -0-of-4)
+## module row counts (base | shard head): std.primitives 374 | 0; v2.compiler.primitive_authority 42 | 40
+## std.fermi diff (base < ; head >)
+1c1
+< binding_partial_module	std.fermi	77	0	0
+---
+> binding_partial_module	std.fermi	76	0	0
+53d52
+< binding_partial	std.fermi	first	0	ambient:primitive_authority	std.primitives.first_contract	72:20
+79c78,79
+< binding_unbound_module	std.fermi	1	0
+---
+> binding_unbound_module	std.fermi	2	0
+> binding_unbound	std.fermi	first	72:20
+## rows only at head, binding_unbound, spelling counts (versioning excluded)
+     39 first
+     28 starts_with
+     24 map_get
+     23 split
+     18 replace
+     18 join
+     14 string_length
+     12 fold
+     11 skip
+     11 map_insert
+     10 substring
+     10 code_point
+      9 to_string
+      9 sort_by
+      9 list_push
+      6 contains
+      5 string_contains
+      5 sorted_map_keys
+      5 empty_map
+      4 reverse
+      4 get
+      3 map_keys
+      3 flat_map
+      3 char_at
+      2 parse_int
+## binding_unbound rows only at head, per module (top 25)
+     39 extdeps.uri_path
+     32 std.types
+     24 extdeps.uri
+     16 v2.compiler.source_authority
+     16 std.graph
+     15 std.occurrence_identity
+     14 extdeps.numeric.base16
+     14 extdeps.git.versioning
+      9 std.occurrence_binding_resolve
+      9 std.content_hash
+      8 extdeps.version.semver
+      7 v2.compiler.body_lowering_fold
+      7 std.unicode.scalar
+      7 extdeps.ietf.http_semantics
+      6 v2.std.compilers.target_model
+      6 v2.compiler.service_realization
+      6 std.literal_elaboration
+      6 std.decimal
+      5 v2.std.node
+      4 v2.std.node_query
+      4 v2.std.data_initializer_identity
+      4 v2.std.anonymous_binder
+      4 v2.compiler.infer
+      4 std.source_annotation
+      4 std.algebra
+## delta lines of the shard
+delta	extdeps.git.versioning	admitted	UnboundToDeclaredHome	extdeps.git.versioning chars @78:32	std.host_text.chars
+delta	extdeps.git.versioning	admitted	UnboundToDeclaredHome	extdeps.git.versioning chars @86:32	std.host_text.chars

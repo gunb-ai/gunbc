@@ -1,0 +1,100 @@
+module v2.test.lens_wiring_liveness.wiring_liveness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node_reflection { resolve_type_node }
+import v2.std.node { Symbol, Authored }
+
+// READS THE LIVE TREE AS OF THE REFLECTION CUTOVER. The reflection read now names pool roots and
+// consults the live declaration index through v2.std.decl_index, so SubstrateInputsOnly became
+// false for this entry. Correcting it is not a formality: std.live_tree records that a row
+// declaring SubstrateInputsOnly while actually reading live state is re-checked by NOTHING, so a
+// stale row here would be a lie no consumer would catch.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn wl_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wl_input_leaf() -> Node {
+  wl_atom(identity: ^wiring_liveness_input_leaf)
+}
+
+fn wl_mid_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^wiring_liveness_mid } },
+    children: [
+      Edge { label: Positional, target: wl_input_leaf() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wl_output_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wl_disconnected_declared_input() -> Node {
+  wl_atom(identity: ^wiring_liveness_dangling_input)
+}
+
+test fn wiring_liveness_wired_input_reaches_output() -> Bool {
+  return wiring_input_is_wired(
+    output: wl_output_tree(),
+    declared_input: wl_input_leaf()
+  )
+}
+
+test fn wiring_liveness_dead_input_is_unwired() -> Bool {
+  return wiring_input_is_wired(
+    output: wl_output_tree(),
+    declared_input: wl_disconnected_declared_input()
+  ) == false
+}
+
+// THE ROOTS THE REFLECTION READ CONSULTS, named so the population is re-derivable.
+data wl_reflection_pool_roots: List<String> = ["dag", "src/v2"]
+
+// THE READ CAN NOW REFUSE, and a refusal must not be silently substituted by an empty tree here:
+// this function feeds a wiring walk, and an empty root would make every input read as unwired --
+// a confident false answer built on a question that was never settled. The refusal is surfaced as
+// an Outcome and the caller decides, rather than being flattened at the read.
+fn wl_reflected_dependency_kind() -> Outcome<Node> {
+  resolve_type_node(
+    pool_roots: wl_reflection_pool_roots,
+    type_name: ^DependencyKind
+  )
+}
+
+fn wl_edge_target(e: Edge) -> Node {
+  e.target
+}
+
+fn wl_first_field_reachable(root: Node, edges: List<Edge>) -> Bool {
+  match list_at_optional(xs: edges, index: 0) {
+    Present { value: e } => wiring_input_is_wired(output: root, declared_input: wl_edge_target(e: e))
+    Absent => false
+  }
+}
+
+// A REFUSED READ FAILS THIS CLAIM RATHER THAN READING AS AN UNREACHABLE FIELD. The two states are
+// different facts -- the type could not be resolved, versus the type resolved and its first field
+// is not reachable -- and only the second is what this claim is about.
+test fn wiring_liveness_real_reflected_type_field_reachable() -> Bool {
+  match wl_reflected_dependency_kind() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      wl_first_field_reachable(root: root, edges: node_labeled_child_edges(node: root))
+  }
+}

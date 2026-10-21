@@ -1,0 +1,23 @@
+module test.claim.fabric.systemd_run_capability_bounding_set_construction_witness
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// Each fixture imports extdeps.systemd and extdeps.systemd.systemd_run from the corpus, so the compile reads
+// the live tree.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A CAPABILITY SET IS NOT A FREE-TEXT SETTING (review 80297). The empty bounding set is the typed
+// EmptyCapabilityBoundingSet arm, and the show surface (extdeps.systemd SystemdUnitProperty) has no
+// CapabilityBoundingSet variant, so NamedUnitSetting cannot name one: a non-empty or misspelled set has no
+// constructor rather than a refusal at run time. The RED is source handed to the seed's compile route:
+// naming the variant under NamedUnitSetting must refuse, while the same fixture over MemoryMax compiles
+// (the positive control that keeps an always-refusing route from passing).
+data named_capability_bounding_set_source: String = "module cbs_named_setting\nimport std.types \{ NonEmptyStr \}\nimport extdeps.systemd \{ CapabilityBoundingSetProperty \}\nimport extdeps.systemd.systemd_run \{ SystemdRunProperty, NamedUnitSetting \}\nfn cbs() -> SystemdRunProperty \{\n  NamedUnitSetting \{ property: CapabilityBoundingSetProperty, value: \"CAP_NET_RAW\" as NonEmptyStr \}\n\}\n"
+
+data named_memory_max_source: String = "module cbs_named_control\nimport std.types \{ NonEmptyStr \}\nimport extdeps.systemd \{ MemoryMax \}\nimport extdeps.systemd.systemd_run \{ SystemdRunProperty, NamedUnitSetting \}\nfn mm() -> SystemdRunProperty \{\n  NamedUnitSetting \{ property: MemoryMax, value: \"1G\" as NonEmptyStr \}\n\}\n"
+
+test fn a_capability_bounding_set_has_no_named_setting_constructor() -> Bool {
+  !compile_dag_rust_emit_check(named_capability_bounding_set_source, "src/cbs_named_setting.rs", [], [])
+    && compile_dag_rust_emit_check(named_memory_max_source, "src/cbs_named_control.rs", [], [])
+}

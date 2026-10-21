@@ -1,0 +1,9 @@
+module gunbc.workspace_artifact_policy
+
+import std.types { NonEmptyStr }
+
+// The pinned workspace guest image the commissioning fleet path installs and admits. It is the
+// output digest of the pinned-base workspace image builder (gunbc.runner.workspace_guest_image).
+fn workspace_demo_image_identity() -> NonEmptyStr {
+  "d15a55780a707ec832a09e3599306254b8d7c428ff25ff621b427b826eeb0b27"
+}

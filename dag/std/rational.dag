@@ -1,0 +1,23 @@
+module std.rational
+
+import std.nat { Nat, Succ }
+import std.algebra { FieldOfFractions }
+
+type Rational = Field<FieldOfFractions<Int>>
+
+// Nonzero denominator by construction: the written field is the predecessor of the FieldOfFractions
+// denom, so Zero cannot inhabit it (DESIGN §5). FieldOfFractions itself still admits denom 0.
+// Consumer: product.fabric.flex_policy flex_relative_ceiling and product.fabric.flex_market
+// flex_quoted_bid / flex_held_effective_rate, via nonzero_nat_fraction_field.
+type NonzeroNatFraction {
+  num: Nat
+  denom_predecessor: Nat
+}
+
+fn nonzero_nat_fraction_denom(r: NonzeroNatFraction) -> Nat {
+  Succ { prev: r.denom_predecessor }
+}
+
+fn nonzero_nat_fraction_field(r: NonzeroNatFraction) -> FieldOfFractions<Nat> {
+  FieldOfFractions { num: r.num, denom: nonzero_nat_fraction_denom(r: r) }
+}

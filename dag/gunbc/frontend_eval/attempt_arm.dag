@@ -1,0 +1,22 @@
+module gunbc.frontend_eval.attempt_arm
+
+import std.types { String, List }
+
+// THE ARMS, in their own module so the experiment manifest and the attempt record can both name
+// them without either importing the other.
+type EvalArm
+  = LowEffortBare
+  | MaxEffortBare
+  | LowEffortTools
+  | LowEffortToolsCard
+
+fn eval_arm_key(arm: EvalArm) -> String {
+  match arm {
+    LowEffortBare => "low_bare"
+    MaxEffortBare => "max_bare"
+    LowEffortTools => "low_tools"
+    LowEffortToolsCard => "low_tools_card"
+  }
+}
+
+data eval_arms: List<EvalArm> = [LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard]

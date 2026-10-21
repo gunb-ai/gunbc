@@ -1,0 +1,75 @@
+module gunbc.pr_digests
+
+
+type MergeReadinessVerdict
+  = Ready
+  | NotReady { first_reason: String, more_reasons: List<String> }
+
+type AttachedUrl {
+  url: NonEmptyStr
+  container: AttachedUrlContainer
+  context: AttachedUrlTextContext
+}
+
+type AttachedUrlContainer
+  = PrBody
+  | PullReviewBody
+  | ReviewCommentBody
+
+type AttachedUrlTextContext
+  = Prose
+  | InlineCode
+
+type RestFallbackReason
+  = GraphqlIncomplete
+  | GraphqlRateLimited
+  | GraphqlSchemaUnknown
+
+service gunbc.PrDigests {
+  operation ExtractAttachedUrls {
+    requires none
+    input {
+      pr: extdeps.github.pulls.PullRequest
+      reviews: List<PullReview>
+      review_line_comments: List<ReviewComment>
+    }
+    output {
+      urls: List<AttachedUrl>
+    }
+    readonly
+  }
+
+  operation RenderPrSummaryLine {
+    requires none
+    input {
+      pr: extdeps.github.pulls.PullRequest
+    }
+    output {
+      line: String
+    }
+    readonly
+  }
+
+  operation JudgeMergeReadiness {
+    requires none
+    input {
+      pr: extdeps.github.pulls.PullRequest
+      reviews: List<PullReview>
+    }
+    output {
+      verdict: MergeReadinessVerdict
+    }
+    readonly
+  }
+
+  operation ClassifyRestFallback {
+    requires none
+    input {
+      error: GitHubErrorShape
+    }
+    output {
+      reason: RestFallbackReason?
+    }
+    readonly
+  }
+}

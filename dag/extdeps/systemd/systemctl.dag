@@ -1,0 +1,1051 @@
+module extdeps.systemd.systemctl
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import extdeps.transports.shell { ShellOutcome }
+import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
+import std.algebra { trim }
+import std.optional { Absent, Present }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+  }
+}
+
+data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
+
+fn systemctl_binary_path() -> NonEmptyStr {
+  systemd_binary_path(name: systemctl_binary_name)
+}
+
+fn systemctl_absolute_program() -> ProgramIdentity = uncataloged_program(invocation: systemctl_binary_path())
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it. The user-manager probe resolves it on PATH too. It is
+// a distinct invocation from the absolute systemd path above, so it is a distinct identity row.
+fn systemctl_path_resolved_program() -> ProgramIdentity = uncataloged_program(invocation: systemctl_binary_name)
+
+data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
+
+// The reboot command in the two renderings a sudoers grant and its actuator need. Unlike
+// enable-linger this verb takes no subject -- it reboots the host the grant is installed on -- and
+// that asymmetry is the reason the grant coproduct carries its subject per-variant rather than
+// taking one uniformly: a subject appended here would authorize an argument sudo would then refuse
+// to match, and `systemctl reboot <anything>` is not a command upstream accepts.
+fn systemctl_reboot_argv() -> List<String> {
+  [systemctl_binary_name as String, systemctl_reboot_verb as String]
+}
+
+fn systemctl_reboot_command() -> NonEmptyStr {
+  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as NonEmptyStr
+}
+
+// THE REST OF THIS MODULE STILL SPELLS "systemctl" INLINE, at 24 sites, and that is left alone
+// deliberately rather than overlooked. Most of them sit inside `transport shell { argv: [...] }`
+// rows whose elements are literals in a transport DSL, so routing them through the row above is a
+// different and larger change than routing two argv builders through it. The rows added here exist
+// because a privilege grant needs the absolute and bare renderings to be derived from one authority;
+// converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
+
+// THE VERSION IS READ, NOT ASSUMED, because systemd's own property vocabulary is version-gated:
+// MemoryPeak arrives in v254, so whether a host can report a scope's peak memory is a fact about
+// the systemd it runs rather than about systemd. A consumer that needs that property must observe
+// the version instead of inferring it from the distribution.
+fn systemctl_version_command() -> ArgvCommand {
+  argv_command(program: systemctl_absolute_program(), arguments: ["--version"])
+}
+
+// systemctl_show_properties_argv as a command, for one unit: `Name=value` lines, one per property.
+fn systemctl_show_properties_command(unit: NonEmptyStr, properties: List<SystemdUnitProperty>) -> ArgvCommand {
+  argv_command(program: systemctl_absolute_program(), arguments: [
+    "show",
+    concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
+    unit as String,
+  ])
+}
+
+// ONE PROPERTY OF `systemctl show` OUTPUT: the text after `Key=` on the line that starts with it.
+// Absent when no line names the key, which is not the same as an empty value (`Key=`).
+fn systemctl_show_property_value(text: String, key: String) -> String? {
+  match first(filter(split(s: text, delimiter: "\n"), l => starts_with(s: l, prefix: key + "="))) {
+    Present { value: l } => Present { value: substring(s: l, start: string_length(s: key) + 1, end: string_length(s: l)) }
+    Absent => none
+  }
+}
+
+// systemctl(1) show-environment: the service manager's own environment, `NAME=value` per line,
+// which every unit it starts inherits beneath the unit's Environment= and EnvironmentFile=.
+fn systemctl_show_environment_command() -> ArgvCommand {
+  argv_command(program: systemctl_absolute_program(), arguments: ["show-environment"])
+}
+
+// THE VERSION THRESHOLD IS THE CITED UPSTREAM FACT, MODELED RATHER THAN LEFT IN PROSE. It sat in the
+// comment above while the consumer that needed it reported `present` for any non-empty version line,
+// which is the shape a fact-in-prose invites: nothing can read it, so nothing applies it.
+data systemd_memory_peak_minimum_version: Int = 254
+
+// systemctl --version opens "systemd <MAJOR>" -- e.g. "systemd 255 (255.4-1ubuntu8)". The major is
+// the second whitespace-separated token of the FIRST line, and it is PARSED rather than pattern-
+// matched, so a line this does not understand answers Absent instead of a fabricated number.
+fn systemd_major_version(version_line: String) -> Int? {
+  match split(trim(s: version_line), " ") {
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Cons { head: major, tail: _ } => parse_int(s: trim(s: major))
+        Empty {} => none
+      }
+    Empty {} => none
+  }
+}
+
+// THREE-VALUED ON PURPOSE, and the middle value is the whole point: "the host runs a systemd that
+// cannot report MemoryPeak" and "we could not determine which systemd it runs" are different facts,
+// and only the first is a statement about the host.
+type SystemdMemoryPeakSupport
+  = SystemdReportsMemoryPeak { version: Int }
+  | SystemdTooOldForMemoryPeak { version: Int }
+  | SystemdVersionUnreadable
+
+fn systemd_memory_peak_support(version_line: String) -> SystemdMemoryPeakSupport {
+  match systemd_major_version(version_line: version_line) {
+    Present { value: v } =>
+      if v >= systemd_memory_peak_minimum_version {
+        SystemdReportsMemoryPeak { version: v }
+      } else {
+        SystemdTooOldForMemoryPeak { version: v }
+      }
+    Absent => SystemdVersionUnreadable
+  }
+}
+
+fn systemctl_daemon_reload_argv() -> List<String> {
+  ["systemctl", "daemon-reload"]
+}
+
+// THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
+// reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
+// --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).
+// Apply runs elevated as root, so bare `systemctl --user daemon-reload` would reload root's user
+// manager -- a different object. `--machine=UID@` is systemctl(1)'s local-user connector: it
+// reaches that UID's user manager without restarting user@UID.service (a restart would kill every
+// --user transient the slice exists to bound). The machine word is one argv element so the `@`
+// cannot re-parse as a separate token.
+fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
+  [
+    "systemctl",
+    "--user",
+    concat("--machine=", concat(to_string(uid), "@")),
+    "daemon-reload",
+  ]
+}
+
+// ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
+// CONSUMER ARRIVED. These argv builders spelled their verbs inline while
+// gunbc.executor_privileged_operation needs the same words to build an ABSOLUTE-path argv that a
+// sudoers match is derived from -- so the verb would have been authored a second time in a module
+// whose whole purpose is that a grant and its command have one spelling. The rows carry the verb;
+// the builders below and the privileged operation both read them.
+//
+// enable --now IS DELIBERATELY NOT DERIVABLE FROM THESE. systemctl_enable_now_command exists and
+// keeps its own spelling, because fusing durable boot intent with immediate activity is a
+// DIFFERENT operation from doing both in order, not a shorthand for it: `enable` authorizes a
+// future boot to start the unit under readiness conditions nobody will re-observe at that boot,
+// and `start` acts under conditions observable now. A caller that wants both wants two
+// separately-admitted transitions.
+data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
+
+data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
+// RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
+// here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
+// the process NEVER dies, so a daemon holding state across the call keeps it -- systemd-networkd
+// re-reads .network and .netdev files without tearing down a single configured link. `restart`
+// would drop every link the daemon manages, including the host's own uplink, which on a remote
+// machine is indistinguishable from the host going away. A unit with no ExecReload REFUSES the
+// verb rather than silently restarting, so this cannot degrade into that.
+data systemctl_reload_verb: NonEmptyStr = "reload" as NonEmptyStr
+
+// RESTART IS THE ONLY VERB THAT RE-RUNS A ONESHOT UNIT'S ExecStart. `start` on a RemainAfterExit
+// oneshot that is already active is a no-op, so a converge that installs new file contents and then
+// starts the unit leaves the OLD contents in effect while reporting success -- the fabricated-success
+// arm. A oneshot whose ExecStart is idempotent (nft -f replaces its own table) is safe to restart on
+// every converge, and that is what makes the installed bytes and the live state the same fact.
+data systemctl_restart_verb: NonEmptyStr = "restart" as NonEmptyStr
+
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_enable_verb as String, unit as String]
+}
+
+// START IS NOT RESTART, AND FOR A SLICE THE DIFFERENCE IS DESTRUCTIVE RATHER THAN STYLISTIC. Stopping a
+// slice kills every process in it (systemd.slice(5)), so `restart` applied to a compile pool would terminate
+// the compilers the pool exists to hold. `start` on an already-active slice is a no-op that re-applies the
+// unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
+// on the service surface; this is its argv authority for the shell-body realization edge.
+fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_start_verb as String, unit as String]
+}
+
+// `reset-failed` drops a failed unit's failed state, including a path unit that hit its trigger limit,
+// so a following `start` can re-arm it. The modeled operation is the transport row below; this is its
+// argv authority for the belt-exit stall release (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_rearm_at).
+fn systemctl_reset_failed_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reset-failed", unit as String]
+}
+
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_restart_verb as String, unit as String]
+}
+
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
+}
+
+fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "stop", unit as String]
+}
+
+// MASK IS NOT A STRONGER DISABLE, IT IS A DIFFERENT OPERATION, and systemctl(1) separates them on
+// two axes this repository has a caller for. FIRST, REACH: `disable` removes the enablement
+// symlinks, which is why it does nothing at all to a STATIC unit -- one with no [Install] section,
+// which has no such symlinks to remove -- and why it never prevents `systemctl start` or activation
+// by another unit. `mask` links the unit name to /dev/null, so activation is refused whatever
+// requests it: a timer, a dependency, or a hand at a terminal. SECOND, AND IT IS THE REASON A
+// TEMPORARY QUIESCENCE WANTS MASK RATHER THAN DISABLE: `disable` DESTROYS the enablement state,
+// so restoring it means re-deciding what that state was, and a restore-by-enable would enable a
+// unit that had been deliberately disabled before the quiescence began. `mask` LAYERS over the
+// existing state and `unmask` removes the layer, leaving prior enablement exactly as it was found.
+// So the pair is state-preserving where enable/disable is state-asserting.
+data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
+
+data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
+
+data systemctl_now_flag: NonEmptyStr = "--now" as NonEmptyStr
+
+fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, systemctl_now_flag as String, unit as String]
+}
+
+// MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a
+// process it already runs keeps running. That is what a drain needs -- stop new admission, let the
+// admitted job finish -- where `mask --now` would also stop the unit and kill that job.
+fn systemctl_mask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, unit as String]
+}
+
+fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_unmask_verb as String, unit as String]
+}
+
+data systemctl_set_property_verb: NonEmptyStr = "set-property" as NonEmptyStr
+
+fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  [
+    "systemctl",
+    systemctl_set_property_verb as String,
+    unit as String,
+    concat(property as String, concat("=", value as String)),
+  ]
+}
+
+// `systemctl revert UNIT...` takes UNIT NAMES ONLY and removes every drop-in of each named unit
+// (systemctl(1), systemd 255). Property names are not arguments: an earlier argv appended
+// "MemoryMax" "MemoryHigh", which systemctl read as two more units (MemoryMax.service,
+// MemoryHigh.service) and reverted silently with exit 0 -- so the argv claimed a property-scoped
+// revert it never performed. What this reverts is the unit's whole drop-in set, including the
+// control shadows set-property wrote, and that is what the caller is relying on.
+fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "revert", unit as String]
+}
+
+// THE USER MANAGER IS A DIFFERENT MANAGER, NOT A FLAG ON THE SAME QUERY. `systemctl show` without
+// --user asks the SYSTEM manager, which knows nothing of a unit started by `systemd-run --user`:
+// the answer is not "inactive" but a successful read of a unit that manager never heard of, which
+// is why ShowUserProperty is a distinct operation rather than a boolean on the existing one. A
+// caller that asked the wrong manager would get a plausible empty answer instead of a refusal.
+fn systemctl_show_user_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "--user",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
+
+fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
+
+// SEVERAL PROPERTIES OF SEVERAL UNITS IN ONE READ. systemctl show accepts a comma-separated
+// --property list and any number of units, and prints one block of `Name=value` lines per unit with a
+// blank line between blocks. Without --value the property names ride along, so a consumer can key each
+// value by name rather than trusting an output order systemctl does not document; asking for Id makes
+// every block say which unit it describes. A unit the manager has not loaded still gets a block --
+// LoadState=not-found beside the manager's DEFAULTS for every other property -- so a consumer must read
+// LoadState before believing any other value in that block.
+fn systemctl_show_properties_argv(units: List<NonEmptyStr>, properties: List<SystemdUnitProperty>) -> List<String> {
+  concat(
+    [
+      "systemctl",
+      "show",
+      concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
+    ],
+    map(units, u => u as String),
+  )
+}
+
+// Every service unit the manager holds, loaded or not, as plain rows whose first field is the unit
+// name. No pattern: a glob is a shell word the fleet's far-side re-parse refuses, so the caller filters
+// by name in the model instead.
+//
+// THE COMMAND IS THE SPELLING; THE WORDS ARE DERIVED FROM IT. The census that reads this list ran for
+// its whole life as a RENDERED SCRIPT -- argv words serialized to shell text by the caller -- and the
+// serialization is exactly what made it unreachable over the fleet transport, whose wall admits
+// portable remote words and refuses a script BODY before any word is examined (the fleet path's own
+// refusal, quoted in host_effect_realize run_shell_transport). Holding the probe as an ArgvCommand
+// and deriving the word list here means the rendered form and the typed form cannot drift apart:
+// there is one spelling, and argv_words is the only thing that flattens it. The program is the
+// PATH-resolved identity, not the absolute one, for the reason that identity row records: the runner
+// hosts these units live on have not been observed by this repository, and the words the census has
+// always executed begin with the bare name.
+fn systemctl_list_all_service_units_command() -> ArgvCommand {
+  argv_command(
+    program: systemctl_path_resolved_program(),
+    arguments: ["list-units", "--type=service", "--all", "--no-legend", "--plain"],
+  )
+}
+
+fn systemctl_list_all_service_units_argv() -> List<String> {
+  argv_words(command: systemctl_list_all_service_units_command())
+}
+
+// LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
+// `is-enabled` answers the INSTALL state (whether the unit is wanted by a target), which is a
+// different question from `is-active` (whether it is running now) and from LoadState (whether the
+// manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
+// would then not come back after a reboot -- so a convergence claim that reads only is-active is
+// answering a question it was not asked.
+fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "is-enabled", unit as String]
+}
+
+// TWO SIBLING BUILDERS WERE DELETED HERE RATHER THAN KEPT FOR SYMMETRY, and counting their references
+// is what decided it. A review read this block as a transport-as-authority fork paralleling the modeled
+// `service systemd.Systemctl` operations. Measuring first split the block three ways: the system-scope
+// `is-enabled` builder and the user-scope `is-active` builder each had exactly ONE reference in the
+// corpus -- their own declaration -- so they were dead, and a dead builder is not a fork to consolidate,
+// it is a row to remove. `IsActive` additionally EXISTS as a modeled operation, so the user-scope
+// builder would have been a genuine second authority the moment anything called it.
+//
+// WHAT SURVIVES AND WHY IT IS NOT A FORK: there is no modeled `IsEnabled` operation at all, so
+// `systemctl_user_is_enabled_argv` forks nothing -- it is the only way this corpus can ask the question,
+// and it has a real consumer. What the review correctly identifies as the standing defect is that
+// `--user` is hand-encoded in the builder name rather than being a SCOPE PARAMETER on the modeled
+// surface; that is true of the pre-existing builders too and is not repaired here.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: a `scope: SystemdScope` input on the modeled operations, which
+// makes `--user` a value rather than a spelling and lets `IsEnabled` land once for both scopes. Until
+// then this builder is the honest minimum -- one consumer, one question, no modeled surface to fork.
+
+// Enable and start are SEPARATE OPERATIONS, deliberately not `enable --now`. The fused form applies
+// two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
+// the two facts stop being separately observable in the actuation the way they are separately
+// observable on the host.
+fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "enable", unit as String]
+}
+
+fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "start", unit as String]
+}
+
+// RESTART IS A THIRD OPERATION, NOT ENABLE-AND-START SPELLED TOGETHER. It acts on a unit that is
+// already installed and already meant to be running, and it replaces the PROCESS -- which is why the
+// remedy that selects it (gunbc.spark.serving_realization ServingReactivationEffect) is chosen from a
+// running-definition reading and not from anything the install vocabulary observes. Fusing it into
+// enable or start is the defect DCH-0r-a deleted: a restart emitted unconditionally beside an enable
+// is destructive to in-flight work on every converge, and it has no independently matchable identity
+// for a fence to guard.
+fn systemctl_user_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "restart", unit as String]
+}
+
+// STOP AND DISABLE ARE THE RETIREMENT PAIR, AND THEY ARE SEPARATE FOR THE REASON ENABLE AND START
+// ARE. `disable --now` fuses them exactly as `enable --now` fuses the install pair, and the cost is
+// the same distinction: stop ends the RUNNING process, disable removes the install symlinks so the
+// unit does not return at the next boot. A retirement that only stops leaves a unit that comes back
+// on reboot; one that only disables leaves a live server holding the resource the retirement exists
+// to free. They are two facts about a unit and they remain two operations here.
+//
+// `disable` on a unit the manager does not know exits nonzero, and that nonzero is a real answer
+// rather than noise to swallow: it means the retirement was planned against a unit that is not
+// there, which is a disagreement between the observed population and the plan, not a step to make
+// idempotent by flag. Nothing here passes --quiet or ignores the status for that reason.
+fn systemctl_user_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "stop", unit as String]
+}
+
+fn systemctl_user_disable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "disable", unit as String]
+}
+
+// LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
+// `ShowLoadState` operation on the service surface above is its own operation rather than a
+// SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
+// value of `not-found` is not a magnitude. Cited to systemd.unit(5) LoadState -- `loaded`, `not-found`,
+// `bad-setting`, `error`, `masked` -- of which `not-found` is the one this corpus reads positively.
+// `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
+// means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
+// into it.
+fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
+}
+
+fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "status", "--no-pager", "--full", unit as String]
+}
+
+type UnitFileState
+  = UnitEnabled
+  | UnitEnabledRuntime
+  | UnitLinked
+  | UnitMasked
+  | UnitStatic
+  | UnitDisabled
+  | UnitIndirect
+  | UnitGenerated
+  | UnitTransient
+  | UnitBad
+
+// THE WIRE WORDS systemctl(1) `is-enabled` / the UnitFileState property print for each arm. A unit the
+// manager does not know reports an empty UnitFileState, which is not a state and parses to nothing;
+// so does any word outside this table (e.g. a newer systemd's `alias`), and the caller refuses it.
+fn parse_unit_file_state(raw: String) -> UnitFileState? {
+  if raw == "enabled" { Present { value: UnitEnabled } }
+  else { if raw == "enabled-runtime" { Present { value: UnitEnabledRuntime } }
+  else { if raw == "linked" { Present { value: UnitLinked } }
+  else { if raw == "masked" { Present { value: UnitMasked } }
+  else { if raw == "static" { Present { value: UnitStatic } }
+  else { if raw == "disabled" { Present { value: UnitDisabled } }
+  else { if raw == "indirect" { Present { value: UnitIndirect } }
+  else { if raw == "generated" { Present { value: UnitGenerated } }
+  else { if raw == "transient" { Present { value: UnitTransient } }
+  else { if raw == "bad" { Present { value: UnitBad } }
+  else { none } } } } } } } } } }
+}
+
+// THE GRACEFUL ASK IS ONE OPERATION, NOT A SIGNAL PARAMETER, and the reason is extdeps.posix.signal's:
+// a service that accepts an arbitrary signal name accepts every signal anyone ever wants. There is
+// deliberately no SIGKILL sibling here. A caller that needs a forced end wants the CGROUP's subtree
+// and not this unit's -- a process in a sibling cgroup under the same slice is not reached by a unit
+// kill -- and the kernel answers that directly through cgroup.kill
+// (extdeps.linux.cgroup_v2 cgroup_v2_kill_path), atomically against forking. Adding a KillUnitKill
+// here would put a second, weaker answer beside it and the weaker one reads like the obvious choice.
+//
+// `--kill-whom=all` is the substance rather than a default made explicit: the default reaches the
+// main process only, and a stop that signals only the main process leaves exactly the children
+// gunbc.runner.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
+// both flags.
+// THE PROPERTY REACHES systemctl AS ITS WIRE SPELLING, NOT AS A VARIANT NAME, AND THE DIFFERENCE IS
+// A SILENT EMPTY READING RATHER THAN A FAILURE.
+//
+// These two operations used to take a SystemdUnitProperty and interpolate it straight into
+// `--property={property}`, which renders the VARIANT name. systemd_unit_property_wire exists in
+// extdeps.systemd precisely because the two spellings are not always the same string: `ActiveState`
+// is both, `InvocationIDProperty` is spelled `InvocationID` on the wire, and so are
+// `SliceProperty`, `ExecStartProperty`, `IdProperty`, `KillModeProperty` and the rest of the
+// `*Property` family. systemctl does not refuse a property it does not know -- it prints NOTHING and
+// exits 0 -- so every consumer naming one of those read an empty string back with success true and
+// had no way to tell that from a property whose value is genuinely empty.
+//
+// MEASURED, NOT INFERRED (gunbc#11803, srv1, wet): a claim reading ActiveState through this operation
+// PASSES and a claim reading InvocationID through it FAILS, on the same live unit, in the same run --
+// which is the discriminator, because a broken operation would have failed both and a broken unit
+// would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
+// id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
+//
+// SO THE INPUT IS THE WIRE WORD, produced by extdeps.systemd systemd_unit_property_wire, and the
+// argv binds it as a plain variable exactly as the sibling SetProperty does.
+//
+// A SEALED CARRIER READ AS {property.wire} WAS TRIED HERE AND WITHDRAWN. It closed the spelling hole
+// by construction, which is strictly better, but a FIELD ACCESS is not bindable by the argv
+// materializer -- bind_argv_expr admits a string literal, a variable and an interpolation over
+// those, and refuses everything else as ArgvExpressionUnsupported -- so both operations left the
+// materializable set and the enrolled binding claims went red (review 69392, measured on srv1: two
+// claims in test.claim.operation_argv_binding_wall_witness red, green again after this).
+//
+// WHAT REMAINS IS CALLER DISCIPLINE AND IT IS WEAKER, STATED PLAINLY. Every caller converts through
+// systemd_unit_property_wire today and nothing stops the next one passing a literal; that is the
+// same gap review 69084 named, reopened deliberately because the alternative breaks a wall that
+// actually executes. The trigger that closes it again is argv element evaluation in the
+// materializer, which `std.operation_argv` already carries as declared residue.
+//
+// MaskRuntime follows systemctl(1), v255: --runtime places a mask under /run and
+// without --now the active incarnation continues. It does not stop a workload.
+service systemd.Systemctl {
+  operation Enable {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "enable", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Restart {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "restart", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed"
+    }
+  }
+
+  operation DisableNow {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl disable --now failed"
+    }
+  }
+
+  operation Start {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "start", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl start failed"
+    }
+  }
+
+  operation Stop {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl stop failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
+    }
+  }
+
+  operation StopUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user stop failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.StopUserUnit"
+    }
+  }
+
+  operation ResetFailedUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUserUnit"
+    }
+  }
+
+  operation ResetFailedUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUnit"
+    }
+  }
+
+  operation KillUnitTerm {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "kill", "--signal=SIGTERM", "--kill-whom=all", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl kill --signal=SIGTERM failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.KillUnitTerm"
+    }
+  }
+
+  operation MaskNow {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "mask", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl mask --now failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.MaskNow"
+    }
+  }
+
+  operation MaskRuntime {
+    input { unit: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "mask", "--runtime", "{unit}"] }
+    exit { 0 => Unit nonzero => String "runtime mask refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no mask supplied" } "no fabricated inhibition" }
+  }
+
+  operation Reboot {
+    output { success: Bool from "exit_success", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "reboot"] }
+    exit { 0 => Unit nonzero => String "normal reboot request refused" }
+    mock_response { 1 => { success: false, stderr: "no reboot supplied" } "no fabricated activation" }
+  }
+
+  operation SetProperty {
+    requires Network
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl set-property failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
+    }
+  }
+
+  operation RevertMemoryCaps {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "revert", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl revert failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.RevertMemoryCaps"
+    }
+  }
+
+  operation DaemonReload {
+    requires none
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "daemon-reload"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl daemon-reload failed"
+    }
+  }
+
+  operation IsActive {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      state: String from "stdout"
+      active: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "is-active", "{unit}"] }
+    exit {
+      0 => Unit
+      3 => Unit "unit is not active"
+      nonzero => String "systemctl is-active failed"
+    }
+    mock_response {
+      0 => { state: "active", active: true } "hermetic systemd.Systemctl.IsActive active"
+    }
+  }
+
+  operation ShowProperty {
+    requires Network
+    input { unit: NonEmptyStr, property: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show failed"
+    }
+    mock_response {
+      0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
+    }
+  }
+
+  operation ShowUserProperty {
+    requires Network
+    input { unit: NonEmptyStr, property: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user show failed"
+    }
+    mock_response {
+      0 => { value: "active", success: true } "hermetic systemd.Systemctl.ShowUserProperty"
+    }
+  }
+
+  operation ShowLoadState {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property=LoadState", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show LoadState failed"
+    }
+    mock_response {
+      0 => { value: "not-found", success: true } "hermetic systemd.Systemctl.ShowLoadState"
+    }
+  }
+
+  operation ListUnits {
+    requires Network
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+      state: String = "active",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--state={state}",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded active running GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnits (multi-column rows — consumer must take first field only)"
+    }
+  }
+
+  operation ListUnitsAllLoaded {
+    requires Network
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded inactive dead GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsAllLoaded (complete loaded-unit population)"
+    }
+  }
+
+  operation ListUnitsUserAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "--user",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "gunbc-attempt-node-1-feedfacefeedface.service loaded active running gunbc attempt\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsUserAllLoaded (user-manager population -- the belt's transient units are user units, invisible to the system manager -- first field only)"
+    }
+  }
+
+  operation Status {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "status", "--no-pager", "--full", "{unit}"] }
+    exit {
+      0 => Unit
+      1 => Unit "unit dead, pid file remains (LSB init-script code)"
+      2 => Unit "unit dead, lock file remains (LSB init-script code)"
+      3 => Unit "unit not running (LSB init-script code)"
+      4 => Unit "unit status unknown (LSB init-script code)"
+      nonzero => String "systemctl status failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "● demo.service - Demo\n     Loaded: loaded\n     Active: active (running)",
+        success: true,
+      } "hermetic systemd.Systemctl.Status active"
+    }
+  }
+}
+
+// ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
+// contradiction and is not. That split exists because the user-scope consumer converges the two
+// facts separately and observes them separately. This builder serves a different consumer: runner
+// slot activation, where the fused form is what is deployed today and what the sudoers grant on
+// those hosts names. Splitting it here would be a change to a live actuation shipped inside an argv
+// refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
+// activation path later wants the two facts apart, that is its own change with its own witness.
+//
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
+// ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
+// system manager, so an unelevated invocation is not a weaker version of this request, it is a
+// different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
+// than being re-spelled as two more literals here.
+// IS THE CALLING USER'S SERVICE MANAGER REACHABLE: `systemctl --user show-environment` succeeds only
+// when this process can reach its user manager over the user bus, which is exactly the precondition
+// `systemd-run --user` needs. `is-system-running` would not serve: it exits non-zero on a `degraded`
+// manager that is perfectly reachable. PATH-resolved, because the invoking host is unobserved.
+fn systemctl_user_manager_probe_command() -> ArgvCommand {
+  argv_command(program: systemctl_path_resolved_program(), arguments: ["--user", "show-environment"])
+}
+
+fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: append(
+      [sudo_non_interactive_flag as String, systemctl_path_resolved_program().invocation as String, "enable", "--now"],
+      items: units,
+    ),
+  )
+}
+
+// DAEMON-RELOAD AND START AS TYPED ARGV, ELEVATED, for the host-effect realizer's staging fold
+// (gunbc.host.host_effect_realize compile_pool_slice_install_step). The posture is
+// systemctl_enable_now_command's own, restated rather than inherited by accident: the unit lives
+// in the system manager, so an unelevated invocation is not a weaker version of this request but a
+// different one that fails; the elevation comes from extdeps.sudo.elevation -- absolute
+// /usr/bin/sudo and its -n, non-interactive, which FAILS instead of blocking on a tty CI does not
+// have. daemon-reload carries no verb row because it has no second consumer spelling an
+// absolute-path argv beside this one (the row comment above records why enable and start are
+// hoisted); start reads its hoisted verb row. These are the ArgvCommand counterparts of the
+// shell-text builders gunbc.live_deploy.operations carries for its own emit path -- one operation,
+// two carrier grammars, each module owning its own.
+fn systemctl_daemon_reload_command() -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      systemctl_path_resolved_program().invocation as String,
+      "daemon-reload",
+    ],
+  )
+}
+
+fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: append(
+      [
+        sudo_non_interactive_flag as String,
+        systemctl_path_resolved_program().invocation as String,
+        systemctl_start_verb as String,
+      ],
+      items: [unit as String],
+    ),
+  )
+}
+
+// WHICH SYSTEMCTL CALLS RELOAD THE MANAGER, DECLARED ON THE COMMAND'S OWN CONSTRUCTOR. systemctl(1):
+// `mask`, `unmask`, `enable` and `disable` reload the manager's configuration implicitly after changing
+// the unit files unless `--no-reload` is given, so a drain's mask is itself a daemon-reload and loads
+// every unit-file change pending on disk at that moment. The reload is also what makes a mask INHIBIT
+// (the manager does not see the symlink until it reloads), so `--no-reload` would not establish the
+// inhibition the drain exists for. A SystemctlStep pairs the argv with the effect its constructor
+// declares once; the argv is only ever rendered from it, never parsed back.
+type SystemctlManagerEffect
+  = ManagerReloadedImplicitly
+  | ManagerReloadedExplicitly
+  | ManagerNotReloaded
+
+type SystemctlStep {
+  argv: List<String>
+  effect: SystemctlManagerEffect
+}
+
+fn systemctl_mask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_mask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_unmask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_unmask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_enable_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_enable_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_start_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_start_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_stop_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_stop_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_daemon_reload_step() -> SystemctlStep {
+  SystemctlStep { argv: systemctl_daemon_reload_argv(), effect: ManagerReloadedExplicitly }
+}

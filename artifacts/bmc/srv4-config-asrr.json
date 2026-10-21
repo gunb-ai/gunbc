@@ -1,0 +1,149 @@
+{
+    "sensors": [
+        {
+            "name": "FAN1",
+            "type": "fan",
+            "readPath": "/xyz/openbmc_project/sensors/fan_tach/FAN1",
+            "writePath": "/sys/devices/platform/ahb/ahb:apb/1e786000.pwm-tacho-controller/hwmon/**/pwm1",
+            "min": 0,
+            "max": 255,
+            "ignoreDbusMinMax": true
+        },
+        {
+            "name": "FAN2",
+            "type": "fan",
+            "readPath": "/xyz/openbmc_project/sensors/fan_tach/FAN2",
+            "writePath": "/sys/devices/platform/ahb/ahb:apb/1e786000.pwm-tacho-controller/hwmon/**/pwm2",
+            "min": 0,
+            "max": 255,
+            "ignoreDbusMinMax": true
+        },
+        {
+            "name": "FAN3",
+            "type": "fan",
+            "readPath": "/xyz/openbmc_project/sensors/fan_tach/FAN3",
+            "writePath": "/sys/devices/platform/ahb/ahb:apb/1e786000.pwm-tacho-controller/hwmon/**/pwm3",
+            "min": 0,
+            "max": 255,
+            "ignoreDbusMinMax": true
+        },
+        {
+            "name": "FAN4",
+            "type": "fan",
+            "readPath": "/xyz/openbmc_project/sensors/fan_tach/FAN4",
+            "writePath": "/sys/devices/platform/ahb/ahb:apb/1e786000.pwm-tacho-controller/hwmon/**/pwm4",
+            "min": 0,
+            "max": 255
+        },
+        {
+            "name": "FAN5",
+            "type": "fan",
+            "readPath": "/xyz/openbmc_project/sensors/fan_tach/FAN5",
+            "writePath": "/sys/devices/platform/ahb/ahb:apb/1e786000.pwm-tacho-controller/hwmon/**/pwm5",
+            "min": 0,
+            "max": 255,
+            "ignoreDbusMinMax": true
+        },
+        {
+            "name": "TEMP_SOC",
+            "type": "temp",
+            "readPath": "/xyz/openbmc_project/sensors/temperature/TEMP_SOC",
+            "ignoreDbusMinMax": true,
+            "timeout": 0
+        }
+    ],
+    "zones": [
+        {
+            "id": 0,
+            "minThermalOutput": 30,
+            "failsafePercent": 30,
+            "cycleIntervalTimeMS": 1000.0,
+            "updateThermalsTimeMS": 1000.0,
+            "pids": [
+                {
+                    "name": "FAN1",
+                    "type": "fan",
+                    "inputs": [
+                        "FAN1"
+                    ],
+                    "setpoint": 30.0,
+                    "pid": {
+                        "samplePeriod": 1.0,
+                        "proportionalCoeff": 0.0,
+                        "derivativeCoeff": 0.0,
+                        "integralCoeff": 0.0,
+                        "feedFwdOffsetCoeff": -8.0,
+                        "feedFwdGainCoeff": 1.0,
+                        "integralLimit_min": 0.0,
+                        "integralLimit_max": 0.0,
+                        "outLim_min": 3.0,
+                        "outLim_max": 100.0,
+                        "slewNeg": -3.0,
+                        "slewPos": 3.0
+                    }
+                },
+                {
+                    "name": "CHASSIS",
+                    "type": "fan",
+                    "inputs": [
+                        "FAN2",
+                        "FAN3",
+                        "FAN4"
+                    ],
+                    "setpoint": 30.0,
+                    "pid": {
+                        "samplePeriod": 1.0,
+                        "proportionalCoeff": 0.0,
+                        "derivativeCoeff": 0.0,
+                        "integralCoeff": 0.0,
+                        "feedFwdOffsetCoeff": 35.0,
+                        "feedFwdGainCoeff": 1.0,
+                        "integralLimit_min": 0.0,
+                        "integralLimit_max": 0.0,
+                        "outLim_min": 40.0,
+                        "outLim_max": 100.0,
+                        "slewNeg": -3.0,
+                        "slewPos": 3.0
+                    }
+                },
+                {
+                    "name": "TEMP_SOC",
+                    "type": "stepwise",
+                    "inputs": [
+                        "TEMP_SOC"
+                    ],
+                    "setpoint": 30.0,
+                    "failsafePercent": 75,
+                    "pid": {
+                        "samplePeriod": 1.0,
+                        "positiveHysteresis": 2,
+                        "negativeHysteresis": 3,
+                        "isCeiling": false,
+                        "reading": {
+                            "0": 40,
+                            "1": 55,
+                            "2": 62,
+                            "3": 66,
+                            "4": 70,
+                            "5": 74,
+                            "6": 78,
+                            "7": 82,
+                            "8": 85
+                        },
+                        "output": {
+                            "0": 22,
+                            "1": 30,
+                            "2": 38,
+                            "3": 44,
+                            "4": 52,
+                            "5": 62,
+                            "6": 75,
+                            "7": 88,
+                            "8": 100
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

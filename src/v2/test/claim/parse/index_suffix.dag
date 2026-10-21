@@ -1,0 +1,129 @@
+module v2.test.claim.parse.index_suffix
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Hash, content_hash }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN INDEX SUFFIX IS A POSTFIX STEP (v2.extdeps.languages.dag dag_grammar_postfix_index_suffix_expr),
+// and it lowers to the std element access that already exists, v2.std.collection list_at_optional,
+// not to a new operation. Before it `xs[i]` parsed as `xs` followed by the list literal `[i]` and
+// was read as the first alone: a silent misread (DESIGN section 5).
+//
+// THE DISCRIMINATING CONTROL IS IDENTITY OF LOWERING: the indexed spelling and the explicit call to
+// the access operation lower to the SAME normalized tree, so the index is a reading of that
+// operation and not a second path that agrees on a sample. The misread reading cannot satisfy it:
+// `xs` alone and `xs` with a second statement are different trees.
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn parsed_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn arity_refused(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_index_suffix_arity
+  }
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+data indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i]\n}\n"
+data called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: xs, index: i)\n}\n"
+data bare_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs\n}\n"
+data match_indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match xs[i] {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data match_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match std.algebra.list_at_optional(xs: xs, index: i) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data computed_index_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i + 1]\n}\n"
+data computed_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: xs, index: i + 1)\n}\n"
+data chained_source: String = "module probe.index\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  r.items[i]\n}\n"
+data chained_called_source: String = "module probe.index\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: r.items, index: i)\n}\n"
+data trailing_comma_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i,]\n}\n"
+data empty_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[]\n}\n"
+data two_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i, i]\n}\n"
+data unclosed_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i\n}\n"
+data slice_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[0..i]\n}\n"
+
+fn indexed_tree() -> Optional<Hash> { normalized_hash(tag: "indexed", text: indexed_source) }
+fn called_tree() -> Optional<Hash> { normalized_hash(tag: "called", text: called_source) }
+fn bare_tree() -> Optional<Hash> { normalized_hash(tag: "bare", text: bare_source) }
+
+test fn an_index_suffix_lowers_to_the_element_access_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "indexed", text: indexed_source), b: normalized_hash(tag: "called", text: called_source))
+}
+
+test fn an_index_suffix_is_not_its_base_read_alone_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "indexed2", text: indexed_source), b: normalized_hash(tag: "bare", text: bare_source)) == false
+}
+
+test fn an_indexed_match_scrutinee_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "mi", text: match_indexed_source), b: normalized_hash(tag: "mc", text: match_called_source))
+}
+
+test fn a_computed_index_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "ci", text: computed_index_source), b: normalized_hash(tag: "cc", text: computed_called_source))
+}
+
+test fn an_index_after_a_field_projection_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "pi", text: chained_source), b: normalized_hash(tag: "pc", text: chained_called_source))
+}
+
+test fn an_empty_index_refuses_at_lowering_not_as_a_list_literal_holds() -> Bool {
+  arity_refused(tag: "empty", text: empty_index_red_source)
+}
+
+test fn a_two_expression_index_refuses_at_lowering_holds() -> Bool {
+  arity_refused(tag: "two", text: two_index_red_source)
+}
+
+test fn a_trailing_comma_index_refuses_at_lowering_holds() -> Bool {
+  arity_refused(tag: "trailing", text: trailing_comma_red_source)
+}
+
+test fn an_unclosed_index_still_refuses_at_parse_holds() -> Bool {
+  parsed_ok(tag: "unclosed", text: unclosed_index_red_source) == false
+}
+
+test fn a_slice_still_refuses_at_parse_holds() -> Bool {
+  parsed_ok(tag: "slice", text: slice_red_source) == false
+}
+
+// A `[` THAT OPENS THE NEXT LINE IS NOT AN INDEX. v1 indexes only when `[` is the very next token after
+// the operand, and its token stream carries the newline (02_parse parse_postfix); this suffix must agree,
+// or `let wire = value` followed by `[wire, wire]` on the next line parses as `value[wire, wire]` with no
+// body after the let and refuses -- the src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes shape,
+// refused as normalized_tree_reason_wrapper_retention_not_normalized on main c87ebf9b06's successors. Read
+// as two statements it is a binding and the block's list value, and normalizes.
+data next_line_list_source: String = "module probe.index\n\nfn pair(value: Int) -> List<Int> {\n  let wire = value\n  [wire, wire]\n}\n"
+
+fn normalized_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_list_literal_on_the_next_line_is_a_statement_not_an_index_holds() -> Bool {
+  normalized_ok(tag: "next_line_list", text: next_line_list_source)
+}

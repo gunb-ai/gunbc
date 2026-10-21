@@ -1,0 +1,280 @@
+module gunbc.machine_intake.megarac_fan_thermal_guard
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { Celsius, Percent }
+import product.fleet_fan_policy {
+  ChassisOutlet,
+  DimmChannel,
+  GuardCeilingUnstated,
+  GuardHolds,
+  GuardRunExited,
+  GuardSensorUnreadable,
+  GuardTripped,
+  GuardRestoreAutomatic,
+  SocJunction,
+  ThermalGuardRole,
+  VoltageRegulator,
+  fleet_fan_policy,
+  fleet_fan_guard_reading,
+}
+import extdeps.cpu.ampere { ampere_altra_thermal_limits_for_catalog }
+import extdeps.cpu.types { CpuModelCatalogRow, ProcessorThermalLimits }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
+  megarac_fan_pwm_all_body,
+  megarac_fan_pwm_all_of,
+  megarac_set_manager_status_body,
+}
+import gunbc.machine_intake.megarac_fan_mode_observation {
+  MegaRacFanPhaseDesire,
+  megarac_fan_boot_phase_desire,
+}
+
+// MANUAL LOW DUTY IS ADMITTED ONLY WHILE A RUN IS ALIVE TO GUARD IT. Trip, unread temperature,
+// or any run exit (success mid-phase, refusal, timeout, kill) leaves the Cooling Manager
+// enabled (manager_disabled 0) and that is the readback. Uncited DIMM/VRD/outlet figures MAY
+// trip toward automatic: the epistemic bar is against using them to justify lower cooling.
+
+data megarac_manual_duty_soc_sensor: NonEmptyStr = "CPU0_SOC_Temp"
+
+// The trip figures and their citations are the FLEET's, not MegaRAC's: product.fleet_fan_policy
+// fleet_fan_policy. This module only classifies this family's sensor names onto a guard role.
+
+fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> ThermalGuardRole? {
+  let s = sensor as String
+  match (s == "CPU0_SOC_Temp") {
+    true => Present { value: SocJunction }
+    false => match (s == "CPU0_DIMMG0_Temp") {
+      true => Present { value: DimmChannel }
+      false => match (s == "CPU0_DIMMG1_Temp") {
+        true => Present { value: DimmChannel }
+        false => match (s == "CPU0_SOC_VRDTemp") {
+          true => Present { value: VoltageRegulator }
+          false => match (s == "CPU0_DIMMVRDTemp") {
+            true => Present { value: VoltageRegulator }
+            false => match (s == "Outlet_1_Temp") {
+              true => Present { value: ChassisOutlet }
+              false => match (s == "Outlet_2_Temp") {
+                true => Present { value: ChassisOutlet }
+                false => Absent
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The SoC ceiling comes from the host's own CPU model, never a fleet literal. A model with no limits
+// row yields Absent, which the policy reads as an unstated ceiling and trips toward automatic.
+// No other guard role takes a margin below a ceiling.
+fn megarac_guard_component_ceiling(kind: ThermalGuardRole, cpu_limits: ProcessorThermalLimits?) -> Celsius? {
+  match kind {
+    SocJunction => match cpu_limits {
+      Present { value: l } => Present { value: l.maximum_continuous_junction_temperature }
+      Absent => Absent
+    }
+    DimmChannel => Absent
+    VoltageRegulator => Absent
+    ChassisOutlet => Absent
+  }
+}
+
+// WHAT ONE SENSOR READING SAYS, MAPPED EXHAUSTIVELY FROM THE POLICY'S GuardRestoreCause (a new policy cause
+// is a compile error here, not a silent trip). This sum exists only because the family verdict and restore
+// carry MegaRAC sensor names and the CPU model, which the role-keyed policy cause does not; it is a
+// projection of GuardRestoreCause, not a second vocabulary.
+// a ceiling the host's CPU model has no
+// limits row for is NOT a temperature trip (no threshold was established); it still restores automatic.
+type MegaRacSensorVerdict
+  = MegaRacSensorHolds
+  | MegaRacSensorTrips
+  | MegaRacSensorCeilingUnestablished
+
+fn megarac_sensor_verdict(sensor: NonEmptyStr, temperature: Celsius, cpu_limits: ProcessorThermalLimits?) -> MegaRacSensorVerdict {
+  match megarac_guard_sensor_class(sensor: sensor) {
+    Absent => MegaRacSensorHolds
+    Present { value: kind } => match fleet_fan_guard_reading(
+      policy: fleet_fan_policy,
+      role: kind,
+      component_ceiling: megarac_guard_component_ceiling(kind: kind, cpu_limits: cpu_limits),
+      reading: Present { value: temperature },
+    ) {
+      GuardHolds => MegaRacSensorHolds
+      GuardRestoreAutomatic { cause: GuardCeilingUnstated { role: _ } } => MegaRacSensorCeilingUnestablished
+      GuardRestoreAutomatic { cause: GuardTripped { role: _, temperature: _ } } => MegaRacSensorTrips
+      GuardRestoreAutomatic { cause: GuardSensorUnreadable { role: _ } } => MegaRacSensorTrips
+      GuardRestoreAutomatic { cause: GuardRunExited } => MegaRacSensorTrips
+    }
+  }
+}
+
+data megarac_manual_duty_required_sensors: List<NonEmptyStr> = [
+  "CPU0_SOC_Temp",
+  "CPU0_DIMMG0_Temp",
+  "CPU0_DIMMG1_Temp",
+  "CPU0_SOC_VRDTemp",
+  "CPU0_DIMMVRDTemp",
+  "Outlet_1_Temp",
+  "Outlet_2_Temp",
+]
+
+type MegaRacTempReading
+  = MegaRacTempObserved { sensor: NonEmptyStr, value: Celsius }
+  | MegaRacTempUnreadable { sensor: NonEmptyStr }
+
+fn megarac_temp_sensor(reading: MegaRacTempReading) -> NonEmptyStr {
+  match reading {
+    MegaRacTempObserved { sensor: n, value: _ } => n
+    MegaRacTempUnreadable { sensor: n } => n
+  }
+}
+
+fn megarac_temp_for(readings: List<MegaRacTempReading>, sensor: NonEmptyStr) -> MegaRacTempReading? {
+  match readings.first() {
+    Absent => Absent
+    Present { value: r } =>
+      if megarac_temp_sensor(reading: r) == sensor {
+        Present { value: r }
+      } else {
+        megarac_temp_for(readings: readings.skip(n: 1), sensor: sensor)
+      }
+  }
+}
+
+fn megarac_first_unread(
+  readings: List<MegaRacTempReading>,
+  required: List<NonEmptyStr>,
+) -> NonEmptyStr? {
+  match required.first() {
+    Absent => Absent
+    Present { value: s } => match megarac_temp_for(readings: readings, sensor: s) {
+      Absent => Present { value: s }
+      Present { value: r } => match r {
+        MegaRacTempUnreadable { sensor: u } => Present { value: u }
+        MegaRacTempObserved { sensor: _, value: _ } =>
+          megarac_first_unread(readings: readings, required: required.skip(n: 1))
+      }
+    }
+  }
+}
+
+type MegaRacThermalGuardVerdict
+  = MegaRacThermalGuardHolds
+  | MegaRacThermalGuardTrip { sensor: NonEmptyStr, temperature: Celsius }
+  | MegaRacThermalGuardUnread { sensor: NonEmptyStr }
+  | MegaRacThermalGuardCeilingUnestablished { sensor: NonEmptyStr, model: NonEmptyStr, read_obligation: NonEmptyStr }
+
+fn megarac_first_trip(
+  readings: List<MegaRacTempReading>,
+  required: List<NonEmptyStr>,
+  cpu: CpuModelCatalogRow,
+) -> MegaRacThermalGuardVerdict {
+  let cpu_limits = ampere_altra_thermal_limits_for_catalog(row: cpu)
+  match required.first() {
+    Absent => MegaRacThermalGuardHolds
+    Present { value: s } => match megarac_temp_for(readings: readings, sensor: s) {
+      Absent => MegaRacThermalGuardUnread { sensor: s }
+      Present { value: r } => match r {
+        MegaRacTempUnreadable { sensor: u } => MegaRacThermalGuardUnread { sensor: u }
+        MegaRacTempObserved { sensor: n, value: t } =>
+          match megarac_sensor_verdict(sensor: n, temperature: t, cpu_limits: cpu_limits) {
+            MegaRacSensorTrips => MegaRacThermalGuardTrip { sensor: n, temperature: t }
+            MegaRacSensorCeilingUnestablished =>
+              MegaRacThermalGuardCeilingUnestablished {
+                sensor: n,
+                model: cpu.model_number,
+                read_obligation: "read this CPU model's maximum continuous junction temperature from its datasheet and add its limits row" as NonEmptyStr,
+              }
+            MegaRacSensorHolds => megarac_first_trip(readings: readings, required: required.skip(n: 1), cpu: cpu)
+          }
+      }
+    }
+  }
+}
+
+fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>, cpu: CpuModelCatalogRow) -> MegaRacThermalGuardVerdict {
+  match megarac_first_unread(
+    readings: readings,
+    required: megarac_manual_duty_required_sensors,
+  ) {
+    Present { value: s } => MegaRacThermalGuardUnread { sensor: s }
+    Absent => megarac_first_trip(
+      readings: readings,
+      required: megarac_manual_duty_required_sensors,
+      cpu: cpu,
+    )
+  }
+}
+
+type MegaRacFanRestoreCause
+  = ThermalGuardTripped { sensor: NonEmptyStr, temperature: Celsius }
+  | TemperatureUnreadable { sensor: NonEmptyStr }
+  | CeilingUnestablished { sensor: NonEmptyStr, model: NonEmptyStr, read_obligation: NonEmptyStr }
+  | RunExited
+
+type MegaRacFanPolicyRestore
+  = ReEnableCoolingManager { cause: MegaRacFanRestoreCause }
+
+fn megarac_fan_exit_manager_readback_body() -> NonEmptyStr {
+  megarac_set_manager_status_body(standing: CoolingManagerAutomatic)
+}
+
+fn megarac_fan_safety_restore(verdict: MegaRacThermalGuardVerdict) -> MegaRacFanPolicyRestore? {
+  match verdict {
+    MegaRacThermalGuardHolds => Absent
+    MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
+      Present {
+        value: ReEnableCoolingManager {
+          cause: ThermalGuardTripped { sensor: s, temperature: t },
+        },
+      }
+    MegaRacThermalGuardUnread { sensor: s } =>
+      Present {
+        value: ReEnableCoolingManager {
+          cause: TemperatureUnreadable { sensor: s },
+        },
+      }
+    MegaRacThermalGuardCeilingUnestablished { sensor: s, model: m, read_obligation: o } =>
+      Present {
+        value: ReEnableCoolingManager {
+          cause: CeilingUnestablished { sensor: s, model: m, read_obligation: o },
+        },
+      }
+  }
+}
+
+fn megarac_fan_run_exit_restore() -> MegaRacFanPolicyRestore {
+  ReEnableCoolingManager { cause: RunExited }
+}
+
+type MegaRacFanPhaseWritePlan
+  = MegaRacFanPhaseWritesReady { manager_body: NonEmptyStr, pwm_body: NonEmptyStr? }
+  | MegaRacFanPhasePwmRefused { duty: Percent }
+
+fn megarac_fan_phase_write_plan(desire: MegaRacFanPhaseDesire) -> MegaRacFanPhaseWritePlan {
+  let manager_body = megarac_set_manager_status_body(standing: desire.manager)
+  match desire.manager {
+    CoolingManagerAutomatic =>
+      MegaRacFanPhaseWritesReady { manager_body: manager_body, pwm_body: Absent }
+    CoolingManagerDisabledManual => match megarac_fan_pwm_all_of(duty: desire.manual_pwm_min) {
+      MegaRacFanPwmAllRefused { duty: d } => MegaRacFanPhasePwmRefused { duty: d }
+      MegaRacFanPwmAllAdmitted { wire: w } => match megarac_fan_pwm_all_body(
+        pwm: MegaRacFanPwmAllAdmitted { wire: w },
+      ) {
+        Absent => MegaRacFanPhasePwmRefused { duty: desire.manual_pwm_min }
+        Present { value: b } =>
+          MegaRacFanPhaseWritesReady { manager_body: manager_body, pwm_body: Present { value: b } }
+      }
+    }
+  }
+}
+
+fn megarac_fan_boot_phase_write_plan() -> MegaRacFanPhaseWritePlan {
+  megarac_fan_phase_write_plan(desire: megarac_fan_boot_phase_desire)
+}

@@ -1,0 +1,489 @@
+module std.judgment_contract
+// THE SEMANTIC CONTRACT OF A DEMAND, BELOW ANY DECISION ABOUT STORING ONE.
+//
+// What a judgment IS -- its subject, the inputs its result depends on, the shape of that result,
+// and the identity derived from them -- is a fact about MEANING. Whether an answer is persisted,
+// where, under which provider, with what retention, is a fact about REALIZATION. Those are two
+// layers and this module is the lower one.
+//
+// THEY WERE ONE MODULE AND THE FORK WAS STRUCTURAL, NOT STYLISTIC. `std.materialization_provider`
+// carries the persistence projection, and it legitimately depends on
+// `v2.compiler.self_host.generation` for the pre-materialization identity a stored artifact is
+// keyed against. So a consumer that wanted only `JudgmentContract` -- the native compiler's own
+// scheduler, which persists nothing -- had to drag that dependency into its production entry
+// closure to get it. It did: the demand-engine cut pulled `self_host.generation` into
+// `v2.compiler.compile` and the emitted crate stopped building, on a realization defect in a
+// module the scheduler never calls. The import edge was the defect's carrier; this split removes
+// the edge rather than patching what it exposed.
+//
+// NOTHING HERE KNOWS ABOUT A STORE. No provider, no request family, no address, no retention. A
+// declaration that needs one of those belongs in the provider above, and the direction of that
+// dependency is the whole point: meaning does not import storage.
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.algebra { skip }
+import std.materialization_ladder { DemandNature }
+import std.cache_identity { ArtifactKindId }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural, HashFamily, Fnv1a64StructuralFamily, Sha256Family, Sha1Family, Sha512Family,
+  content_hash_family, as_content_hash_structural, serialize_content_hash, parse_content_hash,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
+
+
+// PROGRESS ON THE CARVE-OUT ABOVE, stated narrowly so it is not read as the dissolution: the
+// persistent-store realization (std.materialization_object store_lookup_decide) now mints its
+// ProbeFound from the stored BYTES -- payload_part derives every part digest and size from the
+// payload, and store_observed_digest folds them -- so on that route observed_digest is computed,
+// not asserted. The carve-out still stands for every other caller, because ProbeFound remains
+// freely constructible; its trigger (constructor confinement of ProviderProbe) is unchanged.
+
+// Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread):
+// the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the
+// structural-corner qualifier; std.computation_identity is the lattice authority). This slice
+// grounds exactly the StructurallyIdentical corner, because the exact structural content key is the
+// only sharing that key JUSTIFIES — and it DERIVES that grade from the binding it computes rather
+// than accepting one (see the derivation note below, review 44265). Advertising normalized or
+// extensional sharing while executing structural equality would be a fabricated capability, so
+// those grades are not reachable here at all; they arrive by the spine widening the KEY, not by
+// anyone passing a grade.
+
+// Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3):
+// CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with
+// producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This
+// contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide
+// serve or typed refusal under the request's correctness demands (declared-input key, artifact
+// kind, content verification, artifact completeness, identity grade). Backend faults stay in
+// CacheRejectReason at the transport and are deliberately not restated here; a transport that
+// cannot probe refuses at its own layer and no ProviderProbe is fabricated.
+
+// The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the
+// transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped
+// its diagnostics would green a red, which is the fabricated-plausible-output arm section 5
+// forbids. The rule has TWO halves and both are load-bearing: the obligation roster is derived from
+// the request (below), and the SATISFACTION roster is derived from the payload — carried outputs
+// are digested parts whose fold IS the artifact's content digest, so a claimed-but-absent output is
+// caught by the read-back comparison rather than believed (codex review 44278; the payload-binding
+// note carries the reasoning). Completeness is enforced on BOTH doors, and BOTH doors derive every
+// obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the
+// ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened
+// obligation list is UNWRITABLE at the admission door by construction — and checks kind, request
+// key, content digest, completeness, and identity grade before any byte enters the store;
+// provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract
+// artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT
+// (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door
+// — it is unrepresentable in the request. The first consumer target named here was the v1
+// resolved-graph disk-hit refusal; that disk tier was deleted on 2026-10-03 (it wrote nothing and
+// served no hit), so no production consumer of this contract exists in the seed today.
+
+// Declared-input order is part of the key: declared_inputs_digest folds in list order, so the
+// REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field
+// order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong
+// hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows
+// below, which fix an order by construction.
+
+type ArtifactOutputId = NonEmptyStr where brand("ArtifactOutputId")
+
+
+data output_parse_tree: ArtifactOutputId = "parse_tree"
+
+data output_parse_diagnostics: ArtifactOutputId = "parse_diagnostics"
+
+data output_parse_verdict: ArtifactOutputId = "parse_verdict"
+
+data output_typed_module_interface: ArtifactOutputId = "typed_module_interface"
+
+data output_typecheck_diagnostics: ArtifactOutputId = "typecheck_diagnostics"
+
+data output_resolved_graph: ArtifactOutputId = "resolved_graph"
+
+data output_source_indices: ArtifactOutputId = "source_indices"
+
+data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_diagnostic_union"
+
+data output_native_compiler_executable: ArtifactOutputId = "native_compiler_executable"
+
+data output_native_compiler_build_diagnostics: ArtifactOutputId = "native_compiler_build_diagnostics"
+
+data output_universe_test_identity_population: ArtifactOutputId = "universe_test_identity_population"
+
+data output_universe_module_import_closures: ArtifactOutputId = "universe_module_import_closures"
+
+data output_module_test_verdicts: ArtifactOutputId = "module_test_verdicts"
+
+data output_module_preparation_diagnostics: ArtifactOutputId = "module_preparation_diagnostics"
+
+data output_compute_work_outcome: ArtifactOutputId = "compute_work_outcome"
+
+data output_compute_work_log: ArtifactOutputId = "compute_work_log"
+
+data output_compute_work_outputs: ArtifactOutputId = "compute_work_outputs"
+
+// ONE DECLARED OUTPUT PER COMPUTE BINARY (gunbc.compute.work_request GunbcBinary): the set is closed,
+// so each binary part has its own row rather than an id recovered from a name.
+data output_compute_work_gunbc_binary: ArtifactOutputId = "compute_work_gunbc_binary"
+
+data output_compute_work_claim_batch_binary: ArtifactOutputId = "compute_work_claim_batch_binary"
+
+
+// AN IDENTITY COMPONENT IS THE VALUE ITSELF OR A DIGEST THAT SAYS WHICH FAMILY MINTED IT.
+//
+// The component used to be a bare Fnv1a64Structural, so a declared input that began as text -- a
+// toolchain's `rustc -vV`, an operation's arguments -- entered the identity as a sixty-four-bit
+// fingerprint OF that text. The canonical preimage a store compares on a hit was then a preimage of
+// fingerprints: two different texts sharing a fingerprint were the same demand, and no later hash
+// over that preimage could tell them apart, because what distinguished them was already gone.
+//
+// So text is carried WHOLE (IdentityText) and a digest carries its family (IdentityDigest). Which
+// families may key a persistent or cross-run store is NOT decided here -- this module knows no store.
+// std.materialization_provider judges each component's family against the scope it is asked to
+// address, and a structural fingerprint that reaches a persistent address is refused there by name.
+//
+// A THIRD ARM, BECAUSE A DIGEST'S FAMILY DOES NOT SAY WHOSE IDENTITY IT IS. Git names a tree by a
+// SHA-1, and that name is admissible as GIT'S identity of that object -- an upstream relation with
+// its own collision disposition -- while an arbitrary SHA-1 digest is not an admissible key at
+// all. So an upstream object identity names its relation, and the scope rule admits the relation,
+// never the bare family.
+type IdentityComponent
+  = IdentityText { content: NonEmptyStr }
+  | IdentityDigest { hash: ContentHash }
+  | IdentityUpstreamObject { relation: NonEmptyStr, hash: ContentHash }
+
+fn identity_text_component(content: NonEmptyStr) -> IdentityComponent {
+  IdentityText { content: content }
+}
+
+fn identity_digest_component(hash: ContentHash) -> IdentityComponent {
+  IdentityDigest { hash: hash }
+}
+
+fn identity_upstream_object_component(relation: NonEmptyStr, hash: ContentHash) -> IdentityComponent {
+  IdentityUpstreamObject { relation: relation, hash: hash }
+}
+
+fn identity_structural_component(digest: Fnv1a64Structural) -> IdentityComponent {
+  IdentityDigest { hash: as_content_hash_structural(structural: digest) }
+}
+
+type DeclaredInput {
+  ref: NonEmptyStr
+  component: IdentityComponent
+}
+
+type OccurrencePersistenceContract
+  = SemanticOnly
+  | Scoped
+  | Rebinding
+
+
+type PersistedOutputObligation {
+  id: ArtifactOutputId
+  occurrence_contract: OccurrencePersistenceContract
+}
+
+
+type ResultContract {
+  carries_semantic_value: Bool
+  ordered_diagnostics: Bool
+  carries_effect_requests_receipts: Bool
+  carries_refusal_arm: Bool
+  required_persisted_outputs: List<PersistedOutputObligation>
+}
+
+
+fn persisted_output(
+  id: ArtifactOutputId,
+  occurrence_contract: OccurrencePersistenceContract
+) -> PersistedOutputObligation {
+  PersistedOutputObligation { id: id, occurrence_contract: occurrence_contract }
+}
+
+
+type DemandIdentity {
+  kind: ArtifactKindId
+  subject: IdentityComponent
+  declared_inputs: List<DeclaredInput>
+}
+
+type LengthPrefixedField {
+  value: String
+  rest: String
+}
+
+
+type LengthPrefixedScan {
+  i: Int
+  hit: Int?
+}
+
+
+type DecodedDeclaredInputs {
+  inputs: List<DeclaredInput>
+  rest: String
+}
+
+
+
+
+fn length_prefixed_encode(s: String) -> String {
+  join([to_string(s.length()), "#", s], "")
+}
+
+
+fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
+  let cs = unicode_scalar_unfold(s: s)
+  let scan = cs |> fold(
+    init: LengthPrefixedScan { i: 0, hit: none },
+    f: (st, c) =>
+      match st.hit {
+        Present { value: _ } => st
+        Absent =>
+          if c == 35 {
+            LengthPrefixedScan { i: st.i, hit: Present { value: st.i } }
+          } else {
+            LengthPrefixedScan { i: st.i + 1, hit: none }
+          }
+      }
+  )
+  match scan.hit {
+    Absent => none
+    Present { value: hash_at } => {
+      let len_text = unicode_scalar_fold(xs: cs |> take(n: hash_at))
+      let after = unicode_scalar_fold(xs: cs |> skip(n: hash_at + 1))
+      match parse_int(s: len_text) {
+        Absent => none
+        Present { value: n } =>
+          if n < 0 {
+            none
+          } else {
+            let after_cs = unicode_scalar_unfold(s: after)
+            if (after_cs |> count()) < n {
+              none
+            } else {
+              Present {
+                value: LengthPrefixedField {
+                  value: unicode_scalar_fold(xs: after_cs |> take(n: n)),
+                  rest: unicode_scalar_fold(xs: after_cs |> skip(n: n))
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+
+type DecodedIdentityComponent {
+  component: IdentityComponent
+  rest: String
+}
+
+// THE FAMILY IS WRITTEN, NOT INFERRED FROM THE DIGEST'S LENGTH. serialize_content_hash writes two
+// families as bare hex and tells them apart by digit count; an identity encoding that leaned on
+// that would make its injectivity a property of today's family roster. The tag is the family, and
+// the decoder refuses a digest whose parsed family is not the family its tag names.
+fn hash_family_identity_tag(family: HashFamily) -> String {
+  match family {
+    Fnv1a64StructuralFamily => "fnv1a64-structural"
+    Sha256Family => "sha256"
+    Sha1Family => "sha1"
+    Sha512Family => "sha512"
+  }
+}
+
+fn identity_component_canonical(component: IdentityComponent) -> String {
+  match component {
+    IdentityText { content: t } =>
+      concat(length_prefixed_encode(s: "text"), length_prefixed_encode(s: t as String))
+    IdentityDigest { hash: h } =>
+      concat(
+        concat(
+          length_prefixed_encode(s: "digest"),
+          length_prefixed_encode(s: hash_family_identity_tag(family: content_hash_family(hash: h)))
+        ),
+        length_prefixed_encode(s: serialize_content_hash(hash: h) as String)
+      )
+    IdentityUpstreamObject { relation: r, hash: h } =>
+      concat(
+        concat(length_prefixed_encode(s: "upstream"), length_prefixed_encode(s: r as String)),
+        concat(
+          length_prefixed_encode(s: hash_family_identity_tag(family: content_hash_family(hash: h))),
+          length_prefixed_encode(s: serialize_content_hash(hash: h) as String)
+        )
+      )
+  }
+}
+
+type DecodedIdentityDigest {
+  hash: ContentHash
+  rest: String
+}
+
+fn identity_family_tagged_digest_decode(encoded: String) -> DecodedIdentityDigest? {
+  match length_prefixed_decode(s: encoded) {
+    Absent => none
+    Present { value: family } =>
+      match length_prefixed_decode(s: family.rest) {
+        Absent => none
+        Present { value: wire } =>
+          match parse_content_hash(wire: wire.value) {
+            Absent => none
+            Present { value: h } =>
+              if hash_family_identity_tag(family: content_hash_family(hash: h)) == family.value {
+                Present { value: DecodedIdentityDigest { hash: h, rest: wire.rest } }
+              } else {
+                none
+              }
+          }
+      }
+  }
+}
+
+fn identity_component_decode(encoded: String) -> DecodedIdentityComponent? {
+  match length_prefixed_decode(s: encoded) {
+    Absent => none
+    Present { value: tag } =>
+      if tag.value == "text" {
+        match length_prefixed_decode(s: tag.rest) {
+          Absent => none
+          Present { value: body } =>
+            if body.value == "" {
+              none
+            } else {
+              Present {
+                value: DecodedIdentityComponent {
+                  component: IdentityText { content: body.value as NonEmptyStr },
+                  rest: body.rest
+                }
+              }
+            }
+        }
+      } else if tag.value == "digest" {
+        match identity_family_tagged_digest_decode(encoded: tag.rest) {
+          Absent => none
+          Present { value: d } =>
+            Present { value: DecodedIdentityComponent { component: IdentityDigest { hash: d.hash }, rest: d.rest } }
+        }
+      } else if tag.value == "upstream" {
+        match length_prefixed_decode(s: tag.rest) {
+          Absent => none
+          Present { value: relation } =>
+            if relation.value == "" {
+              none
+            } else {
+              match identity_family_tagged_digest_decode(encoded: relation.rest) {
+                Absent => none
+                Present { value: d } =>
+                  Present {
+                    value: DecodedIdentityComponent {
+                      component: IdentityUpstreamObject { relation: relation.value as NonEmptyStr, hash: d.hash },
+                      rest: d.rest
+                    }
+                  }
+              }
+            }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn decode_declared_inputs(remaining: Int, rest: String, acc: List<DeclaredInput>) -> DecodedDeclaredInputs? {
+  if remaining == 0 {
+    Present { value: DecodedDeclaredInputs { inputs: acc, rest: rest } }
+  } else {
+    match length_prefixed_decode(s: rest) {
+      Absent => none
+      Present { value: ref_f } =>
+        if ref_f.value == "" {
+          none
+        } else {
+          match identity_component_decode(encoded: ref_f.rest) {
+            Absent => none
+            Present { value: decoded } =>
+              decode_declared_inputs(
+                remaining: remaining - 1,
+                rest: decoded.rest,
+                acc: concat(acc, [DeclaredInput { ref: ref_f.value as NonEmptyStr, component: decoded.component }])
+              )
+          }
+        }
+    }
+  }
+}
+
+fn demand_identity_canonical(demand: DemandIdentity) -> NonEmptyStr {
+  let inputs_enc = demand.declared_inputs |> fold(
+    init: "",
+    f: (acc, i) => concat(
+      concat(acc, length_prefixed_encode(s: i.ref as String)),
+      identity_component_canonical(component: i.component)
+    )
+  )
+  concat(
+    concat(
+      concat(
+        length_prefixed_encode(s: "demand"),
+        length_prefixed_encode(s: demand.kind as String)
+      ),
+      identity_component_canonical(component: demand.subject)
+    ),
+    concat(length_prefixed_encode(s: to_string(demand.declared_inputs |> count())), inputs_enc)
+  ) as NonEmptyStr
+}
+
+fn demand_identity_decode(encoded: String) -> DemandIdentity? {
+  match length_prefixed_decode(s: encoded) {
+    Absent => none
+    Present { value: tag } =>
+      if (tag.value == "demand") == false {
+        none
+      } else {
+        match length_prefixed_decode(s: tag.rest) {
+          Absent => none
+          Present { value: kind_f } =>
+            match identity_component_decode(encoded: kind_f.rest) {
+              Absent => none
+              Present { value: subject } =>
+                match length_prefixed_decode(s: subject.rest) {
+                  Absent => none
+                  Present { value: n_f } =>
+                    match parse_int(s: n_f.value) {
+                      Absent => none
+                      Present { value: n } =>
+                        match decode_declared_inputs(remaining: n, rest: n_f.rest, acc: []) {
+                          Absent => none
+                          Present { value: decoded } =>
+                            if decoded.rest == "" {
+                              Present {
+                                value: DemandIdentity {
+                                  kind: kind_f.value as ArtifactKindId,
+                                  subject: subject.component,
+                                  declared_inputs: decoded.inputs
+                                }
+                              }
+                            } else {
+                              none
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+type JudgmentContract {
+  demand_identity: DemandIdentity
+  result: ResultContract
+  demand_nature: DemandNature
+}
+
+
+fn judgment_required_output_ids(contract: JudgmentContract) -> List<ArtifactOutputId> {
+  contract.result.required_persisted_outputs |> map(o => o.id)
+}

@@ -1,0 +1,100 @@
+module gunbc.site.element.card
+
+import std.types { List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.design.material { BuildRule, StaticRule, decl }
+import gunbc.design.scale { scale_var, scale_border, space_0, space_8 }
+import gunbc.site.element.tokens {
+  radius_element, card_padding, card_border, card_leading_bar, height_card_label_row,
+}
+import gunbc.site.element.palette {
+  palette_var, palette_action_ink_name, SlotSurface, SlotBorder, SlotAction, SlotLeadingBar,
+}
+import gunbc.site.element.text { element_text_decls, ElementBody, ElementCardLabel }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, Border, BorderLeft, BorderRadius, CustomProperty, Display, Gap, Margin,
+  MarginLeft, MinHeight, MinWidth, Padding,
+}
+
+// Card: the one surface content sits on. A card may open with a label row (an uppercase label,
+// with optional trailing controls pushed to the far edge) and may thicken its leading border into
+// a bar, which the product uses for the description and status-update cards. The card owns its
+// own appearance only; where it sits and how wide it is belong to the composition around it.
+type CardEdge
+  = CardEdgePlain
+  | CardEdgeBar
+
+type CardLabelRow {
+  label: String
+  trailing: List<Fragment>
+}
+
+type Card {
+  edge: CardEdge
+  label_row: CardLabelRow?
+  body: List<Fragment>
+}
+
+data card_class: String = "el-card"
+data card_label_row_class: String = "el-card-label-row"
+data card_label_class: String = "el-card-label"
+data card_trailing_class: String = "el-card-trailing"
+data card_edge_attribute: String = "data-card-edge"
+
+fn card_edge_key(edge: CardEdge) -> String {
+  match edge {
+    CardEdgePlain => "plain"
+    CardEdgeBar => "bar"
+  }
+}
+
+fn card_label_row_nodes(row: CardLabelRow?) -> List<Fragment> {
+  match row {
+    Absent => []
+    Present { value: r } => [
+      el_attrs("div", [attr(name: "class", value: card_label_row_class)], concat(
+        [el_attrs("h2", [attr(name: "class", value: card_label_class)], [txt(r.label)])],
+        if count(r.trailing) == 0 { [] } else { [el_attrs("div", [attr(name: "class", value: card_trailing_class)], r.trailing)] })),
+    ]
+  }
+}
+
+fn card(input: Card) -> Fragment {
+  el_attrs("section", [
+    attr(name: "class", value: card_class),
+    attr(name: card_edge_attribute, value: card_edge_key(edge: input.edge)),
+  ], concat(card_label_row_nodes(row: input.label_row), input.body))
+}
+
+fn card_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: card_class }, decls: concat([
+      decl(prop: CustomProperty { name: palette_action_ink_name }, value: palette_var(slot: SlotAction)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: Background, value: palette_var(slot: SlotSurface)),
+      decl(prop: Border, value: scale_border(w: card_border, color_var: palette_var(slot: SlotBorder))),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: Padding, value: scale_var(t: card_padding)),
+    ], element_text_decls(role: ElementBody)) },
+    StaticRule { selector: RawSelector { text: join([".", card_class, "[", card_edge_attribute, "=\"", card_edge_key(edge: CardEdgeBar), "\"]"], "") }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: card_leading_bar, color_var: palette_var(slot: SlotLeadingBar))),
+    ] },
+    StaticRule { selector: ClassSelector { name: card_label_row_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: height_card_label_row)),
+    ] },
+    StaticRule { selector: ClassSelector { name: card_label_class }, decls: concat([
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ], element_text_decls(role: ElementCardLabel)) },
+    StaticRule { selector: ClassSelector { name: card_trailing_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MarginLeft, value: "auto"),
+    ] },
+  ]
+}

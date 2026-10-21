@@ -1,0 +1,2734 @@
+module v2.compiler.translate
+
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.types { List }
+import std.occurrence_identity {
+  OccurrenceSynthetic
+}
+import v2.extdeps.languages.dag {
+  namespace_graft_node_is_module_body,
+  emit_import_decl_emitted_node,
+  parse_import_block_idents,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound
+}
+import extdeps.communication.medium {
+  Medium
+}
+import v2.compiler.target_carriers {
+  target_source_medium
+}
+import v2.std.compilers.target_model {
+  lex_literal_index,
+  TargetModel,
+  TargetValueExpression,
+  target_value_expr_arrow_has_value_expression_body
+}
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  algebra_ref_is_grounded,
+  canonical_grounding_for_node,
+  inferred_facts_grounding_derived,
+  inferred_facts_witness_for_node
+}
+import v2.compiler.wrap_decision {
+  wrap_decision_gate
+}
+import v2.std.coercion {
+  CoercionCandidateSet,
+  CoercionResult,
+  coercion_candidate_set_from_declared_inhabitants,
+  coercion_identity_from_target_model,
+  coercion_fold_with_declared_priority
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Diagnostics,
+  NonEmptyDiagnostics,
+  node_locus,
+  Outcome,
+  None,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_merge,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending,
+  diagnostics_fatal_reason
+}
+import v2.std.witness {
+  Holds,
+  Violates
+}
+import v2.std.optional_layers { type_node_occupancy_child }
+import v2.std.node { positional_child_target_nodes,
+  BinderTypeEdge,
+  edge_is_core,
+  is_positional,
+  StructuralLabel,
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Authored,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_named_edge_is_metadata,
+  content_hash,
+  fold_node,
+  node_rebuild,
+  node_subtree_count,
+  node_subtree_nodes,
+  fold_list_node
+}
+import v2.std.type_binder {
+  type_param_names
+}
+import v2.std.node_query { binder_node_parts, find_binder_type, member_edge_type_node, find_arrow_body_child, find_named_child }
+import v2.std.fold_assembly {
+  node_list_from_node
+}
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  TargetValueExpression,
+  TargetTypeExprFieldSlot,
+  TargetTypeExpressionProjection,
+  TargetTypeExprVariantSlot,
+  TargetTypeExprAtom,
+  TargetTypeExprInstantiation,
+  TargetTypeExprOptionalInstantiation,
+  TargetTypeExprRecord,
+  TargetTypeExprSum,
+  TargetTypeExprArrow,
+  TargetCollectionRealization,
+  TargetTextCarrier,
+  TargetRepresentationChoice,
+  target_derive_supplemental_generic_bound_contract_catalog_from_node,
+  target_representation_parameter_slots_from_node,
+  target_collection_select_choice,
+  target_collection_realization_lookup_in_catalog,
+  target_carrier_free_monoid_node,
+  target_collection_set_carrier_node,
+  target_collection_set_element_type_node,
+  target_collection_free_monoid_element_type_node,
+  target_collection_type_node_is_set_carrier,
+  target_collection_type_node_is_free_monoid_carrier,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted,
+  target_type_expr_declaration_reference_emitted,
+  target_type_expr_optional_instantiation_emitted,
+  target_type_expr_emitted_wire_decode,
+  target_type_expr_instantiation_emitted,
+  target_type_expr_record_emitted,
+  target_type_expr_sum_emitted,
+  target_collection_choice_field_representation_parameters,
+  target_collection_choice_field_supplemental_generic_bound_contracts,
+  type_expr_projection_row_closedness_from_target,
+  type_expression_projection_from_target,
+  TargetText,
+  target_text_seq,
+  target_text_empty,
+  render_target_text,
+  target_collection_repr_from_node,
+  target_capability_eligibility_from_node,
+  target_capability_requirement_from_node,
+  target_collection_fallback_from_node
+}
+import v2.std.compilers.target_model {
+  TargetAtomRealization,
+  source_atom_value_for_realization_row,
+  target_atom_realization_lookup_in_catalog_node,
+  target_atom_realization_lookup_miss_diagnostic,
+  target_atom_value_expression,
+  target_model_named_edge,
+  target_value_expression_node,
+  TargetOwnershipUseSite,
+  OwnershipAtBindingProjection,
+  OwnershipAtFunctionReturn,
+  OwnershipAtFunctionParameter,
+  OwnershipAtStructField,
+  WrapByValue,
+  WrapByReference,
+  WrapDecisionGate,
+  WrapGateInapplicable,
+  WrapGateDecided,
+  target_reference_layer_apply_value_expression
+}
+
+import v2.std.arrow_signature {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order
+}
+import v2.std.qualified_name {
+  declaration_reference_path_optional,
+  parameter_reference_path_optional,
+  lexical_reference_label_optional
+}
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_at_optional, collection_count_shape }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+import v2.std.text {
+  String
+}
+import v2.compiler.target_serialize {
+  ArrowBodyNotATypeExpression,
+  BindingSpellingNotFound,
+  BundleChildDuplicate,
+  BundleChildFound,
+  BundleChildInvalidEdge,
+  BundleChildMissing,
+  ConcreteTokenClassMissing,
+  ConcreteTokenKindInvalid,
+  ConjInvalidEdge,
+  ConjNamedChildMissing,
+  GrammarInverseNotRealized,
+  GrammarRelationRowNotFound,
+  LexRuleLiteralNotFound,
+  ModuleNotATypeExpression,
+  Node,
+  SerializeRecursionLimitExhausted,
+  SgRcBundlePartial,
+  TargetAtomRealizationLookupMiss,
+  TargetBundleDuplicateEdge,
+  TargetBundleMalformed,
+  TargetFunctionSignatureRealizationLookupMiss,
+  TargetNodeTree,
+  TargetTypeExprEmittedShapeMalformed,
+  TranslateDiagnosticReason,
+  TypeExprArrowSplit,
+  TypeExprKindAuthorityInvalid,
+  TypeExpressionShapeMissing,
+  conj_named_child,
+  grammar_relation_row_for_bodied_arrow_serialize,
+  grammar_relation_row_for_emitted,
+  list_head_and_tail,
+  node_atom_identity,
+  serialize_concrete_syntax_tokens_to_source_string,
+  serialize_type_expr_emitted_positional_head_tail,
+  target_bundle_child,
+  target_bundle_child_lookup_step,
+  target_bundle_optional_child,
+  target_translation_rules_budget,
+  token_item_to_source_bounded,
+  translate_apply_use_site_ownership_to_projected_type,
+  translate_apply_use_site_ownership_to_type_shell,
+  translate_boundary_source_carrier_node,
+  translate_conj_invalid_edge_diagnostic,
+  translate_grammar_inverse_not_realized_diagnostic,
+  translate_grammar_relation_row_not_found_diagnostic,
+  translate_reference_layer_tokens_from_target,
+  translate_type_expression_shape_missing_diagnostic,
+  type_expr_atom_binding
+}
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+fn token_list_node_budget(tokens: List<Node>) -> Int {
+  fold_list(
+    xs: tokens,
+    empty: 0,
+    cons: fn(acc, item) { acc + node_subtree_count(n: item) }
+  )
+}
+fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: length(xs: tokens) + token_list_node_budget(tokens: tokens) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
+}
+
+type GroundingGatePassed {}
+
+// Refuse only recorded GroundingNotDerived on the Holds arm, with the gate's own fatal
+// ^translate_rejected_grounding_not_derived located at the node (review 46789 routed it through
+// canonical_grounding_from_inferred_facts and inherited the advisory's spelling; see the
+// diagnostic's note below). DerivedGrounding on Holds accepts without re-running canonical
+// admission. infer_facts_lookup_miss (Violates) is the compatibility class for trees with no infer
+// judgment at a node: emit_orchestration's synthetic InferredTree (`orch_emit_facts_lookup`) and
+// test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means
+// no infer judgment exists — not an underived one recorded and erased (review 47246). Production
+// paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward.
+// Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed
+// by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits
+// the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed
+// derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts.
+// translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate.
+// translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived
+// parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and
+// import-carrier shortcuts that preserve producer IR without fold_node (review 46681).
+// TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty
+// children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate*
+// fns return Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate
+// pattern as target_model.dag CtorTemplateUnit), not Outcome<Bool> — Bool would admit a meaningful
+// false the gate never produces. Empty is a FreeMonoid variant, not a unit type, so Outcome<Empty>
+// is an unresolved compile error. Callers bind with bind_outcome(fn(_) => ...) and never read the
+// payload; the signal is Accepted vs Rejected disposition only.
+
+// THE GATE'S REFUSAL HAS ITS OWN NAME, AND UNTIL 2026-09-21 IT DID NOT. Review 46789 routed this
+// arm through canonical_grounding_from_inferred_facts "so the typed ^infer_grounding_not_derived
+// diagnostic propagates" -- and it did, as the FATAL, spelled identically to the ADVISORY infer
+// carries on its Accepted path for the same node. One symbol, two contracts (DESIGN section 3, a
+// meaning fork): a rejection chain read as `infer_grounding_not_derived x35` where thirty-four
+// links were infer's frontier rows riding along and the last was THIS gate refusing to emit, and
+// no reader could tell which. Measured on the built native CLI at gunbc#11965's specimen
+// (7d3a2578). eval's gate already draws the line -- `eval_rejected_grounding_not_derived` is its
+// fatal, distinct from the advisory -- so this is the same precedent applied to translate. The
+// refusal is located at the node whose grounding emission needed; the frontier row for that same
+// node sits in front of it in the chain, and now the two say different things.
+fn translate_grounding_not_derived_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_rejected_grounding_not_derived,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
+    Holds { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: n, site: _ } =>
+          outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
+        DerivedGrounding { grounding: _ } =>
+          outcome_accepted(GroundingGatePassed {})
+      }
+    Violates { diagnostic: _ } =>
+      outcome_accepted(GroundingGatePassed {})
+  }
+}
+
+fn translate_derived_parent_underived_child_gate(
+  tree: InferredTree,
+  parent: Node,
+  child: Node
+) -> Outcome<GroundingGatePassed> {
+  match inferred_facts_witness_for_node(tree: tree, node: parent) {
+    Holds { value: parent_facts } =>
+      if inferred_facts_grounding_derived(facts: parent_facts) {
+        translate_grounding_derived_gate(tree: tree, node: child)
+      } else {
+        outcome_accepted(GroundingGatePassed {})
+      }
+    Violates { diagnostic: _ } =>
+      translate_grounding_derived_gate(tree: tree, node: child)
+  }
+}
+
+// AN ARROW'S CONTRACT EDGES ARE METADATA, NOT TRANSLATED VALUES (v2.std.node
+// arrow_named_edge_is_contract; docs/plans/arrow-contract-edges.md). Their targets -- effect claims,
+// execution mode, resource requirements -- are never inferred (v2.compiler.infer skips them), so they
+// carry no grounding to require; gating them would refuse every operation once a missing-facts lookup
+// stops being the compatibility accept. The walk therefore skips a contract edge under an Arrow, and
+// only there: the same label elsewhere is not a contract edge and is gated like any child.
+fn translate_edge_is_arrow_contract(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => arrow_named_edge_is_metadata(e: edge)
+    _ => false
+  }
+}
+
+fn translate_grounding_derived_gate_subtree(
+  tree: InferredTree,
+  root: Node
+) -> Outcome<GroundingGatePassed> {
+  bind_outcome(
+    o: translate_grounding_derived_gate(tree: tree, node: root),
+    f: fn(_) {
+      fold(root.children, init: outcome_accepted(GroundingGatePassed {}), f: fn(acc, e) {
+        bind_outcome(
+          o: acc,
+          f: fn(_) {
+            if translate_edge_is_arrow_contract(parent: root, edge: e) {
+              outcome_accepted(GroundingGatePassed {})
+            } else {
+              translate_grounding_derived_gate_subtree(tree: tree, root: e.target)
+            }
+          }
+        )
+      })
+    }
+  )
+}
+
+fn translate_bodied_arrow_shortcut_after_subtree_gate(
+  tree: InferredTree,
+  arrow: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: arrow),
+    f: fn(_) {
+      translate_bodied_arrow_preserve_producer_ir(arrow: arrow)
+    }
+  )
+}
+
+fn translate_projection_absent_bodied_arrow_fold_init(
+  tree: InferredTree,
+  node: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: node),
+    f: fn(_) {
+      translate_type_fold_init(node: node)
+    }
+  )
+}
+
+fn translate_import_shortcut_after_subtree_gate(
+  tree: InferredTree,
+  import_node: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: import_node),
+    f: fn(_) {
+      translate_import_production_to_carrier(import_node: import_node)
+    }
+  )
+}
+
+fn translate_grounding_derived_gate_at_producer(
+  tree: InferredTree,
+  node: Node
+) -> Outcome<GroundingGatePassed> {
+  translate_grounding_derived_gate(tree: tree, node: node)
+}
+
+fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_sg_rc_bundle_partial,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        parent.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: Present { value: child }, diagnostics: None }
+        BundleChildMissing =>
+          Accepted { value: Absent, diagnostics: None }
+        BundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: ^translate_target_bundle_duplicate_edge,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
+      }
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Disj } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+  }
+}
+fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
+  conj_named_child(parent: row, edge_name: ^grammar_relation_field_emitted)
+}
+fn grammar_inverse_bodied_arrow_validated(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
+    f: fn(rules) {
+      bind_outcome(
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        f: fn(_) {
+          outcome_accepted(emitted)
+        }
+      )
+    }
+  )
+}
+
+fn translate_bodied_arrow_preserve_producer_ir(arrow: Node) -> Outcome<Node> {
+  outcome_accepted(arrow)
+}
+fn serialize_concrete_syntax_tokens_to_source(
+  target: TargetModel,
+  tokens: List<ConcreteSyntaxToken>
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
+    f: fn(carrier) {
+      target_source_medium(text: render_target_text(t: carrier), target: target)
+    }
+  )
+}
+fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_lex_rule_literal_not_found,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: token_class } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+}),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_binding_spelling_not_found,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: binding } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+}),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn token_sequence_to_source_bounded(
+  remaining: Int,
+  tokens: List<Node>,
+  target: TargetModel
+) -> Outcome<TargetText> {
+  let lex = lex_literal_index(rules: target.lex)
+  fold_list(
+    xs: tokens,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, token_node) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match token_item_to_source_bounded(remaining - 1, token_node, target, lex) {
+            Accepted { value: source, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: source),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(pending: ad, rejected: r)
+              }
+          }
+      }
+    }
+  )
+}
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetText> {
+  bind_outcome(
+    o: token_sequence_serialize_measure(tokens: tokens, target: target),
+    f: fn(measure) {
+      token_sequence_to_source_bounded(measure, tokens, target)
+    }
+  )
+}
+
+fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_selection_policy),
+    f: fn(priority_node) {
+      Accepted {
+        value: priority_node,
+        diagnostics: None
+      }
+    }
+  )
+}
+fn coercion_candidates_from_target_model(
+  target: TargetModel
+) -> Outcome<CoercionCandidateSet> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_declared_inhabitants),
+    f: fn(inhabitants_root) {
+      coercion_candidate_set_from_declared_inhabitants(
+        inhabitants_root: inhabitants_root,
+        closedness_property: ^target_model_edge_declared_inhabitants
+      )
+    }
+  )
+}
+fn coerce_grounded_node(
+  source: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<CoercionResult> {
+  match coercion_identity_from_target_model(source: source, target: target) {
+    Accepted { value: identity, diagnostics: d } =>
+      Accepted { value: identity, diagnostics: d }
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: target_selection_priority_from_model(target: target),
+        f: fn(priority) {
+          bind_outcome(
+            o: coercion_candidates_from_target_model(target: target),
+            f: fn(candidates) {
+              bind_outcome(
+                o: canonical_grounding_for_node(tree: tree, node: source),
+                f: fn(grounding) {
+                  coercion_fold_with_declared_priority(
+                    source: grounding,
+                    candidates: candidates,
+                    priority: priority
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+  }
+}
+// AN ARROW THAT CARRIES A BODY IS A DECLARATION, NOT A TYPE EXPRESSION. The type-expression
+// arrow projection reads only the positional parameter and result children, so projecting a
+// bodied arrow through it renders the signature and discards the body: a function with no
+// substance, printed as though it were the program (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body). The projection refuses here, located at the
+// arrow, rather than dropping the body; a bodied arrow is rendered only by the bodied-arrow route,
+// which reads the same grammar rows backward.
+// A PARAMETER REFERENCE IS A VALUE, NEVER A TYPE EXPRESSION. v2.compiler.resolve resolves type
+// positions in the type-role frame, which carries no value binder, so no resolved type expression
+// holds one; were one to arrive, reading it by connective would fold its spine as a record of its
+// own segments. It refuses at the reference instead.
+fn translate_parameter_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_parameter_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A LEXICAL REFERENCE IS LIKEWISE A VALUE: a `let`, arm or lambda binder is never in the type-role
+// frame, and reading its marked Conj by connective would emit it as an empty record.
+fn translate_lexical_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_lexical_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn translate_arrow_body_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_arrow_body_not_a_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+// ONLY THE TWO REJECTIONS THAT MEAN "NO BODY" ADMIT THE SIGNATURE PROJECTION: a missing body edge,
+// and a node that is not an arrow. Every other outcome -- a found body, an ambiguous one, or a
+// rejection reason `find_arrow_body_child` grows later -- counts as carrying a body and refuses,
+// so a new reason cannot silently widen into dropping a body.
+fn translate_arrow_carries_body(node: Node) -> Bool {
+  match find_arrow_body_child(root: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: r } =>
+      !((diagnostics_fatal_reason(d: r) == ^arrow_body_child_missing) || (diagnostics_fatal_reason(d: r) == ^arrow_body_child_not_arrow))
+  }
+}
+fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
+  bind_outcome(
+    o: find_named_child(root: node, name: ^target_collection_choice_field_form),
+    f: fn(form_node) {
+      bind_outcome(
+        o: target_collection_repr_from_node(node: form_node),
+        f: fn(form) {
+          bind_outcome(
+            o: find_named_child(
+              root: node,
+              name: ^target_collection_choice_field_representation_parameters
+            ),
+            f: fn(representation_parameters_node) {
+              bind_outcome(
+                o: target_representation_parameter_slots_from_node(
+                  node: representation_parameters_node
+                ),
+                f: fn(representation_parameters) {
+                  bind_outcome(
+                    o: find_named_child(root: node, name: ^target_collection_choice_field_constraints),
+                    f: fn(constraints_node) {
+                      bind_outcome(
+                        o: node_list_from_node(
+                          node: constraints_node,
+                          decode_item: target_capability_requirement_from_node
+                        ),
+                        f: fn(constraints) {
+                          bind_outcome(
+                            o: find_named_child(
+                              root: node,
+                              name: ^target_collection_choice_field_supplemental_generic_bound_contracts
+                            ),
+                            f: fn(contracts_node) {
+                              bind_outcome(
+                                o: target_derive_supplemental_generic_bound_contract_catalog_from_node(
+                                  representation_parameters: representation_parameters,
+                                  node: contracts_node,
+                                  at: node
+                                ),
+                                f: fn(supplemental_catalog) {
+                                  outcome_accepted(
+                                    TargetRepresentationChoice {
+                                      form: form,
+                                      representation_parameters: supplemental_catalog.representation_parameters,
+                                      constraints: constraints,
+                                      supplemental_generic_bound_contracts: supplemental_catalog.contracts
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
+  bind_outcome(
+    o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_element),
+    f: fn(element_carrier) {
+      bind_outcome(
+        o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_emitted),
+        f: fn(emitted) {
+          Accepted {
+            value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
+            diagnostics: None
+          }
+        }
+      )
+    }
+  )
+}
+
+fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<TargetTextCarrier>> {
+  bind_outcome(
+    o: conj_optional_named_child(parent: bundle, edge_name: ^target_collection_row_field_text_carrier),
+    f: fn(opt) {
+      match opt {
+        Present { value: node } =>
+          bind_outcome(
+            o: target_text_carrier_from_node(node: node),
+            f: fn(tc) { Accepted { value: optional_present(value: tc), diagnostics: None } }
+          )
+        Absent => Accepted { value: optional_absent(), diagnostics: None }
+      }
+    }
+  )
+}
+
+fn target_collection_realization_from_bundle(
+  bundle: Node
+) -> Outcome<TargetCollectionRealization> {
+  bind_outcome(
+    o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_source_carrier),
+    f: fn(source_carrier) {
+      bind_outcome(
+        o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_primary),
+        f: fn(primary_node) {
+          bind_outcome(
+            o: target_collection_choice_from_node(node: primary_node),
+            f: fn(primary) {
+              bind_outcome(
+                o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_alternatives),
+                f: fn(alternatives_node) {
+                  bind_outcome(
+                    o: node_list_from_node(
+                      node: alternatives_node,
+                      decode_item: target_collection_choice_from_node
+                    ),
+                    f: fn(alternatives) {
+                      bind_outcome(
+                        o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_fallback),
+                        f: fn(fallback_node) {
+                          bind_outcome(
+                            o: target_collection_fallback_from_node(node: fallback_node),
+                            f: fn(fallback_diagnostic) {
+                              bind_outcome(
+                                o: target_text_carrier_optional_from_bundle(bundle: bundle),
+                                f: fn(text_carrier) {
+                                  bind_outcome(
+                                    o: conj_named_child(
+                                      parent: bundle,
+                                      edge_name: ^target_collection_row_field_capability_eligibility
+                                    ),
+                                    f: fn(eligibility_node) {
+                                      bind_outcome(
+                                        o: target_capability_eligibility_from_node(
+                                          node: eligibility_node
+                                        ),
+                                        f: fn(capability_eligibility) {
+                                          Accepted {
+                                            value: TargetCollectionRealization {
+                                              source_carrier: source_carrier,
+                                              primary: primary,
+                                              alternatives: alternatives,
+                                              fallback_diagnostic: fallback_diagnostic,
+                                              text_carrier: text_carrier,
+                                              capability_eligibility: capability_eligibility
+                                            },
+                                            diagnostics: None
+                                          }
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
+  collection_realization_from_target_carrier(
+    target: target,
+    expected_source_carrier: target_collection_set_carrier_node()
+  )
+}
+
+fn free_monoid_collection_realization_from_target(
+  target: TargetModel
+) -> Outcome<TargetCollectionRealization> {
+  collection_realization_from_target_carrier(
+    target: target,
+    expected_source_carrier: target_carrier_free_monoid_node()
+  )
+}
+
+fn collection_realization_from_target_carrier(
+  target: TargetModel,
+  expected_source_carrier: Node
+) -> Outcome<TargetCollectionRealization> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_collection_realization),
+    f: fn(catalog_node) {
+      bind_outcome(
+        o: node_list_from_node(
+          node: catalog_node,
+          decode_item: fn(row_node) {
+            target_collection_realization_from_bundle(bundle: row_node)
+          }
+        ),
+        f: fn(rows) {
+          target_collection_realization_lookup_in_catalog(
+            catalog: rows,
+            source_carrier: expected_source_carrier
+          )
+        }
+      )
+    }
+  )
+}
+
+fn project_set_collection_type_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_set_element_type_node(set_node: node) {
+    Present { value: elem } =>
+      bind_outcome(
+        o: collection_realization_from_target(target: target),
+        f: fn(row) {
+          bind_outcome(
+            o: target_collection_select_choice(
+              eligibility_table: row.capability_eligibility,
+              primary: row.primary,
+              alternatives: row.alternatives,
+              elem: elem
+            ),
+            f: fn(selected) {
+          match selected {
+            Present { value: choice } =>
+              bind_outcome(
+                o: translate_type_expression_project(node: elem, target: target, projection: projection),
+                f: fn(elem_projected) {
+                  Accepted {
+                    value: target_type_expr_instantiation_emitted(
+                      form: projection.instantiation_form,
+                      head: target_type_expr_atom_emitted(
+                        form: projection.atom_form,
+                        identity: choice.form.apply.surface
+                      ),
+                      args: Cons { head: elem_projected, tail: Empty }
+                    ),
+                    diagnostics: None
+                  }
+                }
+              )
+            Absent => outcome_rejected(row.fallback_diagnostic)
+          }
+            }
+          )
+        }
+      )
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn project_free_monoid_collection_type_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match target_collection_free_monoid_element_type_node(free_monoid_node: node) {
+    Present { value: elem } =>
+      bind_outcome(
+        o: free_monoid_collection_realization_from_target(target: target),
+        f: fn(row) {
+          match row.text_carrier {
+            Present { value: text_carrier } =>
+              if content_hash(n: elem) == content_hash(n: text_carrier.element_carrier) {
+                Accepted { value: text_carrier.emitted_type_node, diagnostics: None }
+              } else {
+                project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
+              }
+            Absent =>
+              project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
+          }
+        }
+      )
+    Absent =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+  }
+}
+
+fn project_free_monoid_via_vec_choice(
+  row: TargetCollectionRealization,
+  elem: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_collection_select_choice(
+      eligibility_table: row.capability_eligibility,
+      primary: row.primary,
+      alternatives: row.alternatives,
+      elem: elem
+    ),
+    f: fn(selected) {
+  match selected {
+    Present { value: choice } =>
+      bind_outcome(
+        o: translate_type_expression_project(node: elem, target: target, projection: projection),
+        f: fn(elem_projected) {
+          bind_outcome(
+            o: translate_apply_use_site_ownership_to_projected_type(
+              projected: elem_projected,
+              source_carrier: elem,
+              target: target,
+              use_site: OwnershipAtBindingProjection
+            ),
+            f: fn(elem_storage) {
+              Accepted {
+                value: target_type_expr_instantiation_emitted(
+                  form: projection.instantiation_form,
+                  head: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: choice.form.apply.surface
+                  ),
+                  args: Cons { head: elem_storage, tail: Empty }
+                ),
+                diagnostics: None
+              }
+            }
+          )
+        }
+      )
+    Absent => outcome_rejected(row.fallback_diagnostic)
+  }
+    }
+  )
+}
+type TypeExprTranslateAcc
+  = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
+  | TypeExprTranslateVariants { variants: List<TargetTypeExprVariantSlot> }
+  | TypeExprTranslatePositional { items: List<Node> }
+  | TypeExprTranslateDone { node: Node }
+  | TypeExprTranslateBinder { type_expr: Optional<Node> }
+
+// A GENERIC TYPE DECLARATION'S MEMBER IS REFUSED HERE for the reason a generic Arrow is refused at
+// target_serialize_bodied_arrow_from_model: its target is the v2.std.type_binder wrapper, and the
+// record form below would render the wrapper's two edges as fields while dropping the parameter list. Until the target
+// grammar carries a type-parameter row translate_type_expression_project refuses
+// translate_reason_generic_type_decl_not_rendered, located at the member.
+fn translate_generic_type_decl_not_rendered_diagnostic(member: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_reason_generic_type_decl_not_rendered,
+    at: node_locus(node: member),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// PRE-ORDER, because the projection below is a catamorphism: it translates the binder Conj as a
+// child before any anchor is finalized, so a check at finalize never runs. The first node in the
+// subtree carrying binders is the refusal's locus.
+fn translate_type_param_carrier_optional(node: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if count(type_param_names(n: m)) > 0 { optional_present(value: m) } else { Absent }
+    }
+  })
+}
+
+// THE SHARED PER-NODE TRANSLATION BOUNDARY: root and nested positions both finalize here, so an
+// Optional (the one recognizer, v2.std.optional_layers type_node_occupancy_child ->
+// declaration_denotation_is_optional) takes the target's optional head and optional instantiation
+// form wherever it sits -- a field, a generic argument, a parameter -- never only at the root. The
+// payload is already projected by the fold, so T?? keeps its depth.
+fn translate_algebra_finalize_at_node(
+  acc: TypeExprTranslateAcc,
+  anchor: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match type_node_occupancy_child(n: anchor) {
+    Absent => translate_algebra_finalize(acc: acc, anchor: anchor, projection: projection)
+    Present { value: _ } =>
+      match acc {
+        TypeExprTranslatePositional { items: projected } =>
+          bind_outcome(
+            o: list_head_and_tail(xs: projected, node: anchor),
+            f: fn(split) {
+              bind_outcome(
+                o: translate_type_expression_project(
+                  node: Node {
+                    kind: TypeNode { connective: Atom { identity: projection.optional_head } },
+                    children: [],
+                    occurrence_id: anchor.occurrence_id
+                  },
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(head_projected) {
+                  outcome_accepted(
+                    target_type_expr_optional_instantiation_emitted(
+                      form: projection.optional_instantiation_form,
+                      head: head_projected,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            }
+          )
+        _ => translate_algebra_finalize(acc: acc, anchor: anchor, projection: projection)
+      }
+  }
+}
+
+fn translate_algebra_finalize(
+  acc: TypeExprTranslateAcc,
+  anchor: Node,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match anchor.kind {
+    TypeNode { connective: connective } =>
+      match connective {
+        Atom { identity: _ } =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Conj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateBinder { type_expr: translated } =>
+              match translated {
+                Present { value: n } => outcome_accepted(n)
+                Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+              }
+            TypeExprTranslateSlots { slots: fields } =>
+              if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
+                outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+              } else {
+                outcome_accepted(
+                  target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
+                )
+              }
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Disj =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateVariants { variants: variants } =>
+              outcome_accepted(
+                target_type_expr_sum_emitted(form: projection.disj_form, variants: variants)
+              )
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Instantiation =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslatePositional { items: projected } =>
+              bind_outcome(
+                o: list_head_and_tail(xs: projected, node: anchor),
+                f: fn(split) {
+                  outcome_accepted(
+                    target_type_expr_instantiation_emitted(
+                      form: projection.instantiation_form,
+                      head: split.head,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+        Arrow =>
+          match acc {
+            TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+          }
+      }
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+  }
+}
+
+fn translate_type_expression_arrow_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  if translate_arrow_carries_body(node: node) {
+    outcome_rejected(translate_arrow_body_not_a_type_expression_diagnostic(node: node))
+  } else {
+    translate_type_expression_arrow_project_signature(
+      node: node,
+      target: target,
+      projection: projection
+    )
+  }
+}
+
+fn translate_type_expression_arrow_project_signature(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_arrow_signature_split(arrow: node),
+    f: fn(original_split) {
+      bind_outcome(
+        o: translate_project_arrow_split_types(
+          original_split: original_split,
+          target: target,
+          projection: projection,
+          anchor: node
+        ),
+        f: fn(split) {
+          outcome_accepted(
+            target_type_expr_arrow_emitted(
+              form: projection.arrow_form,
+              inputs: split.inputs,
+              output: split.output
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+// AN ARROW'S INPUTS ARE ITS DOMAIN BINDERS IN DECLARED ORDER; ITS OUTPUT IS POSITIONAL CHILD 1. The
+// domain is a Conj of Named binders (positional child 0) whose stored sequence is not the signature's
+// order, so the order is read through v2.std.arrow_signature arrow_declared_parameter_order -- the one
+// reader -- and each label is joined to its binder's type. An Arrow with no order edge, a malformed
+// one, a domain that is not a Conj of the ordered labels, or no codomain REFUSES: in particular the
+// retired positional-types shape [T1..Tn, U] has no order edge and never projects.
+fn translate_arrow_signature_split(arrow: Node) -> Outcome<TypeExprArrowSplit> {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+    ArrowParameterOrderMalformed => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+    ArrowParameterOrderDeclared { labels: labels } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+        Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+        Present { value: domain } =>
+          match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
+            Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+            Present { value: codomain } =>
+              translate_arrow_signature_split_from(labels: labels, domain: domain, codomain: codomain)
+          }
+      }
+  }
+}
+
+// Each declared label selects its domain binder's type, in declared order; a label the domain does not
+// bind refuses (find_named_child), never skipped.
+fn translate_arrow_signature_split_from(labels: List<Symbol>, domain: Node, codomain: Node) -> Outcome<TypeExprArrowSplit> {
+  bind_outcome(
+    o: fold(labels, init: outcome_accepted(Empty), f: fn(acc, label) {
+      bind_outcome(o: acc, f: fn(so_far) {
+        bind_outcome(o: find_binder_type(root: domain, name: label), f: fn(t) {
+          outcome_accepted(list_snoc_item(xs: so_far, item: t))
+        })
+      })
+    }),
+    f: fn(domain_types) { outcome_accepted(TypeExprArrowSplit { inputs: domain_types, output: codomain }) }
+  )
+}
+
+// THE FOLD READS A RESOLVED CORPUS-DECLARATION REFERENCE BEFORE IT READS THE CONNECTIVE. Resolution
+// carries a reference to a declaration as its declaring path (v2.compiler.resolve
+// resolved_reference_node), a qualified-name spine that shares the Conj connective with a record;
+// folded by connective it would become TypeExprTranslateSlots and be emitted as a two-field record
+// of its own segments. So the spine is decided first and emitted through the target's declaration
+// reference form (v2.std.compilers.target_model target_type_expr_declaration_reference_emitted):
+// the derived module-scoped spelling where the target has one, a located refusal where it has none
+// -- never the leaf, which is the collapse resolution refused to make. The spine is DONE at init,
+// so its segment children are never folded as slots.
+// A BINDER NODE TRANSLATES AS ITS TYPE (XL-2 PR2b-3). Its BinderTypeEdge child's translation, finalized
+// against that type, is the binder's translation; its BinderDefaultEdge child is a value, not part of
+// the type, so its fold result is discarded here whatever it was. A binder node with no type, or a
+// second type, refuses.
+fn translate_binder_node_step(
+  target: TargetModel,
+  done: TypeExprTranslateAcc,
+  d: Diagnostics,
+  e: Edge,
+  child: Outcome<TypeExprTranslateAcc>,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<TypeExprTranslateAcc> {
+  if is_positional(e: e) {
+    outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: e.target))
+  } else {
+      if edge_is_core(e: e, marker: BinderTypeEdge) {
+        match child {
+          Rejected { diagnostics: cr } => Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+          Accepted { value: child_acc, diagnostics: cd } =>
+            bind_outcome(
+              o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
+              f: fn(translated) {
+                Accepted { value: TypeExprTranslateBinder { type_expr: Present { value: translated } }, diagnostics: diagnostics_merge(outer: d, inner: cd) }
+              }
+            )
+        }
+      } else {
+        Accepted { value: done, diagnostics: d }
+      }
+  }
+}
+
+// The type a record member's ownership is decided over: a binder's type, or a Positional member's
+// target. A Named member of a record type that is not a binder refuses here, located at its target,
+// so a hand-built name-to-type edge is never rendered as if it were a well-formed field.
+fn translate_binder_member_type(e: Edge) -> Outcome<Node> {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => outcome_accepted(t)
+    Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: e.target))
+  }
+}
+
+fn translate_algebra(
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
+  NodeFold {
+    init: fn(n) {
+      match declaration_reference_path_optional(node: n) {
+        Present { value: path } =>
+          bind_outcome(
+            o: target_type_expr_declaration_reference_emitted(
+              projection: projection,
+              path: path,
+              reference: n
+            ),
+            f: fn(emitted) {
+              Accepted { value: TypeExprTranslateDone { node: emitted }, diagnostics: None }
+            }
+          )
+        Absent =>
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_parameter_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
+      match lexical_reference_label_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_lexical_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
+      match n.kind {
+        TypeNode { connective: connective } =>
+          match connective {
+            Atom { identity: id } =>
+              Accepted {
+                value: TypeExprTranslateDone {
+                  node: target_type_expr_atom_emitted(
+                    form: projection.atom_form,
+                    identity: id
+                  )
+                },
+                diagnostics: None
+              }
+            Conj =>
+              match binder_node_parts(n: n) {
+                Present { value: _ } =>
+                  Accepted { value: TypeExprTranslateBinder { type_expr: Absent }, diagnostics: None }
+                Absent =>
+                  Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+              }
+            Disj =>
+              Accepted {
+                value: TypeExprTranslateVariants { variants: Empty },
+                diagnostics: None
+              }
+            Instantiation =>
+              Accepted {
+                value: TypeExprTranslatePositional { items: Empty },
+                diagnostics: None
+              }
+            Arrow =>
+              bind_outcome(
+                o: translate_type_expression_arrow_project(
+                  node: n,
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(emitted) {
+                  Accepted {
+                    value: TypeExprTranslateDone { node: emitted },
+                    diagnostics: None
+                  }
+                }
+              )
+          }
+        ComputationNode { behavior: _ } =>
+          outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
+      }
+      }
+      }
+    },
+    step: fn(acc, e, child) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: done, diagnostics: d } =>
+          match done {
+            TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateBinder { type_expr: _ } =>
+              translate_binder_node_step(target: target, done: done, d: d, e: e, child: child, projection: projection)
+            TypeExprTranslateSlots { slots: slots } =>
+              match e.label {
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+                Authored { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
+                        f: fn(projected) {
+                          bind_outcome(
+                            o: bind_outcome(
+                              o: translate_binder_member_type(e: e),
+                              f: fn(member_type) {
+                                translate_apply_use_site_ownership_to_projected_boundary(
+                                  projected: projected,
+                                  source_for_binding: member_type,
+                                  target: target,
+                                  projection: projection,
+                                  use_site: OwnershipAtStructField
+                                )
+                              }
+                            ),
+                            f: fn(wrapped) {
+                              Accepted {
+                                value: TypeExprTranslateSlots {
+                                  slots: list_snoc_item(
+                                    xs: slots,
+                                    item: TargetTypeExprFieldSlot {
+                                      label: label,
+                                      type_expr: wrapped
+                                    }
+                                  )
+                                },
+                                diagnostics: diagnostics_merge(outer: d, inner: cd)
+                              }
+                            }
+                          )
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+            TypeExprTranslateVariants { variants: variants } =>
+              match e.label {
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+                Authored { name: label } =>
+                  match child {
+                    Rejected { diagnostics: cr } =>
+                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                    Accepted { value: child_acc, diagnostics: cd } =>
+                      bind_outcome(
+                        o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
+                        f: fn(projected) {
+                          Accepted {
+                            value: TypeExprTranslateVariants {
+                              variants: list_snoc_item(
+                                xs: variants,
+                                item: TargetTypeExprVariantSlot {
+                                  label: label,
+                                  type_expr: projected
+                                }
+                              )
+                            },
+                            diagnostics: diagnostics_merge(outer: d, inner: cd)
+                          }
+                        }
+                      )
+                  }
+                Positional =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
+              }
+            TypeExprTranslatePositional { items: items } =>
+              match child {
+                Rejected { diagnostics: cr } =>
+                  Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                Accepted { value: child_acc, diagnostics: cd } =>
+                  bind_outcome(
+                    o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
+                    f: fn(projected) {
+                      Accepted {
+                        value: TypeExprTranslatePositional {
+                          items: list_snoc_item(xs: items, item: projected)
+                        },
+                        diagnostics: diagnostics_merge(outer: d, inner: cd)
+                      }
+                    }
+                  )
+              }
+          }
+      }
+    }
+  }
+}
+
+fn translate_type_expression_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match translate_type_param_carrier_optional(node: node) {
+    Present { value: member } => outcome_rejected(translate_generic_type_decl_not_rendered_diagnostic(member: member))
+    Absent => translate_type_expression_project_admitted(node: node, target: target, projection: projection)
+  }
+}
+
+fn translate_type_expression_project_admitted(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match node.kind {
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
+    TypeNode { connective: connective } =>
+      bind_outcome(
+        o: type_expr_projection_row_closedness_from_target(
+          target: target,
+          projection: projection,
+          connective: connective
+        ),
+        f: fn(_) {
+          match connective {
+            Atom { identity: _ } =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Instantiation =>
+              if target_collection_type_node_is_set_carrier(node: node) {
+                project_set_collection_type_node(node: node, target: target, projection: projection)
+              } else {
+                if target_collection_type_node_is_free_monoid_carrier(node: node) {
+                  project_free_monoid_collection_type_node(
+                    node: node,
+                    target: target,
+                    projection: projection
+                  )
+                } else {
+                  bind_outcome(
+                    o: fold_node(
+                      n: node,
+                      algebra: translate_algebra(target: target, projection: projection)
+                    ),
+                    f: fn(acc) {
+                      translate_algebra_finalize_at_node(
+                        acc: acc,
+                        anchor: node,
+                        target: target,
+                        projection: projection
+                      )
+                    }
+                  )
+                }
+              }
+            Conj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Disj =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+            Arrow =>
+              bind_outcome(
+                o: fold_node(
+                  n: node,
+                  algebra: translate_algebra(target: target, projection: projection)
+                ),
+                f: fn(acc) {
+                  translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
+                }
+              )
+          }
+        }
+      )
+  }
+}
+fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: _ } => node_atom_identity(node: node)
+    Absent => type_expr_atom_binding(node: node)
+  }
+}
+fn translate_outcome_is_catalog_lookup_miss(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics_fatal_reason(d: diagnostics) == ^target_atom_realization_lookup_miss
+}
+
+fn translate_apply_wrap_gate_to_value_expression(
+  expr: TargetValueExpression,
+  gate: WrapDecisionGate,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match gate {
+    WrapGateInapplicable => outcome_accepted(expr)
+    WrapGateDecided { decision } =>
+      match decision {
+        WrapByValue => outcome_accepted(expr)
+        WrapByReference { layer } =>
+          bind_outcome(
+            o: translate_reference_layer_tokens_from_target(target: target),
+            f: fn(tokens) {
+              outcome_accepted(
+                target_reference_layer_apply_value_expression(
+                  inner: expr,
+                  layer: layer,
+                  tokens: tokens
+                )
+              )
+            }
+          )
+      }
+  }
+}
+
+fn translate_apply_use_site_ownership_to_projected_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
+    f: fn(wire) {
+      match wire.kind {
+        TargetTypeExprAtom =>
+          bind_outcome(
+            o: type_expr_carrier_identity(node: source_for_binding),
+            f: fn(binding) {
+              translate_apply_use_site_ownership_to_projected_type(
+                projected: projected,
+                source_carrier: translate_boundary_source_carrier_node(binding: binding),
+                target: target,
+                use_site: use_site
+              )
+            }
+          )
+        TargetTypeExprInstantiation =>
+          translate_apply_use_site_ownership_to_instantiation_boundary(
+            projected: projected,
+            source_for_binding: source_for_binding,
+            target: target,
+            projection: projection,
+            use_site: use_site
+          )
+        TargetTypeExprOptionalInstantiation => outcome_accepted(projected)
+        TargetTypeExprRecord => outcome_accepted(projected)
+        TargetTypeExprSum => outcome_accepted(projected)
+        TargetTypeExprArrow => outcome_accepted(projected)
+      }
+    }
+  )
+}
+
+// Instantiation-kind wire (Option<T>, Rc<T>, Witness<T>, List<T>) recurses ownership-wrap per
+// positional type argument, zipped against the same-shape source_for_binding argument list, rather
+// than bypassing the gate — the fix for the wrap_decision_predicate caller-side bypass named in
+// v1_deletion_plan.dag ^wrap_decision_predicate (RE-OPENED 2026-07-24).
+
+fn translate_apply_use_site_ownership_to_instantiation_boundary(
+  projected: Node,
+  source_for_binding: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  bind_outcome(
+    o: serialize_type_expr_emitted_positional_head_tail(node: projected),
+    f: fn(projected_split) {
+      bind_outcome(
+        o: serialize_type_expr_emitted_positional_head_tail(node: source_for_binding),
+        f: fn(source_split) {
+          bind_outcome(
+            o: sequence_outcome(
+              xs: zip_map(
+                a: projected_split.tail,
+                b: source_split.tail,
+                f: fn(parg, sarg) {
+                  translate_apply_use_site_ownership_to_projected_boundary(
+                    projected: parg,
+                    source_for_binding: sarg,
+                    target: target,
+                    projection: projection,
+                    use_site: use_site
+                  )
+                }
+              ),
+              policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+            ),
+            f: fn(wrapped_args) {
+              outcome_accepted(
+                node_rebuild(
+                  n: projected,
+                  children: list_append(
+                    left: [Edge { label: Positional, target: projected_split.head }],
+                    right: list_map(xs: wrapped_args, f: fn(a) { Edge { label: Positional, target: a } })
+                  )
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn translate_project_arrow_input_types(
+  original_inputs: List<Node>,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<List<Node>> {
+  fold_list(
+    xs: original_inputs,
+    empty: Accepted { value: Empty, diagnostics: None },
+    cons: fn(acc, original_input) {
+      bind_outcome(
+        o: acc,
+        f: fn(items) {
+          bind_outcome(
+            o: translate_type_expression_project(node: original_input, target: target, projection: projection),
+            f: fn(projected) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_projected_boundary(
+                  projected: projected,
+                  source_for_binding: original_input,
+                  target: target,
+                  projection: projection,
+                  use_site: OwnershipAtFunctionParameter
+                ),
+                f: fn(wrapped) {
+                  outcome_accepted(list_snoc_item(xs: items, item: wrapped))
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn translate_project_arrow_split_types(
+  original_split: TypeExprArrowSplit,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection,
+  anchor: Node
+) -> Outcome<TypeExprArrowSplit> {
+  bind_outcome(
+    o: translate_project_arrow_input_types(
+      original_inputs: original_split.inputs,
+      target: target,
+      projection: projection
+    ),
+    f: fn(wrapped_inputs) {
+      bind_outcome(
+        o: translate_type_expression_project(
+          node: original_split.output,
+          target: target,
+          projection: projection
+        ),
+        f: fn(projected_output) {
+          bind_outcome(
+            o: translate_apply_use_site_ownership_to_projected_boundary(
+              projected: projected_output,
+              source_for_binding: original_split.output,
+              target: target,
+              projection: projection,
+              use_site: OwnershipAtFunctionReturn
+            ),
+            f: fn(wrapped_output) {
+              outcome_accepted(
+                TypeExprArrowSplit {
+                  inputs: wrapped_inputs,
+                  output: wrapped_output
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<Node> {
+  match translate_target_atom_realization_for_carrier(
+    target: target,
+    source_carrier: coerced
+  ) {
+    Accepted { value: row, diagnostics: d } =>
+      Accepted {
+        value: row.type_form.node,
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
+        outcome_accepted(node_rebuild(n: coerced, children: []))
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
+}
+
+fn translate_coerced_shell_at_use_site(
+  coerced: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: coerced,
+    target: target,
+    use_site: use_site
+  )
+}
+
+fn translate_coerced_shell_at_use_site_from_source(
+  coerced: Node,
+  ownership_source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Node> {
+  match translate_coerced_type_shell_from_source(
+    source_carrier: ownership_source_carrier,
+    coerced: coerced,
+    target: target
+  ) {
+    Accepted { value: shell, diagnostics: d } =>
+      bind_outcome(
+        o: translate_apply_use_site_ownership_to_type_shell(
+          shell: shell,
+          source_carrier: ownership_source_carrier,
+          target: target,
+          use_site: use_site
+        ),
+        f: fn(wrapped) { Accepted { value: wrapped, diagnostics: d } }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_coerced_type_shell_from_source(
+  source_carrier: Node,
+  coerced: Node,
+  target: TargetModel
+) -> Outcome<Node> {
+  match source_carrier.kind {
+    TypeNode { connective: Instantiation } =>
+      bind_outcome(
+        o: type_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          translate_type_expression_project(
+            node: source_carrier,
+            target: target,
+            projection: projection
+          )
+        }
+      )
+    TypeNode { connective: Atom { identity: _ } } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Conj } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Disj } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Arrow } => translate_coerced_shell_base(coerced: coerced, target: target)
+    ComputationNode { behavior: _ } => translate_coerced_shell_base(coerced: coerced, target: target)
+  }
+}
+
+fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+  translate_coerced_shell_at_use_site(
+    coerced: coerced,
+    target: target,
+    use_site: OwnershipAtBindingProjection
+  )
+}
+
+fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> Node {
+  match source.kind {
+    TypeNode { connective: _ } => source
+    ComputationNode { behavior: _ } => coerced
+  }
+}
+fn target_atom_realizations_catalog_from_model(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Node> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: ^target_model_edge_atom_realizations
+  ) {
+    Accepted { value: optional_catalog, diagnostics: d } =>
+      match optional_catalog {
+        Absent =>
+          outcome_rejected(
+            target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier)
+          )
+        Present { value: catalog } =>
+          Accepted { value: catalog, diagnostics: d }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+fn translate_target_atom_realization_for_carrier(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<TargetAtomRealization> {
+  bind_outcome(
+    o: target_atom_realizations_catalog_from_model(
+      target: target,
+      source_carrier: source_carrier
+    ),
+    f: fn(catalog) {
+      target_atom_realization_lookup_in_catalog_node(
+        catalog: catalog,
+        source_carrier: source_carrier,
+        host_target_model: target
+      )
+    }
+  )
+}
+fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
+  match shell.kind {
+    TypeNode { connective: Conj } =>
+      node_rebuild(
+        n: shell,
+        children: list_snoc_item(
+          xs: shell.children,
+          item: target_model_named_edge(
+            name: ^target_model_edge_value_expression,
+            target: value
+          )
+        )
+      )
+    TypeNode { connective: Atom { identity: _ } } => shell
+    TypeNode { connective: Disj } => shell
+    TypeNode { connective: Arrow } => shell
+    TypeNode { connective: Instantiation } => shell
+    ComputationNode { behavior: _ } => shell
+  }
+}
+fn translate_apply_use_site_ownership_to_value_expression(
+  expr: TargetValueExpression,
+  source_carrier: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<TargetValueExpression> {
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: source_carrier,
+    use_site: use_site
+  ) {
+    Accepted { value: gate, diagnostics: _ } =>
+      translate_apply_wrap_gate_to_value_expression(
+        expr: expr,
+        gate: gate,
+        target: target
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn translate_atom_realization_value_from_source_at_use_site(
+  source: Node,
+  coerced: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<Optional<Node>> {
+  match translate_target_atom_realization_for_carrier(
+    target: target,
+    source_carrier: coerced
+  ) {
+    Accepted { value: row, diagnostics: d } =>
+      match source_atom_value_for_realization_row(source: source, row: row) {
+        Absent =>
+          Accepted {
+            value: optional_absent(),
+            diagnostics: d
+          }
+        Present { value: atom_value } =>
+          bind_outcome(
+            o: target_atom_value_expression(row: row, value: atom_value),
+            f: fn(expr) {
+              bind_outcome(
+                o: translate_apply_use_site_ownership_to_value_expression(
+                  expr: expr,
+                  source_carrier: coerced,
+                  target: target,
+                  use_site: use_site
+                ),
+                f: fn(wrapped) {
+                  outcome_accepted(
+                    optional_present(target_value_expression_node(expr: wrapped))
+                  )
+                }
+              )
+            }
+          )
+      }
+    Rejected { diagnostics: r } =>
+      if translate_outcome_is_catalog_lookup_miss(diagnostics: r) {
+        outcome_accepted(optional_absent())
+      } else {
+        Rejected { diagnostics: r }
+      }
+  }
+}
+
+fn translate_coerced_with_atom_realization_at_use_site(
+  source: Node,
+  coerced: Node,
+  target: TargetModel,
+  use_site: TargetOwnershipUseSite,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  let ownership_source_carrier = translate_use_site_ownership_source_carrier(
+    source: source,
+    coerced: coerced
+  )
+  match translate_coerced_shell_at_use_site_from_source(
+    coerced: coerced,
+    ownership_source_carrier: ownership_source_carrier,
+    target: target,
+    use_site: use_site
+  ) {
+    Accepted { value: shell, diagnostics: sd } =>
+      match translate_atom_realization_value_from_source_at_use_site(
+        source: source,
+        coerced: coerced,
+        target: target,
+        use_site: use_site
+      ) {
+        Accepted { value: value_projection, diagnostics: vd } =>
+          Accepted {
+            value: match value_projection {
+              Absent => shell
+              Present { value: value_node } =>
+                translate_shell_attach_value_expression(
+                  shell: shell,
+                  value: value_node
+                )
+            },
+            diagnostics: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: sd),
+              inner: vd
+            )
+          }
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: diagnostics_merge(outer: pending, inner: sd),
+              rejected: r
+            )
+          }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: rejected_with_pending(pending: pending, rejected: r)
+      }
+  }
+}
+
+fn translate_coerced_with_atom_realization(
+  source: Node,
+  coerced: Node,
+  target: TargetModel,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  translate_coerced_with_atom_realization_at_use_site(
+    source: source,
+    coerced: coerced,
+    target: target,
+    use_site: OwnershipAtBindingProjection,
+    pending: pending
+  )
+}
+
+fn translate_type_fold_init(node: Node) -> Outcome<Node> {
+  Accepted {
+    value: node_rebuild(n: node, children: []),
+    diagnostics: None
+  }
+}
+
+type TranslateFoldAcc = {
+  source: Node,
+  rebuilt: Node
+}
+
+fn translate_type_fold_init_acc(node: Node) -> Outcome<TranslateFoldAcc> {
+  match translate_type_fold_init(node: node) {
+    Accepted { value: rebuilt, diagnostics: d } =>
+      Accepted {
+        value: TranslateFoldAcc { source: node, rebuilt: rebuilt },
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+fn translate_projection_absent_fold_init_acc(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<TranslateFoldAcc> {
+  match translate_projection_absent_fold_init(node: node, tree: tree, target: target) {
+    Accepted { value: rebuilt, diagnostics: d } =>
+      Accepted {
+        value: TranslateFoldAcc { source: node, rebuilt: rebuilt },
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+fn translate_fold_acc_rebuilt(o: Outcome<TranslateFoldAcc>) -> Outcome<Node> {
+  match o {
+    Accepted { value: acc, diagnostics: d } =>
+      Accepted { value: acc.rebuilt, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
+
+  translate_type_fold_init(node: node)
+}
+fn translate_projection_absent_coerce_from_grounding_or_evidence(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match coerce_grounded_node(source: node, tree: tree, target: target) {
+    Accepted { value: coerced, diagnostics: d } =>
+      translate_coerced_with_atom_realization(
+        source: node,
+        coerced: coerced.target,
+        target: target,
+        pending: d
+      )
+    Rejected { diagnostics: r } =>
+      match canonical_grounding_for_node(tree: tree, node: node) {
+        Accepted { value: grounding } =>
+          if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: grounding.witness.structural.evidence,
+              target: target,
+              pending: None
+            )
+          } else {
+
+            translate_type_fold_init(node: node)
+          }
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: r }
+      }
+  }
+}
+fn translate_projection_absent_fold_init(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+        translate_projection_absent_bodied_arrow_fold_init(tree: tree, node: node)
+      } else {
+        match coerce_grounded_node(source: node, tree: tree, target: target) {
+          Accepted { value: coerced, diagnostics: d } =>
+            translate_coerced_with_atom_realization(
+              source: node,
+              coerced: coerced.target,
+              target: target,
+              pending: d
+            )
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      }
+    TypeNode { connective: Atom { identity: _ } } =>
+      translate_projection_absent_coerce_from_grounding_or_evidence(
+        node: node,
+        tree: tree,
+        target: target
+      )
+    TypeNode { connective: _ } =>
+      match coerce_grounded_node(source: node, tree: tree, target: target) {
+        Accepted { value: coerced, diagnostics: d } =>
+          translate_coerced_with_atom_realization(
+            source: node,
+            coerced: coerced.target,
+            target: target,
+            pending: d
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
+  }
+}
+
+fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
+    f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
+  )
+}
+// A MODULE IS NOT A TYPE EXPRESSION. A module body reaching this projection used to render as a
+// record of its members' types (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body): the type projection accepts any node no grammar
+// relation row matches, so it widened where it should have refused. A module is rendered only by
+// `v2.compiler.emit_produced` `emit_produced_module`, which the partition emit routes a module to
+// when every member is a bodied declaration; a module that reaches this projection is one that fold
+// cannot render whole, and it refuses here, located at its body, rather than printing a record.
+fn translate_module_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_module_not_a_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_first_module_body_optional(node: Node) -> Optional<Node> {
+  if namespace_graft_node_is_module_body(node: node) {
+    optional_present(value: node)
+  } else {
+    fold(node.children, init: optional_absent(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => translate_first_module_body_optional(node: e.target)
+      }
+    })
+  }
+}
+fn translate_type_expression_tree(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+        translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
+      } else {
+      match translate_first_module_body_optional(node: node) {
+        Present { value: body } =>
+          outcome_rejected(translate_module_not_a_type_expression_diagnostic(node: body))
+        Absent =>
+        bind_outcome(
+          o: translate_fold_acc_rebuilt(
+            o: fold_node(
+              n: node,
+              algebra: NodeFold {
+                init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+                step: fn(acc, e, child) {
+                  translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+                }
+              }
+            )
+          ),
+          f: fn(n) {
+
+            match translate_grammar_relation_row_match(target: target, emitted: n) {
+              Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+              Rejected { diagnostics: _ } =>
+                translate_type_expression_project(node: n, target: target, projection: projection)
+            }
+          }
+        )
+      }
+      }
+    }
+  )
+}
+fn translate_node_with_projection(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      match node.kind {
+        TypeNode { connective: _ } =>
+          translate_type_expression_tree(
+            node: node,
+            tree: tree,
+            target: target,
+            projection: projection
+          )
+        ComputationNode { behavior: _ } =>
+          bind_outcome(
+            o: translate_node_computation(node: node, tree: tree, target: target),
+            f: fn(translated) {
+              bind_outcome(
+                o: translate_type_expression_subtree(
+                  node: translated,
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(projected) { Accepted { value: projected, diagnostics: None } }
+              )
+            }
+          )
+      }
+    }
+  )
+}
+fn translate_type_expression_subtree(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match node.kind {
+    TypeNode { connective: _ } =>
+      translate_type_expression_project(node: node, target: target, projection: projection)
+    ComputationNode { behavior: b } =>
+      bind_outcome(
+        o: translate_type_expression_children_in_node(node: node, target: target, projection: projection),
+        f: fn(children) {
+          Accepted {
+            value: node_rebuild(n: node, children: children),
+            diagnostics: None
+          }
+        }
+      )
+  }
+}
+fn translate_type_expression_children_in_node(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<List<Edge>> {
+  fold(
+    node.children,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, e) {
+      bind_outcome(
+        o: acc,
+        f: fn(edges) {
+          bind_outcome(
+            o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
+            f: fn(projected) {
+              outcome_accepted(
+                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+fn translate_node_computation(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      translate_fold_acc_rebuilt(
+        o: fold_node(
+          n: node,
+          algebra: NodeFold {
+            init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+            step: fn(acc, e, child) {
+              translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+            }
+          }
+        )
+      )
+    }
+  )
+}
+fn translate_node_projection_absent_fold(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  translate_fold_acc_rebuilt(
+    o: fold_node(
+      n: node,
+      algebra: NodeFold {
+        init: fn(n0) {
+          translate_projection_absent_fold_init_acc(
+            node: n0,
+            tree: tree,
+            target: target
+          )
+        },
+        step: fn(acc, e, child) {
+          translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+        }
+      }
+    )
+  )
+}
+fn is_dag_import_production_node(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_import_decl
+    Absent => false
+  }
+}
+
+fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
+  match parse_subtree_find_production_captured(
+    root: import_node,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeAbsent =>
+      outcome_rejected(
+        translate_grammar_relation_row_not_found_diagnostic(emitted: import_node)
+      )
+    ParseSubtreeFound { captured: qn_capture } =>
+      bind_outcome(
+        o: parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: import_node),
+        f: fn(segments) {
+          outcome_accepted(
+            value: fold_list_node(
+              xs: segments,
+              item_node: fn(sym) {
+                Node {
+                  kind: TypeNode { connective: Atom { identity: sym } },
+                  children: [],
+                  occurrence_id: OccurrenceSynthetic
+                }
+              }
+            )
+          )
+        }
+      )
+  }
+}
+
+fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: parse_import_block_idents(import_decl_node: import_node, root: import_node),
+    f: fn(idents) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: idents,
+            empty: Empty,
+            cons: fn(acc, sym) {
+              list_append(
+                left: acc,
+                right: [
+                  Edge {
+                    label: Positional,
+                    target: Node {
+                      kind: TypeNode { connective: Atom { identity: sym } },
+                      children: [],
+                      occurrence_id: OccurrenceSynthetic
+                    }
+                  }
+                ]
+              )
+            }
+          ),
+          occurrence_id: OccurrenceSynthetic
+        }
+      )
+    }
+  )
+}
+
+fn translate_import_production_to_carrier(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_import_production_qn_node(import_node: import_node),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: translate_import_production_block_node(import_node: import_node),
+        f: fn(block_node) {
+          outcome_accepted(
+            value: emit_import_decl_emitted_node(
+              qualified_name: qn_node,
+              import_block: Present { value: block_node }
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn translate_node_projection_absent(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+        translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
+      } else if is_dag_import_production_node(node: node) {
+        translate_import_shortcut_after_subtree_gate(tree: tree, import_node: node)
+      } else {
+        bind_outcome(
+          o: translate_fold_acc_rebuilt(
+            o: fold_node(
+              n: node,
+              algebra: NodeFold {
+                init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+                step: fn(acc, e, child) {
+                  translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+                }
+              }
+            )
+          ),
+          f: fn(raw) {
+
+            match translate_grammar_relation_row_match(target: target, emitted: raw) {
+              Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
+              Rejected { diagnostics: _ } =>
+                translate_node_projection_absent_fold(node: node, tree: tree, target: target)
+            }
+          }
+        )
+      }
+    }
+  )
+}
+fn translate_node(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Node> {
+  match target_bundle_child_optional_type_expr_projection(target: target) {
+    Accepted { value: ProjectionPresent, diagnostics: _ } =>
+      translate_node_with_projection(node: node, tree: tree, target: target)
+    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
+      translate_node_projection_absent(node: node, tree: tree, target: target)
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+type TypeExprProjectionPresence
+  = ProjectionPresent
+  | ProjectionAbsent
+fn target_bundle_child_optional_type_expr_projection(
+  target: TargetModel
+) -> Outcome<TypeExprProjectionPresence> {
+  match target_bundle_optional_child(
+    target: target,
+    edge_name: ^target_model_edge_type_expression_projection
+  ) {
+    Accepted { value: Present { value: _ }, diagnostics: d } =>
+      Accepted { value: ProjectionPresent, diagnostics: d }
+    Accepted { value: Absent, diagnostics: d } =>
+      Accepted { value: ProjectionAbsent, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+fn translate_fold_step(
+  acc: Outcome<TranslateFoldAcc>,
+  edge: Edge,
+  child: Outcome<TranslateFoldAcc>,
+  tree: InferredTree
+) -> Outcome<TranslateFoldAcc> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: parent_acc, diagnostics: ad } =>
+      match child {
+        Accepted { value: child_acc, diagnostics: cd } =>
+          bind_outcome(
+            o: translate_derived_parent_underived_child_gate(
+              tree: tree,
+              parent: parent_acc.source,
+              child: child_acc.source
+            ),
+            f: fn(_) {
+              Accepted {
+                value: TranslateFoldAcc {
+                  source: parent_acc.source,
+                  rebuilt: node_rebuild(
+                    n: parent_acc.rebuilt,
+                    children: list_snoc_item(
+                      xs: parent_acc.rebuilt.children,
+                      item: Edge { label: edge.label, target: child_acc.rebuilt }
+                    )
+                  )
+                },
+                diagnostics: diagnostics_merge(outer: ad, inner: cd)
+              }
+            }
+          )
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: r)
+          }
+      }
+  }
+}
+fn translate(
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<TargetNodeTree> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: tree.root),
+    f: fn(_) {
+      translate_node(node: tree.root, tree: tree, target: target)
+    }
+  )
+}
+
+fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
+  bind_outcome(
+    o: translate(tree: tree, target: target),
+    f: fn(emitted) {
+      outcome_accepted(emitted)
+    }
+  )
+}
+
+fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
+  [
+    TargetBundleMalformed,
+    TargetBundleDuplicateEdge,
+    SgRcBundlePartial,
+    GrammarInverseNotRealized,
+    GrammarRelationRowNotFound,
+    ConjInvalidEdge,
+    ConjNamedChildMissing,
+    ConcreteTokenClassMissing,
+    ConcreteTokenKindInvalid,
+    SerializeRecursionLimitExhausted,
+    LexRuleLiteralNotFound,
+    BindingSpellingNotFound,
+    TypeExpressionShapeMissing,
+    TypeExprKindAuthorityInvalid,
+    TargetAtomRealizationLookupMiss,
+    TargetFunctionSignatureRealizationLookupMiss,
+    TargetTypeExprEmittedShapeMalformed,
+    ArrowBodyNotATypeExpression,
+    ModuleNotATypeExpression
+  ]
+}
+
+fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
+  match reason {
+    TargetBundleMalformed => ^translate_target_bundle_malformed
+    TargetBundleDuplicateEdge => ^translate_target_bundle_duplicate_edge
+    SgRcBundlePartial => ^translate_sg_rc_bundle_partial
+    GrammarInverseNotRealized => ^translate_grammar_inverse_not_realized
+    GrammarRelationRowNotFound => ^translate_grammar_relation_row_not_found
+    ConjInvalidEdge => ^translate_conj_invalid_edge
+    ConjNamedChildMissing => ^translate_conj_named_child_missing
+    ConcreteTokenClassMissing => ^translate_concrete_token_class_missing
+    ConcreteTokenKindInvalid => ^translate_concrete_token_kind_invalid
+    SerializeRecursionLimitExhausted => ^translate_serialize_recursion_limit_exhausted
+    LexRuleLiteralNotFound => ^translate_lex_rule_literal_not_found
+    BindingSpellingNotFound => ^translate_binding_spelling_not_found
+    TypeExpressionShapeMissing => ^translate_type_expression_shape_missing
+    TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
+    TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
+    TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
+    TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
+    ArrowBodyNotATypeExpression => ^translate_arrow_body_not_a_type_expression
+    ModuleNotATypeExpression => ^translate_module_not_a_type_expression
+  }
+}
+
+fn translate_diagnostic_reason_find_by_symbol(
+  sym: Symbol,
+  variants: List<TranslateDiagnosticReason>
+) -> Optional<TranslateDiagnosticReason> {
+  fold(variants, init: optional_absent(), f: fn(acc, variant) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sym == translate_diagnostic_reason_symbol(reason: variant) {
+          optional_present(value: variant)
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
+  translate_diagnostic_reason_find_by_symbol(
+    sym: sym,
+    variants: translate_diagnostic_reason_variants()
+  )
+}
+
+fn translate_diagnostic_reason_roster() -> List<Symbol> {
+  fold(translate_diagnostic_reason_variants(), init: Empty, f: fn(acc, variant) {
+    list_snoc_item(
+      xs: acc,
+      item: translate_diagnostic_reason_symbol(reason: variant)
+    )
+  })
+}
+
+fn translate_diagnostic_reason_head(
+  diagnostics: NonEmptyDiagnostics
+) -> Optional<TranslateDiagnosticReason> {
+  translate_diagnostic_reason_from_symbol(sym: diagnostics_fatal_reason(d: diagnostics))
+}
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "translate_edge_is_arrow_contract" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

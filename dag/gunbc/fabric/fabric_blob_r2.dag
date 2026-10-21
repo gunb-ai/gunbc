@@ -1,0 +1,193 @@
+module gunbc.fabric.fabric_blob_r2
+
+import extdeps.tools.curl { ReportStatus }
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
+  R2OriginAllocated, R2OriginUnallocated, R2OriginStanding,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
+  BucketPurpose, FabricCacheBlobs, FabricWorkspace, bucket_purpose_key, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_put_precondition,
+}
+import gunbc.cloudflare.r2_staged_transfer {
+  R2TransferTarget,
+  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  WriteCredentialCustody, WriteCredentialShredded,
+  r2_put_staged_file,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  R2StagingCustody, R2StagingNotCreated, r2_release_staging,
+  r2_fetch_into_staging,
+}
+import std.measure { ByteSize }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobReading, FabricBlobPut, FabricBlobGet,
+  FabricBlobStored, FabricBlobOccupied, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown, FabricBlobPutRefusedTooLarge,
+  FabricBlobFetched, FabricBlobAbsent, FabricBlobGetUnavailable,
+  FabricBlobStoreUnreachable, FabricBlobStoreRefused, FabricBlobUnauthorized, FabricBlobStagingFailed,
+  FabricBlobRead, FabricBlobReadRefused,
+  FabricBlobPutPlan, FabricBlobPutAdmitted, FabricBlobPutTooLarge,
+  read_staged_fabric_blob, fabric_blob_reading_path, fabric_blob_put_plan,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound, fabric_workspace_chunk_key, fabric_workspace_object_bound }
+
+// THE FABRIC'S BLOBS OVER R2, IN PROCESS: std.fabric_blob's put and get bound to a bucket purpose's
+// placement (gunbc.cloudflare.r2_origin: FabricCacheBlobs for the cache, FabricWorkspace for workspace
+// chunks) and carried by gunbc.cloudflare.
+// r2_staged_transfer, the transfer the durable origin uses too. It adds what is the blob plane's:
+// the object key an address derives (gunbc.fabric.fabric_blob_placement), the direction's
+// credential, the size bound, and the reading every fetched byte is minted into. It never mints an
+// OriginReading -- that carrier is the durable origin's alone.
+//
+// THE PUT IS CREATE-ONLY BY THE PURPOSE'S ADMISSION. An occupied address answers Occupied, never
+// Stored: whether the occupant holds the same bytes is a READ, which the publisher performs.
+
+type FabricBlobDirection
+  = FabricBlobReadDirection
+  | FabricBlobWriteDirection
+
+type FabricBlobTarget
+  = FabricBlobTargetReady { target: R2TransferTarget }
+  | FabricBlobTargetRefused { cause: NonEmptyStr }
+
+fn fabric_blob_credential(direction: FabricBlobDirection, read: OriginCredentialStanding, write: OriginCredentialStanding) -> OriginCredentialStanding {
+  match direction {
+    FabricBlobReadDirection => read
+    FabricBlobWriteDirection => write
+  }
+}
+
+// PURE OVER THE STANDING, so every refusal arm is reachable from a supplied value. The refusal names
+// the bucket purpose, so a cache refusal and a workspace refusal are told apart by what they say.
+fn resolve_fabric_blob_target_under(direction: FabricBlobDirection, key: NonEmptyStr, standing: R2OriginStanding) -> FabricBlobTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      FabricBlobTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match standing {
+        R2OriginUnallocated { purpose: p } => FabricBlobTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR PURPOSE ", bucket_purpose_key(purpose: p)) as NonEmptyStr }
+        R2OriginAllocated { bucket: bucket } =>
+          match fabric_blob_credential(direction: direction, read: bucket.read_credential, write: bucket.write_credential) {
+            OriginCredentialUnminted { mint_entry: entry, secret_id: secret_id } =>
+              FabricBlobTargetRefused { cause: join(["THE ", bucket_purpose_key(purpose: bucket.purpose), " CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String, " and pin the version it stores under ", secret_id as String, " in gunbc.cloudflare.r2_origin"], "") as NonEmptyStr }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              FabricBlobTargetRefused { cause: join(["THE ", bucket_purpose_key(purpose: bucket.purpose), " CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String], "") as NonEmptyStr }
+            OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
+              FabricBlobTargetReady {
+                target: R2TransferTarget {
+                  locator: R2ObjectLocator {
+                    endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: bucket.jurisdiction },
+                    bucket_name: bucket.bucket_name,
+                    key: key,
+                  },
+                  access_key_id: access_key_id,
+                  token_value: token_value,
+                  precondition: origin_admission_put_precondition(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                  report: ReportStatus,
+                }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_fabric_blob_target(direction: FabricBlobDirection, key: NonEmptyStr, purpose: BucketPurpose) -> FabricBlobTarget {
+  resolve_fabric_blob_target_under(direction: direction, key: key, standing: bucket_purpose_origin_standing(purpose: purpose))
+}
+
+// THE PUT'S WHOLE ANSWER: the blob plane's verdict and the write credential's custody, two facts.
+type FabricBlobPutResult {
+  verdict: FabricBlobPut
+  credential: WriteCredentialCustody
+}
+
+fn fabric_blob_put_result_of(address: FabricBlobAddress, put: R2Put) -> FabricBlobPutResult {
+  FabricBlobPutResult {
+    verdict: match put.verdict {
+      R2ObjectStored { tag: _ } => FabricBlobStored { address: address }
+      R2ObjectAlreadyPresent => FabricBlobOccupied { address: address }
+      R2ObjectTagMoved => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: "the store answered that an If-Match precondition failed; a blob put is create-only and never sends one" } }
+      R2PutRefused { cause: cause } => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: cause } }
+      R2PutOutcomeUnknown { cause: cause } => FabricBlobPutOutcomeUnknown { address: address, cause: cause }
+    },
+    credential: put.credential,
+  }
+}
+
+// THE PUT: the plan first (an object over the bound never reaches the network), then the target.
+fn put_fabric_blob(address: FabricBlobAddress, reading: FabricBlobReading, key: NonEmptyStr, bound: ByteSize, purpose: BucketPurpose, token_source: AccessTokenSource) -> FabricBlobPutResult {
+  match fabric_blob_put_plan(address: address, reading: reading, bound: bound) {
+    FabricBlobPutTooLarge { address: a, size: size, bound: b } =>
+      FabricBlobPutResult { verdict: FabricBlobPutRefusedTooLarge { address: a, size: size, bound: b }, credential: WriteCredentialShredded }
+    FabricBlobPutAdmitted { address: a, reading: r } =>
+      match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: key, purpose: purpose) {
+        FabricBlobTargetRefused { cause: cause } =>
+          FabricBlobPutResult { verdict: FabricBlobPutRefused { address: a, fault: FabricBlobUnauthorized { cause: cause } }, credential: WriteCredentialShredded }
+        FabricBlobTargetReady { target: target } =>
+          fabric_blob_put_result_of(address: a, put: r2_put_staged_file(target: target, local_path: fabric_blob_reading_path(reading: r) as FilePath, token_source: token_source))
+      }
+  }
+}
+
+// THE GET'S WHOLE ANSWER: the blob plane's verdict and what became of the staging directory, two
+// facts, as FabricBlobPutResult carries the credential's custody beside its verdict. Every arm that
+// hands no bytes over has already discharged its directory (released by the transfer, or released
+// here when the staged bytes could not be read), and says how. A fetched blob's reading POINTS INTO
+// its directory, so that directory is held for the consumer, who discharges it with
+// release_fabric_blob_staging once it has used the bytes -- the obligation is carried, never dropped.
+type FabricBlobStaging
+  = FabricBlobStagingDischarged { custody: R2StagingCustody }
+  | FabricBlobStagingHeld { dir: NonEmptyStr }
+
+type FabricBlobGetResult {
+  verdict: FabricBlobGet
+  staging: FabricBlobStaging
+}
+
+fn release_fabric_blob_staging(staging: FabricBlobStaging) -> R2StagingCustody {
+  match staging {
+    FabricBlobStagingDischarged { custody: c } => c
+    FabricBlobStagingHeld { dir: d } => r2_release_staging(dir: d)
+  }
+}
+
+// THE GET. The transfer stages the bytes in a directory it minted; they are read there and returned
+// with their reading. What the bytes MEAN is the consumer's to verify (a build pack's manifest, a
+// workspace chunk's own address). A store that answered and refused is FabricBlobStoreRefused; no
+// answer is FabricBlobStoreUnreachable; a local failure (no transport, no private directory, the
+// credential not placed or not shredded) is FabricBlobStagingFailed, so a local disk or staging
+// fault is never attributed to the store.
+fn get_fabric_blob(address: FabricBlobAddress, key: NonEmptyStr, purpose: BucketPurpose, token_source: AccessTokenSource) -> FabricBlobGetResult {
+  match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: key, purpose: purpose) {
+    FabricBlobTargetRefused { cause: cause } =>
+      FabricBlobGetResult { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobUnauthorized { cause: cause } }, staging: FabricBlobStagingDischarged { custody: R2StagingNotCreated } }
+    FabricBlobTargetReady { target: target } =>
+      match r2_fetch_into_staging(target: target, token_source: token_source) {
+        R2FetchObjectAbsent { staging: c } => FabricBlobGetResult { verdict: FabricBlobAbsent { address: address }, staging: FabricBlobStagingDischarged { custody: c } }
+        R2FetchStoreRefused { cause: cause, staging: c } => FabricBlobGetResult { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreRefused { cause: cause } }, staging: FabricBlobStagingDischarged { custody: c } }
+        R2FetchTransportUnanswered { cause: cause, staging: c } => FabricBlobGetResult { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }, staging: FabricBlobStagingDischarged { custody: c } }
+        R2FetchLocalFailure { cause: cause, staging: c } => FabricBlobGetResult { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStagingFailed { cause: cause } }, staging: FabricBlobStagingDischarged { custody: c } }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } =>
+          match read_staged_fabric_blob(path: p) {
+            FabricBlobReadRefused { fault: fault } => FabricBlobGetResult { verdict: FabricBlobGetUnavailable { address: address, fault: fault }, staging: FabricBlobStagingDischarged { custody: r2_release_staging(dir: d) } }
+            FabricBlobRead { reading: reading } => FabricBlobGetResult { verdict: FabricBlobFetched { address: address, reading: reading }, staging: FabricBlobStagingHeld { dir: d } }
+          }
+      }
+  }
+}
+
+fn put_cache_blob(address: FabricBlobAddress, reading: FabricBlobReading, token_source: AccessTokenSource) -> FabricBlobPutResult {
+  put_fabric_blob(address: address, reading: reading, key: fabric_cache_blob_key(address: address), bound: fabric_cache_object_bound(), purpose: FabricCacheBlobs {}, token_source: token_source)
+}
+
+fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -> FabricBlobGetResult {
+  get_fabric_blob(address: address, key: fabric_cache_blob_key(address: address), purpose: FabricCacheBlobs {}, token_source: token_source)
+}
+
+fn put_workspace_chunk(address: FabricBlobAddress, reading: FabricBlobReading, token_source: AccessTokenSource) -> FabricBlobPutResult {
+  put_fabric_blob(address: address, reading: reading, key: fabric_workspace_chunk_key(address: address), bound: fabric_workspace_object_bound(), purpose: FabricWorkspace {}, token_source: token_source)
+}
+
+fn get_workspace_chunk(address: FabricBlobAddress, token_source: AccessTokenSource) -> FabricBlobGetResult {
+  get_fabric_blob(address: address, key: fabric_workspace_chunk_key(address: address), purpose: FabricWorkspace {}, token_source: token_source)
+}

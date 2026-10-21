@@ -1,0 +1,348 @@
+module test.claim.host_custody_export_receipt_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.host_custody_export_receipt {
+  host_custody_export_receipt_path,
+  host_custody_export_receipt_suffix,
+  host_custody_export_receipt_wire,
+  host_custody_export_receipt_decode,
+  host_custody_export_generation_standing,
+  host_custody_export_receipt_header,
+  HostCustodyExportReceiptDecoded,
+  HostCustodyExportReceiptDecodeRefused,
+  ReceiptWireDuplicatedHeader,
+  ReceiptWireWhitespace,
+  ReceiptWireEmptyField,
+}
+import gunbc.worker_turn_snapshot_custody {
+  claude_worker_turn_snapshot_custody,
+  cursor_worker_turn_snapshot_custody,
+}
+import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
+import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
+import gunbc.typed_remote_file_write { TypedRemoteFileConvergenceRefused }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCredentialCustodyRow,
+  CursorWorkerTurnApiKey,
+  ClaudeCodeOauthHarnessToken,
+  CodexWorkerTurnAuth,
+  ControllerAppKey,
+  host_credential_custody_row,
+  CustodyExportReceiptOwed,
+  CustodyExportReceiptNotOwed,
+  host_custody_export_receipt_from_row,
+  plan_host_custody_export,
+  CustodyExportNotOwed,
+  CustodyExportWithheld,
+  CustodyExportUnplannable,
+  CustodyExportPublication,
+  classify_host_custody_export,
+  custody_export_after_bytes_landed,
+  CustodyExportRefused,
+  CustodyExportPublished,
+  CustodyExportNotOwedStanding,
+  CustodyExportWithheldStanding,
+  custody_file_legs,
+  custody_dir_legs,
+  CustodyPathAsDeclared,
+  CustodyPathUnobservable,
+  CustodyOnlyOnHost,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cursor_row: HostCredentialCustodyRow = host_credential_custody_row(c: CursorWorkerTurnApiKey)
+data claude_row: HostCredentialCustodyRow = host_credential_custody_row(c: ClaudeCodeOauthHarnessToken)
+data supplied_version: SmResolvedVersionIdentity = "projects/gunbai-secrets/secrets/cursor-api-key-harness/versions/1" as SmResolvedVersionIdentity
+data placed_material: String = "cursor-api-key-material"
+
+// INHABITANCE: the real Cursor and Claude rows' paths are the only inputs the leaf function
+// accepts from this producer. A second spelling of the suffix would redden the equality.
+
+test fn the_export_receipt_path_is_the_placed_path_plus_the_one_suffix() -> Bool {
+  let cursor_path = host_custody_export_receipt_path(placed_path: cursor_row.path)
+  let claude_path = host_custody_export_receipt_path(placed_path: claude_row.path)
+  (cursor_row.path as String) == (cursor_worker_turn_api_key_host_path as String)
+    && (claude_row.path as String) == (claude_code_oauth_harness_host_path as String)
+    && (cursor_path as String) == concat(cursor_worker_turn_api_key_host_path as String, host_custody_export_receipt_suffix)
+    && (claude_path as String) == concat(claude_code_oauth_harness_host_path as String, host_custody_export_receipt_suffix)
+}
+
+test fn decode_of_the_wire_is_the_receipt() -> Bool {
+  match host_custody_export_receipt_from_row(
+    row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  ) {
+    Absent => false
+    Present { value: rec } =>
+      match host_custody_export_receipt_decode(text: host_custody_export_receipt_wire(receipt: rec)) {
+        HostCustodyExportReceiptDecoded { receipt: back } =>
+          (back.sm_version as String) == (rec.sm_version as String)
+            && (back.host as String) == (rec.host as String)
+            && back.placement == rec.placement
+            && back.reader == rec.reader
+            && back.publisher == rec.publisher
+            && (back.content_sha256 as String) == (rec.content_sha256 as String)
+        _ => false
+      }
+  }
+}
+
+test fn the_composition_is_the_converge_rows() -> Bool {
+  let cursor_decl = cursor_worker_turn_snapshot_custody
+  let claude_decl = claude_worker_turn_snapshot_custody
+  (cursor_decl.path as String) == (cursor_row.path as String)
+    && (cursor_decl.secret.secret as String) == (cursor_row.secret.secret as String)
+    && (cursor_decl.secret.version as String) == (cursor_row.secret.version as String)
+    && match cursor_row.host_scope {
+         CustodyOnlyOnHost { host } => (cursor_decl.host as String) == (host as String)
+         _ => false
+       }
+    && cursor_decl.reader == cursor_row.file_ownership.group
+    && cursor_decl.publisher == cursor_row.dir_ownership.user
+    && (cursor_decl.path as String) == (cursor_worker_turn_snapshot_custody.path as String)
+    && (claude_decl.path as String) == (claude_row.path as String)
+    && (claude_decl.secret.secret as String) == (claude_row.secret.secret as String)
+    && (claude_decl.secret.version as String) == (claude_row.secret.version as String)
+    && match claude_row.host_scope {
+         CustodyOnlyOnHost { host } => (claude_decl.host as String) == (host as String)
+         _ => false
+       }
+    && claude_decl.reader == claude_row.file_ownership.group
+    && claude_decl.publisher == claude_row.dir_ownership.user
+    && (claude_decl.path as String) == (claude_worker_turn_snapshot_custody.path as String)
+}
+
+test fn only_cursor_and_claude_owe_an_export_receipt() -> Bool {
+  let cursor_owed = match cursor_row.export_receipt {
+    CustodyExportReceiptOwed => true
+    CustodyExportReceiptNotOwed => false
+  }
+  let claude_owed = match claude_row.export_receipt {
+    CustodyExportReceiptOwed => true
+    CustodyExportReceiptNotOwed => false
+  }
+  let codex_not = match host_credential_custody_row(c: CodexWorkerTurnAuth).export_receipt {
+    CustodyExportReceiptNotOwed => true
+    CustodyExportReceiptOwed => false
+  }
+  let controller_not = match host_credential_custody_row(c: ControllerAppKey).export_receipt {
+    CustodyExportReceiptNotOwed => true
+    CustodyExportReceiptOwed => false
+  }
+  cursor_owed && claude_owed && codex_not && controller_not
+}
+
+test fn an_identical_settled_placement_plans_a_publication() -> Bool {
+  match plan_host_custody_export(
+    placement_settled: true,
+    row: cursor_row,
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportPublication { path: p, body: body, ownership: o, receipt: rec, metadata_legs: legs } =>
+      (p as String) == (host_custody_export_receipt_path(placed_path: cursor_row.path) as String)
+        && legs.kind == "f"
+        && legs.exact_perm == custody_file_legs(row: cursor_row).exact_perm
+        && (rec.sm_version as String) == (supplied_version as String)
+        && (rec.host as String) == "srv2"
+        && rec.placement == cursor_row.path
+        && rec.reader == cursor_row.file_ownership.group
+        && rec.publisher == cursor_row.dir_ownership.user
+        && (rec.content_sha256 as String) == sha256_hex_of_text(text: placed_material)
+        && (o.user as String) == (cursor_row.dir_ownership.user as String)
+        && string_contains(s: body, pattern: host_custody_export_generation_standing)
+        && string_contains(s: host_custody_export_receipt_wire(receipt: rec), pattern: "reader=")
+        && string_contains(s: host_custody_export_receipt_wire(receipt: rec), pattern: "publisher=")
+    _ => false
+  }
+}
+
+test fn a_run_that_is_not_settled_publishes_nothing() -> Bool {
+  match plan_host_custody_export(
+    placement_settled: false,
+    row: cursor_row,
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportWithheld { reason: r } =>
+      string_contains(s: r, pattern: "not settled")
+        && match classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none, receipt_metadata: none) {
+          CustodyExportWithheldStanding { reason: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_receipt_is_published_only_when_custody_metadata_is_as_declared() -> Bool {
+  let planned = plan_host_custody_export(
+    placement_settled: true,
+    row: cursor_row,
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  )
+  match planned {
+    CustodyExportPublication { path: p, body: _, ownership: _, receipt: rec, metadata_legs: legs } => {
+      let held = custody_export_after_bytes_landed(
+        path: p, sm_version: rec.sm_version, digest_hex: rec.content_sha256,
+        receipt_metadata: Present { value: CustodyPathAsDeclared }, legs: legs,
+      )
+      let not_a_regular_file = custody_export_after_bytes_landed(
+        path: p, sm_version: rec.sm_version, digest_hex: rec.content_sha256,
+        receipt_metadata: Present {
+          value: CustodyPathUnobservable { reason: "exists but is not of type f, or find printed nothing" },
+        },
+        legs: legs,
+      )
+      let missing = custody_export_after_bytes_landed(
+        path: p, sm_version: rec.sm_version, digest_hex: rec.content_sha256,
+        receipt_metadata: none, legs: legs,
+      )
+      let published = match held {
+        CustodyExportPublished { path: q, sm_version: _, digest_hex: _ } => (q as String) == (p as String)
+        _ => false
+      }
+      let symlink_red = match not_a_regular_file {
+        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "not of type f")
+        _ => false
+      }
+      let missing_red = match missing {
+        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "metadata")
+        _ => false
+      }
+      published && symlink_red && missing_red
+    }
+    _ => false
+  }
+}
+
+test fn a_failed_or_interrupted_publication_reports_no_successful_export() -> Bool {
+  let planned = plan_host_custody_export(
+    placement_settled: true,
+    row: claude_row,
+    host: "srv1" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  )
+  let interrupted = classify_host_custody_export(plan: planned, convergence: none, owner_refusal: none, receipt_metadata: none)
+  let failed = classify_host_custody_export(
+    plan: planned,
+    convergence: Present {
+      value: TypedRemoteFileConvergenceRefused { step: "rename", reason: "remote step failed" },
+    },
+    owner_refusal: none,
+    receipt_metadata: none,
+  )
+  let interrupted_red = match interrupted {
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted")
+    _ => false
+  }
+  let failed_red = match failed {
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename")
+    _ => false
+  }
+  interrupted_red && failed_red
+}
+
+test fn the_cursor_row_is_root_owned_with_operator_group_read() -> Bool {
+  let f = custody_file_legs(row: cursor_row)
+  let d = custody_dir_legs(row: cursor_row)
+  f.exact_perm == "0640" && f.forbidden_perm == "/037"
+    && d.exact_perm == "0750" && d.forbidden_perm == "/027"
+    && (f.ownership.user as String) == "root"
+    && (f.ownership.group as String) == "briansrls"
+    && (d.ownership.user as String) == "root"
+    && (d.ownership.group as String) == "briansrls"
+}
+
+test fn the_receipt_directory_owner_is_root_not_the_reader() -> Bool {
+  match host_custody_export_receipt_from_row(
+    row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  ) {
+    Absent => false
+    Present { value: cursor_receipt } =>
+      match host_custody_export_receipt_from_row(
+        row: claude_row, host: "srv1" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+      ) {
+        Absent => false
+        Present { value: claude_receipt } =>
+          (cursor_receipt.publisher as String) == "root"
+            && (cursor_receipt.reader as String) == "briansrls"
+            && (cursor_receipt.publisher as String) != (cursor_receipt.reader as String)
+            && (cursor_row.dir_ownership.user as String) == (cursor_receipt.publisher as String)
+            && (claude_receipt.publisher as String) == "root"
+            && (claude_receipt.reader as String) == "briansrls"
+            && (claude_receipt.publisher as String) != (claude_receipt.reader as String)
+      }
+  }
+}
+
+test fn an_unplannable_owed_digest_refuses_rather_than_withholding() -> Bool {
+  let standing = classify_host_custody_export(
+    plan: CustodyExportUnplannable { reason: "placed material digest is not a Sha256DigestHex" },
+    convergence: none,
+    owner_refusal: none,
+    receipt_metadata: none,
+  )
+  match standing {
+    CustodyExportRefused { reason: r } =>
+      string_contains(s: r, pattern: "Sha256DigestHex")
+        && match classify_host_custody_export(
+          plan: CustodyExportWithheld { reason: "placement is not settled" },
+          convergence: none, owner_refusal: none, receipt_metadata: none,
+        ) {
+          CustodyExportWithheldStanding { reason: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_codex_row_does_not_plan_an_export() -> Bool {
+  match plan_host_custody_export(
+    placement_settled: true,
+    row: host_credential_custody_row(c: CodexWorkerTurnAuth),
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportNotOwed =>
+      match classify_host_custody_export(plan: CustodyExportNotOwed, convergence: none, owner_refusal: none, receipt_metadata: none) {
+        CustodyExportNotOwedStanding => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn decode_refuses_whitespace_and_a_duplicated_header() -> Bool {
+  match host_custody_export_receipt_from_row(
+    row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  ) {
+    Absent => false
+    Present { value: rec } =>
+      match host_custody_export_receipt_decode(text: concat(host_custody_export_receipt_wire(receipt: rec), " ")) {
+        HostCustodyExportReceiptDecodeRefused { cause } =>
+          match cause {
+            ReceiptWireWhitespace =>
+              match host_custody_export_receipt_decode(
+                text: concat(host_custody_export_receipt_header, concat("\n", host_custody_export_receipt_wire(receipt: rec))),
+              ) {
+                HostCustodyExportReceiptDecodeRefused { cause: c2 } =>
+                  match c2 { ReceiptWireDuplicatedHeader => true  _ => false }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+

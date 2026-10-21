@@ -1,0 +1,2136 @@
+module gunbc.harness.harness_seat
+
+import product.host_identity { HostIdentity }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count }
+import std.nat { Nat, Zero, Succ, nat_range_inclusive, nat_min }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
+import extdeps.accounting.encumbrance { Held, Expended, Released }
+import extdeps.api_rate_limit { upstream_rate_limit_key }
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
+  ServingRouteTurnCeiling, serving_route_turn_ceiling_count, serving_route_endpoint_wire,
+}
+import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes, rented_incarnation_standing }
+import gunbc.serving.rented_host_grant { rented_host_authorizations, RentedHostClockUnread }
+import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key, replica_incarnation_unverified_obligation }
+import gunbc.serving.replica_incarnation { ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread }
+import std.optional { Present, Absent }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import gunbc.fabric.fabric_event_log_host {
+  HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds,
+}
+import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
+import product.capacity.event_chain {
+  PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+}
+import product.capacity.pool_events {
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
+}
+import std.retry_law { RetryLaw }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, LeaseFence, lease_grant, lease_fence_of }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log {
+  HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
+  EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
+  SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
+  fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
+  RedemptionReading, RedemptionReadAt, RedemptionReadRefused, fabric_redemption_read,
+}
+import product.capacity.redemption { redemption_release_owner, ReleaseOpen, ReleaseOwnedByGate, ReleaseUndecidable }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable,
+  HarnessBackendUnreadable, harness_observe_replica, harness_standing_detail,
+  harness_route_availability, HarnessEngineReading, harness_observe_engine_at,
+}
+import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
+  LeasedFromHostedQuota, RunOnOperatorEndpoint, harness_serving_unit_wire,
+}
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, operator_class_admission, OperatorClassAdmitted, OperatorClassRefused,
+  operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header, operator_chat_completions_url,
+}
+import gunbc.harness.harness_hosted_route {
+  HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
+  harness_hosted_release,
+}
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
+import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey, EqualCostOfferTieBreak }
+import product.fabric.selection {
+  CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand, PayAsYouGo,
+  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
+  SupplySelection,
+}
+import product.fabric.demand {
+  ObservationReceiptRef, AdmissionTerms, demand_delay_valuation,
+}
+import extdeps.currency.currency { CurrencyCode }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
+import std.algebra { trim }
+import std.checked_arithmetic { checked_int_to_nat }
+import product.fabric.execution { ReservationRef }
+import gunbc.serving.caller_backlog {
+  DispatchTurnKey, DurableAttemptStanding, LogicalWorkId, WorkIdDerivation, WorkIdDerived, WorkIdKeyNotOctets, logical_work_id_of,
+  CallerWorkPhase, WorkWaiting, WorkCompleted, WorkCancelled, WorkRecoveryBoundExceeded, recovery_deficit_text,
+  CallerWorkRecord, CallerBacklogSnapshot, empty_caller_backlog, SeatRef,
+  RecoveryEvent, RecoveryProbe, RecoveryRequest,
+  DurableResumedWaiting, DurableResumedTerminal, DurableResumeUnknownWork, DurableResumeStoreUnreadable,
+  DurableResumePayloadUndecodable, DurableResumeWorkMismatch, resume_waiting_durable,
+  DurableWaitingPersisted, DurablePhasePersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
+  DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable, DurablePersistPayloadUnencodable,
+  DurablePersistUnknownWork, DurablePersistDuplicate, persist_waiting_durable, note_recovery_durable,
+  DurableReservationRebound, DurableRebindRefusedTerminal, DurableRebindUnknownWork, DurableRebindStoreRefused,
+  DurableRebindKeyNotSlotAddressable, DurableRebindPredecessorMismatch, rebind_reservation_durable,
+  KeepWaitingAcrossZeroSupply, apply_ready_supply_law, resume_from_snapshot,
+  ResumedWaiting, ResumedTerminal, ResumeUnknownWork, ResumeDuplicateWork,
+  RetryComeBack, RetryTerminal, caller_retry_disposition,
+  AttemptFence, SeatLeaseFence, DurableAttemptCommitted, DurableAttemptFenceRefused, DurableAttemptNotWaiting,
+  DurableAttemptUnknownWork, DurableAttemptStoreRefused, DurableAttemptKeyNotSlotAddressable, commit_attempt_durable,
+}
+import gunbc.serving.turn_admission {
+  serving_co_tenancy, serving_capacity_pressure,
+  ServingSeatStanding, SeatStandingRead, SeatStandingUnread,
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
+  ServingGroupAdmission, AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
+  InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
+  AdmissibilityUnread, serving_group_admission,
+  ServingSessionRecord, NoSessionRecord, serving_session_placement,
+  ServingSessionResidency, ResidencyUnread, SessionRecord, serving_session_standing, HostTierUnread, GpuPrefixUnread, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
+  serving_unread_when_owner_unprobed,
+  serving_admission_detail, serving_isolation_profile,
+  serving_dispatch_inputs,
+}
+import gunbc.serving.rented_offer_admission {
+  RentedAdmissionSources, rented_production_sources, admit_rented_offer, RentedCandidateAdmitted, RentedAdmissionRefused,
+}
+import gunbc.serving.turn_demand { serving_token_capability, serving_replica_trust_domain, serving_unstated_shape, ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import product.fabric.provider_admission { refusal_reason }
+import gunbc.serving.engine_progress {
+  EngineProgressGate, WithholdRouteNotProgressing, ProgressDoesNotWithhold,
+  engine_progress_read, engine_progress_gate, serving_engine_step_bound,
+}
+import gunbc.serving.serving_availability {
+  ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
+  FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
+  EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
+  serving_availability_after_launch_read, serving_availability_text,
+}
+
+// THE HARNESS TAKES A SEAT BEFORE IT TAKES A TURN. A serving group's seats are a pool on the
+// fabric event log, one partition per group, whose root is the group's admitted engine tuple; the
+// endpoint the turn talks to comes FROM the granted seat, never from a picker that could diverge
+// from the admission (operator ruling 2026-09-06). A full group is a typed refusal, and the next
+// group is tried; nothing queues. The reservation carries the declared maximum turn duration as
+// its deadline, and the seat is released explicitly when the turn ends. Under vLLM the resource
+// cannot fence a superseded holder, so the release law is quiescence-required: an expired seat
+// whose turn was never seen to end stays held rather than becoming oversubscription.
+
+// THE PARTITION IS VERSIONED BECAUSE ITS CEILING CHANGED. The pool fold reconstructs a pool by
+// replaying a partition's history against a root, so replaying events written under a three-seat
+// ceiling against a one-seat root would reinterpret them rather than continue them. A new ceiling is
+// a new pool, and it starts empty.
+//
+// AND THERE IS NOW ONE PARTITION PER GROUP PER CO-TENANCY CLASS, because the classes have different
+// ceilings and different laws. Two classes sharing one partition would be one count answering two
+// questions -- "is a reader mid-stream" and "how many tolerant turns are in flight" -- which is the
+// collapse this whole change exists to undo, reappearing in the ledger.
+//
+// THE QUALITY PARTITION KEEPS ITS EXACT NAME, deliberately: its ceiling has not changed, its history
+// is still the history of that pool, and renaming it would silently start an empty pool while seats
+// were held in the old one.
+//
+// AND THE TOLERANT PARTITION CARRIES ITS CEILING IN ITS NAME. The invariant above -- a new ceiling is
+// a new pool -- is enforced by a version suffix, and a suffix bumped BY HAND is only as good as the
+// chance that whoever moves the ceiling is looking at this function when they do it.
+//
+// THE REASON STATED HERE FIRST WAS FALSE AND IS CORRECTED RATHER THAN SOFTENED. It said group B's
+// ceiling "moves whenever the canary is relaunched under a different bound, without any edit to this
+// repository at all". It did not: glm_canary_arm max_num_seqs was a static data row, nothing observed
+// the running container's bound, and relaunching the canary changed nothing here. An author had to edit
+// that row, exactly as with the quality seat -- and group B's ceiling is now its own declared row in
+// gunbc.serving.serving_enrollment, which is no different. That annotation asserted a machine behaviour the
+// declarations do not have -- which is the class this same branch files, appearing in the argument
+// for the construction rather than in the construction.
+//
+// THE ASYMMETRY THAT IS REAL, AND IT IS WEAKER. The quality ceiling is a row in THIS module, three
+// lines from the suffix it invalidates. The tolerant ceiling is derived from rows in OTHER modules --
+// gunbc.serving.serving_enrollment's declared allocations for group A and group B -- so the author who
+// moves one is editing a file that never mentions this partition
+// and has no reason to think about its version. That is an argument about attention, not about
+// reachability, and it is enough: the cost of deriving the suffix is a longer name, and the cost of a
+// missed hand-bump is a pool whose history is reinterpreted against a root it was not written under.
+//
+// AND ONE FUTURE STATE MAKES IT UNREACHABLE BY HAND. gunbc.serving.serving_enrollment
+// ServingRouteTurnCeiling's other arm, CeilingFromRouteLaunch, carries a count read off the launch that
+// is running. Nothing produces that arm today -- both routes carry a CeilingByDeclaredPolicy row. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
+// author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
+// having it already in place is what stops that landing from silently reinterpreting live history.
+// THE POOL KEY IS THE REPLICA IDENTITY, NOT A PARALLEL KEY TYPE. A seat pool accounts for one rented
+// single-GPU replica (gunbc.serving.rented_replica RentedReplicaIdentity), and the lease, fence,
+// permit and release folds below are keyed by the partition that identity derives. The partition
+// carries the replica's wire, so adding a replica mints a new pool and cannot re-key an existing
+// owner's. The fleet-cage arm this replaced was retired with the sale of every DGX Spark
+// (gunbc.spark.dgx_procurement dgx_spark_disposed_units).
+fn harness_seat_partition_stem(replica: RentedReplicaIdentity) -> String {
+  join(["replica-", rented_replica_wire(id: replica), "-"], "")
+}
+
+fn harness_seat_partition(replica: RentedReplicaIdentity, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
+  match class {
+    InteractiveQualitySensitive =>
+      join([harness_seat_partition_stem(replica: replica), "quality-seat-v1"], "") as PartitionId
+    BatchQualityTolerant =>
+      join([harness_seat_partition_stem(replica: replica), "tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
+  }
+}
+
+// ── TWO CEILINGS, BECAUSE THERE ARE TWO LAWS ──────────────────────────────────────────────────
+//
+// WHAT THE QUALITY POOL IS FOR, AFTER THE MEASUREMENT. A cold prefill sharing a serving group with a
+// turn that is being READ degrades that turn's inter-token latency by about two orders of magnitude
+// for the length of the overlap. So the question it answers is not "how many turns can the KV hold"
+// -- it is "how many turns whose reader can be harmed by the next arrival may be in flight at once",
+// and that number is ONE. It is unchanged by this branch and must stay unchanged: nothing here
+// widens it, and a relaxation of it is a different decision than the one this file makes.
+//
+// AND THE CEILING IS WHERE THE RULE HAS TO LIVE, not in the screen before it. gunbc.serving.turn_admission
+// refuses an inadmissible group, but observing and acquiring are two steps: two placements arriving
+// together both observe the same standing, and only the compare-and-set against a ceiling makes the
+// second one lose. This is the wall; the admission screen in front of it is a cheap refusal that
+// saves an attempt and reports a better reason (review 62155).
+//
+// WHAT IS STILL UNESTABLISHED. Neither ceiling says how many sequences the engine could hold.
+// max_num_seqs is the engine's SCHEDULER COUNT LIMIT and was fail-open at 32;
+// `num_gpu_blocks * block_size` is refused by construction at extdeps.vllm.kv_cache because under MLA
+// with the DeepSeek fp8 layout it reports a small fraction of the logged pool; and
+// kv_cache_usage_perc counts RETAINED PREFIX-CACHE BLOCKS, so it reads 96.5% on an engine holding
+// nothing. Capacity remains underived and its declared drop
+// (gunbc.rung_drop harness_seat_ceiling_by_operator_policy) stands. What both ceilings now say is
+// what somebody DECIDED, each with its decider recorded, and the tolerant one is never the only thing
+// standing between an arrival and the engine: the route's own capacity signal can refuse under it at
+// any moment.
+type HarnessSeatCapacity
+  = SeatCeilingByDeclaredPolicy { class: ServingCoTenancyClass, pool: Pool<Count, One>, seats: Nat }
+  | AdmissionCeilingUnestablished { replica: RentedReplicaIdentity, cause: NonEmptyStr }
+
+// The interactive-quality ceiling: one turn whose stream is being read, per serving group. It is a
+// PRODUCT DECISION following the measured co-tenancy degradation, not a projection of any engine
+// fact, and it carries no claim about what the KV pool can hold. It dissolves when a turn can be
+// observed warm on a named launch, because a warm turn is not the arriving cold prefill the overlap
+// was measured on.
+data harness_interactive_quality_seats: Nat = 1
+
+fn harness_class_ceiling(class: ServingCoTenancyClass, route_ceiling: ServingRouteTurnCeiling) -> Nat {
+  match class {
+    InteractiveQualitySensitive => harness_interactive_quality_seats
+    BatchQualityTolerant => serving_route_turn_ceiling_count(c: route_ceiling)
+  }
+}
+
+// THE POOL A PARTITION CARRIES, derived from the partition rather than from the group, because the
+// release path holds the partition and must not re-derive it from a name that can point at a newer
+// one. The ceiling travels in because it is now a property of the class and the route rather than a
+// single row this module could read for itself.
+fn harness_seat_pool_root(partition: PartitionId, ceiling: Nat) -> Pool<Count, One> {
+  pool_of(
+    identity: partition as String as NonEmptyStr,
+    ceiling: Measure { count: ceiling },
+    replenishment: NoReplenishment,
+    release_law: QuiescenceRequired,
+  )
+}
+
+// AN UNRESOLVED ROUTE HAS NO CEILING, which is the one way this can fail to establish one. The
+// engine-kind check that used to stand here read retired gunbc.spark.pair_serving_desired (deleted #13779)'s DESIRED unit and
+// refused a group served by a runtime whose KV admission is not modelled -- a correct wall over the
+// wrong subject once a second route exists, because that row describes a launch this repository
+// would perform and not the process answering on either front door. Which runtimes may be enrolled
+// at all is gunbc.serving.serving_enrollment's question, and both enrolled routes are vLLM front
+// doors answering the OpenAI-shaped surface this module probes.
+fn harness_seat_capacity_for(route: ServingRoute, class: ServingCoTenancyClass) -> HarnessSeatCapacity {
+  match route {
+    ServingRouteUnresolved { replica: r, obligation: why } =>
+      AdmissionCeilingUnestablished { replica: r, cause: why }
+    ServingRouteResolved { endpoint: e, ceiling: c } => {
+      let identity = harness_seat_pool_identity_at(replica: e.replica, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c))
+      SeatCeilingByDeclaredPolicy { class: class, pool: identity.root, seats: identity.ceiling }
+    }
+  }
+}
+
+// ── WHICH POOL A SEAT IS IN, AS ONE TYPED FACT ────────────────────────────────────────────────
+//
+// A consumer that must decide whether a ledger entry is a harness seat -- the serving front door --
+// needs the exact pool: the group, the co-tenancy class, the partition and the ceiling its history is
+// folded against. A prefix of a partition name is not that fact (any partition starting with the
+// group stem would pass it), and neither is a partition without its class or ceiling. So the seat
+// authority mints the identity from the same three inputs acquisition uses, and a consumer compares
+// it by exact equality.
+type HarnessSeatPoolIdentity {
+  replica: RentedReplicaIdentity
+  class: ServingCoTenancyClass
+  partition: PartitionId
+  ceiling: Nat
+  root: Pool<Count, One>
+}
+
+fn harness_seat_pool_identity_at(replica: RentedReplicaIdentity, class: ServingCoTenancyClass, seats: Nat) -> HarnessSeatPoolIdentity {
+  let partition = harness_seat_partition(replica: replica, class: class, ceiling: seats)
+  HarnessSeatPoolIdentity { replica: replica, class: class, partition: partition, ceiling: seats, root: harness_seat_pool_root(partition: partition, ceiling: seats) }
+}
+
+type HarnessSeatPoolReading
+  = SeatPoolEstablished { pool: HarnessSeatPoolIdentity }
+  | SeatPoolUnestablished { cause: NonEmptyStr }
+
+// The current pool of a route's replica for one class -- what a front door is configured with. A class
+// whose ceiling cannot be established has no pool, and the door then serves no permit for it. The
+// route is supplied: enrolment is the caller's roster, never reached for here.
+fn harness_seat_pool_identity(route: ServingRoute, class: ServingCoTenancyClass) -> HarnessSeatPoolReading {
+  match route {
+    ServingRouteUnresolved { replica: _, obligation: why } => SeatPoolUnestablished { cause: why }
+    ServingRouteResolved { endpoint: e, ceiling: c } =>
+      SeatPoolEstablished { pool: harness_seat_pool_identity_at(replica: e.replica, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c)) }
+  }
+}
+
+// ── WHAT A PLACEMENT CAN ANSWER, AND WHY PENDING IS NOT A REFUSAL ────────────────────────────
+//
+// Three arms, because the caller's remedies are three. BOUND is a seat on a named launch. PENDING is
+// "every admissible group is busy right now": the demand is fine, the fleet is occupied, and a retry
+// in a moment is the whole remedy. REFUSED is everything a retry does not fix -- no endpoint row, no
+// admitted engine, an unreadable group, a selection that named an offer nothing can recover.
+//
+// FUSING PENDING INTO REFUSED WOULD MAKE PATIENCE LOOK LIKE A DEFECT, and worse, would make an
+// unreadable group look like patience. An unread group frees nobody: nothing about waiting turns it
+// into a reading, so its remedy is to go and measure.
+type HarnessSeatBinding
+  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, replica_wire: String, launch: ReplicaEndpointLaunch, store: FabricStorageBinding, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass, seat: HarnessSeatReference }
+  | HarnessSeatPending { detail: String }
+  | HarnessSeatRefused { detail: String }
+  | HarnessHostedBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
+  | HarnessOperatorBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, header_dir: NonEmptyStr, header_file: NonEmptyStr }
+
+fn seat_bind_detail(replica: RentedReplicaIdentity, text: String) -> String {
+  join([rented_replica_wire(id: replica), ": ", text], "")
+}
+
+// ── THE HARNESS OFFERS ITS GROUPS AND ASKS THE FABRIC WHICH ONE WINS ──────────────────────────
+//
+// This fold USED to be the selection policy: walk the roster, take the first group that observed as
+// serving and granted a seat. That made the harness a second placement authority beside the ctrl
+// router's, and the two disagreed -- the router ranked by running requests and took no seat at all,
+// so a turn it placed was invisible to this pool.
+//
+// A FIRST ATTEMPT TO FIX THAT MADE A THIRD ONE. It minted a serving-specific placement outcome, a
+// serving-specific candidate and a serving-specific admissibility verdict, all of which already
+// existed in product.fabric.selection as SupplySelection, CandidateOffer and OfferCandidacy -- and
+// the re-minted admissibility was strictly weaker, a string reason where the fabric carries typed
+// arms. It is not ported here, and it is not re-created here.
+//
+// What is left is what a consumer should have: observations in, a grant out. The harness supplies
+// what it can see about each group, gunbc.serving.turn_admission decides which groups may be offered
+// at all, product.fabric.selection ranks the survivors, and fabric_seat_acquire settles the race.
+// Nothing in this module decides which group wins.
+
+// THE SEAT STANDING IS A READING, NOT A RETRY OUTCOME, AND IT IS AN OCCUPANCY READING RATHER THAN A
+// CAPACITY ONE. Until fabric_seat_observe existed this path could only learn whether a pool had room
+// by PROPOSING an acquire and being refused -- which costs an attempt and cannot be told apart from
+// losing a race.
+//
+// WHAT IT IS ASKED HAS CHANGED, AND THAT IS THE REPAIR. The engine's gauges cannot see a seat that
+// was granted a moment ago and whose request has not been sent yet, so two placements arriving
+// together both read idle gauges and both land on one group. The ledger sees the first of them,
+// because a seat is taken before a request is sent. So the question is "how many seats are held",
+// and the answer goes to gunbc.serving.turn_admission as half of the occupancy reading rather than
+// being spent here as a capacity gate.
+//
+// AND IT IS NOW ASKED ONCE PER CLASS, because the law needs both counts at once: a tolerant arrival
+// is refused by a single held QUALITY seat and is bounded by the tolerant ceiling, and those are two
+// different pools. Either read failing makes the whole standing unread -- a standing carrying one
+// class's count and defaulting the other's would default the one that admits.
+// AN OPTIONAL COUNT WOULD HAVE THROWN AWAY THE HALF AN OPERATOR ACTS ON. A first spelling of this
+// returned Nat?, which collapsed two materially different failures into one bare Absent: a route
+// whose ceiling is unestablished, and a pool whose chain could not be walked at a named step. The
+// composer downstream then had to invent a generic sentence naming neither, which is a refusal that
+// is typed and NOT located -- and the location is the whole remedy, because "the ceiling is
+// unestablished for group B" and "the partition chain broke at step read-head" send an operator to
+// different places. So the per-class read carries its own cause forward (DESIGN section 5: every
+// path succeeds fully or fails with a typed, LOCATED diagnostic).
+type HarnessClassHeld
+  = ClassSeatsHeld { held: Nat }
+  | ClassHeldUnread { obligation: NonEmptyStr }
+
+fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, store: FabricStorageBinding, now: EpochSecs) -> HarnessClassHeld {
+  match harness_seat_capacity_for(route: route, class: class) {
+    AdmissionCeilingUnestablished { replica: r, cause: why } =>
+      ClassHeldUnread {
+        obligation: join([
+          rented_replica_wire(id: r), " ", serving_co_tenancy_class_wire(c: class) as String,
+          ": no ceiling is established for this route, so its pool cannot be reconstructed: ", why as String,
+        ], "") as NonEmptyStr,
+      }
+    SeatCeilingByDeclaredPolicy { class: _, pool: root, seats: ceiling } =>
+      match route {
+        ServingRouteUnresolved { replica: g, obligation: why } =>
+          ClassHeldUnread { obligation: join([rented_replica_wire(id: g), ": ", why as String], "") as NonEmptyStr }
+        ServingRouteResolved { endpoint: e, ceiling: _ } =>
+          match fabric_seat_observe(store: store, partition: harness_seat_partition(replica: e.replica, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
+            SeatStandingUnobserved { step: st, reason: why } =>
+              ClassHeldUnread {
+                obligation: join([
+                  rented_replica_wire(id: e.replica), " ", serving_co_tenancy_class_wire(c: class) as String,
+                  " seat pool could not be read at ", st, ": ", why,
+                ], "") as NonEmptyStr,
+              }
+            SeatStandingStoreRefused { cause: c } =>
+              ClassHeldUnread {
+                obligation: join([
+                  rented_replica_wire(id: e.replica), " ", serving_co_tenancy_class_wire(c: class) as String,
+                  " seat pool could not be read from the fabric DB: ", event_log_refusal_wire(cause: c),
+                ], "") as NonEmptyStr,
+              }
+            SeatFullObserved { generation: _ } => ClassSeatsHeld { held: ceiling }
+            SeatRoomObserved { headroom: h, generation: _ } =>
+              ClassSeatsHeld { held: ceiling - nat_min(a: measure_count(h), b: ceiling) }
+          }
+      }
+  }
+}
+
+// EITHER CLASS UNREAD MAKES THE WHOLE STANDING UNREAD, carrying that class's own cause rather than a
+// sentence about which class it was. A standing holding one class's count and defaulting the other's
+// would default the one that admits.
+fn harness_seat_standing(route: ServingRoute, store: FabricStorageBinding, now: EpochSecs) -> ServingSeatStanding {
+  match harness_class_held(route: route, class: InteractiveQualitySensitive, store: store, now: now) {
+    ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
+    ClassSeatsHeld { held: q } =>
+      match harness_class_held(route: route, class: BatchQualityTolerant, store: store, now: now) {
+        ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
+        ClassSeatsHeld { held: t } => SeatStandingRead { quality_held: q, tolerant_held: t }
+      }
+  }
+}
+
+// ── WHAT THIS BOUNDARY IS, AND WHAT IT IS NOT ────────────────────────────────────────────────
+//
+// IT IS AN ADMISSION BROKER OVER FABRIC OFFERS, AND IT PLACES A TURN AS FABRIC Work. Each entry
+// point hands harness_bind_seat a normalized gunbc.serving.turn_demand ServingTurnRequest, and the
+// turn's OfferedService Work and its Demand are built once from it (harness_turn_subject).
+//
+// AN EARLIER SHAPE OF THIS FILE CARRIED THAT REFUSAL ON THE GRANTED SEAT, which reads as enforcement
+// and is not: the refusal travelled beside a successful placement and prevented nothing
+// (review 62155). A typed refusal that accompanies actuation is observability wearing a wall's
+// clothes, and the honest arrangement is the one here -- the boundary states what it decides
+// (whether this group may take a fresh cold-risk turn now) and claims nothing about work identity.
+//
+// ── WHAT THE TURN REQUIRES OF A MODEL, WHICH IS NOW A QUESTION RATHER THAN A CONSTANT ────────
+//
+// THE DEMAND USED TO NAME ONE MODEL AND THAT WAS THE WHOLE PROBLEM. The fabric decides fungibility
+// by EXACT EQUALITY of capability references, so a requirement naming one model id made every route
+// serving anything else non-fungible -- the probe's demand arriving a second time at selection.
+//
+// THE FIRST REPAIR PUT THE REQUIREMENT INTO THE CAPABILITY, AND THAT WAS THE NEXT PROBLEM. To keep
+// equality matching, the harness stamped the OFFER with whatever the current demand required, so
+// one launch became three SupplierOffers under one key -- any-admitted, exact-DeepSeek, exact-GLM
+// -- with its capability chosen by the buyer. An offer's facts are the supplier's.
+//
+// SO NOW: the capability on both sides is the one stable token-serving capability the route offers
+// (gunbc.serving.turn_demand serving_token_capability); the caller's requirement is REQUEST
+// IDENTITY (harness_model_requirement_ref into ServingTurnRequest.model_requirement, reaching the
+// Work key through the contract inputs); the model a launch serves is observed evidence carried on
+// the offer projection; and harness_requirement_admits screens the requirement against the
+// observed unit before any offer is bound. A turn that needs a particular model says so and is
+// refused any route serving another; a turn that does not care -- the operator's ruling for an
+// ordinary harness turn -- is admissible on any admitted route, and the two are different Work.
+//
+// WHY THIS IS NOT A FABRIC CHANGE. One could argue the fabric should express "any of these
+// capabilities" and decide the disjunction itself. It cannot today -- a requirement is one reference
+// compared by equality -- and widening that is a change to a load-bearing selection rule for a need
+// one consumer has. Keeping the model out of the capability is what makes that unnecessary.
+// THE EXACT ARM IS A DECLARED FRONTIER AND HAS NO PRODUCTION CALLER TODAY, said here rather than
+// left for a reader to discover by grep. Every harness entry point passes AnyAdmittedModel, because
+// the operator's ruling is that an ordinary turn does not care which model answers it. The exact arm
+// is what keeps this a REQUIREMENT rather than a constant: with one arm, harness_model_requirement_ref
+// degenerates to a single string, the demand stops being a function of the caller, and the
+// exact-equality wall the fabric decides fungibility by becomes untestable -- the witness that proves
+// AnyAdmittedModel is not a blanket "accept anything" is written against precisely this arm.
+//
+// ITS CONSUMER AND TRIGGER: the first caller that needs a named model -- a model-comparison run
+// placing the same prompt on two routes, or a turn whose prompt is tuned to one unit's reasoning
+// wire. Until one exists this arm is exercised only by its witness, which is the honest middle state
+// of DESIGN section 3c rather than the red one; deleting it would force the next such caller to
+// re-mint the distinction, and re-minting is what that section's neighbours are about.
+type ServingModelRequirement
+  = AnyAdmittedModel
+  | ExactServingUnit { unit: HarnessServingUnit }
+
+// The caller's model requirement as request identity: any admitted model, or one exact unit by its
+// model id. This is what harness_turn_request carries into the Work; it is never an offer fact.
+fn harness_model_requirement_ref(requirement: ServingModelRequirement) -> ServingModelRequirementRef {
+  match requirement {
+    AnyAdmittedModel => "any-admitted-serving-model" as ServingModelRequirementRef
+    ExactServingUnit { unit: u } => join(["exact-serving-unit:", harness_unit_model_id(unit: u) as String], "") as ServingModelRequirementRef
+  }
+}
+
+fn harness_requirement_admits(requirement: ServingModelRequirement, observed: HarnessServingUnit) -> Bool {
+  match requirement {
+    AnyAdmittedModel => true
+    ExactServingUnit { unit: u } => (harness_unit_model_id(unit: u) as String) == (harness_unit_model_id(unit: observed) as String)
+  }
+}
+
+// WHAT THE HARNESS REQUIRES, which must match what its own routes offer or nothing is fungible. The
+// isolation profile is empty on BOTH sides deliberately: turns are not isolated from each other on a
+// serving group, and a demand that pretended otherwise would refuse every offer we have.
+fn harness_execution_requirements() -> ExecutionRequirements {
+  serving_turn_requirements(
+    capacity_class: ControlPlaneCapacity,
+    capabilities: serving_token_capability(),
+    trust_domain: serving_replica_trust_domain,
+    isolation: serving_isolation_profile(),
+    shape: serving_unstated_shape(),
+  )
+}
+
+// ── ONE TURN, ONE WORK, ONE DEMAND, BUILT BEFORE ANY OFFER IS CONSIDERED ─────────────────────
+//
+// Provider-use admission is granted FOR a demand and a work, and bind_candidate checks the permit
+// against both. Constructing either per offer would put the request's identity beneath supplier
+// enumeration, where an offer-specific fact could reach it; so both are made once, here, from what
+// the caller asked for, and carried down to every candidate unchanged.
+//
+// THE WORK is gunbc.serving.turn_demand's OfferedService over the caller's normalized request and
+// the requirement's execution requirements -- the same requirements select_supply ranks against, so
+// fungibility and identity read one value.
+//
+// THE DEMAND KEY IS THE CALLER'S ATTEMPT IDENTITY. A demand is who asked and for which attempt;
+// the fabric derives no demand key from anything else, and the attempt is the identity every entry
+// point already mints and the seat reference already carries, so this names the existing fact
+// rather than inventing a second one.
+type HarnessTurnSubject {
+  work: Work<NonEmptyStr>
+  demand: FabricIdentity<NonEmptyStr, DemandKey>
+  admission: AdmissionTerms
+}
+
+fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr, admission: AdmissionTerms) -> HarnessTurnSubject {
+  HarnessTurnSubject {
+    work: serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements()),
+    demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: attempt as DemandKey },
+    admission: admission,
+  }
+}
+
+// THE ONLY ROUTE FROM A DEMAND TO select_supply's delay and buy-order. CONSUMER:
+// harness_placement_round; test.claim.harness_turn_admission_witness (serving-path
+// profile switch). Delay is a required field of TermValuations; there is no profile default.
+type HarnessPricedSelectionInputs {
+  delay_valuation: MoneyPerSecond
+  maximum_buy_order: MoneyAmountMicro
+  budget_currency: CurrencyCode
+}
+
+fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
+  HarnessPricedSelectionInputs {
+    delay_valuation: demand_delay_valuation(terms: admission),
+    maximum_buy_order: admission.buy.maximum_buy_order,
+    budget_currency: admission.buy.currency,
+  }
+}
+
+fn harness_select_supply<P>(
+  admission: AdmissionTerms,
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<P>>,
+  duration: GrantDuration,
+  tie: EqualCostOfferTieBreak,
+  affinity: PlacementAffinityKey,
+) -> SupplySelection<P> {
+  let priced = harness_priced_selection_inputs(admission: admission)
+  select_supply(
+    requirements: requirements,
+    candidates: candidates,
+    duration: duration,
+    maximum_buy_order: priced.maximum_buy_order,
+    budget_currency: priced.budget_currency,
+    delay_valuation: priced.delay_valuation,
+    tie: tie,
+    affinity: affinity,
+  )
+}
+
+// THE NORMALIZED REQUEST AN ENTRY POINT SUPPLIES. The interface is the wire shape the turn speaks.
+// The inputs are an opaque content identity over the parts the entry supplies -- its role, its
+// prompt, and the paths its system prompt is derived from -- so placement knows WHICH turn it is
+// placing without receiving or interpreting prompt bytes. An entry that places a seat without a
+// prompt (a placement or seat probe) supplies only its role: the attempt is the DEMAND's identity
+// and never an input of the Work, or two attempts of one request would be two Works and the
+// separation harness_turn_subject exists to keep would be gone.
+//
+// THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is length-framed by
+// product.fabric.work identity_frame -- the one framing authority the Work key itself uses -- and
+// the frames are concatenated in order under the element count; a join with a separator byte would
+// let ["a<sep>b"] and ["a", "b"] name one turn.
+fn harness_turn_request(shape: HarnessWireShape, requirement: ServingModelRequirement, inputs: List<String>) -> ServingTurnRequest {
+  ServingTurnRequest {
+    interface: harness_wire_shape_interface(shape: shape),
+    inputs: serialize_content_hash(hash: content_hash_of_value(value: harness_turn_inputs_identity(inputs: inputs))) as ArtifactManifestRef,
+    model_requirement: harness_model_requirement_ref(requirement: requirement),
+    effect_contract: "gunbc.harness.streamed-turn-effects" as EffectContractRef,
+    output_contract: "gunbc.harness.turn-completion" as OutputContractRef,
+  }
+}
+
+fn harness_turn_inputs_identity(inputs: List<String>) -> NonEmptyStr {
+  fold(
+    inputs,
+    init: identity_frame(label: "gunbc.harness.turn-inputs", value: to_string(length(inputs))),
+    f: (acc, part) => concat(acc, identity_frame(label: "input", value: part))
+  )
+}
+
+fn harness_wire_shape_interface(shape: HarnessWireShape) -> ServiceInterfaceRef {
+  match shape {
+    AnthropicMessagesShape => "anthropic.messages" as ServiceInterfaceRef
+    OpenAiChatCompletionsShape => "openai.chat-completions" as ServiceInterfaceRef
+  }
+}
+
+// The receipt the queue gauges this path reads are cited under, for the seat admission and for the
+// dispatch observations bound with the offer: both are the same probe, so they are one row.
+data harness_metrics_probe_receipt: ObservationReceiptRef = "gunbc.harness.metrics-probe" as ObservationReceiptRef
+
+// ── A CANDIDATE IS AN OFFER PLUS WHAT IT TAKES TO ACT ON IT ───────────────────────────────────
+//
+// The launch and the endpoint travel beside the candidate rather than being recovered from the offer
+// key by taking a prefix of it. An offer key is one opaque name, and a consumer that parses it has
+// made its shape load-bearing.
+//
+// THE OBSERVED MODEL AND UNIT TRAVEL WITH IT TOO, because they are what the turn will be shaped by
+// and they were observed on THIS route's probe. Re-deriving them after the seat is granted would be
+// a second reading, free to disagree with the one admission was decided on.
+type HarnessCandidate {
+  key: NonEmptyStr
+  replica: RentedReplicaIdentity
+  endpoint: ServingRouteEndpoint
+  launch: ReplicaEndpointLaunch
+  model: NonEmptyStr
+  unit: HarnessServingUnit
+  ceiling: Nat
+  offer: CandidateOffer<NonEmptyStr>
+}
+
+type HarnessCandidates {
+  candidates: List<HarnessCandidate>
+  notes: List<String>
+  retryable: Bool
+  owner_standing: ServingSessionResidency?
+}
+
+fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -> HarnessCandidates {
+  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, owner_standing: acc.owner_standing }
+}
+
+// AN OCCUPIED GROUP IS PENDING AND AN UNREAD ONE IS REFUSED, and the difference is carried by
+// branching on the admission arms here rather than by asking a pair of Bool predicates about them.
+// The remedies differ in kind, which is why the two outcomes do: a group that is busy, at its
+// declared ceiling, or holding requests back for capacity will free itself, so a retry is the whole
+// remedy and the demand stays live; an unread group frees nobody, no amount of retrying learns
+// anything, and the remedy is to go and measure -- so it refuses now rather than spending the
+// caller's time on a wait that cannot end. An occupant the ledger never admitted is retryable for
+// the same reason a busy group is: it is work in flight, and it ends.
+//
+// ADMISSION HAPPENS BEFORE THE OFFER IS BOUND, WHICH IS THE POINT OF THE CUT. An inadmissible group
+// is not a worse candidate; it is not a candidate. The earlier design bound it, priced its
+// co-tenancy on the opportunity axis and let the ranking decide -- which places the arriving prefill
+// beside a live decode whenever the alternatives happen to look worse.
+//
+// AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
+// did not ask for is not a candidate at all, which is a different answer from being outbid.
+fn harness_add_candidate(acc: HarnessCandidates, session: ServingSessionRecord, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs) -> HarnessCandidates {
+  match route {
+    ServingRouteUnresolved { replica: _, obligation: o } =>
+      harness_no_candidate(acc: acc, note: o as String, retryable: false)
+    ServingRouteResolved { endpoint: endpoint, ceiling: route_ceiling } => {
+      let replica = endpoint.replica
+      let first = harness_observe_engine_at(endpoint: endpoint, at: now)
+      let standing = harness_observe_replica(endpoint: endpoint)
+      let engine = harness_observe_engine_at(endpoint: endpoint, at: now)
+      let availability = harness_route_availability(endpoint: endpoint, before: first.launch, standing: standing, after: engine.launch, now: to_string(now))
+      let progress = engine_progress_read(
+        endpoint: endpoint,
+        before_launch: first.launch,
+        after_launch: engine.launch,
+        before: first.progress,
+        after: engine.progress,
+        bound: serving_engine_step_bound,
+        now: to_string(now),
+      )
+      match availability.reading {
+        ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: serving_availability_text(a: availability.reading)), retryable: false)
+        ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: _ }, receipt: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: serving_availability_text(a: availability.reading)), retryable: false)
+        ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: serving_availability_text(a: availability.reading)), retryable: true)
+        ServingAvailable { endpoint: _, launch: launch, observed_at: _, receipt: _ } =>
+          match engine_progress_gate(verdict: progress) {
+            WithholdRouteNotProgressing { note: why } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: true)
+            ProgressDoesNotWithhold =>
+              harness_candidate_from_standing(acc: acc, session: session, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, launch: launch, engine: engine, incarnation: harness_observe_incarnation(endpoint: endpoint, launch: launch, attempt: subject.demand.key as String), route_ceiling: route_ceiling, subject: subject, store: store, now: now)
+          }
+      }
+    }
+  }
+}
+
+// AN UNREAD PROGRESS READING IS NOT A WALL. Whether the engine is advancing is a different question from
+// whether the route answered, and the three non-stall arms -- advanced, idle, and unread -- all continue
+// to the model screen. Only an established stall withholds the route, and it is retryable because a
+// wedged engine may clear and the next placement round re-observes.
+fn harness_candidate_from_standing(
+  acc: HarnessCandidates,
+  session: ServingSessionRecord,
+  endpoint: ServingRouteEndpoint,
+  route: ServingRoute,
+  class: ServingCoTenancyClass,
+  requirement: ServingModelRequirement,
+  standing: HarnessBackendStanding,
+  launch: ReplicaEndpointLaunch,
+  engine: HarnessEngineReading,
+  incarnation: ReplicaIncarnationStanding,
+  route_ceiling: ServingRouteTurnCeiling,
+  subject: HarnessTurnSubject,
+  store: FabricStorageBinding,
+  now: EpochSecs,
+) -> HarnessCandidates {
+  let replica = endpoint.replica
+  match standing {
+    HarnessBackendServing { model: observed_model, unit: observed_unit, readback: _ } =>
+      if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
+        harness_no_candidate(
+          acc: acc,
+          note: seat_bind_detail(replica: replica, text: join(["the route serves ", observed_model as String, ", which is not the model this turn requires"], "")),
+          retryable: false,
+        )
+      } else {
+        harness_add_serving_candidate(
+          acc_in: acc, endpoint: endpoint, class: class, launch: launch, engine: engine, incarnation: incarnation,
+          seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
+          seats_held: harness_seat_standing(route: route, store: store, now: now),
+          session: session,
+          sources: rented_production_sources(replica: replica),
+          subject: subject, model: observed_model, unit: observed_unit, now: now,
+        )
+      }
+    HarnessBackendModelNotAdmitted { advertised: _ } =>
+      harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: harness_standing_detail(standing: standing)), retryable: false)
+    HarnessBackendUnreachable { url: _ } =>
+      harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: harness_standing_detail(standing: standing)), retryable: false)
+    HarnessBackendUnreadable { cause: _ } =>
+      harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: harness_standing_detail(standing: standing)), retryable: false)
+  }
+}
+
+// THE ADMISSION SEAM. Everything above admission is hardware-neutral and executes for a rented
+// replica: the engine reading, the availability and continuity verdict, the progress gate, the model
+// screen and the co-tenancy admission. What follows is gunbc.serving.rented_offer_admission: the
+// replica's rental record, the operator's posture attestation and the fabric capacity admission. Each
+// unread fact ends in a typed, located refusal, never a fabricated offer.
+
+fn harness_add_serving_candidate(
+  acc_in: HarnessCandidates,
+  endpoint: ServingRouteEndpoint,
+  class: ServingCoTenancyClass,
+  launch: ReplicaEndpointLaunch,
+  engine: HarnessEngineReading,
+  seats: Nat,
+  seats_held: ServingSeatStanding,
+  session: ServingSessionRecord,
+  incarnation: ReplicaIncarnationStanding,
+  sources: RentedAdmissionSources,
+  subject: HarnessTurnSubject,
+  model: NonEmptyStr,
+  unit: HarnessServingUnit,
+  now: EpochSecs,
+) -> HarnessCandidates {
+  let replica = endpoint.replica
+  let acc = harness_note_owner_standing(acc: acc_in, session: session, launch: launch, engine: engine, incarnation: incarnation)
+  let admission = serving_group_admission(
+    incoming: class,
+    tenancy: serving_co_tenancy(reading: engine.queue),
+    pressure: serving_capacity_pressure(reading: engine.queue),
+    seats: seats_held,
+    ceiling: seats,
+    receipt: harness_metrics_probe_receipt,
+  )
+  let wire = serving_route_endpoint_wire(e: endpoint) as String
+  let launch_names_replica = rented_replica_wire(id: launch.replica) == rented_replica_wire(id: replica)
+    && (launch.endpoint as String) == wire
+    && (match engine.launch {
+      ReplicaLaunchObserved { launch: seen, receipt: _ } =>
+        rented_replica_wire(id: seen.replica) == rented_replica_wire(id: replica) && (seen.endpoint as String) == wire
+      ReplicaLaunchUnobserved { replica: _, obligation: _ } => true
+    })
+  match admission {
+    AdmissibleForClass { class: _, receipt: _ } =>
+      if !launch_names_replica {
+        harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: "the launch supplied for this candidate names another replica or another endpoint than the candidate it is supplied for, so it is not the launch of the process this endpoint serves"), retryable: false)
+      } else {
+      match admit_rented_offer(replica: replica, sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
+        RentedCandidateAdmitted { candidate: c } =>
+          if any(acc.candidates, e => (e.key as String) == (c.offer.id.key as String)) {
+            harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: join(["offer ", c.offer.id.key as String, " already names another candidate; two replicas may not share one offer identity"], "")), retryable: false)
+          } else {
+          HarnessCandidates {
+            candidates: concat(acc.candidates, [HarnessCandidate {
+              key: c.offer.id.key, replica: replica, endpoint: endpoint, launch: launch,
+              model: model, unit: unit, ceiling: seats, offer: c,
+            }]),
+            notes: acc.notes,
+            retryable: acc.retryable,
+            owner_standing: acc.owner_standing,
+          }
+          }
+        RentedAdmissionRefused { detail: why } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: false)
+      }
+      }
+    InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
+    InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
+    InadmissibleRouteHoldingForCapacity { held: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
+    InadmissibleClassCeilingReached { held: _, ceiling: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
+    InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
+    AdmissibilityUnread { obligation: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: false)
+  }
+}
+
+// EXCLUDED KEYS ARE EXCLUDED BY EXACT LAUNCH IDENTITY, which is what makes a reselect after a lost
+// race sound: the offer that lost is the offer on that launch, and if the engine has restarted
+// since, the group returns under a different key and is a candidate again rather than being shunned
+// for its predecessor's contention.
+fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
+  any(excluded, k => k == (key as String))
+}
+
+// THE POPULATION IS THE ENROLLED ROUTES, NOT THE CONVERGENCE ROSTER. Which groups this repository
+// deploys and which routes a turn may be offered to are two questions that stopped coinciding on
+// 2026-09-08, and folding the deployment roster here made an undeployed-but-serving route invisible
+// while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
+// authority for the second question; every route it names still has to answer a probe before it
+// becomes a candidate, which is what makes membership observed rather than declared.
+fn harness_collect_candidates(session: ServingSessionRecord, routes: List<ServingRoute>, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, excluded: List<String>) -> HarnessCandidates {
+  let collected = fold(routes, init: HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none }, f: (acc, r) =>
+    harness_add_candidate(acc: acc, session: session, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now))
+  let kept = filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key))
+  harness_apply_session_attachment(session: session, collected: collected, kept: kept)
+}
+
+// THE FINAL FILTER harness_collect_candidates applies after the route fold: one pass over kept
+// candidates, partitioned on ServingSessionPlacement. Missing owner standing is unread (pinned).
+// There is no Bool predicate beside this match -- PlacementFree stays, OwnedByAnotherReplica notes.
+fn harness_apply_session_attachment(session: ServingSessionRecord, collected: HarnessCandidates, kept: List<HarnessCandidate>) -> HarnessCandidates {
+  match session {
+    NoSessionRecord =>
+      HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, owner_standing: collected.owner_standing }
+    SessionRecord { owner_launch: _, prefix_intact: _, last_turn: _ } => {
+      let owner_standing = collected.owner_standing
+      let standing = match owner_standing {
+        Present { value: s } => s
+        Absent => serving_unread_when_owner_unprobed()
+      }
+      fold(kept, init: HarnessCandidates {
+        candidates: [],
+        notes: collected.notes,
+        retryable: collected.retryable,
+        owner_standing: match owner_standing {
+          Present { value: s } => Present { value: s }
+          Absent => Present { value: standing }
+        },
+      }, f: (acc, c) =>
+        match serving_session_placement(residency: standing, record: session, candidate_launch: replica_endpoint_launch_key(launch: c.launch)) {
+          PlacementFree =>
+            HarnessCandidates { candidates: concat(acc.candidates, [c]), notes: acc.notes, retryable: acc.retryable, owner_standing: acc.owner_standing }
+          OwnedByAnotherReplica { owner: _ } =>
+            HarnessCandidates {
+              candidates: acc.candidates,
+              notes: concat(acc.notes, [join([rented_replica_wire(id: c.replica), ": this session is attached to another launch, so it is not moved to a different replica"], "")]),
+              retryable: true,
+              owner_standing: acc.owner_standing,
+            }
+        })
+    }
+  }
+}
+
+// THE OWNER'S STANDING IS NOTED WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
+// owner contributes a standing, whatever order the routes are folded in. THE STANDING IS JUDGED ONLY ON
+// A BOUND INCARNATION (gunbc.serving.replica_incarnation): the process-start field alone is the
+// endpoint's own claim, and a ReusedAtTurn or LaunchReplaced judgement on it would call a session warm,
+// or free it, on an identity nothing read. An unread incarnation pins the owner with its own cause. A
+// bound one must be the incarnation OF THIS launch, and then the per-turn judgement stands.
+// Host-tier and current-eviction readings stay unread: no observation source exists for them.
+fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRecord, launch: ReplicaEndpointLaunch, engine: HarnessEngineReading, incarnation: ReplicaIncarnationStanding) -> HarnessCandidates {
+  match session {
+    NoSessionRecord => acc
+    SessionRecord { owner_launch: owner, prefix_intact: _, last_turn: _ } => {
+      let key = replica_endpoint_launch_key(launch: launch)
+      if (owner as String) != (key as String) {
+        acc
+      } else {
+        HarnessCandidates {
+          candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable,
+          owner_standing: Present { value: harness_owner_residency(session: session, key: key, incarnation: incarnation) },
+        }
+      }
+    }
+  }
+}
+
+fn harness_owner_residency(session: ServingSessionRecord, key: NonEmptyStr, incarnation: ReplicaIncarnationStanding) -> ServingSessionResidency {
+  match incarnation {
+    ReplicaIncarnationUnread { obligation: o } => ResidencyUnread { obligation: o }
+    ReplicaIncarnationBound { incarnation: inc } =>
+      if (replica_endpoint_launch_key(launch: inc.launch) as String) != (key as String) {
+        ResidencyUnread { obligation: replica_incarnation_unverified_obligation }
+      } else {
+        serving_session_standing(record: session, current_launch: key, host: HostTierUnread, gpu: GpuPrefixUnread)
+      }
+  }
+}
+
+// THE INCARNATION IS OBSERVED ON THE REPLICA'S HOST OVER ITS ENROLLED ACCESS: the replica's own
+// enrollment row (gunbc.serving.rented_enrollment) names the host, and a replica with no row, a refused
+// access or an unreadable fact is Unread, which pins the owner and is never warm.
+fn harness_observe_incarnation(endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt: String) -> ReplicaIncarnationStanding {
+  rented_incarnation_standing(index: rented_cohort_index, authorizations: rented_host_authorizations, clock: RentedHostClockUnread, endpoint: endpoint, launch: launch, attempt_raw: attempt)
+}
+
+fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptyStr) -> HarnessCandidate? {
+  let named = filter(candidates, c => (c.key as String) == (key as String))
+  if count(named) > 1 { none } else { first(named) }
+}
+
+// THE ACQUISITION REFERENCE MUST BE UNIQUE FOR THE LIFE OF THE PARTITION, not merely unlikely to
+// repeat. The pool refuses a duplicate reference against its WHOLE history, released entries
+// included, so a reference of actor-plus-epoch-seconds collides with itself whenever one actor
+// places twice inside one second and stays refused forever after (review 62155).
+//
+// AND NEITHER THE ROUND ORDINAL NOR THE HEAD SEPARATES TWO CONCURRENT PROCESSES, which two repairs
+// in a row got wrong and this one states exactly. The round separates the attempts of ONE placement
+// loop; two independent invocations both begin at round one. The head separates placements that ran
+// after one another, because an append moves it -- but two processes that READ THE SAME HEAD are
+// exactly the case it cannot tell apart, since the head only advances once one of them has already
+// won. So the uniqueness of a reference rests on the ATTEMPT IDENTITY the caller supplies, and this
+// module says so rather than claiming a property its inputs do not have.
+//
+// WHAT THE CALLER OWES, AND WHAT HAPPENS IF IT DOES NOT PAY. The attempt identity must be distinct
+// per placement attempt: a worktree for a worker, a verdict path for a reviewer, the router's own
+// request identity for a proxied turn. A caller that reuses one gets a duplicate reference, which the
+// pool REFUSES over its whole history -- so the failure is a loud, permanent refusal for that caller,
+// never two processes sharing a seat. That is the fail-closed direction, and it is the reason this is
+// an obligation rather than a hazard; a process identity in the substrate would let this module mint
+// the value itself, which is the trigger for removing the obligation.
+//
+// A HEAD THAT COULD NOT BE READ IS NOT A ZERO. It has no reference to mint, so the acquisition
+// refuses -- minting one against an unread head would be a reference that cannot be shown unique.
+//
+// THE REFERENCE IS A RECORD, AND THE LEDGER STRING IS ITS RENDERING. Its parts -- which attempt, which
+// offer (launch), when, which round, against which head -- are facts a consumer decides on (the
+// serving front door asks whether a held seat was taken for THIS work against THIS launch), so they
+// are carried as fields and compared as fields. The partition's chain stores only the rendering,
+// because product.capacity holds references opaquely; a consumer that holds the record finds its
+// entry by rendering it and comparing for exact equality, and never parses a rendering back apart.
+//
+// THE RENDERING IS INJECTIVE BY CONSTRUCTION, which is what makes that lookup sound: the two
+// free-text parts are length-prefixed, the numeric parts are digits between fixed separators, and the
+// head runs to the end. Two different records cannot render to one string, whatever characters an
+// attempt or an offer key contains -- so equality of renderings is equality of every field.
+type HarnessSeatReference {
+  attempt: NonEmptyStr
+  offer_key: NonEmptyStr
+  stamped_at: EpochSecs
+  round: Nat
+  head: NonEmptyStr
+}
+
+fn harness_seat_reference_wire(r: HarnessSeatReference) -> NonEmptyStr {
+  join([
+    to_string(string_length(s: r.attempt as String)), ":", r.attempt as String,
+    "@", to_string(r.stamped_at), "#", to_string(r.round), "/",
+    to_string(string_length(s: r.offer_key as String)), ":", r.offer_key as String,
+    "^", r.head as String,
+  ], "") as NonEmptyStr
+}
+
+fn harness_seat_reference_record(attempt: NonEmptyStr, offer_key: NonEmptyStr, now: EpochSecs, round: Nat, head: NonEmptyStr) -> HarnessSeatReference {
+  HarnessSeatReference { attempt: attempt, offer_key: offer_key, stamped_at: now, round: round, head: head }
+}
+
+fn harness_seat_reference(attempt: NonEmptyStr, offer_key: NonEmptyStr, now: EpochSecs, round: Nat, head: NonEmptyStr) -> NonEmptyStr {
+  harness_seat_reference_wire(r: harness_seat_reference_record(attempt: attempt, offer_key: offer_key, now: now, round: round, head: head))
+}
+
+fn harness_head_word(head: HeadExpectation) -> NonEmptyStr {
+  match head {
+    HeadAbsent => "empty" as NonEmptyStr
+    HeadAt { id: i } => i as NonEmptyStr
+  }
+}
+
+// ── THE COMPARE-AND-SET REMAINS THE ARBITER, AND LOSING IT IS NOT THE END ─────────────────────
+//
+// Selection decides which offer is preferred from what was observed; the seat can still be taken
+// between that reading and this acquire, and when it is, the acquire refuses. That race is not a
+// defect in the policy -- it is why the policy does not try to settle it.
+//
+// WHAT WAS MISSING WAS THE OTHER HALF. The lost race was returned to the caller as a terminal
+// inability to place the demand, when it is ordinary contention: another request took the seat, and
+// the remaining offers were never asked. A lost compare-and-set therefore excludes that launch and
+// reselects over what is left, bounded, with the groups re-observed each round because the world
+// moved -- the group that was occupied a moment ago may now be free, and the one that was free may
+// have restarted.
+type HarnessAcquisition
+  = AcquisitionGranted { binding: HarnessSeatBinding }
+  | AcquisitionLost { key: NonEmptyStr, detail: String }
+  | AcquisitionRefused { detail: String }
+
+// ── THE GRANT IS FENCED AGAINST THE LAUNCH IT WAS TAKEN FOR ───────────────────────────────────
+//
+// Naming the launch on the offer keeps a dead engine's evidence from pricing its successor between
+// ROUNDS. It does not, by itself, cover the window inside one round: the engine can be replaced
+// after selection reads it and before the seat is taken, and the seat would then authorize a request
+// against an engine that never answered a probe -- a fresh KV cache, a different effective policy,
+// possibly a different runtime. Restart is exactly the event that invalidates an outstanding grant,
+// so the grant is checked against the launch it was taken for, once, at the point it is issued.
+//
+// A CHANGED LAUNCH RELEASES THE SEAT AND IS ORDINARY CONTENTION. The successor is a different offer
+// subject and may be perfectly good; excluding this launch and reselecting is what the bounded loop
+// already does for a lost compare-and-set, and the group returns under its new key on the next
+// round. Holding the seat while refusing would leak it.
+//
+// AN UNREADABLE ENGINE HERE REFUSES RATHER THAN RETRYING, because a group that stopped answering
+// between selection and acquisition frees nobody by being waited for.
+//
+// AND A RELEASE THAT WAS NOT CONFIRMED DOES NOT AUTHORIZE ANOTHER ACQUISITION. Reselecting after an
+// unconfirmed release would put this turn on a second group while the first seat may still be held,
+// which is the leak the ceiling of one exists to prevent, arriving through the recovery path
+// (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
+// could not give back is named in the reason.
+fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricStorageBinding, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, seat: HarnessSeatReference, now: EpochSecs) -> HarnessAcquisition {
+  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine_at(endpoint: candidate.endpoint, at: now).launch, now: to_string(now)).reading {
+    EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
+      let released = release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
+      AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
+    }
+    EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
+        match release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
+          HarnessHostedCredentialRemoved =>
+            AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: "a fleet seat release answered as a hosted credential removal; the seat may still be held") }
+          HarnessSeatReleased { partition: _ } =>
+            AcquisitionLost {
+              key: candidate.key,
+              detail: seat_bind_detail(replica: candidate.replica, text: "the engine was replaced between selection and acquisition, and the seat was released"),
+            }
+          HarnessSeatReleaseRefused { detail: why } =>
+            AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join(["the engine was replaced between selection and acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why], "")) }
+        }
+    EndpointProcessUnchanged { endpoint: _, launch: _, observed_at: _, receipt: _ } =>
+        AcquisitionGranted {
+          binding: HarnessSeatBound {
+            url: harness_backend_url_for_endpoint(shape: shape, endpoint: candidate.endpoint),
+            grant: grant,
+            partition: partition,
+            ceiling: candidate.ceiling,
+            replica_wire: rented_replica_wire(id: candidate.replica),
+            launch: candidate.launch,
+            store: store,
+            model: candidate.model,
+            unit: candidate.unit,
+            class: class,
+            seat: seat,
+          },
+        }
+  }
+}
+
+fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricStorageBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
+  {
+      let partition = harness_seat_partition(replica: candidate.replica, class: class, ceiling: candidate.ceiling)
+      let root = harness_seat_pool_root(partition: partition, ceiling: candidate.ceiling)
+      match event_log_observe_head(store: store, partition: partition) {
+        HeadObservationRefused { cause: c } =>
+          AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join(["the partition head could not be read, so no unique acquisition reference exists: ", event_log_refusal_wire(cause: c)], "")) }
+        HeadObserved { head: h } => {
+      let seat = harness_seat_reference_record(attempt: attempt, offer_key: candidate.key, now: now, round: round, head: harness_head_word(head: h))
+      let request = SeatRequest {
+        reference: harness_seat_reference_wire(r: seat),
+        amount: Measure { count: 1 },
+        at: now,
+        term_seconds: policy.maximum_duration_seconds,
+      }
+      match fabric_seat_acquire(store: store, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
+        SeatGranted { grant: g, generation: _, attempts_used: _ } =>
+          harness_fence_grant(candidate: candidate, class: class, store: store, partition: partition, shape: shape, grant: g, seat: seat, now: now)
+        SeatFull { wire: w, attempts_used: _ } =>
+          AcquisitionLost { key: candidate.key, detail: seat_bind_detail(replica: candidate.replica, text: w) }
+        SeatContended { attempts: a } =>
+          AcquisitionLost { key: candidate.key, detail: seat_bind_detail(replica: candidate.replica, text: join(["the seat compare-and-set was contended ", to_string(a), " times"], "")) }
+        SeatAcquireRefused { step: st, reason: why, attempts_used: _ } =>
+          AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join([st, ": ", why], "")) }
+        SeatStoreRefused { cause: c, attempts_used: _ } =>
+          AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join(["fabric DB: ", event_log_refusal_wire(cause: c)], "")) }
+      }
+        }
+      }
+  }
+}
+
+// THE ENDPOINT COMES FROM THE ACQUIRED OFFER, NEVER FROM A PICKER. The url on a bound seat is the
+// address of the candidate that won selection and then won the compare-and-set. A second lookup here
+// -- asking the roster for a serving address again, say -- would be a placement decision taken after
+// the placement decision, and the two are free to disagree exactly when a group has just restarted.
+
+// ready IS THE SUPPLY THE LAST ROUND SAW (the candidates that survived the screen) and recovery IS WHAT
+// THE ROUND DID, as typed events: the two facts gunbc.serving.caller_backlog apply_ready_supply_law and
+// note_recovery_durable consume. They are surfaced here, once, rather than re-derived by the settle step.
+type PlacementRound {
+  done: HarnessSeatBinding?
+  excluded: List<String>
+  notes: List<String>
+  retryable: Bool
+  ready: Nat
+  recovery: List<RecoveryEvent>
+}
+
+fn harness_probe_event(ready: Nat) -> RecoveryEvent {
+  RecoveryEvent { kind: RecoveryProbe, succeeded: !(ready == 0) }
+}
+
+fn harness_request_event(succeeded: Bool) -> RecoveryEvent {
+  RecoveryEvent { kind: RecoveryRequest, succeeded: succeeded }
+}
+
+fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBinding {
+  if retryable {
+    HarnessSeatPending { detail: join(["no serving group can take this turn now: ", join(notes, "; ")], "") }
+  } else {
+    HarnessSeatRefused { detail: join(["no serving offer was admissible: ", join(notes, "; ")], "") }
+  }
+}
+
+// THE DURATION CARRIES A Second, NOT A COUNT. GrantDuration's estimated arm holds a Second, and
+// LeasePolicy.maximum_duration_seconds is a bare Nat; handing it across unwrapped survived every
+// witness because no claim had ever priced a bound candidate, and the first dispatch that did
+// (2026-09-20) died in selection at `second_count` -- "cannot access field 'count' on Int". The
+// constructor is named so the seam has one authority and a witness can drive it
+// (test.claim.harness_turn_admission_witness prices a bound candidate with exactly this duration).
+fn harness_placement_grant_duration(policy: LeasePolicy) -> GrantDuration {
+  EstimatedGrantDuration { seconds: second(count: policy.maximum_duration_seconds) }
+}
+
+fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, routes: List<ServingRoute>) -> PlacementRound {
+  match acc.done {
+    Present { value: _ } => acc
+    Absent => {
+      let collected = harness_collect_candidates(session: session, routes: routes, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded)
+      let notes = concat(acc.notes, collected.notes)
+      let retryable = acc.retryable || collected.retryable
+      let ready = fold(collected.candidates, init: Zero, f: (n, _) => Succ { prev: n })
+      let probed = concat(acc.recovery, [harness_probe_event(ready: ready)])
+      match harness_select_supply(
+        admission: subject.admission,
+        requirements: subject.work.requirements,
+        candidates: map(collected.candidates, c => c.offer),
+        duration: harness_placement_grant_duration(policy: policy),
+        tie: AffinityKeyedRendezvous,
+        affinity: actor as PlacementAffinityKey,
+      ) {
+        NoAdmissibleOffer { considered: _ } =>
+          PlacementRound {
+            done: Present { value: harness_nothing_placed(notes: notes, retryable: retryable) },
+            excluded: acc.excluded,
+            notes: notes,
+            retryable: retryable,
+            ready: ready,
+            recovery: probed,
+          }
+        EqualCostTieUnresolved { digest: d, cause: c, considered: _ } =>
+          PlacementRound {
+            done: Present { value: HarnessSeatRefused { detail: join(["two serving offers produced the same rendezvous digest ", d as String, ": ", affinity_collision_wire(c: c), ", so the tie policy could not choose between them"], "") } },
+            excluded: acc.excluded,
+            notes: notes,
+            retryable: retryable,
+            ready: ready,
+            recovery: probed,
+          }
+        OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+          match harness_candidate_for_key(candidates: collected.candidates, key: sel.candidate.offer.id.key) {
+            Absent =>
+              PlacementRound {
+                done: Present { value: HarnessSeatRefused { detail: join(["selection returned an offer key naming no candidate: ", sel.candidate.offer.id.key as String], "") } },
+                excluded: acc.excluded,
+                notes: notes,
+                retryable: retryable,
+                ready: ready,
+                recovery: probed,
+              }
+            Present { value: c } =>
+              match harness_acquire_on(candidate: c, class: class, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
+                AcquisitionGranted { binding: b } =>
+                  PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable, ready: ready, recovery: concat(probed, [harness_request_event(succeeded: true)]) }
+                AcquisitionRefused { detail: d } =>
+                  PlacementRound { done: Present { value: HarnessSeatRefused { detail: d } }, excluded: acc.excluded, notes: notes, retryable: retryable, ready: ready, recovery: concat(probed, [harness_request_event(succeeded: false)]) }
+                AcquisitionLost { key: k, detail: d } =>
+                  PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true, ready: ready, recovery: probed }
+              }
+          }
+      }
+    }
+  }
+}
+
+data harness_seat_retry_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: 0),
+  delay_cap: second(count: 1),
+  real_work_failure_bound: 3,
+}
+
+data harness_placement_rounds: Nat = harness_seat_retry_law.real_work_failure_bound
+
+// ── THE HARNESS CONSUMES THE CALLER'S DURABLE BACKLOG (gunbc.serving.caller_backlog) ──────────────────
+//
+// THE WORK KEY IS THE BELT DISPATCH'S, NEVER harness_turn_subject'S. A turn is named by the dispatch node
+// that owns it and its ordinal within that dispatch (DispatchTurnKey); the belt passes both, and the
+// instance's host_layout root as the state root, because this module has no executor root of its own
+// (event_log_store_for_host answers for the fabric DB, not for caller state). harness_turn_subject mints a
+// per-process attempt, so a restarted process would be a new turn; the key below is what survives it.
+type HarnessCallerTurn {
+  dispatch_node: NonEmptyStr
+  ordinal: Nat
+  state_root: NonEmptyStr
+}
+
+// The belt passes strings and an Int; the crossing to the typed key is here once. An empty node or root,
+// or a negative ordinal, is absent: the caller refuses it rather than inventing a key.
+fn harness_caller_turn(dispatch_node: String, turn_ordinal: Int, state_root: String) -> HarnessCallerTurn? {
+  if trim(dispatch_node) == "" || trim(state_root) == "" {
+    none
+  } else {
+    match checked_int_to_nat(n: turn_ordinal) {
+      Absent => none
+      Present { value: o } => Present { value: HarnessCallerTurn { dispatch_node: dispatch_node as NonEmptyStr, ordinal: o, state_root: state_root as NonEmptyStr } }
+    }
+  }
+}
+
+// A HOLD IS THE DURABLE RECORD A PLACEMENT IS RUNNING UNDER: the work and the root its slot lives in.
+type HarnessCallerHold {
+  work: LogicalWorkId
+  root: NonEmptyStr
+}
+
+type HarnessCallerAdmission
+  = HarnessCallerHeld { hold: HarnessCallerHold }
+  | HarnessCallerRefused { detail: String }
+
+fn harness_caller_terminal_wire(phase: CallerWorkPhase) -> String {
+  match phase {
+    WorkWaiting => "the logical work is waiting"
+    WorkCompleted => "logical work already completed"
+    WorkCancelled => "cancellation is terminal"
+    WorkRecoveryBoundExceeded { deficit: d } => recovery_deficit_text(deficit: d) as String
+  }
+}
+
+// A reservation is per attempt and the work is not (caller_backlog rebind_reservation). Before any seat
+// is granted the record holds NO seat (its `seat` is absent), so a commit against an unplaced record
+// refuses at the fence and no placeholder string stands where a reservation belongs.
+fn harness_seat_ref_wire(seat: SeatRef?) -> String {
+  match seat {
+    Absent => "no seat"
+    Present { value: held } => join(["reservation ", held.reservation as String, " in partition ", held.partition as String], "")
+  }
+}
+
+// PERSIST BEFORE OFFER, RESUME BEFORE PERSIST. A waiting record is reloaded, never re-persisted (the
+// retry of the same turn is the same work); an unknown one is persisted before any offer is made; a
+// terminal one refuses with the typed cause and the turn never reaches placement.
+fn harness_caller_admit(turn: HarnessCallerTurn) -> HarnessCallerAdmission {
+  match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+    WorkIdKeyNotOctets { observed: o } => HarnessCallerRefused { detail: join(["the dispatch turn key is not octets (observed ", to_string(o), ")"], "") }
+    WorkIdDerived { work: w } => {
+      let hold = HarnessCallerHold { work: w, root: turn.state_root }
+      match resume_waiting_durable(root: turn.state_root, work: w) {
+        DurableResumedWaiting { record: _ } => HarnessCallerHeld { hold: hold }
+        DurableResumedTerminal { phase: p } => HarnessCallerRefused { detail: harness_caller_terminal_wire(phase: p) }
+        DurableResumeStoreUnreadable { detail: d } => HarnessCallerRefused { detail: join(["the caller backlog slot is unreadable: ", d as String], "") }
+        DurableResumePayloadUndecodable => HarnessCallerRefused { detail: "the caller backlog slot does not decode" }
+        DurableResumeWorkMismatch => HarnessCallerRefused { detail: "the caller backlog slot names different work" }
+        DurableResumeUnknownWork =>
+          match persist_waiting_durable(root: turn.state_root, snapshot: empty_caller_backlog, work: w, seat: none, generation: 0) {
+            DurableWaitingPersisted { record: _ } => HarnessCallerHeld { hold: hold }
+            DurablePersistIdempotent { record: _ } => HarnessCallerHeld { hold: hold }
+            DurablePhasePersisted { record: _ } => HarnessCallerRefused { detail: "persisting a waiting record answered a phase transition" }
+            DurablePersistRefusedTerminal { phase: p } => HarnessCallerRefused { detail: harness_caller_terminal_wire(phase: p) }
+            DurablePersistStoreRefused { detail: d } => HarnessCallerRefused { detail: join(["the caller backlog could not be written: ", d as String], "") }
+            DurablePersistKeyNotSlotAddressable { work: _ } => HarnessCallerRefused { detail: "the work id is not a slot-addressable key" }
+            DurablePersistPayloadUnencodable { reason: r } => HarnessCallerRefused { detail: r as String }
+            DurablePersistUnknownWork => HarnessCallerRefused { detail: "the work vanished while it was persisted" }
+            DurablePersistDuplicate => HarnessCallerRefused { detail: "the caller backlog holds duplicate records for this work" }
+          }
+      }
+    }
+  }
+}
+
+// The bound on failed requests over the work's whole history (caller_backlog note_recovery): a long wait
+// emits probes and contention, neither of which is a failed request, so waiting never trips it.
+data harness_recovery_bound: Nat = 8
+
+fn harness_note_round_recovery(hold: HarnessCallerHold, events: List<RecoveryEvent>) -> String? {
+  fold(events, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match note_recovery_durable(root: hold.root, snapshot: empty_caller_backlog, work: hold.work, event: e, bound: harness_recovery_bound) {
+          DurableWaitingPersisted { record: _ } => none
+          DurablePhasePersisted { record: _ } => none
+          DurablePersistIdempotent { record: _ } => none
+          DurablePersistRefusedTerminal { phase: p } => Present { value: harness_caller_terminal_wire(phase: p) }
+          DurablePersistStoreRefused { detail: d } => Present { value: d as String }
+          DurablePersistKeyNotSlotAddressable { work: _ } => Present { value: "the work id is not a slot-addressable key" }
+          DurablePersistPayloadUnencodable { reason: r } => Present { value: r as String }
+          DurablePersistUnknownWork => Present { value: "the work vanished while recovery was noted" }
+          DurablePersistDuplicate => Present { value: "the caller backlog holds duplicate records for this work" }
+        }
+    })
+}
+
+// A SEAT THE DURABLE RECORD REFUSES IS GIVEN BACK, not kept: the placement acquired it before the record
+// could be rebound, and leaving it held would be the leak the ceiling of one exists to prevent.
+fn harness_refuse_after_release(outcome: HarnessSeatBinding, detail: String) -> HarnessSeatBinding {
+  match outcome {
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => {
+      let released = harness_release_seat(binding: outcome, reason: "the caller's durable record refused this placement" as NonEmptyStr)
+      HarnessSeatRefused { detail: join([detail, " (seat ", harness_seat_release_wire(r: released), ")"], "") }
+    }
+    HarnessSeatRefused { detail: _ } => HarnessSeatRefused { detail: detail }
+    HarnessSeatPending { detail: _ } => HarnessSeatRefused { detail: detail }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessSeatRefused { detail: detail }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HarnessSeatRefused { detail: detail }
+  }
+}
+
+// NO EXPIRY ON A LONG WAIT. A pending placement leaves the record waiting: the keep-waiting law is applied
+// to the supply this round saw (zero included) and the record is read back through the retry disposition,
+// so a record that is no longer waiting turns the pending answer into the terminal one it earned.
+fn harness_pending_keeps_waiting(hold: HarnessCallerHold, ready: Nat, detail: String) -> HarnessSeatBinding {
+  match resume_waiting_durable(root: hold.root, work: hold.work) {
+    DurableResumedWaiting { record: r } =>
+      match resume_from_snapshot(snapshot: apply_ready_supply_law(law: KeepWaitingAcrossZeroSupply, snapshot: CallerBacklogSnapshot { records: [r] }, work: hold.work, ready: ready), work: hold.work) {
+        ResumedWaiting { record: kept } =>
+          match caller_retry_disposition(record: kept) {
+            RetryComeBack { work: _ } => HarnessSeatPending { detail: detail }
+            RetryTerminal { work: _, cause: c } => HarnessSeatRefused { detail: c as String }
+          }
+        ResumedTerminal { phase: p } => HarnessSeatRefused { detail: harness_caller_terminal_wire(phase: p) }
+        ResumeUnknownWork => HarnessSeatRefused { detail: "the waiting record was dropped" }
+        ResumeDuplicateWork => HarnessSeatRefused { detail: "the caller backlog holds duplicate records for this work" }
+      }
+    DurableResumedTerminal { phase: p } => HarnessSeatRefused { detail: harness_caller_terminal_wire(phase: p) }
+    DurableResumeUnknownWork => HarnessSeatRefused { detail: "the waiting record is absent" }
+    DurableResumeStoreUnreadable { detail: d } => HarnessSeatRefused { detail: d as String }
+    DurableResumePayloadUndecodable => HarnessSeatRefused { detail: "the caller backlog slot does not decode" }
+    DurableResumeWorkMismatch => HarnessSeatRefused { detail: "the caller backlog slot names different work" }
+  }
+}
+
+// ONE WORK, ONE LIVE GRANT. The rebind names the reservation it replaces (caller_backlog
+// rebind_reservation), and the record admits it once per predecessor. A record still on its placeholder is
+// claimable. A record already rebound to a seat is claimable only when the seat authority shows that
+// seat's acquisition was later retired (released, settled or lapsed); a grant the partition still holds as
+// current, or one it does not show at all, is a turn that may be running, and a second retry refuses
+// rather than executing it again.
+type HarnessPredecessor
+  = HarnessPredecessorClaimable { expected: SeatRef? }
+  | HarnessPredecessorLive { detail: String }
+
+fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> Bool {
+  any(oldest_first, env => match env.event.payload {
+    PoolAcquired { reference: r, amount: _, term_seconds: _ } => (r as String) == (reference as String)
+    PoolSettled { reference: _, actual: _ } => false
+    PoolReleased { reference: _, reason: _ } => false
+    PoolLapsed => false
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => false
+    PoolResetObserved { reset_at: _ } => false
+  }) && match harness_current_grant_in(oldest_first: oldest_first, reference: reference) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding) -> HarnessPredecessor {
+  match resume_waiting_durable(root: hold.root, work: hold.work) {
+    DurableResumedWaiting { record: r } =>
+      match r.seat {
+        Absent => HarnessPredecessorClaimable { expected: none }
+        Present { value: held } =>
+          match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+            PartitionReadRefused { cause: c } => HarnessPredecessorLive { detail: join(["the prior seat could not be read, so it is not retired: ", event_log_refusal_wire(cause: c)], "") }
+            PartitionReadOk { head: _, walk: walk } =>
+              match walk {
+                ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessPredecessorLive { detail: join(["the partition chain is missing event ", m as String], "") }
+                ChainBudgetExhausted { at: a } => HarnessPredecessorLive { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
+                ChainWalked { oldest_first: xs } =>
+                  if harness_grant_retired_in(oldest_first: xs, reference: held.reservation as NonEmptyStr) {
+                    HarnessPredecessorClaimable { expected: Present { value: held } }
+                  } else {
+                    HarnessPredecessorLive { detail: join(["the work is already running under seat ", held.reservation as String, ", which partition ", held.partition as String, " of the seat authority has not retired"], "") }
+                  }
+              }
+          }
+      }
+    DurableResumedTerminal { phase: p } => HarnessPredecessorLive { detail: harness_caller_terminal_wire(phase: p) }
+    DurableResumeUnknownWork => HarnessPredecessorLive { detail: "the waiting record is absent" }
+    DurableResumeStoreUnreadable { detail: d } => HarnessPredecessorLive { detail: d as String }
+    DurableResumePayloadUndecodable => HarnessPredecessorLive { detail: "the caller backlog slot does not decode" }
+    DurableResumeWorkMismatch => HarnessPredecessorLive { detail: "the caller backlog slot names different work" }
+  }
+}
+
+// A SEAT IS CLAIMED OR GIVEN BACK, and only a claimed seat reaches the execution side of HarnessSeatBound.
+// The claim names the predecessor the record is replacing (harness_predecessor_of) and takes it through the
+// store-owned rebind, so a second retry of the same work finds the first one's reservation and refuses.
+type HarnessSeatClaim
+  = HarnessSeatClaimed
+  | HarnessSeatClaimRefused { detail: String }
+
+fn harness_claim_seat(hold: HarnessCallerHold, grant: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessSeatClaim {
+  match harness_predecessor_of(hold: hold, store: store) {
+    HarnessPredecessorLive { detail: d } => HarnessSeatClaimRefused { detail: d }
+    HarnessPredecessorClaimable { expected: e } =>
+      match rebind_reservation_durable(root: hold.root, work: hold.work, expected: e, next: SeatRef { partition: partition, reservation: grant.reference as ReservationRef }) {
+        DurableReservationRebound { record: _ } => HarnessSeatClaimed
+        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work: the record holds ", harness_seat_ref_wire(seat: h)], "") }
+        DurableRebindRefusedTerminal { phase: p } => HarnessSeatClaimRefused { detail: harness_caller_terminal_wire(phase: p) }
+        DurableRebindUnknownWork => HarnessSeatClaimRefused { detail: "the waiting record is absent" }
+        DurableRebindStoreRefused { detail: d } => HarnessSeatClaimRefused { detail: d as String }
+        DurableRebindKeyNotSlotAddressable { work: _ } => HarnessSeatClaimRefused { detail: "the work id is not a slot-addressable key" }
+      }
+  }
+}
+
+// THE ROUND'S EVENTS ARE NOTED, THEN THE OUTCOME IS SETTLED AGAINST THE RECORD. A granted seat rebinds the
+// record's reservation to the grant's reference (the work-to-grant relation lives in the record once, never
+// in the reference string); a refused rebind (cancelled or terminal work) releases the seat. A pending
+// outcome keeps the work waiting. Every other outcome is the placement's own.
+fn harness_settle_caller_turn(hold: HarnessCallerHold, placed: PlacementRound, outcome: HarnessSeatBinding) -> HarnessSeatBinding {
+  match harness_note_round_recovery(hold: hold, events: placed.recovery) {
+    Present { value: why } => harness_refuse_after_release(outcome: outcome, detail: why)
+    Absent =>
+      match outcome {
+        HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, replica_wire: _, launch: _, store: st, model: _, unit: _, class: _, seat: _ } =>
+          match harness_claim_seat(hold: hold, grant: g, store: st, partition: p) {
+            HarnessSeatClaimed => outcome
+            HarnessSeatClaimRefused { detail: d } => harness_refuse_after_release(outcome: outcome, detail: d)
+          }
+        HarnessSeatPending { detail: d } => harness_pending_keeps_waiting(hold: hold, ready: placed.ready, detail: d)
+        HarnessSeatRefused { detail: _ } => outcome
+        HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => outcome
+        HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => outcome
+      }
+  }
+}
+
+// ── COMPLETION IS FENCED AGAINST THE AUTHORITY'S CURRENT GRANT, READ AT COMPLETION ─────────────────────
+//
+// THE GRANT THE FENCE COMPARES AGAINST IS READ FROM THE SEAT AUTHORITY, never from the binding that is
+// presenting itself: the partition chain is walked for the acquisition of the record's CURRENT
+// reservation (the reference the last rebind installed), and the grant is rebuilt from that event --
+// admitting event id, position in the chain as the generation, recorded_at as granted_at, the event's own
+// term as the duration. A later settle or release of that reference, or a lapse, retires the grant, so
+// a seat the authority has already taken back is unread, never current. The binding supplies only the HOLDER fence it presents. An old holder therefore
+// meets a newer grant and is refused: its fence names an earlier admission.
+fn harness_current_grant_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> LeaseGrant? {
+  fold(oldest_first, init: HarnessGrantScan { seen: Zero, found: none }, f: (acc, env) => {
+    let position = Succ { prev: acc.seen }
+    HarnessGrantScan {
+      seen: position,
+      found: match env.event.payload {
+        PoolAcquired { reference: r, amount: _, term_seconds: term } =>
+          if (r as String) == (reference as String) {
+            match cas_generation(n: position as Int) {
+              Absent => none
+              Present { value: cg } => Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: cg), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) }
+            }
+          } else {
+            acc.found
+          }
+        PoolSettled { reference: r, actual: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolReleased { reference: r, reason: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolLapsed => none
+        PoolUpstreamObserved { remaining: _, term_seconds: _ } => acc.found
+        PoolResetObserved { reset_at: _ } => acc.found
+      },
+    }
+  }).found
+}
+
+type HarnessGrantScan {
+  seen: Nat
+  found: LeaseGrant?
+}
+
+type HarnessCommitFence
+  = HarnessCommitFenceReady { fence: AttemptFence }
+  | HarnessCommitGrantUnread
+  | HarnessCommitClockUnread
+
+// AN UNREAD GRANT OR AN UNREAD CLOCK CANNOT AUTHORIZE COMPLETION: no fence is built, so there is nothing
+// for commit_attempt_durable to admit. The time in the fence is the one observed at completion, passed in
+// by the caller that just read it; nothing here copies granted_at forward as "now".
+fn harness_commit_fence(current: LeaseGrant?, presented: LeaseFence, at: EpochSecs?) -> HarnessCommitFence {
+  match current {
+    Absent => HarnessCommitGrantUnread
+    Present { value: g } =>
+      match at {
+        Absent => HarnessCommitClockUnread
+        Present { value: t } => HarnessCommitFenceReady { fence: SeatLeaseFence { grant: g, holder: presented, at: t } }
+      }
+  }
+}
+
+type HarnessCallerCompletion
+  = HarnessCallerTurnCompleted { record: CallerWorkRecord }
+  | HarnessCallerCompletionRefused { detail: String }
+
+fn harness_commit_standing_wire(standing: DurableAttemptStanding) -> HarnessCallerCompletion {
+  match standing {
+    DurableAttemptCommitted { record: r } => HarnessCallerTurnCompleted { record: r }
+    DurableAttemptFenceRefused => HarnessCallerCompletionRefused { detail: "the presented seat grant is not the authority's current grant for this work, or it expired" }
+    DurableAttemptNotWaiting { phase: p } => HarnessCallerCompletionRefused { detail: harness_caller_terminal_wire(phase: p) }
+    DurableAttemptUnknownWork => HarnessCallerCompletionRefused { detail: "the waiting record is absent" }
+    DurableAttemptStoreRefused { detail: d } => HarnessCallerCompletionRefused { detail: d as String }
+    DurableAttemptKeyNotSlotAddressable { work: _ } => HarnessCallerCompletionRefused { detail: "the work id is not a slot-addressable key" }
+  }
+}
+
+fn harness_commit_on_walk(hold: HarnessCallerHold, record: CallerWorkRecord, held: SeatRef, presented: LeaseGrant, walk: ChainWalk<PoolEvent>) -> HarnessCallerCompletion {
+  match walk {
+    ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessCallerCompletionRefused { detail: join(["the partition chain is missing event ", m as String], "") }
+    ChainBudgetExhausted { at: a } => HarnessCallerCompletionRefused { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
+    ChainWalked { oldest_first: xs } =>
+      match harness_commit_fence(current: harness_current_grant_in(oldest_first: xs, reference: held.reservation as NonEmptyStr), presented: presented.fence, at: now_epoch_seconds()) {
+        HarnessCommitGrantUnread => HarnessCallerCompletionRefused { detail: join(["no acquisition of the record's reservation ", held.reservation as String, " appears in the seat partition"], "") }
+        HarnessCommitClockUnread => HarnessCallerCompletionRefused { detail: "the clock could not be read as epoch seconds, so completion is not authorized" }
+        HarnessCommitFenceReady { fence: f } =>
+          harness_commit_standing_wire(standing: commit_attempt_durable(root: hold.root, snapshot: CallerBacklogSnapshot { records: [record] }, fence: f, work: hold.work))
+      }
+  }
+}
+
+// THE COMPLETION THE WORKER RUNS AFTER ITS TURN: the work is the belt's, the grant to compare is read from
+// the seat partition now, the clock is read now.
+fn harness_complete_caller_turn(turn: HarnessCallerTurn, binding: HarnessSeatBinding) -> HarnessCallerCompletion {
+  match binding {
+    HarnessSeatBound { url: _, grant: presented, partition: _, ceiling: _, replica_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
+      harness_complete_with_grant(turn: turn, presented: presented, store: store)
+    HarnessSeatRefused { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessSeatPending { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+  }
+}
+
+// THE GRANT-TAKING BODY OF THE COMPLETION, so an executing consumer can cross the production route (partition
+// read, current grant, observed clock) without constructing a whole HarnessSeatBound.
+fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, store: FabricStorageBinding) -> HarnessCallerCompletion {
+  match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+    WorkIdKeyNotOctets { observed: o } => HarnessCallerCompletionRefused { detail: join(["the dispatch turn key is not octets (observed ", to_string(o), ")"], "") }
+    WorkIdDerived { work: w } =>
+      match resume_waiting_durable(root: turn.state_root, work: w) {
+        DurableResumedWaiting { record: r } =>
+          match r.seat {
+            Absent => HarnessCallerCompletionRefused { detail: "the record holds no seat, so there is no grant a completion could be fenced against" }
+            Present { value: held } =>
+              match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+                PartitionReadRefused { cause: c } => HarnessCallerCompletionRefused { detail: event_log_refusal_wire(cause: c) }
+                PartitionReadOk { head: _, walk: walk } => harness_commit_on_walk(hold: HarnessCallerHold { work: w, root: turn.state_root }, record: r, held: held, presented: presented, walk: walk)
+              }
+          }
+        DurableResumedTerminal { phase: ph } => HarnessCallerCompletionRefused { detail: harness_caller_terminal_wire(phase: ph) }
+        DurableResumeUnknownWork => HarnessCallerCompletionRefused { detail: "the waiting record is absent" }
+        DurableResumeStoreUnreadable { detail: d } => HarnessCallerCompletionRefused { detail: d as String }
+        DurableResumePayloadUndecodable => HarnessCallerCompletionRefused { detail: "the caller backlog slot does not decode" }
+        DurableResumeWorkMismatch => HarnessCallerCompletionRefused { detail: "the caller backlog slot names different work" }
+      }
+  }
+}
+
+// NO ADMISSIBLE OFFER IS A REFUSAL OR A PENDING, NEVER A DEGRADED PATH. The arm this replaces walked
+// the roster and took whatever granted a seat, which is the same shape as the router's "the request
+// has to go somewhere".
+// THE REQUEST IS BUILT HERE FROM THE SHAPE, THE REQUIREMENT AND THE INPUTS, so the model requirement
+// the Work carries and the one the candidate screen applies are one value with one source. A caller
+// that constructed the request itself could hand in a request naming one requirement beside a
+// screen argument naming another.
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
+  match harness_requirement_placement(requirement: requirement, class: class) {
+    LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, turn: turn)
+    RunOnOperatorEndpoint =>
+      match turn {
+        Present { value: _ } => HarnessSeatRefused { detail: "the turn is durable but its placement is the operator endpoint, which takes no seat, so there is no grant a completion could be fenced against; no work was offered" }
+        none => harness_bind_operator(class: class, shape: shape)
+      }
+  }
+}
+
+// THE OPERATOR ENDPOINT TAKES NO SEAT: the class floor is applied, the Bearer header file is materialized from
+// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is spoken
+// by ninfer-serve, so any other shape refuses by name.
+fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) -> HarnessSeatBinding {
+  match shape {
+    AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
+    OpenAiChatCompletionsShape =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
+        OperatorClassAdmitted =>
+          match operator_chat_completions_url() {
+            Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
+            Present { value: u } =>
+              match operator_open_header(route: harness_operator_route) {
+                OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
+                OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
+                  HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: harness_operator_route.unit), unit: harness_operator_route.unit, header_dir: dir, header_file: hf }
+              }
+          }
+      }
+  }
+}
+
+// WHERE A REQUIREMENT IS PLACED. Any admitted model lands on the operator-run endpoint, by the operator's
+// ruling (see operator_placement_ruling = gunbc.design_ruling harness_default_requirement_places_on_operator_endpoint),
+// which overrules the earlier rule that an unnamed requirement lands only on a fleet seat. The hosted listing stays
+// governed by trial terms (extdeps.nvidia.api_trial_terms): an unnamed requirement must not quietly route a turn
+// to an upstream whose terms the caller never chose, so only a caller naming the hosted unit reaches it.
+//
+// THE RULING GOVERNS THE CLASS THE ROUTE'S QUALITY FLOOR ADMITS. The operator route admits batch turns only, so an
+// unnamed requirement from a quality-sensitive caller (the router's place entry, the seat-collision probe) keeps
+// its fleet seat rather than being refused by a route it could never use; the ruling's words ("make our harness
+// pick this pod") are read as the harness worker's default, not as removing the fleet path for interactive turns.
+fn harness_requirement_placement(requirement: ServingModelRequirement, class: ServingCoTenancyClass) -> HarnessUnitPlacement {
+  match requirement {
+    AnyAdmittedModel =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassAdmitted => harness_unit_placement(unit: harness_operator_route.unit)
+        OperatorClassRefused { detail: _ } => PlacedOnFleetSeat
+      }
+    ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
+  }
+}
+
+// THE HOSTED BIND. A hosted unit takes no seat: the credential is materialized and its liveness read, the
+// level is selected, and the binding carries the two quota rows each request will lease. A fleet unit
+// handed here refuses by name rather than being placed on a seat behind the caller's back.
+fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: TokenCount) -> HarnessSeatBinding {
+  match harness_unit_placement(unit: unit) {
+    PlacedOnFleetSeat => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat; bind it with harness_bind_seat"], "") }
+    RunOnOperatorEndpoint => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served by the operator endpoint; bind it with harness_bind_seat"], "") }
+    LeasedFromHostedQuota =>
+      match harness_hosted_bind(unit: unit, short_hostname: short_hostname, actor: actor, max_tokens: max_tokens) {
+        HostedBindRefused { detail: d } => HarnessSeatRefused { detail: d }
+        HostedBound { url: u, model: m, unit: un, level: l, access: a } => HarnessHostedBound { url: u as String, model: m, unit: un, level: l, access: a }
+      }
+  }
+}
+
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
+  match turn {
+    Absent => harness_place_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, hold: none)
+    Present { value: t } =>
+      match harness_caller_admit(turn: t) {
+        HarnessCallerRefused { detail: d } => HarnessSeatRefused { detail: d }
+        HarnessCallerHeld { hold: h } => harness_place_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, hold: Present { value: h })
+      }
+  }
+}
+
+fn harness_place_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, hold: HarnessCallerHold?) -> HarnessSeatBinding {
+  let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt, admission: admission)
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } => {
+          let routes = rented_enrolled_routes(index: rented_cohort_index)
+          let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, ready: Zero, recovery: [] }, f: (acc, round) =>
+            harness_placement_round(acc: acc, session: serving_session_record_for_request(entry: session, next_inputs: inputs), class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, routes: routes))
+          let outcome = match placed.done {
+            Present { value: b } => b
+            Absent =>
+              HarnessSeatPending { detail: join(["every selected seat was taken by another request within ", to_string(harness_placement_rounds), " rounds: ", join(placed.notes, "; ")], "") }
+          }
+          match hold {
+            Absent => outcome
+            Present { value: h } => harness_settle_caller_turn(hold: h, placed: placed, outcome: outcome)
+          }
+        }
+      }
+  }
+}
+
+// RELEASE IS AN EVENT ON THE SAME PARTITION, appended against the head observed at release time
+// and retried on stale, because the seat's neighbours keep moving the head while this turn ran.
+// A HOSTED BINDING HOLDS NO SEAT, so its release is its own arm: each request already settled its quota
+// leases, and what remains to give back is the credential's header file. Reporting it as a released
+// partition would name a pool the binding never held.
+type HarnessSeatRelease
+  = HarnessSeatReleased { partition: PartitionId }
+  | HarnessHostedCredentialRemoved
+  | HarnessSeatReleaseRefused { detail: String }
+
+type ReleaseFold {
+  done: HarnessSeatRelease?
+}
+
+// A RELEASE IS PROVEN AGAINST THE CHAIN BEFORE IT IS PUBLISHED, exactly as an acquisition is. The
+// earlier shape appended PoolReleased straight at the head: a reference that names no held entry, or
+// one already released, committed successfully and made the NEXT fold refuse the whole partition --
+// so a bad release did not fail, it poisoned the history for everyone, and the refusal surfaced far
+// from the caller that caused it. Reading the chain, folding it, and running pool_release purely
+// first turns that into a typed refusal before anything is written.
+fn release_proposal(pool: Pool<Count, One>, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> String? {
+  match pool_release(pool: pool, reference: reference, reason: reason, at: now) {
+    PoolAdvanced { pool: _ } => none
+    PoolRefused { refusal: r } => Present { value: pool_refusal_wire(r: r) }
+  }
+}
+
+fn release_append(store: FabricStorageBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease? {
+  match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+    PartitionReadRefused { cause: c } => Present { value: HarnessSeatReleaseRefused { detail: event_log_refusal_wire(cause: c) } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          Present { value: HarnessSeatReleaseRefused { detail: join(["the partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } =>
+          Present { value: HarnessSeatReleaseRefused { detail: join(["the partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: harness_seat_pool_root(partition: partition, ceiling: ceiling), oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } =>
+              Present { value: HarnessSeatReleaseRefused { detail: join(["the partition does not fold: event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: _ } =>
+              match release_proposal(pool: p, reference: reference, reason: reason, now: now) {
+                Present { value: why } =>
+                  Present { value: HarnessSeatReleaseRefused { detail: join(["this release does not apply to the standing pool: ", why], "") } }
+                Absent => {
+                  let event = ChainEvent {
+                    partition: partition,
+                    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                    recorded_at: now,
+                    actor: reference,
+                    payload: PoolReleased { reference: reference, reason: reason },
+                  }
+                  match event_log_append(store: store, partition: partition, event: event, expected: head) {
+                    EventAppended { id: _ } => Present { value: HarnessSeatReleased { partition: partition } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppendRefused { cause: c } => Present { value: HarnessSeatReleaseRefused { detail: event_log_refusal_wire(cause: c) } }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// EVERY SEAT RELEASE PASSES THE REDEMPTION GATE FIRST. A seat whose use the serving front door has
+// redeemed is in flight, and its release belongs to the door at stream end
+// (product.capacity.redemption redemption_release_owner): a sender holding the release capability may
+// not free capacity a running request is still consuming. An unreadable redemption chain refuses the
+// release -- a held seat is the fail-closed direction. Every release in this module, the door's own
+// after the use's end included, reaches the pool through here.
+fn release_retry(store: FabricStorageBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+  match fabric_redemption_read(store: store, pool_partition: partition, reference: reference) {
+    RedemptionReadRefused { cause: c } =>
+      HarnessSeatReleaseRefused { detail: join(["the seat's redemption chain could not be read, so whether a request is in flight on it is unknown: ", event_log_refusal_wire(cause: c)], "") }
+    RedemptionReadAt { head: _, state: st } =>
+      match redemption_release_owner(state: st) {
+        ReleaseOwnedByGate { request: q, holder: h } =>
+          HarnessSeatReleaseRefused { detail: join(["request ", q as String, " is in flight on this seat through ", h as String, "; its release belongs to the front door at stream end"], "") }
+        ReleaseUndecidable { detail: d } =>
+          HarnessSeatReleaseRefused { detail: join(["whether a request is in flight on this seat is undecidable: ", d], "") }
+        ReleaseOpen => release_retry_open(store: store, partition: partition, ceiling: ceiling, reference: reference, reason: reason, now: now)
+      }
+  }
+}
+
+fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+  let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: ReleaseFold { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => ReleaseFold { done: release_append(store: store, partition: partition, ceiling: ceiling, reference: reference, reason: reason, now: now) }
+    })
+  match st.done {
+    Present { value: r } => r
+    Absent => HarnessSeatReleaseRefused { detail: "release contended three times" }
+  }
+}
+
+// THE POINTER TO THE SEAT A BOUND BINDING HOLDS, for gunbc.harness.harness_seat_pointer.
+fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
+  match binding {
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: r } =>
+      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
+    HarnessSeatRefused { detail: _ } => none
+    HarnessSeatPending { detail: _ } => none
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => none
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => none
+  }
+}
+
+// THE BINDING CARRIES THE CEILING ITS SEAT WAS TAKEN AGAINST, for the same reason the cross-process
+// capability does, and an earlier spelling of this function got it wrong in the one way the rest of
+// the module is written to prevent. It re-derived the ceiling from the group and the class at RELEASE
+// time -- which is the move the capability's own annotation forbids three screens below, because it
+// rebuilds the pool of whichever ceiling that pair resolves to TODAY rather than the one the seat was
+// admitted under.
+//
+// AND THE TOLERANT PARTITION MAKES THE DISAGREEMENT CONCRETE RATHER THAN THEORETICAL. Its identity
+// carries the ceiling, so after the canary is relaunched under a different bound an in-flight seat
+// still names partition c1 while a re-derived release would fold that history against a root of 2 --
+// reinterpreting exactly the events the versioned partition exists to keep separate. Acquisition
+// already takes the number from candidate.ceiling; the release now reads the same number back off
+// the grant instead of asking the world again.
+fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> HarnessSeatRelease {
+  match binding {
+    HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
+    HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: d, header_file: _ } =>
+      if operator_close_header(header_dir: d) { HarnessHostedCredentialRemoved } else { HarnessSeatReleaseRefused { detail: join(["the operator bearer header directory ", d as String, " could not be removed"], "") } }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } =>
+      match harness_hosted_release(access: a) {
+        HostedReleased => HarnessHostedCredentialRemoved
+        HostedReleaseRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
+      }
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, replica_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
+      match now_epoch_seconds() {
+        Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          release_retry(store: store, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
+      }
+  }
+}
+
+// ── RELEASING A SEAT SOMEONE ELSE'S PROCESS HOLDS ─────────────────────────────────────────────
+//
+// A turn taken through the harness releases its own seat: the binding is in hand and the process
+// that acquired it is the process that ends it. A turn proxied by the ROUTER cannot do that, because
+// the grant is handed out across a process boundary -- so the release has to be reachable from the
+// three facts that travel with the grant: which host holds the event log, which group's partition
+// the seat is in, and the grant reference.
+//
+// IT IS THE SAME APPEND, NOT A SECOND RELEASE PATH. release_append is the one place a PoolReleased
+// event is written, and both entries reach it. A separate writer here would be a second authority
+// over the pool's history, free to write an event the fold does not expect.
+//
+// THE REFERENCE IS NOT VALIDATED AGAINST THE HOLDER, and that is stated rather than hidden: this
+// releases the seat named by the reference it is given. The pool's fold is what refuses a release of
+// something never acquired; a caller that passes another actor's reference releases that actor's
+// seat, exactly as an operator releasing a stuck seat by hand would. Fencing that is a lease
+// question and it is not answered here.
+// THE ORDINARY RELEASE IS ADDRESSED BY THE EXACT PARTITION AND THE GRANT'S OWN FENCE, not by a group
+// name and a bare reference. Two things were wrong with the group-plus-reference form. It re-derived
+// the partition from the group at release time, so a partition version that changed between
+// acquisition and completion released against the NEW partition while the seat stayed held in the
+// old one -- the pool that was full is not the pool that was drained. And a reference alone is not a
+// capability: it says which entry to release without establishing that the releaser is the holder,
+// which is fine for an operator forcing a stuck seat and wrong for the ordinary completion path.
+//
+// So the capability carries the partition, the reference and the fence the grant was issued under,
+// and the release refuses when the fence does not match the entry it names. Possession of the whole
+// triple is what authorizes; a caller holding only a group name can no longer address anything.
+type HarnessReleaseCapability {
+  partition: PartitionId
+  ceiling: Nat
+  reference: NonEmptyStr
+  grant: GrantIdentity
+  generation: CasGeneration
+}
+
+// THE CONSTRUCTOR IS TOTAL OVER THE GRANT, not optional over the binding. An earlier spelling took
+// the whole HarnessSeatBinding and returned an optional, which put two unreachable arms in front of
+// every caller that had already matched HarnessSeatBound -- and its only would-be consumer, the
+// placement receipt, went around it and re-assembled the four fields by hand instead, so the
+// capability's field set was written in two places while one of them was dead (review 62365). A
+// grant and the partition it was issued in are exactly what the capability is, so that is what the
+// constructor takes and every caller reaches it from inside the arm that already holds both.
+// THE CEILING TRAVELS WITH THE CAPABILITY because the pool a release is proven against is
+// reconstructed from a ROOT, and a root is a partition plus its ceiling. With two classes the
+// ceiling is no longer one row this module can read for itself, and re-deriving it at release time
+// from a group name would rebuild the pool of whichever class that name resolved to today. So the
+// bearer carries the ceiling its seat was taken against, exactly as it already carries the
+// generation and the fence.
+fn harness_release_capability(partition: PartitionId, ceiling: Nat, grant: LeaseGrant) -> HarnessReleaseCapability {
+  HarnessReleaseCapability { partition: partition, ceiling: ceiling, reference: grant.reference, grant: grant.fence.grant, generation: grant.fence.generation }
+}
+
+fn harness_release_capability_wire(c: HarnessReleaseCapability) -> String {
+  join([c.partition as String, "/", c.reference as String, "/", c.grant as String, "/", to_string(cas_generation_count(g: c.generation)), "/", to_string(c.ceiling)], "")
+}
+
+fn harness_release_held(short_hostname: String, capability: HarnessReleaseCapability, reason: NonEmptyStr) -> HarnessSeatRelease {
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match fabric_seat_observe(store: store, partition: capability.partition, root: harness_seat_pool_root(partition: capability.partition, ceiling: capability.ceiling), at: now, budget: 4096) {
+            SeatStandingUnobserved { step: st, reason: why } =>
+              HarnessSeatReleaseRefused { detail: join(["the seat pool could not be read at ", st, ", so the fence could not be checked: ", why], "") }
+            SeatStandingStoreRefused { cause: c } =>
+              HarnessSeatReleaseRefused { detail: join(["the seat pool could not be read from the fabric DB, so the fence could not be checked: ", event_log_refusal_wire(cause: c)], "") }
+            SeatFullObserved { generation: gen } => harness_release_fenced(store: store, capability: capability, observed: gen, reason: reason, now: now)
+            SeatRoomObserved { headroom: _, generation: gen } => harness_release_fenced(store: store, capability: capability, observed: gen, reason: reason, now: now)
+          }
+      }
+  }
+}
+
+// A GENERATION THAT MOVED BACKWARD IS NOT THIS GRANT'S POOL. The observed generation may be AHEAD of
+// the one the grant was issued under -- other seats have been taken and released since, which is
+// ordinary -- but it can never be behind, and a partition that reads older than the grant is a
+// different history than the one that admitted it.
+// THE GRANT IS CHECKED, NOT MERELY CARRIED. Holding the grant identity in the capability and never
+// consulting it made it decoration: a caller could pair the right partition with somebody else's
+// reference and any grant string at all and still reach the append. So the chain is read and the
+// event that ADMITTED this reference is found; the capability's grant must be that event's id. That
+// is what makes possession of the capability mean "this bearer holds this seat" rather than "this
+// bearer knows a reference".
+fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> EventId? {
+  match walk {
+    ChainIncomplete { missing: _, newest_first_so_far: _ } => none
+    ChainBudgetExhausted { at: _ } => none
+    ChainWalked { oldest_first: xs } =>
+      fold(xs, init: none, f: (acc, env) =>
+        match acc {
+          Present { value: e } => Present { value: e }
+          Absent =>
+            match env.event.payload {
+              PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+                if (r as String) == (reference as String) { Present { value: env.id } } else { none }
+              PoolSettled { reference: _, actual: _ } => none
+              PoolReleased { reference: _, reason: _ } => none
+              PoolLapsed => none
+              PoolUpstreamObserved { remaining: _, term_seconds: _ } => none
+              PoolResetObserved { reset_at: _ } => none
+            }
+        })
+  }
+}
+
+fn harness_release_fenced(store: FabricStorageBinding, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+  if (observed as Int) < cas_generation_count(g: capability.generation) {
+    HarnessSeatReleaseRefused {
+      detail: join([
+        "the seat pool at ", capability.partition as String, " reads generation ", to_string(observed),
+        " while the grant was issued at ", to_string(cas_generation_count(g: capability.generation)),
+        ", so this capability does not name the pool that is standing",
+      ], ""),
+    }
+  } else {
+    match event_log_read_partition(store: store, partition: capability.partition, budget: 4096) {
+      PartitionReadRefused { cause: c } =>
+        HarnessSeatReleaseRefused { detail: join(["the partition could not be read, so the grant could not be checked: ", event_log_refusal_wire(cause: c)], "") }
+      PartitionReadOk { head: _, walk: walk } =>
+        match admitting_event_for(walk: walk, reference: capability.reference) {
+          Absent =>
+            HarnessSeatReleaseRefused {
+              detail: join(["no acquisition of ", capability.reference as String, " appears in the partition at ", capability.partition as String], ""),
+            }
+          Present { value: admitting } =>
+            if (admitting as String) != (capability.grant as String) {
+              HarnessSeatReleaseRefused {
+                detail: join([
+                  "this capability names grant ", capability.grant as String,
+                  " while ", capability.reference as String, " was admitted by ", admitting as String,
+                  ", so its bearer does not hold this seat",
+                ], ""),
+              }
+            } else {
+              release_retry(store: store, partition: capability.partition, ceiling: capability.ceiling, reference: capability.reference, reason: reason, now: now)
+            }
+        }
+    }
+  }
+}
+
+fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
+  match r {
+    HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
+    HarnessHostedCredentialRemoved => "hosted credential removed"
+    HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
+  }
+}
+
+fn harness_now_epoch() -> EpochSecs? {
+  now_epoch_seconds()
+}
+
+data hosted_inflight_none: Nat = 0
+
+// ── IN-FLIGHT HOSTED SENDS: A CHARGE THAT SURVIVES THE ROLLOVER ─────────────────────────────────
+//
+// A hosted request is charged to the window it is admitted in (gunbc.harness.harness_hosted_route
+// harness_hosted_round_charge), but nothing on this side can bound WHEN its first byte leaves: curl's
+// connect deadline stops applying once the connection is open, and a process can pause between the
+// admission and the write for as long as it likes. Measured: a pause before the first header write put the
+// request's first byte 8.0 s after admission, past a 5.98 s deadline, with curl exiting 0. So a send that
+// has been admitted and whose transport has not returned may arrive in ANY later window, and it must be
+// counted there too.
+//
+// THE QUOTA POOLS CANNOT CARRY THAT, because every charge in a lapsing pool belongs to one window. So an
+// admitted send also holds a SEAT in a per-credential in-flight partition, under the same pool shape every
+// harness seat uses (harness_seat_pool_root: no replenishment, quiescence required -- a held seat charges
+// until evidence releases it, never by expiry). Each later admission counts the in-flight seats acquired
+// BEFORE its window began and charges its quota pools for them as well as for itself; the seat is released
+// when the transport returns, whatever it returned.
+//
+// TWO CONSEQUENCES, BOTH CONSERVATIVE AND STATED RATHER THAN ENGINEERED AWAY. Two admissions in one window
+// each count the same carried seats, so a carried send can be charged more than once in a window. And a
+// seat held by a process that crashed charges every later window until it is released; the refusal that
+// starvation produces names each held seat, its holder, and the release that frees it -- the same
+// harness_release_cli route a stuck serving seat takes.
+fn hosted_inflight_partition(quota: HarnessHostedQuota) -> PartitionId {
+  join(["inflight-", upstream_rate_limit_key(l: quota.per_minute) as String], "") as PartitionId
+}
+
+fn hosted_inflight_ceiling(quota: HarnessHostedQuota) -> Nat {
+  quota.per_minute.requests
+}
+
+type HostedInflightSeat {
+  reference: NonEmptyStr
+  acquired_at: EpochSecs
+}
+
+fn hosted_inflight_held(pool: Pool<Count, One>) -> List<HostedInflightSeat> {
+  let held = filter(pool.ledger.entries, e => match e.state {
+    Held { maximum_liability: _ } => true
+    Expended { actual: _, settled_at: _ } => false
+    Released { reason: _, released_at: _ } => false
+  })
+  fold(held, init: [] as List<HostedInflightSeat>, f: (acc, e) =>
+    match filter(pool.terms, t => (t.reference as String) == (e.reference as String)).first() {
+      Absent => acc
+      Present { value: t } => concat(acc, [HostedInflightSeat { reference: e.reference, acquired_at: t.acquired_at }])
+    })
+}
+
+// THE SENDS A WINDOW MUST COVER BESIDES ITS OWN: those admitted before it began and not yet returned.
+fn hosted_inflight_carried(pool: Pool<Count, One>, window_start: EpochSecs) -> Nat {
+  fold(filter(hosted_inflight_held(pool: pool), s => s.acquired_at < window_start), init: hosted_inflight_none, f: (n, _s) => n + 1)
+}
+
+type HostedInflightReading
+  = HostedInflightRead { pool: Pool<Count, One>, generation: Nat, store: FabricStorageBinding, release_hint: String }
+  | HostedInflightUnread { detail: String }
+
+fn hosted_inflight_release_hint(quota: HarnessHostedQuota, pool: Pool<Count, One>, generation: Nat, walk: ChainWalk<PoolEvent>) -> String {
+  let seats = hosted_inflight_held(pool: pool)
+  if count(seats) == 0 { "" } else {
+    join([
+      "; in-flight seats held on ", hosted_inflight_partition(quota: quota) as String, " (release each once its holder is known to be gone: gunbc run --entry dag/gunbc/harness/harness_cli.dag --function harness_release_cli --arg partition=", hosted_inflight_partition(quota: quota) as String,
+      " --arg ceiling=", to_string(hosted_inflight_ceiling(quota: quota)), " --arg generation=", to_string(generation), " --arg reason=<why> --arg reference=<seat> --arg grant=<grant>): ",
+      join(map(seats, s => join([
+        s.reference as String, " acquired_at=", to_string(s.acquired_at),
+        " grant=", match admitting_event_for(walk: walk, reference: s.reference) { Present { value: g } => g as String  Absent => "unknown" },
+      ], "")), "; "),
+    ], "")
+  }
+}
+
+fn harness_hosted_inflight_read(quota: HarnessHostedQuota) -> HostedInflightReading {
+  match event_log_store_for_host(short_hostname: quota.short_hostname) {
+    HostStoreRefused { detail: d } => HostedInflightUnread { detail: d }
+    HostStoreResolved { store: store, executor: _ } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+        PartitionReadRefused { cause: c } => HostedInflightUnread { detail: join(["the in-flight partition could not be read: ", event_log_refusal_wire(cause: c)], "") }
+        PartitionReadOk { head: _, walk: walk } =>
+          match walk {
+            ChainIncomplete { missing: m, newest_first_so_far: _ } => HostedInflightUnread { detail: join(["the in-flight partition chain is missing event ", m as String], "") }
+            ChainBudgetExhausted { at: a } => HostedInflightUnread { detail: join(["the in-flight partition exceeded the read budget at ", a as String], "") }
+            ChainWalked { oldest_first: xs } =>
+              match pool_fold(root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)), oldest_first: xs) {
+                PoolFoldRefused { at_event: e, wire: w } => HostedInflightUnread { detail: join(["the in-flight partition does not fold at ", e as String, ": ", w], "") }
+                PoolFolded { pool: p, generation: g } =>
+                  HostedInflightRead { pool: p, generation: g, store: store, release_hint: hosted_inflight_release_hint(quota: quota, pool: p, generation: g, walk: walk) }
+              }
+          }
+      }
+    }
+  }
+}
+
+type HostedInflightHold
+  = HostedInflightHeld { reference: NonEmptyStr, store: FabricStorageBinding }
+  | HostedInflightRefused { detail: String }
+
+fn harness_hosted_inflight_acquire(quota: HarnessHostedQuota, store: FabricStorageBinding, reference: NonEmptyStr, term: Second) -> HostedInflightHold {
+  match now_epoch_seconds() {
+    Absent => HostedInflightRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      let term_seconds = second_count(s: term)
+      match fabric_seat_acquire(
+        store: store, partition: partition,
+        root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)),
+        actor: quota.actor,
+        request: SeatRequest { reference: reference, amount: Measure { count: 1 }, at: now, term_seconds: term_seconds },
+        policy: LeasePolicy { maximum_duration_seconds: term_seconds, release_law: QuiescenceRequired },
+        attempts: 3, budget: 4096,
+      ) {
+        SeatGranted { grant: _, generation: _, attempts_used: _ } => HostedInflightHeld { reference: reference, store: store }
+        SeatFull { wire: w, attempts_used: _ } => HostedInflightRefused { detail: join(["every in-flight seat is held (", w, "), so another send cannot be accounted for"], "") }
+        other => HostedInflightRefused { detail: seat_acquisition_wire(a: other) }
+      }
+    }
+  }
+}
+
+fn harness_hosted_inflight_release(quota: HarnessHostedQuota, hold: HostedInflightHold, reason: NonEmptyStr) -> String? {
+  match hold {
+    HostedInflightRefused { detail: _ } => none
+    HostedInflightHeld { reference: r, store: store } =>
+      match now_epoch_seconds() {
+        Absent => Present { value: join(["the in-flight seat ", r as String, " could not be released: the clock could not be read"], "") }
+        Present { value: now } =>
+          match release_retry(store: store, partition: hosted_inflight_partition(quota: quota), ceiling: hosted_inflight_ceiling(quota: quota), reference: r, reason: reason, now: now) {
+            HarnessSeatReleased { partition: _ } => none
+            HarnessHostedCredentialRemoved => Present { value: join(["the in-flight seat ", r as String, " release answered as a credential removal"], "") }
+            HarnessSeatReleaseRefused { detail: d } => Present { value: join(["the in-flight seat ", r as String, " could not be released: ", d], "") }
+          }
+      }
+  }
+}

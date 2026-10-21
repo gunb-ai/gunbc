@@ -1,0 +1,838 @@
+#!/bin/busybox sh
+exec </dev/console >/dev/console 2>&1
+#
+# PID 1 of the runner-host image. This slice puts the JAILER in the launch path, which is the
+# difference between gunbc.runner.runner_host_surface RunnerHostQualificationProbe and the
+# production profile: production requires HostSupervisor -> AttemptJailer -> AttemptFirecracker,
+# and every run so far has launched Firecracker directly.
+#
+# WHAT THE JAILER BUYS, and why a probe that skips it proves nothing about containment: it creates
+# the chroot, enters new namespaces, sets up a cgroup, and DROPS PRIVILEGE before exec'ing the VMM.
+# Firecracker's own guidance is that production deployments start it this way. Without it a
+# hypervisor handling untrusted job code runs as root in the host's namespaces.
+
+/bin/busybox --install -s /bin 2>/dev/null
+
+# ── stage 1: leave initramfs behind ────────────────────────────────────────────────────────────
+# THE JAILER CANNOT WORK WHILE ROOT IS THE INITRAMFS, and that is a kernel constraint rather than a
+# configuration mistake. pivot_root(2) refuses to move the initial rootfs -- it returns EINVAL --
+# so a host whose / IS the initramfs can never enter a jail, no matter how the jailer is invoked.
+# Measured directly: with everything else correct (cgroup2 mounted, chroot populated, /dev/kvm
+# owned by the unprivileged id) the jailer answered "Failed to pivot root: Invalid argument".
+#
+# SO THE HOST SWITCHES TO A TMPFS ROOT FIRST, which is what diskless systems do and what this
+# design wanted anyway: the running root is RAM-backed by construction, and it is a real mount that
+# pivot_root can operate within. Stage 1 copies the initramfs into that tmpfs and hands PID 1 over.
+if [ ! -f /.stage2 ]; then
+  mount -t proc proc /proc 2>/dev/null
+  mkdir -p /newroot
+  mount -t tmpfs -o size=8g tmpfs /newroot
+  # /lib IS AS LOAD-BEARING AS /bin AND WAS OMITTED, which cost one full boot to find. The stage-2
+  # root is built by copying a NAMED LIST out of the initramfs, so anything not named is discarded
+  # at switch_root -- and the first dynamically linked binary in this image, nft, therefore lost its
+  # interpreter and every library. busybox reported "/bin/nft: not found", which names a missing
+  # FILE and points at the binary that is plainly present rather than at the loader that is not.
+  #
+  # THE CPIO IS WHAT LOCALISED IT, not the boot log: reading the built archive showed /bin/nft,
+  # /lib/ld-linux-aarch64.so.1 and all eleven libraries in place, which moved the question from "did
+  # the build stage them" to "what happened between the build and the exec". The same reverse read
+  # that found init sitting in the attempt cgroup.
+  cp -a /bin /lib /init /newroot/ 2>/dev/null
+  mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/media
+  cp -a /dev/console /dev/null /dev/tty /dev/kmsg /newroot/dev/ 2>/dev/null
+  touch /newroot/.stage2
+  umount /proc 2>/dev/null
+  # THE LIST IS CHECKED BEFORE THE OLD ROOT BECOMES UNREACHABLE. After switch_root the initramfs is
+  # gone, so a missing entry surfaces later as an unrelated-looking failure in whatever first needed
+  # it -- which is exactly how this was found the expensive way. A refusal here names the gap.
+  for need in /newroot/bin/busybox /newroot/bin/nft /newroot/lib/ld-linux-aarch64.so.1 /newroot/init; do
+    if [ ! -e "$need" ]; then
+      echo "STAGE2 REFUSED: $need did not survive the root transition"
+      exec /bin/busybox sh
+    fi
+  done
+  exec /bin/busybox switch_root /newroot /init
+fi
+
+mount -t proc     proc     /proc
+mount -t sysfs    sysfs    /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mount -t cgroup2  cgroup2  /sys/fs/cgroup 2>/dev/null && CG=ok || CG=FAILED
+
+GK_SHA=cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319
+RF_SHA=6b9d380eee2019bfa4054407e23342db96a51931a467f12386e4fe2e3634391e
+UID_ATT=1000
+GID_ATT=1000
+
+
+# THE UPLINK IS STATIC AND THE DHCP CLIENT IS GONE FROM THE CRITICAL PATH. The bridged run never
+# obtained an address and the callback never reached its first statement; that defect is quarantined
+# rather than repaired here. This address is the offer previously captured for this NIC -- a
+# CANDIDATE, not confirmed fleet intent.
+UPLINK_CIDR=192.168.1.230/24
+UPLINK_GW=192.168.1.1
+BMC_ADDR=192.168.1.228
+RESOLVER=1.1.1.1
+
+echo ""
+echo "================ GUNBC-RUNNER-HOST ================"
+echo "marker=gunbc-runner-host-boot"
+echo "image-build=@@BUILD_ID@@"
+echo "kernel=$(uname -r)  machine=$(uname -m)"
+echo "kvm=$(test -c /dev/kvm && echo present || echo ABSENT)"
+echo "cgroup2-mount=$CG"
+
+# THE FIRMWARE'S CLAIM AND THE DRIVER'S BINDING ARE TWO DIFFERENT FACTS, and reporting only one
+# would repeat this lane's commonest error. An ACPI TPM2 table means the firmware says a TPM exists;
+# a /sys/class/tpm entry means a driver bound to one. Either without the other is informative:
+# a table with no device is a driver or transport gap, a device with no table is unexpected.
+echo "acpi-tpm2-table=$(test -e /sys/firmware/acpi/tables/TPM2 && echo present || echo absent)"
+echo "tpm-devices=$(/bin/busybox ls /sys/class/tpm 2>/dev/null | /bin/busybox tr '\n' ' ')"
+echo "tpm-driver-lines=$(/bin/busybox dmesg 2>/dev/null | /bin/busybox grep -ci tpm)"
+/bin/busybox dmesg 2>/dev/null | /bin/busybox grep -i tpm | /bin/busybox head -4
+echo "root-fstype=$(/bin/busybox stat -f -c %T / 2>/dev/null)"
+
+# ── media readiness is a successful mount, never a present node ────────────────────────────────
+MOUNTED=no; i=0
+while [ $i -lt 30 ]; do
+  if mount -t iso9660 -o ro,nodev,nosuid,noexec /dev/sr0 /media 2>/dev/null; then MOUNTED=yes; break; fi
+  i=$((i+1)); sleep 1
+done
+echo "media-mount=$MOUNTED after ${i}s"
+
+# A ONE-FIELD JSON READER, BECAUSE THIS IMAGE HAS NO jq AND DOES NOT NEED ONE. The envelope is
+# emitted by a server in this repository with sorted keys and no whitespace, so the shape is known
+# rather than guessed. It is deliberately not a general JSON parser: a general one would invite
+# feeding it arbitrary documents, and everything it reads here has already been signature-verified.
+jq_field () {
+  # THE SPACE AFTER THE COLON IS WHY THE FIRST SIGNED RUN REFUSED BOTH ATTEMPTS. The inner
+  # envelope is serialised compactly and the outer wrapper was not, so the reader looked for
+  # `"field":"` while the bytes said `"field": "`. Tolerating optional whitespace is what JSON
+  # actually permits; matching one exact spelling was reading a format by its habit.
+  /bin/busybox sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p"
+}
+
+verify () {
+  got=$(/bin/busybox sha256sum "$1" 2>/dev/null | /bin/busybox cut -d' ' -f1)
+  if [ "$got" = "$2" ]; then echo "ok"; else echo "MISMATCH got=$got"; fi
+}
+echo "media-guest-kernel-verify=$(verify /media/guest/vmlinux $GK_SHA)"
+echo "media-guest-rootfs-verify=$(verify /media/guest/rootfs.squashfs $RF_SHA)"
+
+# ── stage the guest artifacts off the medium, once for the boot ────────────────────────────────
+STAGE=/run/guest-artifacts
+mkdir -p $STAGE
+cp /media/guest/vmlinux $STAGE/vmlinux 2>/dev/null
+cp /media/guest/rootfs.squashfs $STAGE/rootfs.squashfs 2>/dev/null
+echo "staged-guest-kernel-verify=$(verify $STAGE/vmlinux $GK_SHA)"
+echo "staged-guest-rootfs-verify=$(verify $STAGE/rootfs.squashfs $RF_SHA)"
+
+# ── the signature verifier, staged rather than built into the kernel ───────────────────────────
+# openssl AND ITS LIBRARIES ARE 6.8 MB AND THE FIRMWARE HAS A LOAD CEILING. An 84 MiB image booted
+# and a 173 MiB one did not; the current image is 88 MiB and the threshold between them has never
+# been measured. Adding the verifier to the initramfs would spend that unmeasured margin on a
+# component the firmware never needs to see, so it rides the ISO exactly as the guest kernel does.
+cp -a /media/tools/. /run/tools/ 2>/dev/null || { mkdir -p /run/tools && cp -a /media/tools/. /run/tools/ 2>/dev/null; }
+export LD_LIBRARY_PATH=/run/tools/lib
+OPENSSL=/run/tools/openssl
+echo "staged-openssl=$($OPENSSL version 2>/dev/null || echo MISSING)"
+
+# THE CONTROL PLANE'S PUBLIC KEY IS PART OF THE IMAGE, WHICH IS WHAT MAKES THE SIGNATURE MEAN
+# ANYTHING. Fetching it over the same unauthenticated channel as the envelope would authenticate the
+# envelope against whoever supplied the key -- a circle, not a check. It is baked at build time and
+# its digest is printed so a receipt can say which key this boot trusted.
+CP_PUBKEY=/run/tools/cp-signing.pub
+echo "cp-pubkey-sha256=$(/bin/busybox sha256sum $CP_PUBKEY 2>/dev/null | /bin/busybox cut -d" " -f1)"
+
+# THE BOOT IDENTITY IS MINTED ONCE AND BINDS EVERY ENVELOPE OF THIS BOOT. Without it an envelope
+# minted for an earlier boot of this same machine would still verify -- the signature would be
+# genuine and the binding absent, which is the shape of a replay that looks correct.
+BOOT_ID=$(/bin/busybox cat /proc/sys/kernel/random/uuid 2>/dev/null)
+UNIT_ID=$(/bin/busybox cat /sys/class/net/eth0/address 2>/dev/null)
+echo "boot-id=$BOOT_ID"
+echo "unit-id=$UNIT_ID"
+
+# ── the boot secret, delivered over the console by whoever controls the BMC ────────────────────
+# THIS IS THE HALF THE SIGNATURE COULD NOT CLOSE. The envelope's signature proves the control plane
+# wrote it, so a peer on the segment cannot ANSWER. Nothing proved the host ASKING was the intended
+# physical unit -- the unit id is self-asserted and a MAC is spoofable -- so a peer that asked first
+# still received a genuine credential.
+#
+# THE CONSOLE IS A CHANNEL ONLY BMC CREDENTIALS REACH. It is not on the data segment; IPMI SOL rides
+# an authenticated RMCP+ session to the controller. So a secret delivered here binds "this host" to
+# "whoever controls this host's BMC", which is exactly the relationship the control plane already
+# has and a peer on the data segment does not.
+#
+# ECHO IS OFF BEFORE THE READ, and that is not cosmetic. The host's console output is captured into
+# receipts that get committed; a secret echoed back by the tty would land in the repository. The
+# length is reported instead, which says the delivery worked without saying what was delivered.
+echo "AWAITING-BOOT-SECRET"
+stty -echo 2>/dev/null
+BOOT_SECRET=""
+read -t 120 -r BOOT_SECRET 2>/dev/null
+stty echo 2>/dev/null
+echo "boot-secret-bytes=$(printf '%s' "$BOOT_SECRET" | /bin/busybox wc -c)"
+
+# NO SECRET MEANS NO ATTEMPTS, AND THE HOST STOPS RATHER THAN CONTINUING UNAUTHENTICATED. Proceeding
+# without it would leave the requester exactly as unauthenticated as before while the log claimed a
+# boot secret had been sought -- a check that reports its own absence and carries on.
+if [ -z "$BOOT_SECRET" ]; then
+  echo "HOST REFUSED: no boot secret arrived on the console within 120s"
+  echo "firecracker-launches=0"
+  echo "marker-end=gunbc-runner-host-boot"
+  echo "==================================================="
+  while true; do /bin/busybox sh || true; /bin/busybox sleep 30; done
+fi
+umount /media 2>/dev/null && echo "media-unmounted=yes" || echo "media-unmounted=NO"
+echo "media-still-mounted=$(/bin/busybox grep -c " /media " /proc/mounts 2>/dev/null)"
+
+
+# ── the host uplink, brought up ONCE for the boot ──────────────────────────────────────────────
+# THE UPLINK IS A PROPERTY OF THE BOOT AND THE TAP IS A PROPERTY OF THE ATTEMPT, and the previous
+# script configured both in one block because there was only ever one attempt. Re-adding the same
+# address on a second attempt would have failed harmlessly and read like a network error.
+/bin/busybox ip link set eth0 up 2>/dev/null
+/bin/busybox ip addr add $UPLINK_CIDR dev eth0 2>/dev/null
+/bin/busybox ip route add default via $UPLINK_GW 2>/dev/null
+echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null
+
+# IPv6 IS DISABLED ON THE DATA PATH RATHER THAN LEFT UNSTATED. An IPv4-only ruleset on a dual-stack
+# host is a default-allow wearing a default-deny's name: everything denied below stays reachable
+# over v6.
+echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null
+echo 1 > /proc/sys/net/ipv6/conf/default/disable_ipv6 2>/dev/null
+
+echo "uplink-addr=$(/bin/busybox ip addr show eth0 2>/dev/null | /bin/busybox grep -o 'inet [0-9./]*')"
+echo "uplink-route=$(/bin/busybox ip route show 2>/dev/null | /bin/busybox grep default)"
+echo "ip-forward=$(/bin/busybox cat /proc/sys/net/ipv4/ip_forward 2>/dev/null)"
+echo "ipv6-disabled=$(/bin/busybox cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null)"
+echo "bridge-present=$(test -d /sys/class/net/br0 && echo YES-UNEXPECTED || echo no)"
+
+# ── the supervisor's own baseline, recorded before any attempt runs ────────────────────────────
+# WHAT "NO PREVIOUS ATTEMPT LEAKED" MEANS REQUIRES KNOWING WHAT WAS HERE FIRST. Absence checked
+# only after the second attempt cannot distinguish a resource the first attempt left behind from
+# one the boot started with, so the baseline is read before either runs.
+echo "baseline-taps=$(/bin/busybox ip link show 2>/dev/null | /bin/busybox grep -c 'gunbc-tap')"
+echo "baseline-nft-tables=$(/bin/nft list tables 2>/dev/null | /bin/busybox wc -l)"
+echo "baseline-cgroups=$(/bin/busybox ls -d /sys/fs/cgroup/gunbc/*/ 2>/dev/null | /bin/busybox wc -l)"
+echo "baseline-jailbase=$(/bin/busybox ls /run/jail 2>/dev/null | /bin/busybox wc -l)"
+
+
+# === ONE ATTEMPT ==============================================================================
+#
+# EVERYTHING BELOW IS SCOPED TO ONE ATTEMPT AND RUNS ONCE PER ATTEMPT. The previous script was
+# linear: boot, run one job, drop to a shell. That shape cannot answer the question a runner host
+# actually has to answer -- whether finishing one job leaves the machine able to run the next -- so
+# every cleanup observation it produced was about a host that was about to be power-cycled anyway.
+#
+# THE ATTEMPT INDEX IS THE SLOT, so two attempts get different taps, addresses and guest MACs rather
+# than reusing one identity twice. That also exercises the peer-attempt denial rule against an
+# address a sibling attempt genuinely holds.
+run_attempt () {
+ATT_INDEX=$1
+ATTEMPT="@@BUILD_ID@@-a${ATT_INDEX}-$(/bin/busybox cat /proc/sys/kernel/random/uuid 2>/dev/null | /bin/busybox cut -c1-8)"
+JID=$(echo "$ATTEMPT" | /bin/busybox tr -cd 'a-zA-Z0-9-')
+SLOT=$ATT_INDEX
+TAP=gunbc-tap$SLOT
+HOST_IP=172.30.$SLOT.1
+GUEST_IP=172.30.$SLOT.2
+GUEST_MAC=02:00:00:00:00:0$SLOT
+SUPERNET=172.30.0.0/16
+
+echo ""
+echo "=== ATTEMPT $ATT_INDEX BEGIN attempt=$ATTEMPT slot=$SLOT ==="
+
+# PROVE THE GROUND IS CLEAR BEFORE CLAIMING IT, not after finishing with it. An attempt that finds a
+# previous attempt's tap, rules, cgroup or jail must REFUSE rather than inherit them -- reuse is the
+# failure this loop exists to detect, and detecting it afterwards would mean a job had already run
+# inside it.
+PRIOR=0
+/bin/busybox ip link show $TAP >/dev/null 2>&1 && { echo "PRIOR RESOURCE: tap $TAP exists"; PRIOR=1; }
+test -d /sys/fs/cgroup/gunbc/attempt-$JID && { echo "PRIOR RESOURCE: cgroup $JID exists"; PRIOR=1; }
+/bin/nft list table inet gunbc_host >/dev/null 2>&1 && { echo "PRIOR RESOURCE: ruleset still installed"; PRIOR=1; }
+test -d /run/jail/firecracker && { echo "PRIOR RESOURCE: jail base still populated"; PRIOR=1; }
+echo "attempt-$ATT_INDEX-prior-resources=$PRIOR"
+if [ "$PRIOR" -ne 0 ]; then
+  echo "ATTEMPT $ATT_INDEX REFUSED: host is not at baseline; this attempt will not reuse another's resources"
+  return 1
+fi
+
+# ── the runner registration, fetched rather than baked ─────────────────────────────────────────
+# THE HOST ASKS FOR A CREDENTIAL AT BOOT INSTEAD OF CARRYING ONE. This image is published to an NFS
+# export the whole segment can read; a registration credential inside it would sit there for the
+# life of the artifact. What arrives here is a JIT config, which registers exactly ONE ephemeral
+# runner and is spent the moment it is redeemed.
+#
+# THE FETCH IS DELIBERATELY NOT FILTERED BY THE RULESET ABOVE. That ruleset governs the FORWARD path
+# -- what the guest may reach through this host. The host's own output is a different subject and is
+# not constrained here, which is worth stating because a reader who saw the LAN denied in the
+# forward chain could reasonably expect this fetch to fail.
+# THE NONCE IS CHOSEN BEFORE THE REQUEST AND REQUIRED BACK IN THE ANSWER. This host has no RTC and
+# no time source, so an expiry timestamp in the envelope would be unverifiable here and therefore
+# decoration. A nonce it minted moments ago is checkable with the only clock it has.
+NONCE=$(/bin/busybox cat /proc/sys/kernel/random/uuid 2>/dev/null)
+# THE SECRET ITSELF NEVER TRAVELS. What goes on the wire is a digest over the request bound to the
+# secret, so the control plane can recompute it and a listener on the data segment learns nothing
+# reusable -- the proof is valid for this attempt, this boot and this nonce only.
+AUTH=$(printf '%s' "$BOOT_SECRET:$BOOT_ID:$ATT_INDEX:$NONCE:$UNIT_ID" | $OPENSSL dgst -sha256 -r 2>/dev/null | /bin/busybox cut -d" " -f1)
+echo "request-auth-bytes=$(printf '%s' "$AUTH" | /bin/busybox wc -c)"
+ENVSRC="http://192.168.1.188:8099/envelope?attempt=$ATT_INDEX&boot=$BOOT_ID&nonce=$NONCE&unit=$UNIT_ID&auth=$AUTH"
+/bin/busybox wget -q -T 20 -O /run/envelope.json "$ENVSRC" 2>/dev/null
+ENVLEN=$(/bin/busybox stat -c %s /run/envelope.json 2>/dev/null || echo 0)
+echo "envelope-bytes=$ENVLEN"
+
+# ── admission: signature first, then every binding, then the payload ───────────────────────────
+# THE ORDER IS THE ARGUMENT. Verifying the signature before parsing anything else means every field
+# checked afterwards is a field this control plane actually asserted; checking bindings first would
+# be reasoning about attacker-supplied text.
+ADMIT=no
+REFUSE=""
+if [ "$ENVLEN" -eq 0 ]; then
+  REFUSE="no envelope was fetched from $ENVSRC"
+else
+  ENV_B64=$(jq_field envelope_b64 < /run/envelope.json 2>/dev/null)
+  SIG_B64=$(jq_field signature_b64 < /run/envelope.json 2>/dev/null)
+  if [ -z "$ENV_B64" ] || [ -z "$SIG_B64" ]; then
+    REFUSE="envelope is malformed: it does not carry both envelope_b64 and signature_b64"
+  else
+    echo "$ENV_B64" | /bin/busybox base64 -d > /run/envelope.bin 2>/dev/null
+    echo "$SIG_B64" | /bin/busybox base64 -d > /run/envelope.sig 2>/dev/null
+    if $OPENSSL pkeyutl -verify -pubin -inkey $CP_PUBKEY -rawin \
+         -in /run/envelope.bin -sigfile /run/envelope.sig >/dev/null 2>&1; then
+      echo "envelope-signature=verified"
+      E_UNIT=$(jq_field unit    < /run/envelope.bin)
+      E_BOOT=$(jq_field boot    < /run/envelope.bin)
+      E_NONCE=$(jq_field nonce  < /run/envelope.bin)
+      E_LABEL=$(jq_field label  < /run/envelope.bin)
+      E_ATT=$(/bin/busybox sed -n 's/.*"attempt"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' /run/envelope.bin)
+      E_DIGEST=$(jq_field payload_sha256 < /run/envelope.bin)
+      jq_field payload_b64 < /run/envelope.bin | /bin/busybox base64 -d > /run/jitconfig 2>/dev/null
+      JITLEN=$(/bin/busybox stat -c %s /run/jitconfig 2>/dev/null || echo 0)
+      GOT_DIGEST=$(/bin/busybox sha256sum /run/jitconfig 2>/dev/null | /bin/busybox cut -d" " -f1)
+      echo "envelope-unit=$E_UNIT envelope-boot=$E_BOOT envelope-attempt=$E_ATT"
+      echo "envelope-label=$E_LABEL"
+      echo "jitconfig-bytes=$JITLEN"
+      # EVERY BINDING IS CHECKED AND THE FIRST FAILURE NAMES ITSELF. A refusal that said only
+      # "envelope rejected" would leave an operator unable to tell a replayed envelope from a
+      # misconfigured one.
+      if   [ "$E_UNIT"  != "$UNIT_ID" ];  then REFUSE="envelope is bound to unit $E_UNIT, not $UNIT_ID"
+      elif [ "$E_BOOT"  != "$BOOT_ID" ];  then REFUSE="envelope is bound to boot $E_BOOT, not this boot"
+      elif [ "$E_NONCE" != "$NONCE" ];    then REFUSE="envelope echoes nonce $E_NONCE, not the one just sent"
+      elif [ "$E_ATT"   != "$ATT_INDEX" ];then REFUSE="envelope is bound to attempt $E_ATT, not $ATT_INDEX"
+      elif [ "$GOT_DIGEST" != "$E_DIGEST" ]; then REFUSE="payload digest $GOT_DIGEST does not match the signed $E_DIGEST"
+      elif [ "$JITLEN" -lt 512 ];  then REFUSE="payload is $JITLEN bytes, below the floor"
+      elif [ "$JITLEN" -gt 65536 ];then REFUSE="payload is $JITLEN bytes, above the ceiling"
+      else ADMIT=yes
+      fi
+    else
+      echo "envelope-signature=REJECTED"
+      REFUSE="signature does not verify against the control-plane key baked into this image"
+    fi
+  fi
+fi
+[ -n "$REFUSE" ] && echo "ATTEMPT REFUSED: $REFUSE"
+echo "jit-admission=$ADMIT"
+
+if [ "$ADMIT" != yes ]; then
+  # THE UNCHECKED FIELDS ARE NAMED IN THE REFUSAL so an operator reading only this line knows what
+  # this admission does NOT establish, rather than inferring a stronger check than was performed.
+  # THE LIST IS NOW WHAT IS GENUINELY STILL UNCHECKED, and it got shorter by being closed rather than
+# by being reworded. Requester authentication is the one that matters: the unit id is SELF-ASSERTED
+# and a MAC is spoofable, so a peer on the segment can still ask first and take the credential. It
+# cannot forge the answer, which is the half this signature closes.
+echo "jit-admission-unchecked=requester-authentication unit-attestation cross-boot-replay-at-the-server"
+  echo "firecracker-launches=0"
+  echo "attempt-$ATT_INDEX-refused=jit-envelope-inadmissible"
+  return 1
+fi
+# THE LIST IS NOW WHAT IS GENUINELY STILL UNCHECKED, and it got shorter by being closed rather than
+# by being reworded. Requester authentication is the one that matters: the unit id is SELF-ASSERTED
+# and a MAC is spoofable, so a peer on the segment can still ask first and take the credential. It
+# cannot forge the answer, which is the half this signature closes.
+echo "jit-admission-unchecked=requester-authentication unit-attestation cross-boot-replay-at-the-server"
+
+# ── the jail, on attempt-owned tmpfs ───────────────────────────────────────────────────────────
+# THE JAIL FILESYSTEM CAN CARRY NEITHER noexec NOR nodev, and both were learned by the jail
+# refusing rather than by reading. General hardening guidance says attempt-owned writable areas
+# should be nodev,nosuid,noexec -- and the jailer's method contradicts two of the three:
+#
+#   noexec  it COPIES the VMM binary into the chroot and executes it there
+#   nodev   it MKNODS /dev/kvm inside the chroot, and a device node on a nodev mount cannot be
+#           opened at all -- the open returns EACCES, which surfaced as Firecracker reporting
+#           "Error creating KVM object: Permission denied" from inside a jail that was otherwise
+#           correctly constructed
+#
+# So this mount keeps nosuid and gives up the other two. That is a real widening relative to the
+# guidance and is recorded as such rather than quietly chosen: the containment here comes from the
+# chroot, the namespaces, the cgroup and the dropped privilege, NOT from the mount flags. A narrower
+# arrangement -- a read-only bind of a pre-staged binary, and a device node passed in rather than
+# created -- belongs to the production supervisor and must not be claimed by this profile.
+JAILBASE=/run/jail
+mkdir -p $JAILBASE
+# ON A DISKLESS HOST EVERY "DISK" IS RAM, and the attempt workspace does not escape that. The guest
+# needs a real filesystem it can write -- GitHub reported "only 0 MB of available disk space left"
+# on the first canary, which is why two echo steps passed where a checkout could not -- and the only
+# place to put one is here. So the workspace is a file on this tmpfs: a genuine block device to the
+# guest, and host memory to the host.
+#
+# THE BOUNDS ARE RAISED TO COVER IT RATHER THAN LEFT TO BE DISCOVERED. Guest RAM, the copied runner
+# tree and the workspace image are three claims on the same 256 GiB, and a limit sized for only the
+# first would kill the VM partway through a job that was doing exactly what it was asked to.
+mount -t tmpfs -o nosuid,size=16g tmpfs $JAILBASE
+
+CHROOT=$JAILBASE/firecracker/$JID/root
+mkdir -p $CHROOT
+cp $STAGE/vmlinux $CHROOT/vmlinux
+cp $STAGE/rootfs.squashfs $CHROOT/rootfs.squashfs
+echo "jail-chroot=$CHROOT"
+echo "jailed-guest-kernel-verify=$(verify $CHROOT/vmlinux $GK_SHA)"
+echo "jailed-guest-rootfs-verify=$(verify $CHROOT/rootfs.squashfs $RF_SHA)"
+
+# THE GUEST IS TOLD ITS ADDRESS RATHER THAN ASKING FOR ONE. ip=dhcp was the previous value and it
+# depended on the bridge putting the guest on a segment with a server; on a routed /30 there is no
+# server and there is nothing to ask. The rendering matches runner_slot_guest_ip_boot_arg, which is
+# the fleet's existing spelling of the same argument.
+#
+# init=/gunbc-runner-init.sh REPLACES THE STOCK INIT so the guest contributes exactly the traffic the
+# experiment intends. Booting systemd would have put an unknown number of network-facing units on
+# the tap, and every counter reading would then be a sum over sources nobody enumerated.
+#
+# PATHS IN THE CONFIG ARE INSIDE THE CHROOT, which is the point of the chroot: after the jailer
+# pivots, /vmlinux is the only name that resolves. A config carrying host paths would fail to open
+# and would look like a corrupt artifact rather than a containment boundary doing its job.
+cat > $CHROOT/vm.json <<EOF
+{
+  "boot-source": { "kernel_image_path": "/vmlinux",
+    "boot_args": "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda ro ip=$GUEST_IP::$HOST_IP:255.255.255.252::eth0:off init=/gunbc-runner-init.sh" },
+  "drives": [ { "drive_id": "rootfs", "path_on_host": "/rootfs.squashfs",
+    "is_root_device": true, "is_read_only": true },
+    { "drive_id": "jit", "path_on_host": "/jit.bin",
+    "is_root_device": false, "is_read_only": true },
+    { "drive_id": "work", "path_on_host": "/work.img",
+    "is_root_device": false, "is_read_only": false } ],
+  "network-interfaces": [ { "iface_id": "eth0", "host_dev_name": "$TAP", "guest_mac": "$GUEST_MAC" } ],
+  "machine-config": { "vcpu_count": 4, "mem_size_mib": 4096 }
+}
+EOF
+
+# THE UNPRIVILEGED IDENTITY MUST OWN WHAT IT WILL OPEN, since the jailer drops to it before exec.
+# There is no /etc/passwd in this image and none is needed: the jailer takes numeric ids.
+chown -R $UID_ATT:$GID_ATT $CHROOT 2>/dev/null
+chown $UID_ATT:$GID_ATT /dev/kvm 2>/dev/null
+echo "kvm-owner=$(/bin/busybox stat -c '%u:%g %a' /dev/kvm 2>/dev/null)"
+
+
+# ── the attempt cgroup, created and bounded by the SUPERVISOR ──────────────────────────────────
+# THE LAST RUN HAD A DEDICATED KERNEL AND NO RESOURCE BOUND AT ALL. /proc/<vmm>/cgroup read 0::/
+# while the guest was alive: --cgroup-version 2 selects an implementation, it does not request a
+# cgroup, so the jailer moved into nothing and the attempt was unbounded. A kernel boundary and a
+# resource boundary are independent axes and one does not imply the other.
+#
+# SO THE SUPERVISOR OWNS PLACEMENT RATHER THAN ASKING THE JAILER FOR IT. It creates a leaf, writes
+# the limits, and puts the launching identity into that leaf BEFORE exec -- and because the jailer
+# execs in place, the identity that ends up running Firecracker is the one already inside the
+# cgroup. Nothing has to be moved after the fact, and there is no window where the VMM runs
+# unbounded.
+#
+# THE LEAF IS A LEAF because cgroup2 forbids processes in an interior node once controllers are
+# enabled on it. Controllers are delegated root -> gunbc -> attempt, and only the attempt holds
+# processes.
+# ── the attempt's host network endpoint ────────────────────────────────────────────────────────
+# THE TAP IS THE HOST HALF OF ONE POINT-TO-POINT LINK, and it is created before the jail because
+# Firecracker opens an EXISTING host device by name -- it does not make one. A /30 is deliberate:
+# two usable addresses, host and guest, and no room for a third party on the segment.
+#
+# busybox HAS NO `ip tuntap`, which is why this uses tunctl. Recorded because the obvious command
+# is absent rather than because tunctl is preferable.
+# THE GUEST NEEDS EGRESS TO BE A RUNNER AT ALL, and the previous run bought it with a bridge --
+# which handed the guest the entire physical segment: DHCP, ARP, the BMC's own address, every other
+# host. gunbc.runner.runner_host_filtered_egress rejects that topology rather than filtering it.
+#
+# THE TAP IS ROUTED, NOT BRIDGED. The guest's only neighbour is the host, so default-deny is a
+# property of the topology and the ruleset only has to decide what to FORWARD. There is no br0.
+/bin/busybox tunctl -t $TAP >/dev/null 2>&1
+/bin/busybox ip addr add $HOST_IP/30 dev $TAP 2>/dev/null
+/bin/busybox ip link set $TAP up 2>/dev/null
+
+# -- the policy installer: one invocation, then gone --------------------------------------------
+# EVERY RULE CARRIES A COUNTER BECAUSE A REFUSED CONNECTION PROVES NOTHING. Routing failure, DNS
+# failure, an absent service and a firewall drop all look identical to a client, so a denial
+# evidenced by "it did not connect" is evidence of nothing. The counter is what distinguishes them.
+#
+# DENIALS PRECEDE GRANTS so a grant cannot reopen what a denial closed, and the resolver is public
+# for the same reason: pointing at the LAN gateway would need a hole in the LAN denial.
+/bin/busybox cat > /run/gunbc.nft <<NFTEOF
+table inet gunbc_host {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    iif lo counter accept
+    ct state established,related counter accept
+    counter comment "input-default-drop"
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ct state established,related counter accept
+    ip saddr $GUEST_IP/32 ip daddr $BMC_ADDR counter drop comment "guest-to-bmc"
+    ip saddr $GUEST_IP/32 ip daddr $SUPERNET counter drop comment "guest-to-peer-attempt"
+    ip saddr $GUEST_IP/32 ip daddr 10.0.0.0/8 counter drop comment "guest-to-private-10"
+    ip saddr $GUEST_IP/32 ip daddr 172.16.0.0/12 counter drop comment "guest-to-private-172"
+    ip saddr $GUEST_IP/32 ip daddr 192.168.0.0/16 counter drop comment "guest-to-lan"
+    ip saddr $GUEST_IP/32 ip daddr 169.254.0.0/16 counter drop comment "guest-to-link-local"
+    ip saddr $GUEST_IP/32 ip daddr 224.0.0.0/4 counter drop comment "guest-to-multicast"
+    ip saddr $GUEST_IP/32 ip daddr $RESOLVER udp dport 53 counter accept comment "guest-dns"
+    ip saddr $GUEST_IP/32 tcp dport 443 counter accept comment "guest-tls"
+    counter comment "forward-default-drop"
+  }
+  chain postrouting {
+    type nat hook postrouting priority 100; policy accept;
+    ip saddr $GUEST_IP/32 oif "eth0" counter masquerade comment "guest-snat"
+  }
+}
+NFTEOF
+NFT_RC=0
+/bin/nft -f /run/gunbc.nft || NFT_RC=$?
+echo "nft-install-rc=$NFT_RC"
+
+# THE RULESET IS READ BACK RATHER THAN ASSUMED FROM A ZERO EXIT. An install that succeeded and an
+# install that silently applied something else exit the same way.
+echo "--- installed ruleset ---"
+/bin/nft list table inet gunbc_host 2>&1 | /bin/busybox head -44
+echo "--- end ruleset ---"
+
+echo "tap-device=$TAP"
+echo "tap-state=$(/bin/busybox ip link show $TAP 2>/dev/null | /bin/busybox head -1)"
+echo "tap-addr=$(/bin/busybox ip addr show $TAP 2>/dev/null | /bin/busybox grep -o 'inet [0-9./]*')"
+
+
+# A RAW BLOCK DEVICE CARRIES THE CREDENTIAL, WITH NO FILESYSTEM ON IT. A filesystem would add a
+# driver, a mount and a path to the guest's boot path in order to carry one opaque string, and each
+# of those is another thing that can fail in a way that looks like a registration failure. The guest
+# reads the whole device and strips the padding.
+#
+# THE PADDING IS TO A BLOCK BOUNDARY because Firecracker rejects a drive whose size is not a
+# multiple of the sector size. NULs are used so the guest can strip them unambiguously -- a JIT
+# config is base64 and contains none.
+/bin/busybox dd if=/dev/zero of=$CHROOT/jit.bin bs=512 count=64 2>/dev/null
+/bin/busybox dd if=/run/jitconfig of=$CHROOT/jit.bin conv=notrunc 2>/dev/null
+echo "jit-device-bytes=$(/bin/busybox wc -c < $CHROOT/jit.bin 2>/dev/null)"
+
+# THE OWNERSHIP PASS AT THE TOP OF THE JAIL SECTION RAN BEFORE THIS FILE EXISTED, so it is owned
+# here explicitly. The jailer drops to the attempt uid before exec, and Firecracker then opens every
+# drive as that uid -- a root-owned drive would surface as Firecracker refusing the configuration,
+# which is loud but points at the config rather than at the mode bits.
+#
+# 0400 RATHER THAN 0644 because this device carries a credential. It is read once by a process
+# running as this uid and by nothing else on the host.
+chown $UID_ATT:$GID_ATT $CHROOT/jit.bin 2>/dev/null
+chmod 0400 $CHROOT/jit.bin 2>/dev/null
+echo "jit-device-owner=$(/bin/busybox stat -c '%u:%g %a' $CHROOT/jit.bin 2>/dev/null)"
+
+# ── the attempt workspace: a filesystem made now, not a template copied ────────────────────────
+# FRESHNESS IS A PROPERTY OF CREATION HERE, NOT OF CLEANUP. mke2fs runs per attempt against a file
+# that did not exist a moment ago, so there is no prior tenant to erase and no cleanup step whose
+# omission would leak one job's work tree into the next. A pristine template copied per attempt
+# would be equivalent only for as long as nobody wrote to the template.
+#
+# ext2 RATHER THAN ext4 because busybox carries mke2fs and not mkfs.ext4, and the guest's kernel
+# mounts ext2 through the same driver. Choosing the filesystem the available tool actually produces
+# is not a compromise; claiming ext4 while writing ext2 would be.
+WORKGB=4
+/bin/busybox dd if=/dev/zero of=$CHROOT/work.img bs=1M count=0 seek=$((WORKGB*1024)) 2>/dev/null
+/bin/busybox mke2fs -F -q $CHROOT/work.img 2>/dev/null
+MKFS_RC=$?
+chown $UID_ATT:$GID_ATT $CHROOT/work.img 2>/dev/null
+chmod 0600 $CHROOT/work.img 2>/dev/null
+echo "workspace-mkfs-rc=$MKFS_RC"
+# stat RATHER THAN wc BECAUSE THE FILE IS SPARSE. `wc -c` reported 0 for a 4 GiB image that mke2fs
+# had just formatted successfully and that the guest went on to mount with 3827 MB free -- three
+# readings, two of which agreed and one of which was the instrument. stat asks the inode for its
+# size instead of counting bytes through a read.
+echo "workspace-bytes=$(/bin/busybox stat -c %s $CHROOT/work.img 2>/dev/null)"
+echo "workspace-blocks=$(/bin/busybox stat -c %b $CHROOT/work.img 2>/dev/null)"
+echo "workspace-owner=$(/bin/busybox stat -c '%u:%g %a' $CHROOT/work.img 2>/dev/null)"
+
+CGROOT=/sys/fs/cgroup
+CG=$CGROOT/gunbc/attempt-$JID
+mkdir -p $CGROOT/gunbc
+echo "+memory +cpu +pids" > $CGROOT/cgroup.subtree_control 2>/dev/null
+echo "+memory +cpu +pids" > $CGROOT/gunbc/cgroup.subtree_control 2>/dev/null
+mkdir -p $CG
+echo "17179869184"  > $CG/memory.max 2>/dev/null
+echo "200000 100000" > $CG/cpu.max   2>/dev/null
+echo "4096"            > $CG/pids.max  2>/dev/null
+# THE CONTROLLER STATE IS PRINTED BECAUSE A LIMIT THAT DID NOT APPLY IS SILENT. The previous run
+# wrote cpu.max and read it back EMPTY -- the cpu controller had not been enabled, and nothing said
+# so. What a cgroup offers and what its parent delegated are separate readings and both are shown.
+echo "cgroup-leaf=$CG"
+echo "cgroup-root-controllers=$(/bin/busybox cat $CGROOT/cgroup.controllers 2>/dev/null)"
+echo "cgroup-root-subtree=$(/bin/busybox cat $CGROOT/cgroup.subtree_control 2>/dev/null)"
+echo "cgroup-gunbc-subtree=$(/bin/busybox cat $CGROOT/gunbc/cgroup.subtree_control 2>/dev/null)"
+echo "cgroup-leaf-controllers=$(/bin/busybox cat $CG/cgroup.controllers 2>/dev/null)"
+echo "cgroup-memory-max=$(/bin/busybox cat $CG/memory.max 2>/dev/null)"
+echo "cgroup-cpu-max=$(/bin/busybox cat $CG/cpu.max 2>/dev/null)"
+echo "cgroup-pids-max=$(/bin/busybox cat $CG/pids.max 2>/dev/null)"
+
+# ── launch THROUGH the jailer, IN THE BACKGROUND, so it can be observed while it lives ─────────
+# EVERY PREVIOUS RECEIPT SAID "not observed" FOR CGROUP, NAMESPACES AND CAPABILITIES, and the reason
+# was always the same: the run was watched only after it ended. A post-mortem look cannot tell a
+# cleaned-up cgroup from one that never existed, and cannot read a capability set from a process
+# that is gone. So the launcher goes to the background and the census runs against the LIVE process.
+# THE TWO INTERVALS ARE STARTED SEPARATELY BECAUSE THEY ANSWER DIFFERENT QUESTIONS. The capacity
+# this attempt held began when its resources were acquired; the guest's execution begins here. One
+# number would charge the tenant for the host's own staging.
+ATT_VM_START=$(/bin/busybox cut -d. -f1 /proc/uptime)
+echo "attempt-$ATT_INDEX-vm-start-uptime=$ATT_VM_START"
+echo "guest-boot-begin attempt=$ATTEMPT via=jailer"
+# THE SUBSHELL JOINS THE CGROUP AND THEN EXECS, so placement precedes the VMM rather than chasing
+# it. Its pid is written to cgroup.procs first; every exec after that -- timeout, jailer,
+# firecracker -- preserves the identity and therefore the membership, so there is no window in
+# which the VMM runs outside its bound.
+# $$ DOES NOT CHANGE IN A SUBSHELL, and the previous run proved it the expensive way: `( echo $$ >
+# cgroup.procs; exec ... )` wrote the PARENT's pid, so it moved INIT into the attempt cgroup and
+# left the VMM in the root. The bidirectional check is what localised it -- the forward read said
+# only "not placed", while the reverse read named pid 1 sitting in the leaf.
+#
+# THE DEADLINE IS 540s BECAUSE THE GUEST NOW RUNS A REAL JOB. A deadline shorter than the work kills
+# the runner mid-job, and GitHub then reports the job as lost rather than failed -- a result that
+# says nothing about whether the host can execute work. The runner carries its own 420s bound
+# inside, so the outer deadline exists to stop a hung VM and not to time the job.
+#
+# A FRESH SHELL VIA sh -c HAS ITS OWN $$, and exec preserves that identity through timeout, jailer
+# and firecracker. So the process that joins the cgroup is the process that ends up running the VMM.
+/bin/busybox sh -c 'echo $$ > '"$CG"'/cgroup.procs 2>/dev/null; exec /bin/busybox timeout -s KILL 540 /bin/jailer --id "'"$JID"'" --exec-file /bin/firecracker --uid '"$UID_ATT"' --gid '"$GID_ATT"' --chroot-base-dir '"$JAILBASE"' --cgroup-version 2 -- --no-api --config-file /vm.json' > /run/guest.log 2>&1 &
+LAUNCHER=$!
+echo "launcher-pid=$LAUNCHER"
+
+# FINDING THE VMM IS ITSELF EVIDENCE ABOUT THE TOPOLOGY. Under in-place exec the jailer BECOMES
+# firecracker, so the identity that ends up named firecracker may be the very pid the jailer
+# started as -- which is the claim the surface model now carries and this scan can corroborate.
+FCPID=""
+n=0
+while [ $n -lt 20 ]; do
+  for d in /proc/[0-9]*; do
+    c=$(/bin/busybox cat $d/comm 2>/dev/null)
+    if [ "$c" = "firecracker" ]; then FCPID=$(/bin/busybox basename $d); break; fi
+  done
+  [ -n "$FCPID" ] && break
+  n=$((n+1)); sleep 1
+done
+echo "firecracker-pid=${FCPID:-NOTFOUND} after ${n}s"
+
+# ── the contemporaneous census ─────────────────────────────────────────────────────────────────
+echo "=== LIVE CENSUS BEGIN ==="
+if [ -n "$FCPID" ]; then
+  echo "--- identity and lineage ---"
+  echo "live-comm=$(/bin/busybox cat /proc/$FCPID/comm 2>/dev/null)"
+  echo "live-exe=$(/bin/busybox readlink /proc/$FCPID/exe 2>/dev/null)"
+  echo "live-root=$(/bin/busybox readlink /proc/$FCPID/root 2>/dev/null)"
+  echo "live-ppid=$(/bin/busybox grep -E '^PPid:' /proc/$FCPID/status 2>/dev/null)"
+  echo "launcher-still-present=$(test -d /proc/$LAUNCHER && echo yes || echo no)"
+
+  echo "--- privilege: the axes the last receipt could not read ---"
+  /bin/busybox grep -E '^(Uid|Gid|Groups|CapInh|CapPrm|CapEff|CapBnd|CapAmb|NoNewPrivs|Seccomp):' \
+    /proc/$FCPID/status 2>/dev/null
+
+  # PLACEMENT IS BIDIRECTIONAL OR IT IS NOT ESTABLISHED. The process naming a cgroup and that
+  # cgroup listing the process are two different readings, and only the pair rules out a stale or
+  # root placement. A post-run look can take neither.
+  echo "--- cgroup membership, while alive, BOTH directions ---"
+  echo "live-cgroup=$(/bin/busybox cat /proc/$FCPID/cgroup 2>/dev/null)"
+  echo "live-cgroup-procs=$(/bin/busybox cat $CG/cgroup.procs 2>/dev/null | tr '\n' ' ')"
+  if /bin/busybox grep -q "attempt-$JID" /proc/$FCPID/cgroup 2>/dev/null; then FWD=yes; else FWD=NO; fi
+  if /bin/busybox grep -qx "$FCPID" $CG/cgroup.procs 2>/dev/null; then REV=yes; else REV=NO; fi
+  echo "placement-forward=$FWD process-names-attempt-cgroup"
+  echo "placement-reverse=$REV attempt-cgroup-lists-process"
+  if [ "$FWD" = yes ] && [ "$REV" = yes ]; then
+    echo "placement-verdict=BIDIRECTIONAL"
+  else
+    echo "placement-verdict=NOT-ESTABLISHED"
+  fi
+  echo "live-memory-current=$(/bin/busybox cat $CG/memory.current 2>/dev/null)"
+  echo "live-memory-max=$(/bin/busybox cat $CG/memory.max 2>/dev/null)"
+
+  echo "--- namespace inodes, host vs jailed ---"
+  for ns in mnt pid net user ipc uts cgroup; do
+    H=$(/bin/busybox readlink /proc/1/ns/$ns 2>/dev/null)
+    F=$(/bin/busybox readlink /proc/$FCPID/ns/$ns 2>/dev/null)
+    if [ "$H" = "$F" ]; then V=SHARED; else V=DIFFERENT; fi
+    echo "ns-$ns host=$H jailed=$F verdict=$V"
+  done
+
+  echo "--- open files ---"
+  for f in /proc/$FCPID/fd/*; do
+    [ -e "$f" ] || continue
+    echo "fd $(/bin/busybox basename $f) -> $(/bin/busybox readlink $f 2>/dev/null)"
+  done
+
+  echo "--- mounts visible to the jailed process ---"
+  /bin/busybox cat /proc/$FCPID/mounts 2>/dev/null | /bin/busybox head -12
+else
+  echo "LIVE CENSUS UNAVAILABLE: no firecracker process was found while the launcher ran"
+fi
+
+# ── does the guest answer? ─────────────────────────────────────────────────────────────────────
+# REACHABILITY IS THE FIRST THING THAT NEEDS THE GUEST TO HAVE REACHED USERSPACE-ADJACENT STATE.
+# A kernel that configured ip= and brought eth0 up answers ARP and ICMP from the kernel itself, so
+# a reply here does NOT establish userspace -- it establishes the link, the tap, and the guest's
+# network stack. The guest log is what says whether init ran.
+# THE HOST'S OWN EGRESS IS THE PRECONDITION, so it is tested first and separately: if the host
+# cannot reach the LAN the guest's failure would say nothing about the filter.
+echo "--- host egress, while the guest runs ---"
+/bin/busybox ping -c 2 -W 2 $UPLINK_GW 2>&1 | /bin/busybox tail -2
+echo "--- guest presence on the point-to-point link ---"
+echo "guest-neighbours=$(/bin/busybox ip neigh show dev $TAP 2>/dev/null | /bin/busybox head -3)"
+
+# ── the host half of the egress acceptance ─────────────────────────────────────────────────────
+# THE COUNTER READ MUST FOLLOW THE LAST PROBE, AND THE FIRST RUN DID NOT ESTABLISH THAT IT DID.
+# The guest needs ~20s to reach its init and then runs six 6s timeouts, so the previous 45s window
+# could have closed while probes were still firing -- and a zero counter read too early is
+# indistinguishable from a rule that was never reached. The window is now longer than the probe
+# sequence can possibly take, which makes the reading unambiguous rather than probably-fine.
+sleep 115
+echo "--- per-rule counters after the guest probes ---"
+# EVERY LINE HERE IS THE EVIDENCE THAT SEPARATES A DENIAL FROM A DEAD NETWORK. A guest probe that
+# reports "refused" beside a still-zero drop counter was stopped by something other than this
+# ruleset, and that distinction is the entire reason the rules carry counters.
+/bin/nft -a list table inet gunbc_host 2>&1 | /bin/busybox grep -E 'counter|chain'
+echo "--- conntrack and forwarding state ---"
+# THAT ACCUSATION WAS WRONG AND IS WITHDRAWN. An earlier revision of this comment read 0 here beside
+# a rule that had accepted five packets and concluded the sysctl was the broken instrument. The next
+# run read 3 from the SAME path, so the sysctl was reporting correctly and the 0 was simply the live
+# count at that instant -- conntrack entries for two short flows had already expired.
+#
+# WHAT IS ACTUALLY MISSING IS THE OTHER PATH. /proc/net/nf_conntrack reads empty because
+# CONFIG_NF_CONNTRACK_PROCFS is unset, so the per-connection listing is unavailable while the count
+# is fine. Both are printed because the pair is what made the first reading's error visible.
+echo "conntrack-count=$(/bin/busybox cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null)"
+echo "conntrack-count-alt=$(/bin/busybox cat /proc/net/nf_conntrack 2>/dev/null | /bin/busybox wc -l)"
+echo "conntrack-max=$(/bin/busybox cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null)"
+echo "tap-rx-tx=$(/bin/busybox cat /sys/class/net/$TAP/statistics/rx_packets 2>/dev/null)/$(/bin/busybox cat /sys/class/net/$TAP/statistics/tx_packets 2>/dev/null)"
+echo "eth0-rx-tx=$(/bin/busybox cat /sys/class/net/eth0/statistics/rx_packets 2>/dev/null)/$(/bin/busybox cat /sys/class/net/eth0/statistics/tx_packets 2>/dev/null)"
+
+echo "--- host listening sockets during the attempt ---"
+echo "tcp-entries=$(/bin/busybox wc -l < /proc/net/tcp 2>/dev/null)"
+echo "tcp6-entries=$(/bin/busybox wc -l < /proc/net/tcp6 2>/dev/null)"
+echo "udp-entries=$(/bin/busybox wc -l < /proc/net/udp 2>/dev/null)"
+echo "unix-sockets=$(/bin/busybox wc -l < /proc/net/unix 2>/dev/null)"
+echo "--- host process population during the attempt ---"
+/bin/busybox ps -o pid,ppid,user,comm 2>/dev/null | /bin/busybox grep -viE 'kworker|kthread|rcu_|sugov|ksoftirq|migration|cpuhp|idle_inject|irq/|kdevtmpfs|kauditd|khungtask|oom_reap|writeback|kcompact|ksmd|khugepage|kintegrity|kblockd|blkcg|watchdog|md_|edac|devfreq|kswapd|ecryptfs|kthrotld|acpi|nvme|dm_|jbd2|ext4|scsi|card|mld|ipv6|kstrp|zswap|charger|crypto|inet_|slub|netns|mm_perc|sync_su|pool_wo|kvfree|usb-storage|pgdatinit|kaluad|kmpath|kcopyd|raid5|dmcrypt'
+echo "=== LIVE CENSUS END ==="
+
+wait $LAUNCHER
+GRC=$?
+ATT_VM_END=$(/bin/busybox cut -d. -f1 /proc/uptime)
+echo "guest-boot-end rc=$GRC"
+# vCPU-SECONDS, NOT MINUTES, AND NOT ROUNDED. Rounding is a pricing decision and belongs at the
+# pricing boundary; doing it here would destroy the measurement to save an operation.
+echo "attempt-$ATT_INDEX-vm-seconds=$((ATT_VM_END - ATT_VM_START))"
+echo "attempt-$ATT_INDEX-vcpus=4"
+echo "attempt-$ATT_INDEX-vcpu-seconds=$(( (ATT_VM_END - ATT_VM_START) * 4 ))"
+# THE GUEST LOG WAS NEVER FULLY READ, which is why "the guest never reached userspace" has been
+# carried as a claim across four receipts on the strength of a 25-line head. The tail is where init,
+# a login prompt or a panic would appear, and it was simply never looked at.
+# THE WHOLE GUEST LOG, NOT A FILTERED VIEW OF IT. Every previous reading of this file went through
+# a grep with a fixed pattern list plus a head, and each time the thing that mattered was outside the
+# patterns: "the guest never reached userspace" was carried across four receipts on a 25-line head,
+# and this run's guest exited with status 1 having printed something no pattern here matched.
+#
+# A FILTER IS A HYPOTHESIS ABOUT WHAT WENT WRONG, applied before anyone knows. The log is a few
+# hundred lines over a serial console that is already carrying ten times that, so filtering it buys
+# nothing and costs exactly the evidence needed when the failure is one nobody predicted.
+echo "--- guest log: everything ---"
+/bin/busybox cat /run/guest.log
+echo "--- guest log end ---"
+
+# ── what the containment actually did ──────────────────────────────────────────────────────────
+# OBSERVED, NOT ASSUMED. The jailer's claim is privilege drop and namespace entry; both are visible
+# from the host if the process still exists, and only the cgroup survives it either way.
+# THE POST-RUN LOOK IS NOW A CONTRAST, NOT THE EVIDENCE. Read beside the live census above, an
+# absent cgroup means it was cleaned up; read alone, as in every previous attempt, it means nothing.
+# AFTER RETIREMENT THE CGROUP MUST BE EMPTY AND THEN GONE, and both are read rather than one being
+# inferred from the other. An empty cgroup that was never removed is a leak; a removed cgroup that
+# still held a process could not have been removed at all, so reading procs first is what makes the
+# removal meaningful.
+echo "--- containment observations, AFTER the attempt ---"
+echo "post-cgroup-procs=$(/bin/busybox cat $CG/cgroup.procs 2>/dev/null | tr '\n' ' ')"
+echo "post-cgroup-empty=$(test -z "$(/bin/busybox cat $CG/cgroup.procs 2>/dev/null)" && echo yes || echo NO)"
+/bin/busybox ip link set $TAP down 2>/dev/null
+/bin/busybox tunctl -d $TAP >/dev/null 2>&1
+echo "post-tap-present=$(/bin/busybox ip link show $TAP >/dev/null 2>&1 && echo YES || echo no)"
+# THE RULESET IS PART OF WHAT RETIREMENT MUST REMOVE. A tap that is gone while its rules survive
+# leaves a filter referring to an address the next attempt may be handed.
+# THE RULESET SURVIVED RETIREMENT ON THE PREVIOUS RUN, and the acceptance list had already named
+# that as a leak before the run produced it: rules naming this attempt's guest address outlive the
+# attempt, and the next attempt handed the same slot inherits a filter written for a dead one.
+#
+# THE TABLE IS DELETED BEFORE IT IS CHECKED FOR, and the check is what reports -- deleting and
+# then asserting the deletion succeeded would just be restating the command's own exit code.
+/bin/nft delete table inet gunbc_host 2>/dev/null
+echo "post-ruleset-present=$(/bin/nft list table inet gunbc_host >/dev/null 2>&1 && echo YES || echo no)"
+echo "post-nft-process=$(/bin/busybox ps -o comm 2>/dev/null | /bin/busybox grep -c '^nft$')"
+rmdir $CG 2>/dev/null
+echo "post-cgroup-removed=$(test -d $CG && echo NO || echo yes)"
+echo "post-jail-chroot=$(ls $CHROOT 2>/dev/null | tr '\n' ' ')"
+
+sleep 2
+echo "--- process census after attempt ---"
+/bin/busybox ps -o pid,ppid,user,comm 2>/dev/null | /bin/busybox grep -viE 'kworker|kthread|rcu_|sugov|ksoftirq|migration|cpuhp|idle_inject|irq/|kdevtmpfs|kauditd|khungtask|oom_reap|writeback|kcompact|ksmd|khugepage|kintegrity|kblockd|blkcg|watchdog|md_|edac|devfreq|kswapd|ecryptfs|kthrotld|acpi|nvme|dm_|jbd2|ext4|scsi|card|mld|ipv6|kstrp|zswap|charger|crypto|inet_|slub|netns|mm_perc|sync_su|pool_wo|kvfree|usb-storage|pgdatinit|kaluad|kmpath|ipv6_add|kcopyd|raid5|dmcrypt'
+echo "surviving-firecracker=$(/bin/busybox ps 2>/dev/null | /bin/busybox grep -c '[f]irecracker')"
+echo "surviving-jailer=$(/bin/busybox ps 2>/dev/null | /bin/busybox grep -c '[j]ailer')"
+
+umount $JAILBASE 2>/dev/null
+echo "jail-removed=$(test -d $CHROOT && echo NO || echo yes)"
+
+# ── the absence checks, AFTER the unmount that produces the absence ────────────────────────────
+# THESE THREE RAN BEFORE THE UNMOUNT IN THE PREVIOUS BUILD, so they reported YES every time and
+# could not have reported anything else. That is a decoration in the precise sense the guarantee
+# ladder means: a check whose failing case is unreachable where it stands, carrying no information
+# while reading like coverage -- and worse than absent, because "post-jit-device-present=YES" was
+# about to be written into a receipt as a credential leak that had not happened.
+#
+# THE CREDENTIAL CARRIER IS THE ONE THAT MATTERS MOST. gunbc.runner_microvm claims AttemptScopedSecrets
+# as a property of the CARRIER rather than of a handler's promise, and a carrier that outlives its
+# attempt would falsify exactly that. It dies with the tmpfs; this is where that becomes readable.
+echo "post-jit-device-present=$(test -e $CHROOT/jit.bin && echo YES || echo no)"
+echo "post-workspace-present=$(test -e $CHROOT/work.img && echo YES || echo no)"
+echo "post-jailbase-entries=$(/bin/busybox ls $JAILBASE 2>/dev/null | /bin/busybox wc -l)"
+echo "post-jailbase-mounted=$(/bin/busybox grep -c " $JAILBASE " /proc/mounts 2>/dev/null)"
+
+
+echo "attempt-$ATT_INDEX-held-seconds=$(( $(/bin/busybox cut -d. -f1 /proc/uptime) - ATT_HELD_START ))"
+echo "=== ATTEMPT $ATT_INDEX END ==="
+return 0
+}
+
+# === THE SUPERVISOR LOOP ======================================================================
+#
+# TWO ATTEMPTS ON ONE BOOT IS THE PROPERTY BEING TESTED, and it is the first thing this host has been
+# asked to do that a linear script could not express. Each attempt requests its OWN envelope, so the
+# credential is per-attempt rather than per-boot -- which is also the shape an authenticated envelope
+# needs, since a boot-scoped credential cannot be bound to a VM attempt that did not exist when it
+# was minted.
+for i in 1 2; do
+  ATT_HELD_START=$(/bin/busybox cut -d. -f1 /proc/uptime)
+  run_attempt $i || echo "attempt $i did not complete"
+done
+
+echo ""
+echo "=== SUPERVISOR: after both attempts ==="
+echo "final-taps=$(/bin/busybox ip link show 2>/dev/null | /bin/busybox grep -c 'gunbc-tap')"
+echo "final-nft-tables=$(/bin/nft list tables 2>/dev/null | /bin/busybox wc -l)"
+# ls ON A CGROUP DIRECTORY LISTS ITS INTERFACE FILES, NOT ITS CHILDREN. The first two-attempt run
+# reported final-cgroups=40 against a baseline of 0 and read like forty leaked cgroups; a cgroup2
+# directory simply carries about forty control files of its own, and asking the live host for child
+# DIRECTORIES returned 0. The baseline was 0 only because the parent did not exist yet, so the two
+# numbers were never measuring the same thing.
+echo "final-cgroups=$(/bin/busybox ls -d /sys/fs/cgroup/gunbc/*/ 2>/dev/null | /bin/busybox wc -l)"
+echo "final-jailbase=$(/bin/busybox ls /run/jail 2>/dev/null | /bin/busybox wc -l)"
+echo "final-firecracker=$(/bin/busybox ps 2>/dev/null | /bin/busybox grep -c '[f]irecracker')"
+
+echo "marker-end=gunbc-runner-host-boot"
+echo "==================================================="
+echo ""
+
+while true; do
+  /bin/busybox sh || true
+  echo "[init] shell exited; PID 1 holding. Reset via BMC to reboot."
+  /bin/busybox sleep 30
+done

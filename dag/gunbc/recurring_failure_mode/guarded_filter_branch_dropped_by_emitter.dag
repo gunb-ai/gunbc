@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.guarded_filter_branch_dropped_by_emitter
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data guarded_filter_branch_dropped_by_emitter: RecurringFailureMode = RecurringFailureMode {
+  identity: "guarded_filter_branch_dropped_by_emitter" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: stage0 rust emission accepts a .dag module containing a construct it cannot project, and publishes a file that silently omits the unprojectable subtree, so the mirror builds cleanly and runs a floor whose diagnostics are unfounded.",
+
+    "HARM: DESIGN section 5 fabricated plausible output, outside the guarantee ladder and forbidden outright: the compiler reports success beside a truncated realization of its own source.",
+
+    "DISTINGUISHING FACTS: the cheap tell is a caller in .dag whose callee has zero occurrences in the committed stage0 mirror. A self-consistent missing path is indistinguishable from a correct one by any green/red signal on the truncated artifact.",
+
+    "SPECIMEN, FALSIFIED BY EXECUTION. The row was filed on filter-in-a-branch-condition, with an eight-functions-vanished sentence that entered from an assignment brief and never named a SHA; its own re-measurement at #10625 found the guard projected in full. A wall (EmissionConstructUnprojectable / FilterInBranchCondition, a collector in v1.compiler.emit_rust feeding module_refusals) nonetheless refused every module carrying the shape, under a REPAIR line that said not to teach the emitter it. Re-derived at main a5a9957b66: the method/pipe, free-call and nested-if spellings and the approval broker's count(filter(lines |> skip(n: 2), l => l != \"\")) under || were refused before; with the collector disabled they emitted the condition through emit_typed_if_shared verbatim -- the filter is an inline block expression, as any already was and was admitted -- and the crate compiled and returned the expected value on both arms of every guard. The wall was therefore an over-prohibition (DESIGN 4d): it refused correct code, including gunbc.auth.approval_store_receipt on the native broker route, to guard a truncation that was never observed. It was deleted rather than taught, together with its diagnostic and construct type.",
+
+    "RECOGNITION RULE: if emission produced a file, every source construct contributing to that file received a total projection. A diagnostic beside a truncated file is the same hazard with better logging. Before walling a shape, its truncation must be observed in an emitted file at a named SHA; a refusal mint on an unobserved premise is itself a defect.",
+
+    "REPAIR: an unprojectable construct is refused through ModuleEmission.module_refusals, which emit_rust_selected already honors by withholding the module; that channel remains (import-derived refusals use it). Add a construct to it only with an observed truncated emission as its specimen.",
+
+    "RUNG: the class has no known member at a5a9957b66. The filter-in-condition shapes are held at the positive side by test.claim.emitter_unprojectable_construct_refuse_witness (the emitted file carries the guard body and its else arm) and by gunbc.instruments.native_emission_controls filter_in_branch_condition_cases, which emits, builds and runs both arms of each guard natively under gunbc test //gunbc/instruments:native-emission-controls.",
+
+    "CEILING AND NEXT TRIGGER: structurally guaranteed needs (i) an emission-stage census that every source expression node either received a rendered projection or contributed a blocking diagnostic on the same ModuleEmission, sufficient that a new unprojectable shape cannot publish by remaining silent; and (ii) a .dag-callable that returns the published file-path set of an emit independently of whether any diagnostic was hard, sufficient that a floor claim can go red when a refused module is still in EmitResult.files.",
+  ],
+
+  evidence: [],
+}

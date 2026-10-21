@@ -1,0 +1,24 @@
+module std.logic
+
+type Classical = True | False
+
+fn classical_not(a: Classical) -> Classical {
+    match a {
+        True => False
+        False => True
+    }
+}
+
+fn classical_and(a: Classical, b: Classical) -> Classical {
+    match a {
+        False => False
+        True => b
+    }
+}
+
+fn classical_or(a: Classical, b: Classical) -> Classical {
+    match a {
+        True => True
+        False => b
+    }
+}

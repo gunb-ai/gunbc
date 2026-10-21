@@ -1,0 +1,22 @@
+2026-10-06T19:08:39.609Z login status=200 ok=0 session=11
+2026-10-06T19:08:40.419Z kvm viewer_count=0 active=128
+2026-10-06T19:08:45.581Z console error Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='), o
+2026-10-06T19:08:45.582Z console error Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-u53XPsg1jUezxU4pkvQGpQYjy5ak5C7XfBMDmAwKBdg='), o
+2026-10-06T19:08:45.588Z console error Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='), o
+2026-10-06T19:08:45.590Z console error Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-QXuk2mcJ+M8985CWeo7NmUEp3j3oPPC79sOzNYFeKhc='), o
+2026-10-06T19:08:45.591Z navigated https://192.168.1.246/viewer.html
+2026-10-06T19:08:45.614Z console log Set language successfully
+2026-10-06T19:08:45.615Z console log App initialized...
+2026-10-06T19:08:45.627Z console log KVM default-screen
+2026-10-06T19:08:45.629Z console log doing layout after render
+2026-10-06T19:08:45.714Z console log doing layout after render
+2026-10-06T19:08:46.319Z console error Failed to load resource: the server responded with a status of 401 (Unauthorized)
+2026-10-06T19:08:48.167Z console warning Failed to decode downloaded font: https://192.168.1.246/fonts/fontawesome-webfont.woff2?v=4.3.0
+2026-10-06T19:08:48.170Z console warning OTS parsing error: invalid sfntVersion: 1008807213
+2026-10-06T19:08:48.237Z console error Failed to load resource: the server responded with a status of 401 (Unauthorized)
+2026-10-06T19:08:48.297Z console warning Failed to decode downloaded font: https://192.168.1.246/fonts/ionicons.ttf?v=2.0.0
+2026-10-06T19:08:48.299Z console warning OTS parsing error: invalid sfntVersion: 1008807213
+2026-10-06T19:08:48.417Z console error Failed to load resource: the server responded with a status of 401 (Unauthorized)
+2026-10-06T19:08:53.617Z still wrote still-1.jpg 800x600
+2026-10-06T19:08:56.189Z session deleted
+2026-10-06T19:08:56.314Z browser closed

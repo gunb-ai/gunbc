@@ -1,0 +1,111 @@
+module v2.lens.coverage
+
+import v2.lens.common.construction_justification { ConstructionJustification }
+import std.algebra { contains }
+
+
+type Coverage<C> {
+  concern: C
+}
+
+type CoverageDefectKey
+  = DiscriminantPredicate
+  | DegenerateType
+  | HollowType
+  | CarrierClone
+  | Catamorphism
+  | TemplateHole
+  | OffSubstrateFact
+  | WrongHome
+  | VacuousArm
+  | CanonicalCarrier
+  | PlausibleFallback
+  | ParallelAuthority
+  | SkeletonCollapse
+
+type CoverageDefectAcceptanceKey {
+  lens: CoverageDefectKey
+}
+
+type CoverageDefectAcceptance = Coverage<CoverageDefectAcceptanceKey>
+data coverage_defect_discriminant_predicate: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
+}
+data coverage_defect_degenerate_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DegenerateType }
+}
+data coverage_defect_hollow_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: HollowType }
+}
+data coverage_defect_carrier_clone: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CarrierClone }
+}
+data coverage_defect_catamorphism: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: Catamorphism }
+}
+data coverage_defect_template_hole: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: TemplateHole }
+}
+data coverage_defect_off_substrate_fact: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: OffSubstrateFact }
+}
+data coverage_defect_wrong_home: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: WrongHome }
+}
+data coverage_defect_vacuous_arm: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: VacuousArm }
+}
+data coverage_defect_canonical_carrier: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CanonicalCarrier }
+}
+data coverage_defect_plausible_fallback: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: PlausibleFallback }
+}
+data coverage_defect_parallel_authority: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+}
+data coverage_defect_skeleton_collapse: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: SkeletonCollapse }
+}
+
+fn coverage_of<C>(key: C) -> Coverage<C> {
+  Coverage { concern: key }
+}
+
+fn dedupe_snoc<C>(acc: List<C>, item: C, eq: fn(C, C) -> Bool) -> List<C> {
+  match contains(xs: acc, item: item, eq: eq) {
+    true => acc
+    false => list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn missing_keys<C>(
+  expected: List<C>,
+  actual: List<C>,
+  eq: fn(C, C) -> Bool
+) -> List<C> {
+  filter(xs: expected, predicate: fn(key) {
+    match contains(xs: actual, item: key, eq: eq) {
+      true => false
+      false => true
+    }
+  })
+}
+
+fn missing_coverage<C>(
+  expected: List<C>,
+  actual: List<C>,
+  eq: fn(C, C) -> Bool
+) -> List<Coverage<C>> {
+  fold_list_right(
+    xs: missing_keys(expected: expected, actual: actual, eq: eq),
+    empty: std.algebra.Empty,
+    snoc: fn(acc, key) {
+      Cons { head: coverage_of(key: key), tail: acc }
+    }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}

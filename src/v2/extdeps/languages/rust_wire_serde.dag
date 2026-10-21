@@ -1,0 +1,258 @@
+module v2.extdeps.languages.rust_wire_serde
+
+import std.host_text { chars }
+
+fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> String {
+  match naming {
+    AsAuthored => ""
+    SnakeCase => extdeps.languages.rust.emit.rust_serde_rename_all_snake_case
+    ScreamingSnakeCase => extdeps.languages.rust.emit.rust_serde_rename_all_screaming_snake_case
+    StripPrefixAndSnakeCase { prefix: _ } => ""
+    StripSuffixAndSnakeCase { suffix: _ } => ""
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => ""
+  }
+}
+
+fn rust_wire_serde_attr_token_class(naming: VariantNaming) -> Symbol {
+  match naming {
+    ScreamingSnakeCase => ^rust_ws_token_attr_screaming
+    SnakeCase => ^rust_ws_token_attr_snake
+    AsAuthored => ^rust_ws_token_attr_empty
+    StripPrefixAndSnakeCase { prefix: _ } => ^rust_ws_token_attr_empty
+    StripSuffixAndSnakeCase { suffix: _ } => ^rust_ws_token_attr_empty
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => ^rust_ws_token_attr_empty
+  }
+}
+
+fn rust_wire_serde_attr_lex_spelling(naming: VariantNaming) -> String {
+  match naming {
+    SnakeCase =>
+      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
+    ScreamingSnakeCase =>
+      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
+    AsAuthored => ""
+    StripPrefixAndSnakeCase { prefix: _ } => ""
+    StripSuffixAndSnakeCase { suffix: _ } => ""
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => ""
+  }
+}
+
+data rust_ws_review_event_body_golden: String = "pub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
+
+fn rust_ws_review_event_golden(naming: VariantNaming) -> String {
+  match naming {
+    SnakeCase =>
+      concat(
+        rust_wire_serde_string_variant_rename_all_attr(naming: naming),
+        concat("\n", rust_ws_review_event_body_golden)
+      )
+    ScreamingSnakeCase =>
+      concat(
+        rust_wire_serde_string_variant_rename_all_attr(naming: naming),
+        concat("\n", rust_ws_review_event_body_golden)
+      )
+    AsAuthored => rust_ws_review_event_body_golden
+    StripPrefixAndSnakeCase { prefix: _ } => rust_ws_review_event_body_golden
+    StripSuffixAndSnakeCase { suffix: _ } => rust_ws_review_event_body_golden
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } =>
+      rust_ws_review_event_body_golden
+  }
+}
+
+data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden(
+  naming: std.serialization.ScreamingSnakeCase
+)
+
+data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
+
+data rust_wire_serde_review_event_emitted: Node = anonymous_signature_arrow(
+  domain_types: [],
+  codomain: Node {
+    kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  },
+  source: Node {
+    kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+)
+
+fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: rust_wire_serde_attr_token_class(naming: naming) },
+    FixedToken { token_class: ^rust_ws_token_enum_review_event_body }
+  ]
+}
+
+fn rust_ws_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: chars(text: text) }
+  }
+}
+
+fn rust_ws_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      rust_ws_lex_rule(
+        token_class: ^rust_ws_token_attr_screaming,
+        text: rust_wire_serde_attr_lex_spelling(naming: ScreamingSnakeCase)
+      ),
+      rust_ws_lex_rule(
+        token_class: ^rust_ws_token_attr_snake,
+        text: rust_wire_serde_attr_lex_spelling(naming: SnakeCase)
+      ),
+      rust_ws_lex_rule(token_class: ^rust_ws_token_attr_empty, text: ""),
+      rust_ws_lex_rule(
+        token_class: ^rust_ws_token_enum_review_event_body,
+        text: rust_ws_review_event_body_golden
+      )
+    ],
+    modes: []
+  }
+}
+
+fn rust_ws_lex() -> LexRules {
+  ModeledLexRules { root: rust_ws_lex_rules() }
+}
+
+type RustWireSerdeGrammarRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn rust_ws_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+type RustWireSerdeGramBuildState
+  = RustWireSerdeGramBuildInit
+  | RustWireSerdeGramBuildReady { expr: GrammarExpr }
+
+fn rust_ws_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
+  match fold_list(
+    xs: tokens,
+    empty: RustWireSerdeGramBuildInit,
+    cons: fn(state, token) {
+      match state {
+        RustWireSerdeGramBuildInit =>
+          RustWireSerdeGramBuildReady {
+            expr: rust_ws_grammar_terminal(
+              token_class: concrete_syntax_token_class(token: token)
+            )
+          }
+        RustWireSerdeGramBuildReady { expr: acc } =>
+          RustWireSerdeGramBuildReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_ws_grammar_terminal(
+                token_class: concrete_syntax_token_class(token: token)
+              )
+            }
+          }
+      }
+    }
+  ) {
+    RustWireSerdeGramBuildInit =>
+      rust_ws_grammar_terminal(token_class: ^rust_ws_token_attr_empty)
+    RustWireSerdeGramBuildReady { expr: result } => result
+  }
+}
+
+fn rust_ws_grammar_production_string_variant_enum(tokens: List<ConcreteSyntaxToken>) -> GrammarProduction {
+  GrammarProduction {
+    name: ^rust_ws_production_string_variant_enum,
+    expression: rust_ws_grammar_sequence_from_tokens(tokens: tokens),
+    emitted: rust_inhabitant_atom(id: ^rust_ws_surface_string_variant_enum)
+  }
+}
+
+fn rust_ws_grammar_relation_row(naming: VariantNaming) -> RustWireSerdeGrammarRow {
+  let tokens = rust_ws_review_event_tokens(naming: naming)
+  RustWireSerdeGrammarRow {
+    production: rust_ws_grammar_production_string_variant_enum(tokens: tokens),
+    emitted: rust_wire_serde_review_event_emitted,
+    tokens: tokens
+  }
+}
+
+fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      v2.extdeps.languages.rust.rust_named_edge(
+        name: ^grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      v2.extdeps.languages.rust.rust_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      v2.extdeps.languages.rust.rust_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: rust_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      v2.extdeps.languages.rust.rust_named_edge(
+        name: ^rust_ws_relation_rule_review_event,
+        target: rust_ws_grammar_relation_row_node(row: rust_ws_grammar_relation_row(naming: naming))
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
+  [
+    v2.extdeps.languages.rust.rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: rust_ws_translation_rules_node(naming: naming)
+    ),
+    v2.extdeps.languages.rust.rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: v2.extdeps.languages.rust.rust_reference_layer_tokens())
+    )
+  ]
+}
+
+fn rust_ws_target_model_bundle(naming: VariantNaming) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_ws_target_model_core_edges(naming: naming),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_ws_authority_source_text(naming: VariantNaming) -> String {
+  rust_ws_review_event_golden(naming: naming)
+}
+
+fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
+  TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_ws_target_model_bundle(naming: naming),
+    lex: rust_ws_lex(),
+    binding_spellings: empty_map(),
+    authority_source_text: rust_ws_authority_source_text(naming: naming),
+    token_class_emit_transforms: empty_map(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+data rust_wire_serde_screaming_snake_target: TargetModel = rust_wire_serde_target_model(
+  naming: std.serialization.ScreamingSnakeCase
+)
+
+data rust_wire_serde_snake_case_target: TargetModel = rust_wire_serde_target_model(naming: std.serialization.SnakeCase)

@@ -1,0 +1,52 @@
+module extdeps.electronic_component.panasonic_eeh_zu1j151
+
+import std.measure { volt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.panasonic { panasonic }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
+
+// THE MARKING SCHEME AND THE ORDERING CODE COME FROM TWO SOURCES, and each is cited for what it says.
+// Panasonic's ZUU-series datasheet (dated 01-Sep-25, read 2026-10-15) gives the top marking of its
+// series family as capacitance, then rated-voltage code with the series identification "ZU", then a
+// lot number (its example: "470 / V ZU"), and the code table "E 25, V 35, H 50, J 63" with a rated
+// voltage range of 25 V to 63 V -- so a "J" on a ZU can is 63 V, never 6.3 V. That datasheet lists no
+// 150 uF part; the 150 uF / 63 V ZU part is EEH-ZU1J151, in a 10 x 16.5 mm can, per the distributor
+// listing cited further. The P (standard) and V (vibration-proof) variants share the top marking, so
+// a top view does not tell them apart.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "industrial.panasonic.com/cdbs/www-data/pdf/RDD0000/ast-ind-280898.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.panasonic_eeh_zu1j151",
+      decl_name: "eeh_zu1j151",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "uk.farnell.com/panasonic/eehzu1j151p/cap-150uf-63v-alu-elec-hybrid/dp/3651534" } },
+  ]
+}
+
+data eeh_zu1j151: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: panasonic,
+  ordering_code: "EEH-ZU1J151P or EEH-ZU1J151V (standard or vibration-proof; same top marking)",
+  package: "SMD radial can, 10 mm diameter; 16.5 mm long for the P (standard) variant, 16.8 mm for the V (vibration-proof) variant, per the series G16 size table -- which variant is installed is unread",
+  top_marking: "150 / J ZU / <lot>",
+  specification: CapacitorSpec { capacitor: CapacitorSpecification {
+    capacitance_microfarads: 150,
+    rated_voltage: volt(count: 63),
+  } },
+  vendor_application_statements: [
+    "Conductive Polymer Hybrid Aluminum Electrolytic Capacitors",
+    "Surge voltage (V): Rated voltage x 1.25 (15 C to 35 C)",
+  ],
+}

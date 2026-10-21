@@ -1,0 +1,90 @@
+module v2.test.claim.callexec.kinded_type_param_instances
+
+import v2.test.claim.callexec.declaration_reference_eval { cref_assemble, cref_inferred_of, cref_the_call_to }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_is_literal_shaped_node }
+import v2.std.inhabitance { type_variable_instance_lookup }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Empty }
+
+// WHAT INFER SOLVES FOR A KINDED GENERIC APPLICATION (A0-1a). Real path: assemble, resolve, infer. The
+// instance recorded on the call node (InferredFacts.type_instances) is the one value a body-read of the
+// kinded binder must take; eval consuming it is held until eval runs record constructors
+// (branch session/fierce-newt-112-a0-eval-held, owner sunny-crab-777).
+fn kti_instance_of(src: String, name: Symbol, binder: Symbol) -> Optional<Node> {
+  match cref_inferred_of(o: cref_assemble(src: src)) {
+    Absent => Absent
+    Present { value: tree } =>
+      match cref_the_call_to(root: tree.root, name: name) {
+        Absent => Absent
+        Present { value: call } =>
+          match tree.facts.lookup(call) {
+            Absent => Absent
+            Present { value: facts } => type_variable_instance_lookup(instances: facts.type_instances, binder: binder)
+          }
+      }
+  }
+}
+
+fn kti_prelude() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Resolution {\n  bits\n}\n\n"
+}
+
+test fn kti_literal_argument_is_the_inferred_instance() -> Bool {
+  match kti_instance_of(src: concat(kti_prelude(), "fn mk8() -> Box<8> {\n  let r = Box { v: 0 }\n  r\n}\n\nfn consumer() -> Resolution {\n  width_of(x: mk8())\n}\n"), name: ^width_of, binder: ^bits) {
+    Present { value: i } => v2_eval_is_literal_shaped_node(node: i)
+    Absent => false
+  }
+}
+
+test fn kti_forwarded_binder_is_a_non_literal_instance() -> Bool {
+  match kti_instance_of(src: concat(kti_prelude(), "fn forward<m: Resolution>(y: Box<m>) -> Resolution {\n  width_of(x: y)\n}\n"), name: ^width_of, binder: ^bits) {
+    Present { value: i } => !v2_eval_is_literal_shaped_node(node: i)
+    Absent => false
+  }
+}
+
+test fn kti_non_generic_call_carries_no_instances() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")) {
+    Absent => false
+    Present { value: inferred } =>
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
+        Absent => false
+        Present { value: call } =>
+          match inferred.facts.lookup(call) {
+            Absent => false
+            Present { value: facts } => facts.type_instances == Empty
+          }
+      }
+  }
+}
+
+// THE BODY READ OF A KINDED BINDER HAS THE BINDER'S KIND AS ITS TYPE (review 80612): the argument may be
+// a Nat literal or a named inhabitant, so Int would fabricate a type for the named one. Positive
+// control: the read inhabits its kind (kti_prelude's width_of returns Resolution and infers).
+test fn kti_kinded_read_inhabits_its_kind() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kti_prelude())) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// No implicit narrowing, as a MINIMAL PAIR: the two sources differ only in the return type. The control
+// (-> Resolution) is accepted, so the refusal of the other (-> Int) is the read's type, not an assembly,
+// parse or resolve slip that would refuse both.
+fn kti_return_pair_src(ret: String) -> String {
+  concat(concat("module p\n\ntype Resolution\n  = Static\n  | Pointer\n\nfn read_it<bits: Resolution>(n: Int) -> ", ret), " {\n  bits\n}\n")
+}
+
+test fn kti_kinded_read_accepted_at_its_kind_in_the_minimal_pair() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kti_return_pair_src(ret: "Resolution"))) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn kti_kinded_read_where_int_is_required_refuses() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kti_return_pair_src(ret: "Int"))) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

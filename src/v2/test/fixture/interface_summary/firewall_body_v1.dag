@@ -1,0 +1,6 @@
+module v2.test.fixture.interface_summary.firewall_body_v1
+
+
+fn firewall_gate(x: Int) -> Int {
+  x + 1
+}

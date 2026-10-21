@@ -1,0 +1,254 @@
+module extdeps.deepseek.deepspec
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// DEEPSPEC, DEEPSEEK'S SPECULATIVE-DECODING CODEBASE, AND THE THREE DRAFT ALGORITHMS IT SHIPS.
+//
+// THIS MODULE EXISTS BECAUSE OF A NAME COLLISION THAT COST REAL WORK. "dspark" was used across two
+// sessions and an operator conversation to mean NVIDIA's `dgx-spark-playbooks` -- the DGX Spark
+// hardware recipes, `connect-two-sparks` and its vLLM multi-node section. The operator meant DSpark,
+// DeepSeek's speculative-decoding algorithm. One spelling, two independently governed upstreams,
+// nothing in common: the §3 meaning fork, discovered only when the operator asked directly whether
+// we were on the same page. A fabric, a Ray topology and a privileged-container decision were all
+// pursued under the wrong referent.
+//
+// So the two subjects are named apart and neither is ever spelled "dspark" bare in this repository.
+// This module is the DeepSeek one. NVIDIA's playbooks are a different authority and belong under
+// their own vendor path.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/deepseek-ai/DeepSpec"
+  }
+}
+
+data dspark_paper_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "arxiv.org/abs/2607.05147"
+  }
+}
+
+data dflash_paper_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "arxiv.org/abs/2602.06036"
+  }
+}
+
+data eagle3_paper_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "arxiv.org/abs/2503.01840"
+  }
+}
+
+// ONE SUBJECT, SEVERAL CITATIONS. The subject is the DeepSpec codebase, which is what governs the
+// roster below: the three algorithms are ITS enumeration, carried in its own `config/` tree, and a
+// fourth would arrive as a commit to that repository. The per-algorithm papers are further
+// citations rather than separate subjects for the same reason -- Eagle3 is not DeepSeek's work at
+// all, and modelling it as its own upstream product here would claim an authority this module does
+// not have.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.deepseek.deepspec",
+      decl_name: "SpeculativeDraftAlgorithm",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [dspark_paper_citation, dflash_paper_citation, eagle3_paper_citation],
+}
+
+// The three draft algorithms DeepSpec implements. Closed, because the roster is the upstream's own
+// and an unmodeled fourth should be absent rather than approximated.
+type SpeculativeDraftAlgorithm
+  = DSpark
+  | DFlash
+  | Eagle3
+
+fn speculative_draft_algorithm_wire(a: SpeculativeDraftAlgorithm) -> NonEmptyStr {
+  match a {
+    DSpark => "dspark" as NonEmptyStr
+    DFlash => "dflash" as NonEmptyStr
+    Eagle3 => "eagle3" as NonEmptyStr
+  }
+}
+
+fn speculative_draft_algorithm_eq(a: SpeculativeDraftAlgorithm, b: SpeculativeDraftAlgorithm) -> Bool {
+  (speculative_draft_algorithm_wire(a: a) as String)
+    == (speculative_draft_algorithm_wire(a: b) as String)
+}
+
+// HOW THE DRAFT REACHES THE HOST, WHICH IS TWO DIFFERENT FACTS AND WAS FIRST MODELLED AS ONE.
+//
+// A speculative draft is published in one of two shapes, and this repository has a live example of
+// each for the SAME base model:
+//
+//   - SEPARATE ARTIFACT. The draft is its own file beside the base weights. DeepSpec's released
+//     checkpoints are this shape, and so are the three `DeepSeek-V4-Flash-DSpark-support.gguf`
+//     files in the antirez GGUF distribution. Here "base" and "base plus draft" are two totals you
+//     can choose between, because they are two downloads.
+//
+//   - FUSED INTO THE CHECKPOINT. The draft ships INSIDE the weights as extra layers.
+//     deepseek-ai/DeepSeek-V4-Flash-DSpark is this shape: 48 shards against the plain repo's 46,
+//     same DeepseekV4ForCausalLM architecture and same fp8/e4m3/ue8m0 quantization, plus
+//     num_nextn_predict_layers 1 and the dspark_* configuration. DeepSeek's own model card states
+//     it: "not a new model. It is the same checkpoint with an additional speculative decoding
+//     module attached."
+//
+// THE DISTINCTION IS LOAD-BEARING FOR FIT, WHICH IS WHY IT IS A TYPE. In the fused shape there is no
+// download that gets you the base alone -- that is a DIFFERENT REPOSITORY -- so a consumer that
+// reasons about "base_total, plus the draft if enabled" computes a residency figure no disk will
+// ever hold. Measured: the plain repo is 159.6 GB over 46 shards, the DSpark repo 166.9 GB over 48.
+// 166.9 is the only number that predicts the disk and the memory for the artifact actually being
+// deployed; 159.6 names a repository deliberately not in use.
+type SpeculativeDraftAttachment
+  = DraftAsSeparateArtifact
+  | DraftFusedIntoCheckpoint
+
+fn speculative_draft_attachment_wire(a: SpeculativeDraftAttachment) -> NonEmptyStr {
+  match a {
+    DraftAsSeparateArtifact => "separate-artifact" as NonEmptyStr
+    DraftFusedIntoCheckpoint => "fused-into-checkpoint" as NonEmptyStr
+  }
+}
+
+// Whether the base weights are separately obtainable from this publication. Only the separate shape
+// admits it, and a consumer sizing a deployment must ask THIS rather than subtracting.
+fn base_weights_separately_obtainable(a: SpeculativeDraftAttachment) -> Bool {
+  match a {
+    DraftAsSeparateArtifact => true
+    DraftFusedIntoCheckpoint => false
+  }
+}
+
+// A DRAFT IS BOUND TO ONE TARGET, AND THAT IS THE WHOLE SAFETY CONTENT OF THIS MODULE.
+//
+// DeepSpec's released checkpoints are a grid of (algorithm x target): dspark_qwen3_4b_block7 exists
+// because it was TRAINED AGAINST Qwen/Qwen3-4B, on answers that model generated. The README states
+// the binding directly -- `target_name_or_path` is a required evaluation input beside
+// `draft_name_or_path`, and it warns that a comparison whose setup differs from the training
+// settings "is not meaningful".
+//
+// The failure this prevents is quiet rather than loud. Speculative decoding is designed to be
+// output-equivalent to the target: the draft proposes, the target verifies, and rejected tokens are
+// discarded. So a draft paired with the WRONG target does not produce wrong text -- it produces the
+// same text, more slowly, while every acceptance-rate and throughput number measured from it
+// describes a configuration nobody intended. It is a performance claim that silently detaches from
+// its subject, which is precisely the class this repository refuses to leave to review.
+//
+// Hence: a draft binding carries its target, and equality of the pair is what a consumer joins on.
+// There is no constructor for an unbound draft.
+type SpeculativeDraftBinding sole_constructor {
+  algorithm: SpeculativeDraftAlgorithm
+  attachment: SpeculativeDraftAttachment
+  draft_repository: NonEmptyStr
+  target_repository: NonEmptyStr
+  draft_block_size: Int
+}
+
+fn speculative_draft_binding(
+  algorithm: SpeculativeDraftAlgorithm,
+  attachment: SpeculativeDraftAttachment,
+  draft_repository: NonEmptyStr,
+  target_repository: NonEmptyStr,
+  draft_block_size: Int,
+) -> SpeculativeDraftBinding? {
+  if draft_block_size < 1 {
+    none
+  } else if (draft_repository as String) == (target_repository as String) {
+    none
+  } else {
+    Present { value: SpeculativeDraftBinding {
+      algorithm: algorithm,
+      attachment: attachment,
+      draft_repository: draft_repository,
+      target_repository: target_repository,
+      draft_block_size: draft_block_size,
+    } }
+  }
+}
+
+// Whether a draft may be used to accelerate a given target. It is an identity join on the repository
+// the draft was trained against, never a similarity judgement about names.
+fn draft_serves_target(binding: SpeculativeDraftBinding, target_repository: NonEmptyStr) -> Bool {
+  (binding.target_repository as String) == (target_repository as String)
+}
+
+// ============ THE PUBLISHED CHECKPOINTS THIS REPOSITORY HAS GROUNDED ============
+//
+// The Table 1 grid from the DeepSpec README, read from the repository rather than recalled. Block
+// size 7 is carried because it is in the checkpoint name and is a real parameter of the algorithm --
+// DSpark drafts a BLOCK per forward pass, so the block size bounds how many tokens one draft step
+// can propose.
+data dspark_qwen3_4b_block7: SpeculativeDraftBinding? = speculative_draft_binding(
+  algorithm: DSpark,
+  attachment: DraftAsSeparateArtifact,
+  draft_repository: "deepseek-ai/dspark_qwen3_4b_block7" as NonEmptyStr,
+  target_repository: "Qwen/Qwen3-4B" as NonEmptyStr,
+  draft_block_size: 7)
+
+data dspark_qwen3_8b_block7: SpeculativeDraftBinding? = speculative_draft_binding(
+  algorithm: DSpark,
+  attachment: DraftAsSeparateArtifact,
+  draft_repository: "deepseek-ai/dspark_qwen3_8b_block7" as NonEmptyStr,
+  target_repository: "Qwen/Qwen3-8B" as NonEmptyStr,
+  draft_block_size: 7)
+
+data dspark_qwen3_14b_block7: SpeculativeDraftBinding? = speculative_draft_binding(
+  algorithm: DSpark,
+  attachment: DraftAsSeparateArtifact,
+  draft_repository: "deepseek-ai/dspark_qwen3_14b_block7" as NonEmptyStr,
+  target_repository: "Qwen/Qwen3-14B" as NonEmptyStr,
+  draft_block_size: 7)
+
+// THE V4-FLASH RELEASE, WHICH IS THE ONE THIS FLEET DEPLOYS, AND A CORRECTION.
+//
+// An earlier revision of this module stated that no published DeepSpec checkpoint existed for
+// DeepSeek-V4-Flash and that the only DSpark artifacts for it were a distributor's packaging. That
+// was wrong, and it was wrong in the direction that matters: deepseek-ai/DeepSeek-V4-Flash-DSpark is
+// a first-party DeepSeek release. Verified from the Hub rather than recalled -- 48 shards against
+// the plain repository's 46, DeepseekV4ForCausalLM, dspark_block_size 5,
+// dspark_target_layer_ids [40, 41, 42], dspark_markov_rank 256, num_nextn_predict_layers 1.
+//
+// Note the block size is FIVE here, not the 7 of the Qwen grid above. The block size is a property
+// of the trained draft, not of the algorithm, which is exactly why it is a field on the binding.
+data dspark_deepseek_v4_flash: SpeculativeDraftBinding? = speculative_draft_binding(
+  algorithm: DSpark,
+  attachment: DraftFusedIntoCheckpoint,
+  draft_repository: "deepseek-ai/DeepSeek-V4-Flash-DSpark" as NonEmptyStr,
+  target_repository: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr,
+  draft_block_size: 5)
+
+// THE SERVING FLAG, CARRIED HERE BECAUSE THE UPSTREAM SPELLS IT.
+//
+// DeepSeek's model card gives the exact vLLM enablement:
+//   --speculative-config '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"greedy"}'
+// It is modeled as the method NAME the engine expects rather than as the whole argv, because the
+// token count and sampling method are deployment policy and belong to the workflow layer, not to
+// this dependency (DESIGN §3: interface, realization and policy are three facts).
+//
+// This also settles a question that was open and being treated as a project risk: vLLM DOES
+// implement DSpark as a speculative method. What remains genuinely unverified is whether the
+// specific engine BUILD a deployment pins carries it, and that is an observation about that build,
+// not a fact about this upstream.
+fn vllm_speculative_method_name(a: SpeculativeDraftAlgorithm) -> NonEmptyStr {
+  speculative_draft_algorithm_wire(a: a)
+}
+
+// The GGUF distribution's `*-DSpark-support.gguf` files are NOT modeled here. They are a
+// distributor's repackaging, and a distributor's artifact is a receipt in the observing layer
+// (gunbc.model.publication), never a property authored inside this upstream. Whether one of them is
+// a DSpark draft bound to a V4-Flash build is an OBSERVATION somebody must make.
+fn deepspec_released_dspark_bindings() -> List<SpeculativeDraftBinding> {
+  flat_map([dspark_qwen3_4b_block7, dspark_qwen3_8b_block7, dspark_qwen3_14b_block7, dspark_deepseek_v4_flash], b =>
+    match b {
+      Present { value: v } => [v]
+      Absent => []
+    })
+}

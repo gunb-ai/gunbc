@@ -1,0 +1,63 @@
+module extdeps.electronic_component.infineon_ipb017n10n5lf
+
+import std.measure { volt, milliampere }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.infineon { infineon }
+import extdeps.electronic_component.types { ElectronicComponentRow, MosfetSpec, MosfetSpecification, NChannel, FetTerminal, NumberedPin, PackageTab, FetGate, FetSource, FetDrain }
+
+// The final datasheet, Rev. 2.3, 2022-09-09, read 2026-10-04.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.infineon.com/assets/row/public/documents/24/49/infineon-ipb017n10n5lf-datasheet-en.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.infineon_ipb017n10n5lf",
+      decl_name: "ipb017n10n5lf",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Every field read from the datasheet: Table 1 "VDS 100 V", "ID 256 A" (the product page's
+// parametric table says 180 A at 25 °C; Table 1's 256 A is carried because it is the datasheet's own
+// key-parameter figure), "Type/Ordering Code IPB017N10N5LF / Package PG-TO263-7 / Marking 017N10LF",
+// the title "OptiMOS 5 Linear FET, 100V", the first feature bullet, and the page-1 package figure's
+// pin assignment "Drain Pin 4, tab / Gate Pin 1 / Source Pin 2,3,5,6,7" (re-read 2026-10-16). Table 1 also characterizes the
+// pulse current at "VDS=56V, tp=10 ms" -- a datasheet choosing 56 V for its linear-mode figure is the
+// vendor's own statement of the bus it designs the part for, and is carried as such below.
+data ipb017n10n5lf: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: infineon,
+  ordering_code: "IPB017N10N5LF",
+  package: "PG-TO263-7 (D2PAK 7-pin)",
+  top_marking: "017N10LF",
+  specification: MosfetSpec { mosfet: MosfetSpecification {
+    channel: NChannel,
+    drain_source_maximum: volt(count: 100),
+    continuous_drain_current: milliampere(count: 256000),
+    terminals: [
+      FetTerminal { terminal: NumberedPin { number: 1 }, role: FetGate },
+      FetTerminal { terminal: NumberedPin { number: 2 }, role: FetSource },
+      FetTerminal { terminal: NumberedPin { number: 3 }, role: FetSource },
+      FetTerminal { terminal: NumberedPin { number: 4 }, role: FetDrain },
+      FetTerminal { terminal: NumberedPin { number: 5 }, role: FetSource },
+      FetTerminal { terminal: NumberedPin { number: 6 }, role: FetSource },
+      FetTerminal { terminal: NumberedPin { number: 7 }, role: FetSource },
+      FetTerminal { terminal: PackageTab, role: FetDrain },
+    ],
+  } },
+  vendor_application_statements: [
+    "OptiMOS 5 Linear FET, 100V",
+    "Ideal for hot-swap and e-fuse applications",
+    "Wide safe operating area SOA",
+    "Ipulse (VDS=56V, tp=10 ms) 10.2 A",
+  ],
+}

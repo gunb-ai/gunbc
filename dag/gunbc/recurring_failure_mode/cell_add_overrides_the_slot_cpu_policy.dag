@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.cell_add_overrides_the_slot_cpu_policy
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cell_add_overrides_the_slot_cpu_policy: RecurringFailureMode = RecurringFailureMode {
+  identity: "cell_add_overrides_the_slot_cpu_policy" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: commissioning at f99e440ce59 refused the cell-boundary digest. Independent systemd readback found CPUQuotaPerSecUSec=infinity while all five other fields matched. The persisted quota drop-in dates to the initial 03:47:23 cell apply, whose FullyApplied terminal recorded successful commands, not full boundary convergence. The MemberAdded realization passed the fleet-wide unlimited quota into a slot-specific renderer, overriding srv1-13's declared four-CPU limit.",
+    "Repair: the production boundary-add constructor now accepts only a slot and derives every directive from its desired row. The fixture quota renderer remains available for its bounded/unbounded controls. A regression drives the actual MemberAdded dispatch and requires CPUQuota=400%, with no unlimited assignment.",
+    "Existing-state repair is limited to an enrolled workspace boundary with all non-CPU fields exact and an unlimited predecessor. The same runtime address is classified through gunbc.change_realization as InPlaceUpdate; realization emits only its policy-derived CPUQuota directive. Memory drift, a finite predecessor, quota removal, a moved address and an unreviewed target refuse. It never deletes or recreates the slice. The fleet apply's locked baseline reobservation still gates execution; independent live boundary readback is required before commissioning. Rung: the add constructor no longer accepts a conflicting quota authority, and the bounded repair has discriminating claim controls. External systemd state remains a readback obligation. Ceiling/trigger: complete applied-state readback at the fabric-cell apply terminal, so command success alone cannot be confused with convergence.",
+  ],
+  evidence: [],
+}

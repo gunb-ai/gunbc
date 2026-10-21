@@ -1,0 +1,319 @@
+module gunbc.primitive_egress.d0_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Absent, Present }
+import std.primitive_identity {
+  AlgebraTemplate,
+  BuiltinRegistry,
+  DerivedFromAuthority,
+  EmitHandler,
+  InterpreterDispatch,
+  PrimitiveContractRow,
+  PrimitiveIdentity,
+  PrimitiveSurfaceAuthority,
+  PrimitiveSurfaceRow,
+  PrimitiveSymbolDisposition,
+  SymbolJoinsDeclaredPrimitive,
+  SymbolUndisposed,
+  primitive_algebra_surface_rows,
+  primitive_algebra_surface_symbols,
+  primitive_contract_surface_rows,
+  primitive_contract_surface_symbols,
+  declaration_and_primitive_are_one_authority_in,
+  primitive_d0_derived_surface_authority_count,
+  primitive_d0_open_surface_authority_count,
+  primitive_emit_surface_rows,
+  primitive_emit_surface_symbols,
+  primitive_fold_list,
+  primitive_identity_eq,
+  primitive_identity_for_symbol,
+  primitive_identity_is_declared,
+  primitive_identity_slug,
+  primitive_map_keys,
+  primitive_projection_for_declaration_in,
+  PrimitiveRuntimeBodyCensus,
+  PrimitiveRuntimeBodiesObserved,
+  PrimitiveRuntimeBodyScanRefused,
+  PrimitiveSurfaceRuntimeCoverage,
+  primitive_runtime_coverage_in,
+  primitive_registry_surface_rows,
+  primitive_registry_surface_symbols,
+  primitive_surface_carries_symbol_in,
+  primitive_surface_row_identity_violation,
+  primitive_surface_rows_missing_identity_violations,
+  primitive_symbol_disposition,
+  primitive_symbol_disposition_is_undisposed,
+  registry_contains_symbol,
+  registry_symbols_with_no_enumerated_runtime_row_in,
+  surface_row,
+  contract_contains_name,
+  emit_contains_symbol,
+  algebra_contains_template_name,
+}
+import std.primitive_projection { PrimitiveProjectionAnswer }
+import gunbc.v1.v1_interpreter_primitive_surface {
+  v1_interpreter_primitive_arms,
+  v1_interpreter_row_count,
+}
+
+// FIVE-SURFACE D0 CENSUS, MOVED OFF std.primitive_identity. Identity and traversal facts stay in
+// std; this module is the gunbc observation of InterpreterDispatch plus the join of the four std
+// surfaces with that roster. std does not import this module (DESIGN: std does not depend on
+// gunbc.v1). No v2 import — dag→dag only.
+
+fn primitive_interpreter_surface_symbols() -> List<String> {
+  v1_interpreter_primitive_arms() |> map(arm => arm.authored_spelling as String)
+}
+
+fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
+  primitive_interpreter_surface_symbols()
+    |> map(sym =>
+      surface_row(
+        authority: InterpreterDispatch,
+        authored_symbol: sym,
+        authority_ref: decl_ref(
+          module_path: "gunbc.v1.v1_interpreter_primitive_surface",
+          decl_name: "v1_interpreter_primitive_arms",
+        ),
+        primitive: primitive_identity_for_symbol(
+          authority: InterpreterDispatch,
+          authored_symbol: sym,
+        ),
+        provenance: DerivedFromAuthority,
+      )
+    )
+}
+
+fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
+  concat(
+    concat(
+      concat(
+        concat(
+          primitive_registry_surface_rows(),
+          primitive_contract_surface_rows()
+        ),
+        primitive_algebra_surface_rows()
+      ),
+      primitive_emit_surface_rows()
+    ),
+    primitive_interpreter_surface_rows()
+  )
+}
+
+fn primitive_d0_surface_census() -> List<PrimitiveSurfaceRow> {
+  primitive_surface_census_derived()
+}
+
+fn primitive_d0_derived_rows_missing_identity_count() -> Int {
+  count(primitive_surface_rows_missing_identity_violations(rows: primitive_surface_census_derived()))
+}
+
+fn primitive_d0_interpreter_surface_row_count() -> Int {
+  count(primitive_interpreter_surface_rows())
+}
+
+fn primitive_d0_interpreter_census_matches_roster() -> Bool {
+  primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
+}
+
+fn primitive_d0_open_denominator_receipt_holds() -> Bool {
+  primitive_d0_derived_surface_authority_count == 5
+    && primitive_d0_open_surface_authority_count == 0
+    && primitive_d0_interpreter_census_matches_roster()
+    && primitive_d0_derived_rows_missing_identity_count() > 0
+}
+
+fn primitive_d0_surface_census_row_count() -> Int {
+  count(primitive_d0_surface_census())
+}
+
+fn primitive_d0_surface_census_derived_row_count() -> Int {
+  count(primitive_surface_census_derived())
+}
+
+fn primitive_d0_surface_census_missing_identity_count() -> Int {
+  count(primitive_surface_rows_missing_identity_violations(rows: primitive_d0_surface_census()))
+}
+
+fn primitive_d0_surface_census_rows_for(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+) -> List<PrimitiveSurfaceRow> {
+  primitive_d0_surface_census()
+    |> filter(fn(row) {
+      row.authority == authority && (row.authored_symbol as String) == authored_symbol
+    })
+}
+
+fn primitive_d0_surface_census_row_identity_coherent(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+  expected: PrimitiveIdentity,
+) -> Bool {
+  let rows = primitive_d0_surface_census_rows_for(
+    authority: authority,
+    authored_symbol: authored_symbol,
+  )
+  count(rows) == 1
+    && match rows |> first {
+      Present { value: row } =>
+        match primitive_surface_row_identity_violation(row: row, expected: expected) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Absent => false
+    }
+}
+
+fn primitive_d0_fold_list_spelling_fork_holds() -> Bool {
+  primitive_d0_surface_census_row_identity_coherent(
+    authority: PrimitiveContractRow,
+    authored_symbol: "fold",
+    expected: primitive_fold_list,
+  )
+    && primitive_d0_surface_census_row_identity_coherent(
+      authority: InterpreterDispatch,
+      authored_symbol: "fold_list",
+      expected: primitive_fold_list,
+    )
+    && !registry_contains_symbol(sym: "fold_list")
+}
+
+fn primitive_d0_fold_list_registry_gap_holds() -> Bool {
+  !registry_contains_symbol(sym: "fold_list")
+    && primitive_d0_surface_census_row_identity_coherent(
+      authority: InterpreterDispatch,
+      authored_symbol: "fold_list",
+      expected: primitive_fold_list,
+    )
+}
+
+fn primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveSurfaceAuthority) -> Bool {
+  let rows = primitive_d0_surface_census()
+    |> filter(fn(row) {
+      row.authority == authority && (row.authored_symbol as String) == "map_keys"
+    })
+  count(rows) >= 1
+    && rows |> all(fn(row) {
+      match primitive_surface_row_identity_violation(row: row, expected: primitive_map_keys) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    })
+}
+
+fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+  primitive_d0_authority_map_keys_rows_coherent(authority: BuiltinRegistry)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveContractRow)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: AlgebraTemplate)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: EmitHandler)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
+}
+
+fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
+  primitive_interpreter_surface_rows()
+    |> all(fn(row) { row.provenance == DerivedFromAuthority })
+}
+
+fn primitive_d0_derived_rows_are_from_authority() -> Bool {
+  primitive_surface_census_derived()
+    |> all(fn(row) { row.provenance == DerivedFromAuthority })
+}
+
+fn primitive_surface_symbols() -> List<String> {
+  concat(
+    concat(
+      concat(
+        concat(primitive_registry_surface_symbols(), primitive_contract_surface_symbols()),
+        primitive_algebra_surface_symbols()
+      ),
+      primitive_emit_surface_symbols()
+    ),
+    primitive_interpreter_surface_symbols()
+  )
+}
+
+fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
+  primitive_surface_carries_symbol_in(
+    authored_symbol: authored_symbol,
+    surface_symbols: primitive_surface_symbols(),
+  )
+}
+
+fn primitive_projection_for_declaration(
+  declaration: DeclarationRef,
+) -> PrimitiveProjectionAnswer {
+  primitive_projection_for_declaration_in(
+    declaration: declaration,
+    surface_symbols: primitive_surface_symbols(),
+  )
+}
+
+fn declaration_and_primitive_are_one_authority(
+  declaration: DeclarationRef,
+  primitive: PrimitiveIdentity,
+) -> Bool {
+  declaration_and_primitive_are_one_authority_in(
+    declaration: declaration,
+    primitive: primitive,
+    surface_symbols: primitive_surface_symbols(),
+  )
+}
+
+fn primitive_surface_distinct_symbols() -> List<String> {
+  primitive_surface_census_derived()
+    |> fold(init: [], f: fn(acc, row) {
+      let sym = row.authored_symbol as String
+      if acc |> any(seen => seen == sym) {
+        acc
+      } else {
+        concat(acc, [sym])
+      }
+    })
+}
+
+fn primitive_surface_symbol_dispositions() -> List<PrimitiveSymbolDisposition> {
+  primitive_surface_distinct_symbols()
+    |> map(sym => primitive_symbol_disposition(authored_symbol: sym))
+}
+
+fn primitive_surface_distinct_symbol_count() -> Int {
+  count(primitive_surface_distinct_symbols())
+}
+
+fn primitive_undisposed_surface_symbol_count() -> Int {
+  count(
+    primitive_surface_symbol_dispositions()
+      |> filter(fn(d) { primitive_symbol_disposition_is_undisposed(d: d) })
+  )
+}
+
+fn primitive_disposed_surface_symbol_count() -> Int {
+  count(
+    primitive_surface_symbol_dispositions()
+      |> filter(fn(d) { !primitive_symbol_disposition_is_undisposed(d: d) })
+  )
+}
+
+fn primitive_runtime_coverage(authored_symbol: String) -> PrimitiveSurfaceRuntimeCoverage {
+  primitive_runtime_coverage_in(
+    rows: primitive_surface_census_derived(),
+    authored_symbol: authored_symbol,
+  )
+}
+
+fn registry_symbols_with_no_enumerated_runtime_row() -> List<String> {
+  registry_symbols_with_no_enumerated_runtime_row_in(rows: primitive_surface_census_derived())
+}
+
+fn primitive_surface_census_with_runtime(
+  runtime: PrimitiveRuntimeBodyCensus,
+) -> PrimitiveRuntimeBodyCensus {
+  match runtime {
+    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: detail }
+    PrimitiveRuntimeBodiesObserved { rows: rows } =>
+      PrimitiveRuntimeBodiesObserved { rows: concat(primitive_surface_census_derived(), rows) }
+  }
+}

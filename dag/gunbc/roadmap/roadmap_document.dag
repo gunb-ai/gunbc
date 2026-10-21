@@ -1,0 +1,35 @@
+module gunbc.roadmap.roadmap_document
+
+import std.markdown { MarkdownDocument, MarkdownBlock }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, SectionElement }
+import gunbc.roadmap.roadmap_emit { project_roadmap_section }
+
+type RoadmapSection {
+  title: String
+  elements: List<SectionElement>
+}
+
+type RoadmapDocument {
+  preamble: List<MarkdownBlock>
+  lead_lanes: List<RoadmapSection>
+  sections: List<RoadmapSection>
+}
+
+fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
+  project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
+}
+
+fn lead_lane_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
+  project_roadmap_section(title: concat("✦ ", s.title), elements: s.elements, merged: merged).blocks
+}
+
+fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> MarkdownDocument {
+  let after_lanes = fold(doc.lead_lanes, init: doc.preamble, f: fn(acc, s) {
+    concat(acc, lead_lane_blocks(s: s, merged: merged))
+  })
+  MarkdownDocument {
+    blocks: fold(doc.sections, init: after_lanes, f: fn(acc, s) {
+      concat(acc, section_blocks(s: s, merged: merged))
+    })
+  }
+}

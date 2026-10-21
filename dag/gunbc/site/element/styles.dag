@@ -1,0 +1,79 @@
+module gunbc.site.element.styles
+
+import std.types { List, String }
+import gunbc.design.material { BuildRule }
+import gunbc.site.document { SiteThemeDecls }
+import gunbc.site.element.palette { palette_decls }
+import gunbc.site.element.tokens { element_token_decls }
+import gunbc.site.element.card { card_class, card_rules }
+import gunbc.site.element.section_heading { section_heading_class, section_heading_rules }
+import gunbc.site.element.status_chip { status_chip_class, status_chip_rules }
+import gunbc.site.element.button { button_class, button_rules }
+import gunbc.site.element.chip { chip_class, chip_rules }
+import gunbc.site.element.priority_mark { priority_mark_class, priority_mark_rules }
+import gunbc.site.element.node_row { node_row_class, node_row_rules }
+import gunbc.site.element.relation_table { relation_table_class, relation_table_rules }
+import gunbc.site.element.node_chain { node_chain_class, node_chain_rules }
+import gunbc.site.element.build_meter { build_meter_class, build_meter_rules }
+import gunbc.site.element.field_list { field_list_class, field_list_rules }
+
+// What a page needs to use the elements: every element's rules, and the :root blocks they read
+// (the palette per scheme, and this frontend's tokens, which do not vary by scheme). Each element
+// is one row naming its class and its rules, and the ownership guard reads the same rows.
+type ElementStyle {
+  class_name: String
+  rules: List<BuildRule>
+}
+
+// THE ELEMENTS, AS ONE CLOSED IDENTITY. An element's registry row (element_style, here) and its
+// specimen section (gunbc.site.specimen specimen_element_sections) are both total functions of
+// it, so an element cannot be registered without a specimen: the specimen's match would refuse
+// to compile. site_elements is the one enumeration both are read through.
+type SiteElement
+  = SiteCard
+  | SiteSectionHeading
+  | SiteStatusChip
+  | SiteButton
+  | SiteChip
+  | SitePriorityMark
+  | SiteNodeRow
+  | SiteRelationTable
+  | SiteNodeChain
+  | SiteBuildMeter
+  | SiteFieldList
+
+data site_elements: List<SiteElement> = [
+  SiteCard, SiteSectionHeading, SiteStatusChip, SiteButton, SiteChip, SitePriorityMark,
+  SiteNodeRow, SiteRelationTable, SiteNodeChain, SiteBuildMeter, SiteFieldList,
+]
+
+fn element_style(element: SiteElement) -> ElementStyle {
+  match element {
+    SiteCard => ElementStyle { class_name: card_class, rules: card_rules() }
+    SiteSectionHeading => ElementStyle { class_name: section_heading_class, rules: section_heading_rules() }
+    SiteStatusChip => ElementStyle { class_name: status_chip_class, rules: status_chip_rules() }
+    SiteButton => ElementStyle { class_name: button_class, rules: button_rules() }
+    SiteChip => ElementStyle { class_name: chip_class, rules: chip_rules() }
+    SitePriorityMark => ElementStyle { class_name: priority_mark_class, rules: priority_mark_rules() }
+    SiteNodeRow => ElementStyle { class_name: node_row_class, rules: node_row_rules() }
+    SiteRelationTable => ElementStyle { class_name: relation_table_class, rules: relation_table_rules() }
+    SiteNodeChain => ElementStyle { class_name: node_chain_class, rules: node_chain_rules() }
+    SiteBuildMeter => ElementStyle { class_name: build_meter_class, rules: build_meter_rules() }
+    SiteFieldList => ElementStyle { class_name: field_list_class, rules: field_list_rules() }
+  }
+}
+
+fn element_styles() -> List<ElementStyle> {
+  map(site_elements, e => element_style(element: e))
+}
+
+fn element_rules() -> List<BuildRule> {
+  flat_map(element_styles(), s => s.rules)
+}
+
+fn element_themes() -> List<SiteThemeDecls> {
+  [
+    SiteThemeDecls { day: palette_decls(night: false), night: palette_decls(night: true) },
+    SiteThemeDecls { day: element_token_decls(), night: element_token_decls() },
+  ]
+}

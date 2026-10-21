@@ -1,0 +1,100 @@
+module gunbc.primitive_egress.category
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE SUBJECT CATEGORY OF A PRIMITIVE, AND THE LANE THAT OWNS RETIRING IT. One row per category;
+// the owning child issue of PRIMITIVE-EGRESS-0 (gunbc#11626) is DERIVED from the category by the
+// exhaustive match below, so the census never carries a copied status table -- a disposition row
+// names its category and the owner falls out. Adding a lane is adding an arm here, which the
+// compiler refuses to leave unmatched.
+type PrimitiveCategory
+  = TextOps
+  | NumericBit
+  | Crypto
+  | Encoding
+  | Unicode
+  | ProcessEffect
+  | MeasurementEffect
+  | PointerIdentity
+  | CollectionKernel
+  | LanguageKernel
+  | SeedQuery
+  | ContentHash
+  | ClockEffect
+  | NetworkEffect
+  | EntropyEffect
+  | AuthContextEffect
+  | FilesystemEffect
+  | DemandBinding
+
+type ReplacementLane {
+  issue: Int
+  label: NonEmptyStr
+}
+
+fn lane(issue: Int, label: String) -> ReplacementLane {
+  ReplacementLane { issue: issue, label: label as NonEmptyStr }
+}
+
+// LanguageKernel constructors/eliminators (Some, discriminant, record `with`) were ruled
+// "plausibly irreducible" inside the container ruling on gunbc#11626, so they are owned by the
+// same lane that classifies containers; they are a category of their own because their
+// disposition question (is this a kernel constructor or a modeled operation?) is not the
+// collection question. DemandBinding is the D13/USES-0 lane (gunbc#11562) and FilesystemEffect
+// the EFFECTS-1 lane (gunbc#11624): both pre-date this program and are named as existing owners
+// on gunbc#11626 rather than as children of it.
+fn category_owner_lane(category: PrimitiveCategory) -> ReplacementLane {
+  match category {
+    TextOps => lane(issue: 11630, label: "TEXT-0")
+    NumericBit => lane(issue: 11627, label: "NUMERIC-BIT-0")
+    Crypto => lane(issue: 11628, label: "CRYPTO-0")
+    Encoding => lane(issue: 11629, label: "ENCODING-0")
+    Unicode => lane(issue: 11631, label: "UNICODE-0")
+    ProcessEffect => lane(issue: 11632, label: "PROCESS-0")
+    MeasurementEffect => lane(issue: 11633, label: "MEASUREMENT-0")
+    PointerIdentity => lane(issue: 11634, label: "IDENTITY-0")
+    CollectionKernel => lane(issue: 11635, label: "COLLECTION-KERNEL-0")
+    LanguageKernel => lane(issue: 11635, label: "COLLECTION-KERNEL-0")
+    SeedQuery => lane(issue: 11636, label: "SEED-QUERY-0")
+    ContentHash => lane(issue: 11637, label: "CONTENT-HASH-0")
+    ClockEffect => lane(issue: 11638, label: "CLOCK-0")
+    NetworkEffect => lane(issue: 11639, label: "NETWORK-0")
+    EntropyEffect => lane(issue: 11640, label: "ENTROPY-0")
+    AuthContextEffect => lane(issue: 11641, label: "AUTH-CONTEXT-0")
+    FilesystemEffect => lane(issue: 11624, label: "EFFECTS-1")
+    DemandBinding => lane(issue: 11562, label: "USES-0")
+  }
+}
+
+fn category_label(category: PrimitiveCategory) -> String {
+  match category {
+    TextOps => "TextOps"
+    NumericBit => "NumericBit"
+    Crypto => "Crypto"
+    Encoding => "Encoding"
+    Unicode => "Unicode"
+    ProcessEffect => "ProcessEffect"
+    MeasurementEffect => "MeasurementEffect"
+    PointerIdentity => "PointerIdentity"
+    CollectionKernel => "CollectionKernel"
+    LanguageKernel => "LanguageKernel"
+    SeedQuery => "SeedQuery"
+    ContentHash => "ContentHash"
+    ClockEffect => "ClockEffect"
+    NetworkEffect => "NetworkEffect"
+    EntropyEffect => "EntropyEffect"
+    AuthContextEffect => "AuthContextEffect"
+    FilesystemEffect => "FilesystemEffect"
+    DemandBinding => "DemandBinding"
+  }
+}
+
+fn all_primitive_categories() -> List<PrimitiveCategory> {
+  [TextOps, NumericBit, Crypto, Encoding, Unicode, ProcessEffect, MeasurementEffect, PointerIdentity,
+   CollectionKernel, LanguageKernel, SeedQuery, ContentHash, ClockEffect, NetworkEffect, EntropyEffect, AuthContextEffect,
+   FilesystemEffect, DemandBinding]
+}
+
+fn category_eq(a: PrimitiveCategory, b: PrimitiveCategory) -> Bool {
+  category_label(category: a) == category_label(category: b)
+}

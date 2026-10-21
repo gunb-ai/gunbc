@@ -1,0 +1,40 @@
+module gunbc.instruments.dag_compile_clean_gate
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { NonEmptyStr }
+import gunbc.ci.ci_gate { gate_receipt_exit, gate_receipt_failure_detail, GateNotRun, GateReceipt }
+
+// The floor compile-clean receipt produce/install chain had no executing route after
+// `run_required_floor` was deleted. The surfaces were removed rather than aliased onto
+// `witness_layer_roots_compile_clean_check` (a resolve check). This gate is still named
+// by `ci_spec` `DagCompileCleanGate`; it answers GateNotRun so a caller cannot read a
+// missing receipt as a compile-clean verdict.
+
+fn withdrawn_floor_compile_clean_receipt() -> GateReceipt {
+  GateNotRun {
+    cause: "floor compile-clean receipt produce/install deleted; no executor installs a receipt" as NonEmptyStr
+  }
+}
+
+fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+fn run_dag_compile_clean_gate_body() -> ProcessExit {
+  gate_receipt_exit(r: withdrawn_floor_compile_clean_receipt())
+}
+
+fn run_dag_compile_clean_gate() -> ProcessExit {
+  run_dag_compile_clean_gate_body()
+}
+
+fn dag_compile_clean_failure_receipt() -> String {
+  gate_receipt_failure_detail(r: withdrawn_floor_compile_clean_receipt())
+}
+
+fn main() -> ProcessExit {
+  run_dag_compile_clean_gate_body()
+}

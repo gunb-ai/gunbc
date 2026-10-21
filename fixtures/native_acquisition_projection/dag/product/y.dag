@@ -1,0 +1,6 @@
+module product.y
+
+// THE SAME-NAMED MODULE: stored where `product.y` is stored under `gunbc.source_layout`, in this fixture's
+// own `dag` tree and not the repository's (no `product.y` exists there). The projection entry spells a
+// field access exactly as this module's name; the qualified entry names this module for real.
+data projection_same_named_value: Int = 424242

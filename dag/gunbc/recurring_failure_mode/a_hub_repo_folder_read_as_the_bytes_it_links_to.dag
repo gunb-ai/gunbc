@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_hub_repo_folder_read_as_the_bytes_it_links_to
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_hub_repo_folder_read_as_the_bytes_it_links_to: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_hub_repo_folder_read_as_the_bytes_it_links_to" as NonEmptyStr,
+
+  receipts: [
+    "**a Hugging Face repo folder read as the bytes it links to** (a repo folder's blobs/<hash> entry MAY be a symlink into a hub-level shared store, <cache_root>/blobs/<2 hex>/<sha256>, decided per file -- upstream shares Xet-backed files under the symlink cache and falls back to a repo-local blob where sharing fails -- so a size, copy, mount or hard link of the repo folder that does not dereference can read or hand out pointers rather than bytes).",
+
+    "INVALID STATE: a consumer sizing or exporting <cache_root>/models--<org>--<name> without dereferencing, or a hard link of a repo blob without -L. Also invalid, found in review of gunbc#13440: one cache-wide layout asserted from the CLI version, which cannot represent a mixed cache. Before extdeps.huggingface.hub hub_repo_blob_hard_link_argv, three consumers each re-encoded the fact as a bare `-L` with a prose comment (gunbc.spark.snapshot_rail_replica expose_one, gunbc.spark.group_checkpoint_materialize checkpoint_landed_on_host, gunbc.spark.group_arm_launch checkpoint_cache_bytes_lines), so a fourth consumer had nothing to import.",
+
+    "HARM: during the GLM-5.3 fetch on srv7 2026-10-03 (read by valiant-crab-775) the repo folder SHRANK as files completed, which read as a fetch losing progress; a model-directory-only mount or a hard link of the symlink hands a dangling tree to the reader.",
+
+    "DISTINGUISHING FACTS: on srv7 the repo blobs were symlinks whose targets lay under the cache root, outside the repo folder, and only .incomplete partials were regular files there; another cache, or another file in the same cache, may hold a regular repo-local blob instead.",
+
+    "RUNG: found at 1. Now 2: the conditional per-file law is cited in extdeps.huggingface.hub, the byte operations (hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv) dereference unconditionally, the three consumers route through them, and test.claim.huggingface.hub_blob_store_layout_witness reds when the -L is removed, including over a mixed cache. CEILING 3: a consumer could still spell its own `du`/`ln` argv over a hub path. NEXT-RUNG TRIGGER: hub cache paths carried as a typed path whose only byte-reading operations are the derived argvs, SUFFICIENT FOR no consumer to construct an undereferenced read of a repo folder.",
+  ],
+
+  evidence: [],
+}

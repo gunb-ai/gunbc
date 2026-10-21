@@ -1,0 +1,32 @@
+module test.fixture.record_construction_census.specimens
+
+import v2.std.text { String }
+import v2.std.integer { Int }
+
+data record_construction_census_fixture_note: String = "Closed fixture pool for the record-construction census witness (BoundedPoll deletion lane, adhoc-429f6982-280). The three specimens plant exactly one construction of CensusProbeSubject, one match-pattern-only mention, and one string literal spelling the same lexeme, so the witness proves the decl-fact skeleton's record_construction_spelling edge counts constructions and ONLY constructions: a match pattern contributes nothing (patterns marshal without construction identity) and a string literal spelling the type name contributes nothing (literal atoms ride positional edges). Oracle counts are authored here, independently of any tree measurement (DESIGN section 5: controlled fixture)."
+
+type CensusProbeSubject {
+  weight: Int
+}
+
+fn census_probe_constructs_subject() -> CensusProbeSubject {
+  CensusProbeSubject { weight: 1 }
+}
+
+fn census_probe_matches_subject_only(s: CensusProbeSubject) -> Int {
+  match s {
+    CensusProbeSubject { weight: w } => w
+  }
+}
+
+fn census_probe_string_literal_same_lexeme() -> String {
+  "CensusProbeSubject"
+}
+
+data record_construction_census_nullary_note: String = "Nullary-invisibility specimen: a fieldless variant constructed bare is NOT an ExprRecordLit — it is a bare atom in expression position and rides a POSITIONAL edge, so the record_construction_spelling edge never fires for it. The census counts 0 for CensusNullaryProbeMode despite the construction below; nullary_variant_construction_invisible_at_this_edge executes that limit so it is measured, not asserted. Consequence: the emptiness soundness of a spelling census holds only for declarations with at least one field; a zero over a fieldless declaration is VACUOUS and must never ground a deletion."
+
+type CensusProbeMode = CensusNullaryProbeMode | CensusOtherProbeMode
+
+fn census_probe_constructs_nullary() -> CensusProbeMode {
+  CensusNullaryProbeMode
+}

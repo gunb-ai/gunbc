@@ -1,0 +1,143 @@
+module extdeps.fans.noctua
+
+import std.types { List }
+import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
+import extdeps.units.iec_61672 { tenths_dba }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  FanCatalogRow,
+  FanPublishedOperatingPoint,
+  FanSpeedRangeUnpublished,
+  FanStopBehaviorUnpublished,
+  SelfStabilisingOilPressure,
+  FanMountingPattern,
+  fan_mounting_pattern,
+  RelayedFromVendorDocument,
+}
+import extdeps.vendor.noctua { noctua }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.noctua.at/en/products/nh-d9-amp-4926-4u/specifications"
+  }
+}
+
+// THE ASYMMETRY THAT MAKES THE FAIL-CLOSED GATE REAL. Noctua publishes exactly ONE noise figure
+// for this fan - 30.6 dBA at its 2500 rpm maximum - plus two speed points carrying no level at
+// all. One level fixes no slope, so fan_acoustic_evidence returns FanAcousticUnderdetermined and
+// every level query against this fan refuses.
+//
+// That refusal is the point. The Dynatron's three points fit a fifth-power law to within about
+// 0.1 dB, and it is tempting to reuse that exponent here. It must not be reused: the exponent is
+// a property of one fan measured under one vendor's conditions, and a 92mm SSO2 fan at 2500 rpm
+// shares neither. Nothing in this module offers a way to do it.
+//
+// The NF-A9 HS-PWM is OEM-only and has no standalone Noctua product page; the figures below come
+// from the cooler's own specification page. No L.N.A. is supplied with this cooler, so the
+// retail NF-A9 PWM's low-noise-adaptor rows - a different 2000 rpm fan - do not apply.
+data noctua_nf_a9_hs_pwm_published_points: List<FanPublishedOperatingPoint> = [
+  FanPublishedOperatingPoint {
+    duty: percent(0),
+    speed: rpm(0),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(20),
+    speed: rpm(600),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(100),
+    speed: rpm(2500),
+    sound_pressure: Present { value: tenths_dba(306) },
+  },
+]
+
+data noctua_nf_a9_hs_pwm_catalog: FanCatalogRow = FanCatalogRow {
+  model: "NF-A9 HS-PWM",
+  manufacturer: noctua,
+  frame_size: millimeter(92),
+  bearing: SelfStabilisingOilPressure,
+  pwm_controlled: true,
+  published_points: noctua_nf_a9_hs_pwm_published_points,
+  published_speed_range: FanSpeedRangeUnpublished,
+  published_stop_behavior: FanStopBehaviorUnpublished,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.noctua",
+      decl_name: "noctua_nf_a9_hs_pwm_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE NF-A9 PWM, THE RETAIL 92 mm FAN, IS A SEPARATE PRODUCT FROM THE NF-A9 HS-PWM ABOVE. Different
+// maximum speed, different noise figure, and it ships with a Low-Noise Adaptor the OEM part lacks.
+//
+// THE FIGURES ARE TRANSCRIBED, NOT READ. noctua.at serves this page behind a JavaScript challenge
+// that this session could not pass; the numbers below were relayed on 2026-10-19 by a search over
+// that page and agree with retailer copies (scan.co.uk, quietpc.com): 2000 rpm, 400 rpm minimum at
+// 20 % PWM, 22.8 dB(A), 92 x 92 x 25 mm, 82.5 mm mounting-hole spacing. The standing below says so,
+// and reading Noctua's own page retires it.
+//
+// THE L.N.A. FIGURES (1550 rpm, 16.3 dB(A)) ARE NOT A DUTY POINT and are not authored as one. The
+// adaptor is a series resistor that lowers the ceiling; it is an electrical configuration of the
+// fan, not a PWM duty, and FanPublishedOperatingPoint has no field that could say which.
+data noctua_nf_a9_pwm_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "noctua.at/en/products/nf-a9-pwm/specifications"
+  }
+}
+
+data noctua_nf_a9_pwm_figures_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read noctua.at's NF-A9 PWM specification page directly (it sits behind a JavaScript challenge) and confirm 2000 rpm and 22.8 dB(A) at full speed, 400 rpm at 20 % PWM, and 82.5 mm hole spacing.",
+}
+
+data noctua_nf_a9_pwm_published_points: List<FanPublishedOperatingPoint> = [
+  FanPublishedOperatingPoint {
+    duty: percent(20),
+    speed: rpm(400),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(100),
+    speed: rpm(2000),
+    sound_pressure: Present { value: tenths_dba(228) },
+  },
+]
+
+data noctua_nf_a9_pwm_catalog: FanCatalogRow = FanCatalogRow {
+  model: "NF-A9 PWM",
+  manufacturer: noctua,
+  frame_size: millimeter(92),
+  bearing: SelfStabilisingOilPressure,
+  pwm_controlled: true,
+  published_points: noctua_nf_a9_pwm_published_points,
+  published_speed_range: FanSpeedRangeUnpublished,
+  published_stop_behavior: FanStopBehaviorUnpublished,
+}
+
+// 82.5 mm spacing is Noctua's figure (relayed, per the standing above). The 4.3 mm clearance is NOT
+// Noctua's: it is the clearance ARCTIC's 92 mm drawing dimensions (extdeps.fans.arctic
+// arctic_f9_mounting_pattern), used because the 92 mm axial pattern is shared and Noctua prints no
+// clearance diameter.
+data noctua_nf_a9_pwm_mounting_pattern: FanMountingPattern = fan_mounting_pattern(
+  frame_edge: micrometer(count: 92000),
+  hole_pitch: micrometer(count: 82500),
+  hole_clearance_diameter: micrometer(count: 4300),
+  evidence: RelayedFromVendorDocument {
+    document: "Noctua NF-A9 PWM specification page, relayed by search 2026-10-19; clearance diameter from ARCTIC's 92 mm drawing",
+  },
+)
+
+// Published axial frame depth (92 x 92 x 25 mm), same transcribed standing as the figures above.
+data noctua_nf_a9_pwm_frame_depth: Micrometer = micrometer(count: 25000)

@@ -1,0 +1,90 @@
+module test.claim.serving.rented_replica_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.nat { Nat }
+import std.list { list_member, distinct_by_key }
+import std.measure { Measure, ByteSize }
+import std.optional { Present, Absent }
+import gunbc.serving.rented_replica {
+  RentedReplicaIdentity, RentedGpuDevice, RentedNodeInventory, RentedServedModel, RentedReplica,
+  ReplicasCollected, ReplicaCollectionRefused, rented_replica_collection,
+}
+import gunbc.harness.harness_seat { harness_seat_partition, harness_seat_pool_identity_at }
+import gunbc.serving.turn_admission { InteractiveQualitySensitive }
+
+data card_96: ByteSize = Measure { count: 96000000000 }
+data card_24: ByteSize = Measure { count: 24000000000 }
+data model_row: RentedServedModel = RentedServedModel { served_name: "qwen-first-row" as NonEmptyStr, resident_bytes: Measure { count: 60000000000 } }
+
+fn device(i: Nat, m: ByteSize) -> RentedGpuDevice {
+  RentedGpuDevice { index: i, model: "RTX PRO 6000" as NonEmptyStr, memory: m }
+}
+
+fn node(devices: List<RentedGpuDevice>) -> RentedNodeInventory {
+  RentedNodeInventory { node: "rental-1" as NonEmptyStr, devices: devices }
+}
+
+fn collected(inv: RentedNodeInventory) -> List<RentedReplica> {
+  match rented_replica_collection(inventory: inv, model: model_row) {
+    ReplicasCollected { replicas: r, unfit: _ } => r
+    ReplicaCollectionRefused { cause: _ } => []
+  }
+}
+
+fn partition_of(r: RentedReplica) -> String {
+  harness_seat_partition(replica: r.identity, class: InteractiveQualitySensitive, ceiling: 1) as String
+}
+
+fn partitions(rs: List<RentedReplica>) -> List<String> {
+  map(rs, r => partition_of(r: r))
+}
+
+fn argv_all(rs: List<RentedReplica>) -> List<String> {
+  fold(rs, init: [] as List<String>, f: (acc, r) => concat(acc, r.launch.argv))
+}
+
+fn str_eq(a: String, b: String) -> Bool { a == b }
+
+fn has_flag(argv: List<String>, flag: String) -> Bool {
+  list_member(argv, flag, (a, b) => a == b)
+}
+
+test fn two_cards_yield_two_replicas_with_distinct_pools() -> Bool {
+  let ps = partitions(rs: collected(inv: node(devices: [device(i: 0, m: card_96), device(i: 1, m: card_96)])))
+  length(ps) == 2 && length(distinct_by_key(ps, p => p)) == 2
+}
+
+test fn adding_a_replica_preserves_the_existing_owners_pools() -> Bool {
+  let one = partitions(rs: collected(inv: node(devices: [device(i: 0, m: card_96)])))
+  let two = partitions(rs: collected(inv: node(devices: [device(i: 0, m: card_96), device(i: 1, m: card_96)])))
+  length(one) == 1 && length(two) == 2 && one.all(o => list_member(two, o, str_eq))
+}
+
+test fn the_launch_requests_cached_token_reporting_and_prefix_caching() -> Bool {
+  let argv = argv_all(rs: collected(inv: node(devices: [device(i: 0, m: card_96)])))
+  has_flag(argv: argv, flag: "--enable-prompt-tokens-details") && has_flag(argv: argv, flag: "--enable-prefix-caching")
+}
+
+test fn a_card_too_small_is_reported_not_dropped() -> Bool {
+  match rented_replica_collection(inventory: node(devices: [device(i: 0, m: card_96), device(i: 1, m: card_24)]), model: model_row) {
+    ReplicasCollected { replicas: r, unfit: u } => length(r) == 1 && length(u) == 1
+    ReplicaCollectionRefused { cause: _ } => false
+  }
+}
+
+test fn nothing_fitting_refuses_rather_than_collecting_an_empty_cohort() -> Bool {
+  match rented_replica_collection(inventory: node(devices: [device(i: 0, m: card_24)]), model: model_row) {
+    ReplicaCollectionRefused { cause: _ } => true
+    ReplicasCollected { replicas: _, unfit: _ } => false
+  }
+}
+
+fn replica_identity(node: String, device: Nat, served: String) -> RentedReplicaIdentity {
+  RentedReplicaIdentity { node: node as NonEmptyStr, device_index: device, served_name: served as NonEmptyStr }
+}
+
+test fn delimiter_colliding_replica_identities_get_distinct_pools() -> Bool {
+  let a = harness_seat_pool_identity_at(replica: replica_identity(node: "rental", device: 0, served: "x-gpu1-y"), class: InteractiveQualitySensitive, seats: 1)
+  let b = harness_seat_pool_identity_at(replica: replica_identity(node: "rental-gpu0-x", device: 1, served: "y"), class: InteractiveQualitySensitive, seats: 1)
+  (a.partition as String) != (b.partition as String)
+}

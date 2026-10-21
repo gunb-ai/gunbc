@@ -1,0 +1,54 @@
+module test.claim.compute_run_unit_cold_premise_witness
+
+import std.types { Bool, String }
+import std.optional { Optional, Present, Absent }
+import extdeps.cache.sccache { sccache_rust_key_facts, SccacheRustKeyFacts }
+import gunbc.instruments.compute_run_unit_cold { same_path_premise_refusal, stable_arm_refusal }
+
+// The same-path control's declared residual is valid only under sccache_rust_key_facts' two premise
+// fields. The facts are SUPPLIED here with one field flipped at a time, so the refusal is read from the
+// verdict's own reader and not re-derived; the real record is the positive control.
+test fn the_declared_premise_is_accepted_for_the_real_facts() -> Bool {
+  !refused(r: same_path_premise_refusal(facts: sccache_rust_key_facts))
+}
+
+test fn a_key_that_no_longer_hashes_cargo_env_refuses() -> Bool {
+  refused(r: same_path_premise_refusal(facts: SccacheRustKeyFacts {
+    cargo_prefixed_env_enters_key: false
+    cargo_env_names_excluded_from_key: sccache_rust_key_facts.cargo_env_names_excluded_from_key
+    cargo_env_prefix_excluded_from_key: sccache_rust_key_facts.cargo_env_prefix_excluded_from_key
+    out_dir_argument_enters_key: sccache_rust_key_facts.out_dir_argument_enters_key
+    basedirs_strips_cargo_manifest_dir: sccache_rust_key_facts.basedirs_strips_cargo_manifest_dir
+    evidence: sccache_rust_key_facts.evidence
+  }))
+}
+
+test fn basedirs_that_now_strip_the_manifest_dir_refuses() -> Bool {
+  refused(r: same_path_premise_refusal(facts: SccacheRustKeyFacts {
+    cargo_prefixed_env_enters_key: sccache_rust_key_facts.cargo_prefixed_env_enters_key
+    cargo_env_names_excluded_from_key: sccache_rust_key_facts.cargo_env_names_excluded_from_key
+    cargo_env_prefix_excluded_from_key: sccache_rust_key_facts.cargo_env_prefix_excluded_from_key
+    out_dir_argument_enters_key: sccache_rust_key_facts.out_dir_argument_enters_key
+    basedirs_strips_cargo_manifest_dir: true
+    evidence: sccache_rust_key_facts.evidence
+  }))
+}
+
+fn refused(r: Optional<String>) -> Bool {
+  match r {
+    Present { value: why } => why != ""
+    Absent => false
+  }
+}
+
+test fn a_refused_bindpaths_arm_leaves_the_ceiling_standing() -> Bool {
+  !refused(r: stable_arm_refusal(f2_hits: none, wrote_only_own: false))
+}
+
+test fn a_bindpaths_arm_that_builds_refuses_the_green() -> Bool {
+  refused(r: stable_arm_refusal(f2_hits: Present { value: 95 }, wrote_only_own: true))
+}
+
+test fn a_bindpaths_arm_that_writes_the_host_path_refuses() -> Bool {
+  refused(r: stable_arm_refusal(f2_hits: Present { value: 95 }, wrote_only_own: false))
+}

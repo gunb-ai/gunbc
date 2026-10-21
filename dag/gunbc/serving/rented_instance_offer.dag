@@ -1,0 +1,184 @@
+module gunbc.serving.rented_instance_offer
+
+import std.types { List, Int, String, Bool, NonEmptyStr }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.nat { Nat, NatQuotientRemainder, NatDivisionByZero, nat_div_rem }
+import std.optional { Present, Absent }
+import std.measure { MoneyRate, money_amount_micro, money_amount_micro_count, byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work { Shape, identity_frame }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement, CpuRequirement, MemoryRequirement, StorageRequirement }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour }
+import product.fabric.candidate_field { FieldRequest }
+import product.fabric.selection { DispatchInputs }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import gunbc.serving.rented_offer_admission { RentedOfferReading, RentedOfferRead, RentedOfferNotRead }
+
+data rented_instance_not_per_gpu_priced_obligation: NonEmptyStr = "the instance quote is not an hourly rate divisible evenly across the instance's GPUs, so no per-replica price exists; the operator must read the rental's per-GPU price from the provider" as NonEmptyStr
+
+data rented_instance_envelope_indivisible_obligation: NonEmptyStr = "the instance's stated CPU, memory or storage does not divide evenly across its GPUs, so a per-replica envelope cannot be stated without inventing resources; the operator must read the per-GPU share from the provider" as NonEmptyStr
+
+data rented_instance_inputs_for_another_offer_obligation: NonEmptyStr = "the dispatch observations supplied were taken for a different offer identity than the instance they would be attached to, so rekeying them to a replica would present another offer's availability, commitment and cost as this instance's" as NonEmptyStr
+
+data rented_instance_gpu_count_unusable_obligation: NonEmptyStr = "the instance offer does not state a positive GPU count that matches the replicas bound to it, so a replica cannot be read from it" as NonEmptyStr
+
+// DECLARED FRONTIER (DESIGN 3c): the consumers of this reader today are its witnesses. The named
+// consumer is C4b, which hands the operator-supplied provider rental record (instance offer plus
+// dispatch observations) to rented_replica_offer_reading from the production rented_offer_reading
+// in the harness seat; until it lands that production reading stays NotRead. The trigger is that
+// C4b change, which is also where a production call site first exists.
+fn rented_replica_offer_key(instance: SupplierOffer<NonEmptyStr>, replica: RentedReplicaIdentity) -> OfferKey {
+  concat(
+    identity_frame(label: "instance-offer", value: instance.id.key as String),
+    identity_frame(label: "replica", value: rented_replica_wire(id: replica)),
+  ) as OfferKey
+}
+
+type RentedPerGpuQuote
+  = RentedPerGpuQuoted { quote: OfferQuote }
+  | RentedPerGpuUnpriceable
+
+fn rented_per_gpu_hourly(quote: OfferQuote, gpus: Nat) -> RentedPerGpuQuote {
+  match quote {
+    QuotedPerHour(rate) =>
+      match nat_div_rem(a: money_amount_micro_count(m: rate.amount), b: gpus) {
+        NatDivisionByZero => RentedPerGpuUnpriceable
+        NatQuotientRemainder { quotient: q, remainder: r } =>
+          if r == 0 {
+            RentedPerGpuQuoted { quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: q), currency: rate.currency }) }
+          } else {
+            RentedPerGpuUnpriceable
+          }
+      }
+    _ => RentedPerGpuUnpriceable
+  }
+}
+
+type RentedPerGpuEnvelope
+  = RentedPerGpuEnvelopeSplit { envelope: ResourceEnvelope }
+  | RentedPerGpuEnvelopeIndivisible
+
+type RentedAxisShare
+  = RentedAxisNotStated
+  | RentedAxisShared { count: Nat }
+  | RentedAxisIndivisible
+
+fn rented_axis_share(stated: Nat?, gpus: Nat) -> RentedAxisShare {
+  match stated {
+    Absent => RentedAxisNotStated
+    Present { value: count } =>
+      match nat_div_rem(a: count, b: gpus) {
+        NatDivisionByZero => RentedAxisIndivisible
+        NatQuotientRemainder { quotient: q, remainder: r } => if r == 0 { RentedAxisShared { count: q } } else { RentedAxisIndivisible }
+      }
+  }
+}
+
+fn rented_one_gpu_envelope(envelope: ResourceEnvelope, gpu: GpuRequirement, gpus: Nat) -> RentedPerGpuEnvelope {
+  let one_gpu = Present { value: GpuRequirement { count: 1, min_vram: gpu.min_vram, runtimes: gpu.runtimes } }
+  match rented_axis_share(stated: match envelope.cpu { Absent => none, Present { value: c } => Present { value: hardware_thread_count_value(t: c.min_threads) } }, gpus: gpus) {
+    RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+    cpu_share =>
+      match rented_axis_share(stated: match envelope.memory { Absent => none, Present { value: m } => Present { value: byte_size_count(b: m.min_bytes) } }, gpus: gpus) {
+        RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+        memory_share =>
+          match rented_axis_share(stated: match envelope.storage { Absent => none, Present { value: s } => Present { value: byte_size_count(b: s.min_bytes) } }, gpus: gpus) {
+            RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+            storage_share =>
+              RentedPerGpuEnvelopeSplit {
+                envelope: ResourceEnvelope {
+                  cpu: match envelope.cpu {
+                    Absent => none
+                    Present { value: c } => match cpu_share {
+                      RentedAxisShared { count: q } => Present { value: CpuRequirement { min_threads: hardware_thread_count(count: q), architecture: c.architecture } }
+                      _ => none
+                    }
+                  },
+                  gpu: one_gpu,
+                  memory: match envelope.memory {
+                    Absent => none
+                    Present { value: _ } => match memory_share {
+                      RentedAxisShared { count: q } => Present { value: MemoryRequirement { min_bytes: byte_size(count: q) } }
+                      _ => none
+                    }
+                  },
+                  storage: match envelope.storage {
+                    Absent => none
+                    Present { value: st } => match storage_share {
+                      RentedAxisShared { count: q } => Present { value: StorageRequirement { min_bytes: byte_size(count: q), persistence: st.persistence } }
+                      _ => none
+                    }
+                  },
+                  network: envelope.network,
+                },
+              }
+          }
+      }
+  }
+}
+
+fn rented_replica_not_read(replica: RentedReplicaIdentity, obligation: NonEmptyStr) -> RentedOfferReading {
+  RentedOfferNotRead { replica: replica, obligation: obligation }
+}
+
+fn rented_replica_offer_reading(
+  instance: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+  replica: RentedReplicaIdentity,
+) -> RentedOfferReading {
+  if inputs.offer != instance.id {
+    rented_replica_not_read(replica: replica, obligation: rented_instance_inputs_for_another_offer_obligation)
+  } else {
+  match instance.shape.envelope.gpu {
+    Absent => rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
+    Present { value: gpu } =>
+      match checked_int_to_nat(n: gpu.count) {
+        Absent => rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
+        Present { value: gpus } =>
+          if gpus == 0 || replica.device_index >= gpus {
+            rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
+          } else {
+          match rented_per_gpu_hourly(quote: instance.quote, gpus: gpus) {
+            RentedPerGpuUnpriceable => rented_replica_not_read(replica: replica, obligation: rented_instance_not_per_gpu_priced_obligation)
+            RentedPerGpuQuoted { quote: quote } =>
+              match rented_one_gpu_envelope(envelope: instance.shape.envelope, gpu: gpu, gpus: gpus) {
+                RentedPerGpuEnvelopeIndivisible => rented_replica_not_read(replica: replica, obligation: rented_instance_envelope_indivisible_obligation)
+                RentedPerGpuEnvelopeSplit { envelope: envelope } =>
+                  let id = FabricIdentity { principal: instance.id.principal, key: rented_replica_offer_key(instance: instance, replica: replica) }
+                  RentedOfferRead {
+                    replica: replica,
+                    request: FieldRequest {
+                      offer: SupplierOffer {
+                        id: id,
+                        executor: instance.executor,
+                        route: instance.route,
+                        shape: Shape { hard: instance.shape.hard, envelope: envelope },
+                        capabilities: instance.capabilities,
+                        trust_domain: instance.trust_domain,
+                        isolation: instance.isolation,
+                        quantity_bound: 1,
+                        ready_at: instance.ready_at,
+                        quote: quote,
+                        billing_quantum: instance.billing_quantum,
+                        evidence: instance.evidence,
+                      },
+                      dispatch: DispatchInputs {
+                        offer: id,
+                        availability: inputs.availability,
+                        commitment: inputs.commitment,
+                        start: inputs.start,
+                        transition: inputs.transition,
+                        operating: inputs.operating,
+                        opportunity: inputs.opportunity,
+                      },
+                      delivery: OfferDoesNotClaimNodeDelivery,
+                    },
+                  }
+              }
+          }
+          }
+      }
+  }
+}
+}

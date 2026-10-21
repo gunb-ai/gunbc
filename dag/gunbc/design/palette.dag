@@ -1,0 +1,191 @@
+module gunbc.design.palette
+
+import std.types { Int, String, Bool }
+import std.integer { uint8_channel_inclusive_max_value_derived }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.color.srgb { Srgb8, srgb8_admissible, srgb8_hex }
+import extdeps.accessibility.wcag_contrast {
+  srgb8_contrast_ratio_x100_for_max,
+  wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+  wcag_aaa_normal_text_hundredths,
+}
+
+// L2 palette-catalogue machinery (design-register-library.md). A SwatchSet is register-independent
+// catalog data; admissibility against the house register (gunbc.site.tokens quiet_envelope_hsl_pct)
+// is checked at the (set × register) binding in witnesses, never here. swatch_names_distinct is
+// O(n^2) over names — acceptable at catalogue scale, dissolve if a set-ordering witness lands.
+// SwatchMemberKind (Filed | Derived) is the relationship vocabulary. Set-level structure rows live
+// on extdeps palette modules and are pinned by witnesses. PairingGrade derives from the cited WCAG
+// kernel — approval is computed, never hand-flagged.
+
+type Swatch {
+  name: String
+  color: Srgb8
+}
+
+type SwatchMemberKind
+  = Filed
+  | Derived { anchor_name: String, note: String }
+
+type SwatchMember {
+  swatch: Swatch
+  kind: SwatchMemberKind
+}
+
+fn swatch_filed(sw: Swatch) -> SwatchMember {
+  SwatchMember { swatch: sw, kind: Filed }
+}
+
+fn swatch_derived(sw: Swatch, anchor_name: String, note: String) -> SwatchMember {
+  SwatchMember { swatch: sw, kind: Derived { anchor_name: anchor_name, note: note } }
+}
+
+type SwatchSetProvenance
+  = HouseAuthored { note: String }
+  | InspiredByExternal { note: String }
+  | CitedUpstream { authority: ExternalAuthority, version: String }
+
+type SwatchSet {
+  name: String
+  provenance: SwatchSetProvenance
+  members: List<SwatchMember>
+}
+
+fn swatches_of(s: SwatchSet) -> List<Swatch> {
+  map(s.members, m => m.swatch)
+}
+
+fn swatch_paint(sw: Swatch) -> String {
+  srgb8_hex(c: sw.color)
+}
+
+fn name_seen(seen: List<String>, n: String) -> Bool {
+  fold(seen, init: false, f: (acc, x) => acc || x == n)
+}
+
+fn swatch_names_distinct(swatches: List<Swatch>) -> Bool {
+  let names = map(swatches, s => s.name)
+  let uniq = fold(names, init: [], f: (acc, n) =>
+    if name_seen(seen: acc, n: n) { acc } else { concat(acc, [n]) })
+  uniq.length() == names.length()
+}
+
+fn swatch_set_admissible(s: SwatchSet) -> Bool {
+  let swatches = swatches_of(s: s)
+  swatches.length() > 0
+    && all(swatches, sw => srgb8_admissible(c: sw.color))
+    && swatch_names_distinct(swatches: swatches)
+}
+
+type PairingGrade
+  = TextAaa
+  | TextAa
+  | LargeTextOrGraphicsAa
+  | DecorationOnly
+
+fn grade_rank(g: PairingGrade) -> Int {
+  match g {
+    TextAaa => 3
+    TextAa => 2
+    LargeTextOrGraphicsAa => 1
+    DecorationOnly => 0
+  }
+}
+
+fn grade_key(g: PairingGrade) -> String {
+  match g {
+    TextAaa => "text-aaa"
+    TextAa => "text-aa"
+    LargeTextOrGraphicsAa => "large-text-or-graphics-aa"
+    DecorationOnly => "decoration-only"
+  }
+}
+
+fn grade_of_contrast(contrast_x100: Int) -> PairingGrade {
+  if contrast_x100 >= wcag_aaa_normal_text_hundredths {
+    TextAaa
+  } else if contrast_x100 >= wcag_aa_normal_text_hundredths {
+    TextAa
+  } else if contrast_x100 >= wcag_aa_large_text_and_graphics_hundredths {
+    LargeTextOrGraphicsAa
+  } else {
+    DecorationOnly
+  }
+}
+
+type GradedPairing {
+  figure: Swatch
+  ground: Swatch
+  contrast_x100: Int
+  grade: PairingGrade
+}
+
+fn grade_pairing_for_max(figure: Swatch, ground: Swatch, maxv: Int) -> GradedPairing {
+  let r = srgb8_contrast_ratio_x100_for_max(a: figure.color, b: ground.color, maxv: maxv)
+  GradedPairing {
+    figure: figure,
+    ground: ground,
+    contrast_x100: r,
+    grade: grade_of_contrast(contrast_x100: r),
+  }
+}
+
+fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => Present { value: grade_pairing_for_max(figure: figure, ground: ground, maxv: maxv) }
+    Absent => none
+  }
+}
+
+fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => []
+    Present { value: maxv } => {
+      let swatches = swatches_of(s: s)
+      fold(swatches, init: [], f: (acc, f) =>
+        concat(acc, fold(swatches, init: [], f: (acc2, g) =>
+          if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing_for_max(figure: f, ground: g, maxv: maxv)]) })))
+    }
+  }
+}
+
+fn pairings_at_least(s: SwatchSet, min_rank: Int) -> List<GradedPairing> {
+  fold(graded_pairings(s: s), init: [], f: (acc, p) =>
+    if grade_rank(g: p.grade) >= min_rank { concat(acc, [p]) } else { acc })
+}
+
+fn set_text_capable(s: SwatchSet) -> Bool {
+  fold(graded_pairings(s: s), init: false, f: (acc, p) =>
+    acc || grade_rank(g: p.grade) >= grade_rank(g: TextAa))
+}
+
+// Role completion at the consuming layer (operator ruling 2026-07-24,
+// roadmap-workspace-remodel-plan W1b): a base SwatchSet stays provenance-pure — island-pastel has
+// no danger hue BY DESIGN, and a UI's need never edits the base. A use needing a hue class the base
+// cannot serve declares a SwatchSetForUse: base plus completion members, each carrying its own
+// provenance in its member kind or the use_note (the loam-from-camel precedent generalized —
+// derivation-at-need, homed where the need lives). Admissibility composes: base admissible, at
+// least one completion (an empty completion list IS the base — use it directly), combined
+// membership still admissible, so a completion shadowing a base name is unwritable.
+
+type SwatchSetForUse {
+  name: String
+  base: SwatchSet
+  completions: List<SwatchMember>
+  use_note: String
+}
+
+fn for_use_combined_set(u: SwatchSetForUse) -> SwatchSet {
+  SwatchSet { name: u.name, provenance: u.base.provenance, members: concat(u.base.members, u.completions) }
+}
+
+fn swatches_for_use(u: SwatchSetForUse) -> List<Swatch> {
+  swatches_of(s: for_use_combined_set(u: u))
+}
+
+fn swatch_set_for_use_admissible(u: SwatchSetForUse) -> Bool {
+  swatch_set_admissible(s: u.base)
+    && u.completions.length() > 0
+    && swatch_set_admissible(s: for_use_combined_set(u: u))
+}

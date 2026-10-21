@@ -1,0 +1,44 @@
+module v1.tests.claim.escape_json_string_differential
+
+import v1.compiler.emit_core_support { escape_json_string }
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
+
+// The seed's copy of escape_json_string (v1.compiler.emit_core_support) must spell every control
+// code point as RFC 8259 section 7 requires: \b \t \n \f \r for 8, 9, 10, 12, 13 and \u00xx
+// (UPPERCASE hex, the authority's spelling; RFC 8259 admits either case) for the rest of 0..31. The oracle is the RFC, not the authority module: this
+// claim lives in the v1 tree, and importing the JSON emit authority from here would add that
+// module, its grammar and its hex module to the stage0 crate partition. The authority is held
+// to the SAME oracle by the JSON emit witness (its RFC 8259 control-code-point claim),
+// so the two copies agree by transitivity on one external referent.
+
+data vej_hex: String = "0123456789ABCDEF"
+
+fn vej_expected(cp: Int) -> String {
+  if cp == 8 { "\\b" } else { if cp == 9 { "\\t" } else { if cp == 10 { "\\n" } else { if cp == 12 { "\\f" } else { if cp == 13 { "\\r" } else {
+    concat("\\u00", concat(substring(s: vej_hex, start: cp / 16, end: cp / 16 + 1), substring(s: vej_hex, start: cp % 16, end: cp % 16 + 1)))
+  } } } } }
+}
+
+fn vej_agrees(cp: Int) -> Bool {
+  match from_code_point(cp: cp) {
+    Ok { value: t } => escape_json_string(s: concat("a", concat(t, "b"))) == concat("a", concat(vej_expected(cp: cp), "b"))
+    Err { value: _ } => false
+  }
+}
+
+fn vej_all_from(cp: Int) -> Bool {
+  if cp > 31 { true } else { vej_agrees(cp: cp) && vej_all_from(cp: cp + 1) }
+}
+
+test fn the_seed_copy_spells_every_control_code_point_per_rfc_8259() -> Bool {
+  vej_all_from(cp: 0)
+}
+
+test fn the_seed_copy_leaves_quote_backslash_non_ascii_and_a_plain_word_per_rfc_8259() -> Bool {
+  (escape_json_string(s: "\"") == "\\\"") && (escape_json_string(s: "\u{5c}") == "\\\\") && (escape_json_string(s: "\u{e9}\u{1F600}") == "\u{e9}\u{1F600}") && (escape_json_string(s: "plain") == "plain")
+}
+
+test fn RED_the_seed_copy_escapes_nul_and_backspace() -> Bool {
+  (escape_json_string(s: "\u{0}") == "\\u0000") && (escape_json_string(s: "\u{8}") == "\\b")
+}

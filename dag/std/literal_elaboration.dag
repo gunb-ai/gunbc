@@ -1,0 +1,490 @@
+module std.literal_elaboration
+
+import std.optional { Present, Absent }
+import std.types { List, String, Bool, Int, NonEmptyStr, range }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
+import std.algebra { collection_concat_shape, collection_count_shape }
+
+// THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
+// decision procedure, emission and ingestion are the same homomorphism check read in two directions).
+//
+// A kernel literal (`0`, `"x"`, `true`, `^s`) is a value of the KERNEL type the parser mints for it.
+// When such a literal reaches a typed boundary -- a call argument, a declared return, a record
+// field, a data initializer, an annotated let, the other operand of a binary operator -- the
+// boundary names a DESTINATION declaration. Three things can be true of that pair, and they are
+// three outcomes, never one row with a flag:
+//   DirectLiteral     the destination realizes the kernel type itself (a host numeric, the kernel
+//                     type, a native-realizing alias): the literal is already its own value.
+//   ViaHomomorphism   the destination is a STRUCTURAL declaration that SUPPLIES the literal: one
+//                     declared homomorphism from the kernel value into the destination's own
+//                     constructors (a Peano numeral into Zero/Succ, a text into a FreeMonoid of
+//                     scalars). The typed tree carries the destination and the homomorphism at the
+//                     occurrence; emission renders the image and never re-decides from spelling.
+//   Refused           the roster is defective at this key (two rows for one destination).
+// A destination with NO row and no native realization is not refused HERE: whether a kernel
+// numeral inhabits such a declaration is the inhabitance judgment's question and it already owns
+// that refusal (v1.compiler.infer declared_type_inhabitance). Answering it twice would be the two-
+// authority state DESIGN section 3 forbids; this judgment introduces values, it does not police them.
+//
+// GENERIC BY CONSTRUCTION. The judgment is keyed on (source kind, exact destination DeclarationRef)
+// and the image is produced by a closed roster of UNFOLDINGS, one arm per structural shape a kernel
+// value can be unfolded into. A consumer that needs a new destination adds one ROW to the corpus
+// roster (gunbc.structural_realization_bindings) and, if its destination's shape is new, one
+// unfolding ARM here -- never a second elaboration fold and never a per-destination special case
+// in inference or emission. The Peano arm is the first inhabitant; the FreeMonoid-of-scalars arm
+// is the structural-text lane's (XL-0T) to add beside it.
+//
+// WHY A NEGATIVE-VALUE REFUSAL IS ABSENT ON PURPOSE (DESIGN section 4b: ask whether the RED is
+// authorable before writing the check). A kernel integer literal is never negative -- `-3` parses
+// as a unary negation applied to the literal `3`, and the negation is an ordinary expression that
+// reaches inference through its own arm, not through this judgment. A ValueOutsideHomomorphismDomain
+// arm for the Peano unfolding would therefore be permanently green and would be cited as coverage.
+
+type LiteralSourceKind
+  = KernelIntLiteral
+  | KernelStringLiteral
+  | KernelFloatLiteral
+  | KernelBoolLiteral
+  | KernelSymbolLiteral
+  | KernelNullLiteral
+
+fn literal_source_kind_of(value: LiteralValue) -> LiteralSourceKind {
+  match value {
+    LitInt { value: _ } => KernelIntLiteral
+    LitStr { value: _ } => KernelStringLiteral
+    LitFloat { value: _ } => KernelFloatLiteral
+    LitBool { value: _ } => KernelBoolLiteral
+    LitSymbol { value: _ } => KernelSymbolLiteral
+    LitNull => KernelNullLiteral
+  }
+}
+
+fn literal_source_kind_label(kind: LiteralSourceKind) -> String {
+  match kind {
+    KernelIntLiteral => "kernel_int_literal"
+    KernelStringLiteral => "kernel_string_literal"
+    KernelFloatLiteral => "kernel_float_literal"
+    KernelBoolLiteral => "kernel_bool_literal"
+    KernelSymbolLiteral => "kernel_symbol_literal"
+    KernelNullLiteral => "kernel_null_literal"
+  }
+}
+
+fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
+  literal_source_kind_label(kind: a) == literal_source_kind_label(kind: b)
+}
+
+// HOW A KERNEL VALUE IS UNFOLDED INTO A DESTINATION'S CONSTRUCTORS. Each arm names the destination's
+// own constructors by exact DeclarationRef -- the unfolding is a fact about the destination, so a
+// renamed variant is a changed row, never a stale spelling inside the compiler.
+//   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
+//                  n deep around the nullary `zero`.
+//   UnicodeScalarSequenceUnfold
+//                  a kernel string literal unfolds to the sequence of its Unicode scalar values
+//                  (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
+//                  kernel string into a free monoid over Char, where Char = Int where unicode_scalar
+//                  (std.types) realizes each element as the scalar Int itself. The image is carried
+//                  as the language's canonical FreeMonoid introduction (the list-literal node) with
+//                  one scalar Int literal per element, NOT as a cons^n(empty) constructor nesting:
+//                  the map is canonical (no constructor names to carry, hence no fields on this arm),
+//                  a per-element nesting is O(n^2) under a sequence-backed carrier where the flat
+//                  introduction is O(n) (DESIGN section 6, bare minimum cost), and a nesting n deep
+//                  exceeds the emitter's bounded recursion fuel on ordinary prose-length literals.
+//                  SCALARS, NEVER BYTES: the element values are code points read at the character
+//                  grain, so a non-ASCII literal's length and elements observe scalar count and
+//                  scalar values, not its UTF-8 encoding.
+type LiteralUnfolding
+  = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
+  | UnicodeScalarSequenceUnfold
+
+// THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
+// boundary type actually presents. For a nominal destination (v2.std.nat.Nat)
+// that is the declaration itself and `element` is Absent. For the text carrier the resolver
+// deliberately peels every `type X = FreeMonoid<Char>` spelling to the one structural carrier
+// (String is a container-alias spelling, `std.types` `container_template_alias_rows`, so no
+// nominal brand survives the peel BY DESIGN) -- keying a row on the alias module's spelling would
+// key it on information resolution has already, correctly, discarded. The row therefore keys on
+// the STRUCTURE: destination = std.algebra.FreeMonoid with element = std.types.Char, which is
+// exactly what every text-typed boundary presents after the peel, and is the identity the
+// homomorphism is true OF (a string over an alphabet IS the free monoid over that alphabet).
+// FreeMonoid over any other element (a plain list) carries no row and stays DirectLiteral.
+type LiteralHomomorphism {
+  source_kind: LiteralSourceKind
+  destination: DeclarationRef
+  element: DeclarationRef?
+  producer: LiteralUnfolding
+}
+
+fn homomorphism_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
+}
+
+type LiteralHomomorphismLookup
+  = LiteralHomomorphismFound { row: LiteralHomomorphism }
+  | LiteralHomomorphismAbsent
+  | LiteralHomomorphismAmbiguous { row_count: Int }
+
+fn literal_homomorphism_for(
+  rows: List<LiteralHomomorphism>,
+  source_kind: LiteralSourceKind,
+  destination: DeclarationRef,
+  element: DeclarationRef?
+) -> LiteralHomomorphismLookup {
+  let matching = rows |> filter(r =>
+    literal_source_kind_eq(a: r.source_kind, b: source_kind)
+      && declaration_ref_eq(a: r.destination, b: destination)
+      && homomorphism_element_eq(a: r.element, b: element))
+  let n = matching |> count
+  if n == 0 {
+    LiteralHomomorphismAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => LiteralHomomorphismFound { row: row }
+      Absent => LiteralHomomorphismAbsent
+    }
+  } else {
+    LiteralHomomorphismAmbiguous { row_count: n }
+  }
+}
+
+type LiteralElaborationRefusal
+  = HomomorphismDuplicated { source_kind: LiteralSourceKind, destination: DeclarationRef, row_count: Int }
+
+fn literal_elaboration_refusal_message(cause: LiteralElaborationRefusal) -> String {
+  match cause {
+    HomomorphismDuplicated { source_kind: k, destination: d, row_count: n } =>
+      concat(
+        "literal elaboration: ", literal_source_kind_label(kind: k), " into ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared homomorphism (gunbc.structural_realization_bindings authoring defect)"
+      )
+  }
+}
+
+// THE DECISION. `destination_realizes_natively` is the caller's answer to "does this declaration
+// realize the kernel type itself" (v1.compiler.coercion decl_file_realizes_natively / the exact
+// Rust binding), passed in rather than re-derived so this module stays target-agnostic.
+type LiteralElaborationOutcome
+  = DirectLiteral
+  | ViaHomomorphism { homomorphism: LiteralHomomorphism }
+  | LiteralElaborationRefused { cause: LiteralElaborationRefusal }
+
+fn elaborate_literal_at(
+  rows: List<LiteralHomomorphism>,
+  source_kind: LiteralSourceKind,
+  destination: DeclarationRef,
+  element: DeclarationRef?,
+  destination_realizes_natively: Bool
+) -> LiteralElaborationOutcome {
+  if destination_realizes_natively {
+    DirectLiteral
+  } else {
+    match literal_homomorphism_for(rows: rows, source_kind: source_kind, destination: destination, element: element) {
+      LiteralHomomorphismFound { row: row } => ViaHomomorphism { homomorphism: row }
+      LiteralHomomorphismAbsent => DirectLiteral
+      LiteralHomomorphismAmbiguous { row_count: n } =>
+        LiteralElaborationRefused { cause: HomomorphismDuplicated { source_kind: source_kind, destination: destination, row_count: n } }
+    }
+  }
+}
+
+// KERNEL GROUNDING: THE PEANO MAP READ IN THE OTHER DIRECTION (operator ruling A, 2026-09-30,
+// superseding XL-0N for std.nat Nat). A LiteralHomomorphism says a STRUCTURAL destination supplies
+// a kernel literal through its own constructors: the kernel value is unfolded INTO the carrier. A
+// KernelGrounding says the converse about a carrier whose declaration is inductive and whose
+// REALIZATION is the kernel value itself: its constructors are views of kernel values, so every
+// constructor occurrence and every constructor pattern is folded OUT of the carrier into the
+// kernel value it denotes (zero is 0, succ { prev: n } is n + 1) before any realizer reads the
+// tree. The declaration stays the accepted inductive definition -- exhaustiveness, descent and
+// inhabitance are all judged on it -- and no realizer ever builds the unary tower.
+//
+// THE ROW IS THE CARRIER'S ONLY ELABORATION-DISCOVERY AUTHORITY, AND ITS RANGE IS THE DECLARED
+// ADMISSION BOUND. It names the carrier, the kernel values the carrier admits (min and max, below), and
+// the VIEW by which its constructors denote kernel values.
+//
+// A PEANO VIEW NAMES NO CONSTRUCTOR. Which constructor is zero and which is successor is read from the
+// carrier's own declaration by the consumer (one nullary constructor, and one constructor with exactly
+// one field of the carrier's own type) -- a shape that determines the two roles -- so a row cannot
+// disagree with the declaration it is about, and a bound declaration that is NOT that shape is a
+// refusal at the consumer rather than a guess.
+//
+// A SIGNED VIEW NAMES BOTH ARMS, because no shape can tell them apart: both carry one natural. The row
+// states which constructor is the non-negative view (value = its payload) and which is the negative view
+// (value = -(payload + 1)), each with its payload field, so the consumer never decides a sign by an arm's
+// position, by its spelling, or by the order it meets them (operator ruling and review, 2026-10-19, the
+// std.integer Int carrier). A declaration whose constructors do not match the named arms refuses at the
+// consumer. Keyed on the exact DeclarationRef: a user-declared type of the
+// same shape, or of the same spelling in another module, has no row and stays structural.
+//
+// A DECLARATION IS NEVER BOTH. A carrier with a KernelGrounding row realizes as the kernel value,
+// so a kernel literal at its boundary is already its own value (DirectLiteral) and it must carry
+// no LiteralHomomorphism row; the two rosters partition the declarations they name.
+//
+// THE ROW DECLARES ITS RANGE: the kernel values that ARE values of the carrier, in std.types range's own
+// vocabulary (an absent bound constrains nothing). A kernel value outside it denotes no value of the carrier
+// -- std.nat Nat's row declares min 0, so `-1` is no natural -- and a consumer refuses it, derived from the
+// row (kernel_grounding_admits), never from a check of its own.
+type KernelGrounding {
+  source_kind: LiteralSourceKind
+  carrier: DeclarationRef
+  min: Int?
+  max: Int?
+  view: KernelGroundingView
+}
+
+// How a grounded carrier's constructors denote kernel values (above). An arm names a constructor of the
+// carrier declaration and the field that carries its payload; the carrier's own DeclarationRef scopes it.
+type KernelGroundingView
+  = PeanoGroundingView
+  | SignedGroundingView { nonnegative: KernelGroundingArm, negative: KernelGroundingArm }
+
+type KernelGroundingArm {
+  constructor: NonEmptyStr
+  payload: NonEmptyStr
+}
+
+// WHETHER A SIGNED VIEW AGREES WITH THE DECLARATION IT IS ABOUT -- the one check, here beside the view,
+// that every consumer runs before it folds by the view. A consumer reads the declaration into a
+// GroundedDeclaredForm -- for a coproduct, its constructors as GroundedConstructorShape (its names, and for each field whether it is declared at a grounded
+// natural carrier) and asks this; it never decides agreement itself. The view agrees exactly when the
+// declaration has two constructors, the two named arms are distinct constructors of it, and each has the
+// one named field, declared at one and the same grounded natural.
+type GroundedConstructorShape {
+  constructor: String
+  fields: List<GroundedFieldShape>
+}
+
+type GroundedFieldShape {
+  field: String
+  declared_at: GroundedFieldDeclaration
+}
+
+type GroundedFieldDeclaration
+  = FieldAtGroundedNatural { natural: DeclarationRef }
+  | FieldNotAtGroundedNatural
+
+// What the carrier declaration IS, as far as a signed view can ask: a coproduct with these
+// constructors, or anything else (an opaque, alias or product declaration). Only a coproduct can
+// implement two named constructors, so the second refuses -- it is never "nothing to fold".
+type GroundedDeclaredForm
+  = DeclaredCoproduct { constructors: List<GroundedConstructorShape> }
+  | DeclaredNotACoproduct
+
+type SignedViewReading
+  = SignedViewAgrees { natural: DeclarationRef }
+  | SignedViewDisagrees { reason: SignedViewDisagreement }
+
+type SignedViewDisagreement
+  = SignedCarrierNotACoproduct
+  | SignedArity { constructor_count: Int }
+  | SignedArmsCoincide { constructor: String }
+  | SignedArmNotDeclared { constructor: String }
+  | SignedArmPayloadNotSole { constructor: String, payload: String }
+  | SignedPayloadNotNatural { constructor: String, payload: String }
+  | SignedPayloadsDiffer
+
+type SignedArmAgreement
+  = SignedArmAgrees { natural: DeclarationRef }
+  | SignedArmDisagrees { reason: SignedViewDisagreement }
+
+// A grounded NATURAL carrier: a Peano view whose declared range starts at 0.
+fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
+  rows |> any(r =>
+    declaration_ref_eq(a: r.carrier, b: d)
+      && (match r.view {
+        PeanoGroundingView => true
+        SignedGroundingView { nonnegative: _, negative: _ } => false
+      })
+      && (match r.min {
+        Present { value: m } => m == 0
+        Absent => false
+      }))
+}
+
+fn signed_arm_agreement(arm: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedArmAgreement {
+  let name = arm.constructor as String
+  let payload = arm.payload as String
+  match constructors |> filter(c => c.constructor == name) |> first {
+    Absent => SignedArmDisagrees { reason: SignedArmNotDeclared { constructor: name } }
+    Present { value: c } =>
+      if (c.fields |> count) != 1 {
+        SignedArmDisagrees { reason: SignedArmPayloadNotSole { constructor: name, payload: payload } }
+      } else {
+        match c.fields |> filter(f => f.field == payload) |> first {
+          Absent => SignedArmDisagrees { reason: SignedArmPayloadNotSole { constructor: name, payload: payload } }
+          Present { value: f } =>
+            match f.declared_at {
+              FieldAtGroundedNatural { natural: n } => SignedArmAgrees { natural: n }
+              FieldNotAtGroundedNatural => SignedArmDisagrees { reason: SignedPayloadNotNatural { constructor: name, payload: payload } }
+            }
+        }
+      }
+  }
+}
+
+fn signed_view_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, declared: GroundedDeclaredForm) -> SignedViewReading {
+  match declared {
+    DeclaredNotACoproduct => SignedViewDisagrees { reason: SignedCarrierNotACoproduct }
+    DeclaredCoproduct { constructors: constructors } => signed_coproduct_reading(nonnegative: nonnegative, negative: negative, constructors: constructors)
+  }
+}
+
+fn signed_coproduct_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedViewReading {
+  if (constructors |> count) != 2 {
+    SignedViewDisagrees { reason: SignedArity { constructor_count: constructors |> count } }
+  } else if (nonnegative.constructor as String) == (negative.constructor as String) {
+    SignedViewDisagrees { reason: SignedArmsCoincide { constructor: nonnegative.constructor as String } }
+  } else {
+    match signed_arm_agreement(arm: nonnegative, constructors: constructors) {
+      SignedArmDisagrees { reason: r } => SignedViewDisagrees { reason: r }
+      SignedArmAgrees { natural: nn } =>
+        match signed_arm_agreement(arm: negative, constructors: constructors) {
+          SignedArmDisagrees { reason: r } => SignedViewDisagrees { reason: r }
+          SignedArmAgrees { natural: ng } =>
+            if declaration_ref_eq(a: nn, b: ng) { SignedViewAgrees { natural: nn } } else { SignedViewDisagrees { reason: SignedPayloadsDiffer } }
+        }
+    }
+  }
+}
+
+fn signed_view_disagreement_message(reason: SignedViewDisagreement) -> String {
+  match reason {
+    SignedCarrierNotACoproduct => "its row declares a signed view, which names two constructors, and the declaration is not a coproduct (it is opaque, an alias or a product)"
+    SignedArity { constructor_count: c } => concat("its row declares a signed view, which folds exactly two constructors, and the declaration has ", to_string(value: c))
+    SignedArmsCoincide { constructor: c } => concat("its row names `", c, "` as both the non-negative and the negative constructor")
+    SignedArmNotDeclared { constructor: c } => concat("its row names the constructor `", c, "`, which the declaration does not declare")
+    SignedArmPayloadNotSole { constructor: c, payload: f } => concat("its row names `", f, "` as the payload of `", c, "`, which is not that constructor's one field")
+    SignedPayloadNotNatural { constructor: c, payload: f } => concat("the payload `", f, "` of `", c, "` is not declared at a grounded natural carrier (a Peano view whose range starts at 0)")
+    SignedPayloadsDiffer => "its two signed arms' payloads are declared at different natural carriers"
+  }
+}
+
+// Whether a kernel integer is a value of a grounded carrier: the ONE range authority, std.types range,
+// over the bounds the row declares.
+fn kernel_grounding_admits(row: KernelGrounding, value: Int) -> Bool {
+  range(value: value, min: row.min, max: row.max)
+}
+
+type KernelGroundingLookup
+  = KernelGroundingFound { row: KernelGrounding }
+  | KernelGroundingAbsent
+  | KernelGroundingAmbiguous { row_count: Int }
+
+fn kernel_grounding_for(rows: List<KernelGrounding>, source_kind: LiteralSourceKind, carrier: DeclarationRef) -> KernelGroundingLookup {
+  let matching = rows |> filter(r =>
+    literal_source_kind_eq(a: r.source_kind, b: source_kind)
+      && declaration_ref_eq(a: r.carrier, b: carrier))
+  let n = matching |> count
+  if n == 0 {
+    KernelGroundingAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => KernelGroundingFound { row: row }
+      Absent => KernelGroundingAbsent
+    }
+  } else {
+    KernelGroundingAmbiguous { row_count: n }
+  }
+}
+
+// WHAT THE TYPED TREE CARRIES at an elaborated occurrence: the source kind, the exact destination,
+// and the homomorphism selected. The occurrence itself is the node this record sits on (its
+// occurrence identity), so it is not duplicated here. Only ViaHomomorphism occurrences carry a
+// record -- a DirectLiteral is the ordinary literal node and needs nothing said about it.
+type LiteralElaboration {
+  source_kind: LiteralSourceKind
+  destination: DeclarationRef
+  homomorphism: LiteralHomomorphism
+}
+
+// A KERNEL MINT THAT STANDS FOR A CORPUS DECLARATION. The seed mints a small set of types into its
+// kernel scope so that surface sugar has something to resolve to before any import is read: `T?`
+// resolves to a kernel coproduct spelled Optional. Such a mint has no declaration of its own, so an
+// arm read through it could only report that its owner was unrecovered -- while the same arm read
+// through an import of the corpus declaration reported that declaration. One concept, two
+// identities. A row here says which declaration the mint IS, keyed on the exact DeclarationRef, and
+// the consumer reads the arm's identity from the row. The mint's SHAPE is checked against the
+// declaration where the declaring module is typechecked (v1.compiler.infer
+// kernel_mint_shape_diagnostics), so a row cannot bind a mint to a declaration it does not match.
+// A minted name with no row keeps its kernel identity.
+type KernelMintDeclaration {
+  minted_name: NonEmptyStr
+  declaration: DeclarationRef
+}
+
+type KernelMintDeclarationLookup
+  = KernelMintDeclarationFound { declaration: DeclarationRef }
+  | KernelMintDeclarationAbsent
+  | KernelMintDeclarationAmbiguous { row_count: Int }
+
+fn kernel_mint_declaration_for(rows: List<KernelMintDeclaration>, minted_name: String) -> KernelMintDeclarationLookup {
+  let matching = rows |> filter(r => (r.minted_name as String) == minted_name)
+  let n = matching |> count
+  if n == 0 {
+    KernelMintDeclarationAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => KernelMintDeclarationFound { declaration: row.declaration }
+      Absent => KernelMintDeclarationAbsent
+    }
+  } else {
+    KernelMintDeclarationAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER A DECLARATION OWNS THE ARMS OF A NAMED KERNEL MINT, for a consumer holding an arm's
+// declaration identity. Three answers, because the binding itself can be undecidable: with two
+// rows for one mint no declaration can be said to be the one, and a consumer that read that as
+// "not the mint" would silently stop treating the mint's arms as the mint's. The ambiguous answer
+// is its own arm so the consumer must refuse on it.
+type KernelMintOwnership
+  = DeclarationOwnsTheMint
+  | DeclarationDoesNotOwnTheMint
+  | KernelMintOwnershipAmbiguous { row_count: Int }
+
+fn kernel_mint_ownership(rows: List<KernelMintDeclaration>, minted_name: String, declaration: DeclarationRef) -> KernelMintOwnership {
+  match kernel_mint_declaration_for(rows: rows, minted_name: minted_name) {
+    KernelMintDeclarationFound { declaration: bound } =>
+      if declaration_ref_eq(a: bound, b: declaration) { DeclarationOwnsTheMint } else { DeclarationDoesNotOwnTheMint }
+    KernelMintDeclarationAbsent => DeclarationDoesNotOwnTheMint
+    KernelMintDeclarationAmbiguous { row_count: n } => KernelMintOwnershipAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER AN AUTHORED IMPORT OF A KERNEL-MINTED SPELLING IS THE MINT ITSELF. The exemption is the
+// full DeclarationRef, not the module path: a row for owner.Maybe does not admit importing
+// owner.Optional. Ambiguous mint rows are their own arm so the consumer cannot guess a module.
+type KernelNamedImportStanding
+  = KernelNamedImportAdmitted
+  | KernelNamedImportCollides { kernel_declaration_module: String }
+  | KernelNamedImportMintAmbiguous { row_count: Int }
+
+fn kernel_named_import_standing(
+  imported_name: String,
+  import_path: String,
+  module_declares_type: Bool,
+  rows: List<KernelMintDeclaration>
+) -> KernelNamedImportStanding {
+  if module_declares_type == false {
+    KernelNamedImportAdmitted
+  } else {
+    match kernel_mint_declaration_for(rows: rows, minted_name: imported_name) {
+      KernelMintDeclarationFound { declaration: d } =>
+        if declaration_ref_eq(a: d, b: decl_ref(module_path: import_path, decl_name: imported_name)) {
+          KernelNamedImportAdmitted
+        } else {
+          KernelNamedImportCollides { kernel_declaration_module: d.module_path as String }
+        }
+      KernelMintDeclarationAbsent => KernelNamedImportAdmitted
+      KernelMintDeclarationAmbiguous { row_count: n } => KernelNamedImportMintAmbiguous { row_count: n }
+    }
+  }
+}

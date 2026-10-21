@@ -1,0 +1,20 @@
+module gunbc.spark.serving_arm_placement
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.host_identity { HostIdentity }
+
+// SERVING ARM PLACEMENT ON SOLD HARDWARE. Every DGX Spark is disposed
+// (gunbc.spark.dgx_procurement dgx_spark_disposed_units). The census join in
+// gunbc.spark.host_commitment still reads this roster; it is empty rather than
+// claiming srv9–12.
+
+type ServingArmHostClaim {
+  arm: DeclarationRef
+  host: HostIdentity
+  basis: NonEmptyStr
+}
+
+data glm_group_b_serving_arm: DeclarationRef = decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units")
+
+data spark_serving_arm_host_claims: List<ServingArmHostClaim> = []

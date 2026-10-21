@@ -1,0 +1,62 @@
+module test.claim.roadmap.conformance_homes_free_semigroup_wall
+
+import std.types { Bool, String }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+  censuses_differ_by_exactly_the_target_key,
+}
+
+fn prelude() -> String {
+  "import std.algebra { Empty, FreeSemigroup }\n"
+}
+
+fn missing_head_source() -> String {
+  concat(
+    "module probe.empty_conformance_homes\n",
+    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { tail: Empty } }\n"),
+  )
+}
+
+fn one_element_source() -> String {
+  concat(
+    "module probe.one_conformance_home\n",
+    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { head: 1, tail: Empty } }\n"),
+  )
+}
+
+fn observed_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// POSITIVE: one-element FreeSemigroup on the imported carrier is Accepted (zero blocking).
+test fn a_one_element_free_semigroup_is_accepted() -> Bool {
+  observed_blocking_count(source: one_element_source()) == 0
+}
+
+// RED: missing-head construction on imported std.algebra.FreeSemigroup. Census key is
+// MissingField / "head". This does not establish that a [] / Empty literal at a
+// FreeSemigroup position is DeclaredTypeNotInhabited: that inhabitance seam is still
+// silent (receipt on gunbc.recurring_failure_mode.a_possibly_empty_producer_enters_a_nonempty_consumer;
+// next-rung trigger cardinality-vertical-slice).
+test fn a_missing_head_free_semigroup_refuses_construction() -> Bool {
+  match compile_dag_diagnostic_census(missing_head_source()) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: red } => match compile_dag_diagnostic_census(one_element_source()) {
+      CensusNotRunnable { cause: _ } => false
+      CensusObserved { rows: green } =>
+        census_total_count(rows: census_blocking_rows(rows: green)) == 0
+          && censuses_differ_by_exactly_the_target_key(
+            red: red,
+            green: green,
+            target_class: "MissingField",
+            target_subject: "head",
+          )
+    }
+  }
+}

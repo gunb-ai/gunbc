@@ -1,0 +1,8 @@
+module test.fixture.emitted_closure_partition.base.entry
+
+import test.fixture.emitted_closure_partition.base.left { base_left_value }
+import test.fixture.emitted_closure_partition.base.right { base_right_value }
+
+fn base_entry_value() -> Int {
+  base_left_value() + base_right_value()
+}

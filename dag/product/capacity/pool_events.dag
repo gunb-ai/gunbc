@@ -1,0 +1,281 @@
+module product.capacity.pool_events
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { Measure, measure_count }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
+import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
+import product.capacity.pool {
+  Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
+  LeaseCrossesLapse, PoolInstantBeforeAnchor, LeaseAlreadyLapsed, LeaseUnknownToPool, EmptyTerm,
+  PoolReading, PoolRead, PoolReadingRefused,
+  pool_acquire, pool_replay_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire, pool_reanchor,
+}
+import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation, UnknownEncumbrance, DuplicateReference, ExpenditureExceedsEncumbrance, AlreadyTerminal }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
+  AppendDecision, AppendAdmitted, AppendStale, EventDecode, EventDecoded, EventUndecodable,
+}
+import std.durable_compare_and_set { cas_generation }
+import product.capacity.lease { LeasePolicy, LeaseGrant, lease_grant, lease_fence_of }
+
+// THE EVENTS A POOL'S PARTITION CARRIES, AND THE FOLD THAT TURNS A CHAIN OF THEM BACK INTO A POOL.
+// Every transition of product.capacity.pool is one event kind; the fold applies them oldest first
+// from a root pool that is convergence-written authority (identity, ceiling, law). Occupancy is
+// never an event -- it is exactly what the fold derives (operator ruling 2026-09-06). The instant an
+// event speaks at is the chain event's recorded_at, so a payload carries no clock of its own.
+//
+// A CHAIN THAT DOES NOT FOLD IS REFUSED AT THE EVENT THAT BROKE IT. Every event was admitted
+// against its parent's state, so a refusal in the fold means the chain is corrupt or the root the
+// reader supplied is not the root the writers used; either way there is no pool to report.
+
+data pool_event_schema: String = "capacity-pool-event/v1"
+
+type PoolEvent
+  = PoolAcquired { reference: NonEmptyStr, amount: Nat, term_seconds: Nat }
+  | PoolSettled { reference: NonEmptyStr, actual: Nat }
+  | PoolReleased { reference: NonEmptyStr, reason: NonEmptyStr }
+  | PoolLapsed
+  | PoolUpstreamObserved { remaining: Nat, term_seconds: Nat }
+  | PoolResetObserved { reset_at: EpochSecs }
+
+fn pool_event_kind_word(e: PoolEvent) -> String {
+  match e {
+    PoolAcquired { reference: _, amount: _, term_seconds: _ } => "acquired"
+    PoolSettled { reference: _, actual: _ } => "settled"
+    PoolReleased { reference: _, reason: _ } => "released"
+    PoolLapsed => "lapsed"
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => "upstream-observed"
+    PoolResetObserved { reset_at: _ } => "reset-observed"
+  }
+}
+
+fn pool_event_kind_members(e: PoolEvent) -> List<JsonKeyValue> {
+  match e {
+    PoolAcquired { reference: r, amount: a, term_seconds: t } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "amount", value: json_int(n: a)),
+      json_kv(key: "term_seconds", value: json_int(n: t)),
+    ]
+    PoolSettled { reference: r, actual: a } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "actual", value: json_int(n: a)),
+    ]
+    PoolReleased { reference: r, reason: why } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "reason", value: json_string(s: why as String)),
+    ]
+    PoolLapsed => []
+    PoolUpstreamObserved { remaining: n, term_seconds: t } => [
+      json_kv(key: "remaining", value: json_int(n: n)),
+      json_kv(key: "term_seconds", value: json_int(n: t)),
+    ]
+    PoolResetObserved { reset_at: r } => [json_kv(key: "reset_at", value: json_int(n: r))]
+  }
+}
+
+fn pool_event_wire_text(event: ChainEvent<PoolEvent>) -> String {
+  chain_event_wire_text(schema: pool_event_schema, e: event, kind: pool_event_kind_word(e: event.payload), members: pool_event_kind_members(e: event.payload))
+}
+
+fn pool_event_kind_decode(doc: JsonValue, word: String) -> PoolEvent? {
+  if word == "acquired" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nat(doc: doc, key: "amount") {
+          Absent => none
+          Present { value: a } =>
+            match member_nat(doc: doc, key: "term_seconds") {
+              Absent => none
+              Present { value: t } => Present { value: PoolAcquired { reference: r, amount: a, term_seconds: t } }
+            }
+        }
+    }
+  } else if word == "settled" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nat(doc: doc, key: "actual") {
+          Absent => none
+          Present { value: a } => Present { value: PoolSettled { reference: r, actual: a } }
+        }
+    }
+  } else if word == "released" {
+    match member_nonempty(doc: doc, key: "reference") {
+      Absent => none
+      Present { value: r } =>
+        match member_nonempty(doc: doc, key: "reason") {
+          Absent => none
+          Present { value: why } => Present { value: PoolReleased { reference: r, reason: why } }
+        }
+    }
+  } else if word == "lapsed" {
+    Present { value: PoolLapsed }
+  } else if word == "reset-observed" {
+    match member_nat(doc: doc, key: "reset_at") {
+      Absent => none
+      Present { value: r } => Present { value: PoolResetObserved { reset_at: r } }
+    }
+  } else if word == "upstream-observed" {
+    match member_nat(doc: doc, key: "remaining") {
+      Absent => none
+      Present { value: n } =>
+        match member_nat(doc: doc, key: "term_seconds") {
+          Absent => none
+          Present { value: t } => Present { value: PoolUpstreamObserved { remaining: n, term_seconds: t } }
+        }
+    }
+  } else {
+    none
+  }
+}
+
+fn pool_event_decode(text: String) -> EventDecode<PoolEvent> {
+  chain_event_decode(text: text, schema: pool_event_schema, kind_decode: fn(doc, word) { pool_event_kind_decode(doc: doc, word: word) })
+}
+
+fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
+  pool_apply_payload(pool: pool, payload: env.event.payload, at: env.event.recorded_at, identity: env.id as String as NonEmptyStr)
+}
+
+// THE ONE TRANSITION FUNCTION, shared by replay and by validation before an append
+// (gunbc.fabric.fabric_event_log fabric_pool_transition). An event that would be refused here on replay is
+// refused there before it is written, because both ask this function: a carrier that appended without
+// asking it could commit a transition no later fold can apply, which makes the whole partition
+// unfoldable. The identity names the event -- its id at replay, the head it was decided against
+// before append -- and is what a transition that mints its own hold (an upstream reading) is keyed by.
+fn pool_apply_payload<Q, S>(pool: Pool<Q, S>, payload: PoolEvent, at: EpochSecs, identity: NonEmptyStr) -> PoolOutcome<Q, S> {
+  match payload {
+    PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_replay_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
+    PoolSettled { reference: r, actual: a } => pool_settle(pool: pool, reference: r, actual: Measure { count: a }, at: at)
+    PoolReleased { reference: r, reason: why } => pool_release(pool: pool, reference: r, reason: why, at: at)
+    PoolLapsed => PoolAdvanced { pool: lapse_pass(pool: pool, at: at).pool }
+    PoolUpstreamObserved { remaining: n, term_seconds: t } => observe_upstream_remaining(pool: pool, remaining: Measure { count: n }, at: at, term_seconds: t, reading: identity)
+    PoolResetObserved { reset_at: r } => PoolAdvanced { pool: pool_reanchor(pool: pool, reset_at: r) }
+  }
+}
+
+type PoolFold<Q, S>
+  = PoolFolded { pool: Pool<Q, S>, generation: Nat }
+  | PoolFoldRefused { at_event: EventId, wire: String }
+
+type FoldAcc<Q, S> {
+  pool: Pool<Q, S>
+  generation: Nat
+  refused: PoolFold<Q, S>?
+}
+
+fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>>) -> PoolFold<Q, S> {
+  let acc = fold(oldest_first, init: FoldAcc { pool: root, generation: 0, refused: none }, f: (st, env) =>
+    match st.refused {
+      Present { value: _ } => st
+      Absent =>
+        match pool_apply_event(pool: st.pool, env: env) {
+          PoolAdvanced { pool: p } => FoldAcc { pool: p, generation: st.generation + 1, refused: none }
+          PoolRefused { refusal: r } => FoldAcc { pool: st.pool, generation: st.generation, refused: Present { value: PoolFoldRefused { at_event: env.id, wire: pool_refusal_wire(r: r) } } }
+        }
+    })
+  match acc.refused {
+    Present { value: r } => r
+    Absent => PoolFolded { pool: acc.pool, generation: acc.generation }
+  }
+}
+
+// THE SEAT TRANSACTION, PURE: fold the partition, decide against the folded pool, and propose the
+// event with the head it was decided against. The carrier performs the compare-and-set; a stale
+// answer sends the caller back through this function with the new head. A full pool is a typed
+// refusal, never a queue.
+// THE REQUESTED AMOUNT CARRIES ITS DIMENSION, and this is the same repair SeatStandingObservation
+// took for the same reason. A bare Nat was right while every pool reachable through this fold was
+// Pool<Count, One>: seats are dimensionless and the field meant seats. Generalizing the carrier to
+// Pool<Q, S> made the same field mean KiB for a memory pool and seats for a seat pool, with nothing
+// in the type to say which -- so gunbc.compute.host_capacity had to call kibibyte_count to STRIP its
+// Kibibyte on the way in, which is precisely the tell this change diagnoses one boundary over
+// (review 69724 on gunbc#11962).
+//
+// WHERE THE STRIP LEGITIMATELY HAPPENS IS HERE, one layer down, and the difference is not cosmetic:
+// propose_acquire holds the POOL, so the pool's own type parameters prove the request's dimension
+// matches the appropriation it is being adjudicated against. A consumer stripping the carrier is
+// asserting that match; this fold checks it.
+//
+// THE PERSISTED EVENT KEEPS A BARE Nat AND THAT IS NOT THE SAME DEFECT. PoolAcquired is a WIRE
+// RECORD: its dimension is the partition's, and it is restored at both ends from the pool's own
+// parameters -- minted here from a Measure the pool typed, and re-minted at replay by
+// pool_apply_event into the Pool<Q, S> being folded. A JSON integer carrying a magnitude whose unit
+// the surrounding type fixes is a serialization, not a second model of the unit.
+type SeatRequest<Q, S> {
+  reference: NonEmptyStr
+  amount: Measure<Q, S, Nat>
+  at: EpochSecs
+  term_seconds: Nat
+}
+
+type SeatProposal
+  = SeatProposed { event: ChainEvent<PoolEvent>, expected_head: HeadExpectation }
+  | SeatRefused { wire: String }
+
+// THE ONE SPELLING OF "THE POOL HAD NO ROOM", named because a consumer has to be able to tell that
+// refusal from every other reason an acquire can be refused and the wire is currently the only place
+// the distinction survives. SeatRefused carries a rendered string for all of them, so a consumer
+// that wants "full" versus "the ledger said no" reads THIS row rather than authoring a second
+// literal of its own (DESIGN 3). The reason it matters is measured: gunbc.compute.host_capacity
+// mapped every SeatRefused onto a capacity refusal, and a DuplicateReference -- a ledger fact with
+// nothing to do with capacity -- was reported to an operator as a full pool on a host with 400 GiB
+// free (srv1, 2026-09-21).
+//
+// THE HONEST FIX IS A TYPED ARM AND IT IS NOT THIS. SeatRefused / SeatFull should carry the
+// distinction in their constructors instead of in rendered text; that widens
+// gunbc.fabric.fabric_event_log.SeatAcquisition and every existing match on SeatFull, so it is its own
+// change. DECLARED FRONTIER (DESIGN 3c), trigger: the next consumer that needs a third
+// classification, or the first one that must branch on a refusal this row cannot name.
+data pool_full_wire: String = "pool-full"
+
+fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
+  match r {
+    LedgerRefusal { refusal: lr } =>
+      match lr {
+        ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => pool_full_wire
+        UnknownEncumbrance { reference: _ } => pool_refusal_wire(r: r)
+        DuplicateReference { reference: _ } => pool_refusal_wire(r: r)
+        ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => pool_refusal_wire(r: r)
+        AlreadyTerminal { reference: _ } => pool_refusal_wire(r: r)
+      }
+    LeaseCrossesLapse { reference: _, expires_at: _, window_end: _ } => pool_refusal_wire(r: r)
+    PoolInstantBeforeAnchor { anchor: _, at: _ } => pool_refusal_wire(r: r)
+    LeaseAlreadyLapsed { reference: _, lapsed_at: _, at: _ } => pool_refusal_wire(r: r)
+    LeaseUnknownToPool { reference: _ } => pool_refusal_wire(r: r)
+    EmptyTerm { reference: _ } => pool_refusal_wire(r: r)
+  }
+}
+
+fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest<Q, S>) -> SeatProposal {
+  match pool_acquire(pool: pool, reference: request.reference, amount: request.amount, at: request.at, term_seconds: request.term_seconds) {
+    PoolRefused { refusal: r } => SeatRefused { wire: seat_refusal_wire(r: r) }
+    PoolAdvanced { pool: _ } => SeatProposed {
+      event: ChainEvent {
+        partition: partition,
+        parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+        recorded_at: request.at,
+        actor: actor,
+        payload: PoolAcquired { reference: request.reference, amount: measure_count(request.amount), term_seconds: request.term_seconds },
+      },
+      expected_head: head,
+    }
+  }
+}
+
+// THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: a proposal that lost the
+// compare-and-set mints nothing.
+fn grant_from_admission<Q, S>(request: SeatRequest<Q, S>, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
+  match admission {
+    AppendStale { expected: _, observed: _ } => none
+    AppendAdmitted { new_head: h, generation: g } =>
+      match cas_generation(n: g as Int) {
+        Absent => none
+        Present { value: cg } =>
+          Present { value: lease_grant(reference: request.reference, fence: lease_fence_of(admitting_event: h, generation: cg), granted_at: request.at, policy: policy) }
+      }
+  }
+}

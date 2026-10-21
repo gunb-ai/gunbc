@@ -1,0 +1,7 @@
+module uab.named_sq
+
+type Sq
+  = SqAlpha { a: Int }
+  | SqBeta { b: Int }
+
+fn named_sq_marker() -> Int { 11 }

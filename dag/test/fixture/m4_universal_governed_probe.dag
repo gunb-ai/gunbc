@@ -1,0 +1,31 @@
+module test.fixture.m4_universal_governed_probe
+
+service GovernedUniversalProbe {
+  operation Allowed {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "universal-published-realized" } "published op realizes hermetically"
+    }
+  }
+
+  operation Forbidden {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "must-never-be-returned" } "inline mock present but op is UNPUBLISHED"
+    }
+  }
+}

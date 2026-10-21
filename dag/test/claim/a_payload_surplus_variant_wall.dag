@@ -1,0 +1,110 @@
+module test.claim.a_payload_surplus_variant_wall
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+  census_count_at_key,
+  censuses_differ_by_exactly_the_target_key
+}
+import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
+import std.optional { Absent, Present }
+
+// THE FILE'S MISSING TRIGGER, now enrolled: a harness that hands INVALID SOURCE to the compiler.
+// The named #11803 instance is already narrowed on main — StopQuiescence.CgroupStillHolding
+// carries CgroupNotQuiet, so CgroupSubtreeEmpty has no constructor in that payload. A claim over
+// the deleted arm would be permanently green (DESIGN §4b). Representability is the compile-level
+// fact; this module is that RED.
+//
+// ONE AXIS BY CONSTRUCTION. Both fixtures share module name, import list (both payload spellings
+// so the import set is not a second variable), function, and return type. They differ only in
+// the holding inhabitant.
+
+fn surplus_variant_probe_source(holding: String) -> String {
+  "module probe_a_payload_surplus_variant\n"
+    + "import std.types { List, NonEmptyStr, Int }\n"
+    + "import gunbc.runner.runner_microvm_lifecycle { CgroupSubtreeEmpty }\n"
+    + "import gunbc.runner.runner_microvm_lifecycle_realize { StopQuiescence, CgroupStillHolding, CgroupHoldsTasks }\n"
+    + "fn f() -> StopQuiescence { CgroupStillHolding { holding: "
+    + holding
+    + " } }\n"
+}
+
+// THE ROWS ACCESSOR IS NOT REDECLARED HERE. This file used to carry its own `type ProbeCensusRows`
+// plus a `surplus_variant_probe_rows` that matched the census coproduct by hand -- the second local
+// implementation of one rule (§6b), which review 82870 caught when a third copy appeared. It now
+// imports the one home, gunbc.compile_census_probe, and passes it a source it builds locally.
+
+data target_class: String = "TypeMismatch"
+
+// The holding field is CgroupNotQuiet. CgroupSubtreeEmpty inhabits CgroupSubtreeReadback, so the
+// compiler's histogram subject for this refusal is the payload coproduct, not the outer
+// StopQuiescence wrapper (same grain as no_fallback's Coproduct(BootDeliveryCandidateStanding)).
+data target_subject: String = "Coproduct(CgroupNotQuiet)"
+
+fn censuses_differ_by_exactly_the_target_row(
+  red: List<CompileDiagnosticCensusRow>,
+  green: List<CompileDiagnosticCensusRow>
+) -> Bool {
+  censuses_differ_by_exactly_the_target_key(
+    red: red,
+    green: green,
+    target_class: target_class,
+    target_subject: target_subject,
+  )
+}
+
+fn red_rows() -> ProbeCensusRows? {
+  census_rows_for(source: surplus_variant_probe_source(holding: "CgroupSubtreeEmpty"))
+}
+
+fn green_rows() -> ProbeCensusRows? {
+  census_rows_for(
+    source: surplus_variant_probe_source(
+      holding: "CgroupHoldsTasks { pids: [1], cgroups: [\"x\" as NonEmptyStr] }"
+    )
+  )
+}
+
+// THE DISCRIMINATING RED. Exactly one blocking TypeMismatch at the CgroupNotQuiet key — not
+// "something refused".
+test fn an_empty_subtree_cannot_inhabit_cgroup_still_holding() -> Bool {
+  match red_rows() {
+    Present { value: red } =>
+      census_total_count(
+        rows: census_rows_of_class(rows: census_blocking_rows(rows: red.rows), wanted: target_class)
+      ) == 1
+        && census_count_at_key(
+          rows: red.rows,
+          diagnostic_class: target_class,
+          subject_name: target_subject,
+          blocking: true
+        ) == 1
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL. A producer-emitted holding must not TypeMismatch at that key.
+test fn a_producer_emitted_holding_is_still_admitted() -> Bool {
+  match green_rows() {
+    Present { value: green } =>
+      census_total_count(
+        rows: census_rows_of_class(rows: census_blocking_rows(rows: green.rows), wanted: target_class)
+      ) == 0
+    Absent => false
+  }
+}
+
+test fn the_two_arms_differ_by_exactly_the_target_row() -> Bool {
+  match red_rows() {
+    Present { value: red } =>
+      match green_rows() {
+        Present { value: green } =>
+          censuses_differ_by_exactly_the_target_row(red: red.rows, green: green.rows)
+        Absent => false
+      }
+    Absent => false
+  }
+}

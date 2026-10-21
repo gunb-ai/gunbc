@@ -1,0 +1,41 @@
+module gunbc.instruments.seed_build_artifacts_regen
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { fold_list }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.seed_build_artifact_emit {
+  seed_build_artifacts, seed_build_artifact_body,
+  SeedBuildArtifactProduced, SeedBuildArtifactRefused, SeedBuildArtifactNotSeedBuild
+}
+
+// WRITE THE SEED-BUILD ARTIFACTS AND READ EACH BACK, WITHOUT THE REGISTRY'S CLOSURE.
+// gunbc.generated_artifact_gate main_wet folds the whole registry and so loads every producer; this
+// entry folds gunbc.seed_build_artifact_emit seed_build_artifacts, whose producers need none of that.
+// The first artifact that refuses, fails to write, or reads back different bytes stops the fold with
+// its path; nothing after it is written, and the caller (the regeneration job) pushes nothing on a
+// non-zero exit.
+fn main_wet() -> ProcessExit {
+  fold_list(
+    xs: seed_build_artifacts(),
+    empty: ExitSuccess,
+    cons: fn(acc, a) {
+      match acc {
+        ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+        ExitSuccess =>
+          match seed_build_artifact_body(a: a) {
+            SeedBuildArtifactNotSeedBuild => exit_failure(reason: concat("seed-build artifact outside the roster: ", artifact_path(a: a)))
+            SeedBuildArtifactRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
+            SeedBuildArtifactProduced { content } => {
+              let w = Filesystem.Write(path: artifact_path(a: a), content: content)
+              if w.success {
+                let r = Filesystem.Read(path: artifact_path(a: a))
+                if r.success && r.content == content { ExitSuccess }
+                else { exit_failure(reason: concat("readback differs from the written bytes for ", artifact_path(a: a))) }
+              } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+            }
+          }
+      }
+    }
+  )
+}

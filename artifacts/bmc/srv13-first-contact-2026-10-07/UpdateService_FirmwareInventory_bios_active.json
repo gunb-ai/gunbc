@@ -1,0 +1,20 @@
+{
+  "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory/bios_active",
+  "@odata.type": "#SoftwareInventory.v1_1_0.SoftwareInventory",
+  "Description": "Host image",
+  "Id": "bios_active",
+  "Name": "Software Inventory",
+  "RelatedItem": [
+    {
+      "@odata.id": "/redfish/v1/Systems/system/Bios"
+    }
+  ],
+  "RelatedItem@odata.count": 1,
+  "Status": {
+    "Health": "OK",
+    "HealthRollup": "OK",
+    "State": "Enabled"
+  },
+  "Updateable": false,
+  "Version": "2.06"
+}

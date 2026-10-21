@@ -1,0 +1,108 @@
+module test.claim.supplier.oracle_oci_compartment_ensure_witness
+
+import std.types { Bool, Int, String }
+import std.upsert_decision { Noop, Apply, Refuse, Converged, Absent, Conflict, Inaccessible, UnknownRefused, Drifted, observation_verdict_label }
+import gunbc.oracle_oci.api { OciExchange, OciAnswered, OciExchangeRefused, oci_retry_token }
+import gunbc.oracle_oci.compartment_ensure {
+  classify_oci_compartment_list, classify_oci_compartment_ensure, oci_compartment_create_body,
+}
+
+// The subject is the compartment decision at the list boundary: what an answered ListCompartments
+// decides. Each answer is a supplied OciExchange, with bodies shaped as Oracle's SDK models a
+// Compartment. The real signed exchange runs only against the live API, on srv1, and its receipt
+// is the inhabitance evidence for this boundary.
+
+fn decide(status: Int, body: String) -> String {
+  let c = classify_oci_compartment_ensure(read: classify_oci_compartment_list(exchange: OciAnswered { status: status, body: body, next_page: "" }))
+  let d = match c.decision {
+    Noop => "noop"
+    Apply { plan } => "apply"
+    Refuse { reason } => "refuse"
+  }
+  join([observation_verdict_label(verdict: c.verdict), d], "/")
+}
+
+fn row(state: String) -> String {
+  join(["{\"id\":\"ocid1.compartment.oc1..x\",\"name\":\"gunbc-always-free\",\"lifecycleState\":\"", state, "\"}"], "")
+}
+
+test fn an_empty_list_creates() -> Bool {
+  decide(status: 200, body: "[]") == join([observation_verdict_label(verdict: Absent), "apply"], "/")
+}
+
+test fn an_active_compartment_is_converged() -> Bool {
+  decide(status: 200, body: join(["[", row(state: "ACTIVE"), "]"], "")) == join([observation_verdict_label(verdict: Converged), "noop"], "/")
+}
+
+test fn a_creating_compartment_refuses_until_readback_reaches_active() -> Bool {
+  decide(status: 200, body: join(["[", row(state: "CREATING"), "]"], "")) == join([observation_verdict_label(verdict: Drifted), "refuse"], "/")
+}
+
+// A deleted compartment does not hold the name, so a list holding only a deleted one creates.
+test fn a_deleted_namesake_does_not_block_creation() -> Bool {
+  decide(status: 200, body: join(["[", row(state: "DELETED"), "]"], "")) == join([observation_verdict_label(verdict: Absent), "apply"], "/")
+}
+
+test fn two_live_namesakes_conflict() -> Bool {
+  decide(status: 200, body: join(["[", row(state: "ACTIVE"), ",", row(state: "ACTIVE"), "]"], "")) == join([observation_verdict_label(verdict: Conflict), "refuse"], "/")
+}
+
+test fn a_rejected_key_is_inaccessible_not_absent() -> Bool {
+  decide(status: 401, body: "{\"code\":\"NotAuthenticated\"}") == join([observation_verdict_label(verdict: Inaccessible), "refuse"], "/")
+}
+
+// The failure arms refuse. None of them widens into a create.
+test fn an_unparseable_or_wrong_shaped_answer_refuses() -> Bool {
+  decide(status: 200, body: "not json") == join([observation_verdict_label(verdict: UnknownRefused), "refuse"], "/")
+    && decide(status: 200, body: "{\"items\":[]}") == join([observation_verdict_label(verdict: UnknownRefused), "refuse"], "/")
+    && decide(status: 500, body: "") == join([observation_verdict_label(verdict: UnknownRefused), "refuse"], "/")
+}
+
+// AN OBSERVATION THAT CANNOT BE UNDERSTOOD IS NOT AN ABSENCE. Each of these 200 answers is a
+// well-formed JSON array whose row is not an admitted compartment, and each refuses, where filtering
+// the bad row out would have read "absent" and created, or read the id-less ACTIVE row as converged.
+test fn a_malformed_row_refuses_rather_than_reading_as_absent_or_converged() -> Bool {
+  let refused = join([observation_verdict_label(verdict: UnknownRefused), "refuse"], "/")
+  decide(status: 200, body: "[{}]") == refused
+    && decide(status: 200, body: "[null]") == refused
+    && decide(status: 200, body: "[{\"name\":\"gunbc-always-free\",\"lifecycleState\":\"ACTIVE\"}]") == refused
+    && decide(status: 200, body: "[{\"id\":null,\"name\":\"gunbc-always-free\",\"lifecycleState\":\"ACTIVE\"}]") == refused
+    && decide(status: 200, body: "[{\"id\":7,\"name\":\"gunbc-always-free\",\"lifecycleState\":\"ACTIVE\"}]") == refused
+}
+
+// ABSENCE NEEDS A COMPLETE LIST. Oracle documents that an empty page may still have more results
+// behind it. An empty first page with a continuation refuses, so it cannot authorize a create that
+// would duplicate a compartment on the second page. The same body without a continuation creates.
+test fn an_empty_page_with_a_continuation_does_not_authorize_creation() -> Bool {
+  let continued = classify_oci_compartment_ensure(read: classify_oci_compartment_list(exchange: OciAnswered { status: 200, body: "[]", next_page: "page-2-token" }))
+  let finished = classify_oci_compartment_ensure(read: classify_oci_compartment_list(exchange: OciAnswered { status: 200, body: "[]", next_page: "" }))
+  let continued_refuses = match continued.decision { Refuse { reason } => true  Noop => false  Apply { plan } => false }
+  let finished_creates = match finished.decision { Apply { plan } => true  Noop => false  Refuse { reason } => false }
+  continued_refuses && finished_creates
+}
+
+test fn an_exchange_that_never_answered_refuses() -> Bool {
+  let c = classify_oci_compartment_ensure(read: classify_oci_compartment_list(exchange: OciExchangeRefused { cause: "THE REQUEST WAS NOT SIGNED" }))
+  match c.decision {
+    Refuse { reason } => true
+    Noop => false
+    Apply { plan } => false
+  }
+}
+
+// The emitter (extdeps.languages.json.emit serialize_json) writes ": " and ", ". Any JSON is valid for
+// OCI. What matters is that this exact string is both hashed and sent, which oci_signed_exchange
+// does by construction.
+test fn the_create_body_carries_the_three_required_fields() -> Bool {
+  oci_compartment_create_body() == "{\"compartmentId\": \"ocid1.tenancy.oc1..aaaaaaaaxarkm67vc5fiaqayhea33y2k6j3zdhnt5a4e434ddrrsxipmcf7a\", \"name\": \"gunbc-always-free\", \"description\": \"gunbc: Always Free compute, created and converged by gunbc.oracle_oci.compartment_ensure\"}"
+}
+
+// The retry token is a function of the exact request: the same create re-sent after a lost reply
+// carries the same token, so Oracle answers it once. A changed body or path is a different request.
+test fn the_retry_token_is_stable_per_request_and_distinct_across_requests() -> Bool {
+  let a = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"x\"}") as String
+  let again = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"x\"}") as String
+  let other_body = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"y\"}") as String
+  let other_path = oci_retry_token(path_and_query: "/20160918/vcns", body: "{\"name\": \"x\"}") as String
+  a == again && a != other_body && a != other_path && string_length(a) == 54
+}

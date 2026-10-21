@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.fn_body_record_construct_unjudged_on_native_route
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fn_body_record_construct_unjudged_on_native_route: RecurringFailureMode = RecurringFailureMode {
+  identity: "fn_body_record_construct_unjudged_on_native_route" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a record construct inside a fn body on the v2 native route is admitted without its field values being judged against the record's declared field types. HARM: a value of the wrong type at a declared field (`OarA { n: optional_int }` at a required Int field) is silently admitted, below the floor, and reaches realization. CAUSE: since fa44b981025 (gunbc#13641) the closure fold in v2.compiler.name_resolve handed the record-declaration index the empty map, so infer's record-construct row found no declared record and judged nothing.",
+    "DISTINGUISHING FACTS: not the inhabitance relation's defect (the data-constant route, which reads the declared record through its own path, still refused) and not the construct row's. Bisected by execution: infer_optional_at_required_witness `oar_an_optional_at_a_required_record_field_refuses_holds` PASSES at fa44b981025~1 and FAILS at fa44b981025. Nothing on the required path caught it: the required witnesses job no longer evaluates .dag witness claims (gunbc.rung_drop v1_required_lanes_withdrawn).",
+    "RUNG FOUND AT: below the floor, silently admitted. RUNG NOW: the defect is fixed in production by gunbc#13735, but the class is held BELOW mechanically preventable by gunbc.rung_drop v1_required_lanes_withdrawn: its regression controls run off the required path, so nothing on the required path would block a recurrence, and a recurrence would again admit silently. The fix: the closure fold passes normalized_tree_record_declarations and normalized_tree_resource_declarations, the same carriers every other consumer reads. Its claims are regression controls (the oar claims and rcf_* in infer_record_construct_field_inhabitance_witness) that run off the required path under v1_required_lanes_withdrawn. CEILING: structurally guaranteed; the record index is derived from the normalized tree, so a fold that cannot supply it has no constructor. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the native compiler judges the .dag witness claim population on the required path (the trigger of gunbc.rung_drop v1_required_lanes_withdrawn), SUFFICIENT FOR a regression of this class to red the required job.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.name_resolve", decl_name: "closure_declarations_demand", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer", field: WholeDeclaration },
+  ],
+}

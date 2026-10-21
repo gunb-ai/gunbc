@@ -1,0 +1,137 @@
+module gunbc.spark.host_privileged_apply
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
+import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_leg_began_payload_line, remote_leg_lines, remote_leg_reported_began }
+import gunbc.fleet.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_trusting_with_stdin,
+  BootstrapCredentialFileHeld,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
+import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_reach_endpoint }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy,
+  SshTarget, portable_remote_words,
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+
+// PRIVILEGED HOST APPLY OVER SSH, WITHOUT A SERVING REALIZATION. The Spark pair/native serving
+// apply used this leg shape; serving actuation is retired (hardware sold). Fabric rail apply still
+// needs one privileged script per host with the same began/exit discriminator.
+
+type SparkPairHostApplyPlan {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  script: String
+}
+
+type SparkPairHostApplyOutcome
+  = SparkPairHostApplied { host: HostIdentity, wire: String, stdout: String }
+  | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
+  | SparkPairHostUnreached { host: HostIdentity, cause: String }
+
+fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
+  match o {
+    SparkPairHostApplied { host: h, wire: w, stdout: out } =>
+      join(["  ", h as String, "  applied  ", w, " ", out], "")
+    SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
+    SparkPairHostUnreached { host: h, cause: c } => join(["  ", h as String, "  UNREACHED (no remote shell reported beginning; the script did not report running)  ", c], "")
+  }
+}
+
+fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
+  match o {
+    SparkPairHostApplied { host: _, wire: _, stdout: _ } => true
+    SparkPairHostApplyFailed { host: _, cause: _ } => false
+    SparkPairHostUnreached { host: _, cause: _ } => false
+  }
+}
+
+data spark_pair_leg_exit_prefix: String = "gunbc-privileged-leg-exit="
+
+fn spark_pair_leg_payload(script: String) -> String {
+  join([
+    remote_leg_began_payload_line(),
+    "(\n", script, "\n)\n",
+    "gunbc_leg_rc=$?\n",
+    "echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc\n",
+    "exit $gunbc_leg_rc\n",
+  ], "")
+}
+
+fn spark_pair_leg_reported_exit(stdout: String) -> Int? {
+  match first(filter(remote_leg_lines(stdout: stdout), l => starts_with(s: l, prefix: spark_pair_leg_exit_prefix))) {
+    Absent => none
+    Present { value: l } => parse_int(s: substring(s: l, start: length(spark_pair_leg_exit_prefix), end: length(l)))
+  }
+}
+
+fn spark_pair_leg_script_stdout(stdout: String) -> String {
+  trim(s: join(filter(remote_leg_lines(stdout: stdout), l => l != remote_leg_began_word && !starts_with(s: l, prefix: spark_pair_leg_exit_prefix)), "\n"))
+}
+
+fn spark_pair_leg_outcome_of(host: HostIdentity, wire: String, r: SshSessionExecResult) -> SparkPairHostApplyOutcome {
+  match spark_pair_leg_reported_exit(stdout: r.stdout) {
+    Present { value: code } =>
+      if code == 0 {
+        SparkPairHostApplied {
+          host: host,
+          wire: wire,
+          stdout: spark_pair_leg_script_stdout(stdout: r.stdout),
+        }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " script-exit=", to_string(code), " stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      }
+    Absent =>
+      if remote_leg_reported_began(stdout: r.stdout) {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the script BEGAN and its exit never arrived (ssh exit=", to_string(r.exit_code), "), so it ran to an unknown point and is not retried: stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      } else if r.exit_code == ssh_client_error_exit_status {
+        SparkPairHostUnreached { host: host, cause: join([wire, " ssh exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the privileged shell never began (exit=", to_string(r.exit_code), ", not ssh's own 255, so the session was established and something before the script refused) stderr=", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+type SparkPairPrivilegedSession
+  = PrivilegedSessionRan { result: SshSessionExecResult }
+  | PrivilegedSessionNotRun { cause: String }
+
+data spark_pair_privileged_invocation: List<String> = ["sudo", "-S", "sh", "-s"]
+
+fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, invocation: List<String>, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairPrivilegedSession {
+  match portable_remote_words(raws: invocation) {
+    Absent => PrivilegedSessionNotRun { cause: "the privileged invocation is not expressible as portable remote words" }
+    Present { value: words } =>
+      match spark_reach_endpoint(host: plan.host, path: path) {
+        Absent => PrivilegedSessionNotRun { cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
+        Present { value: endpoint } =>
+          match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: fleet_bootstrap_principal_login()) {
+          SshTargetRefused { endpoint: e, refusal: why } => PrivilegedSessionNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+          SshTargetResolved { target: target } =>
+          match exec_as_fleet_principal_trusting_with_stdin(
+            trust: trust,
+            target: target,
+            words: words,
+            stdin_payload: join([admin_credential as String, "\n", spark_pair_leg_payload(script: plan.script), "\n"], ""),
+            credential: BootstrapCredentialFileHeld { path: admin_credential_file },
+          ) {
+            FleetPrincipalLegRefused { cause: why } => PrivilegedSessionNotRun { cause: why as String }
+            FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
+          }
+          }
+      }
+  }
+}
+
+fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
+  match spark_pair_privileged_session(trust: trust, path: path, plan: plan, invocation: spark_pair_privileged_invocation, admin_credential: admin_credential, admin_credential_file: admin_credential_file) {
+    PrivilegedSessionNotRun { cause: c } => SparkPairHostApplyFailed { host: plan.host, cause: c }
+    PrivilegedSessionRan { result: r } => spark_pair_leg_outcome_of(host: plan.host, wire: spark_reach_path_wire(p: path), r: r)
+  }
+}

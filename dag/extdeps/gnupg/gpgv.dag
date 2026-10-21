@@ -1,0 +1,68 @@
+module extdeps.gnupg.gpgv
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// gpgv(1), GnuPG's signature-only verifier: the one apt runs on Ubuntu noble. It trusts exactly the
+// keyring it is handed (no trust database, no agent). `--status-fd 1` writes machine-readable status
+// lines ("[GNUPG:] KEYWORD args", doc/DETAILS in the GnuPG sources) to stdout; `--output OUT` writes the
+// signed text of a cleartext-signed file to OUT.
+//
+// What this module's readers rely on, observed with noble's gpgv 2.4.4 against the noble InRelease:
+//   - exit 0 on a good signature, 1 on a bad one ("BADSIG" status) -- and OUT IS WRITTEN EITHER WAY,
+//     and an existing OUT is overwritten rather than refused. OUT is therefore readable only after
+//     exit 0 AND a VALIDSIG from the required key; nothing here reads it otherwise.
+//   - a good signature prints "VALIDSIG <signing-key fpr> <date> <timestamp> <expiry> <version>
+//     <reserved> <pubkey algo> <hash algo> <sig class> <primary-key fpr>": the PRIMARY key's
+//     fingerprint is the last field, so a pin on the primary key holds when the archive signs with a
+//     subkey.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnupg.org/documentation/manuals/gnupg/gpgv.html"
+  }
+}
+
+data gpgv_status_details: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gpg/gnupg/blob/gnupg-2.4.4/doc/DETAILS"
+  }
+}
+
+// PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim records.
+fn gpgv_program() -> ProgramIdentity = uncataloged_program(invocation: "gpgv")
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gnupg.gpgv",
+      decl_name: "gpgv_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [gpgv_status_details]
+}
+
+fn gpgv_verify_cleartext_command(keyring: String, signed_file: String, output: String) -> ArgvCommand {
+  argv_command(program: gpgv_program(), arguments: ["--status-fd", "1", "--keyring", keyring, "--output", output, signed_file])
+}
+
+// The primary-key fingerprints of every VALIDSIG line in a status stream.
+fn gpgv_valid_primary_fingerprints(status: String) -> List<String> {
+  flat_map(status.split(delimiter: "\n"), line => {
+    let words = filter(trim(s: line).split(delimiter: " "), w => w != "")
+    if count(words) == 12 && match words.first() { Present { value: w } => w == "[GNUPG:]"  Absent => false }
+      && match skip(words, 1).first() { Present { value: w } => w == "VALIDSIG"  Absent => false } {
+      match skip(words, 11).first() { Present { value: f } => [f]  Absent => [] }
+    } else { [] }
+  })
+}

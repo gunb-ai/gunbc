@@ -1,0 +1,3 @@
+module test.fixture.decl_facts_reflection_duplicate_qn.primary.shadow_module
+
+data shadowed_specimen: Int = 2

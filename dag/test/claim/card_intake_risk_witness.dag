@@ -1,0 +1,122 @@
+module test.claim.card_intake_risk_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_zero_results_classifies_no_match() -> Bool {
+  match classify_catalog_match(total_items: 0, first_product_id: 0) {
+    NoMatch => true
+    _ => false
+  }
+}
+
+test fn witness_single_result_classifies_exact_match() -> Bool {
+  match classify_catalog_match(total_items: 1, first_product_id: 12345) {
+    ExactMatch { product_id: 12345 } => true
+    _ => false
+  }
+}
+
+test fn witness_many_results_classify_ambiguous() -> Bool {
+  match classify_catalog_match(total_items: 3, first_product_id: 12345) {
+    AmbiguousMatch { candidate_count: 3 } => true
+    _ => false
+  }
+}
+
+test fn witness_cheap_exact_match_is_ready_to_list() -> Bool {
+  match assess_intake(
+    card_match: ExactMatch { product_id: 12345 },
+    market_price: Present { value: 12.5 },
+    high_value_threshold: 50.0
+  ) {
+    ReadyToList => true
+    _ => false
+  }
+}
+
+test fn witness_high_value_card_is_flagged() -> Bool {
+  match assess_intake(
+    card_match: ExactMatch { product_id: 12345 },
+    market_price: Present { value: 120.0 },
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == HighValue)
+    _ => false
+  }
+}
+
+test fn witness_threshold_price_is_flagged() -> Bool {
+  match assess_intake(
+    card_match: ExactMatch { product_id: 12345 },
+    market_price: Present { value: 50.0 },
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } => any(rs, r => r == HighValue)
+    _ => false
+  }
+}
+
+test fn witness_unpriced_card_is_flagged() -> Bool {
+  match assess_intake(
+    card_match: ExactMatch { product_id: 12345 },
+    market_price: none,
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == UnpricedCard)
+    _ => false
+  }
+}
+
+test fn witness_unmatched_card_is_flagged() -> Bool {
+  match assess_intake(
+    card_match: NoMatch,
+    market_price: Present { value: 3.0 },
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == UnmatchedCard)
+    _ => false
+  }
+}
+
+test fn witness_ambiguous_high_value_collects_both_reasons() -> Bool {
+  match assess_intake(
+    card_match: AmbiguousMatch { candidate_count: 4 },
+    market_price: Present { value: 200.0 },
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } =>
+      count(rs) == 2 && any(rs, r => r == AmbiguousCatalogMatch) && any(rs, r => r == HighValue)
+    _ => false
+  }
+}
+
+test fn witness_ready_to_list_disposition() -> Bool {
+  let d = ReadyToList
+  match d {
+    ReadyToList => true
+    NeedsReview { reasons: _ } => false
+  }
+}
+
+test fn witness_needs_review_disposition() -> Bool {
+  let d = NeedsReview { reasons: [] |> list_push(HighValue) }
+  match d {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == HighValue)
+    ReadyToList => false
+  }
+}
+
+test fn witness_near_mint_display_name_roundtrip() -> Bool {
+  match parse_card_condition(raw: card_condition_display_name(c: NearMint)) {
+    Present { value: NearMint } => true
+    _ => false
+  }
+}
+
+test fn witness_uppercase_condition_does_not_decode() -> Bool {
+  match parse_card_condition(raw: "NEAR MINT") {
+    none => true
+    _ => false
+  }
+}

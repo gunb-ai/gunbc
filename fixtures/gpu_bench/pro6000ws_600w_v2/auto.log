@@ -1,0 +1,28 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+CAPACITY_OK 1920000
+2026-10-12 01:42:42.165  INFO  pinning host context | 32.0 GiB
+2026-10-12 01:42:47.861  INFO  capacity | KV 1,920,000 tokens, nvfp4, explicit | pages 30,000/32,768 | runtime 37.3 GiB | free 37.9 GiB
+2026-10-12 01:42:47.861  INFO  context | history on | 8 active + 2 extra device states | host 32.0 GiB
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB, 58398 MiB, 14001 MHz
+== ninfer_nvfp4_pro6000ws_600w short
+short  N= 1 rounds= 20 attempted=20 failed=0 agg med    153 p90    159 | per-req med   153 | TTFT med     nan ms
+short  N= 4 rounds= 20 attempted=80 failed=0 agg med    504 p90    513 | per-req med   129 | TTFT med     nan ms
+short  N= 8 rounds= 20 attempted=160 failed=0 agg med    835 p90    852 | per-req med   110 | TTFT med     nan ms
+== ninfer_nvfp4_pro6000ws_600w warm ~174k
+prime  N= 8 rounds=  1 attempted=8 failed=0 agg med      0 p90      0 | per-req med     0 | TTFT med  389430 ms
+warm   N= 1 rounds= 20 attempted=20 failed=0 agg med    109 p90    134 | per-req med   141 | TTFT med     855 ms
+warm   N= 4 rounds= 20 attempted=80 failed=0 agg med    203 p90    276 | per-req med    82 | TTFT med    2056 ms
+warm   N= 8 rounds= 20 attempted=160 failed=0 agg med    261 p90    333 | per-req med    53 | TTFT med    3341 ms
+RUN_EXIT=0
+# HELP ninfer_replayed_tokens_total History tokens recomputed during recovery.
+# TYPE ninfer_replayed_tokens_total counter
+ninfer_replayed_tokens_total 0
+# HELP ninfer_snapshot_restores_total Restores from complete paused snapshots.
+# TYPE ninfer_snapshot_restores_total counter
+ninfer_snapshot_restores_total 0
+# HELP ninfer_replay_restores_total Recovery operations that rebuild history.
+# TYPE ninfer_replay_restores_total counter
+ninfer_replay_restores_total 0

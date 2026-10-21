@@ -1,0 +1,13 @@
+module v2.test.claim.manual.refinement_nonempty_list
+
+type NonEmptyList<T> = Refined<List<T>>
+fn witness_non_empty_list<T>(xs: List<T>, at: Locus) -> Outcome<NonEmptyList<T>> {
+  refine(
+    base: xs,
+    by: Validation {
+      reason: ^refinement_empty_list_reason,
+      admits: fn(items) { non_empty(xs: items) }
+    },
+    at: at
+  )
+}

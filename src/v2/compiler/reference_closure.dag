@@ -1,0 +1,119 @@
+module v2.compiler.reference_closure
+
+import std.algebra { FreeMonoid, fold_list }
+import v2.compiler.source_authority { reference_prefixes, text_set_has }
+import std.types { Map }
+import v2.std.node { Node, arrow_signature_order_edge }
+import std.optional { Absent, Present }
+import v2.std.qualified_name {
+  QualifiedName,
+  declaration_reference_path_optional,
+  parameter_reference_path_optional,
+  qualified_name_to_dotted_string
+}
+
+// THE OWNERSHIP OF A MEMBER'S RESOLVED REFERENCES WITHIN THE CLOSURE IT WAS EMITTED IN. The closure
+// is the set of modules the acquirer read (v2.compiler.module_acquisition), and membership is decided
+// there, from what each member's own text requested. This module does not derive a closure; it
+// CHECKS one: every declaring path the resolver minted for the member (v2.compiler.resolve
+// resolved_reference_node mints every corpus declaration reference as its declaring QualifiedName
+// spine, and v2.std.qualified_name declaration_reference_path_optional reads it back), and every
+// import row, must lie under a module the closure holds. A path with no owning member is the located
+// refusal `ReferenceOwnerless`: the acquirer's reading of the member and the resolver's answer
+// disagree about what the member needs, and that disagreement is the defect -- never a module to
+// read late, and never a reason to widen the closure.
+//
+// A reference is OWNED when any dotted prefix of its declaring path names a closure member. Which
+// member is the longest such prefix is what a consumer that needs the owner asks
+// (v2.std.qualified_name qualified_name_owning_module); ownership asks only whether one exists, so it
+// is one set lookup per prefix and not a scan of the closure.
+//
+// A SPINE IS READ WHOLE AND NOT DESCENDED INTO. v2.std.qualified_name qualified_name_spine_node
+// builds a path as a cons list, so every TAIL of a spine is itself spine-shaped: descending would
+// read `v2.std.node.Node` as `std.node.Node` too and attribute an edge to a module the reference
+// never named. A PARAMETER REFERENCE PULLS NO MODULE: it names a binder of the declaration it sits
+// in, so its path's owner is that declaration's own module, never a neighbour; it is answered and
+// its spine is not descended.
+
+// AN ARROW'S PARAMETER-ORDER LIST IS NOT A REFERENCE SITE, because the resolver never resolves it: it
+// is the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), carried unwalked by
+// resolve and skipped by infer, asked through the one predicate both use (v2.std.node
+// arrow_signature_order_edge). Its encoding is a list introduction whose head lowering marks as the
+// declaration reference to std.algebra.FreeMonoid (v2-namespace-cutover N2), so walking it read that
+// head as a path the resolver minted and refused every module that declares a fn or data without
+// acquiring std.algebra (reference_closure_target_ownerless on a module with one `data` row). A list
+// literal in a BODY is different: resolve answers its head, so it is a reference and is checked here.
+
+type ReferenceOwnership
+  = ReferencesOwned
+  | ReferenceOwnerless { target: QualifiedName, at: Node }
+
+fn reference_closure_path_owned(roster: Map<String, Bool>, target: QualifiedName) -> Bool {
+  fold_list(
+    xs: reference_prefixes(reference: qualified_name_to_dotted_string(qn: target)),
+    empty: false,
+    cons: fn(owned, prefix) {
+      if owned { true } else { text_set_has(set: roster, name: prefix) }
+    }
+  )
+}
+
+fn reference_closure_check_target(
+  roster: Map<String, Bool>,
+  target: QualifiedName,
+  at: Node
+) -> ReferenceOwnership {
+  if reference_closure_path_owned(roster: roster, target: target) {
+    ReferencesOwned
+  } else {
+    ReferenceOwnerless { target: target, at: at }
+  }
+}
+
+// The first path under no member, in tree order; once one is found the walk descends no further.
+fn reference_closure_walk_ownership(
+  n: Node,
+  roster: Map<String, Bool>,
+  at: Node,
+  acc: ReferenceOwnership
+) -> ReferenceOwnership {
+  match acc {
+    ReferenceOwnerless { target: _, at: _ } => acc
+    ReferencesOwned =>
+      match declaration_reference_path_optional(node: n) {
+        Present { value: path } => reference_closure_check_target(roster: roster, target: path, at: at)
+        Absent =>
+          match parameter_reference_path_optional(node: n) {
+            Present { value: _ } => acc
+            Absent =>
+              fold(n.children, init: acc, f: fn(a, e) {
+                if arrow_signature_order_edge(parent: n, edge: e) {
+                  a
+                } else {
+                  reference_closure_walk_ownership(n: e.target, roster: roster, at: at, acc: a)
+                }
+              })
+          }
+      }
+  }
+}
+
+// `roster` is the dotted name of every member (v2.compiler.source_authority text_set_of). IMPORT ROWS
+// ARE READ BESIDE THE RESOLVED TREE because the graft dissolves import decls, so an import no body
+// mentions leaves no reference in the resolved tree.
+fn reference_closure_ownership(
+  resolved: Node,
+  import_targets: FreeMonoid<QualifiedName>,
+  roster: Map<String, Bool>
+) -> ReferenceOwnership {
+  fold_list(
+    xs: import_targets,
+    empty: reference_closure_walk_ownership(n: resolved, roster: roster, at: resolved, acc: ReferencesOwned),
+    cons: fn(acc, target) {
+      match acc {
+        ReferenceOwnerless { target: _, at: _ } => acc
+        ReferencesOwned => reference_closure_check_target(roster: roster, target: target, at: resolved)
+      }
+    }
+  )
+}

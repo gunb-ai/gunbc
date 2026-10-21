@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.coercion_proven_by_normalized_round_trip
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data coercion_proven_by_normalized_round_trip: RecurringFailureMode = RecurringFailureMode {
+  identity: "coercion_proven_by_normalized_round_trip" as NonEmptyStr,
+
+  receipts: [
+    "coercion proven by normalized round-trip, not a golden string",
+  ],
+
+  evidence: [],
+}

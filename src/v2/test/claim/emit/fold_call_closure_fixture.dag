@@ -1,0 +1,199 @@
+module v2.test.claim.emit.fold_call_closure_fixture
+
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node { Symbol, ArrowBodyEdge, core_edge, Authored }
+import v2.std.node_query { binder_edge }
+
+fn fold_fixture_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn fold_fixture_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn fold_fixture_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn fold_fixture_param_domain_params() -> List<Edge> {
+  [
+    binder_edge(
+      name: ^dag_binding_mvp1_fold_xs,
+      type_node: fold_fixture_atom(id: ^dag_binding_type_int)
+    ),
+    binder_edge(
+      name: ^dag_binding_mvp1_fold_z,
+      type_node: fold_fixture_atom(id: ^dag_binding_type_int)
+    )
+  ]
+}
+
+fn fold_fixture_empty_domain_params() -> List<Edge> {
+  []
+}
+
+fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+  let signature = declared_signature(
+    params: [
+      binder_edge(name: ^dag_binding_mvp1_fold_acc, type_node: fold_fixture_atom(id: ^dag_binding_type_int)),
+      binder_edge(name: ^dag_binding_mvp1_fold_h, type_node: fold_fixture_atom(id: ^dag_binding_type_int))
+    ],
+    source: fold_fixture_atom(id: ^dag_binding_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [
+            fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_plus)),
+            fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
+            fold_fixture_positional(target: fold_fixture_atom(id: right_operand))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn fold_fixture_closure_arrow_sub(left_operand: Symbol, right_operand: Symbol) -> Node {
+  let signature = declared_signature(
+    params: [
+      binder_edge(name: ^dag_binding_mvp1_fold_acc, type_node: fold_fixture_atom(id: ^dag_binding_type_int)),
+      binder_edge(name: ^dag_binding_mvp1_fold_h, type_node: fold_fixture_atom(id: ^dag_binding_type_int))
+    ],
+    source: fold_fixture_atom(id: ^dag_binding_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [
+            fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_minus)),
+            fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
+            fold_fixture_positional(target: fold_fixture_atom(id: right_operand))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn fold_fixture_call_body(xs: Node, z: Node, closure: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_mvp1_fold_callee)),
+      fold_fixture_positional(target: xs),
+      fold_fixture_positional(target: z),
+      fold_fixture_positional(target: closure)
+    ]
+  )
+}
+
+fn fold_fixture_arrow_with_body(params: List<Edge>, body: Node) -> Node {
+  let signature = declared_signature(params: params, source: body)
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
+      fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge, target: body)
+    ]
+  )
+}
+
+fn fold_fixture_param_arrow_with_closure(left_operand: Symbol, right_operand: Symbol) -> Node {
+  fold_fixture_arrow_with_body(
+    params: fold_fixture_param_domain_params(),
+    body: fold_fixture_call_body(
+      xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_xs),
+      z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_z),
+      closure: fold_fixture_closure_arrow(left_operand: left_operand, right_operand: right_operand)
+    )
+  )
+}
+
+fn fold_fixture_host_arrow_with_closure(left_operand: Symbol, right_operand: Symbol) -> Node {
+  fold_fixture_arrow_with_body(
+    params: fold_fixture_empty_domain_params(),
+    body: fold_fixture_call_body(
+      xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_three),
+      z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_four),
+      closure: fold_fixture_closure_arrow(left_operand: left_operand, right_operand: right_operand)
+    )
+  )
+}
+
+fn fold_fixture_host_arrow_with_closure_sub() -> Node {
+  fold_fixture_arrow_with_body(
+    params: fold_fixture_empty_domain_params(),
+    body: fold_fixture_call_body(
+      xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_three),
+      z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_four),
+      closure: fold_fixture_closure_arrow_sub(
+        left_operand: ^dag_binding_mvp1_fold_acc,
+        right_operand: ^dag_binding_mvp1_fold_h
+      )
+    )
+  )
+}
+
+data fold_fixture_param_canonical_arrow: Node = fold_fixture_param_arrow_with_closure(
+  left_operand: ^dag_binding_mvp1_fold_acc,
+  right_operand: ^dag_binding_mvp1_fold_h
+)
+
+data fold_fixture_param_swapped_arrow: Node = fold_fixture_param_arrow_with_closure(
+  left_operand: ^dag_binding_mvp1_fold_h,
+  right_operand: ^dag_binding_mvp1_fold_acc
+)
+
+data fold_fixture_param_call_body: Node = fold_fixture_call_body(
+  xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_xs),
+  z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_z),
+  closure: fold_fixture_closure_arrow(
+    left_operand: ^dag_binding_mvp1_fold_acc,
+    right_operand: ^dag_binding_mvp1_fold_h
+  )
+)
+
+data fold_fixture_param_wrong_arrow: Node = fold_fixture_arrow_with_body(
+  params: fold_fixture_param_domain_params(),
+  body: fold_fixture_call_body(
+    xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_xs),
+    z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_z),
+    closure: fold_fixture_closure_arrow_sub(
+      left_operand: ^dag_binding_mvp1_fold_acc,
+      right_operand: ^dag_binding_mvp1_fold_h
+    )
+  )
+)
+
+data fold_fixture_host_canonical_arrow: Node = fold_fixture_host_arrow_with_closure(
+  left_operand: ^dag_binding_mvp1_fold_acc,
+  right_operand: ^dag_binding_mvp1_fold_h
+)
+
+data fold_fixture_host_wrong_arrow: Node = fold_fixture_host_arrow_with_closure_sub()
+
+data fold_fixture_host_call_body: Node = fold_fixture_call_body(
+  xs: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_three),
+  z: fold_fixture_atom(id: ^dag_binding_mvp1_fold_lit_four),
+  closure: fold_fixture_closure_arrow(
+    left_operand: ^dag_binding_mvp1_fold_acc,
+    right_operand: ^dag_binding_mvp1_fold_h
+  )
+)

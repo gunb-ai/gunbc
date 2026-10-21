@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_bounded_fold_over_input_never_reaches_its_end_of_input_step
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_bounded_fold_over_input_never_reaches_its_end_of_input_step: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_bounded_fold_over_input_never_reaches_its_end_of_input_step" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a text the generic lexer ACCEPTS that its own rule set says is unterminated. v2.std.text fold_source ran an algebra for one step per scalar of the source, and v2.compiler.tokenize lex_walk_step decided the end-of-input verdict (a mode still pushed is `tokenize_lex_e4_mode_unterminated`, lex_walk_finish) in its step on an EMPTY cursor, which is a step AFTER the last scalar. A step that takes a lexeme of w scalars spends w scalars of the fuel on one step, so the step after the last scalar existed only when some lexeme was wider than one scalar. On a source whose every lexeme is ONE scalar and whose last lexeme opens a mode, the iterations ran out on the last scalar, the verdict never ran, and the walk reported the lex complete. The consumer cannot see this from the answer: an Accepted token stream and a refused one differ only in a step that did not execute.",
+
+    "RECOGNITION RULE: a fold bounded by the size of its input, whose algebra decides something at the END of the input (an open context, a pending field, an unflushed buffer). Ask what the bound is denominated in and what a step spends: if a step can take more than one unit, the end-of-input step is reachable only on inputs with a wide step, and the verdict the algebra declares is unreachable on the complement. The tell in the code is a second, derived answer that papers over it: lex_walk_reached_end read `or the cursor is empty` beside `the walk is done`, which made the walk report `complete` for a walk that had not finished, so nothing downstream disagreed.",
+
+    "DISTINGUISHING FACTS. The dag language is NOT affected and no shipped language is: every mode its rule set pushes opens with a template head of three or more scalars, so a text that opens a mode always has iterations to spare, and the native binary refuses a file ending inside a string literal (e1_unrecognized_char at the opening quote) and inside a template hole (e4_mode_unterminated at the token that opened it); the language has no block comment, and a trailing line annotation without a final newline is a legitimate end. So the defect lives in the GENERIC lexer and is reachable by any language row whose mode-pushing token is one scalar, such as a one-scalar block-comment opener or interpolation sigil. It is not the lexer's rule matching (the same open mode after one wider lexeme refused throughout) and not the cursor (v2.compiler.tokenize LexHead already carries End and Beyond as separate heads).",
+
+    "REPAIRED AT THE EARLIEST UNJUSTIFIED BOUNDARY, which was the fold's contract and not the lexer's step (DESIGN section 6b). The lexer's step on an empty cursor was justified: it is where the verdict belongs. What was unjustified was the premise fold_source gave it, that every algebra's last step is reached. fold_source now takes the end of the source as one step of its own, after the scalars, subject to is_done like every other, so an algebra cannot omit it and a consumer need not arrange for it. Nothing in lex_walk_step changed; lex_walk_reached_end lost the disjunct that masked the skip. The discriminators are claims, not counts: v2.test.claim.tokenize.lex_eof_mode_check holds four single-scalar texts red before the repair and green after (the push alone, a push then an ident, a push then a space, two pushes), with the same open mode after a wider lexeme and the closed contexts as controls and the dag language cases as the native-lane reading, and v2.test.claim.manual.fold_source holds the contract itself: the end step is taken on a non-empty and on an empty source, and it obeys is_done.",
+
+    "HARM: DESIGN section 5, a silent accept where a wrong thing passes: the verdict exists, is modelled and is consumed, and does not execute on a shape its author did not think of. The cost lands later and elsewhere, on whoever writes the first language whose open token is one scalar and finds that the lexer lexes its unterminated file.",
+
+    "RUNG FOUND AT: below the ladder for the generic lexer on the affected shape (silent wrongness), mitigatable for the shipped languages (the dag rule set never produces the shape). ATTAINABLE CEILING for fold_source consumers: 4, structurally impossible, because the end step is no longer the algebra's to omit. The class in general, a hand-written bounded loop whose last step is a decision, has no wall and stays a ratchet: it is found by the question in the recognition rule. NEXT-RUNG TRIGGER: none for the fold_source consumers; a second bounded fold over input found without it is a second specimen and re-opens the question of whether the end of an input belongs in a shared fold constructor."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.text", decl_name: "fold_source", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lex_walk_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lex_walk_finish", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lex_walk_reached_end", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.tokenize.lex_eof_mode_check", decl_name: "a_text_that_is_only_a_single_scalar_push_refuses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.manual.fold_source", decl_name: "witness_fold_source_takes_one_step_past_the_last_scalar", field: WholeDeclaration },
+  ],
+}

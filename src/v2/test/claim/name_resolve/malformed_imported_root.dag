@@ -1,0 +1,125 @@
+module v2.test.claim.name_resolve.malformed_imported_root
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.name_resolve {
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  Import,
+  ImportVisible,
+  ValidatedModuleRoots,
+  admit_import_entry,
+  validate_module_roots
+}
+import v2.std.declaration_marker { test_code_index_empty, test_marker_channel_empty }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge,
+  dag_surface_edge,
+}
+import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert }
+
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, fold_list_node }
+import v2.std.qualified_name { QualifiedName }
+
+fn malformed_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: ^malformed_seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+    }
+  )
+}
+
+fn malformed_root_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
+        target: malformed_qn_node()
+      ),
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+}
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn malformed_entry_name() -> QualifiedName {
+  Cons { head: ^malformed_seg, tail: Empty }
+}
+
+fn roots_with_malformed_entry() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: admit_normalized_tree(import_bindings: no_import_bindings(), imported_modules: no_imported_modules(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: malformed_root_node(), diagnostics: None), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
+}
+
+fn import_edge_for_malformed() -> Import {
+  Import { target: malformed_entry_name(), visibility: ImportVisible }
+}
+
+fn initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+fn admit_result_is_rejected(state: AdmissionState) -> Bool {
+  match state {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: _ } => true
+  }
+}
+
+// A malformed root is refused where production meets it first: validate_module_roots refuses the whole
+// context before any import is admitted, with the same reason the admission guard gives.
+test fn witness_malformed_root_is_rejected_holds() -> Bool {
+  match roots_with_malformed_entry() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match validate_module_roots(roots: roots) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_malformed_imported_root
+      }
+  }
+}
+
+// The admission guard behind it: handed a validated set that maps the name to a malformed root
+// (supplied at this interface; validation never produces one), the import still refuses.
+test fn witness_admission_guard_refuses_a_malformed_import_root_holds() -> Bool {
+  match roots_with_malformed_entry() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match roots {
+        Empty => false
+        Cons { head: root, tail: _ } =>
+          admit_result_is_rejected(
+            state: admit_import_entry(
+              roots: ValidatedModuleRoots {
+                roots: roots,
+                by_name: map_insert(m: empty_map(), key: malformed_entry_name(), value: root),
+                test_code: test_code_index_empty()
+              },
+              import_edge: import_edge_for_malformed(),
+              state: initial_admission_state(),
+              subject_qn: malformed_entry_name(),
+              index: source_root_index_empty(),
+              active_roots: Empty
+            )
+          )
+      }
+  }
+}

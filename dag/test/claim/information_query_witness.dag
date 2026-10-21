@@ -1,0 +1,209 @@
+module test.claim.information_query_witness
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.decl_ref { decl_ref }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.citation {
+  citation_exact_pin,
+  citation_target,
+  CitationTarget,
+  CitationSelector,
+  CitationRetrievalRequest,
+  CitationRetrievalObservation,
+  RepresentationRetrieved,
+  CitationUnreachable,
+  ConnectionRefused,
+  ObservedCitedRepresentation,
+  cited_representation_identity,
+  RawResponseBody,
+  verify_citation_representation,
+}
+import extdeps.http.server { text_plain_utf8 }
+import std.claim_evidence {
+  RecordedFactId,
+  EvidenceProvenance,
+  ProvEntityId,
+  ProvActivityId,
+  ProvAgentId,
+  EvidenceSupports,
+}
+import gunbc.information_query {
+  InformationTemporalScope,
+  TimeInvariant,
+  SearchLead,
+  search_lead_retrieval_request,
+  InformationEvidenceProbeIndependence,
+  SoleRetrieval,
+  information_evidence_from_verification,
+  information_evidence_is_admissible,
+}
+
+// THE SPECIMEN IS ONE RETRIEVAL JUDGED TWICE. Both arms below share every input except the digest
+// actually observed, so the only thing the pair can be measuring is reconciliation. That is the
+// discriminating control DESIGN section 5 requires: the positive arm is admissible, and the arm
+// that differs ONLY in observed bytes must not be. If a future edit lets a mismatch through as
+// evidence-with-a-caveat, w_mismatched_digest_is_not_admissible goes red and says so.
+
+data fixture_expected_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data fixture_other_hex: String = "2222222222222222222222222222222222222222222222222222222222222222"
+
+fn fixture_locator() -> Uri {
+  Uri { scheme: Https, locator: "www.rfc-editor.org/rfc/rfc8118.txt" }
+}
+
+fn fixture_subject() -> ExternalSubjectRef {
+  ExternalSubjectRef {
+    declaration: decl_ref(
+      module_path: "extdeps.standards.rfc_8118",
+      decl_name: "pdf_open_fragment_selector",
+    ),
+  }
+}
+
+fn fixture_digest(hex: String) -> Sha256Digest? {
+  sha256_hex_digest(hex: hex)
+}
+
+fn fixture_authority() -> ExternalAuthority {
+  ExternalAuthority { uri: fixture_locator() }
+}
+
+fn fixture_provenance() -> EvidenceProvenance {
+  EvidenceProvenance {
+    entity: "information-query-witness-entity" as ProvEntityId,
+    activity: "information-query-witness-retrieval" as ProvActivityId,
+    agent: "information-query-witness-agent" as ProvAgentId,
+  }
+}
+
+fn fixture_target(expected: Sha256Digest) -> CitationTarget<CitationSelector> {
+  citation_target(
+    expected_pin: citation_exact_pin(
+      source: fixture_subject(),
+      access_route: fixture_locator(),
+      byte_domain: RawResponseBody,
+      version: "rfc8118" as VersionIdentity,
+      expected_identity: expected,
+    ),
+    selector: none,
+  )
+}
+
+fn fixture_observation(observed: Sha256Digest) -> CitationRetrievalObservation {
+  RepresentationRetrieved {
+    request: CitationRetrievalRequest { locator: fixture_locator() },
+    observed_at: 1788825000000,
+    http_status: 200,
+    observed: ObservedCitedRepresentation {
+      identity: cited_representation_identity(
+        source: fixture_subject(),
+        access_route: fixture_locator(),
+        byte_domain: RawResponseBody,
+      ),
+      media_type: text_plain_utf8,
+      observed_identity: observed,
+    },
+  }
+}
+
+fn fixture_admissible_for(expected_hex: String, observed_hex: String) -> Bool {
+  match fixture_digest(hex: expected_hex) {
+    Absent => false
+    Present { value: expected } =>
+      match fixture_digest(hex: observed_hex) {
+        Absent => false
+        Present { value: observed } =>
+          information_evidence_is_admissible(
+            evidence: information_evidence_from_verification(
+              fact_id: "information-query-witness-fact" as RecordedFactId,
+              outcome: verify_citation_representation(
+                target: fixture_target(expected: expected),
+                observation: fixture_observation(observed: observed),
+              ),
+              scope: TimeInvariant,
+              direction: EvidenceSupports,
+              authority: fixture_authority(),
+              provenance: fixture_provenance(),
+              freshness_basis: "the cited specification text is time-invariant at this version" as NonEmptyStr,
+              fidelity_losses: [],
+              independence: SoleRetrieval,
+            ),
+          )
+      }
+  }
+}
+
+// POSITIVE CONTROL. Observed bytes reconcile with the pin, so the retrieval is admissible evidence.
+// Without this the mismatch witness below would pass on a module that admits nothing at all.
+test fn w_verified_representation_is_admissible() -> Bool {
+  fixture_admissible_for(
+    expected_hex: fixture_expected_hex,
+    observed_hex: fixture_expected_hex,
+  )
+}
+
+// THE DISCRIMINATING RED. Identical to the control in every input but the observed digest. A
+// mismatch must produce a typed insufficiency, never a weaker link: admitting it would be the
+// absorbing fallback of DESIGN section 5, and the exact mechanism by which unverified material
+// acquires the standing of verified material.
+test fn w_mismatched_digest_is_not_admissible() -> Bool {
+  !fixture_admissible_for(
+    expected_hex: fixture_expected_hex,
+    observed_hex: fixture_other_hex,
+  )
+}
+
+// A RETRIEVAL THAT NEVER HAPPENED IS NOT INSUFFICIENT EVIDENCE, IT IS NO EVIDENCE. The unreachable
+// arm carries no representation, so there is no fact to record; the module must reach
+// InformationEvidenceUnavailable rather than fabricate a receipt for bytes nobody observed.
+//
+// THIS MATCHES THE ARM, NOT ADMISSIBILITY. Asking only whether the result is inadmissible cannot
+// see the difference this witness exists to protect: EvidenceInsufficient is inadmissible too, so a
+// wrong join that invented a receipt and routed the refusal through information_evidence_insufficient
+// would have stayed green. Refusing the Inferred arm outright is what makes fabrication go red.
+test fn w_unreachable_retrieval_is_not_admissible() -> Bool {
+  match fixture_digest(hex: fixture_expected_hex) {
+    Absent => false
+    Present { value: expected } =>
+      match information_evidence_from_verification(
+        fact_id: "information-query-witness-fact" as RecordedFactId,
+        outcome: verify_citation_representation(
+          target: fixture_target(expected: expected),
+          observation: CitationUnreachable {
+            request: CitationRetrievalRequest { locator: fixture_locator() },
+            observed_at: 1788825000000,
+            cause: ConnectionRefused,
+          },
+        ),
+        scope: TimeInvariant,
+        direction: EvidenceSupports,
+        authority: fixture_authority(),
+        provenance: fixture_provenance(),
+        freshness_basis: "unused on this path" as NonEmptyStr,
+        fidelity_losses: [],
+        independence: SoleRetrieval,
+      ) {
+        InformationEvidenceUnavailable { cause: _ } => true
+        InformationEvidenceUnobservable { detail: _ } => false
+        InformationEvidenceInferred { inference: _ } => false
+      }
+  }
+}
+
+// A LEAD'S ONLY EXIT IS NAVIGATION. This asserts what the type system already enforces -- there is no
+// lead-to-evidence function to call -- so it is a reachability statement about the surface, not the
+// wall itself. The wall is that nothing in gunbc.information_query maps a SearchLead to evidence.
+test fn w_search_lead_only_becomes_a_retrieval_request() -> Bool {
+  let lead = SearchLead {
+    provider: "witness-provider" as NonEmptyStr,
+    observed_at: 1788825000000,
+    rank: 1,
+    locator: fixture_locator(),
+    title: "RFC 8118",
+    snippet: "a snippet is a query-dependent projection and is not the source representation",
+  }
+  search_lead_retrieval_request(lead: lead).locator == fixture_locator()
+}

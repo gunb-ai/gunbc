@@ -1,0 +1,145 @@
+module extdeps.github.merge_group_event
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.git.object_store { git_sha1_object_id, git_object_id_wire_hex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import std.logic { Bool }
+import std.types { CommitSha, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#merge_group"
+  }
+}
+
+// The merge_group (checks_requested) webhook payload's `merge_group.base_sha` member: the SHA of
+// the merge group's PARENT commit -- the base branch tip when the group is first in the queue, and
+// otherwise the head of the group queued ahead of it. extdeps owns the wire shape;
+// gunbc.diff_baseline owns the policy that maps it to an affected-set baseline.
+
+data merge_group_event_object_member: String = "merge_group"
+data merge_group_event_base_sha_member: String = "base_sha"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.merge_group_event",
+      decl_name: "merge_group_event_base_sha_member",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.merge_group_event.extdeps_external_authority_anchor,
+  further_citations: [extdeps.github.merge_group_event.merge_queue_authority_anchor]
+}
+
+// THE QUEUE GUARANTEE that makes the group's parent a sound base, as GitHub documents it for the
+// merge queue: a group's temporary branch is the base branch's latest changes PLUS the changes of
+// the pull requests already queued ahead of it PLUS its own, so its parent is the head of the group
+// ahead; that group runs its own required checks; and when a group fails, the pull requests after
+// it are removed from that composition and their groups are rebuilt on the new parent. So a change
+// queued ahead was judged by ITS OWN group, whose head is this group's base, and a group never
+// lands on a parent whose own group failed. The one consumer is gunbc.diff_baseline
+// resolve_merge_group_base, which admits MergeGroupBase only while this holds.
+data merge_queue_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue"
+  }
+}
+
+// parent_is_preceding_group_head: the group's parent is the head of the group queued ahead (or
+// the base branch tip). each_group_runs_required_checks: each group runs the required checks on
+// its own composed head. successors_rebuilt_when_a_group_fails: a failed group's successors are
+// recomposed on a new parent, never landed on the failed one.
+type MergeQueueGroupComposition {
+  parent_is_preceding_group_head: Bool
+  each_group_runs_required_checks: Bool
+  successors_rebuilt_when_a_group_fails: Bool
+}
+
+data merge_queue_group_composition: MergeQueueGroupComposition = MergeQueueGroupComposition {
+  parent_is_preceding_group_head: true,
+  each_group_runs_required_checks: true,
+  successors_rebuilt_when_a_group_fails: true
+}
+
+type MergeGroupBaseObservation
+  = MergeGroupBaseObserved { sha: CommitSha }
+  | MergeGroupBaseAbsent { detail: String }
+  | MergeGroupBaseMalformed { detail: String }
+  | MergeGroupEventPayloadReadRefused { path: String, cause: String }
+
+fn merge_group_base_commit_sha_from_hex(hex: String) -> MergeGroupBaseObservation {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } =>
+      MergeGroupBaseObserved { sha: git_object_id_wire_hex(oid: oid) as CommitSha }
+    Absent =>
+      MergeGroupBaseMalformed { detail: "merge_group.base_sha is not a valid git object id" }
+  }
+}
+
+fn merge_group_base_from_member(v: JsonValue) -> MergeGroupBaseObservation {
+  match v {
+    JsonString { value: sha } =>
+      if sha == "" {
+        MergeGroupBaseAbsent { detail: "merge_group.base_sha is empty" }
+      } else {
+        merge_group_base_commit_sha_from_hex(hex: sha)
+      }
+    JsonNull => MergeGroupBaseAbsent { detail: "merge_group.base_sha is null" }
+    JsonBool { value: _ } => MergeGroupBaseMalformed { detail: "merge_group.base_sha is not a string" }
+    JsonNumber { lexeme: _ } => MergeGroupBaseMalformed { detail: "merge_group.base_sha is not a string" }
+    JsonArray { elements: _ } => MergeGroupBaseMalformed { detail: "merge_group.base_sha is not a string" }
+    JsonObject { members: _ } => MergeGroupBaseMalformed { detail: "merge_group.base_sha is not a string" }
+  }
+}
+
+fn merge_group_base_from_event_json(text: String) -> MergeGroupBaseObservation {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      MergeGroupBaseMalformed { detail: concat("the GITHUB_EVENT_PATH payload is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: merge_group_event_object_member) {
+        JsonMemberAbsent =>
+          MergeGroupBaseAbsent { detail: "merge_group event payload has no merge_group member" }
+        JsonMemberDuplicated { count: _ } =>
+          MergeGroupBaseMalformed { detail: "merge_group event payload merge_group member is duplicated" }
+        JsonMemberNotAnObject =>
+          MergeGroupBaseMalformed { detail: "merge_group event payload root is not a JSON object" }
+        JsonMemberFound { value: group } =>
+          match json_object_unique_member(v: group, key: merge_group_event_base_sha_member) {
+            JsonMemberAbsent =>
+              MergeGroupBaseAbsent { detail: "merge_group member has no base_sha" }
+            JsonMemberDuplicated { count: _ } =>
+              MergeGroupBaseMalformed { detail: "merge_group.base_sha is duplicated" }
+            JsonMemberNotAnObject =>
+              MergeGroupBaseMalformed { detail: "merge_group member is not a JSON object" }
+            JsonMemberFound { value: v } => merge_group_base_from_member(v: v)
+          }
+      }
+  }
+}
+
+fn merge_group_base_from_event_path(path: String) -> MergeGroupBaseObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    merge_group_base_from_event_json(text: read.content)
+  } else {
+    MergeGroupEventPayloadReadRefused { path: path, cause: read.error }
+  }
+}

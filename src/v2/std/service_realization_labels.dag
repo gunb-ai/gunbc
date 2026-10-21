@@ -1,0 +1,22 @@
+module v2.std.service_realization_labels
+
+import v2.std.node { Symbol, symbol_intern_lexeme }
+
+// THE LABELS OF A SERVICE'S REALIZATION SIBLING (XL-2 PR3a; v2.compiler.service_realization owns the
+// shape and its conformance wall). They are spelled here, apart from the wall, because a reader that
+// only needs to recognise the sibling -- v2.compiler.symbol_index_fill, which indexes nothing under its
+// root -- must not import the wall's transport vocabularies (extdeps.transports.<kind>), which are
+// outside the emitted compiler's closure. Each label is unspellable (angle brackets), so no source can
+// name the sibling or any entry beneath it.
+
+fn realization_root_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization>") }
+fn realization_config_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization-config>") }
+fn realization_transport_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization-transport>") }
+fn realization_transport_kind_label() -> Symbol { symbol_intern_lexeme(lexeme: "<transport-kind>") }
+fn realization_status_arms_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-arms>") }
+fn realization_mock_arms_label() -> Symbol { symbol_intern_lexeme(lexeme: "<mock-arms>") }
+fn realization_projection_label() -> Symbol { symbol_intern_lexeme(lexeme: "<projection>") }
+fn realization_arm_pattern_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-pattern>") }
+fn realization_arm_payload_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-payload>") }
+fn realization_status_code_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-code>") }
+fn realization_arm_doc_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-doc>") }

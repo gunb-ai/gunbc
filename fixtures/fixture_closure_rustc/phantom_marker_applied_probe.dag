@@ -1,0 +1,40 @@
+module fixture.closure.rustc_phantom_marker_applied_probe
+
+// THE POSITIVE CONTROL FOR THE PHANTOM-MARKER MEANING DISCRIMINATOR, and it is a control about
+// this subject rather than a second copy of the route's own green. Its two fields are the RULED
+// POSITION -- unit variants standing as arguments of an APPLIED type node -- which is where
+// `v1.compiler.emit_rust` `rust_type_arg_identity_spelling` decides identity from the declaration
+// visible in this module. Both arguments become distinct zero-sized Rust markers, so
+// `Wrapper<Alpha>` and `Wrapper<Beta>` are two Rust types, and the accessor below returns from
+// one of them.
+//
+// WHAT IT PROVES AND WHAT IT DOES NOT. It proves the emitted crate for this construction compiles:
+// the markers are declared, the applied heads carry them, and the field reads type-check. It does
+// NOT by itself prove the two arguments render DIFFERENTLY -- an emitter that collapsed both to
+// `()` would also compile here, which is precisely why the spelling half of this class stays
+// enrolled at `test.claim.phantom_marker_type_argument_identity_witness` (DESIGN 4b(4): a climb
+// deletes lower-rung production machinery, never the evidence). This arm is the half a substring
+// oracle cannot answer: whether what the emitter wrote is a crate rustc accepts.
+// THE NAMES CARRY NO DOMAIN SEMANTICS ON PURPOSE, AND THAT IS LOAD-BEARING TWICE. This fixture
+// probes ONE emitter decision, so every name in it is shape and nothing else. An earlier revision
+// spelled this coproduct with the measurement vocabulary the witness that adjudicates the
+// spelling half of this class uses -- which read as a compiler fixture minting a unit ontology,
+// and, worse, gave the arm leaf spellings SHARED with real `std.measure` declarations. Same-leaf
+// different-declaration is a confound this very witness family has a row about
+// (`declaration_identity_wins_over_same_leaf_spelling`), so borrowing those spellings would have
+// put a name collision with the live corpus inside a pair that is trying to characterize an
+// emitter decision.
+type Marker = Alpha | Beta
+
+type Wrapper<M> {
+  count: Int
+}
+
+type DistinctWrappers {
+  first: Wrapper<Alpha>
+  second: Wrapper<Beta>
+}
+
+fn applied_marker_field_reads(subject: DistinctWrappers) -> Int {
+  subject.first.count
+}

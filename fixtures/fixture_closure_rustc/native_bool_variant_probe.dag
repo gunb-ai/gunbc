@@ -1,0 +1,31 @@
+module fixture.closure.rustc_native_bool_variant_probe
+
+import std.types { Bool, Int }
+
+// THE ARMS OF A NATIVELY REALIZED COPRODUCT, POSED TO RUSTC. std.types Bool = True | False realizes
+// as Rust `bool` (gunbc.rust_source_type_bindings), so its arms must be spelled as that carrier's
+// two values -- in value position, in pattern position, and nested inside another variant's
+// pattern -- by the rows gunbc.rust_source_type_bindings rust_source_variant_value_rows, keyed on the
+// declaration. Before that lowering the emitter spelled them `Bool::True` against a `bool`, which
+// the front end accepted and rustc refused (gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target).
+type Gate = Open { admitted: Bool } | Shut
+
+fn probe_meet(a: Bool, b: Bool) -> Bool {
+  match a {
+    True => b
+    False => False
+  }
+}
+
+fn probe_top() -> Bool {
+  True
+}
+
+fn probe_gate_admits(g: Gate) -> Int {
+  match g {
+    Open { admitted: True } => 1
+    Open { admitted: False } => 2
+    Shut => 0
+  }
+}

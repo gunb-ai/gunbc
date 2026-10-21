@@ -1,0 +1,89 @@
+module v2.std.optional_layers
+
+import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, TypeNode }
+import v2.std.qualified_name { declaration_denotation_is_optional, declaration_denotation_of_type, declaration_reference_node, optional_declaration_identity }
+import std.algebra { Cons, Empty }
+
+// OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
+// Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
+// concern was two zeros (Required beside CardOptional { layers: Nat }); a single Nat has one
+// (Zero). Compose is nat_add. Peel is nat_sub of one, refused at Zero. This module keeps the Node
+// optional-layer read/write (the std.optional Instantiation, by declaration identity) and that peel (what a bare Nat does not name).
+//
+// CONSUMERS (DESIGN §3c): type_node_occupancy_read / wrap_type_node_occupancy; production
+// v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
+// v2.std.inhabitance refuses two positive depths that Nat equality denies. Claims:
+// test.claim.optional_layers_witness and v2.test.claim.compiler.optional_layers.
+type TypeNodeOccupancyRead
+  = TypeNodeOccupancy { depth: Nat, base: Node }
+  | OccupancyWrapperMalformed { wrapper: Node }
+
+fn one_optional_layer() -> Nat {
+  Succ { prev: Zero }
+}
+
+fn two_optional_layers() -> Nat {
+  Succ { prev: Succ { prev: Zero } }
+}
+
+fn peel_optional_layer(depth: Nat) -> Optional<Nat> {
+  match nat_sub(a: depth, b: one_optional_layer()) {
+    NatSubtrahendExceedsMinuend => optional_absent()
+    NatDifference { value: rest } => optional_present(value: rest)
+  }
+}
+
+// ONE OPTIONAL LAYER IS AN APPLICATION OF THE std.optional DECLARATION TO ONE PAYLOAD, read by declaration
+// identity (declaration_denotation_of_type), never by a wrapper connective or the spelling of the head.
+fn type_node_occupancy_child(n: Node) -> Optional<Node> {
+  match declaration_denotation_of_type(t: n) {
+    Absent => optional_absent()
+    Present { value: denotation } =>
+      if declaration_denotation_is_optional(denotation: denotation) {
+        match denotation.type_arguments {
+          Cons { head: payload, tail: Empty } => optional_present(value: payload)
+          _ => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn type_node_occupancy_read(n: Node) -> TypeNodeOccupancyRead {
+  match declaration_denotation_of_type(t: n) {
+    Absent => TypeNodeOccupancy { depth: Zero, base: n }
+    Present { value: denotation } =>
+      if declaration_denotation_is_optional(denotation: denotation) {
+        match denotation.type_arguments {
+          Cons { head: payload, tail: Empty } =>
+            match type_node_occupancy_read(n: payload) {
+              OccupancyWrapperMalformed { wrapper: w } => OccupancyWrapperMalformed { wrapper: w }
+              TypeNodeOccupancy { depth: inner_depth, base: base } =>
+                TypeNodeOccupancy { depth: nat_add(a: one_optional_layer(), b: inner_depth), base: base }
+            }
+          _ => OccupancyWrapperMalformed { wrapper: n }
+        }
+      } else {
+        TypeNodeOccupancy { depth: Zero, base: n }
+      }
+  }
+}
+
+fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
+  match depth {
+    Zero => base
+    Succ { prev: rest } =>
+      Node {
+        kind: TypeNode { connective: Instantiation },
+        children: [
+          Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic) },
+          Edge { label: Positional, target: wrap_type_node_occupancy(base: base, depth: rest) }
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}

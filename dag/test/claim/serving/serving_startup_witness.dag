@@ -1,0 +1,274 @@
+module test.claim.serving.serving_startup_witness
+
+import std.types { String, Bool, NonEmptyStr, List, list_length }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { rm_force_command, cp_command, mv_exact_destination_command, ln_symbolic_force_command }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, NinferModelsUnreadable, ninfer_serve_launch_argv }
+import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
+import gunbc.serving.rented_ninfer_source { rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact }
+import product.fabric.serving_recipe { serving_recipe_qwen3_8_27b_nvfp4_ninfer }
+import gunbc.serving.serving_provision_derivation { ServingProvisionDerived, serving_provision_derive }
+import gunbc.serving.serving_artifact_placement {
+  ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingCopyDiffers, ServingCopyUnreadable, ServingFetchFailed, ServingFetchSucceeded,
+  ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
+  ServingInstalledFileRead, ServingEngineVerified, ServingEngineFileDigestDiffers, serving_engine_verdict,
+}
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.serving.serving_launch {
+  ServingServeNotListening, ServingServeAnswering, ServingServeUnreadable, serving_serve_decision,
+  ServingPlacementCommands, ServingStartupProgram, ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
+}
+import gunbc.serving.serving_artifact_placement { ServingLinkAbsent }
+import gunbc.serving.serving_launch { ServingDetachRendered, ServingDetachRefusedRender, serving_detach_leg, serving_launch_leg, serving_detach_text }
+import gunbc.remote_shell_command { RemoteExecInterpretationUnknown, RemoteExecCommandBuilt, RemoteExecCommandRefused, remote_exec_command_rendered, remote_exec_command_string, PosixShellInterpreted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_roots: ServingStoreRoots = ServingStoreRoots {
+  root: "/root/serve/store" as NonEmptyStr,
+  model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+  serve_log: "/root/serve/serve.log" as NonEmptyStr,
+}
+
+data w_digest: Sha256Digest = Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }
+
+data w_protected: ServingProtectedPaths = ServingProtectedPaths {
+  paths: [serving_digest_path(roots: w_roots, digest: w_digest)],
+  model_link: "/root/serve/model/model.ninfer",
+  model_link_next: "/root/serve/model/model.ninfer.next",
+}
+
+// THE RED: a failed fetch beside a verified copy removes only its own partial.
+test fn a_failed_fetch_beside_a_verified_copy_endangers_nothing() -> Bool {
+  !serving_sequence_endangers(
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchFailed { cause: "connection reset" as NonEmptyStr })),
+    protected: w_protected,
+  )
+}
+
+test fn a_succeeded_fetch_beside_a_verified_copy_never_renames_over_it() -> Bool {
+  !serving_sequence_endangers(
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchSucceeded)),
+    protected: w_protected,
+  )
+}
+
+test fn an_absent_copy_promotes_by_rename_and_endangers_nothing_when_unprotected() -> Bool {
+  !serving_sequence_endangers(
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyAbsent, fetch: ServingFetchSucceeded)),
+    protected: ServingProtectedPaths { paths: [], model_link: "/root/serve/model/model.ninfer", model_link_next: "/root/serve/model/model.ninfer.next" },
+  )
+}
+
+// THE CONTROL: run.sh's shape, rm -f on the model path, is refused by the same predicate.
+test fn a_run_sh_shaped_sequence_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/model/model.ninfer")], protected: w_protected)
+}
+
+test fn removing_a_verified_digest_path_or_its_parent_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [rm_force_command(path: serving_digest_path(roots: w_roots, digest: w_digest))], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store/sha256")], protected: w_protected)
+}
+
+// THE FETCH LEG REFUSES TYPED ON THE UNBUILT MINT.
+test fn the_fetch_leg_refuses_on_the_unbuilt_mint_for_both_artifacts() -> Bool {
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } => {
+      let engine = serving_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
+      let weights = serving_fetch_leg(source: i.source)
+      (match engine { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+        && (match weights { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+    }
+    _ => false
+  }
+}
+
+// ENGINE VERIFICATION REFUSES WHEN THE INSTALLED BINARY'S DIGEST DIFFERS FROM THE PIN.
+test fn engine_verification_passes_on_the_pinned_files() -> Bool {
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: i.engine.binary.sha256 },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineVerified => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// CONVERGENCE: converged is a Noop, absent starts, a mismatch or an unreadable answer refuses.
+test fn a_converged_readback_is_a_noop() -> Bool {
+  match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["qwen"] } }) {
+    Noop => true
+    _ => false
+  }
+}
+
+test fn an_absent_readback_starts_exactly_once() -> Bool {
+  match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeNotListening) {
+    Apply { plan: _ } => true
+    _ => false
+  }
+}
+
+test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
+  (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeUnreadable { cause: "timeout" as NonEmptyStr }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsUnreadable { cause: "not json" as NonEmptyStr } }) { Refuse { reason: _ } => true  _ => false })
+}
+
+fn argv_has(argv: List<String>, flag: String) -> Bool {
+  any(xs: argv, predicate: fn(a) { a == flag })
+}
+
+// THE LAUNCH ARGV: every flag the card's line carries, and neither unread one, and no credential.
+test fn the_launch_argv_has_every_read_flag_and_omits_the_unread_ones() -> Bool {
+  let argv = ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port)
+  argv_has(argv: argv, flag: "--host") && argv_has(argv: argv, flag: "--port") && argv_has(argv: argv, flag: "--model-id") && argv_has(argv: argv, flag: "--max-context") && argv_has(argv: argv, flag: "--kv-capacity") && argv_has(argv: argv, flag: "--max-concurrency")
+    && argv_has(argv: argv, flag: "--kv-dtype") && argv_has(argv: argv, flag: "--device-state-slots") && argv_has(argv: argv, flag: "--spec") && argv_has(argv: argv, flag: "--draft-tokens") && argv_has(argv: argv, flag: "--lm-head-draft")
+    && argv_has(argv: argv, flag: "--preserve-thinking") && argv_has(argv: argv, flag: "--host-context-mib")
+    && !argv_has(argv: argv, flag: "--max-pending-requests") && !argv_has(argv: argv, flag: "--pending-timeout-ms") && !argv_has(argv: argv, flag: "--default-max-tokens") && !argv_has(argv: argv, flag: "--api-key")
+}
+
+// THE FULL SEQUENCE: an absent engine reaches the launch leg, which refuses on the unbound key grant, AFTER the
+// placement legs emitted the link switch (two commands).
+test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped() -> Bool {
+  let p = serving_startup_program(
+    roots: w_roots, digest: w_digest, link: ServingLinkAbsent,
+    launch: operator_pod_ninfer_launch, launch_argv: ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port), reading: ServingServeNotListening,
+    key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
+  )
+  (match p.launch { ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true  _ => false })
+    && !serving_sequence_endangers(commands: placement_commands_of(p: p), protected: w_protected)
+    && list_length(items: placement_commands_of(p: p)) == 2
+}
+
+// THE RECEIPT TEXT on the real producer: it names the unmet key grant and the rendered detach and carries the link switch it emitted.
+test fn the_receipt_text_names_the_key_grant_the_detach_and_the_link_switch() -> Bool {
+  let p = serving_startup_program(
+    roots: w_roots, digest: w_digest, link: ServingLinkAbsent,
+    launch: operator_pod_ninfer_launch, launch_argv: ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port), reading: ServingServeNotListening,
+    key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
+  )
+  let t = serving_startup_program_text(program: p)
+  string_contains(s: t, pattern: "serve key grant unbound") && string_contains(s: t, pattern: "detach: 'setsid' '--fork'") && string_contains(s: t, pattern: ">|'/root/serve/serve.log' 2>&1") && string_contains(s: t, pattern: "model.ninfer")
+}
+
+fn placement_commands_of(p: ServingStartupProgram) -> List<ArgvCommand> {
+  match p.placement { ServingPlacementCommands { commands: c } => c  _ => [] }
+}
+
+// REVIEW 80987: an unreadable or differing copy refuses typed and carries only its own partial's removal; an
+// unreadable model link refuses the switch instead of switching it blind.
+test fn a_differing_or_unreadable_copy_refuses_typed_and_endangers_nothing() -> Bool {
+  let differs = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyDiffers { observed: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } }, fetch: ServingFetchSucceeded)
+  let unreadable = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyUnreadable { cause: "io error" as NonEmptyStr }, fetch: ServingFetchSucceeded)
+  (match differs { ServingArtifactRefusedCopyDiffers { observed: _, own_partial_cleanup: _ } => true  _ => false })
+    && (match unreadable { ServingArtifactRefusedCopyUnreadable { cause: _, own_partial_cleanup: _ } => true  _ => false })
+    && !serving_sequence_endangers(commands: serving_artifact_commands(sequence: differs), protected: w_protected)
+    && !serving_sequence_endangers(commands: serving_artifact_commands(sequence: unreadable), protected: w_protected)
+}
+
+test fn an_unreadable_model_link_refuses_the_switch() -> Bool {
+  match serving_link_switch(roots: w_roots, digest: w_digest, link: ServingLinkUnreadable { cause: "permission denied" as NonEmptyStr }) {
+    ServingLinkSwitchRefusedUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// REVIEW 80987: a writing program off the read-only list (cp stands in for curl -o, which has no typed builder)
+// onto a digest path is refused, and a relative operand is refused because it cannot be placed.
+test fn a_writing_program_onto_a_digest_path_and_a_relative_operand_are_refused() -> Bool {
+  serving_sequence_endangers(commands: [cp_command(source: "/tmp/x", destination: serving_digest_path(roots: w_roots, digest: w_digest))], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "sha256")], protected: w_protected)
+}
+
+// REVIEW 80991: a relative mv or ln operand is refused, not dropped: a rename onto sha256/<d> run from the
+// store root, and a link created at a relative model path, would otherwise be admitted on their one absolute operand.
+test fn relative_mv_and_ln_operands_are_refused() -> Bool {
+  serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [ln_symbolic_force_command(target: "/root/serve/store/sha256/d", link_name: "model.ninfer")], protected: w_protected)
+}
+
+// REVIEW 80995: the live link is protected as a source and through its parent, not only as an exact destination.
+test fn moving_the_live_link_or_removing_its_parent_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/model/model.ninfer", destination: "/tmp/x")], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/model")], protected: w_protected)
+}
+
+// REVIEW 81003: a dot-dot spelling of a digest path is refused for rm and mv, and a doubled slash with it.
+test fn a_dot_dot_spelling_of_a_digest_path_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store//sha256/d")], protected: w_protected)
+}
+
+// THE DETACH LEG RENDERS THE EXACT REMOTE COMMAND: the setsid words, then the stdout-and-stderr redirect to the
+// serve log derived from the store roots (golden: stdout_stderr_to_file_redirect_witness).
+test fn the_detach_leg_renders_setsid_fork_with_the_serve_log_redirect() -> Bool {
+  match serving_detach_leg(roots: w_roots, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => (c as String) == "'setsid' '--fork' 'true' >|'/root/serve/serve.log' 2>&1"
+    _ => false
+  }
+}
+
+// A REFUSED RENDER NAMES ITS CAUSE in the text (DESIGN 5: every degradation is typed and located), not only that it refused.
+test fn a_refused_detach_render_text_names_its_cause() -> Bool {
+  string_contains(s: serving_detach_text(detach: ServingDetachRefusedRender { cause: RemoteExecInterpretationUnknown }), pattern: "RemoteExecCommandInterpretation is Unknown")
+}
+
+// THE RED: the same words without the stdio route render no redirect, so dropping the stdio from the leg
+// turns the claim above red (the detached engine would keep the ssh channel as stdout).
+test fn the_unredirected_render_differs_from_the_detach_leg() -> Bool {
+  let bare = match remote_exec_command_string(argv: ["setsid", "--fork", "true"], interpretation: PosixShellInterpreted) {
+    RemoteExecCommandBuilt { command: c } => remote_exec_command_rendered(command: c) as String
+    RemoteExecCommandRefused { cause: _ } => "REFUSED"
+  }
+  !string_contains(s: bare, pattern: ">|") && (match serving_detach_leg(roots: w_roots, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => string_contains(s: c as String, pattern: ">|") && (c as String) != bare
+    _ => false
+  })
+}
+
+// THE LOG PATH COMES FROM THE ROOTS, NOT THE LEG: a different roots value moves the redirect.
+test fn the_serve_log_path_is_derived_from_the_store_roots() -> Bool {
+  let other = ServingStoreRoots { root: w_roots.root, model_link: w_roots.model_link, serve_log: "/var/log/other.log" as NonEmptyStr }
+  match serving_detach_leg(roots: other, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => string_contains(s: c as String, pattern: ">|'/var/log/other.log' 2>&1") && !string_contains(s: c as String, pattern: "/root/serve/serve.log")
+    _ => false
+  }
+}
+
+// THE KEY REFUSAL STILL FIRES: an absent engine with an unbound key grant refuses on the key, carrying the
+// rendered detach.
+test fn the_key_refusal_still_fires_with_the_detach_rendered() -> Bool {
+  let argv = ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port)
+  match serving_launch_leg(roots: w_roots, launch: operator_pod_ninfer_launch, launch_argv: argv, reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
+    ServingLaunchRefusedUnmetCauses { key_grant: g, detach: ServingDetachRendered { remote_command: c } } =>
+      (g as String) == "serve-api-key" && string_contains(s: c as String, pattern: ">|'/root/serve/serve.log' 2>&1")
+    _ => false
+  }
+}

@@ -1,0 +1,123 @@
+module v2.extdeps.file_system
+
+import std.algebra { FreeMonoid }
+import v2.std.diagnostic { Outcome }
+import v2.std.machine { Byte }
+
+type PosixByteString = FreeMonoid<Byte>
+
+type NamedPathComponent {
+  bytes: PosixByteString
+}
+
+type PathComponent
+  = CurrentComponent
+  | ParentComponent
+  | NamedComponent { component: NamedPathComponent }
+
+type AbsolutePath {
+  components: List<PathComponent>
+}
+
+type RelativePathHead
+  = ParentHead
+  | NamedHead { component: NamedPathComponent }
+
+type RelativePath
+  = CurrentDirectory
+  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
+  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
+
+type FilesystemPath
+  = Absolute { path: AbsolutePath }
+  | Relative { path: RelativePath }
+
+type FileKind
+  = RegularFile
+  | Directory
+  | Symlink
+
+type FileKindResolutionPolicy
+  = FollowSymlinks
+  | DoNotFollowSymlinks
+
+type Filesystem
+
+type FileBody = FreeMonoid<Byte>
+
+type FileResource {
+  filesystem: Filesystem
+}
+
+type FilePath {
+  path: FilesystemPath
+}
+
+type FileContent = FileBody
+
+type FileRead {
+  resource: FileResource,
+  path: FilePath
+}
+
+type FileWrite {
+  resource: FileResource,
+  path: FilePath,
+  content: FileContent
+}
+
+type FileReadReceipt {
+  request: FileRead,
+  content: FileContent
+}
+
+type FileWriteReceipt {
+  request: FileWrite,
+  resource: FileResource
+}
+
+type FileReadResult = Outcome<FileContent>
+
+type FileWriteResult = Outcome<FileResource>
+
+type ModeledFileEffects {
+  file_read: fn(FileRead) -> FileReadResult
+  file_write: fn(FileWrite) -> FileWriteResult
+}
+
+type ReadFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ReadFileResult = Outcome<FileBody>
+
+type WriteFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  body: FileBody
+}
+
+type WriteFileResult = Outcome<Filesystem>
+
+type ListDirRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ListDirResult = Outcome<List<PathComponent>>
+
+type FileKindRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  resolution: FileKindResolutionPolicy
+}
+
+type FileKindResult = Outcome<FileKind>
+
+type FileSystemOperations {
+  read_file: fn(ReadFileRequest) -> ReadFileResult
+  write_file: fn(WriteFileRequest) -> WriteFileResult
+  list_dir: fn(ListDirRequest) -> ListDirResult
+  file_kind: fn(FileKindRequest) -> FileKindResult
+}

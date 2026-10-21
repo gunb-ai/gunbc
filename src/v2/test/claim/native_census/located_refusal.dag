@@ -1,0 +1,173 @@
+module v2.test.claim.native_census.located_refusal
+
+import v2.compiler.source_root_eval {
+  NativeCensusModule,
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeInferCensusFileRefused,
+  NativeInferCensusInferRefused,
+  NativeInferCensusInferred,
+  NativeInferCensusOutcome,
+  NativeInferCensusResolveRefused,
+  NativeTestContext,
+  native_census_module_inference,
+  native_census_module_resolution,
+  native_census_residual_rows,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary {
+  FileRefusalAtLine,
+  FileRefusalAtOtherFile,
+  FileRefusalAtUnresolvedNode,
+  FileRefusalAt
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PATH NAMES NO COMMITTED FILE (review 79630; same cut as review 69628 on
+// occurrence_file_attribution). The claim constructs each read from the string below and uses the
+// path only as an identity outside every corpus root. A second copy of these bytes on disk would
+// be a dangling declaration (DESIGN §3c).
+
+data resolve_miss_source: String = "module v2.cl.resolve_miss\n\nimport std.types { Int }\n\nfn cl_resolve_miss_go() -> Int {\n  cl_resolve_absent\n}\n"
+
+data infer_miss_source: String = "module v2.cl.infer_miss\n\nimport std.types { Bool, Int }\n\nfn cl_infer_miss_go() -> Int {\n  true\n}\n"
+
+data collide_a_source: String = "module v2.cl.collide_a\n\nfn collide_a_go() -> Int {\n  1\n"
+
+data collide_b_source: String = "module v2.cl.collide_b\n\nimport std.types { Int }\n\n\n\n\n\nfn collide_b_go() -> Int {\n  collide_b_absent\n}\n"
+
+fn planted_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+// collide_a FIRST so a refused parse's occurrence ids are the ones the next file would re-mint.
+data planted_ingest: SourceRootIngest = Cons {
+  head: planted_read(source: collide_a_source, unit: ^cl_collide_a_cu, path: "fixtures/census_located_refusal/v2/cl/collide_a.dag"),
+  tail: Cons {
+    head: planted_read(source: collide_b_source, unit: ^cl_collide_b_cu, path: "fixtures/census_located_refusal/v2/cl/collide_b.dag"),
+    tail: Cons {
+      head: planted_read(source: resolve_miss_source, unit: ^cl_resolve_miss_cu, path: "fixtures/census_located_refusal/v2/cl/resolve_miss.dag"),
+      tail: Cons {
+        head: planted_read(source: infer_miss_source, unit: ^cl_infer_miss_cu, path: "fixtures/census_located_refusal/v2/cl/infer_miss.dag"),
+        tail: Empty
+      }
+    }
+  }
+}
+
+type LocatedCensus
+  = LocatedCensusContextRefused
+  | LocatedCensusReported {
+      resolve_at: FileRefusalAt
+      infer_at: FileRefusalAt
+      collide_b_at: FileRefusalAt
+    }
+
+fn located_census() -> LocatedCensus {
+  match native_test_context_from_ingest(ingest: planted_ingest) {
+    Rejected { diagnostics: _ } => LocatedCensusContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let resolve_entry = NativeCensusModule { module: "v2.cl.resolve_miss", path: ^cl_resolve_miss_cu }
+        let infer_entry = NativeCensusModule { module: "v2.cl.infer_miss", path: ^cl_infer_miss_cu }
+        let collide_b_entry = NativeCensusModule { module: "v2.cl.collide_b", path: ^cl_collide_b_cu }
+        let resolve_step = native_census_module_resolution(context: context, refusal_index: refusal_index, entry: resolve_entry)
+        let infer_step = native_census_module_inference(context: resolve_step.context, refusal_index: refusal_index, entry: infer_entry)
+        let collide_step = native_census_module_resolution(context: infer_step.context, refusal_index: refusal_index, entry: collide_b_entry)
+        LocatedCensusReported {
+          resolve_at: residual_fatal_at(context: collide_step.context, entry: resolve_entry, outcome: resolve_step.outcome),
+          infer_at: infer_fatal_at(context: collide_step.context, entry: infer_entry, outcome: infer_step.outcome),
+          collide_b_at: residual_fatal_at(context: collide_step.context, entry: collide_b_entry, outcome: collide_step.outcome)
+        }
+      }
+  }
+}
+
+fn residual_fatal_at(context: NativeTestContext, entry: NativeCensusModule, outcome: NativeCensusModuleOutcome) -> FileRefusalAt {
+  match outcome {
+    NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
+      match native_census_residual_rows(positions: context.positions, entry: entry, first: f, rest: r) {
+        Cons { head: row, tail: _ } => row.at
+        Empty => FileRefusalAtUnresolvedNode
+      }
+    NativeCensusModuleFileRefused => FileRefusalAtUnresolvedNode
+    NativeCensusModuleResolved => FileRefusalAtUnresolvedNode
+  }
+}
+
+fn infer_fatal_at(context: NativeTestContext, entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> FileRefusalAt {
+  match outcome {
+    NativeInferCensusInferRefused { resolved: _, chain: chain } =>
+      match native_census_residual_rows(positions: context.positions, entry: entry, first: chain, rest: []) {
+        Cons { head: row, tail: _ } => row.at
+        Empty => FileRefusalAtUnresolvedNode
+      }
+    NativeInferCensusFileRefused => FileRefusalAtUnresolvedNode
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _ } => FileRefusalAtUnresolvedNode
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => FileRefusalAtUnresolvedNode
+  }
+}
+
+fn at_is_line(at: FileRefusalAt, line: Int) -> Bool {
+  match at {
+    FileRefusalAtLine { line: l, byte_column: _ } => l == line
+    _ => false
+  }
+}
+
+fn at_is_other_file(at: FileRefusalAt, file: Symbol) -> Bool {
+  match at {
+    FileRefusalAtOtherFile { file: f } => f == file
+    _ => false
+  }
+}
+
+// THE ONE REAL-ROUTE PRODUCER. Assemble of the four planted files plus resolve and infer of the
+// refusing members. Tests below read fields; they do not re-enter the front end.
+fn located_refusal_census() -> LocatedCensus { located_census() }
+
+// Unbound name `cl_resolve_absent` is on line 6 of resolve_miss_source.
+test fn census_resolve_refusal_carries_the_planted_line_holds() -> Bool {
+  match located_refusal_census() {
+    LocatedCensusContextRefused => false
+    LocatedCensusReported { resolve_at: at, infer_at: _, collide_b_at: _ } => at_is_line(at: at, line: 6)
+  }
+}
+
+// `true` inhabiting Int is on line 6 of infer_miss_source.
+test fn census_infer_refusal_carries_the_planted_line_holds() -> Bool {
+  match located_refusal_census() {
+    LocatedCensusContextRefused => false
+    LocatedCensusReported { resolve_at: _, infer_at: at, collide_b_at: _ } => at_is_line(at: at, line: 6)
+  }
+}
+
+// collide_a's occurrence ids are reused by collide_b. Borrowing a's position would report line 4
+// (`1`) or a's path. collide_b's unbound is line 10.
+test fn colliding_occurrence_ids_do_not_borrow_the_other_file_position_holds() -> Bool {
+  match located_refusal_census() {
+    LocatedCensusContextRefused => false
+    LocatedCensusReported { resolve_at: _, infer_at: _, collide_b_at: at } =>
+      at_is_line(at: at, line: 10) && !at_is_other_file(at: at, file: ^cl_collide_a_cu)
+  }
+}

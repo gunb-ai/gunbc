@@ -1,0 +1,260 @@
+module gunbc.serving.replica_incarnation
+
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.algebra { trim }
+import std.decimal { ExactDecimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
+import std.measure { Hertz, hertz, hertz_count, ClockTickCount, clock_tick_count, clock_tick_count_value }
+import std.content_hash { ContentHash }
+import product.fabric.demand { ObservationReceiptRef }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
+import extdeps.linux.proc_pid_stat { StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time }
+import extdeps.posix.getconf { ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, clock_ticks_reading }
+import extdeps.procps.pgrep {
+  PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing,
+  PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
+}
+import extdeps.prometheus.client { SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_operation_exec {
+  HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
+  ProcfsReadStat, ProcfsReadPidStat, GetconfClockTicksPerSecond, Sha256SumFile,
+}
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
+
+// WHICH HOST PROCESS ANSWERED, READ ON THE HOST, FOR A REPLICA THAT RUNS AS A PLAIN PROCESS. A rented
+// container offers neither nested docker nor a systemd manager, so the unit and container legs the
+// Spark observer reads do not exist here; what survives is the join that observer rests on. The engine
+// exports process_start_time_seconds as btime + starttime/CLK_TCK, and this reads the same btime, tick
+// rate and starttime of every process matching the engine binary: the one whose reading EQUALS the
+// exported decimal, as integers with no rounding, is the process that answered. Two agreeing candidates
+// or none refuse; the nearest is never taken. The executable's digest is RECORDED off /proc/<pid>/exe as
+// evidence about the answering process; it is not compared against any earlier launch, so it does not
+// detect a binary replaced under the same start field. What keeps the digest attributable is the
+// generation: the start ticks are read again after the digest and a changed or unread generation is
+// Unread.
+//
+// WHAT THIS DOES NOT ESTABLISH, STATED SO THE STANDING IS NOT READ AS MORE: it binds the exporting
+// process to the host and to an executable digest. It does not compare the process's flags with the
+// declared launch profile, because /proc/<pid>/cmdline may carry tokens and is never read here.
+// DECLARED FRONTIER (DESIGN 3c): the launch-profile comparison, triggered by the qualification
+// procedure, which is the first consumer that records the deployed profile.
+type ReplicaIncarnation sole_constructor {
+  launch: ReplicaEndpointLaunch
+  pid: Int
+  executable_digest: ContentHash
+  receipt: ObservationReceiptRef
+}
+
+type ReplicaIncarnationStanding
+  = ReplicaIncarnationBound { incarnation: ReplicaIncarnation }
+  | ReplicaIncarnationUnread { obligation: NonEmptyStr }
+
+data replica_incarnation_receipt: ObservationReceiptRef = "gunbc.serving.replica_incarnation" as ObservationReceiptRef
+
+fn replica_incarnation_unread(cause: String) -> ReplicaIncarnationStanding {
+  ReplicaIncarnationUnread { obligation: join(["gunbc.serving.replica_incarnation: ", cause], "") as NonEmptyStr }
+}
+
+// exported = units / 10^scale; computed = (btime * ticks + starttime) / ticks. Equal exactly when
+// units * ticks == (btime * ticks + starttime) * 10^scale, so no division occurs. Every integer step is
+// checked: a magnitude outrunning i64 is not a match, never a wrapped equality that fabricates one.
+fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: ClockTickCount) -> Bool {
+  let ticks = hertz_count(h: ticks_per_second)
+  match checked_int_multiply(a: exported.units, b: ticks) {
+    CheckedIntOverflow { cause: _ } => false
+    CheckedIntReady { value: lhs } =>
+      match checked_int_multiply(a: boot_epoch_seconds, b: ticks) {
+        CheckedIntOverflow { cause: _ } => false
+        CheckedIntReady { value: boot_ticks } =>
+          match checked_int_add(a: boot_ticks, b: clock_tick_count_value(t: start_ticks)) {
+            CheckedIntOverflow { cause: _ } => false
+            CheckedIntReady { value: since_epoch_ticks } =>
+              match checked_int_multiply(a: since_epoch_ticks, b: decimal_pow10(exponent: exported.fraction_digits)) {
+                CheckedIntOverflow { cause: _ } => false
+                CheckedIntReady { value: rhs } => lhs == rhs
+              }
+          }
+      }
+  }
+}
+
+type ProcessStartReading {
+  pid: Int
+  start_ticks: ClockTickCount
+}
+
+type ProcessJoin
+  = ProcessJoined { process: ProcessStartReading }
+  | ProcessJoinNone { candidates: Int }
+  | ProcessJoinAmbiguous { pids: List<Int> }
+
+// THE PURE JOIN over already-read candidates: exactly one candidate may start at the exported instant.
+fn join_exported_start(candidates: List<ProcessStartReading>, exported: ExactDecimal, boot: EpochSecs, ticks: Hertz) -> ProcessJoin {
+  let hits = filter(candidates, c => exported_start_equals_process_start(exported: exported, boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: c.start_ticks))
+  if count(hits) == 0 {
+    ProcessJoinNone { candidates: count(candidates) }
+  } else if count(hits) > 1 {
+    ProcessJoinAmbiguous { pids: map(hits, h => h.pid) }
+  } else {
+    match first(hits) {
+      Present { value: h } => ProcessJoined { process: h }
+      Absent => ProcessJoinNone { candidates: count(candidates) }
+    }
+  }
+}
+
+type HostTextRead
+  = HostTextObserved { stdout: String }
+  | HostTextRefused { cause: String }
+
+fn host_read_text(transport: HostEffectTransport, operation: HostOperation) -> HostTextRead {
+  match host_operation_exec(transport: transport, operation: operation) {
+    HostOperationObserved { stdout: out, success: true, stderr: _ } => HostTextObserved { stdout: out }
+    HostOperationObserved { stdout: _, success: false, stderr: _ } => HostTextRefused { cause: "the read exited non-zero" }
+    HostOperationRefused { operation: op, reason: why } => HostTextRefused { cause: join([op, ": ", why], "") }
+  }
+}
+
+type CandidateRead
+  = CandidatesRead { readings: List<ProcessStartReading> }
+  | CandidateUnread { cause: String }
+
+fn read_candidate_starts(transport: HostEffectTransport, pids: List<Int>) -> CandidateRead {
+  fold(pids, init: CandidatesRead { readings: [] }, f: (acc, pid) =>
+    match acc {
+      CandidateUnread { cause: c } => CandidateUnread { cause: c }
+      CandidatesRead { readings: rs } =>
+        match host_read_text(transport: transport, operation: ProcfsReadPidStat { pid: to_string(pid) as NonEmptyStr }) {
+          HostTextRefused { cause: c } => CandidateUnread { cause: join(["pid ", to_string(pid), " stat: ", c], "") }
+          HostTextObserved { stdout: text } =>
+            match proc_pid_stat_start_time(content: text) {
+              StartTimeObserved { ticks_since_boot: st } => CandidatesRead { readings: append(rs, ProcessStartReading { pid: pid, start_ticks: clock_tick_count(count: st) }) }
+              StartTimeCommUnterminated => CandidateUnread { cause: join(["pid ", to_string(pid), " stat has no terminated comm field"], "") }
+              StartTimeFieldAbsent { fields_after_comm: _ } => CandidateUnread { cause: join(["pid ", to_string(pid), " stat has too few fields"], "") }
+              StartTimeUnparseable { field: f } => CandidateUnread { cause: join(["pid ", to_string(pid), " starttime `", f, "` is not an integer"], "") }
+            }
+        }
+    })
+}
+
+// THE SAME GENERATION: the start ticks read again after the digest must be the ones joined. An unread
+// re-read or a different generation is not continuity.
+fn same_generation(joined: ProcessStartReading, reread: ProcessStartReading?) -> Bool {
+  match reread {
+    Absent => false
+    Present { value: r } => r.pid == joined.pid && r.start_ticks == joined.start_ticks
+  }
+}
+
+fn reread_start(transport: HostEffectTransport, pid: Int) -> ProcessStartReading? {
+  match read_candidate_starts(transport: transport, pids: [pid]) {
+    CandidateUnread { cause: _ } => none
+    CandidatesRead { readings: rs } => first(rs)
+  }
+}
+
+// THE POST-DIGEST DECISION, PURE OVER THE TWO READINGS IT JOINS: the digest line read off the exe, and the
+// start ticks read again after it. Hermetic transports publish one constant per operation, so a
+// first-then-second read cannot be replayed through the transport; the decision is therefore its own
+// function and bind_executable, its only caller, supplies the readings.
+fn bind_digested_executable(launch: ReplicaEndpointLaunch, joined: ProcessStartReading, digest_line: String, reread: ProcessStartReading?) -> ReplicaIncarnationStanding {
+  let pid = joined.pid
+  match sha256sum_line_digest(line: digest_line) {
+    Absent => replica_incarnation_unread(cause: "the executable digest line carried no sha256")
+    Present { value: d } =>
+      match sha256_digest_content_hash(digest: d) {
+        Absent => replica_incarnation_unread(cause: "the executable digest is not a sha256")
+        Present { value: h } =>
+          if !same_generation(joined: joined, reread: reread) {
+            replica_incarnation_unread(cause: join(["pid ", to_string(pid), " did not keep the generation joined to the exported instant across the executable read, so the digest cannot be attributed to the answering process"], ""))
+          } else {
+            ReplicaIncarnationBound {
+              incarnation: ReplicaIncarnation { launch: launch, pid: pid, executable_digest: h, receipt: replica_incarnation_receipt },
+            }
+          }
+      }
+  }
+}
+
+fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, joined: ProcessStartReading) -> ReplicaIncarnationStanding {
+  let pid = joined.pid
+  match host_read_text(transport: transport, operation: Sha256SumFile { path: join(["/proc/", to_string(pid), "/exe"], "") as NonEmptyStr }) {
+    HostTextRefused { cause: c } => replica_incarnation_unread(cause: join(["the executable of pid ", to_string(pid), " could not be digested: ", c], ""))
+    HostTextObserved { stdout: line } =>
+      bind_digested_executable(launch: launch, joined: joined, digest_line: line, reread: reread_start(transport: transport, pid: pid))
+  }
+}
+
+fn after_host_facts(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, engine_pattern: NonEmptyStr, exported: ExactDecimal, boot: EpochSecs, ticks: Hertz) -> ReplicaIncarnationStanding {
+  match transport {
+    FleetSsh { target: target, context: context } =>
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: engine_pattern)) {
+        TypedArgvExecRefused { reason: why } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", why], ""))
+        TypedArgvExecConverged { result: r } =>
+          match pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+            PgrepScanFailed { exit_code: code, stderr: err } => replica_incarnation_unread(cause: join(["pgrep exited ", to_string(code), ": ", trim(s: err)], ""))
+            PgrepNoMatch => replica_incarnation_unread(cause: join(["no process runs ", engine_pattern as String], ""))
+            PgrepMatched { listing: listing } =>
+              match pgrep_pid_listing(stdout: listing) {
+                PgrepPidLineUnparseable { line: l } => replica_incarnation_unread(cause: join(["pgrep printed a non-pid line: ", l], ""))
+                PgrepPidsRead { pids: pids } =>
+                  match read_candidate_starts(transport: transport, pids: pids) {
+                    CandidateUnread { cause: c } => replica_incarnation_unread(cause: c)
+                    CandidatesRead { readings: rs } =>
+                      match join_exported_start(candidates: rs, exported: exported, boot: boot, ticks: ticks) {
+                        ProcessJoinNone { candidates: n } => replica_incarnation_unread(cause: join([to_string(n), " engine process(es) found and none started at the exported instant ", launch.process_start_field as String], ""))
+                        ProcessJoinAmbiguous { pids: ps } => replica_incarnation_unread(cause: join(["pids ", join(map(ps, p => to_string(p)), ","), " all started at the exported instant"], ""))
+                        ProcessJoined { process: joined } => bind_executable(transport: transport, launch: launch, joined: joined)
+                      }
+                  }
+              }
+          }
+      }
+    _ => replica_incarnation_unread(cause: "the incarnation is read over the rented host's ssh transport only")
+  }
+}
+
+// THE OBSERVATION: tick rate, boot time, then the process scan; any unreadable fact is Unread with the
+// cause, which keeps the session pinned and never calls it warm.
+fn observe_replica_incarnation(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, engine_pattern: NonEmptyStr) -> ReplicaIncarnationStanding {
+  match prometheus_sample_value_reading(field: launch.process_start_field as String) {
+    SampleValueNotFinite { lexeme: l } => replica_incarnation_unread(cause: join(["the exported start is not finite: ", l], ""))
+    SampleValueUnreadable { lexeme: l } => replica_incarnation_unread(cause: join(["the exported start is not a number: ", l], ""))
+    SampleValueExact { value: exported } =>
+      match host_read_text(transport: transport, operation: GetconfClockTicksPerSecond) {
+        HostTextRefused { cause: c } => replica_incarnation_unread(cause: join(["clock ticks: ", c], ""))
+        HostTextObserved { stdout: tick_text } =>
+          match clock_ticks_reading(stdout: tick_text) {
+            ClockTicksUnparseable { field: f } => replica_incarnation_unread(cause: join(["clock ticks `", f, "` is not an integer"], ""))
+            ClockTicksNotPositive { value: v } => replica_incarnation_unread(cause: join(["clock ticks ", to_string(v), " is not positive"], ""))
+            ClockTicksObserved { per_second: n } =>
+              match host_read_text(transport: transport, operation: ProcfsReadStat) {
+                HostTextRefused { cause: c } => replica_incarnation_unread(cause: join(["boot time: ", c], ""))
+                HostTextObserved { stdout: stat_text } =>
+                  match proc_stat_boot_time(content: stat_text) {
+                    BootTimeLineAbsent => replica_incarnation_unread(cause: "/proc/stat has no btime line")
+                    BootTimeUnparseable { field: f } => replica_incarnation_unread(cause: join(["btime `", f, "` is not an integer"], ""))
+                    BootTimeBeforeEpoch { field: f } => replica_incarnation_unread(cause: join(["btime `", f, "` is before the epoch"], ""))
+                    BootTimeObserved { epoch_seconds: boot } =>
+                      after_host_facts(transport: transport, launch: launch, engine_pattern: engine_pattern, exported: exported, boot: boot, ticks: hertz(count: n))
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A BOUND STANDING FOR WITNESSES ONLY: the production constructor is bind_executable, reached after the
+// host join, so a fixture that mints one is admitted by name and nowhere else.
+fn replica_incarnation_witness_fixture(launch: ReplicaEndpointLaunch, pid: Int, executable_digest: ContentHash) -> ReplicaIncarnationStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.serving.replica_incarnation_witness", decl_name: "w_bound"),
+  ]
+{
+  ReplicaIncarnationBound {
+    incarnation: ReplicaIncarnation { launch: launch, pid: pid, executable_digest: executable_digest, receipt: replica_incarnation_receipt },
+  }
+}

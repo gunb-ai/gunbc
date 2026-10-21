@@ -1,0 +1,84 @@
+module v2.std.language_model
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { PointwisePower }
+import v2.std.grammar {
+  ParseGrammar,
+  VoidGrammar,
+  grammar_atom,
+  grammar_empty_node,
+  grammar_to_node
+}
+import v2.std.compilers.lexing { LexRules, VoidLexRules, lex_rules_to_node }
+import v2.std.model_core {
+  ModelCore,
+  model_core_first_primitive_substrate,
+  bool_model_core
+}
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode }
+
+type LanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: PointwisePower<Symbol>
+  core: ModelCore
+}
+
+fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Authored { name: name },
+    target: target
+  }
+}
+
+fn language_model_empty_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
+    member: fn(_) {
+      false
+    }
+  }
+}
+
+fn void_language_model(identity: Symbol) -> LanguageModel {
+  LanguageModel {
+    lex: VoidLexRules,
+    grammar: VoidGrammar,
+    language_identity: identity,
+    canonical_symbols: language_model_empty_canonical_symbols(),
+    core: bool_model_core()
+  }
+}
+
+fn language_model_canonical_symbols_to_node(symbols: PointwisePower<Symbol>) -> Node {
+  grammar_empty_node()
+}
+
+fn language_model_to_node(lm: LanguageModel) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      language_model_named_edge(
+        name: ^language_model_field_lex,
+        target: lex_rules_to_node(rules: lm.lex)
+      ),
+      language_model_named_edge(
+        name: ^language_model_field_grammar,
+        target: grammar_to_node(grammar: lm.grammar)
+      ),
+      language_model_named_edge(
+        name: ^language_model_field_language_identity,
+        target: grammar_atom(identity: lm.language_identity)
+      ),
+      language_model_named_edge(
+        name: ^language_model_field_canonical_symbols,
+        target: language_model_canonical_symbols_to_node(symbols: lm.canonical_symbols)
+      ),
+      language_model_named_edge(
+        name: ^language_model_field_core,
+        target: model_core_first_primitive_substrate(core: lm.core)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}

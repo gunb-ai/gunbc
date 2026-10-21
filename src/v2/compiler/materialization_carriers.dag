@@ -1,0 +1,25 @@
+module v2.compiler.materialization_carriers
+
+import std.realization { Materialization, Memoize, Recompute, Share }
+import std.disposition { Disposition, Terminal }
+
+data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
+  reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; discriminating corpus: v2.test.claim.self_host_contract.materialization_carriers_emitted_contract."
+}
+
+// THE COMPILER'S MEMO DEMANDS AND PROVIDERS ARE GONE, AND THIS MODULE KEEPS ONLY THE PREDICATE.
+// The parse-table demand was deleted with the packrat parse memo (operator ruling R2,
+// 2026-10-08) and the compile-stage demand with its always-Miss memo (roadmap
+// native-memory-inert-carriers): its only lookup answered Miss unconditionally, so the governed
+// door, its provider, its catalog row and its admission controls described a store that never
+// served. The generic ladder obligations those controls exercised -- RefusedScopeTooNarrow on
+// an isolated plural site, RefusedNoProvider without a provider, discharge inside the
+// provider's scope, single recompute -- stay enrolled on fixture subjects in
+// test.claim.materialization_ladder_witness.
+fn materialization_allows_memo_store(m: Materialization) -> Bool {
+  match m {
+    Memoize => true
+    Recompute => false
+    Share => false
+  }
+}

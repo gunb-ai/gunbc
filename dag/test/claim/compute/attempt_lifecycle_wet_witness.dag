@@ -1,0 +1,847 @@
+module test.claim.compute.attempt_lifecycle_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_entry_presence, filesystem_listing_observation,
+  FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+}
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.algebra { trim }
+import std.measure { kibibyte, kibibyte_count }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
+import gunbc.compute.work_provider_local {
+  ComputeLayout, ComputeStore, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
+  compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
+  compute_store_read, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused, ComputeStoreNotConsulted,
+  compute_dependency_read, ComputeDependencyResolved, ComputeDependencyRefused, VerifiedBuildBinaries,
+  AttemptGate, AttemptGateReady, AttemptGateRefused, compute_begin_launch,
+  AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+  compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
+  host_record_was_written,
+  ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
+  compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten, compute_settled_record,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.compute.host_capacity { ComputeReservationRefused }
+import std.materialization_provider { ComputeWorkRequest }
+import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
+import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
+import std.cache_identity { compute_work_artifact_kind }
+import std.measure { byte_size }
+import std.fabric_blob { fabric_blob_reading_path }
+import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, GitObjectId }
+import gunbc.compute.work_request {
+  ComputeCapacityLedgerUnavailable,
+  ExactTree, CompileEntry, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
+  WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
+}
+import gunbc.compute.attempt_lifecycle {
+  DirectInvocation,
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptVerdict, AttemptWorkEnded, AttemptRecovered, attempt_verdict_wire,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_advanced, attempt_transition_wire,
+  attempt_state_wire, attempt_record_wire, attempt_record_decode, compute_pre_launch_ceiling_seconds,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
+  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+}
+
+// WET CONTROLS FOR THE ATTEMPT LIFECYCLE. Every transition below is a real compare-and-set against
+// a real generation-file store in a real temporary directory. The exclusion being asserted is the
+// one the operating system performs on the write, not one this witness arranges.
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attempt.XXXXXX").path
+}
+
+fn record_for(reference: String) -> AttemptRecord {
+  AttemptRecord {
+    identity: "abcdef0123456789",
+    reference: reference,
+    unit: join(["gunbc-compute-abcdef0123456789-", reference], ""),
+    granted: kibibyte(count: 27262976),
+    opened_at: 1800,
+    launch_deadline: 2000,
+    state: AttemptReserved, owner: DirectInvocation { why: "wet witness" },
+  }
+}
+
+fn generation_of(r: AttemptSlotReading) -> Int {
+  match r {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+    AttemptSlotAbsent => 0
+    AttemptSlotUnreadable { detail: _ } => 0 - 1
+  }
+}
+
+fn state_word_of(r: AttemptSlotReading) -> String {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => attempt_state_wire(s: rec.state)
+    AttemptSlotAbsent => "<absent>"
+    AttemptSlotUnreadable { detail: _ } => "<unreadable>"
+  }
+}
+
+fn held_record(r: AttemptSlotReading) -> AttemptRecord {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => rec
+    AttemptSlotAbsent => record_for(reference: "<absent>")
+    AttemptSlotUnreadable { detail: _ } => record_for(reference: "<unreadable>")
+  }
+}
+
+fn lost_race(t: AttemptTransition) -> Bool {
+  match t {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+// CRITERION 3, ORDER ONE: THE TERMINAL TRANSITION WINS AND THE LAUNCH IS REFUSED BEFORE IT SPAWNS.
+//
+// This is the interleaving that produces an unbacked launch if the two steps are not one: the
+// attempt reserves, recovery decides it is dead and terminates it, and THEN the producer -- which
+// has been paused somewhere between reserving and spawning -- goes to launch. With a gate, the
+// producer's compare-and-set is refused against a generation that has moved, and it learns this
+// BEFORE it spawns rather than after. The refusal is the store's, not a check this witness wrote.
+test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Bool {
+  let root = fresh_root()
+  let ok = a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet_cell(root: NonEmptyStr) -> Bool {
+  let record = record_for(reference: "attempt-terminate-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminated = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
+  let after_terminal = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_launch = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && generation_of(r: after_open) == 1
+    && state_word_of(r: after_open) == "reserved"
+    && attempt_transition_advanced(t: terminated)
+    && state_word_of(r: after_terminal) == "terminal:recovered"
+    && lost_race(t: late_launch)
+    && state_word_of(r: final_read) == "terminal:recovered"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 3, ORDER TWO: THE LAUNCH WINS AND RECOVERY IS REFUSED.
+//
+// The mirror, and it is the half that keeps the gate from being a one-way wall: a producer that HAS
+// advanced to launching owns the attempt, and a recovery arriving afterwards must not be able to
+// declare it terminal behind its back -- that is how a live unit's memory gets handed away. Same
+// mechanism, opposite winner, and the loser is again refused by precondition rather than by
+// noticing.
+test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
+  let root = fresh_root()
+  let ok = a_launch_that_won_refuses_a_recovery_arriving_behind_it_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_launch_that_won_refuses_a_recovery_arriving_behind_it_cell(root: NonEmptyStr) -> Bool {
+  let record = record_for(reference: "attempt-launch-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
+  let after_launch = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_recovery = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && attempt_transition_advanced(t: launched)
+    && state_word_of(r: after_launch) == "launching"
+    && lost_race(t: late_recovery)
+    && state_word_of(r: final_read) == "launching"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 2: THE BINDING IS READ, NOT RECONSTRUCTED. The unit name recovery would act on comes
+// out of the record the attempt wrote, and it survives the round trip through the store bytes. A
+// recovery deriving the name from the identity would be a second authority for the binding, and a
+// wrong derivation stops somebody else's unit.
+test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Bool {
+  let root = fresh_root()
+  let ok = the_unit_binding_is_read_back_from_the_record_the_attempt_wrote_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote_cell(root: NonEmptyStr) -> Bool {
+  let record = record_for(reference: "attempt-binding")
+  let opened = attempt_open(root: root, record: record)
+  let read_back = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let recovered = held_record(r: read_back)
+  attempt_transition_advanced(t: opened)
+    && recovered.unit == record.unit
+    && recovered.identity == record.identity
+    && recovered.reference == record.reference
+    && kibibyte_count(k: recovered.granted) == 27262976
+    && recovered.unit != record.identity
+}
+
+// A SLOT KEYED ON ONE REFERENCE THAT DECODES ANOTHER MUST NOT ADVANCE. The store key is the
+// reservation; the record.reference is the binding the attempt wrote. Skipping that check would
+// let begin_launch rewrite a foreign record under the expected generation.
+test fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key() -> Bool {
+  let root = fresh_root()
+  let ok = begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key_cell(root: String) -> Bool {
+  let planted = Filesystem.Write(
+    path: join([root, "/attempt-mismatch.1"], ""),
+    content: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-other\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let t = attempt_begin_launch(root: root as NonEmptyStr, reference: "attempt-mismatch" as NonEmptyStr, expected: cas_generation_first())
+  planted.success
+    && (match t {
+      AttemptTransitionRefused { detail: d } => string_contains(s: d, pattern: "names reference")
+      AttemptAdvanced { state: _, generation: _ } => false
+      AttemptLostRace { expected: _, observed: _ } => false
+    })
+}
+
+// CRITERION 6: THE TERMINAL GENERATION CARRIES WHY, AND THE EARLIER GENERATIONS STILL EXIST. The
+// store is generation-suffixed and append-only, so settling does not erase what it settled -- a
+// reader can still see the attempt was reserved and launched before it ended. Recovery that
+// overwrote its own evidence would be indistinguishable from an attempt that had never run.
+test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
+  let root = fresh_root()
+  let ok = settling_records_why_and_does_not_erase_what_it_settled_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn settling_records_why_and_does_not_erase_what_it_settled_cell(root: NonEmptyStr) -> Bool {
+  let record = record_for(reference: "attempt-history")
+  let opened = attempt_open(root: root, record: record)
+  let g1 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g1))
+  let g2 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let settled = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
+  let g3 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminal = held_record(r: g3)
+  attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: launched) && attempt_transition_advanced(t: settled)
+    && generation_of(r: g1) == 1 && generation_of(r: g2) == 2 && generation_of(r: g3) == 3
+    && kibibyte_count(k: held_record(r: g2).granted) == 27262976
+    && held_record(r: g2).unit == record.unit
+    && (match terminal.state { AttemptTerminal { verdict: v, detail: d } => attempt_verdict_wire(v: v) == "failed" && string_contains(s: d, pattern: "exit 101")  AttemptReserved => false  AttemptLaunching => false })
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).success
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).success
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).content, pattern: "reserved")
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).content, pattern: "launching")
+}
+
+// CRITERION 1: FOUR STATES, AND THE TWO THAT MUST NEVER FREE CAPACITY ARE SEPARATE ARMS CARRYING
+// WHY. Still-running and unknown are not one "not ended" bucket: one waits, the other is
+// investigated, and a reader told only "could not establish" has nothing to act on.
+test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before() -> Bool {
+  unit_lifecycle_ended(u: UnitTerminatedSuccess { detail: "exit 0" })
+    && unit_lifecycle_ended(u: UnitTerminatedFailure { detail: "exit 101" })
+    && unit_lifecycle_ended(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" })
+    && !unit_lifecycle_ended(u: UnitStillRunning { detail: "populated 1" })
+    && !unit_lifecycle_ended(u: UnitLifecycleUnknown { detail: "the manager could not be read" })
+    && string_contains(s: unit_lifecycle_wire(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }), pattern: "cause unknown")
+    && string_contains(s: unit_lifecycle_wire(u: UnitStillRunning { detail: "populated 1" }), pattern: "STILL RUNNING")
+    && string_contains(s: unit_lifecycle_wire(u: UnitLifecycleUnknown { detail: "the manager could not be read" }), pattern: "the manager could not be read")
+}
+
+// THE RECOVERY TRIGGER, AND THE ROW THAT MATTERS IS THE FIRST ONE. A producer that is alive and has
+// simply not reached its launch CAS yet sits in Reserved -- indistinguishable by OBSERVATION from a
+// dead one, because in Reserved there is no unit to observe. So recovery must not be able to enter
+// the race at all inside the window the producer declared; the gate decides who wins a race, and
+// this decides who may start one. Without it an impatient recovery kills a live attempt and the CAS
+// makes that outcome look correct.
+test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
+  let record = record_for(reference: "attempt-trigger")
+  let unobservable = UnitLifecycleUnknown { detail: "no unit exists yet, which is what pre-launch looks like" }
+  let early = recovery_trigger(record: record, lifecycle: unobservable, now: 1999)
+  let at_deadline = recovery_trigger(record: record, lifecycle: unobservable, now: 2000)
+  let late = recovery_trigger(record: record, lifecycle: unobservable, now: 2001)
+  !recovery_trigger_fires(t: early)
+    && recovery_trigger_fires(t: at_deadline)
+    && recovery_trigger_fires(t: late)
+    && (match early { RecoveryTooEarly { deadline: d, now: n } => d == 2000 && n == 1999  _ => false })
+    && string_contains(s: recovery_trigger_wire(t: early), pattern: "not dead")
+}
+
+// AND ONCE LAUNCHED THE TRIGGER IS THE OBSERVATION, WITH CRITERION 4 IN FULL. Only the three ended
+// arms may terminate a launched attempt; still-running and unknown keep the charge, and unknown is
+// the one that matters because it is what a lost launcher, an unreadable manager and a missing
+// cgroup all look like.
+test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
+  let launched = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-launched",
+    unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted: kibibyte(count: 27262976),
+    opened_at: 1800, launch_deadline: 2000, state: AttemptLaunching, owner: DirectInvocation { why: "wet witness" },
+  }
+  let terminal = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-done",
+    unit: "gunbc-compute-abcdef0123456789-attempt-done", granted: kibibyte(count: 27262976),
+    opened_at: 1800, launch_deadline: 2000, state: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "done" }, owner: DirectInvocation { why: "wet witness" },
+  }
+  recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedFailure { detail: "exit 101" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitStillRunning { detail: "populated 1" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitLifecycleUnknown { detail: "the manager could not be read" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && string_contains(s: recovery_trigger_wire(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999)), pattern: "released only once the unit is proven ended")
+}
+
+// CRITERION 4: A SLOT THAT CANNOT BE READ IS NOT AN EMPTY SLOT. The distinction has opposite
+// remedies and opposite hazards -- an unreadable slot read as absent lets a producer open a second
+// attempt over a live one, and lets recovery believe there is nothing to terminate.
+test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
+  let root = fresh_root()
+  let ok = an_undecodable_slot_is_unreadable_and_never_absent_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_undecodable_slot_is_unreadable_and_never_absent_cell(root: NonEmptyStr) -> Bool {
+  let reference = "attempt-corrupt"
+  let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
+  let reading = attempt_slot_read(root: root, reference: reference as NonEmptyStr)
+  let absent_reading = attempt_slot_read(root: root, reference: "attempt-never-written" as NonEmptyStr)
+  let negative_instant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":-5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let negative_grant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":-1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let well_formed = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-fine\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  planted.success
+    && (match reading { AttemptSlotUnreadable { detail: d } => string_contains(s: d, pattern: "cannot decode")  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotAbsent => false })
+    && (match absent_reading { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+    && (match negative_instant { Absent => true  Present { value: _ } => false })
+    && (match negative_grant { Absent => true  Present { value: _ } => false })
+    && (match well_formed { Present { value: r } => kibibyte_count(k: r.granted) == 1 && r.opened_at == 5  Absent => false })
+}
+
+fn terminal_record_text(verdict_word: String) -> String {
+  join(["{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-verdict\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"terminal:", verdict_word, "\",\"detail\":\"why\"}"], "")
+}
+
+fn verdict_round_trips(v: AttemptVerdict) -> Bool {
+  let written = attempt_record_wire(r: AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-verdict", unit: "u", granted: kibibyte(count: 1),
+    opened_at: 5, launch_deadline: 100, state: AttemptTerminal { verdict: v, detail: "why" }, owner: DirectInvocation { why: "wet witness" },
+  })
+  match attempt_record_decode(text: written) {
+    Present { value: r } =>
+      match r.state {
+        AttemptTerminal { verdict: back, detail: d } => attempt_verdict_wire(v: back) == attempt_verdict_wire(v: v) && d == "why"
+        AttemptReserved => false
+        AttemptLaunching => false
+      }
+    Absent => false
+  }
+}
+
+// A TERMINAL VERDICT IS A CLOSED SET AND A WORD OUTSIDE IT IS UNREADABLE, like an unknown state word
+// (review 70244). The positive half writes every verdict the two writers can produce through the
+// real record wire and reads it back; the RED half hands the real decode a misspelling and the word
+// this file itself used to write, "released", which no producer ever wrote -- both must come back
+// unreadable rather than as a terminal state some later reader trusts.
+test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
+  verdict_round_trips(v: AttemptRecovered)
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedSucceeded })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedFailed })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedRefusedByInfrastructure })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedCancelled })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedOutputMismatch })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "recovered")) { Present { value: _ } => true  Absent => false })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "recoverd")) { Present { value: _ } => false  Absent => true })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "released")) { Present { value: _ } => false  Absent => true })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "")) { Present { value: _ } => false  Absent => true })
+}
+
+// THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
+// CLAMPED. The deadline is declared by the party it protects, so nothing in the gate alone stops a
+// producer declaring an hour -- and the cost of that does not land on the producer, it lands on
+// every other contender as a seat nobody may reclaim. That is DESIGN 5's externalization: an
+// accepted risk re-exported to another principal while the contract keeps its name.
+//
+// CLAMPING WOULD BE THE WIDEN. Admitting the attempt under a bound it did not ask for, and then
+// reclaiming its seat mid-checkout, is a safety limit's clothes on a silent narrowing of somebody
+// else's window. It refuses, and the refusal names both numbers so the author learns the ceiling
+// instead of meeting it as a mysterious reclaim.
+test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped() -> Bool {
+  let root = fresh_root()
+  let ok = an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(root: NonEmptyStr) -> Bool {
+  let base = record_for(reference: "attempt-greedy")
+  let greedy = AttemptRecord {
+    identity: base.identity, reference: base.reference, unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds + 1, state: AttemptReserved, owner: DirectInvocation { why: "wet witness" },
+  }
+  let at_ceiling = AttemptRecord {
+    identity: base.identity, reference: "attempt-at-ceiling", unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds, state: AttemptReserved, owner: DirectInvocation { why: "wet witness" },
+  }
+  let backwards = AttemptRecord {
+    identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1799, state: AttemptReserved, owner: DirectInvocation { why: "wet witness" },
+  }
+  let refused = attempt_open(root: root, record: greedy)
+  let admitted = attempt_open(root: root, record: at_ceiling)
+  let closed_window = attempt_open(root: root, record: backwards)
+  let greedy_slot = attempt_slot_read(root: root, reference: greedy.reference as NonEmptyStr)
+  !attempt_transition_advanced(t: refused)
+    && attempt_transition_advanced(t: admitted)
+    && !attempt_transition_advanced(t: closed_window)
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: "every other contender")
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: to_string(value: compute_pre_launch_ceiling_seconds))
+    && string_contains(s: attempt_transition_wire(t: closed_window), pattern: "already closed")
+    && (match greedy_slot { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+}
+
+
+// THE LOSER OF A LAUNCH RACE MAY NOT REPORT THAT IT SETTLED THE SLOT (review 69967). This is the
+// reachable path: compute_run_leased returns its gate from compute_begin_launch, so a producer whose
+// launch CAS lost carries AttemptGateRefused into compute_settle_attempt, and the string that fold
+// produces is written into the operator-facing consumption receipt. Before the third arm existed the
+// refusal mapped to HostRecordWritten and the receipt read `attempt: settled in the attempt slot` for
+// a producer that settled nothing and observed nothing about the slot's final state.
+//
+// THE RACE IS REAL AND NOT DESCRIBED. Two producers open against one store; the winner advances the
+// generation, so the loser's begin_launch is refused BY THE STORE. The claim then asserts three
+// things that a two-armed carrier could not have kept apart: the winner says settled, the loser's
+// wire denies it and says who to believe instead, and the loser is NOT reported as a host-record
+// LOSS -- because it owed no record, and calling it a loss would manufacture an incident for an
+// operator to chase.
+fn layout_at(root: String) -> ComputeLayout {
+  ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: root, staging_dir: root, target_dir: root,
+    log_path: root, consumption_path: root,
+    attempts_dir: root,
+  }
+}
+
+test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> Bool {
+  let root = fresh_root()
+  let ok = the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: String) -> Bool {
+  let layout = layout_at(root: root)
+  let rec = record_for(reference: "attempt-race")
+  let opened = attempt_open(root: root as NonEmptyStr, record: rec)
+  let generation = match opened {
+    AttemptAdvanced { state: _, generation: g } => g
+    AttemptLostRace { expected: _, observed: _ } => cas_generation_first()
+    AttemptTransitionRefused { detail: _ } => cas_generation_first()
+  }
+  let winner = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let loser = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let winner_settled = compute_settle_attempt(layout: layout, gate: winner, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the winner closes the slot")
+  let loser_settled = compute_settle_attempt(layout: layout, gate: loser, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the loser has no slot to close")
+  attempt_transition_advanced(t: opened)
+    && (match winner { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match loser { AttemptGateReady { record: _, generation: _ } => false  AttemptGateRefused { detail: _ } => true })
+    && (match winner_settled { AttemptSettled => true  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => false })
+    && (match loser_settled { AttemptSettled => false  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => true })
+    && compute_attempt_settlement_wire(closed: winner_settled) == "settled in the attempt slot"
+    && !string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "settled in the attempt slot")
+    && string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "NOT SETTLED BY THIS PRODUCER")
+    && host_record_was_written(h: attempt_settlement_host_record(s: loser_settled))
+}
+
+
+// THE CEILING RETRY IS A NEW ATTEMPT AND IT ASKS THE GATE BEFORE IT SPAWNS. The retry's own slot --
+// compute_ceiling_retry_reference of the first attempt's reference -- is already held here by
+// another attempt, so the retry's open must be refused by the store and the retry must return
+// before a checkout or a unit exists. The refusal names the open, the held slot is untouched, and
+// the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
+// the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
+// unit's outcome, never as this refusal.
+fn fixture_toolchain(rustc: String) -> WorkToolchainIdentity {
+  work_toolchain_observed(
+    rustc_verbose: rustc as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
+    cache_release: "sccache fixture" as NonEmptyStr, provider_revision: match git_object_id_from_untagged_hex(hex: "2222222222222222222222222222222222222222") { Present { value: oid } => oid  Absent => "2222222222222222222222222222222222222222" },
+  )
+}
+
+// SLOT FIRST, THEN THE LEDGER (ruling on #13074). A slot already held under the retry's reference
+// refuses the open, and the reservation is reachable only from an open that succeeded -- so a held
+// slot can never leave a reservation behind. RED against a provider that reserves before opening.
+test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
+  let root = fresh_root()
+  let ok = the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn_cell(root: String) -> Bool {
+  let layout = layout_at(root: root)
+  let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
+  let squatter = record_for(reference: retry_reference as String)
+  let held = attempt_open(root: root as NonEmptyStr, record: squatter)
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: retry_reference, granted: kibibyte(count: 27262976))
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
+  attempt_transition_advanced(t: held)
+    && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
+    && generation_of(r: after) == 1
+    && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
+}
+
+// A RESERVATION REFUSED UNDER AN OPEN SLOT CLOSES THE SLOT. RED against a refusal arm that reports and
+// leaves the slot reserved, which recovery would later have to settle with no reservation to find.
+test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
+  let root = fresh_root()
+  let ok = a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -> Bool {
+  let layout = ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: join([root, "/lease"], ""), staging_dir: root, target_dir: root,
+    log_path: join([root, "/log"], ""), consumption_path: join([root, "/consumption"], ""),
+    attempts_dir: root,
+  }
+  let reference = "attempt-refused" as NonEmptyStr
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
+  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
+  let r = compute_refused_after_open(
+    instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
+    layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: reference)
+  (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "fixture: ledger refused")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && string_contains(s: state_word_of(r: after), pattern: "terminal:")
+}
+
+// THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in
+// test.claim.compute.work_request_witness). A build's record is committed through
+// compute_store_commit with its two binaries staged beside the store root, read back through
+// compute_store_read as a served success, and resolved by compute_dependency_read into two VERIFIED
+// readings that live under the store root -- and the stages are gone. Deleting the byte-part
+// integration (committing without parts, or a dependent reading anything but the store's readings)
+// turns this red.
+//
+// AND THE RECORD ANSWERS ONLY THE QUESTION IT WAS STORED FOR. Each compute_store_read opens the
+// on-disk store afresh, which is what a later process does, so the served read is a reuse across
+// opens and not a value handed along in memory. Three further reads ask nearby questions of the same
+// store: the same tree under a toolchain whose rustc line differs by one character, a different
+// tree under the same toolchain, and a different operation. Each is ABSENT -- a miss that would
+// build -- and none is served the stored build. The toolchain line is carried whole in the
+// identity, so the one-character change moves the address; were it reduced to a fingerprint, this
+// arm is where a collision would be served as a hit.
+test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
+  let request = ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
+  let served = compute_store_read(store: root, req: request)
+  let resolved = compute_dependency_read(store: root, build: request)
+  let other_tree = match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") { Present { value: oid } => oid  Absent => "3333333333333333333333333333333333333333" }
+  let other_toolchain = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixturf") })
+  let other_subject = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: other_tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") })
+  let other_operation = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: CompileEntry { entry: "dag/t.dag" as FilePath }, toolchain: fixture_toolchain(rustc: "rustc fixture") })
+  let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  log.success && g.success && c.success
+    && (match committed { ComputeCommitted => true  _ => false })
+    && (match served { ComputeStoreServed { ending, identity, document: _ } => ending == "succeeded" && identity == "fixture-identity"  _ => false })
+    && (match resolved {
+      ComputeDependencyResolved { dependency } => match dependency {
+        VerifiedBuildBinaries { gunbc, claim_batch } => starts_with(s: fabric_blob_reading_path(reading: gunbc) as String, prefix: root_path) && starts_with(s: fabric_blob_reading_path(reading: claim_batch) as String, prefix: root_path) && fabric_blob_reading_path(reading: gunbc) != fabric_blob_reading_path(reading: claim_batch)
+        _ => false
+      }
+      ComputeDependencyRefused { detail: _ } => false
+    })
+    && !stage_left
+    && (match other_toolchain { ComputeStoreAbsent => true  _ => false })
+    && (match other_subject { ComputeStoreAbsent => true  _ => false })
+    && (match other_operation { ComputeStoreAbsent => true  _ => false })
+}
+
+// THE OWNED TARGET'S LIFETIME ENDS AT SETTLEMENT, AND ONLY AT A SETTLEMENT THAT LANDED. Both cells run
+// the production compute_settled_record against a real scratch store and a real target tree. Landed:
+// the record commits and the target is gone. Forced failure: the run log is never written, so the
+// store refuses the record, the outcome is a refusal naming the kept path, and the target is still
+// there. RED against a settlement that leaves the target, or one that removes it before the commit.
+fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: join([root_path, "/owned/target"], ""),
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
+  let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
+  let log = if write_log { Filesystem.Write(path: layout.log_path, content: "built\n").success } else { true }
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  compute_settled_record(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
+    layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
+}
+
+test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: true)
+  let gone = reuse_path_absent(path: join([root_path, "/owned/target"], ""))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && gone
+    && (match r { ProvideFresh { outcome: _, document: _, host_record } => match host_record { HostRecordWritten => true  _ => false }  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+}
+
+test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: false)
+  let kept = Filesystem.Read(path: join([root_path, "/owned/target/artifact"], "")).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && kept
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+}
+
+// ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
+//
+// The round trip above supplies its reads by hand: it never runs compute_provide_leaf, so deleting
+// that function's "serve the stored outcome" arm would leave it green. These run the function itself
+// against a scratch store. A build record committed through compute_store_commit is asked for again
+// by compute_provide_leaf, which must ATTACH to it -- the stored identity and document, the plain
+// host record of the first read -- and must not have entered production. Production's first act is
+// compute_ensure_dir on the work directory of this request's identity, so that directory is read
+// before and after the call and must be POSITIVELY ABSENT both times: an ancestor listed without the
+// next component in it. A failed write was the earlier probe, and a leftover probe file or a
+// permission refusal failed it the same way (side-chat review at d660cb13); an unreadable ancestor
+// or a directory already present before the call now fails the claim instead of passing it.
+//
+// RED against a leaf that routes a served read to compute_provide_produce: where the compute root
+// cannot be made the answer is a refusal and not an attachment, and where it can the work directory
+// exists and the walk reads it listed. No absent request is asked here: on a host whose compute root
+// exists that would reserve a seat and launch a real unit.
+//
+// WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
+// from a supplied outcome, not by a unit that built it. THE PAIRED INHABITANCE CLAIM is
+// gunbc.instruments.compute_run_unit_cold cold_commit_and_attach: it runs the real compute_run_unit,
+// captures its declared outputs from the identity's owned target, commits that real outcome and
+// requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
+// compute-run-unit-cold). This supplied-outcome half may not stand without it.
+fn reuse_store(root_path: String) -> ComputeStore {
+  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+}
+
+fn reuse_tree() -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: "4444444444444444444444444444444444444444") { Present { value: oid } => oid  Absent => "4444444444444444444444444444444444444444" }
+}
+
+fn reuse_commit(root_path: String) -> Bool {
+  reuse_commit_detail(root_path: root_path) == ""
+}
+
+// "" when the record was committed; otherwise what stopped it.
+fn reuse_commit_detail(root_path: String) -> String {
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let request = ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  if !(log.success && g.success && c.success) { "the staged build files could not be written" } else {
+    match committed {
+      ComputeCommitted => ""
+      ComputeCommitNotOwed => "the commit was not owed"
+      ComputeCommitRefused { detail } => join(["the commit was refused: ", detail], "")
+    }
+  }
+}
+
+// Walks the path from "/" down. Each step is the filesystem authority's own entry-presence reading
+// over an admitted listing: a listed component descends, and any other reading -- established
+// absence, an indeterminate listing, a refused subject -- ends the walk with that reading. Only an
+// established absence counts as absent.
+type ReusePathWalk
+  = ReuseWalkListing { at: String }
+  | ReuseWalkDone { presence: FilesystemEntryPresence }
+
+fn reuse_path_step(walk: ReusePathWalk, part: String) -> ReusePathWalk {
+  match walk {
+    ReuseWalkDone { presence } => ReuseWalkDone { presence: presence }
+    ReuseWalkListing { at } => {
+      let l = Filesystem.List(path: at)
+      let presence = filesystem_entry_presence(listing: filesystem_listing_observation(directory: at, success: l.success, entries: l.entries, error: l.error), name: part)
+      match presence {
+        FilesystemEntryListed { directory: _, name: _ } => ReuseWalkListing { at: if at == "/" { join(["/", part], "") } else { join([at, "/", part], "") } }
+        _ => ReuseWalkDone { presence: presence }
+      }
+    }
+  }
+}
+
+fn reuse_path_absent(path: String) -> Bool {
+  match fold(path.split(sep: "/").filter(c => c != ""), init: ReuseWalkListing { at: "/" }, f: (acc, part) => reuse_path_step(walk: acc, part: part)) {
+    ReuseWalkDone { presence } => match presence { FilesystemEntryAbsent(_) => true  _ => false }
+    ReuseWalkListing { at: _ } => false
+  }
+}
+
+fn reuse_served_without_production(root_path: String) -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let subject = ExactTree { tree: reuse_tree() }
+  let toolchain = fixture_toolchain(rustc: "rustc fixture")
+  let work_dir = compute_layout_in(instance: instance, store_root: DurableHostVolume, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
+  let before = reuse_path_absent(path: work_dir)
+  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, owner: DirectInvocation { why: "wet witness" }, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+  let after = reuse_path_absent(path: work_dir)
+  before && after
+    && (match provided {
+      ProvideAttached { identity, ending, document, host_record } => identity == "fixture-identity" && ending == "succeeded" && string_contains(s: document, pattern: "fixture-identity") && (match host_record { HostRecordWritten => true  _ => false })
+      ProvideFresh { outcome: _, document: _, host_record: _ } => false
+    })
+}
+
+test fn the_production_leaf_attaches_to_a_committed_record_and_does_not_enter_production() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let served = reuse_served_without_production(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && served
+}
+
+// THE SAME TWO HALVES AS TWO PROCESSES over one store root the caller names, so the second process
+// holds nothing the first computed: `gunbc run --function reuse_cold_cli --arg root=<dir>`, then
+// `--function reuse_warm_cli --arg root=<dir>`.
+fn reuse_cold_cli(root: String) -> ProcessExit {
+  let detail = reuse_commit_detail(root_path: root)
+  if detail == "" { ExitSuccess } else { ExitFailure { code: 1, reason: detail } }
+}
+
+fn reuse_warm_cli(root: String) -> ProcessExit {
+  if reuse_served_without_production(root_path: root) { ExitSuccess } else { ExitFailure { code: 1, reason: "the stored build was not served by attachment, or production was entered" } }
+}
+
+// ── C6: A STORED BUILD IS REUSED ONLY WHILE ITS BYTES VERIFY; MISSING AND CORRUPT BYTES REFUSE ─────
+//
+// The record committed by reuse_commit is served and its dependency resolves (the positive control,
+// so a read that refused everything is red). Then the byte part the record names is damaged in the
+// store, and the same two production reads -- compute_store_read, which attach goes through, and
+// compute_dependency_read, which hands VerifiedBuildBinaries to a dependent -- must REFUSE. They must
+// not answer Absent: an Absent is "build it again", and a damaged record answering Absent would
+// silently rebuild over a store that is lying; a Served would hand a dependent bytes nobody checked.
+// The damaged path is the one the verified reading itself names, so no path is spelled here.
+fn reuse_request() -> ComputeWorkRequest {
+  ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+}
+
+fn reuse_served_and_resolved(root_path: String) -> Bool {
+  (match compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request()) { ComputeStoreServed { ending: _, identity: _, document: _ } => true  _ => false })
+    && (match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) { ComputeDependencyResolved { dependency: _ } => true  ComputeDependencyRefused { detail: _ } => false })
+}
+
+fn reuse_gunbc_part_path(root_path: String) -> String {
+  match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) {
+    ComputeDependencyResolved { dependency } => match dependency { VerifiedBuildBinaries { gunbc, claim_batch: _ } => fabric_blob_reading_path(reading: gunbc) as String  _ => "" }
+    ComputeDependencyRefused { detail: _ } => ""
+  }
+}
+
+fn reuse_refuses_both_reads(root_path: String) -> Bool {
+  (match compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request()) { ComputeStoreRefused { detail: _ } => true  _ => false })
+    && (match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) { ComputeDependencyRefused { detail: _ } => true  ComputeDependencyResolved { dependency: _ } => false })
+}
+
+test fn a_stored_binary_whose_bytes_changed_refuses_and_is_not_served_or_rebuilt() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let before = reuse_served_and_resolved(root_path: root_path)
+  let part = reuse_gunbc_part_path(root_path: root_path)
+  let damaged = if part == "" { false } else { Filesystem.Write(path: part as FilePath, content: "gunbc-bytes-CORRUPTED").success }
+  let refused = reuse_refuses_both_reads(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && before && damaged && refused
+}
+
+test fn a_stored_binary_that_went_missing_refuses_and_is_not_served_or_rebuilt() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let before = reuse_served_and_resolved(root_path: root_path)
+  let part = reuse_gunbc_part_path(root_path: root_path)
+  let deleted = if part == "" { false } else { Filesystem.Delete(path: part as FilePath).success }
+  let refused = reuse_refuses_both_reads(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && before && deleted && refused
+}
+
+// A declared output that was never produced cannot be committed: the staged file is absent, the
+// commit refuses, and no record exists afterwards (the read is Absent, not a success with a hole).
+test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  let after = compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request())
+  // Positive control: the same commit with BOTH outputs staged lands, so the refusal above is the missing output and nothing else.
+  let g2 = Filesystem.Write(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c2 = Filesystem.Write(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let recommitted = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  log.success && g.success && g2.success && c2.success
+    && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })
+    && (match after { ComputeStoreAbsent => true  _ => false })
+    && (match recommitted { ComputeCommitted => true  _ => false })
+}

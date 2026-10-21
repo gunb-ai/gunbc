@@ -1,0 +1,40 @@
+diff --git a/vllm/models/deepseek_v4_1/attention.py b/vllm/models/deepseek_v4_1/attention.py
+index 9bb5352..39fed7a 100644
+--- a/vllm/models/deepseek_v4_1/attention.py
++++ b/vllm/models/deepseek_v4_1/attention.py
+@@ -168,6 +168,10 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
+     # bf16 / per-tensor fp8 KV row. Backends can override the instance hook when
+     # a single attention class dispatches across arch-specific layouts.
+     use_fp8_ds_mla_layout: ClassVar[bool] = True
++    # Tokens per page of the SWA cache. The SWA backend admits any multiple of
++    # 32; a platform subclass whose kernel takes one fixed page size names it
++    # here (gunbc overlay: FlashInfer's SM120 DSv4 decode kernel takes only 64).
++    swa_block_size: ClassVar[int] = 32
+     # Prefill is processed in fixed-size chunks; this bounds the bf16 kv-gather
+     # workspace allocated in _forward_prefill and is also read by the dummy-run
+     # path to pre-reserve that workspace.
+@@ -453,7 +457,7 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
+             prefix=f"{prefix}.swa_cache",
+             cache_config=cache_config,
+             backend_cls=self.swa_backend_cls,
+-            block_size=32,
++            block_size=self.swa_block_size,
+         )
+ 
+         # The attention layer itself was already registered with the
+diff --git a/vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py b/vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py
+index 802dded..d69ea0e 100644
+--- a/vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py
++++ b/vllm/models/deepseek_v4_1/nvidia/flashinfer_sparse.py
+@@ -545,6 +545,11 @@ class DeepseekV4FlashInferSM120Attention(DeepseekV4Attention):
+     backend_cls = DeepseekV4FlashInferMLASparseBackend
+     swa_backend_cls = DeepseekSparseSWAFlashInferBackend
+     use_fp8_ds_mla_layout: ClassVar[bool] = True
++    # FlashInfer's SM120 DSv4 decode kernel is instantiated for 64-token pages
++    # only (flashinfer.mla._sparse_mla_sm120 _DECODE_DSV4_PAGE_BLOCK_SIZE), and
++    # every call with <= 64 query tokens must take it: the paged orchestrator is
++    # prefill-only. The SWA cache is the primary pool of every such call.
++    swa_block_size: ClassVar[int] = 64
+ 
+     @staticmethod
+     def _get_workspace(device: torch.device) -> torch.Tensor:

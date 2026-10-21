@@ -1,0 +1,38 @@
+// WITNESS: the LocalShell retract gate (gunbc.host.host_effect_realize
+// live_deploy_retract_candidate_locus_refusal), consumed by realize_live_deploy_retract_on_host.
+// FleetSsh is NOT exercised: its FleetSshExecutionContext is sole_constructor (sealed behind the
+// effectful known-hosts materialization), so no witness can supply one; its arm is covered only by
+// the closed-coproduct exhaustiveness of the match. The retract script is not dissolved here (its retained_srvn row stays until PB2's typed
+// preamble); the gate only narrows: the local locus proceeds, every remote locus refuses typed.
+module test.claim.host.live_deploy_retract_locus_gate_witness
+
+import std.types { String, Bool }
+import std.optional { Present, Absent }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host.host_effect { BootstrapFragment, ThinInvocation }
+import gunbc.host.host_effect_realize { live_deploy_retract_candidate_locus_refusal }
+
+test fn the_local_locus_proceeds_to_the_fold() -> Bool {
+  match live_deploy_retract_candidate_locus_refusal(transport: LocalShell) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE RED: a remote locus must refuse with the typed refusal naming it.
+test fn an_ssh_locus_refuses_naming_the_host() -> Bool {
+  match live_deploy_retract_candidate_locus_refusal(transport: SshShell { ssh_host: "srv-x" }) {
+    Present { value: why } => string_contains(s: why, pattern: "live_deploy retract refused over ssh host=srv-x")
+    Absent => false
+  }
+}
+
+test fn a_thin_run_locus_refuses_naming_the_locus() -> Bool {
+  match live_deploy_retract_candidate_locus_refusal(transport: EmitArtifactThenThinRun {
+    bootstrap: BootstrapFragment { script: "true" },
+    invocation: ThinInvocation { argv: ["true"] },
+  }) {
+    Present { value: why } => string_contains(s: why, pattern: "live_deploy retract refused over EmitArtifactThenThinRun")
+    Absent => false
+  }
+}

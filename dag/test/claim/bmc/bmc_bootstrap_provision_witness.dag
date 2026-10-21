@@ -1,0 +1,33 @@
+module test.claim.bmc.bmc_bootstrap_provision_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.cloud.gcp.gcp { gcp_service_api_id, GcpSecretManager, GcpServiceUsage }
+import gunbc.assimilate.bmc_bootstrap_provision { bmc_required_gcp_apis, bmc_assimilate_service_deps }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn api_required(name: String) -> Bool {
+  fold(bmc_required_gcp_apis, init: false, f: (acc, a) => acc || a == name)
+}
+
+// The secret-policy leg is cut (gunbc#14360 writer census): this bootstrap creates identity and
+// federation only, and the srv3 secret's cells are the converge's.
+
+test fn bootstrap_enables_only_required_apis() -> Bool {
+  bmc_required_gcp_apis.length() == 5
+    && api_required(name: "iam.googleapis.com")
+    && api_required(name: "iamcredentials.googleapis.com")
+    && api_required(name: "sts.googleapis.com")
+    && api_required(name: "secretmanager.googleapis.com")
+    && api_required(name: "serviceusage.googleapis.com")
+    && !api_required(name: "compute.googleapis.com")
+}
+
+test fn bootstrap_apis_derive_from_service_deps() -> Bool {
+  bmc_assimilate_service_deps.length() == 5
+    && fold(bmc_assimilate_service_deps, init: true, f: (acc, s) => acc && api_required(name: gcp_service_api_id(service: s)))
+    && gcp_service_api_id(service: GcpSecretManager) == "secretmanager.googleapis.com"
+    && gcp_service_api_id(service: GcpServiceUsage) == "serviceusage.googleapis.com"
+}

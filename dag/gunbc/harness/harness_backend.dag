@@ -1,0 +1,730 @@
+module gunbc.harness.harness_backend
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Timestamp, EpochSecs }
+import std.nat { Nat }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import std.measure { Second, second, second_count }
+import gunbc.serving.engine_progress { EngineProgressSample }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
+  serving_availability_bracketing_read,
+}
+import extdeps.vllm.metrics {
+  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
+  HistogramStatistic, vllm_metric_name, vllm_histogram_series_name,
+  vllm_waiting_reason_label, vllm_waiting_reason_capacity,
+}
+import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import gunbc.serving.replica_endpoint_launch {
+  replica_endpoint_launch, ReplicaLaunchObservation, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
+}
+import gunbc.serving.turn_admission {
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread,
+  ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
+}
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
+  serving_route_endpoint_wire,
+}
+import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes }
+import gunbc.serving.admitted_model {
+  ServingModelAdmitted, ServingModelNotAdmitted, serving_admit_advertised,
+}
+import gunbc.spark.vllm_observed {
+  VllmModelsRouteReadbackStanding, vllm_models_route_standing, vllm_models_route_standing_wire,
+  vllm_models_advertised_ids,
+}
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
+import extdeps.http.client
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
+  operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
+  operator_models_url, operator_health_url, operator_endpoint_origin,
+}
+import extdeps.tools.curl { curl_exit_outcome, CurlCouldNotConnect, CurlOperationTimedOut }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+}
+
+
+// THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
+//
+// Every vendor provider in this repository is assessed from OUTSIDE: a login-status probe, a
+// transcript scraped for state, an entitlement axis nobody can read. That observation layer is what
+// dominates the vendor modules, and it is why Codex selection cannot resolve today -- the offer is
+// constructed with an unobserved standing and eligibility requires an observed one, so the honest
+// answer is permanently "unknown" and unknown refuses.
+//
+// The harness has no such gap because the question is different. It has no account, so there is no
+// entitlement to read; no quota, so there is no limit bucket to model. The only thing that decides
+// whether it can work is whether the backend it posts to is serving the model it will name, and
+// that is one GET away and answerable by us.
+
+data harness_models_path: String = "/v1/models"
+
+// HOW LONG A PROBE OF A SERVING FRONT DOOR MAY TAKE, AS HARNESS POLICY. Both probes are small GETs on
+// the site LAN (/v1/models and /metrics), measured sub-second on group A; the bound exists so that an
+// engine which accepts the connection and never answers stops being a candidate instead of holding
+// the roster gate, dispatch selection and placement open with no deadline at all -- which is what
+// the unbounded GET these probes used to make did. The number is this consumer's patience, not a
+// fact about vLLM (extdeps.http.client GetWithin takes it as an input for that reason).
+data harness_front_door_probe_bound: Second = second(count: 10)
+
+fn harness_bounded_get(url: String) -> HarnessBoundedRead {
+  let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  HarnessBoundedRead { body: read.body, success: read.success }
+}
+
+// PRESENCE, NOT CONTENT: whether ANY HTTP response came back within the front-door bound, and
+// with what status. Consumed by the Cut D D0 incumbent question, for which a 401 or a 500 is an
+// incumbent that answered and -f's failure would have read as absence.
+//
+// "NO RESPONSE" IS THREE READINGS, NOT ONE, AND NONE OF THEM IS ABSENCE. curl 7 ("failed to
+// connect to host or proxy") covers a refused connection, an unreachable host and a proxy that
+// would not connect -- it is not the operating system's ECONNREFUSED and proves no listener absent;
+// curl 28 is the deadline, which says something may have accepted and did not answer; every other
+// code is a transport that could not be read. The arms carry exactly what curl established and no
+// more; whether an incumbent is absent is the consumer's to establish from a host-side reading.
+type HarnessBoundedPresence
+  = HarnessResponded { status: String }
+  | HarnessConnectFailed { url: String, curl_exit: Int }
+  | HarnessDeadline { url: String }
+  | HarnessTransportUnread { url: String, curl_exit: Int }
+
+fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
+  let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  if read.success {
+    HarnessResponded { status: trim(s: read.status) }
+  } else {
+    match curl_exit_outcome(code: read.exit_code) {
+      CurlCouldNotConnect => HarnessConnectFailed { url: url, curl_exit: read.exit_code }
+      CurlOperationTimedOut => HarnessDeadline { url: url }
+      CurlTransferCompleted => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlExitUnnamed { code: _ } => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+    }
+  }
+}
+
+type HarnessBoundedRead {
+  body: String
+  success: Bool
+}
+
+// THE URL IS BUILT FROM THE ROUTE'S OWN ENDPOINT, port included. It used to be built from the
+// address plus one global port row, which made a second route on a second port unreachable without
+// an edit -- and the second route is the canary, which answers on its own. The endpoint travels as
+// one value for the reason the launch does: an address and a port that can be passed separately can
+// be passed inconsistently.
+fn harness_endpoint_url(endpoint: ServingRouteEndpoint, path: String) -> String {
+  join(["http://", serving_route_endpoint_wire(e: endpoint) as String, path], "")
+}
+
+fn harness_models_url(endpoint: ServingRouteEndpoint) -> String {
+  harness_endpoint_url(endpoint: endpoint, path: harness_models_path)
+}
+
+// ── WHAT A ROUTE IS SERVING, RATHER THAN WHETHER IT IS SERVING OURS ───────────────────────────
+//
+// THE ARM THIS REPLACES ASKED THE WRONG QUESTION. HarnessBackendModelAbsent meant "this route does
+// not advertise the id our global selector names", so a route serving a perfectly good model the
+// harness can speak to was reported as absent and never became a candidate. The question a placement
+// path needs answered is which model the route IS serving, and whether that is one we are admitted
+// to ask -- gunbc.serving.admitted_model owns the second half.
+//
+// THE SERVING ARM THEREFORE CARRIES THE UNIT AS WELL AS THE ID, because the two answer different
+// questions downstream: the id is what goes in the request's model field, the unit is how the
+// request is shaped -- its reasoning kwargs, its tool-call parser, its context window. Carrying only
+// the id would force every consumer to resolve the unit again from a name.
+type HarnessBackendStanding
+  = HarnessBackendServing { model: NonEmptyStr, unit: HarnessServingUnit, readback: VllmModelsRouteReadbackStanding }
+  | HarnessBackendModelNotAdmitted { advertised: String }
+  | HarnessBackendUnreachable { url: String }
+  | HarnessBackendUnreadable { cause: String }
+
+fn harness_standing_label(standing: HarnessBackendStanding) -> String {
+  match standing {
+    HarnessBackendServing { model: _, unit: _, readback: _ } => "serving"
+    HarnessBackendModelNotAdmitted { advertised: _ } => "model-not-admitted"
+    HarnessBackendUnreachable { url: _ } => "unreachable"
+    HarnessBackendUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
+  match standing {
+    HarnessBackendServing { model: m, unit: u, readback: r } =>
+      join([
+        "route advertises ", m as String,
+        ", which this harness speaks to as ", harness_serving_unit_wire(unit: u) as String,
+        "; /v1/models ", vllm_models_route_standing_wire(s: r),
+      ], "")
+    HarnessBackendModelNotAdmitted { advertised: a } =>
+      join([
+        "route is reachable but advertises no model this harness is admitted to ask; it advertises: ", a,
+      ], "")
+    HarnessBackendUnreachable { url: u } =>
+      join(["backend did not answer successfully within ", to_string(second_count(s: harness_front_door_probe_bound)), "s: ", u], "")
+    HarnessBackendUnreadable { cause: c } =>
+      join(["backend answered but the model list was unreadable: ", c], "")
+  }
+}
+
+// THE MODEL LIST IS PARSED, NOT SUBSTRING-MATCHED. A `contains` over the raw body would pass on a
+// model whose id merely shares a prefix with ours, and would pass on an error document that happens
+// to quote the name back -- which is exactly the shape of the not_found_error this backend returns.
+// Four states, and the middle two are the ones a weaker check would fuse: reachable-but-wrong-model
+// is a different remedy from unreachable, and both are different from a malformed answer.
+// THE ID WALK IS NOT THIS MODULE'S, AND KEEPING A COPY OF IT HERE WAS A SECOND SOURCE FOR ONE FACT.
+// gunbc.spark.vllm_observed owns what a vLLM /v1/models entry is -- it decodes the same document
+// into the readback this standing carries -- and this function walked the data array and the id
+// member again to build the admitted-model input. Two walkers can disagree about what counts as an
+// advertised id, and the one here silently dropped every entry it could not read (review 64265). It
+// now consumes the one producer, which drops unreadable entries from the ADVERTISED list while
+// counting them on the readback, so the two answers come from one reading.
+// THE ADMITTED SET DECIDES, AND THE ROUTE'S OWN LIST IS WHAT IT DECIDES OVER. Every advertised id is
+// offered to gunbc.serving.admitted_model in the order the route reported them; the first one this
+// harness can express a turn for wins, and if none can, the whole advertised list travels on the
+// refusal so the remedy is readable -- a model we could admit by writing a unit row looks nothing
+// like an Ollama daemon with an empty store, and both have answered this probe on this fleet.
+fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStanding {
+  let url = harness_models_url(endpoint: endpoint)
+  let read = harness_bounded_get(url: url)
+  if !read.success {
+    HarnessBackendUnreachable { url: url }
+  } else {
+    match parse_json_document(s: read.body) {
+      JsonDocumentUnreadable { gap: g } =>
+        HarnessBackendUnreadable { cause: json_document_gap_text(gap: g) }
+      JsonDocumentParsed { value: doc } => {
+        match serving_admit_advertised(advertised: vllm_models_advertised_ids(doc: doc)) {
+          ServingModelAdmitted { id: i, unit: u } =>
+            HarnessBackendServing {
+              model: i,
+              unit: u,
+              readback: vllm_models_route_standing(doc: doc, served_model_id: i),
+            }
+          ServingModelNotAdmitted { advertised: a } => HarnessBackendModelNotAdmitted { advertised: a }
+        }
+      }
+    }
+  }
+}
+
+// WHAT THE MODELS PROBE ESTABLISHED ABOUT THE FRONT DOOR, AND NOTHING ABOUT ADMISSION. Serving and
+// model-not-admitted are both answers; whether this harness may use the model is decided separately.
+fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead {
+  match standing {
+    HarnessBackendServing { model: _, unit: _, readback: _ } => FrontDoorAnswered
+    HarnessBackendModelNotAdmitted { advertised: _ } => FrontDoorAnswered
+    HarnessBackendUnreachable { url: u } => FrontDoorDidNotAnswer { url: u as NonEmptyStr, bound: harness_front_door_probe_bound }
+    HarnessBackendUnreadable { cause: c } => FrontDoorAnswerUnreadable { cause: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: ReplicaLaunchObservation, standing: HarnessBackendStanding, after: ReplicaLaunchObservation, now: Timestamp) -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
+}
+
+// THE ROSTER IS OBSERVED ONE ROUTE AT A TIME AND THE ANSWER KEEPS BOTH HALVES. An earlier fold
+// answered for the whole backend with the first non-serving replica's standing, so one Spark down
+// refused every dispatch while the other served -- measured 2026-09-05 on srv1, .232 unreachable,
+// .225 advertising the model, dispatch refused at selection. Serving routes are the set an attempt
+// may bind to; declined routes are carried with their typed standing, so what is down is countable
+// and never absorbed. None serving refuses, naming every route's cause.
+//
+// WHAT CHANGED IS WHAT A ROW IS ABOUT. It walked a list of ADDRESSES derived from the convergence
+// roster; it now walks gunbc.serving.serving_enrollment's ROUTES, which carry their own front door
+// and are enrolled independently of whose hosts this repository claims. A route whose head has no
+// endpoint row is unresolved and is named, rather than making the list quietly shorter.
+//
+// AND THE MODELS ARE AN OUTPUT RATHER THAN AN INPUT. The serving arm used to carry the one model id
+// the harness demanded, which is the question this branch stopped asking; it now carries the ids the
+// routes were OBSERVED to advertise, one per serving route, so two routes serving two admitted
+// models is representable instead of being a contradiction.
+type HarnessRouteDecline {
+  endpoint: NonEmptyStr
+  group_wire: NonEmptyStr
+  standing: HarnessBackendStanding
+}
+
+type HarnessRouteServing {
+  endpoint: NonEmptyStr
+  group_wire: NonEmptyStr
+  model: NonEmptyStr
+  unit: HarnessServingUnit
+}
+
+type HarnessBackendRoster
+  = HarnessRosterServing { serving: List<HarnessRouteServing>, declined: List<HarnessRouteDecline>, unresolved: List<NonEmptyStr> }
+  | HarnessRosterNoneServing { declined: List<HarnessRouteDecline>, unresolved: List<NonEmptyStr> }
+
+type HarnessRosterFold {
+  serving: List<HarnessRouteServing>
+  declined: List<HarnessRouteDecline>
+  unresolved: List<NonEmptyStr>
+}
+
+fn harness_roster_decline(acc: HarnessRosterFold, e: ServingRouteEndpoint, standing: HarnessBackendStanding) -> HarnessRosterFold {
+  HarnessRosterFold {
+    serving: acc.serving,
+    declined: concat(acc.declined, [HarnessRouteDecline {
+      endpoint: serving_route_endpoint_wire(e: e),
+      group_wire: rented_replica_wire(id: e.replica),
+      standing: standing,
+    }]),
+    unresolved: acc.unresolved,
+  }
+}
+
+fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> HarnessRosterFold {
+  match route {
+    ServingRouteUnresolved { replica: _, obligation: o } =>
+      HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, [o]) }
+    ServingRouteResolved { endpoint: e, ceiling: _ } => {
+      let standing = harness_observe_replica(endpoint: e)
+      match standing {
+        HarnessBackendServing { model: m, unit: u, readback: _ } =>
+          HarnessRosterFold {
+            serving: concat(acc.serving, [HarnessRouteServing {
+              endpoint: serving_route_endpoint_wire(e: e),
+              group_wire: rented_replica_wire(id: e.replica),
+              model: m,
+              unit: u,
+            }]),
+            declined: acc.declined,
+            unresolved: acc.unresolved,
+          }
+        HarnessBackendModelNotAdmitted { advertised: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
+        HarnessBackendUnreachable { url: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
+        HarnessBackendUnreadable { cause: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
+      }
+    }
+  }
+}
+
+// THE OPERATOR ENDPOINT IS A ROUTE THE FLEET'S ENROLLMENT DOES NOT NAME, so it is observed beside the enrolled
+// routes and folded into the same roster (operator ruling: gunbc.design_ruling
+// harness_default_requirement_places_on_operator_endpoint). Two GETs, because one cannot tell a dead tunnel from
+// a rejected key: /health needs no authorization, so its absence is the tunnel or the server; /v1/models is read
+// with the Bearer header file, so its refusal is the key. A dead tunnel is HarnessBackendUnreachable, never an
+// empty roster entry.
+fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorModelsReading {
+  match operator_health_url() {
+    Absent => OperatorHealthUnanswered { url: "the operator endpoint URL could not be composed" }
+    Present { value: health } =>
+      match harness_bounded_presence(url: health as String) {
+        HarnessConnectFailed { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
+        HarnessDeadline { url: u } => OperatorHealthUnanswered { url: u }
+        HarnessTransportUnread { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
+        HarnessResponded { status: st } =>
+          if st != "200" { OperatorHealthUnhealthy { url: health as String, status: st } } else {
+          match operator_models_url() {
+            Absent => OperatorModelsRefused { url: "the operator endpoint URL could not be composed" }
+            Present { value: models } =>
+              match operator_open_header(route: route) {
+                OperatorHeaderRefused { detail: d } => OperatorModelsRefused { url: join([models as String, " (", d, ")"], "") }
+                OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
+                  let read = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
+                    url: models,
+                    max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr,
+                    accept: "Accept: application/json" as NonEmptyStr,
+                    header_file: hf,
+                  )
+                  let closed = operator_close_header(header_dir: dir)
+                  if read.success { OperatorModelsAnswered { body: read.body } } else { OperatorModelsRefused { url: models as String } }
+                }
+              }
+          }
+          }
+      }
+  }
+}
+
+fn harness_operator_roster_step(acc: HarnessRosterFold, route: HarnessOperatorRoute, standing: OperatorRouteStanding) -> HarnessRosterFold {
+  match operator_endpoint_origin() {
+    Absent => HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, ["the operator endpoint origin could not be composed" as NonEmptyStr]) }
+    Present { value: endpoint } =>
+      match standing {
+        OperatorRouteServing { model: m } =>
+          HarnessRosterFold {
+            serving: concat(acc.serving, [HarnessRouteServing { endpoint: endpoint, group_wire: route.group_wire, model: m, unit: route.unit }]),
+            declined: acc.declined,
+            unresolved: acc.unresolved,
+          }
+        OperatorRouteModelNotAdmitted { advertised: a } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendModelNotAdmitted { advertised: a })
+        OperatorRouteUnreachable { url: u } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreachable { url: u })
+        OperatorRouteUnreadable { cause: c } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreadable { cause: c })
+      }
+  }
+}
+
+fn harness_operator_decline(acc: HarnessRosterFold, route: HarnessOperatorRoute, endpoint: NonEmptyStr, standing: HarnessBackendStanding) -> HarnessRosterFold {
+  HarnessRosterFold {
+    serving: acc.serving,
+    declined: concat(acc.declined, [HarnessRouteDecline { endpoint: endpoint, group_wire: route.group_wire, standing: standing }]),
+    unresolved: acc.unresolved,
+  }
+}
+
+fn harness_roster_of(folded: HarnessRosterFold) -> HarnessBackendRoster {
+  if count(folded.serving) == 0 {
+    HarnessRosterNoneServing { declined: folded.declined, unresolved: folded.unresolved }
+  } else {
+    HarnessRosterServing { serving: folded.serving, declined: folded.declined, unresolved: folded.unresolved }
+  }
+}
+
+fn harness_observe_roster() -> HarnessBackendRoster {
+  let folded = fold(rented_enrolled_routes(index: rented_cohort_index), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
+    harness_observe_route(acc: acc, route: r))
+  let standing = operator_route_standing(route: harness_operator_route, reading: harness_observe_operator_reading(route: harness_operator_route))
+  harness_roster_of(folded: harness_operator_roster_step(acc: folded, route: harness_operator_route, standing: standing))
+}
+
+fn harness_declines_detail(declined: List<HarnessRouteDecline>, unresolved: List<NonEmptyStr>) -> String {
+  join(concat(
+    map(declined, d => join([
+      d.group_wire as String, " at ", d.endpoint as String, ": ",
+      harness_standing_label(standing: d.standing), " -- ", harness_standing_detail(standing: d.standing),
+    ], "")),
+    map(unresolved, u => u as String)
+  ), "; ")
+}
+
+// THE LAST LOCAL PICKER IS GONE, AND SO IS THE REPORT THAT OUTLIVED IT. This module used to hand
+// out a URL bound at process start from the first replica observed serving, and every turn that took
+// one was choosing its own host beside the fabric rather than through it; the probe was its final
+// consumer and now acquires a seat like every other turn. A rendering function survived that cut
+// with NO CONSUMER ANYWHERE -- no entry point, no CLI arm, no witness -- and this branch deletes it
+// rather than porting it to the new route shape: a projection nothing reads is authoring, review and
+// maintenance cost against a benefit of zero (DESIGN section 3c), and rewriting one to keep it
+// compiling is that cost paid twice. What is observable is observable through the roster above,
+// which the dispatch and belt preflights do consume.
+
+// ── ONE READ OF THE SERVED METRICS ANSWERS BOTH QUESTIONS THE PLACEMENT PATH ASKS ─────────────
+//
+// The placement path needs two facts about a group before it can offer it: which LAUNCH is
+// answering, and whether that launch is busy. Both are lines in one Prometheus exposition, so they
+// are taken in one GET. Reading the endpoint twice would cost two round trips per group per attempt
+// and, worse, would let the two facts come from different launches -- a restart between the reads
+// and the queue depth belongs to a process the launch identity does not name.
+//
+// THE PLACEMENT THIS REPLACES DECIDED ON IGNORANCE. The harness walked its roster and took the first
+// group that granted a seat; nothing in that path could see that a group was already serving a
+// stream. A compare-and-set stood behind it, so the damage was bounded to the seat ceiling, but the
+// decision itself was made blind.
+
+fn harness_metrics_url(endpoint: ServingRouteEndpoint) -> String {
+  harness_endpoint_url(endpoint: endpoint, path: "/metrics")
+}
+
+// A PROMETHEUS LINE IS `name{labels} value` FOR THE APPLICATION GAUGES AND `name value` FOR THE
+// PROCESS COLLECTOR'S, so the two shapes are matched separately rather than by one loose pattern.
+// The application gauges are found by their name followed by a brace, which is what stops a series
+// whose name merely has ours as a prefix from answering for it.
+// AN AMBIGUOUS SERIES IS UNREAD, NOT THE FIRST ONE. Taking the first line that matches is a silent
+// pick: a body serving two models exports one gauge per label set, and the first is whichever the
+// exporter happened to render first. The reading here is a fleet-level count for ONE engine, so more
+// than one matching line means the body is not the body this reader models -- and that is an
+// obligation to model the label set, never a licence to choose (review 62155).
+// AND A LABELLED MEMBER OF A FAMILY IS SELECTED BY ITS LABEL, THROUGH THE SAME READER. The
+// capacity-reason queue renders one line per reason, so the name-plus-brace prefix matches several
+// and the uniqueness check above would refuse the whole family. That is a narrower SELECTOR, not a
+// second way to read a line: a copy of this body with one extra predicate would mean the exactly-one
+// law, the value-field position and every future repair to Prometheus line reading were written
+// twice, and a repair would land in one copy and silently not the other (DESIGN section 2).
+type MetricLineSelector
+  = SeriesByName
+  | SeriesByNameAndLabel { pair: NonEmptyStr }
+
+fn harness_metric_line_matches(line: String, prefix: String, selector: MetricLineSelector) -> Bool {
+  if !starts_with(s: trim(s: line), prefix: prefix) {
+    false
+  } else {
+    match selector {
+      SeriesByName => true
+      SeriesByNameAndLabel { pair: p } => string_contains(s: line, pattern: p as String)
+    }
+  }
+}
+
+fn harness_metric_line_value(body: String, prefix: String, selector: MetricLineSelector) -> String? {
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => harness_metric_line_matches(line: l, prefix: prefix, selector: selector))
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: trim(s: line), delimiter: " ")
+        if length(parts) < 2 { none } else { last(parts) }
+      }
+    }
+  }
+}
+
+fn harness_gauge_value(body: String, metric: VllmServingMetric) -> String? {
+  harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName)
+}
+
+fn harness_histogram_statistic_value(body: String, metric: VllmServingMetric, statistic: HistogramStatistic) -> String? {
+  harness_metric_line_value(
+    body: body,
+    prefix: join([vllm_histogram_series_name(m: metric, s: statistic) as String, "{"], ""),
+    selector: SeriesByName,
+  )
+}
+
+// THE LABEL PAIR IS BUILT ONCE, HERE, from the label key and value rows the upstream module carries,
+// so no consumer spells a Prometheus label rendering of its own.
+fn harness_labelled_gauge_value(body: String, metric: VllmServingMetric, label: NonEmptyStr, value: NonEmptyStr) -> String? {
+  harness_metric_line_value(
+    body: body,
+    prefix: join([vllm_metric_name(m: metric) as String, "{"], ""),
+    selector: SeriesByNameAndLabel { pair: join([label as String, "=\"", value as String, "\""], "") as NonEmptyStr },
+  )
+}
+
+// ── A POSITIVE FLOAT IS A COUNT, AND COLLAPSING IT TO ONE IS A WRONG ANSWER ───────────────────
+//
+// THE DEFECT THIS FIXES, BECAUSE IT SHIPPED. vLLM renders every gauge as a float, so an integer
+// parse of `4.0` FAILS. The previous reading treated the failure as "some positive amount" and
+// returned 1: waiting=4.0 read as 1, running=3.0 read as 1. Those values were then used as COUNTS.
+// It is not lost precision -- it is a different number, arrived at silently, with the shape of an
+// answer.
+//
+// SO AN INTEGRAL FLOAT IS PARSED EXACTLY AND EVERYTHING ELSE REFUSES. A count with a non-zero
+// fractional part is not a count this reader can name, and an exponent rendering is not one either;
+// both produce no reading rather than a plausible integer. A gauge that could not be read is not a
+// gauge reading nothing.
+fn harness_fraction_is_zero(text: String) -> Bool {
+  match parse_int(s: text) {
+    Absent => false
+    Present { value: n } => n == 0
+  }
+}
+
+fn harness_gauge_nat(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
+fn harness_gauge_count(text: String) -> Nat? {
+  let t = trim(s: text)
+  match parse_int(s: t) {
+    Present { value: n } => harness_gauge_nat(n: n)
+    Absent => {
+      let parts = split(s: t, delimiter: ".")
+      if length(parts) != 2 {
+        none
+      } else {
+        match first(parts) {
+          Absent => none
+          Present { value: whole } =>
+            match last(parts) {
+              Absent => none
+              Present { value: frac } =>
+                if !harness_fraction_is_zero(text: frac) {
+                  none
+                } else {
+                  match parse_int(s: whole) {
+                    Absent => none
+                    Present { value: n } => harness_gauge_nat(n: n)
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// BOTH GAUGES OR NEITHER. The admission rule needs waiting AND running: running says whether a
+// decode is in flight now, waiting says whether one starts the moment the engine frees. A reading
+// carrying one and defaulting the other is an observation half-invented, and the invented half is
+// always the one that admits.
+// THE ROUTE'S OWN ANSWER ABOUT WHETHER IT WILL TAKE MORE. A route that reports requests held back
+// for scheduling capacity is refusing work right now, whatever a declared ceiling says; a route that
+// reports none has said only that it is not refusing at this instant, which is why a ceiling still
+// bounds admission above it. An absent family is UNREAD and refuses: a reader that treated a missing
+// series as "no pressure" would turn the one present-tense signal the route gives into a silent yes.
+fn harness_capacity_pressure_from_body(body: String) -> ServingCapacityPressure {
+  match harness_labelled_gauge_value(body: body, metric: NumRequestsWaitingByReason, label: vllm_waiting_reason_label, value: vllm_waiting_reason_capacity) {
+    Absent =>
+      CapacityPressureUnread { obligation: "the served metrics carried no unique capacity-reason waiting series, so whether this route is holding requests back for scheduling capacity is unknown" as NonEmptyStr }
+    Present { value: text } =>
+      match harness_gauge_count(text: text) {
+        Absent =>
+          CapacityPressureUnread { obligation: join(["the capacity-reason waiting gauge value was not an exact count: ", text], "") as NonEmptyStr }
+        Present { value: n } =>
+          if n == 0 { RouteAdmittingMore } else { RouteHoldingForCapacity { held: n } }
+      }
+  }
+}
+
+fn harness_queue_from_body(body: String) -> ServingQueueReading {
+  match harness_gauge_value(body: body, metric: NumRequestsWaiting) {
+    Absent => QueueDepthUnread { obligation: "the served metrics carried no waiting-requests series" as NonEmptyStr }
+    Present { value: waiting_text } =>
+      match harness_gauge_value(body: body, metric: NumRequestsRunning) {
+        Absent => QueueDepthUnread { obligation: "the served metrics carried no running-requests series" as NonEmptyStr }
+        Present { value: running_text } =>
+          match harness_gauge_count(text: waiting_text) {
+            Absent => QueueDepthUnread { obligation: join(["the waiting-requests gauge value was not an exact count: ", waiting_text], "") as NonEmptyStr }
+            Present { value: w } =>
+              match harness_gauge_count(text: running_text) {
+                Absent => QueueDepthUnread { obligation: join(["the running-requests gauge value was not an exact count: ", running_text], "") as NonEmptyStr }
+                Present { value: r } => QueueDepthRead { waiting: w, running: r, pressure: harness_capacity_pressure_from_body(body: body) }
+              }
+          }
+      }
+  }
+}
+
+// THE LAUNCH DISCRIMINATOR IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE. Nothing here parses it
+// into a time: the only operation on it is equality between two readings of one endpoint, and
+// parsing would lose the discrimination between two launches inside one second while buying nothing.
+fn harness_launch_from_body(replica: RentedReplicaIdentity, address: String, body: String) -> ReplicaLaunchObservation {
+  match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], ""), selector: SeriesByName) {
+    Absent =>
+      ReplicaLaunchUnobserved { replica: replica, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
+    Present { value: field } =>
+      ReplicaLaunchObserved {
+        launch: replica_endpoint_launch(replica: replica, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
+        receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
+      }
+  }
+}
+
+// THE COUNTER TRAVELS AS THE EXPORTED FIELD, NEVER AS A NUMBER. harness_gauge_count refuses an exponent
+// rendering by design, and prometheus switches to one past seven integer digits -- measured on the
+// enrolled group B head 2026-09-14, vllm:prompt_tokens_total 9.7885348e+07 -- so a parsed reader would
+// go permanently unreadable on exactly the long-lived engines this is for. Equality between two readings
+// of one exporter is the whole operation, which is the discipline replica_endpoint_launch already
+// applies to the process-start field.
+fn harness_counter_field(body: String, metric: VllmServingMetric) -> NonEmptyStr? {
+  match harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName) {
+    Absent => none
+    Present { value: field } => {
+      let t = trim(s: field)
+      if t == "" { none } else { Present { value: t as NonEmptyStr } }
+    }
+  }
+}
+
+// BOTH FACTS OR NEITHER. A running gauge with no counter cannot say whether work advanced, and a counter
+// with no running gauge cannot tell an idle engine from a stalled one, so a half reading is no reading --
+// the same law harness_queue_from_body holds for its two gauges.
+fn harness_progress_sample(body: String, at: EpochSecs) -> EngineProgressSample? {
+  match harness_gauge_value(body: body, metric: NumRequestsRunning) {
+    Absent => none
+    Present { value: running_text } =>
+      match harness_gauge_count(text: running_text) {
+        Absent => none
+        Present { value: running } =>
+          match harness_counter_field(body: body, metric: GenerationTokensTotal) {
+            Absent => none
+            Present { value: generation } => Present { value: EngineProgressSample { running: running, generation_field: generation, at: at } }
+          }
+      }
+  }
+}
+
+type HarnessEngineReading {
+  queue: ServingQueueReading
+  launch: ReplicaLaunchObservation
+  progress: EngineProgressSample?
+}
+
+fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> HarnessEngineReading {
+  let url = harness_metrics_url(endpoint: endpoint)
+  let replica = endpoint.replica
+  let read = harness_bounded_get(url: url)
+  if !read.success {
+    HarnessEngineReading {
+      queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },
+      launch: ReplicaLaunchUnobserved { replica: replica, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
+      progress: none,
+    }
+  } else {
+    HarnessEngineReading {
+      queue: harness_queue_from_body(body: read.body),
+      launch: harness_launch_from_body(replica: replica, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
+      progress: harness_progress_sample(body: read.body, at: at),
+    }
+  }
+}
+
+fn line_is_sudo_password_prompt(line: String) -> Bool {
+  match first(split(s: trim(s: line), delimiter: "[sudo] password for")) {
+    Absent => false
+    Present { value: prefix } => prefix == ""
+  }
+}
+
+fn text_without_sudo_prompt(body: String) -> String {
+  join(filter(xs: split(s: body, delimiter: "\n"), predicate: fn(line) { !line_is_sudo_password_prompt(line: line) }), "\n")
+}
+
+fn text_labeled_field(body: String, label: String) -> String? {
+  let needle = join([label, ":"], "")
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: needle))
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: line, delimiter: ":")
+        if length(parts) < 2 {
+          none
+        } else {
+          last(parts)
+        }
+      }
+    }
+  }
+}
+
+fn text_field_last_word(body: String, label: String) -> String? {
+  match text_labeled_field(body: body, label: label) {
+    Absent => none
+    Present { value: t } => last(split(s: trim(s: t), delimiter: " "))
+  }
+}
+
+fn text_labeled_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } => harness_gauge_count(text: trim(s: last_word))
+  }
+}
+
+fn text_labeled_head_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } =>
+      match first(split(s: trim(s: last_word), delimiter: ".")) {
+        Absent => none
+        Present { value: whole } => harness_gauge_count(text: whole)
+      }
+  }
+}

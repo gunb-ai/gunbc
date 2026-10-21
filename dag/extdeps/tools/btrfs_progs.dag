@@ -1,0 +1,58 @@
+module extdeps.tools.btrfs_progs
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// btrfs-progs AS ITS UPSTREAM DOCUMENTS IT: the `btrfs subvolume` command group (btrfs-subvolume(8)).
+// This module carries what the tool IS -- the argv of the three subvolume operations a snapshotting
+// caller needs -- and no policy about which directory is snapshotted or where a snapshot lives
+// (DESIGN 3: interface, realization and policy are three facts).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "btrfs.readthedocs.io/en/latest/btrfs-subvolume.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.btrfs_progs",
+      decl_name: "btrfs_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim
+// records: no filesystem observation of the runner has been made, and a missing binary is a
+// spawn refusal the caller types, never a guess here.
+fn btrfs_program() -> ProgramIdentity = uncataloged_program(invocation: "btrfs")
+
+// The filesystem-type word `stat -f -c %T` prints for a btrfs mount (GNU coreutils maps the
+// superblock magic BTRFS_SUPER_MAGIC to this name).
+data btrfs_filesystem_type_word: NonEmptyStr = "btrfs"
+
+// THE PRIVILEGE EACH OPERATION NEEDS IS UPSTREAM'S FACT, NOT A CALLER'S GUESS. btrfs-subvolume(8):
+// `create` needs write access to the parent directory; `snapshot` of a subvolume the caller OWNS
+// needs no capability (the ioctl checks inode ownership); `delete` by a non-root owner needs the
+// filesystem mounted with user_subvol_rm_allowed. A caller without those fails on the exit status;
+// nothing here elevates.
+fn btrfs_subvolume_create_command(path: String) -> ArgvCommand {
+  argv_command(program: btrfs_program(), arguments: ["subvolume", "create", path])
+}
+
+// -r: the snapshot is read-only, so what was captured cannot be edited after the instant it names.
+fn btrfs_subvolume_snapshot_read_only_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: btrfs_program(), arguments: ["subvolume", "snapshot", "-r", source, destination])
+}
+
+fn btrfs_subvolume_delete_command(path: String) -> ArgvCommand {
+  argv_command(program: btrfs_program(), arguments: ["subvolume", "delete", path])
+}

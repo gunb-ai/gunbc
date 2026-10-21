@@ -1,0 +1,7 @@
+module test.fixture.phantom_marker_identity.plain_consumer
+
+import test.fixture.phantom_marker_identity.plain_provider { PlainBox, Time }
+
+type PlainConsumer {
+  value: PlainBox<Time>
+}

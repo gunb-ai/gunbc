@@ -1,0 +1,17 @@
+module fixture.tsil.lit_alias
+import v2.std.text { String }
+import fixture.tsil.lit_refined { take_refined }
+type Name = String where non_empty
+fn take_name(n: Name) -> Int {
+  1
+}
+fn a() -> Int {
+  take_name(n: "x")
+}
+fn b() -> Int {
+  take_refined(r: "y")
+}
+fn c() -> Int {
+  let joined = concat("p", "q")
+  1
+}

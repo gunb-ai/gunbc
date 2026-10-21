@@ -1,0 +1,105 @@
+module gunbc.fleet.fleet_host_identity
+
+import std.types { List, NonEmptyStr, String }
+import product.host_identity { HostIdentity }
+
+// THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet.fleet_intent_network,
+// beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only
+// needs a host's name -- the approval broker composing its ntfy address, gunbc.auth.approval_ntfy_publish --
+// does not import the topology's assets, segments and endpoints. The notes below were written when
+// the rows lived in gunbc.fleet.fleet_intent_network: where one says "this module" or "here" about NAMING,
+// it now means this leaf; where it speaks of enrollment or `endpoints`, that is still
+// gunbc.fleet.fleet_intent_network. Naming is not enrollment, and the split makes the two separate modules.
+data operator_host_srv1: HostIdentity = "srv1"
+data operator_host_srv2: HostIdentity = "srv2"
+data operator_host_srv3: HostIdentity = "srv3"
+data operator_host_srv4: HostIdentity = "srv4"
+
+// MTCOLLINS-RESET-0 (2026-09-07). The operator's Foxconn Ampere Mt. Collins unit, named here for the
+// reason every other identity is named here: this module is the single authority for a host's fleet
+// identity, and a second home for one would be the §3 fork the srv5/srv6 note above records being
+// cleaned up once already.
+//
+// NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
+// in this case. This unit is NOT an executor fleet host: it commits no runner slots, and
+// gunbc.fleet.fleet_runner_connectivity fleet_hosts() — whose consumers fold it as the eligible host set
+// (gunbc.compile_permit_scope) and to gather committed slot identities (gunbc.fabric.fabric_cell_observe)
+// — deliberately does not gain a member here. Adding it there would not extend a roster; it would
+// change the denominator of those folds and give one name two contracts.
+//
+// WHAT IT IS INSTEAD is a reset subject, and that membership is DERIVED rather than declared:
+// gunbc.host.host_reset_subject_roster admits a host iff a landed BMC access observation and a capability
+// row admit power control through the same fold the actuation arm already performs before it writes.
+// So this row names the unit and licenses nothing.
+data operator_host_mtcollins1: HostIdentity = "mtcollins1"
+
+// MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
+// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
+// NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
+// gunbc.host.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
+// there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant
+// mtjade1_live_standing_grant) binds this identity as its host scope.
+data operator_host_mtjade1: HostIdentity = "mtjade1"
+
+// GROUP A DECOMMISSIONED (operator, 2026-10-07): srv5, srv6, srv7 and srv8 -- the DGX Spark units spark-a3ee,
+// spark-3bd5, spark-c2b1 and spark-ac79 on fabric cage 1 -- were sold and wiped, and their identity slots are
+// deleted with every consumer. Their history (procurement, the wireless move, the fabric cabling, the pair
+// and Group A serving) is in git before this change and in the recurring-failure-mode rows that cite it.
+//
+// SPARK-BATCH-3 (2026-09-05). srv9/srv10/srv11 are the identity slots for the three DGX Spark units
+// the router table showed beside the two named pairs -- spark-0c75 at 192.168.1.236, spark-3336 at
+// .237, spark-b66c at .238 -- assigned in ascending address order, the same tie-break the first pair
+// recorded. Which two of them are cross-cabled and which stands alone is NOT asserted here: the
+// operator believes 0c75 and 3336 are a pair, and that belief becomes a fabric observation, not a
+// row. All five newer units are enrolled below at once (endpoints, router bindings, cell roles),
+// closing the naming-is-not-enrollment gap the srv7/srv8 note above left open.
+data operator_host_srv9: HostIdentity = "srv9"
+data operator_host_srv10: HostIdentity = "srv10"
+data operator_host_srv11: HostIdentity = "srv11"
+
+// SPARK-BATCH-4 (2026-09-05). An eighth unit, spark-2196 at 192.168.1.239, appeared in the router
+// lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
+// is its identity slot, assigned by the same ascending-address rule.
+data operator_host_srv12: HostIdentity = "srv12"
+
+// ALTRA-BATCH-1 (operator, 2026-10-07). Four ASRock ALTRAD8UD hosts, not yet racked, named srv13-srv16
+// by the operator. Naming is not enrollment: no address, BMC endpoint, MAC or hardware row exists
+// for them until first contact observes one, and every procedure refuses a host it cannot name a
+// fact for.
+data operator_host_srv13: HostIdentity = "srv13"
+data operator_host_srv14: HostIdentity = "srv14"
+data operator_host_srv15: HostIdentity = "srv15"
+data operator_host_srv16: HostIdentity = "srv16"
+
+// OPAQUE IDENTITIES (2026-10-07). From here on a new fleet subject's identity carries no meaning in
+// its spelling -- not a provider, an architecture, a role or a rack position -- because every such
+// fact has its own authority and a spelling that encodes one becomes a second, unmaintained copy of
+// it. People address these hosts by the names gunbc.hostname_allocation draws for them; srv1..srv16,
+// mtcollins1 and mtjade1 keep their historical identities, whose spellings are now just keys.
+data operator_host_183527: HostIdentity = "host-183527"
+data operator_host_3dde7f: HostIdentity = "host-3dde7f"
+
+// THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
+// by joining this membership; a spelling that is not a row here is not a fleet host.
+data operator_hosts: List<HostIdentity> = [
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_mtcollins1,
+  operator_host_mtjade1,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+  operator_host_srv13,
+  operator_host_srv14,
+  operator_host_srv15,
+  operator_host_srv16,
+  operator_host_183527,
+  operator_host_3dde7f,
+]
+
+fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
+  operator_hosts |> filter(h => (h as String) == (label as String)) |> first()
+}

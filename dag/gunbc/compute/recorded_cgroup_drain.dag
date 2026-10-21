@@ -1,0 +1,82 @@
+module gunbc.compute.recorded_cgroup_drain
+
+// Drain is ENOENT or cgroup.events populated 0 on the recorded ControlGroup path.
+// The recovery observer runs outside the belt cgroup. populated 0 or ENOENT on that
+// path means every process of every invocation in the cgroup has ended, including
+// the recorded one. A later invocation in the same cgroup keeps populated 1, which
+// preserves. An invocation-id compare would not add a fact the path standing does
+// not already establish, so it is not recorded and not observed.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_events_path,
+  CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+}
+
+type RecordedCgroupPathStanding
+  = RecordedPathAbsent
+  | RecordedPathPopulated
+  | RecordedPathEmpty
+  | RecordedPathUnreadable { detail: String }
+
+type RecordedCgroupDrain
+  = RecordedCgroupPreserve { detail: String }
+  | RecordedCgroupMaySeal { detail: String }
+
+fn recorded_cgroup_drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
+  match path {
+    RecordedPathAbsent =>
+      RecordedCgroupMaySeal { detail: "ENOENT on the recorded ControlGroup path" }
+    RecordedPathEmpty =>
+      RecordedCgroupMaySeal { detail: "cgroup.events populated 0" }
+    RecordedPathPopulated =>
+      RecordedCgroupPreserve { detail: "cgroup.events populated 1" }
+    RecordedPathUnreadable { detail: d } =>
+      RecordedCgroupPreserve { detail: d }
+  }
+}
+
+fn recorded_path_standing_from_events_error(error: String) -> RecordedCgroupPathStanding {
+  RecordedPathUnreadable { detail: error }
+}
+
+fn recorded_path_standing_from_events_body(body: String) -> RecordedCgroupPathStanding {
+  match decode_cgroup_events_populated(body: body) {
+    CgroupEventsDecoded { populated: p } => if p { RecordedPathPopulated } else { RecordedPathEmpty }
+    CgroupEventsUnparseable { cause: c } => RecordedPathUnreadable { detail: c }
+  }
+}
+
+fn recorded_path_standing_from_exact_read(read: FilesystemExactRead) -> RecordedCgroupPathStanding {
+  match read {
+    FilesystemExactPathRead { path: _, content: body } => recorded_path_standing_from_events_body(body: body)
+    FilesystemExactPathAbsent { path: _ } => RecordedPathAbsent
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } =>
+      recorded_path_standing_from_events_error(error: e)
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
+      RecordedPathUnreadable { detail: join([o, ": ", e], "") }
+  }
+}
+
+fn observe_recorded_cgroup_path(control_group: String) -> RecordedCgroupPathStanding {
+  if trim(s: control_group) == "" {
+    RecordedPathUnreadable { detail: "the unit reported an empty ControlGroup; without a recorded path that is unobservable" }
+  } else {
+    let events_path = cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: control_group)], "") as NonEmptyStr)
+    let raw = Filesystem.Read(path: events_path as String)
+    recorded_path_standing_from_exact_read(
+      read: filesystem_exact_read(
+        path: events_path as String,
+        content: raw.content,
+        success: raw.success,
+        error: raw.error,
+        error_kind: raw.error_kind))
+  }
+}

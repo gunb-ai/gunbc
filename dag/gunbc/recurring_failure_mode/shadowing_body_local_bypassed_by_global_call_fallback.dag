@@ -1,0 +1,33 @@
+module gunbc.recurring_failure_mode.shadowing_body_local_bypassed_by_global_call_fallback
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data shadowing_body_local_bypassed_by_global_call_fallback: RecurringFailureMode = RecurringFailureMode {
+  identity: "shadowing_body_local_bypassed_by_global_call_fallback" as NonEmptyStr,
+
+  receipts: [
+    "**a call through a non-callable body local silently binds to the global it shadows** (in the v1 seed's direct-call seam in `v1.compiler.infer`, a bare-name call whose callee is a body-scope binding -- parameter, let, match binder -- that the seam judges not callable is not refused: resolution falls through to variant-constructor and GLOBAL lookup under the same spelling, so when a module-scope declaration of that name exists, the call is typed and accepted against the declaration the local was supposed to shadow.)",
+
+    "INVALID STATE: an Accepted program in which an ExprCall's callee spelling is bound by a body-scope binding and the call's typing is taken from a module-scope declaration of the same spelling.",
+
+    "HARM: silent wrongness, outside the ladder. Specimen `module local_value_shadows_global` / `fn pick() -> Int { 7 }` / `fn host(pick: Int) -> Int { pick() }` compiles with ZERO BLOCKING DIAGNOSTICS; the only output is an advisory that the effect pass could not join effects for 'the local binding pick' -- so two passes of one compile disagree about which binding the call names, and the one that typed it is the wrong one. Without a same-named global, the sibling specimen `fn host(pick: Int) -> Int { pick() }` refuses loudly but misdirected, `function 'pick' not found in scope` (census class InternalError, subject function:pick), about a binding that is in scope and simply not callable.",
+
+    "DISTINGUISHING FACTS. (1) This is not the arity class. `gunbc.recurring_failure_mode` `arity_proxy_for_callability_misroutes_a_found_local` misclassified CALLABLE locals; here the local really is not callable and the classification is right -- the defect is what the seam does NEXT. Both rows share the fall-through, which is why the arity repair left this one exactly where it was. (2) Shadowing is otherwise honoured: `body_locals` is the corpus's shadowing authority and the sig lookup is skipped for body locals, so the bypass happens only on the post-rejection path. (3) The recognition rule is one question: when the seam rejects a body-scope callee, does anything after that consult a scope OUTSIDE the body? If so, the shadowing was bypassed.",
+
+    "EXECUTED, not transcribed: both specimens were compiled with `gunbc compile --source-dir` by the seed built at main `ddeb5503994` and by the seed carrying the arity repair (gunbc#11325), locally, with identical verdicts on each binary -- zero blocking for the shadowing specimen, the misdirected refusal for the other.",
+
+    "RUNG FOUND AT: below the ladder (silent wrongness) for the shadowing specimen; the sibling without a global is loud but misdirected.",
+
+    "CEILING: 3, structurally guaranteed. Whether a binding's modeled type is a function type is decidable, so a call through a decidably non-callable body local can always be refused, located, naming the local and its type.",
+
+    "WHY IT IS NOT CLOSED YET: the refusal needs a decidable NOT-callable test that must not fire on bindings whose type is a type variable -- lambda parameters bound as `type_variable_node`, generic higher-order parameters -- which currently also reach this path. That discrimination was not measured; landing a refusal without it risks a fabricated refusal on an accepted higher-order program, which DESIGN section 5 forbids as firmly as it forbids the bypass.",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a call-seam refusal for a body-scope callee whose modeled type is decidably not a function type, sufficient that no rejected body local is ever retried in an outer scope -- with the shadowing specimen above as its discriminating RED and a type-variable-typed higher-order parameter as its accepted positive control.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "type_node_is_callable", field: WholeDeclaration },
+  ],
+}

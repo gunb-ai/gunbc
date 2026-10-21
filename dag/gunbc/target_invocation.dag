@@ -1,0 +1,456 @@
+module gunbc.target_invocation
+
+import extdeps.bazel.label {
+  Label,
+  LabelParse, LabelParsed, LabelRefused, LabelRefusal,
+  LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
+  parse_label, render_label,
+}
+import gunbc.target_binding {
+  TargetBinding,
+  TargetBindingIndex,
+  TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
+  TargetBindingIndexRefusal,
+  TargetBindingLookup,
+  TargetProducerBound, KnownTargetBindingMissing, TargetUnknown, TargetLookupLabelNotCanonical,
+  build_target_binding_index, target_binding_lookup,
+}
+import std.types { String, Bool, List }
+import std.integer { Int }
+import extdeps.bazel.target_pattern {
+  TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
+  TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
+  parse_target_pattern, target_pattern_refusal_text, target_pattern_within,
+}
+
+// THE VERB'S OPERAND IS A TARGET PATTERN, AND ADMISSION IS THE PATTERN AUTHORITY'S DECISION.
+//
+// The surface row (gunbc.cli_dispatch_surface) names `extdeps.bazel.target_pattern` as the
+// operand's authority; this function is where that authority's answer becomes the verb's route.
+// Nothing here re-decides the grammar -- no prefix check, no suffix list -- so the CLI cannot grow
+// a second, weaker pattern grammar.
+//
+// THERE ARE TWO EXECUTORS AND THE OPERAND SAYS WHICH, BY CONTAINMENT RATHER THAN BY SPELLING.
+// The native test route owns one universe, and that universe is itself a target pattern
+// (`gunbc.native_route_universe` `native_route_default_pattern`, `//v2/...`). So "does this"
+// operand belong to the native route" is the cited authority's own containment question, asked
+// once, here: `extdeps.bazel.target_pattern` `target_pattern_within`. An operand inside it --
+// single target or set form alike -- is `TestOperandNativeRoute` and enters the native
+// implementation carrying THAT pattern, which is what makes `gunbc test //v2/test/claim/parse:all` a
+// narrower native run rather than the whole lane. An operand outside it keeps the route it had:
+// a single target is an exact registry lookup, and a set form has no executor at all.
+//
+// THE UNIVERSE IS A PARAMETER, NOT A ROW THIS MODULE REACHES FOR, for the same reason
+// `route_target_invocation_in` takes its index: folding the lane's own rows in here would leave
+// this function checkable only against a transcription of them, which is the change detector
+// DESIGN's oracle rule rejects. The production caller is the seed's `test_verb`, which supplies the
+// pattern it parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
+// `native_route_default_pattern`, so the seed holds no spelling of the universe of its own.
+//
+// THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
+// `PatternAllTargetsUnsupported` have different remedies from each other and from every
+// `PatternLabelRefused` inner cause, and collapsing them into one malformed-operand arm would be
+// the state-space conflation this repository keeps finding.
+//
+// THE CLAIM ROUTE IS THE SECOND UNIVERSE, DECIDED BY THE SAME CONTAINMENT. Witness claims -- the
+// `test fn` declarations the floor's discovery authority enrolls -- are labelled by
+// `gunbc.discovery_census` `site_label` (`a.b.c` + `f` -> `//a/b/c:f`), and the subtree those
+// labels occupy is `gunbc.discovery_census` `claim_route_universe`. An operand inside it -- an exact
+// claim label, a module's `:all`, or a `/...` subtree -- is `TestOperandClaimRoute` and enters the
+// claim executor carrying that pattern; the executor selects the discovered claims the pattern
+// contains and evaluates them with the floor's own claim evaluation. The native universe is asked
+// FIRST, so no operand is answered by both. Like the native universe, the claim universe is a
+// parameter the production caller supplies.
+type TestOperandAdmission
+  = TestOperandExactTarget { label: Label }
+  | TestOperandNativeRoute { pattern: TargetPattern }
+  | TestOperandClaimRoute { pattern: TargetPattern }
+  | TestOperandSetForm { pattern: TargetPattern }
+  | TestOperandRefused { operand: String, cause: TargetPatternRefusal }
+
+fn admit_test_operand(
+  operand: String,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandAdmission {
+  match parse_target_pattern(text: operand) {
+    TargetPatternRefused { cause: c } => TestOperandRefused { operand: operand, cause: c }
+    TargetPatternParsed { pattern: p } =>
+      if target_pattern_within(inner: p, outer: native_universe) {
+        TestOperandNativeRoute { pattern: p }
+      } else if target_pattern_within(inner: p, outer: claim_universe) {
+        TestOperandClaimRoute { pattern: p }
+      } else {
+        match p {
+          SingleTarget { label: l } => TestOperandExactTarget { label: l }
+          PackageTargets { package: _ } => TestOperandSetForm { pattern: p }
+          SubtreeTargets { package: _ } => TestOperandSetForm { pattern: p }
+        }
+      }
+  }
+}
+
+// A SET FORM OUTSIDE EVERY ROUTE'S UNIVERSE HAS NO EXECUTOR, AND THAT IS WHAT THIS REFUSES.
+//
+// Two executors enumerate a population: the native test route (`//v2/...`) and the claim
+// route (`//test/claim/...`, the discovered witness claims). The retirement trigger this arm used to
+// carry -- "an executor that enumerates a population outside the native universe" -- is satisfied
+// for the claim population, so `//test/claim/...` is no longer refused here. A set form outside
+// BOTH, such as `//dag/test/claim/...` (a file-path spelling, not a claim label), still names no
+// population any executor enumerates, and the instrument registry is not one -- it answers exact
+// labels by construction. The verb refuses with status 2 -- no observation -- never 1, which would
+// claim a run happened and did not hold. A set form is never widened into another route's
+// universe: that would report a run over a population the operand did not name, and handing a
+// native-universe operand to the interpreter would report a result the native compiler never
+// produced.
+fn test_operand_set_form_refusal_rendered(operand: String) -> String {
+  concat(
+    concat("gunbc test: ", operand),
+    " denotes a SET of targets outside every route's universe (the native test route and the claim route); no executor enumerates that population, and a set form is never widened into another route"
+  )
+}
+
+// THE CLAIM ROUTE'S MEMBER VERDICTS, AND THE FOLD THAT MAKES THEM THE OPERAND'S TERMINATION.
+//
+// One verdict per selected claim. `ClaimDidNotHold` is an OBSERVATION -- the claim evaluated and
+// returned false or a non-Bool value. `ClaimUnobserved` is the absence of one -- a runtime error, a
+// host refusal, an unwind, a budget interrupt -- and is not reported as a failing claim, for the
+// same reason `InvocationSubjectUnreached` is not `InvocationObservationDidNotHold`.
+type ClaimRouteVerdict
+  = ClaimHeld
+  | ClaimDidNotHold
+  | ClaimUnobserved
+
+type ClaimRouteTally {
+  did_not_hold: Bool
+  unobserved: Bool
+  members: Int
+}
+
+fn claim_route_tally_step(acc: ClaimRouteTally, v: ClaimRouteVerdict) -> ClaimRouteTally {
+  match v {
+    ClaimHeld => ClaimRouteTally {
+      did_not_hold: acc.did_not_hold,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    ClaimDidNotHold => ClaimRouteTally {
+      did_not_hold: true,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    ClaimUnobserved => ClaimRouteTally {
+      did_not_hold: acc.did_not_hold,
+      unobserved: true,
+      members: acc.members + 1
+    }
+  }
+}
+
+// A DEFINITE FAILURE DOMINATES; AN EMPTY SELECTION IS UNREACHED. A claim that returned false is a
+// finding whatever happened beside it; a selection with an unobserved member cannot answer "held";
+// and a pattern that selected nothing produced no evidence, so it is `InvocationSubjectUnreached`
+// (exit 2), never a vacuous pass -- the absence-is-not-success rule `gunbc.instrument_targets`
+// `native_route_member_termination` keeps for the native route.
+fn claim_route_termination(verdicts: List<ClaimRouteVerdict>) -> InvocationTermination {
+  let tally = fold(
+    verdicts,
+    init: ClaimRouteTally { did_not_hold: false, unobserved: false, members: 0 },
+    f: (acc, v) => claim_route_tally_step(acc: acc, v: v)
+  )
+  if tally.did_not_hold {
+    InvocationObservationDidNotHold {}
+  } else if tally.unobserved {
+    InvocationSubjectUnreached {}
+  } else if tally.members == 0 {
+    InvocationSubjectUnreached {}
+  } else {
+    InvocationObservationHeld {}
+  }
+}
+
+// A REFUSED OPERAND TERMINATES AS REFUSED, AND THE RENDERING NAMES THE AUTHORITY'S CAUSE. The
+// inner text is `target_pattern_refusal_text` -- the pattern authority's own renderer -- rather
+// than a paraphrase here, for the same reason `label_canonicality_cause_rendered` declines to
+// decompose `LabelRefusal`: this layer names the class of repair, the authority names the cause.
+fn test_operand_refusal_rendered(operand: String, cause: TargetPatternRefusal) -> String {
+  concat(
+    concat("gunbc test: operand is not an admitted target pattern: ", operand),
+    concat("\n  cause: ", target_pattern_refusal_text(r: cause))
+  )
+}
+
+// THE ONE ROUTE FROM AN ARGV OPERAND TO A BOUND PRODUCER, AND IT KNOWS NO INSTRUMENT'S NAME.
+//
+// Direct invocation asks a different question from the `//:required` aggregate, and this module
+// exists so the two never answer each other's. The aggregate asks whether a target's standing
+// SATISFIES a required set, and `gunbc.build_target` `test_standing_verdict` deliberately refuses
+// every instrument producer there as out-of-aggregate. A direct `gunbc test <label>` asks what the
+// producer OBSERVED. Routing the direct answer through aggregate policy would report a completed
+// instrument as unsatisfied — correct code applied to the wrong question — and routing it through
+// the Blaze status export would refuse it for the same reason, since that export has no honest
+// upstream member for a producer-specific standing.
+//
+// WHAT IS NOT HERE, DELIBERATELY: any arm naming a producer, an instrument, or a host function.
+// The route ends at the BINDING; which realization runs it is the peripheral dispatch DESIGN
+// section 3 keeps out of the interface, and a coordinator carrying one arm per instrument here
+// would be the N-times fork this seam is built to make unnecessary. Adding a fifth instrument is
+// a row in the population this module folds over, not an edit to this module.
+
+// EVERY WAY THE ROUTE CAN FAIL, EACH WITH ITS OWN CAUSE AND ITS OWN REMEDY.
+//
+// `OperandNotALabel` carries the label grammar's own refusal rather than a message, so a target
+// PATTERN reaches the caller as `TargetPattern` — the remedy is "name one target" — and a
+// relative label reaches it as `MissingRepositoryRootPrefix`, whose remedy is "make it absolute".
+// Collapsing them into one malformed-operand arm would be the state-space conflation this
+// repository keeps finding: one symbol over causes whose repairs differ.
+//
+// `TargetIsUnknown` and `TargetHasNoProducer` are separated for the same reason and the
+// distinction is the sharper one: an unknown label is a typo or an unregistered target, while a
+// KNOWN target with no binding is a registry gap — the target exists, nothing realizes it, and
+// reporting that as "no such target" would send the reader to fix the spelling of a label that is
+// already correct.
+type TargetInvocationRefusal
+  = OperandNotALabel { operand: String, cause: LabelRefusal }
+  | InvocationRegistryRefused { cause: TargetBindingIndexRefusal }
+  | InvocationLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+  | TargetIsUnknown { target: Label }
+  | TargetHasNoProducer { target: Label }
+
+type TargetInvocationRoute
+  = TargetInvocationRouted { binding: TargetBinding }
+  | TargetInvocationRouteRefused { cause: TargetInvocationRefusal }
+
+// THE ROUTE IS PARAMETERIZED ON THE POPULATION AND NOT REACHING FOR THE PRODUCTION ROWS.
+//
+// The live rows are bound one module away in `gunbc.instrument_targets`. Folding over them here
+// would leave this function checkable only against a transcription of the rows it already reads,
+// which is the change detector DESIGN's oracle rule rejects; taking them as arguments lets a
+// controlled fixture author an input and an expected outcome independently.
+fn route_target_invocation_in(index: TargetBindingIndex, target: Label) -> TargetInvocationRoute {
+  match target_binding_lookup(index: index, target: target) {
+    TargetProducerBound { binding: b } => TargetInvocationRouted { binding: b }
+    TargetUnknown { target: t } =>
+      TargetInvocationRouteRefused { cause: TargetIsUnknown { target: t } }
+    KnownTargetBindingMissing { target: t } =>
+      TargetInvocationRouteRefused { cause: TargetHasNoProducer { target: t } }
+    TargetLookupLabelNotCanonical { target: t, cause: c } =>
+      TargetInvocationRouteRefused { cause: InvocationLabelNotCanonical { target: t, cause: c } }
+  }
+}
+
+// ADMISSION IS THE CITED GRAMMAR'S DECISION, TAKEN ONCE, AT THE BOUNDARY.
+//
+// `parse_label` is the only thing that decides whether the operand text names a target, so this
+// function contains no string test of its own — no prefix check, no pattern list, no colon count.
+// Every family the label authority excludes refuses here for free and with the cause that
+// authority named, which is what keeps the CLI from growing a second, weaker label grammar that
+// drifts from the one `//:required` is keyed on.
+fn route_target_invocation(
+  operand: String,
+  targets: List<Label>,
+  bindings: List<TargetBinding>
+) -> TargetInvocationRoute {
+  match parse_label(text: operand) {
+    LabelRefused { cause: c } =>
+      TargetInvocationRouteRefused { cause: OperandNotALabel { operand: operand, cause: c } }
+    LabelParsed { label: l } =>
+      match build_target_binding_index(targets: targets, bindings: bindings) {
+        TargetBindingIndexRefused { cause: c } =>
+          TargetInvocationRouteRefused { cause: InvocationRegistryRefused { cause: c } }
+        TargetBindingIndexReady { index: idx } =>
+          route_target_invocation_in(index: idx, target: l)
+      }
+  }
+}
+
+// HOW ONE INVOCATION ENDED, IN A VOCABULARY EVERY PRODUCER CLASSIFIES ITS OWN STANDING INTO.
+//
+// This is the hoist DESIGN records for `gunbc.scm.load_standing` rather than a match over any
+// producer's arms: each producer owns a total function from its native standing into these four
+// states, so a new producer is a new classifier and never a new arm in a consumer that would
+// otherwise collapse causes it does not distinguish. The four are kept apart because their
+// remedies are: repair the tree, wait for nothing (it held), give the producer a subject it can
+// reach, and fix the producer or the invocation.
+//
+// `SubjectUnreached` IS NOT `ObservationDidNotHold`. An instrument handed a source root that does
+// not exist observed nothing, and reporting that as a failing differential would be the
+// fabricated-plausible-output failure — a defect announced where no reading was taken.
+type InvocationTermination
+  = InvocationObservationHeld
+  | InvocationObservationDidNotHold
+  | InvocationSubjectUnreached
+  | InvocationRefused
+
+// THE PROCESS STATUS, DECIDED ONCE AND WILDCARD-FREE.
+//
+// Three statuses rather than two, because a caller that cannot separate "the instrument ran and
+// found a defect" from "the instrument never ran" is handed the same absorbing answer DESIGN
+// section 5 forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
+// A fifth termination arm must fail to compile here rather than inherit whichever status a `_`
+// happened to name.
+fn invocation_exit_status(t: InvocationTermination) -> Int {
+  match t {
+    InvocationObservationHeld => 0
+    InvocationObservationDidNotHold => 1
+    InvocationSubjectUnreached => 2
+    InvocationRefused => 2
+  }
+}
+
+// ONE CLAIM'S VERDICT AS ITS `gunbc test` EXIT, AND BACK. A claim run alone in a guest returns only
+// its exit, so a reader of that exit decodes into ClaimRouteVerdict. The exit is DERIVED from the
+// route's own fold over that one verdict -- not a second table -- and decoding is the inverse over
+// the three verdicts, so a status the fold never produces has no verdict and the reader refuses it.
+fn claim_route_verdict_exit(v: ClaimRouteVerdict) -> Int {
+  invocation_exit_status(t: claim_route_termination(verdicts: [v]))
+}
+
+fn claim_route_verdict_of_exit(code: Int) -> ClaimRouteVerdict? {
+  filter([ClaimHeld, ClaimDidNotHold, ClaimUnobserved], v => claim_route_verdict_exit(v: v) == code).first()
+}
+
+// THE CANONICALITY CAUSE REACHES THE USER, WHICH IS THE POINT OF CARRYING IT AT ALL.
+//
+// `extdeps.bazel.label` splits a non-canonical label into two facts with two different repairs: a
+// rendering that does not parse at all, and one that parses to a DIFFERENT structure than the
+// value held -- typically a `PackagePath` authored as one segment containing a `/` where the
+// grammar builds two. Retaining that distinction through the registry (gunbc#9323) and then
+// dropping it here would have made the split real and invisible at the only surface a caller of
+// this verb touches, which is the one place it was ever going to be read.
+//
+// THE INNER `LabelRefusal` IS CARRIED BUT NOT DECOMPOSED HERE, AND THE OMISSION IS DELIBERATE.
+// That vocabulary belongs to the label authority and has no renderer there today; writing one in
+// this module would be a second site deciding what `DotSegment` or `TargetPattern` says to a
+// human -- the §3 fork, arriving through a rendering rather than through a type. The typed cause
+// stays intact on the refusal for any consumer that wants to descend, and this text names the
+// CLASS of repair, which is what distinguishes the two arms. A renderer landing in
+// `extdeps.bazel.label` is what this arm should call.
+fn label_canonicality_cause_rendered(c: LabelCanonicalityCause) -> String {
+  match c {
+    RenderedLabelRefused { cause: _ } =>
+      "\n  cause: the label's own rendering does not parse back; fix the label text"
+    RenderedLabelStructureMismatch { reparsed: r } =>
+      concat(
+        "\n  cause: its rendering parses to a different structure: ",
+        concat(render_label(l: r), " -- the package segments were not built by the grammar")
+      )
+  }
+}
+
+// A REFUSED ROUTE TERMINATES AS REFUSED, AND THE RENDERING NAMES THE CAUSE.
+fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
+  match cause {
+    OperandNotALabel { operand: o, cause: _ } =>
+      concat("gunbc test: operand is not an absolute label: ", o)
+    InvocationRegistryRefused { cause: _ } =>
+      "gunbc test: the target registry refused to build"
+    InvocationLabelNotCanonical { target: t, cause: c } =>
+      concat(
+        concat("gunbc test: label is not canonical: ", render_label(l: t)),
+        label_canonicality_cause_rendered(c: c)
+      )
+    TargetIsUnknown { target: t } =>
+      concat("gunbc test: no such target: ", render_label(l: t))
+    TargetHasNoProducer { target: t } =>
+      concat("gunbc test: target has no bound producer: ", render_label(l: t))
+  }
+}
+
+// IS THE BINARY ANSWERING FOR THE TREE IT IS ABOUT TO READ?
+//
+// Every instrument behind `gunbc test` is compiled into the binary that runs it, and reads a live
+// tree beside it. A binary whose inputs have changed since it was built answers for code that is
+// no longer there, and its reading is reported under the current tree's name -- a silent wrong
+// answer, four incidents in one day before this check existed. So the invocation's first act is
+// to ask whether the binary still answers for its inputs, and refuse when it does not or when
+// nothing can say.
+//
+// THE INPUT SET IS THE ONE RUSTC RECORDED, NOT A LIST WE AUTHOR. Cargo's dep-info beside the
+// binary (`<bin>.d`) lists every file the compile read, `include_str!` files included, so the
+// set is exact, not a path heuristic. Keying on HEAD equality instead would refuse a correct binary
+// after every unrelated commit, which teaches people to route around the check
+// (calm-boar-904's ruling on #13007).
+//
+// The comparison is cargo's own rule: an input newer than the BUILD START, read from the unit's
+// fingerprint dep-info, which cargo rewinds to when compilation began. The binary's own mtime is
+// the wrong anchor: an input edited after rustc read it but before the link finished is older
+// than the binary and was never compiled. So a refusal here means exactly "cargo build would
+// rebuild". It is NOT content-exact: an input whose mtime moved
+// without its bytes changing refuses too, as cargo would rebuild. A content-exact check needs a
+// digest recorded AFTER the compile that writes dep-info, which no in-tree build hook can do.
+//
+// An input outside this worktree is the shared-target hazard: `/cargo-target` serves a binary
+// another worktree built, and its dep-info names that worktree's files. Nothing here can say
+// whether those files match ours, so that is undecided, not fresh.
+//
+// The host classifies each input (the effectful mtime and path reads); this function decides
+// the precedence: undecided beats stale beats fresh, so an unjudgeable input is never masked by a
+// staleness verdict and a stale input never by a fresh one.
+type BinaryInput
+  = InputNotNewer { path: String }
+  | InputNewer { path: String }
+  | InputMissing { path: String }
+  | InputOutsideWorktree { path: String }
+
+type BinaryInputObservation
+  = InputsObserved { binary: String, inputs: List<BinaryInput> }
+  | DepInfoUnreadable { binary: String, reason: String }
+
+type BinaryFreshness
+  = BinaryFresh { binary: String, inputs: Int }
+  | BinaryStale { binary: String, input: String, why: String }
+  | BinaryFreshnessUndecided { binary: String, reason: String }
+
+// One input's step. An undecided verdict absorbs every later input; a stale one absorbs every
+// later input except an outside one, which outranks it.
+fn binary_freshness_step(acc: BinaryFreshness, input: BinaryInput) -> BinaryFreshness {
+  match acc {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => acc
+    BinaryStale { binary: b, input: _, why: _ } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputNewer { path: _ } => acc
+        InputMissing { path: _ } => acc
+        InputNotNewer { path: _ } => acc
+      }
+    BinaryFresh { binary: b, inputs: n } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputNewer { path: p } => BinaryStale { binary: b, input: p, why: "changed after the binary was built" }
+        InputMissing { path: p } => BinaryStale { binary: b, input: p, why: "no longer exists" }
+        InputNotNewer { path: _ } => BinaryFresh { binary: b, inputs: n + 1 }
+      }
+  }
+}
+
+fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
+  BinaryFreshnessUndecided {
+    binary: binary,
+    reason: concat(concat("its dep-info names an input outside this worktree (", path),
+      "); it was built from another checkout, so nothing here says whether it answers for this one")
+  }
+}
+
+fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
+  match observed {
+    DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
+    InputsObserved { binary: b, inputs: is } =>
+      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+        binary_freshness_step(acc: acc, input: i)
+      })
+  }
+}
+
+// Only `BinaryFresh` admits the invocation; both other arms terminate `InvocationRefused` (exit
+// 2, no observation) with their line, never a warning printed beside a reading.
+fn binary_freshness_rendered(f: BinaryFreshness) -> String {
+  match f {
+    BinaryFresh { binary: b, inputs: _ } => concat("gunbc test: binary fresh against its dep-info: ", b)
+    BinaryStale { binary: b, input: p, why: w } =>
+      concat(concat(concat(concat(concat(concat(
+        "gunbc test: REFUSED cause=StaleBinary — ", b), ": input "), p), " "), w), "; rebuild before measuring")
+    BinaryFreshnessUndecided { binary: b, reason: r } =>
+      concat(concat(concat("gunbc test: REFUSED cause=BinaryFreshnessUndecided — ", b), ": "), r)
+  }
+}

@@ -1,0 +1,238 @@
+module test.claim.source_annotation_attachment_witness
+
+import std.types { Bool, Int, List, SourceSpan, String }
+import std.occurrence_identity { OccurrenceId }
+import std.source_annotation {
+  AnnotationGap,
+  AnnotationPlacement,
+  AnnotationRegion,
+  AnnotationScope,
+  ErasedSourceRegion,
+  FileScope,
+  KeyedAnnotationRow,
+  LeadingAfterLineIndent,
+  NormalizedAnnotationCapture,
+  OccurrenceScope,
+  SourceAnnotationDebt,
+  SourceAnnotationGraph,
+  TrailingAfterSemanticToken,
+  attach_annotations,
+  keyed_annotation_rows_agree,
+  source_annotation_graph_rows
+}
+
+// THE GAP RULE ON A SUPPLIED ROSTER, independent of any parser. One synthetic module, laid out so
+// every position a comment can occupy appears once:
+//
+//   0..20    comment above the module header          -> file scope, after the module
+//   50..900  module M (o1)
+//     80..95   comment above f                        -> M, after f
+//     100..400 fn f (o7)
+//       130..400 f's body block (o8)
+//         140..160 statement s1 (o11)
+//         160..175 trailing comment after s1          -> body, before s1, after the call
+//         200..220 comment between the statements     -> body, before s1, after the call
+//         300..360 call c (o13)
+//           310..315 argument a (o14)
+//             312..315 the expression a wraps (o16) -- a descendant, never a neighbour
+//           320..335 comment between the arguments    -> c, before a, after b
+//           340..345 argument b (o15)
+//         370..390 comment before the closing brace   -> body, before c, no after
+//     500..700 fn g (o9)
+//   950..960 comment after the module                 -> file scope, before the module
+//
+// The rule is applied by attach_annotations exactly as a realization calls it; nothing here
+// restates it.
+
+fn span(start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: "probe.dag", start: start, end: end }
+}
+
+fn occ(n: Int) -> AnnotationScope {
+  OccurrenceScope { occurrence: OccurrenceId { value: n } }
+}
+
+fn region(n: Int, start: Int, end: Int, parent: AnnotationScope) -> AnnotationRegion {
+  AnnotationRegion { scope: occ(n: n), extent: span(start: start, end: end), parent: parent }
+}
+
+fn regions() -> List<AnnotationRegion> {
+  [
+    region(n: 1, start: 50, end: 900, parent: FileScope),
+    region(n: 7, start: 100, end: 400, parent: occ(n: 1)),
+    region(n: 8, start: 130, end: 400, parent: occ(n: 7)),
+    region(n: 11, start: 140, end: 160, parent: occ(n: 8)),
+    region(n: 13, start: 300, end: 360, parent: occ(n: 8)),
+    region(n: 14, start: 310, end: 315, parent: occ(n: 13)),
+    region(n: 16, start: 312, end: 315, parent: occ(n: 14)),
+    region(n: 15, start: 340, end: 345, parent: occ(n: 13)),
+    region(n: 9, start: 500, end: 700, parent: occ(n: 1)),
+  ]
+}
+
+fn capture(text: String, start: Int, end: Int, placement: AnnotationPlacement, after_blank: Bool, after_annotation: Bool) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: span(start: start, end: end),
+    placement: placement,
+    preceded_by_blank_line: after_blank,
+    preceded_by_annotation_line: after_annotation,
+  }
+}
+
+fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  capture(text: text, start: start, end: end, placement: LeadingAfterLineIndent, after_blank: true, after_annotation: false)
+}
+
+fn gap(scope: AnnotationScope, before: AnnotationScope?, after: AnnotationScope?) -> AnnotationGap {
+  AnnotationGap { scope: scope, before: before, after: after }
+}
+
+// The gap one capture lands in, read through the real fold.
+fn gap_of(c: NormalizedAnnotationCapture, rs: List<AnnotationRegion>) -> AnnotationGap? {
+  match source_annotation_graph_rows(graph: attach_annotations(captures: [c], regions: rs)) |> first {
+    Present { value: row } => Present { value: row.gap }
+    Absent => none
+  }
+}
+
+fn lands(c: NormalizedAnnotationCapture, expected: AnnotationGap) -> Bool {
+  match gap_of(c: c, rs: regions()) {
+    Present { value: g } => g == expected
+    Absent => false
+  }
+}
+
+test fn w_a_comment_above_a_declaration_lands_before_it_in_the_module() -> Bool {
+  lands(c: leading(text: "about f", start: 80, end: 95), expected: gap(scope: occ(n: 1), before: none, after: Present { value: occ(n: 7) }))
+}
+
+// THE CASE THAT WAS A COMPILE ERROR. Prose inside f's body lands in the body between its statements,
+// and in particular never on g, the next declaration -- the misattachment a proximity rule makes.
+test fn w_a_comment_inside_a_body_lands_between_its_statements() -> Bool {
+  lands(c: leading(text: "inside f", start: 200, end: 220), expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 11) }, after: Present { value: occ(n: 13) }))
+}
+
+// The discriminating control for the body case: the SAME capture against a roster without f and
+// its body lands in the module before g. Only the containing regions account for the difference, so
+// the in-body verdict above is the scope rule's, not an accident of the fixture.
+test fn w_without_the_containing_body_the_same_comment_would_land_on_g() -> Bool {
+  let outer_only = [region(n: 1, start: 50, end: 900, parent: FileScope), region(n: 9, start: 500, end: 700, parent: occ(n: 1))]
+  match gap_of(c: leading(text: "inside f", start: 200, end: 220), rs: outer_only) {
+    Present { value: g } => g == gap(scope: occ(n: 1), before: none, after: Present { value: occ(n: 9) })
+    Absent => false
+  }
+}
+
+// THE NEIGHBOURS ARE DIRECT CHILDREN. Between two arguments the scope is the call and the
+// neighbours are the arguments themselves, never a descendant of either: o16 ends closer to the
+// comment than its argument o14 starts, so a rule reading neighbours at any depth picks o16.
+test fn w_a_comment_between_arguments_lands_between_them_in_the_call() -> Bool {
+  lands(c: leading(text: "between args", start: 320, end: 335), expected: gap(scope: occ(n: 13), before: Present { value: occ(n: 14) }, after: Present { value: occ(n: 15) }))
+}
+
+test fn w_a_trailing_comment_lands_after_the_code_it_follows() -> Bool {
+  lands(
+    c: capture(text: "trailing", start: 160, end: 175, placement: TrailingAfterSemanticToken, after_blank: false, after_annotation: false),
+    expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 11) }, after: Present { value: occ(n: 13) })
+  )
+}
+
+test fn w_a_comment_before_a_closing_brace_has_no_following_neighbour() -> Bool {
+  lands(c: leading(text: "at the end", start: 370, end: 390), expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 13) }, after: none))
+}
+
+test fn w_a_comment_above_the_module_header_lands_in_file_scope() -> Bool {
+  lands(c: leading(text: "banner", start: 0, end: 20), expected: gap(scope: FileScope, before: none, after: Present { value: occ(n: 1) }))
+}
+
+test fn w_a_comment_after_the_module_lands_in_file_scope() -> Bool {
+  lands(c: leading(text: "epilogue", start: 950, end: 960), expected: gap(scope: FileScope, before: Present { value: occ(n: 1) }, after: none))
+}
+
+// AN ERASED REGION IS A SCOPE. `( x )` with x at 310..315 inside parentheses at 305..320: a comment
+// inside the parentheses lands in the erased region, whose child is x.
+test fn w_a_comment_inside_an_erased_region_lands_in_it() -> Bool {
+  let paren = ErasedSourceRegion { extent: span(start: 305, end: 320) }
+  let rs = [
+    region(n: 1, start: 50, end: 900, parent: FileScope),
+    AnnotationRegion { scope: paren, extent: span(start: 305, end: 320), parent: occ(n: 1) },
+    region(n: 14, start: 310, end: 315, parent: paren),
+  ]
+  match gap_of(c: leading(text: "in parens", start: 306, end: 309), rs: rs) {
+    Present { value: g } => g == gap(scope: paren, before: none, after: Present { value: occ(n: 14) })
+    Absent => false
+  }
+}
+
+// A BLANK LINE SPLITS A BLOCK; adjacency continues it. Both pairs land in the same gap and differ
+// only in the observed bits, so nothing else can account for one row versus two.
+test fn w_adjacent_lines_in_one_gap_merge_into_one_block() -> Bool {
+  let graph = attach_annotations(
+    captures: [leading(text: "one", start: 60, end: 65), capture(text: "two", start: 66, end: 71, placement: LeadingAfterLineIndent, after_blank: false, after_annotation: true)],
+    regions: regions()
+  )
+  match source_annotation_graph_rows(graph: graph) |> first {
+    Present { value: row } => (source_annotation_graph_rows(graph: graph) |> count) == 1 && row.text == "one\ntwo"
+    Absent => false
+  }
+}
+
+test fn w_a_blank_line_splits_one_gap_into_two_blocks() -> Bool {
+  let graph = attach_annotations(
+    captures: [leading(text: "one", start: 60, end: 65), leading(text: "two", start: 70, end: 75)],
+    regions: regions()
+  )
+  (source_annotation_graph_rows(graph: graph) |> count) == 2
+}
+
+// Attachment REFERS to the supplied identities and mints none: every scope and neighbour on every
+// row is one the roster supplied, or the file.
+fn supplied(scope: AnnotationScope) -> Bool {
+  match scope {
+    FileScope => true
+    _ => regions() |> any(r => r.scope == scope)
+  }
+}
+
+fn supplied_optional(scope: AnnotationScope?) -> Bool {
+  match scope {
+    Present { value: s } => supplied(scope: s)
+    Absent => true
+  }
+}
+
+test fn w_attachment_refers_to_supplied_regions_and_mints_none() -> Bool {
+  let graph = attach_annotations(
+    captures: [
+      leading(text: "banner", start: 0, end: 20),
+      leading(text: "about f", start: 80, end: 95),
+      leading(text: "inside f", start: 200, end: 220),
+      leading(text: "between args", start: 320, end: 335),
+      leading(text: "epilogue", start: 950, end: 960),
+    ],
+    regions: regions()
+  )
+  let rows = source_annotation_graph_rows(graph: graph)
+  (rows |> count) == 5
+    && (rows |> all(row => supplied(scope: row.gap.scope) && supplied_optional(scope: row.gap.before) && supplied_optional(scope: row.gap.after)))
+}
+
+test fn w_no_captures_yields_an_empty_graph() -> Bool {
+  (source_annotation_graph_rows(graph: attach_annotations(captures: [], regions: regions())) |> count) == 0
+}
+
+fn keyed(scope: String, before: String?, after: String?, text: String) -> KeyedAnnotationRow {
+  KeyedAnnotationRow { scope_key: scope, before_key: before, after_key: after, text: text }
+}
+
+// Agreement compares scope, both neighbours and text, in order. The negative rows differ in exactly
+// one neighbour key, so a predicate ignoring neighbours would wrongly agree.
+test fn w_keyed_rows_agree_only_on_the_same_gap_and_text() -> Bool {
+  let left = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:a" }, after: none, text: "x")]
+  let same = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:a" }, after: none, text: "x")]
+  let other_neighbour = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:b" }, after: none, text: "x")]
+  keyed_annotation_rows_agree(left: left, right: same)
+    && !keyed_annotation_rows_agree(left: left, right: other_neighbour)
+    && !keyed_annotation_rows_agree(left: left, right: [])
+}

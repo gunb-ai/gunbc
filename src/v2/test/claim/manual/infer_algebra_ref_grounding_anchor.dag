@@ -1,0 +1,65 @@
+module v2.test.claim.manual.infer_algebra_ref_grounding_anchor
+import std.optional { optional_absent }
+
+import v2.std.witness { Holds, Violates, Witness }
+import v2.compiler.infer { algebra_ref_is_grounded, canonical_grounding_from_inferred_facts }
+
+fn anchor_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn anchor_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn anchor_computation_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
+
+data algebra_ref_conj_is_grounded: Bool = algebra_ref_is_grounded(algebra: anchor_conj_node())
+
+data algebra_ref_computation_node_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_computation_node())
+
+fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
+  InferredFacts {
+    grounding: DerivedGrounding {
+      grounding: CanonicalGrounding {
+        node: anchor_atom_node(s: ^anchor_resolved_type_sym),
+        witness: CanonicalGroundingWitness {
+          structural: StructuralPropertyWitness {
+            property: ^constraint_property_being_canonical,
+            evidence: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)
+          },
+          closedness: StructuralPropertyWitness {
+            property: ^constraint_property_candidate_set_closedness,
+            evidence: anchor_atom_node(s: ^anchor_resolved_type_sym)
+          }
+        }
+      }
+    },
+    descent: Holds {
+      value: v2.std.cardinality.TerminationProof {
+        non_increasing: [],
+        strict: v2.std.cardinality.RankingComponent { measured: ^anchor_descent_dim_sym }
+      }
+    },
+    denotation: optional_absent(),
+    type_instances: []
+  }
+}
+
+data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

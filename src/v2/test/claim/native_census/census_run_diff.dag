@@ -1,0 +1,616 @@
+module v2.test.claim.native_census.census_run_diff
+
+import std.algebra { Cons, Empty, length, list_append, list_find_first }
+import std.occurrence_identity { OccurrenceId }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.source_root_eval {
+  CensusDiffClearedAndNewlyExposed,
+  CensusDiffDuplicateObligation,
+  CensusDiffIncompleteEvidence,
+  CensusDiffLocationUpdate,
+  CensusDiffRefusalChanged,
+  CensusDiffMemberAdded,
+  CensusDiffMemberRemoved,
+  CensusDiffNewlyObservedNotRegression,
+  CensusDiffNewlyRefusing,
+  CensusDiffNowUnobservedBehindEarlierStage,
+  CensusDiffScopeChanged,
+  CensusDiffUnobservedNotScopeChanged,
+  CensusObligationOutcome,
+  CensusObligationPassed,
+  CensusObligationRefused,
+  CensusObligationRow,
+  CensusObligationUnobservedBehindAcquisitionBlock,
+  CensusObligationUnobservedBehindStage,
+  CensusRefusalDiagnostics,
+  CensusRunComplete,
+  CensusRunCompletion,
+  CensusRunDiffCompared,
+  CensusRunDiffFinding,
+  CensusRunDiffResult,
+  CensusRunDiffSubjectRefused,
+  CensusRunIncomplete,
+  CensusRunRecord,
+  NativeCensusCauseFrontEnd,
+  NativeCensusCauseInfer,
+  NativeCensusCauseResolve,
+  NativeCensusCauseStage,
+  NativeCensusScope,
+  NativeCensusScopeBlocked,
+  NativeCensusScopeClosed,
+  NativeInferCensusFileRefused,
+  NativeInferCensusResolveRefused,
+  census_obligation_rows_from_infer,
+  census_obligation_rows_from_member_block,
+  census_run_diff,
+  census_run_record,
+  census_three_stage_rows
+}
+import v2.compiler.module_acquisition {
+  AcquireImportedModule,
+  AcquisitionRequest,
+  CensusBlock,
+  CensusEdgeBlock,
+  CensusEdgeUnknownModule,
+  CensusMemberBlock,
+  CensusMemberFrontEndRefused
+}
+import v2.compiler.native_test_vocabulary { FileRefusalAt, FileRefusalAtLine }
+import v2.compiler.resolve { ObservationComplete }
+import v2.compiler.source_authority { ModuleFileRef, V2Tree }
+import v2.std.diagnostic {
+  NonEmptyDiagnostics,
+  diagnostics_singleton,
+  module_unavailable_diagnostic
+}
+import v2.std.node { Symbol }
+import v2.std.source_position { SourceByteColumn }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data census_diff_subject: String = "v2.cs.subject"
+
+fn rev_a() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-a" as NonEmptyStr)
+}
+
+fn rev_b() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-b" as NonEmptyStr)
+}
+
+fn planted_chain(reason: Symbol) -> NonEmptyDiagnostics {
+  diagnostics_singleton(d: module_unavailable_diagnostic(reason: reason, module_file: ^census_diff_planted_file))
+}
+
+fn planted_at(line: Int) -> FileRefusalAt {
+  FileRefusalAtLine { line: line, byte_column: SourceByteColumn { value: 1 } }
+}
+
+fn occ(n: Int) -> Optional<OccurrenceId> {
+  Present { value: OccurrenceId { value: n } }
+}
+
+fn planted_refused(reason: Symbol, at: FileRefusalAt, occurrence: Optional<OccurrenceId>) -> CensusObligationOutcome {
+  CensusObligationRefused {
+    reason: reason,
+    at: at,
+    evidence: CensusRefusalDiagnostics { first: planted_chain(reason: reason), rest: [] },
+    occurrence: occurrence
+  }
+}
+
+fn record_of(
+  population: List<String>,
+  obligations: List<CensusObligationRow>,
+  revision: Fnv1a64Structural,
+  completion: CensusRunCompletion,
+  scope: NativeCensusScope
+) -> CensusRunRecord {
+  census_run_record(
+    subject: census_diff_subject,
+    revision: revision,
+    scope: scope,
+    population: population,
+    obligations: obligations,
+    completion: completion
+  )
+}
+
+fn closed_complete(population: List<String>, obligations: List<CensusObligationRow>, revision: Fnv1a64Structural) -> CensusRunRecord {
+  record_of(
+    population: population,
+    obligations: obligations,
+    revision: revision,
+    completion: CensusRunComplete,
+    scope: NativeCensusScopeClosed { subject: census_diff_subject, members: length(xs: population) }
+  )
+}
+
+fn findings_of(result: CensusRunDiffResult) -> List<CensusRunDiffFinding> {
+  match result {
+    CensusRunDiffSubjectRefused { before: _, after: _ } => Empty
+    CensusRunDiffCompared { diff: d } => d.findings
+  }
+}
+
+fn findings_contain(findings: List<CensusRunDiffFinding>, predicate: fn(CensusRunDiffFinding) -> Bool) -> Bool {
+  match list_find_first(xs: findings, predicate: predicate) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn is_cleared_and_exposed(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffClearedAndNewlyExposed { cleared: _, newly_exposed: _ } => true
+    _ => false
+  }
+}
+
+fn is_masked_behind_resolve(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffNowUnobservedBehindEarlierStage { before: _, behind: b } =>
+      match b {
+        NativeCensusCauseResolve => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn is_scope_changed(member: String, f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffScopeChanged { member: m } => m == member
+    _ => false
+  }
+}
+
+fn is_unobserved_not_scope(member: String, f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffUnobservedNotScopeChanged { member: m } => m == member
+    _ => false
+  }
+}
+
+fn is_newly_observed(member: String, f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffNewlyObservedNotRegression { member: m, refusal: _ } => m == member
+    _ => false
+  }
+}
+
+fn is_incomplete(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffIncompleteEvidence { member: _ } => true
+    _ => false
+  }
+}
+
+fn is_location_update(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffLocationUpdate { before: _, after: _ } => true
+    _ => false
+  }
+}
+
+fn is_refusal_changed(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffRefusalChanged { before: _, after: _ } => true
+    _ => false
+  }
+}
+
+fn is_newly_refusing(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffNewlyRefusing { after: _ } => true
+    _ => false
+  }
+}
+
+fn is_member_added(member: String, f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffMemberAdded { member: m } => m == member
+    _ => false
+  }
+}
+
+fn is_member_removed(member: String, f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffMemberRemoved { member: m } => m == member
+    _ => false
+  }
+}
+
+fn is_duplicate_obligation(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffDuplicateObligation { module: _, stage: _ } => true
+    _ => false
+  }
+}
+
+fn census_stage_is_front_end(stage: NativeCensusCauseStage) -> Bool {
+  match stage {
+    NativeCensusCauseFrontEnd => true
+    _ => false
+  }
+}
+
+fn passed_module(module: String) -> List<CensusObligationRow> {
+  census_three_stage_rows(
+    module: module,
+    front_end: CensusObligationPassed,
+    resolve: CensusObligationPassed,
+    infer: CensusObligationPassed
+  )
+}
+
+fn resolve_then_infer(module: String) -> List<CensusObligationRow> {
+  census_three_stage_rows(
+    module: module,
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 4), occurrence: occ(n: 1)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+}
+
+fn infer_refused_rows(module: String) -> List<CensusObligationRow> {
+  census_three_stage_rows(
+    module: module,
+    front_end: CensusObligationPassed,
+    resolve: CensusObligationPassed,
+    infer: planted_refused(reason: ^infer_mismatch, at: planted_at(line: 6), occurrence: occ(n: 2))
+  )
+}
+
+fn edge_block() -> CensusBlock {
+  CensusEdgeBlock {
+    refusal: CensusEdgeUnknownModule {
+      request: AcquisitionRequest {
+        from_module: census_diff_subject,
+        from_tree: V2Tree,
+        spelling: "v2.cs.missing",
+        kind: AcquireImportedModule
+      }
+    }
+  }
+}
+
+test fn census_diff_refuses_a_different_subject() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  let after = census_run_record(
+    subject: "v2.other",
+    revision: rev_a(),
+    scope: NativeCensusScopeClosed { subject: "v2.other", members: 1 },
+    population: ["a"],
+    obligations: passed_module(module: "a"),
+    completion: CensusRunComplete
+  )
+  match census_run_diff(before: before, after: after) {
+    CensusRunDiffSubjectRefused { before: b, after: a } => b == census_diff_subject && a == "v2.other"
+    CensusRunDiffCompared { diff: _ } => false
+  }
+}
+
+test fn census_diff_duplicate_module_stage_row_is_not_silently_overwritten() -> Bool {
+  let dup = list_append(
+    passed_module(module: "a"),
+    census_three_stage_rows(
+      module: "a",
+      front_end: CensusObligationPassed,
+      resolve: CensusObligationPassed,
+      infer: planted_refused(reason: ^infer_mismatch, at: planted_at(line: 6), occurrence: occ(n: 2))
+    )
+  )
+  let before = closed_complete(population: ["a"], obligations: dup, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_duplicate_obligation)
+}
+
+test fn census_diff_records_a_different_revision() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_b())
+  match census_run_diff(before: before, after: after) {
+    CensusRunDiffSubjectRefused { before: _, after: _ } => false
+    CensusRunDiffCompared { diff: d } => d.revision_changed
+  }
+}
+
+test fn census_diff_cleared_resolve_newly_exposes_infer() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: resolve_then_infer(module: "a"), revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: infer_refused_rows(module: "a"), revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
+test fn census_diff_cleared_member_block_newly_exposes_without_newly_refusing() -> Bool {
+  let before = closed_complete(
+    population: ["a"],
+    obligations: census_three_stage_rows(
+      module: "a",
+      front_end: planted_refused(reason: ^parse_failed, at: planted_at(line: 1), occurrence: occ(n: 1)),
+      resolve: CensusObligationUnobservedBehindAcquisitionBlock,
+      infer: CensusObligationUnobservedBehindAcquisitionBlock
+    ),
+    revision: rev_a()
+  )
+  let after = closed_complete(
+    population: ["a"],
+    obligations: census_three_stage_rows(
+      module: "a",
+      front_end: CensusObligationPassed,
+      resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 4), occurrence: occ(n: 2)),
+      infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+    ),
+    revision: rev_a()
+  )
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
+test fn census_diff_infer_masked_behind_resolve_is_not_cleared() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: infer_refused_rows(module: "a"), revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: resolve_then_infer(module: "a"), revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_masked_behind_resolve)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+}
+
+test fn census_diff_absent_from_closed_after_run_is_scope_changed() -> Bool {
+  let before = closed_complete(
+    population: ["a", "b"],
+    obligations: list_append(passed_module(module: "a"), passed_module(module: "b")),
+    revision: rev_a()
+  )
+  let after = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  let result = census_run_diff(before: before, after: after)
+  let findings = findings_of(result: result)
+  match result {
+    CensusRunDiffSubjectRefused { before: _, after: _ } => false
+    CensusRunDiffCompared { diff: d } =>
+      findings_contain(findings: findings, predicate: fn(f) { is_scope_changed(member: "b", f: f) })
+        && findings_contain(findings: findings, predicate: fn(f) { is_member_removed(member: "b", f: f) })
+        && match d.members_removed {
+          Cons { head: m, tail: Empty } => m == "b"
+          _ => false
+        }
+  }
+}
+
+test fn census_diff_absent_from_blocked_after_run_is_unobserved_not_scope_changed() -> Bool {
+  let before = closed_complete(
+    population: ["a", "b"],
+    obligations: list_append(passed_module(module: "a"), passed_module(module: "b")),
+    revision: rev_a()
+  )
+  let after = record_of(
+    population: ["a"],
+    obligations: passed_module(module: "a"),
+    revision: rev_a(),
+    completion: CensusRunComplete,
+    scope: NativeCensusScopeBlocked {
+      subject: census_diff_subject,
+      members: 1,
+      blocked_first: edge_block(),
+      blocked_rest: []
+    }
+  )
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: fn(f) { is_unobserved_not_scope(member: "b", f: f) })
+    && !findings_contain(findings: findings, predicate: fn(f) { is_scope_changed(member: "b", f: f) })
+}
+
+test fn census_diff_newly_visible_refusing_member_is_not_a_regression() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  let after = closed_complete(
+    population: ["a", "b"],
+    obligations: list_append(
+      passed_module(module: "a"),
+      census_three_stage_rows(
+        module: "b",
+        front_end: CensusObligationPassed,
+        resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 3), occurrence: occ(n: 4)),
+        infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+      )
+    ),
+    revision: rev_a()
+  )
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: fn(f) { is_newly_observed(member: "b", f: f) })
+    && findings_contain(findings: findings, predicate: fn(f) { is_member_added(member: "b", f: f) })
+}
+
+test fn census_diff_stopped_run_is_incomplete_evidence() -> Bool {
+  let before = closed_complete(
+    population: ["a", "b"],
+    obligations: list_append(passed_module(module: "a"), passed_module(module: "b")),
+    revision: rev_a()
+  )
+  let after = record_of(
+    population: ["a"],
+    obligations: passed_module(module: "a"),
+    revision: rev_a(),
+    completion: CensusRunIncomplete,
+    scope: NativeCensusScopeClosed { subject: census_diff_subject, members: 1 }
+  )
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_incomplete)
+    && !findings_contain(findings: findings, predicate: fn(f) { is_scope_changed(member: "b", f: f) })
+}
+
+test fn census_diff_passed_to_refused_on_a_common_member_is_newly_refusing() -> Bool {
+  let before = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: infer_refused_rows(module: "a"), revision: rev_a())
+  findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_newly_refusing)
+}
+
+// A module refused at resolve before and after, for a different fatal. The comparable row holds only
+// the selected fatal, so this is a changed refusal: not cleared-and-exposed (the earlier fatal may
+// survive in a later chain) and not newly refusing (it never passed).
+test fn census_diff_same_stage_different_fatal_is_a_changed_refusal() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_declarer_refused, at: planted_at(line: 4), occurrence: occ(n: 1)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 12), occurrence: occ(n: 7)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_refusal_changed)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
+// TWO INDEPENDENT CHAINS THAT ONLY REORDERED: [A, B] before, [B, A] after. Both refusals are still
+// there; only which one the row selects as its fatal changed. Reporting A cleared here is the false
+// claim a same-stage cleared-and-exposed rule would make.
+fn planted_two_chains(fatal: Symbol, other: Symbol, line: Int) -> CensusObligationOutcome {
+  CensusObligationRefused {
+    reason: fatal,
+    at: planted_at(line: line),
+    evidence: CensusRefusalDiagnostics { first: planted_chain(reason: fatal), rest: [planted_chain(reason: other)] },
+    occurrence: occ(n: line)
+  }
+}
+
+test fn census_diff_reordered_chains_do_not_report_a_cleared_refusal() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_two_chains(fatal: ^resolve_declarer_refused, other: ^resolve_unbound, line: 4),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_two_chains(fatal: ^resolve_unbound, other: ^resolve_declarer_refused, line: 4),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_refusal_changed)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+}
+
+test fn census_diff_location_movement_is_not_churn() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 4), occurrence: occ(n: 1)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 8), occurrence: occ(n: 9)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_location_update)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+}
+
+test fn census_obligation_rows_from_front_end_refusal() -> Bool {
+  match census_obligation_rows_from_infer(module: "a", outcome: NativeInferCensusFileRefused, file_refusal: Absent) {
+    Cons { head: fe, tail: Cons { head: res, tail: Cons { head: inf, tail: Empty } } } =>
+      match fe.outcome {
+        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
+          match res.outcome {
+            CensusObligationUnobservedBehindStage { stage: s } =>
+              census_stage_is_front_end(stage: s)
+                && match inf.outcome {
+                  CensusObligationUnobservedBehindStage { stage: t } => census_stage_is_front_end(stage: t)
+                  _ => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn census_obligation_rows_from_resolve_refusal() -> Bool {
+  let outcome = NativeInferCensusResolveRefused {
+    first: planted_chain(reason: ^resolve_unbound),
+    rest: [],
+    observation: ObservationComplete,
+    partial: []
+  }
+  match census_obligation_rows_from_infer(module: "a", outcome: outcome, file_refusal: Absent) {
+    Cons { head: fe, tail: Cons { head: res, tail: Cons { head: inf, tail: Empty } } } =>
+      match fe.outcome {
+        CensusObligationPassed =>
+          match res.outcome {
+            CensusObligationRefused { reason: r, at: _, evidence: _, occurrence: _ } =>
+              r == ^resolve_unbound
+                && match inf.outcome {
+                  CensusObligationUnobservedBehindStage { stage: s } =>
+                    match s {
+                      NativeCensusCauseResolve => true
+                      _ => false
+                    }
+                  _ => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn census_member_block_is_front_end_refused_later_unobserved_behind_block() -> Bool {
+  let block = CensusMemberBlock {
+    module: "v2.cs.broken",
+    refusal: CensusMemberFrontEndRefused {
+      file: ModuleFileRef { tree: V2Tree, relative_path: "cs/broken.dag" },
+      diagnostics: planted_chain(reason: ^parse_failed)
+    },
+    content: "",
+    host_directory: "fixtures",
+    requesters: []
+  }
+  match census_obligation_rows_from_member_block(block: block) {
+    Absent => false
+    Present { value: rows } =>
+      match rows {
+        Cons { head: fe, tail: Cons { head: res, tail: Cons { head: inf, tail: Empty } } } =>
+          match fe.outcome {
+            CensusObligationRefused { reason: r, at: _, evidence: _, occurrence: _ } =>
+              r == ^parse_failed
+                && match res.outcome {
+                  CensusObligationUnobservedBehindAcquisitionBlock =>
+                    match inf.outcome {
+                      CensusObligationUnobservedBehindAcquisitionBlock => true
+                      _ => false
+                    }
+                  _ => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn census_edge_block_is_not_an_obligation_row() -> Bool {
+  match census_obligation_rows_from_member_block(block: edge_block()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

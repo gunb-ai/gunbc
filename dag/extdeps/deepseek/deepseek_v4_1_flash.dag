@@ -1,0 +1,1203 @@
+module extdeps.deepseek.deepseek_v4_1_flash
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat, nat_range_inclusive }
+import std.list { list_cover, list_member, duplicated_by_key, distinct_by_key }
+import std.decimal { zero_pad_left }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  ParameterCount, parameter_count,
+  ByteSize, byte_size, byte_size_count,
+}
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_rows_for_decls, concat_frontier_row_groups }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.safetensors.format {
+  SafetensorsEntry, safetensors_entry,
+  SafeF8E4M3, SafeF8E8M0, SafeBf16,
+  SafetensorsPopulationReading, PopulationScanned,
+  SafetensorsPopulationStanding, safetensors_population_standing,
+  safetensors_population_entries, safetensors_population_declared_bytes,
+  SafetensorsIndexMember, safetensors_index_member,
+  MembershipClosure, MembershipScopedToReadRows, MembershipClosedAgainstFullIndex,
+  SafetensorsShardedEntry, safetensors_sharded_entries,
+  SafetensorsShardFile, safetensors_shard_file,
+}
+
+// DEEPSEEK-V4.1-FLASH, as its own extdeps authority because it is an independently versioned
+// upstream product, not a revision of DeepSeek-V4-Flash and not a property of whatever happens to
+// serve it. The V4 family lives in extdeps.deepseek.deepseek_v4; this module must not import that
+// one, and a caller that wants V4.1 facts must ask here. A repointed V4 import would be the same
+// fork under a new name: the encoder file, the DSML tags, the effort algebra, and the KV
+// footprint are all different facts.
+
+// THE WEIGHTS' IDENTITY IS THE HUB REPO AT THE PIN. The hosted API string `deepseek-flash` is a
+// dated provider mapping (2026-09-10 cutover; legacy `deepseek-v4-flash` names also route there).
+// No hosted route in this repository consumes it, so it is not declared here.
+data deepseek_v4_1_flash_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "deepseek-ai/DeepSeek-V4.1-Flash" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: deepseek_v4_1_flash_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.deepseek.deepseek_v4_1_flash",
+      decl_name: "deepseek_v4_1_flash_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE PIN. Every config, footprint, and encoder row below is read from this Hub commit, not from
+// `main` and not from a serving runtime's copy. The commit is the 2026-09-10 encoder namespace
+// fix (`fix(encoding): preserve tool namespaces in prompts and completions`), which is also HEAD
+// of the repository at the time of this transcription.
+data deepseek_v4_1_flash_revision: NonEmptyStr = "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr
+data deepseek_v4_1_flash_revision_committed: NonEmptyStr = "2026-09-10T08:18:10Z" as NonEmptyStr
+
+data deepseek_v4_1_flash_config_path: NonEmptyStr = "config.json" as NonEmptyStr
+data deepseek_v4_1_flash_encoder_path: NonEmptyStr = "encoding/encoding.py" as NonEmptyStr
+// LICENSE FILE AT THE PIN, SPDX MIT. DSV41-1 is the consumer: a serving image that redistributes
+// these weights must carry this source, not a guessed license.
+data deepseek_v4_1_flash_license_path: NonEmptyStr = "LICENSE" as NonEmptyStr
+data deepseek_v4_1_flash_license_spdx: NonEmptyStr = "MIT" as NonEmptyStr
+data deepseek_v4_1_flash_safetensors_index_path: NonEmptyStr = "model.safetensors.index.json" as NonEmptyStr
+data deepseek_v4_1_flash_inference_model_path: NonEmptyStr = "inference/model.py" as NonEmptyStr
+
+// Blob and tree URLs for this pin are `extdeps.huggingface.hub` `hub_blob_url` /
+// `hub_repo_tree_api_url` applied to `deepseek_v4_1_flash_hub_repo` and the path/revision rows
+// below. This module does not re-mint the Hub URL shape.
+
+// ===========================================================================================
+// CONFIG, transcribed from config.json at the pinned revision.
+// ===========================================================================================
+
+// ARCHITECTURE CLASS NAME, the string DSV41-1's registry probe must look for. Cited from
+// config.json `architectures[0]`. Declared frontier: DSV41-1 (loyal-ram-346).
+data deepseek_v4_1_flash_architecture_class: NonEmptyStr = "DeepseekV41ForCausalLM" as NonEmptyStr
+data deepseek_v4_1_flash_model_type: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data deepseek_v4_1_flash_quant_method: NonEmptyStr = "fp8" as NonEmptyStr
+data deepseek_v4_1_flash_quant_activation_scheme: NonEmptyStr = "dynamic" as NonEmptyStr
+data deepseek_v4_1_flash_quant_scale_fmt: NonEmptyStr = "ue8m0" as NonEmptyStr
+data deepseek_v4_1_flash_expert_dtype: NonEmptyStr = "fp4" as NonEmptyStr
+data deepseek_v4_1_flash_weight_block_size: Nat = 32
+
+// KV CACHE DTYPE IS NOT A CONFIG.JSON KEY. The card's "FP4 main KV / E2M1 / 890 bytes per token"
+// is prose; this module does not transcribe it. The reference inference at the same revision
+// quantizes compressed KV with fp4_act_quant(..., scale_dtype=float8_e4m3fn) in
+// inference/model.py; window KV has no dtype key in config.json. Declared frontier: DSV41-1 may
+// observe what a given engine actually selects.
+data deepseek_v4_1_flash_config_declares_kv_cache_dtype: Bool = false
+data deepseek_v4_1_flash_inference_compresses_kv_as_fp4: Bool = true
+
+data deepseek_v4_1_flash_hidden_size: Nat = 5120
+data deepseek_v4_1_flash_num_hidden_layers: Nat = 40
+data deepseek_v4_1_flash_num_attention_heads: Nat = 64
+data deepseek_v4_1_flash_vocab_size: Nat = 129280
+data deepseek_v4_1_flash_n_routed_experts: Nat = 384
+data deepseek_v4_1_flash_n_shared_experts: Nat = 1
+data deepseek_v4_1_flash_num_experts_per_tok: Nat = 6
+data deepseek_v4_1_flash_sliding_window: TokenCount = token_count(count: 128)
+data deepseek_v4_1_flash_index_topk: TokenCount = token_count(count: 512)
+data deepseek_v4_1_flash_candidate_topk_blocks: Nat = 2048
+data deepseek_v4_1_flash_candidate_block_size: Nat = 8
+data deepseek_v4_1_flash_num_nextn_predict_layers: Nat = 3
+data deepseek_v4_1_flash_dspark_block_size: Nat = 5
+data deepseek_v4_1_flash_dspark_n_routed_experts: Nat = 128
+data deepseek_v4_1_flash_dspark_num_experts_per_tok: Nat = 3
+data deepseek_v4_1_flash_dspark_markov_rank: Nat = 256
+data deepseek_v4_1_flash_dspark_noise_token_id: Nat = 128799
+
+// config.json `dspark_target_layer_ids` is an integer array. Carried as List so a later pin can
+// change length without a type edit.
+data deepseek_v4_1_flash_dspark_target_layer_ids: List<Nat> = [37, 38, 39]
+
+// THE LAYERS THAT COMPRESS THEIR OWN KV. config.json `kv_source_layer_ids` is an integer array;
+// the rest of the stack reads that cache.
+data deepseek_v4_1_flash_kv_source_layer_ids: List<Nat> = [2, 8, 14, 20]
+
+// THE CONFIG DOES NOT SPLIT THE 40 LAYERS INTO ENCODER AND DECODER. The card's CED 20+20 is
+// prose; `text_config.num_hidden_layers` is 40 and there is no encoder_layers / decoder_layers key.
+data deepseek_v4_1_flash_config_declares_encoder_decoder_split: Bool = false
+
+data deepseek_v4_1_flash_vision_num_hidden_layers: Nat = 32
+data deepseek_v4_1_flash_vision_hidden_size: Nat = 1024
+data deepseek_v4_1_flash_vision_patch_size: Nat = 14
+data deepseek_v4_1_flash_vision_max_image_tokens: TokenCount = token_count(count: 1024)
+data deepseek_v4_1_flash_image_token_id: Nat = 129264
+data deepseek_v4_1_flash_accepts_image_input: Bool = true
+
+type DeepseekV41EngramTables {
+  layer_ids: List<Nat>
+  unpadded_embeddings: List<Nat>
+  max_ngram_size: Nat
+  vocab_size: Nat
+  n_heads: Nat
+  head_dim: Nat
+  compressed_vocab_size: Nat
+}
+
+data deepseek_v4_1_flash_engram: DeepseekV41EngramTables = DeepseekV41EngramTables {
+  layer_ids: [1, 14],
+  unpadded_embeddings: [384006168, 384016682],
+  max_ngram_size: 4,
+  vocab_size: 16000000,
+  n_heads: 8,
+  head_dim: 256,
+  compressed_vocab_size: 99092,
+}
+
+// ENGRAM OFF-ACCELERATOR PLACEMENT IS NOT A PUBLISHER CONFIG KEY. config.json carries table sizes
+// and layer ids; it does not declare host/UVA offload. The reference inference allocates the
+// tables as parameters. Whether a serving runtime can park them in host memory is a runtime fact
+// (DSV41-1 / DSV41-2). On GB10, host and GPU are one unified pool, so offload cannot add capacity
+// there even if a runtime offers it — that evaluation belongs to DSV41-2, not this module.
+data deepseek_v4_1_flash_config_declares_engram_off_accelerator: Bool = false
+
+// THE CONTEXT CEILING AND THE NATIVE WINDOW ARE TWO KEYS IN THE SAME CONFIG. The card's "up to
+// one million tokens" and its 64K sparse-attn training sentence contradict each other if read as
+// one native length. `text_config.max_position_embeddings` is 1048576; `rope_scaling` is yarn with
+// `original_max_position_embeddings` 65536 and `factor` 16. The 1M figure is a SCALED ceiling
+// over a 64K native window. Declared frontier for the working-window constraint: DSV41-2.
+data deepseek_v4_1_flash_context_length: TokenCount = token_count(count: 1048576)
+data deepseek_v4_1_flash_native_context_length: TokenCount = token_count(count: 65536)
+data deepseek_v4_1_flash_yarn_factor: Nat = 16
+
+fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
+  token_count(count: token_count_value(t: deepseek_v4_1_flash_native_context_length) * deepseek_v4_1_flash_yarn_factor)
+}
+
+// NO OUTPUT CEILING IN CONFIG.JSON. The card's sampling table is not this module's authority.
+// Remaining room in a window after input is `std.measure` `token_count_remaining_in_window`, not a
+// product fact.
+
+// ===========================================================================================
+// FOOTPRINT FROM THE SAFETENSORS INDEX, not from the card. The card self-contradicts (552B
+// backbone + 196B Engram, also "763B total"); this module does not transcribe those figures.
+// Component bytes are the sum of each tensor's data_offsets span in the 48-shard headers at this
+// revision, partitioned by name: `vision.`/`aligner.`/`image_*` = vision; `.engram.` = Engram;
+// `mtp.` = DSpark/MTP draft; everything else = backbone. The index metadata.total_size equals
+// that sum. This is an upstream-reported payload size until someone reads the bytes on the fleet
+// (ArtifactFootprint FootprintReportedExternally). Live consumers of these bytes are
+// gunbc.fabric.engram_materialization and
+// test.claim.spark.engram_materialization_witness / test.claim.deepseek.deepseek_v4_1_flash_authority_witness_test.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_safetensors_shard_count: Nat = 48
+
+type DeepseekV41SafetensorsPayloadFootprint {
+  backbone_bytes: ByteSize
+  engram_bytes: ByteSize
+  vision_bytes: ByteSize
+  draft_bytes: ByteSize
+}
+
+data deepseek_v4_1_flash_safetensors_payload_footprint: DeepseekV41SafetensorsPayloadFootprint = DeepseekV41SafetensorsPayloadFootprint {
+  backbone_bytes: byte_size(count: 298309535168),
+  engram_bytes: byte_size(count: 203073076240),
+  vision_bytes: byte_size(count: 970536960),
+  draft_bytes: byte_size(count: 7932874632),
+}
+
+// PUBLISHER-REPORTED, NOT FLEET-READ. The standing is the Hub authority; the figure maps onto
+// ArtifactFootprint.FootprintReportedExternally until a fleet reading exists. Trigger: a
+// FootprintObservedOnFleet row keyed at this revision.
+data deepseek_v4_1_flash_payload_footprint_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// CARD-REPORTED PARAMETER COUNTS, labelled as such because the card contradicts itself (552B
+// backbone + 196B Engram, also "763B total") and is not the fit authority. Kept beside the bytes so
+// the two sources cannot be confused. Not a consumer of serving memory.
+type DeepseekV41CardReportedParameters {
+  backbone: ParameterCount
+  engram: ParameterCount
+  activated_prefill: ParameterCount
+  activated_decode: ParameterCount
+}
+
+data deepseek_v4_1_flash_card_reported_parameters: DeepseekV41CardReportedParameters = DeepseekV41CardReportedParameters {
+  backbone: parameter_count(millions: 552000),
+  engram: parameter_count(millions: 196000),
+  activated_prefill: parameter_count(millions: 8000),
+  activated_decode: parameter_count(millions: 16000),
+}
+
+data deepseek_v4_1_flash_safetensors_index_total_size: ByteSize = byte_size(count: 510286023000)
+
+// HUB TREE FILE SIZE, a different quantity from the payload above. Observed via
+// `hub_repo_tree_api_url` at this revision: 48 `*.safetensors` files totalling 510296708312
+// bytes. That is file size on the publisher's object store (headers plus tensors), not serving
+// memory and not the index metadata.total_size. Declared frontier: DSV41-2 must not treat this as
+// GB10 resident bytes.
+data deepseek_v4_1_flash_safetensors_tree_file_bytes: ByteSize = byte_size(count: 510296708312)
+
+fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloadFootprint) -> ByteSize {
+  let n = byte_size_count(b: f.backbone_bytes)
+    + byte_size_count(b: f.engram_bytes)
+    + byte_size_count(b: f.vision_bytes)
+    + byte_size_count(b: f.draft_bytes)
+  byte_size(count: n)
+}
+
+// THE MODULE PATH, ONCE. The frontier delegation below needs it. It was introduced when a fact
+// builder here also spelled this module's name inline; that builder is gone (review 66128: the lift
+// to std.roster_frontier frontier_rows_for_decls left it with zero call sites, which is the DESIGN
+// 3c dangling state), so this constant now has exactly one consumer rather than two. It stays a
+// named constant because the alternative is a bare literal inside the delegation, and two spellings
+// of one module's own name is the DESIGN 3 fork in miniature.
+data deepseek_v4_1_flash_module_path: String = "extdeps.deepseek.deepseek_v4_1_flash"
+
+// DELEGATES TO THE LIFTED FOLD. This body was the only instance of "one shared reason and one shared
+// dissolution mapped over a list of decl names"; product.data_category needed the same shape, so it
+// was lifted to std.roster_frontier frontier_rows_for_decls rather than copied (review 65996, DESIGN
+// 2: net concepts must not grow by re-invention). The name stays because this module's callers cite
+// it and the module path is this module's fact to supply.
+fn deepseek_v4_1_flash_frontier_rows(
+  decl_names: List<NonEmptyStr>,
+  reason: String,
+  dissolution: DissolutionCondition,
+) -> List<FrontierRow> {
+  frontier_rows_for_decls(
+    module_path: deepseek_v4_1_flash_module_path,
+    decl_names: decl_names,
+    reason: reason,
+    dissolution: dissolution,
+  )
+}
+
+data deepseek_v4_1_flash_frontier_dsv41_1: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_revision" as NonEmptyStr,
+    "deepseek_v4_1_flash_revision_committed" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_license_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_license_spdx" as NonEmptyStr,
+    "deepseek_v4_1_flash_architecture_class" as NonEmptyStr,
+    "deepseek_v4_1_flash_model_type" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_method" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_activation_scheme" as NonEmptyStr,
+    "deepseek_v4_1_flash_quant_scale_fmt" as NonEmptyStr,
+    "deepseek_v4_1_flash_expert_dtype" as NonEmptyStr,
+    "deepseek_v4_1_flash_weight_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_hidden_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_hidden_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_attention_heads" as NonEmptyStr,
+    "deepseek_v4_1_flash_vocab_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_n_routed_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_n_shared_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_experts_per_tok" as NonEmptyStr,
+    "deepseek_v4_1_flash_sliding_window" as NonEmptyStr,
+    "deepseek_v4_1_flash_index_topk" as NonEmptyStr,
+    "deepseek_v4_1_flash_candidate_topk_blocks" as NonEmptyStr,
+    "deepseek_v4_1_flash_candidate_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_num_nextn_predict_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_block_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_n_routed_experts" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_num_experts_per_tok" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_markov_rank" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_noise_token_id" as NonEmptyStr,
+    "deepseek_v4_1_flash_dspark_target_layer_ids" as NonEmptyStr,
+    "deepseek_v4_1_flash_kv_source_layer_ids" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_kv_cache_dtype" as NonEmptyStr,
+    "deepseek_v4_1_flash_inference_compresses_kv_as_fp4" as NonEmptyStr,
+    "deepseek_v4_1_flash_inference_model_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_num_hidden_layers" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_hidden_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_patch_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_vision_max_image_tokens" as NonEmptyStr,
+    "deepseek_v4_1_flash_image_token_id" as NonEmptyStr,
+    "deepseek_v4_1_flash_accepts_image_input" as NonEmptyStr,
+  ],
+  reason: "DSV41-1 loyal-ram-346 serving-image probe binds this config fact",
+  dissolution: unbound_dissolution(description: "a serving-image probe that asks whether DeepseekV41ForCausalLM is registered, then binds the config those weights require"),
+)
+
+data deepseek_v4_1_flash_frontier_dsv41_2: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_safetensors_payload_footprint" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_payload_total" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_index_total_size" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_tree_file_bytes" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_shard_count" as NonEmptyStr,
+    "deepseek_v4_1_flash_safetensors_index_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_payload_footprint_standing" as NonEmptyStr,
+    "deepseek_v4_1_flash_card_reported_parameters" as NonEmptyStr,
+    "deepseek_v4_1_flash_context_length" as NonEmptyStr,
+    "deepseek_v4_1_flash_native_context_length" as NonEmptyStr,
+    "deepseek_v4_1_flash_yarn_factor" as NonEmptyStr,
+    "deepseek_v4_1_flash_yarn_scaled_positions" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_encoder_decoder_split" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram" as NonEmptyStr,
+    "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr,
+  ],
+  reason: "gunbc.fabric.engram_materialization and the DeepSeek/engram inhabitance witnesses consume this fit/window fact",
+  dissolution: unbound_dissolution(description: "ArtifactFootprint.FootprintReportedExternally rows keyed at this revision, until FootprintObservedOnFleet exists"),
+)
+
+data deepseek_v4_1_flash_frontier_harness_wire: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_encoder_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_has_no_jinja_chat_template" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_thinking_mode_wire" as NonEmptyStr,
+    "deepseek_v4_1_flash_thinking_start_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_thinking_end_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_image_placeholder" as NonEmptyStr,
+    "deepseek_v4_1_flash_encoder_prefill" as NonEmptyStr,
+    "deepseek_v4_1_flash_named_effort_wire" as NonEmptyStr,
+    "deepseek_v4_1_flash_named_effort_budget" as NonEmptyStr,
+    "deepseek_v4_1_flash_default_named_effort" as NonEmptyStr,
+    "deepseek_v4_1_flash_budget_is_admissible" as NonEmptyStr,
+    "deepseek_v4_1_flash_effort_preamble" as NonEmptyStr,
+    "deepseek_v4_1_flash_effort_is_rendered" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_tool_calls_block_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_invoke_tag_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_parameter_tag_name" as NonEmptyStr,
+    "deepseek_v4_1_flash_dsml_tool_calls_open" as NonEmptyStr,
+    "deepseek_v4_1_flash_standalone_tool_role" as NonEmptyStr,
+    "deepseek_v4_1_flash_tools_force_reasoning_retention" as NonEmptyStr,
+    "deepseek_v4_1_flash_missing_closer_under_thinking_is_invalid_format" as NonEmptyStr,
+    "deepseek_v4_1_flash_chat_reasoning_field" as NonEmptyStr,
+    "deepseek_v4_1_flash_system_token" as NonEmptyStr,
+    "deepseek_v4_1_flash_mid_conversation_system_messages_supported" as NonEmptyStr,
+  ],
+  reason: "harness-wire arm speaks this encoder rather than DeepseekV4ReasoningMode",
+  dissolution: unbound_dissolution(description: "a harness-reasoning-wire arm that speaks this encoder rather than DeepseekV4ReasoningMode"),
+)
+
+data deepseek_v4_1_flash_frontier: List<FrontierRow> = concat_frontier_row_groups(groups: [
+  deepseek_v4_1_flash_frontier_dsv41_1,
+  deepseek_v4_1_flash_frontier_dsv41_2,
+  deepseek_v4_1_flash_frontier_harness_wire,
+  deepseek_v4_1_flash_frontier_dsv41_10,
+])
+
+// ===========================================================================================
+// ENCODER, transcribed from encoding/encoding.py at the pinned revision. The release ships no
+// Jinja chat template; the model card says so and points at this file. A runtime template is one
+// realization of this encoder and can differ from it.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_encoder_has_no_jinja_chat_template: Bool = true
+
+// DEEPSEEK-RECIPE IS A DIFFERENT UPSTREAM PRODUCT. The Hub release's encoder is encoding.py.
+// deepseek-ai/deepseek-recipe (rev 8cadfede7063c896b944e7bae05daa3549ae97ea) is an independently
+// versioned Rust+Python codec that does not enforce strict tool schemas. Adopting it would be its
+// own extdeps module, not a second encoder inside this one.
+
+// THINKING IS STILL A PREFILL, with the same start/end tokens as V4's encoder, declared HERE
+// because they are this file's constants, not a re-export. encode_messages takes thinking_mode
+// "chat" or "thinking". Turning thinking off is a prefill of the end token.
+type DeepseekV41EncoderThinkingMode
+  = DeepseekV41EncoderChat
+  | DeepseekV41EncoderThinking
+
+fn deepseek_v4_1_flash_encoder_thinking_mode_wire(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    DeepseekV41EncoderChat => "chat" as NonEmptyStr
+    DeepseekV41EncoderThinking => "thinking" as NonEmptyStr
+  }
+}
+
+data deepseek_v4_1_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data deepseek_v4_1_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+data deepseek_v4_1_flash_image_placeholder: NonEmptyStr = "<｜deepseek_image｜>" as NonEmptyStr
+
+fn deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    DeepseekV41EncoderChat => deepseek_v4_1_flash_thinking_end_token
+    DeepseekV41EncoderThinking => deepseek_v4_1_flash_thinking_start_token
+  }
+}
+
+// encoding.py `REASONING_EFFORT_MAPPINGS` and `DEFAULT_REASONING_EFFORT` at the pinned revision.
+// low/high/max are names for 50/75/100; default is high. An unknown name asserts in that file.
+type DeepseekV41NamedEffort
+  = DeepseekV41EffortLow
+  | DeepseekV41EffortHigh
+  | DeepseekV41EffortMax
+
+fn deepseek_v4_1_flash_named_effort_wire(e: DeepseekV41NamedEffort) -> NonEmptyStr {
+  match e {
+    DeepseekV41EffortLow => "low" as NonEmptyStr
+    DeepseekV41EffortHigh => "high" as NonEmptyStr
+    DeepseekV41EffortMax => "max" as NonEmptyStr
+  }
+}
+
+fn deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41NamedEffort) -> Nat {
+  match e {
+    DeepseekV41EffortLow => 50
+    DeepseekV41EffortHigh => 75
+    DeepseekV41EffortMax => 100
+  }
+}
+
+data deepseek_v4_1_flash_default_named_effort: DeepseekV41NamedEffort = DeepseekV41EffortHigh
+
+fn deepseek_v4_1_flash_budget_is_admissible(budget: Nat) -> Bool {
+  budget >= 1 && budget <= 100
+}
+
+fn deepseek_v4_1_flash_effort_preamble(budget: Nat) -> String {
+  join([
+    "Reasoning Effort: ",
+    to_string(budget),
+    " (range 1-100, the higher the value, the more thorough the reasoning)\n\n",
+  ], "")
+}
+
+fn deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinkingMode, message_index: Nat) -> Bool {
+  match m {
+    DeepseekV41EncoderChat => false
+    DeepseekV41EncoderThinking => message_index == 0
+  }
+}
+
+// encoding.py `tool_calls_block_name` / `tool_call_tag_name` / `tool_parameter_tag_name` at the
+// pinned revision. The leading space on those three names is the V4.1 DSML change.
+data deepseek_v4_1_flash_dsml_token: NonEmptyStr = "｜DSML｜" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_tool_calls_block_name: NonEmptyStr = " calls" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_invoke_tag_name: NonEmptyStr = " invoke" as NonEmptyStr
+data deepseek_v4_1_flash_dsml_parameter_tag_name: NonEmptyStr = " parameter" as NonEmptyStr
+
+fn deepseek_v4_1_flash_dsml_tool_calls_open() -> String {
+  join(["<", deepseek_v4_1_flash_dsml_token as String, deepseek_v4_1_flash_dsml_tool_calls_block_name as String, ">"], "")
+}
+
+// THERE IS NO STANDALONE TOOL ROLE. merge_tool_messages folds role=tool into the preceding user
+// message as a `<tool_result>` content block. A client that emits OpenAI-shaped role=tool turns
+// and expects them to survive as their own messages is speaking a different encoder.
+data deepseek_v4_1_flash_standalone_tool_role: Bool = false
+
+// WITH TOOLS DEFINED, REASONING IS RETAINED. encode_messages sets effective_drop_thinking = False
+// the moment any message defines tools, same condition as V4's encoder, independently declared
+// because this file reimplements it.
+data deepseek_v4_1_flash_tools_force_reasoning_retention: Bool = true
+data deepseek_v4_1_flash_missing_closer_under_thinking_is_invalid_format: Bool = true
+data deepseek_v4_1_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+
+// MID-CONVERSATION SYSTEM MESSAGES ARE FIRST-CLASS, via the `<｜System｜>` token. A mid-conversation
+// system message behaves like a user message for appending the assistant generation header.
+data deepseek_v4_1_flash_system_token: NonEmptyStr = "<｜System｜>" as NonEmptyStr
+data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
+
+// ===========================================================================================
+// THE EXACT ENGRAM TENSOR POPULATION AT THE PIN, read from the safetensors headers rather than
+// from any size summary. `deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes` above is
+// a partition total over all 48 shard headers; it is a number, and a number cannot say which
+// tensors it covers, what shapes they have, or whether a local copy holds them. This section
+// carries the population itself, so the total becomes DERIVED from named subjects.
+//
+// HOW IT WAS OBTAINED. `model.safetensors.index.json` at this revision maps 96085 tensor names to
+// 48 shards; exactly 12 of those names contain `.engram.`, and they occupy exactly two shards
+// (47 and 48), which carry no other tensors. Each shard's 8-byte length prefix and JSON header
+// were read by ranged request at this revision and the twelve entries transcribed below verbatim.
+//
+// WHAT THIS IS NOT. It is the publisher's DECLARED structure. The shard sha256 rows below are the
+// publisher's own content digests for the two files. Neither is a reading of bytes on this fleet,
+// and `extdeps.safetensors.format` keeps the declared-structure fact and the byte-digest fact in
+// separate carriers for that reason. Declared frontier: DSV41-10.
+// ===========================================================================================
+
+// THE NAMING CONVENTION IS THE SELECTOR OF A READING. Every Engram tensor at this revision carries
+// `.engram.` in its name; a selection over the full index by that selector is an observation
+// (DeepseekV41IndexEngramSelection, read by gunbc.spark.v41_index_engram_selection until it was deleted with Group A, 2026-10-07), and the rows
+// below are the ones read from the two shard headers. Until a reading is supplied, the closure here
+// stays scoped to those rows.
+data deepseek_v4_1_flash_index_tensor_count: Nat = 96085
+data deepseek_v4_1_flash_engram_tensor_count: Nat = 12
+
+data deepseek_v4_1_flash_engram_shard_1_path: NonEmptyStr = "model-00047-of-00048.safetensors" as NonEmptyStr
+data deepseek_v4_1_flash_engram_shard_14_path: NonEmptyStr = "model-00048-of-00048.safetensors" as NonEmptyStr
+
+// The six tensors of the layer-1 Engram table, from the shard-47 header. Offsets are relative to
+// that shard's payload region.
+data deepseek_v4_1_flash_engram_entries_layer_1: List<SafetensorsEntry> = [
+  safetensors_entry(name: "layers.1.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [384006168, 256], begin_offset: 0, end_offset: 98305579008),
+  safetensors_entry(name: "layers.1.engram.embed.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [384006168, 8], begin_offset: 98305579008, end_offset: 101377628352),
+  safetensors_entry(name: "layers.1.engram.q_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101377628352, end_offset: 101377669312),
+  safetensors_entry(name: "layers.1.engram.k_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101377669312, end_offset: 101377710272),
+  safetensors_entry(name: "layers.1.engram.wkv.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [25600, 6144], begin_offset: 101377710272, end_offset: 101534996672),
+  safetensors_entry(name: "layers.1.engram.wkv.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [800, 192], begin_offset: 101534996672, end_offset: 101535150272),
+]
+
+// The six tensors of the layer-14 Engram table, from the shard-48 header.
+data deepseek_v4_1_flash_engram_entries_layer_14: List<SafetensorsEntry> = [
+  safetensors_entry(name: "layers.14.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [384016682, 256], begin_offset: 0, end_offset: 98308270592),
+  safetensors_entry(name: "layers.14.engram.embed.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [384016682, 8], begin_offset: 98308270592, end_offset: 101380404048),
+  safetensors_entry(name: "layers.14.engram.q_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101380404048, end_offset: 101380445008),
+  safetensors_entry(name: "layers.14.engram.k_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101380445008, end_offset: 101380485968),
+  safetensors_entry(name: "layers.14.engram.wkv.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [25600, 6144], begin_offset: 101380485968, end_offset: 101537772368),
+  safetensors_entry(name: "layers.14.engram.wkv.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [800, 192], begin_offset: 101537772368, end_offset: 101537925968),
+]
+
+// ── THE INDEX ROWS, AS THEIR OWN INPUT RATHER THAN AS PROSE ABOUT ONE ─────────────────────────
+//
+// `model.safetensors.index.json` at this revision maps 96085 tensor names to 48 shards. Exactly
+// twelve of those names contain `.engram.`, and these are those twelve rows with the shard each one
+// is assigned to. They are declared SEPARATELY from the header entries above because they are a
+// different source answering a different question -- the index says which tensors exist and where,
+// the headers say what each one is -- and the component's population is the JOIN of the two.
+//
+// The first cut carried this account in comments and a count scalar while the population fold saw
+// only the header side, so any internally consistent list of twelve entries established. Renaming a
+// tensor to another unique `.engram.` name of the same dtype, shape and span preserved the count and
+// the byte total and passed. These rows are what make that a refusal.
+//
+// SCOPE OF THE CLAIM, stated because it is narrower than "the index contains exactly twelve": these
+// rows are the `.engram.` members read from the index at dba1be0a. Reconciling against them
+// establishes that the header population is exactly the set the index names HERE. Closing that against
+// all 96085 names is a reading's job (deepseek_v4_1_flash_engram_membership_closure_of).
+// THE SHAPE OF A SELECTION OVER THE INDEX: the file the selection was read from, how many weight_map
+// names it covered, the selector, and the names it selected with their shards. This module OBSERVES
+// nothing and carries no live selection (DESIGN section 3: an observation is a receipt in the observing
+// layer, not a fact the upstream owns); the reading was gunbc.spark.v41_index_engram_selection's (deleted with Group A, 2026-10-07), and
+// this module owns only the fold that decides whether a reading closes membership at this revision.
+type DeepseekV41IndexEngramSelection sole_constructor {
+  index: DeepseekV41PublishedFile
+  name_count: Nat
+  selector: NonEmptyStr
+  members: List<SafetensorsIndexMember>
+}
+
+// A reading from its facts, the constructor a claim supplies a divergent selection through.
+fn deepseek_v4_1_flash_index_engram_selection_of(index: DeepseekV41PublishedFile, name_count: Nat, selector: NonEmptyStr, members: List<SafetensorsIndexMember>) -> DeepseekV41IndexEngramSelection {
+  DeepseekV41IndexEngramSelection { index: index, name_count: name_count, selector: selector, members: members }
+}
+
+data deepseek_v4_1_flash_engram_index_members: List<SafetensorsIndexMember> = [
+  safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+]
+
+// THE HEADER ENTRIES KEEP THE SHARD THEY WERE READ FROM. Offsets are shard-relative, so a flat
+// concatenation makes per-shard placement, non-overlap and coverage undecidable from the value.
+data deepseek_v4_1_flash_engram_sharded_entries: List<SafetensorsShardedEntry> = concat(
+  safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
+  safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_14_path, entries: deepseek_v4_1_flash_engram_entries_layer_14),
+)
+
+data deepseek_v4_1_flash_engram_population_reading: SafetensorsPopulationReading = PopulationScanned {
+  entries: deepseek_v4_1_flash_engram_sharded_entries,
+}
+
+// THE CLOSURE IS DERIVED FROM A SUPPLIED SELECTION, and closes only over the pinned index. A selection read
+// from another file or over a different name count leaves membership scoped to the rows read. The
+// members are not re-checked against the selector here: that would compare one transcription with
+// another, and the selection's evidence is the read it cites, not a test beside it. Because the members ARE the selection's, a
+// thirteenth `.engram.` name at this revision is a member the header population must carry, so it
+// REFUSES rather than passing unreconciled -- which is what the scoped closure could not say.
+fn deepseek_v4_1_flash_engram_membership_closure_of(selection: DeepseekV41IndexEngramSelection, index: DeepseekV41PublishedFile, index_count: Nat) -> MembershipClosure {
+  if !published_file_identity_eq(a: selection.index, b: index) {
+    MembershipScopedToReadRows { read_rows: length(selection.members), unenumerated: join(["the selection was read from ", selection.index.path as String, " sha256 ", selection.index.sha256.hex as String, ", not the pinned index ", index.sha256.hex as String, ", so it does not close membership at this revision"], "") as NonEmptyStr }
+  } else if selection.name_count != index_count {
+    MembershipScopedToReadRows { read_rows: length(selection.members), unenumerated: join(["the selection covered ", to_string(selection.name_count), " names and the pinned index carries ", to_string(index_count), ", so the selection is not over the full index"], "") as NonEmptyStr }
+  } else {
+    MembershipClosedAgainstFullIndex {
+      index_population_count: index_count,
+      how: join(["every name of ", index.path as String, " (sha256 ", index.sha256.hex as String, ", ", to_string(index_count), " names) containing ", selection.selector as String, " is a member, per a supplied selection over that exact file"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE RESIDUAL, TYPED. These rows are the `.engram.` members read from the index at this revision;
+// the revision's full index population -- 96085 names -- is not enumerated here, so a THIRTEENTH
+// Engram tensor at this revision would be neither reconciled nor refused. That is a real gap and it
+// is carried as an obligation a fold can read, because a scoped claim whose remainder lives in a
+// comment is how a partial gets consumed as complete.
+data deepseek_v4_1_flash_engram_membership_closure: MembershipClosure = MembershipScopedToReadRows {
+  read_rows: deepseek_v4_1_flash_engram_tensor_count,
+  unenumerated: join([
+    "the ", to_string(deepseek_v4_1_flash_index_tensor_count),
+    " names in ", deepseek_v4_1_flash_safetensors_index_path as String,
+    " at revision ", deepseek_v4_1_flash_revision as String,
+    " are not enumerated in this repository, so membership closes against the rows read rather than against the index; an Engram tensor present at this revision and absent from these rows is neither reconciled nor refused",
+  ], "") as NonEmptyStr,
+}
+
+data deepseek_v4_1_flash_engram_population: SafetensorsPopulationStanding = safetensors_population_standing(
+  members: deepseek_v4_1_flash_engram_index_members,
+  shards: deepseek_v4_1_flash_engram_shard_files,
+  closure: deepseek_v4_1_flash_engram_membership_closure,
+  reading: deepseek_v4_1_flash_engram_population_reading,
+)
+
+// THE TWO SHARD FILES, with the publisher's sha256 over each whole file. These are the LFS object
+// ids at this revision; the file size includes the 8-byte length prefix and the JSON header, which
+// is why it exceeds the payload the header declares.
+type DeepseekV41EngramShard sole_constructor {
+  file: SafetensorsShardFile
+  sha256: Sha256Digest
+}
+
+data deepseek_v4_1_flash_engram_shard_1: DeepseekV41EngramShard = DeepseekV41EngramShard {
+  file: safetensors_shard_file(
+    path: deepseek_v4_1_flash_engram_shard_1_path,
+    header_bytes: byte_size(count: 656),
+    file_bytes: byte_size(count: 101535150936),
+  ),
+  sha256: Sha256Digest { hex: "824db4881320407ac340736d14dcee5ecd748c27d0f5836b8127ecc2e3781b0f" as Sha256DigestHex },
+}
+
+data deepseek_v4_1_flash_engram_shard_14: DeepseekV41EngramShard = DeepseekV41EngramShard {
+  file: safetensors_shard_file(
+    path: deepseek_v4_1_flash_engram_shard_14_path,
+    header_bytes: byte_size(count: 664),
+    file_bytes: byte_size(count: 101537926640),
+  ),
+  sha256: Sha256Digest { hex: "976330f4954338e1ad8b508c32aa912032c7ad908959fd53c8307650fe4520ed" as Sha256DigestHex },
+}
+
+data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
+  deepseek_v4_1_flash_engram_shard_1,
+  deepseek_v4_1_flash_engram_shard_14,
+]
+
+// THE WEIGHT MANIFEST: every safetensors shard at this revision with the publisher's sha256 (the
+// LFS object id) and whole-file size, read from `hub_repo_tree_api_url` at dba1be0a on 2026-09-21
+// (48 files; deepseek_v4_1_flash_admit_weight_manifest establishes the exact population -- every
+// generated shard path once, the index's shard set, the count, the sizes summed against
+// deepseek_v4_1_flash_safetensors_tree_file_bytes -- and the two Engram shard rows are DERIVED from
+// deepseek_v4_1_flash_engram_shard_1 / _14, the rows that own them, rather than declared twice).
+// These are the publisher's DECLARED digests, cited to the tree API at the revision; a fleet-side
+// reading over bytes present on a Spark is the same declared frontier as the Engram rows
+// (DSV41-10). The ADMITTED manifest is what the V4.1 candidate's weights axis is keyed by:
+// gunbc.spark.v41_runtime_candidate (deleted with Group A, 2026-10-07) digested its canonical text and never the raw rows.
+// A PUBLISHED FILE AT THIS REVISION: its path, whole-file size and the publisher's sha256. One
+// record for every file the candidate is keyed by -- the weight shards and the tokenizer files --
+// and one canonical serialization (deepseek_v4_1_flash_published_manifest_text) for both lists.
+type DeepseekV41PublishedFile sole_constructor {
+  path: NonEmptyStr
+  file_bytes: ByteSize
+  sha256: Sha256Digest
+}
+
+// A row from its three facts -- the one constructor a claim may supply a population through
+// (the record is sole_constructor: production rows are declared here, with their provenance).
+fn deepseek_v4_1_flash_published_file_row(path: NonEmptyStr, file_bytes: ByteSize, sha256_hex: Sha256DigestHex) -> DeepseekV41PublishedFile {
+  DeepseekV41PublishedFile { path: path, file_bytes: file_bytes, sha256: Sha256Digest { hex: sha256_hex } }
+}
+
+// The two Engram shards are the rows deepseek_v4_1_flash_engram_shard_1 / _14 already own (path,
+// size, digest, plus the header bytes only they carry); the manifest takes them from there.
+fn deepseek_v4_1_flash_published_file_of_engram(shard: DeepseekV41EngramShard) -> DeepseekV41PublishedFile {
+  DeepseekV41PublishedFile { path: shard.file.path, file_bytes: shard.file.file_bytes, sha256: shard.sha256 }
+}
+
+data deepseek_v4_1_flash_weight_manifest_backbone_rows: List<DeepseekV41PublishedFile> = [
+  DeepseekV41PublishedFile { path: "model-00001-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 970533624), sha256: Sha256Digest { hex: "886aebdafa08cc27bbae2165ed35bdfe0de9370bf88c1411283c155c6ae4ff89" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00002-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323858272), sha256: Sha256Digest { hex: "4320066fc6958e5bc01d8c3feba79b7454b59f0f4b7299ab7145ed44bbf4ecec" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00003-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "e1281f85d0ce4a3dfb63d41926fc4a47fa71f36ba20992e3597e702ead49d4c9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00004-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "79456c9db0cda3b8115fe1c726fe3db1a34b434584a3991917088a0ab56a39de" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00005-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "4a42dc78698bee6b1a821aa01c9650749ef1f716143751f1cdb815c6400280a9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00006-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "020a6df51a2853452561d91268a65481f7a7d7954ed47f8e6c9ce69a4a134f77" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00007-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "40f8b52f763f6380d41257e1af04eee3aad300af6a418c38e49ff99e3604163a" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00008-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "d62cca4e698f030d4b96ec624c08bed7ad604cec13077da6d6b06669281c4650" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00009-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "1ca62e4c294df31aee69a782974cb14269264fdc08465ab4835760258f05d6ef" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00010-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "dd33c9750a40cbfcdfb19cd8335d955f533e3a18b790c0ee43d1e5d77911595c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00011-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "a9b309f90e0d1e2252a224ed6b057b9c82c27d3a49cff64bfbfef12efd067f7c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00012-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "b359227eceb3f839c80de19dddf946648ca89425d9b719ff44702cf5e8cfbe0e" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00013-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "41d87a4c81fec1550f9cb975db05598a18ee0161c2664e8e1a0c7b60742755a6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00014-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e7ca4a12688a5819829ead3a03282aedb380e438bc41a00e969f70952c6d0eb9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00015-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "fa9d49314bbb25118b3d52c573ed66a4d0acfb01dcb26d8367f43c66a52f46c4" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00016-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "07d08bce9d73d416eaca0f42843440a8c45c5f939eff1a3690fb460d8dd7f623" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00017-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405956128), sha256: Sha256Digest { hex: "3d35e330a6c28cd59a06a1caab8b0048f7e12cc037d728736f74431c4c0a1a4c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00018-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48bd0c28b7f441f131f562cb664366d7726447a3698da3dd56ebbfeb1b916c75" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00019-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "b7a25cb64a959ca5e5a99e239bb1ba2092b9bcf022bec4ba71f7441334107bd1" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00020-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "8aea8c4026ba4b93e82b4ed1b6b4620d02b6aaac88d211aaf577acea443aff84" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00021-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4cb6558dedfdc75a6be472e27bc3e830d8443a3371854e61dc54454a1b5b18f7" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00022-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "81031b68c967539a7c51d1b12d37d18de926ca3045ec554ccdd49a83b4dc0084" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00023-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7400713088), sha256: Sha256Digest { hex: "096723fc8afa9886b976fb63aabef159406dc483e6f2a41e3fe386435b0436cc" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00024-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "c9438ff607bd902fdeb38267d36239ccf60d38595988364562b862791841da75" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00025-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4227ef9fe34d10de584d67250845fab905cbd8462fd84d9da24d772f223db6b4" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00026-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "0af8c8f1b96b502eda652a0549cf55cd8a4d472a34d27ef9bf1c1d7c4567ca3f" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00027-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "3066bd03043726d2400302cb9af759ec4e3957a935d56e241b83b52870322e28" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00028-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9bc915075568b75e2aec9c645cc0fece6287f115c32031a52ab4f9ba9d12fde6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00029-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "d153dd9cde7c4aa7ea9896cf7aa25b49447af573f90ad14cfaaa532fbbd19434" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00030-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "3c9ccd96e908e00f02a70930b0821a6c53e5301376a261284a092e1aea7bb5da" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00031-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "0de7b6d7142df18ad45a215e9c0ef004f78cdbfefd59cc16345b2bc004047343" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00032-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "6a5aaa73c6f97294bd079914ba44209ecf3d0491c8b95ef9995655511e35aee6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00033-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "386e3e91f7f02f7e2c25f398b3a63379051c2077839b3081f7556e18c29a69c9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00034-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9deab3c4f27c956f91cd989d9a1f6cf4bbb91858ce3f7164caa5ae61125c943f" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00035-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "226573bc07f35091b0ec27b0056ab3059f9bc1c0afd0bc104c93c86dd029cad2" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00036-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "90d6a85c1eb0cae68c6c7bffa11b60654ea00353d27a0ae17701b72e239894cd" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00037-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "207aef18f995fdfe7506175aabd700aa62dcf6f488c7cc375e9de06f56891b83" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00038-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "cbbaa0b0807311807a696efec09f9b5a5d63bdf68b82378e1fc7402a2533c627" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00039-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "f4cf191547b50efbc35c4ed1f36cfb26043d94f987c49d54b15ef2d632a14a77" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00040-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e991bfc416055c45ddb89f1447eae1e67dba2816e7580044ffff3db7e2af27a3" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00041-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48a1c08afadf4e73223c587f9c6ad6f32aef57c01342ae75e96b07a001711d42" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00042-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e1a4d5d30ae51bafda75078d49b05a585c924b0af9b3481c075b04341507c2ef" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00043-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323837624), sha256: Sha256Digest { hex: "d762b688f138e00a24eac96f27b842715bb4b534ecc9ca39076bed2b8c33201e" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00044-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2652728736), sha256: Sha256Digest { hex: "9a6b39fb88a2510487a8efaef77aa7864e8061f6b62c95a0f010e9dd538f3b05" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00045-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2573998176), sha256: Sha256Digest { hex: "0cc9d5f6ca3a2158ccc63ce2c70c76aeda8177d54913340481af566680329eb5" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00046-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2706402896), sha256: Sha256Digest { hex: "e625902027b9d23d416f8818c665fab4704e0b96dc1bc778321601b700475a9d" as Sha256DigestHex } },
+]
+
+data deepseek_v4_1_flash_weight_manifest: List<DeepseekV41PublishedFile> = concat(
+  deepseek_v4_1_flash_weight_manifest_backbone_rows,
+  map(deepseek_v4_1_flash_engram_shards, s => deepseek_v4_1_flash_published_file_of_engram(shard: s)),
+)
+
+// THE CANONICAL TEXT OF A FILE POPULATION: one line per file -- path, digest, size -- with the
+// rows SORTED BY PATH. A population is set-like (the identity rule for shard and wheel
+// populations: reordering the same files leaves the identity unchanged), so list order may not
+// reach the digest; the path is injective over an admitted population (duplicates refuse before
+// this text is written), the digest is fixed-width and the size is decimal, so the encoding is
+// injective too: a path, a digest or a size that changes changes the text.
+fn deepseek_v4_1_flash_published_manifest_text(rows: List<DeepseekV41PublishedFile>) -> String {
+  join(map(sort_by(rows, fn(r) { r.path as String }), r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
+}
+
+fn deepseek_v4_1_flash_published_rows_bytes(rows: List<DeepseekV41PublishedFile>) -> ByteSize {
+  byte_size(count: fold(rows, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes)))
+}
+
+// THE GENERATED SHARD PATHS: `model-<i>-of-<n>.safetensors` for i in 1..n, the only paths a
+// safetensors shard population of n may carry. The admission below is an identity join against
+// them in both directions.
+fn deepseek_v4_1_flash_shard_path(index: Nat, count: Nat) -> NonEmptyStr {
+  join(["model-", zero_pad_left(digits: to_string(index), width: 5), "-of-", zero_pad_left(digits: to_string(count), width: 5), ".safetensors"], "") as NonEmptyStr
+}
+
+fn deepseek_v4_1_flash_shard_paths(count: Nat) -> List<NonEmptyStr> {
+  map(nat_range_inclusive(1, count), i => deepseek_v4_1_flash_shard_path(index: i, count: count))
+}
+
+// THE SAFETENSORS INDEX AT THIS REVISION, as a published file (resolved bytes, sha256 taken over
+// them on 2026-09-21) and as READ: its weight_map names, as shard files, exactly the generated
+// paths above -- every one of the 48 appears and no other path does (the tensor count it also
+// carries is deepseek_v4_1_flash_index_tensor_count, a fact about the population fold, not about
+// this admission, so the reading does not carry it). That reading is what the manifest admission
+// reconciles the file population against: a shard file the index never names, or an index shard
+// no file carries, is a refusal.
+data deepseek_v4_1_flash_safetensors_index_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile {
+  path: deepseek_v4_1_flash_safetensors_index_path,
+  file_bytes: byte_size(count: 7470294),
+  sha256: Sha256Digest { hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex },
+}
+
+type DeepseekV41IndexReading sole_constructor {
+  file: DeepseekV41PublishedFile
+  shard_paths: List<NonEmptyStr>
+}
+
+// A reading from its two facts, the constructor a claim supplies a divergent index through.
+fn deepseek_v4_1_flash_index_reading_of(file: DeepseekV41PublishedFile, shard_paths: List<NonEmptyStr>) -> DeepseekV41IndexReading {
+  DeepseekV41IndexReading { file: file, shard_paths: shard_paths }
+}
+
+// THE WEIGHT_MAP'S SHARD POPULATION AS READ -- the distinct values of the index's weight_map,
+// transcribed from the file whose digest is cited above (read 2026-09-21), NOT derived from the
+// generator the admission joins them against: a reading that was the generator would make the
+// index join green by construction. It happens to equal the generated set at this revision, which
+// is the fact the admission establishes rather than assumes; an index naming one shard fewer, or
+// one more, is a refusal the witness drives with a supplied reading.
+data deepseek_v4_1_flash_index_weight_map_shards: List<NonEmptyStr> = [
+  "model-00001-of-00048.safetensors" as NonEmptyStr,
+  "model-00002-of-00048.safetensors" as NonEmptyStr,
+  "model-00003-of-00048.safetensors" as NonEmptyStr,
+  "model-00004-of-00048.safetensors" as NonEmptyStr,
+  "model-00005-of-00048.safetensors" as NonEmptyStr,
+  "model-00006-of-00048.safetensors" as NonEmptyStr,
+  "model-00007-of-00048.safetensors" as NonEmptyStr,
+  "model-00008-of-00048.safetensors" as NonEmptyStr,
+  "model-00009-of-00048.safetensors" as NonEmptyStr,
+  "model-00010-of-00048.safetensors" as NonEmptyStr,
+  "model-00011-of-00048.safetensors" as NonEmptyStr,
+  "model-00012-of-00048.safetensors" as NonEmptyStr,
+  "model-00013-of-00048.safetensors" as NonEmptyStr,
+  "model-00014-of-00048.safetensors" as NonEmptyStr,
+  "model-00015-of-00048.safetensors" as NonEmptyStr,
+  "model-00016-of-00048.safetensors" as NonEmptyStr,
+  "model-00017-of-00048.safetensors" as NonEmptyStr,
+  "model-00018-of-00048.safetensors" as NonEmptyStr,
+  "model-00019-of-00048.safetensors" as NonEmptyStr,
+  "model-00020-of-00048.safetensors" as NonEmptyStr,
+  "model-00021-of-00048.safetensors" as NonEmptyStr,
+  "model-00022-of-00048.safetensors" as NonEmptyStr,
+  "model-00023-of-00048.safetensors" as NonEmptyStr,
+  "model-00024-of-00048.safetensors" as NonEmptyStr,
+  "model-00025-of-00048.safetensors" as NonEmptyStr,
+  "model-00026-of-00048.safetensors" as NonEmptyStr,
+  "model-00027-of-00048.safetensors" as NonEmptyStr,
+  "model-00028-of-00048.safetensors" as NonEmptyStr,
+  "model-00029-of-00048.safetensors" as NonEmptyStr,
+  "model-00030-of-00048.safetensors" as NonEmptyStr,
+  "model-00031-of-00048.safetensors" as NonEmptyStr,
+  "model-00032-of-00048.safetensors" as NonEmptyStr,
+  "model-00033-of-00048.safetensors" as NonEmptyStr,
+  "model-00034-of-00048.safetensors" as NonEmptyStr,
+  "model-00035-of-00048.safetensors" as NonEmptyStr,
+  "model-00036-of-00048.safetensors" as NonEmptyStr,
+  "model-00037-of-00048.safetensors" as NonEmptyStr,
+  "model-00038-of-00048.safetensors" as NonEmptyStr,
+  "model-00039-of-00048.safetensors" as NonEmptyStr,
+  "model-00040-of-00048.safetensors" as NonEmptyStr,
+  "model-00041-of-00048.safetensors" as NonEmptyStr,
+  "model-00042-of-00048.safetensors" as NonEmptyStr,
+  "model-00043-of-00048.safetensors" as NonEmptyStr,
+  "model-00044-of-00048.safetensors" as NonEmptyStr,
+  "model-00045-of-00048.safetensors" as NonEmptyStr,
+  "model-00046-of-00048.safetensors" as NonEmptyStr,
+  "model-00047-of-00048.safetensors" as NonEmptyStr,
+  "model-00048-of-00048.safetensors" as NonEmptyStr
+]
+
+data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41IndexReading {
+  file: deepseek_v4_1_flash_safetensors_index_file,
+  shard_paths: deepseek_v4_1_flash_index_weight_map_shards,
+}
+
+// THE WEIGHT MANIFEST IS ADMITTED, NOT COUNTED. A count and a byte total let a duplicated row of
+// one size stand in for an omitted row of the same size; admission establishes the exact
+// population: no duplicate path, no path outside the generated shard set, every generated path
+// present (an identity join both ways), the declared count and total, and the index's shard
+// population equal to the files'. Only an admitted manifest has a canonical text, and that text
+// carries the INDEX FILE as a row beside the shards -- the index is the weight map, so an index
+// that changes is a different model source even over the same shard bytes; the candidate
+// (gunbc.spark.v41_runtime_candidate, deleted with Group A on 2026-10-07) consumed this standing, never the raw row list, so a
+// defective population is an unestablished model source rather than a differently keyed one.
+type DeepseekV41WeightManifestStanding
+  = WeightManifestAdmitted { files: List<DeepseekV41PublishedFile>, index: DeepseekV41PublishedFile, canonical_text: String }
+  | WeightManifestRefused { defects: List<NonEmptyStr> }
+
+fn path_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn deepseek_v4_1_flash_admit_weight_manifest(rows: List<DeepseekV41PublishedFile>, index: DeepseekV41IndexReading, shard_count: Nat, tree_bytes: ByteSize) -> DeepseekV41WeightManifestStanding {
+  let generated = deepseek_v4_1_flash_shard_paths(count: shard_count)
+  let paths = map(rows, r => r.path)
+  let duplicate = map(duplicated_by_key(rows, fn(r) { r.path as String }), d => join(["path declared more than once: ", d.path as String], "") as NonEmptyStr)
+  let foreign = map(filter(paths, p => !list_member(xs: generated, x: p, eq: path_eq)), p => join(["path outside the generated shard set: ", p as String], "") as NonEmptyStr)
+  let missing = map(filter(generated, g => !list_member(xs: paths, x: g, eq: path_eq)), g => join(["generated shard path absent: ", g as String], "") as NonEmptyStr)
+  let count = if length(rows) == shard_count { [] as List<NonEmptyStr> } else { [join(["row count ", to_string(length(rows)), " is not the shard count ", to_string(shard_count)], "") as NonEmptyStr] }
+  let total = if byte_size_count(b: deepseek_v4_1_flash_published_rows_bytes(rows: rows)) == byte_size_count(b: tree_bytes) { [] as List<NonEmptyStr> } else { ["the rows' sizes do not sum to the tree's safetensors bytes" as NonEmptyStr] }
+  let index_join = if list_cover(held: paths, expected: index.shard_paths, eq: path_eq) && length(index.shard_paths) == length(paths) { [] as List<NonEmptyStr> } else { ["the index's weight_map shard population is not the file population" as NonEmptyStr] }
+  let defects = concat(duplicate, concat(foreign, concat(missing, concat(count, concat(total, index_join)))))
+  if length(defects) == 0 {
+    WeightManifestAdmitted { files: sort_by(rows, fn(r) { r.path as String }), index: index.file, canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: concat(rows, [index.file])) }
+  } else {
+    WeightManifestRefused { defects: defects }
+  }
+}
+
+fn deepseek_v4_1_flash_weight_manifest_standing() -> DeepseekV41WeightManifestStanding {
+  deepseek_v4_1_flash_admit_weight_manifest(rows: deepseek_v4_1_flash_weight_manifest, index: deepseek_v4_1_flash_index_reading, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes)
+}
+
+// A PUBLISHED FILE BY PATH, from the manifest: the one read the Engram shard rows derive from.
+fn deepseek_v4_1_flash_published_file(path: NonEmptyStr) -> DeepseekV41PublishedFile? {
+  first(filter(deepseek_v4_1_flash_weight_manifest, r => (r.path as String) == (path as String)))
+}
+
+// THE TOKENIZER POPULATION, BY ROLE. Every role a serving runtime needs of the tokenizer side is
+// named and each says how the publisher carries it at this revision: an exact published file, a
+// file another role's file embeds it in, no separate file at all (established by reading the tree
+// at the revision), or not consumed by this runtime. The files at this revision (tree API at
+// dba1be0a, 2026-09-21): tokenizer.json, tokenizer_config.json and encoding/encoding.py; there is
+// no special_tokens_map.json, no generation_config.json and no Jinja chat template
+// (deepseek_v4_1_flash_encoder_has_no_jinja_chat_template) -- the prompt encoding IS the encoder
+// module. The digests were taken over the resolved bytes (the tokenizer files are not LFS objects,
+// so the tree API carries only their git blob id).
+type DeepseekV41TokenizerRole
+  = TokenizerVocabulary
+  | TokenizerConfiguration
+  | TokenizerSpecialTokens
+  | TokenizerPromptEncoding
+  | TokenizerGenerationDefaults
+
+fn deepseek_v4_1_flash_tokenizer_role_wire(r: DeepseekV41TokenizerRole) -> NonEmptyStr {
+  match r {
+    TokenizerVocabulary => "vocabulary" as NonEmptyStr
+    TokenizerConfiguration => "configuration" as NonEmptyStr
+    TokenizerSpecialTokens => "special-tokens" as NonEmptyStr
+    TokenizerPromptEncoding => "prompt-encoding" as NonEmptyStr
+    TokenizerGenerationDefaults => "generation-defaults" as NonEmptyStr
+  }
+}
+
+type DeepseekV41RoleCarrier
+  = RolePublishedFile { file: DeepseekV41PublishedFile }
+  | RoleEmbeddedIn { file: DeepseekV41PublishedFile }
+  | RoleNoSeparateFile { established_at: NonEmptyStr }
+  | RoleNotConsumedByRuntime
+
+type DeepseekV41TokenizerRoleRow sole_constructor {
+  role: DeepseekV41TokenizerRole
+  carrier: DeepseekV41RoleCarrier
+}
+
+fn deepseek_v4_1_flash_tokenizer_role_row(role: DeepseekV41TokenizerRole, carrier: DeepseekV41RoleCarrier) -> DeepseekV41TokenizerRoleRow {
+  DeepseekV41TokenizerRoleRow { role: role, carrier: carrier }
+}
+
+data deepseek_v4_1_flash_tokenizer_json_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: "tokenizer.json" as NonEmptyStr, file_bytes: byte_size(count: 6367257), sha256: Sha256Digest { hex: "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b" as Sha256DigestHex } }
+data deepseek_v4_1_flash_tokenizer_config_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: "tokenizer_config.json" as NonEmptyStr, file_bytes: byte_size(count: 801), sha256: Sha256Digest { hex: "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547" as Sha256DigestHex } }
+data deepseek_v4_1_flash_encoder_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: deepseek_v4_1_flash_encoder_path, file_bytes: byte_size(count: 37316), sha256: Sha256Digest { hex: "502bdaec8a3fd88ebc24c4721a7038fbe42f2063c664638127056107920035c1" as Sha256DigestHex } }
+
+// Special tokens: tokenizer.json carries the added-token table (1283 entries) and
+// tokenizer_config.json names bos/eos/pad among them; there is no special_tokens_map.json.
+// Generation defaults: no generation_config.json at the revision; sampling defaults are the
+// runtime's, not the publisher's.
+data deepseek_v4_1_flash_tokenizer_roles: List<DeepseekV41TokenizerRoleRow> = [
+  DeepseekV41TokenizerRoleRow { role: TokenizerVocabulary, carrier: RolePublishedFile { file: deepseek_v4_1_flash_tokenizer_json_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerConfiguration, carrier: RolePublishedFile { file: deepseek_v4_1_flash_tokenizer_config_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerSpecialTokens, carrier: RoleEmbeddedIn { file: deepseek_v4_1_flash_tokenizer_json_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerPromptEncoding, carrier: RolePublishedFile { file: deepseek_v4_1_flash_encoder_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerGenerationDefaults, carrier: RoleNoSeparateFile { established_at: deepseek_v4_1_flash_revision } },
+]
+
+data deepseek_v4_1_flash_tokenizer_required_roles: List<DeepseekV41TokenizerRole> = [TokenizerVocabulary, TokenizerConfiguration, TokenizerSpecialTokens, TokenizerPromptEncoding, TokenizerGenerationDefaults]
+
+// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER AND KEYED BY THE ROLE MANIFEST: every
+// required role has exactly one row; an embedding role names a file some published-file row
+// carries with the SAME identity (path, size, digest); two published-file rows naming one path
+// with different identities refuse rather than coalesce. The canonical text is the sorted ROLE
+// rows -- role, carrier arm, and the exact file identity, the establishing revision or the
+// not-consumed disposition -- so a role that moves from embedded to not consumed, or a
+// no-separate-file fact re-established at another revision, changes the key while the file set
+// stays the same; the file population is a projection beside it, not the identity. A role with no
+// row is an obligation, not an empty line.
+type DeepseekV41TokenizerStanding
+  = TokenizerPopulationAdmitted { files: List<DeepseekV41PublishedFile>, canonical_text: String }
+  | TokenizerPopulationRefused { defects: List<NonEmptyStr> }
+
+fn published_file_identity_line(f: DeepseekV41PublishedFile) -> String {
+  join([f.path as String, " ", f.sha256.hex as String, " ", to_string(byte_size_count(b: f.file_bytes))], "")
+}
+
+fn published_file_identity_eq(a: DeepseekV41PublishedFile, b: DeepseekV41PublishedFile) -> Bool {
+  published_file_identity_line(f: a) == published_file_identity_line(f: b)
+}
+
+fn tokenizer_role_line(r: DeepseekV41TokenizerRoleRow) -> String {
+  join([deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " ", match r.carrier {
+    RolePublishedFile { file: f } => join(["published-file ", published_file_identity_line(f: f)], "")
+    RoleEmbeddedIn { file: f } => join(["embedded-in ", published_file_identity_line(f: f)], "")
+    RoleNoSeparateFile { established_at: rev } => join(["no-separate-file ", rev as String], "")
+    RoleNotConsumedByRuntime => "not-consumed-by-runtime"
+  }], "")
+}
+
+fn deepseek_v4_1_flash_tokenizer_manifest_text(rows: List<DeepseekV41TokenizerRoleRow>) -> String {
+  join(map(sort_by(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), r => tokenizer_role_line(r: r)), "\n")
+}
+
+fn role_eq(a: DeepseekV41TokenizerRole, b: DeepseekV41TokenizerRole) -> Bool {
+  (deepseek_v4_1_flash_tokenizer_role_wire(r: a) as String) == (deepseek_v4_1_flash_tokenizer_role_wire(r: b) as String)
+}
+
+fn deepseek_v4_1_flash_admit_tokenizer_population(rows: List<DeepseekV41TokenizerRoleRow>, required: List<DeepseekV41TokenizerRole>) -> DeepseekV41TokenizerStanding {
+  let roles = map(rows, r => r.role)
+  let duplicate = map(duplicated_by_key(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), d => join(["tokenizer role carried twice: ", deepseek_v4_1_flash_tokenizer_role_wire(r: d.role) as String], "") as NonEmptyStr)
+  let missing = map(filter(required, q => !list_member(xs: roles, x: q, eq: role_eq)), q => join(["tokenizer role without a carrier: ", deepseek_v4_1_flash_tokenizer_role_wire(r: q) as String], "") as NonEmptyStr)
+  let published_all = fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  RoleEmbeddedIn { file: _ } => acc  RoleNoSeparateFile { established_at: _ } => acc  RoleNotConsumedByRuntime => acc })
+  let published = distinct_by_key(published_all, fn(f) { f.path as String })
+  let conflicting = map(filter(duplicated_by_key(published_all, fn(f) { f.path as String }), d => any(filter(published_all, q => path_eq(a: q.path, b: d.path)), q => !published_file_identity_eq(a: q, b: d))), d => join(["published path carried with two identities: ", d.path as String], "") as NonEmptyStr)
+  let embedded_unbacked = fold(rows, init: [] as List<NonEmptyStr>, f: (acc, r) => match r.carrier {
+    RoleEmbeddedIn { file: f } => if list_member(xs: published, x: f, eq: published_file_identity_eq) { acc } else { concat(acc, [join(["tokenizer role ", deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " is embedded in a file no role publishes with that identity: ", f.path as String], "") as NonEmptyStr]) }
+    RolePublishedFile { file: _ } => acc
+    RoleNoSeparateFile { established_at: _ } => acc
+    RoleNotConsumedByRuntime => acc
+  })
+  let defects = concat(duplicate, concat(missing, concat(conflicting, embedded_unbacked)))
+  if length(defects) == 0 {
+    TokenizerPopulationAdmitted { files: sort_by(published, fn(f) { f.path as String }), canonical_text: deepseek_v4_1_flash_tokenizer_manifest_text(rows: rows) }
+  } else {
+    TokenizerPopulationRefused { defects: defects }
+  }
+}
+
+fn deepseek_v4_1_flash_tokenizer_standing() -> DeepseekV41TokenizerStanding {
+  deepseek_v4_1_flash_admit_tokenizer_population(rows: deepseek_v4_1_flash_tokenizer_roles, required: deepseek_v4_1_flash_tokenizer_required_roles)
+}
+
+// THE SHARD FILES REACH THE POPULATION FOLD, so the tensor extents are bounded by the payload each
+// shard's own header declares rather than only by each other.
+data deepseek_v4_1_flash_engram_shard_files: List<SafetensorsShardFile> = map(deepseek_v4_1_flash_engram_shards, s => s.file)
+
+// THE TOTAL, DERIVED. Every byte comes from a named tensor's declared span. This is the quantity
+// `deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes` reports, and the witness module
+// asserts the two agree -- which is the check that the partition summary above covered exactly
+// this population and no other tensor.
+fn deepseek_v4_1_flash_engram_derived_bytes() -> ByteSize? {
+  safetensors_population_declared_bytes(s: deepseek_v4_1_flash_engram_population)
+}
+
+// ── THE WEIGHT/SCALE RELATION, DERIVED FROM THE SHAPES RATHER THAN ASSERTED ────────────────────
+//
+// The fp8 tensors are block-scaled: an F8_E4M3 payload tensor is paired with an F8_E8M0 scale
+// tensor, and `deepseek_v4_1_flash_weight_block_size` is 32. THE BLOCKING IS NOT UNIFORM ACROSS
+// AXES and that is a real fact about this checkpoint, not a tolerance: `embed` is scaled per row
+// along its last axis only (384006168 rows unchanged, 256 -> 8), while `wkv` is blocked along both
+// (25600 -> 800, 6144 -> 192). A relation that demanded every axis be blocked would refuse the
+// real embed pair; one that demanded none would admit an arbitrary scale shape. So each axis is
+// classified, and a pair whose axis is NEITHER equal NOR the blocked quotient has no arm.
+type EngramScaleAxisRelation
+  = ScaleAxisUnblocked
+  | ScaleAxisBlockedBy { block: Nat }
+  | ScaleAxisUnrelated { payload_dim: Nat, scale_dim: Nat }
+
+fn deepseek_v4_1_flash_scale_axis_relation(payload_dim: Nat, scale_dim: Nat, block: Nat) -> EngramScaleAxisRelation {
+  if payload_dim == scale_dim {
+    ScaleAxisUnblocked
+  } else {
+    if block > 0 && scale_dim > 0 && payload_dim == scale_dim * block {
+      ScaleAxisBlockedBy { block: block }
+    } else {
+      ScaleAxisUnrelated { payload_dim: payload_dim, scale_dim: scale_dim }
+    }
+  }
+}
+
+fn deepseek_v4_1_flash_scale_axis_is_related(r: EngramScaleAxisRelation) -> Bool {
+  match r {
+    ScaleAxisUnblocked => true
+    ScaleAxisBlockedBy { block: _ } => true
+    ScaleAxisUnrelated { payload_dim: _, scale_dim: _ } => false
+  }
+}
+
+type EngramScalePairing sole_constructor {
+  payload_name: NonEmptyStr
+  scale_name: NonEmptyStr
+  axis_relations: List<EngramScaleAxisRelation>
+}
+
+fn deepseek_v4_1_flash_entry_named(name: NonEmptyStr) -> SafetensorsEntry? {
+  (filter(
+    safetensors_population_entries(s: deepseek_v4_1_flash_engram_population),
+    e => (e.name as String) == (name as String))).first()
+}
+
+// A ZERO DIMENSION IS THE ABSENT ANSWER, and the relation fold below classifies zero against any
+// payload dimension as Unrelated -- so an out-of-range index cannot silently read as a match.
+fn deepseek_v4_1_flash_dim_at(shape: List<Nat>, index: Nat) -> Nat {
+  match (shape.skip(index)).first() {
+    Absent => 0
+    Present { value: d } => d
+  }
+}
+
+// THE RANK GUARD IS LOCAL RATHER THAN INHERITED. `hi: count(p.shape) - 1` underflows on a Nat if the
+// shape is empty, and equal ranks do not exclude BOTH being empty. An empty shape is separately an
+// EntryShapeEmpty defect at population establishment, so the underflow is not reachable from an
+// established standing today -- but this fold reads the module's declared entries directly, so that
+// safety is inherited from a distant invariant rather than enforced here. DESIGN section 5 prefers
+// construction over validation, so the rank is required to be non-zero at the site: a pairing over no
+// axes is not a pairing, which `deepseek_v4_1_flash_scale_pairing_holds` already says by requiring a
+// non-empty relation list.
+fn deepseek_v4_1_flash_scale_pairing(payload_name: NonEmptyStr, scale_name: NonEmptyStr) -> EngramScalePairing? {
+  match deepseek_v4_1_flash_entry_named(name: payload_name) {
+    Absent => none
+    Present { value: p } => match deepseek_v4_1_flash_entry_named(name: scale_name) {
+      Absent => none
+      Present { value: s } =>
+        if count(p.shape) == count(s.shape) && count(p.shape) > 0 {
+          Present { value: EngramScalePairing {
+            payload_name: payload_name,
+            scale_name: scale_name,
+            axis_relations: map(
+              nat_range_inclusive(lo: 0, hi: count(p.shape) - 1),
+              i => deepseek_v4_1_flash_scale_axis_relation(
+                payload_dim: deepseek_v4_1_flash_dim_at(shape: p.shape, index: i),
+                scale_dim: deepseek_v4_1_flash_dim_at(shape: s.shape, index: i),
+                block: deepseek_v4_1_flash_weight_block_size)),
+          } }
+        } else { none }
+    }
+  }
+}
+
+fn deepseek_v4_1_flash_scale_pairing_holds(p: EngramScalePairing) -> Bool {
+  count(p.axis_relations) > 0 && all(p.axis_relations, r => deepseek_v4_1_flash_scale_axis_is_related(r: r))
+}
+
+// THE FOUR PAIRS THIS POPULATION CONTAINS. A fifth fp8 tensor without a scale, or a scale without
+// its payload, does not appear here and would leave the pairing fold with an unmatched tensor --
+// which the witness module checks by counting the scale-dtype tensors against these rows.
+data deepseek_v4_1_flash_engram_scale_pair_names: List<List<NonEmptyStr>> = [
+  ["layers.1.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr],
+  ["layers.1.engram.wkv.weight" as NonEmptyStr, "layers.1.engram.wkv.scale" as NonEmptyStr],
+  ["layers.14.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.scale" as NonEmptyStr],
+  ["layers.14.engram.wkv.weight" as NonEmptyStr, "layers.14.engram.wkv.scale" as NonEmptyStr],
+]
+
+// ── THE CONFIG DIMENSIONS AND THE TENSOR SHAPES ARE TWO SOURCES THAT MUST AGREE ────────────────
+//
+// `deepseek_v4_1_flash_engram.unpadded_embeddings` and the embed tensors' row counts are read from
+// DIFFERENT FILES -- config.json and the shard headers -- so their agreement is evidence rather
+// than a tautology. Same for the n-gram projections: q_weight and k_weight are [max_ngram_size,
+// hidden_size], both config keys. head_dim is the embed tensors' last axis.
+fn deepseek_v4_1_flash_engram_embed_rows() -> List<Nat> {
+  flat_map(
+    ["layers.1.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr],
+    n => match deepseek_v4_1_flash_entry_named(name: n) {
+      Absent => []
+      Present { value: e } => match e.shape.first() {
+        Absent => []
+        Present { value: rows } => [rows]
+      }
+    })
+}
+
+fn deepseek_v4_1_flash_engram_ngram_projection_shape() -> List<Nat> {
+  [deepseek_v4_1_flash_engram.max_ngram_size, deepseek_v4_1_flash_hidden_size]
+}
+
+// INDEPENDENTLY RE-DERIVED, WHICH IS THE ONE CHECK A TRANSCRIPTION CANNOT PERFORM ON ITSELF.
+//
+// These twelve entries and two shard rows were read from the Hub shard headers at the pinned revision
+// and written down here, and a transcription can be internally consistent while being wrong about its
+// source. Review 65049 re-derived all twelve tensor spans from shape x dtype width, computed both shard
+// payload totals as file_bytes minus the 8-byte length prefix minus header_bytes, and reports that every
+// offset chains exactly and both shards close to the byte -- by a reader that did not copy the numbers.
+//
+// That is corroboration of the ARITHMETIC and of internal consistency. It is NOT a second reading of the
+// Hub, so it does not discharge the standing below: these remain publisher-declared figures cited to the
+// upstream authority, and the fleet-side obligation that would turn them into a local materialisation
+// receipt is the DSV41-10 frontier row's trigger, unchanged by this.
+data deepseek_v4_1_flash_engram_population_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+data deepseek_v4_1_flash_frontier_dsv41_10: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_engram_entries_layer_1" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_entries_layer_14" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_population" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_shards" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_derived_bytes" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_scale_pair_names" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_population_standing" as NonEmptyStr,
+    "deepseek_v4_1_flash_index_tensor_count" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_tensor_count" as NonEmptyStr,
+  ],
+  reason: "DSV41-10 gunbc.fabric.engram_materialization consumes this exact population as its component subject",
+  dissolution: unbound_dissolution(description: "TRIGGER: a fleet-side reading that verifies these two shard sha256 digests over bytes present on a Spark and relates the header-declared population to them. SUFFICIENT FOR: the component subject's realization evidence stops being publisher-declared structure plus publisher-declared digests and becomes a local materialization receipt." as NonEmptyStr),
+)

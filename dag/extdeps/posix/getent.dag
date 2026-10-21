@@ -1,0 +1,25 @@
+module extdeps.posix.getent
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/getent.1.html"
+  }
+}
+
+fn getent_program() -> ProgramIdentity = uncataloged_program(invocation: "getent")
+
+// getent passwd <key> answers the passwd database entry for key, one line:
+// name:passwd:uid:gid:gecos:home:shell. The fleet probe modules used to reach the same entry
+// through a shell pipeline (`getent passwd "$(whoami)" | cut -d: -f6`); the pipeline's field
+// selection now happens in the corpus (see gunbc.passwd_home split at field six), so this
+// module owns only the invocation: the database, the key, and nothing else.
+fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: getent_program(), arguments: ["passwd", key as String])
+}

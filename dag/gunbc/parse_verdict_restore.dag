@@ -1,0 +1,354 @@
+module gunbc.parse_verdict_restore
+
+import std.types { String, List, Int }
+import std.algebra { fold_list, list_append }
+import std.integer { int_to_decimal_string }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
+  bash_build_assign, bash_build_pipe, bash_build_command_with_words, bash_build_or_else,
+  bash_build_command_from_lits, bash_build_with_redir_to_file,
+}
+import std.optional { Optional, Present }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.action_use_admission { cache_restore_action }
+import gunbc.instrument_targets { v2_native_cli_source_roots }
+import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_reuse_from,
+  parse_verdict_invocation_command, parse_verdict_invocation_source_root_args
+}
+import extdeps.cache.github_actions { GhaCachePullRequestMergeRefScope }
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  Github,
+  Steps,
+  ExpressionTemplate,
+  Interpolation,
+  serialize_expression,
+  serialize_template,
+  Equals,
+  NotEquals,
+  LogicalAnd,
+  LogicalOr,
+  StringLiteral,
+}
+import gunbc.parse_verdict_schema {
+  parse_verdict_request_family,
+  parse_compiler_sha_identity_cache_key,
+  parse_verdict_restore_identity_basename,
+  parse_verdict_restore_receipts_basename,
+  parse_verdict_restore_ancestors_basename,
+  parse_verdict_restore_ancestor_ordinals,
+}
+import gunbc.parse_verdict_publish {
+  materialization_gha_cache_key_prefix,
+  materialization_scope_guard,
+  parse_verdict_compiler_expr,
+  parse_verdict_generation_one_bin,
+  parse_verdict_identity_blob_file,
+  parse_verdict_receipts_file,
+  parse_verdict_publish_memory_env,
+  parse_verdict_cache_working_directory,
+}
+
+// THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_publish is the main side).
+// A pull-request run restores the two entries main saved for the nearest published ancestor of
+// base.sha, then walks the population with `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
+// standing. NOTHING HERE DECIDES REUSE: a restore that found no entry leaves no file, and the verb
+// reads that as a typed miss (MissIdentityAbsent / MissEntryAbsent), so eviction is a re-parse and
+// never a pass and never an error (DESIGN.md section 5). The restore keys are exact; there are no
+// restore-keys, because a prefix hit would be a near identity and reuse is exact or it is a miss.
+//
+// The guard is derived from the pull-request scope in the cache model, as the publisher's is from the
+// default-branch scope, so the two sides cannot both fire on one event.
+
+data parse_verdict_locate_step_name: String = "Locate first-parent ancestors of base.sha"
+data parse_verdict_locate_step_id: String = "parse_ancestors"
+data parse_verdict_record_step_name: String = "Record the restored parse-verdict ancestor"
+data parse_verdict_reuse_walk_step_name: String = "Walk parse-population reusing the nearest published ancestor's receipts"
+
+fn parse_verdict_restore_if() -> String {
+  serialize_expression(expression: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope))
+}
+
+fn pull_request_base_sha_expr() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation {
+      expression: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] }
+    }]
+  })
+}
+
+fn parse_verdict_ordinal_output(ordinal: Int) -> String {
+  join(["a", int_to_decimal_string(value: ordinal)], "")
+}
+
+fn parse_verdict_ancestor_sha_expr(ordinal: Int) -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation {
+      expression: ContextAccess {
+        context: Steps,
+        path: [parse_verdict_locate_step_id, "outputs", parse_verdict_ordinal_output(ordinal: ordinal)]
+      }
+    }]
+  })
+}
+
+fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
+      parse_verdict_compiler_expr(),
+      "-",
+      parse_verdict_ancestor_sha_expr(ordinal: ordinal)
+    ],
+    ""
+  )
+}
+
+// THE LOCATOR: the first-parent ancestors of the base, newest first, to the declared ordinals, each
+// written as a step output, which the restore keys and the record step read. The script is a bash node tree emitted through bash_emit, as the
+// release-bins runners are; no shell is authored here. A `git rev-list` that cannot answer (a
+// base sha outside the checkout) leaves the output empty, and an empty sha is a key no entry carries,
+// so the restore is a typed miss rather than a failed required job.
+fn parse_verdict_lit(t: String) -> Node { bash_build_word_lit(text: t) }
+fn parse_verdict_var(n: String) -> Node { bash_build_word_var(name: n) }
+fn parse_verdict_words(ws: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: ws) }
+
+fn parse_verdict_tee_append(line: Node, path: Node) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_pipe(
+      left: bash_build_command_with_words(words: [parse_verdict_lit(t: "echo"), line]),
+      right: bash_build_command_with_words(words: [parse_verdict_lit(t: "tee"), parse_verdict_lit(t: "-a"), path])
+    ),
+    path: parse_verdict_lit(t: "/dev/null")
+  )
+}
+
+fn parse_verdict_locate_statements(ordinal: Int) -> List<Node> {
+  let variable = join(["ANCESTOR_", int_to_decimal_string(value: ordinal)], "")
+  [
+    bash_build_or_else(
+      left: bash_build_assign(
+        name: variable,
+        value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+          parse_verdict_lit(t: "git"),
+          parse_verdict_lit(t: "rev-list"),
+          parse_verdict_lit(t: "--first-parent"),
+          parse_verdict_lit(t: join(["--skip=", int_to_decimal_string(value: ordinal)], "")),
+          parse_verdict_lit(t: "--max-count=1"),
+          parse_verdict_var(n: "BASE_SHA")
+        ]))
+      ),
+      right: bash_build_command_from_lits(lits: ["true"])
+    ),
+    parse_verdict_tee_append(
+      line: parse_verdict_words(ws: [parse_verdict_lit(t: join([parse_verdict_ordinal_output(ordinal: ordinal), "="], "")), parse_verdict_var(n: variable)]),
+      path: parse_verdict_var(n: "GITHUB_OUTPUT")
+    )
+  ]
+}
+
+data parse_verdict_locate_unemittable_marker: String = "__GUNBC_PARSE_VERDICT_LOCATE_UNEMITTABLE__"
+
+fn parse_verdict_locate_script() -> String {
+  match bash_emit_stmts(
+    statements: fold_list(xs: parse_verdict_restore_ancestor_ordinals, empty: [], cons: fn(acc, ordinal) { concat(acc, parse_verdict_locate_statements(ordinal: ordinal)) }),
+    set_e: true
+  ) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => parse_verdict_locate_unemittable_marker
+  }
+}
+
+fn parse_verdict_locate_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_locate_step_name },
+    id: Present { value: parse_verdict_locate_step_id },
+    run: parse_verdict_locate_script(),
+    shell: none,
+    env: Present { value: [kv(key: "BASE_SHA", value: yaml_string(s: pull_request_base_sha_expr()))] },
+    working_directory: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// FIRST HIT WINS, AND A MISMATCH NEVER FALLS THROUGH. Every ordinal restores onto the SAME path the
+// publisher saved (a cache entry's version hashes its path, so the path is part of the entry's identity
+// and must be the workspace-relative one on both sides), so the chain is gated: ordinal i restores its
+// identity only while no earlier ordinal's identity restore hit. The first published identity is the
+// one the verb decides against; whether its compiler matches is the verb's exact comparison, never a
+// reason to look at the next ancestor.
+fn parse_verdict_identity_restore_id(ordinal: Int) -> String {
+  join(["parse_identity_", int_to_decimal_string(value: ordinal)], "")
+}
+
+fn parse_verdict_identity_hit_output(ordinal: Int) -> Expression {
+  ContextAccess { context: Steps, path: [parse_verdict_identity_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
+}
+
+fn parse_verdict_identity_hit(ordinal: Int) -> Expression {
+  Equals { left: parse_verdict_identity_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
+}
+
+fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
+  fold_list(
+    xs: parse_verdict_restore_ancestor_ordinals,
+    empty: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
+    cons: fn(acc, earlier) {
+      if earlier < ordinal {
+        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_identity_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
+  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_identity_hit(ordinal: ordinal) }
+}
+
+fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: String, cache_key: String, condition: Expression) -> Step {
+  UsesStep {
+    name: Present { value: name },
+    id: id,
+    uses: cache_restore_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "key", value: yaml_string(s: cache_key))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: serialize_expression(expression: condition) },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_identity_restore_step_name(ordinal: Int) -> String {
+  join(["Restore parse-compiler identity for base ancestor ", int_to_decimal_string(value: ordinal)], "")
+}
+
+fn parse_verdict_receipts_restore_step_name(ordinal: Int) -> String {
+  join(["Restore parse-verdict receipts for base ancestor ", int_to_decimal_string(value: ordinal)], "")
+}
+
+fn parse_verdict_identity_restore_step(ordinal: Int) -> Step {
+  parse_verdict_cache_restore_step(
+    name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
+    id: Present { value: parse_verdict_identity_restore_id(ordinal: ordinal) },
+    path: parse_verdict_identity_blob_file(),
+    cache_key: parse_compiler_sha_identity_cache_key(sha: parse_verdict_ancestor_sha_expr(ordinal: ordinal)),
+    condition: parse_verdict_identity_restore_condition(ordinal: ordinal)
+  )
+}
+
+fn parse_verdict_receipts_restore_step(ordinal: Int) -> Step {
+  parse_verdict_cache_restore_step(
+    name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
+    id: none,
+    path: parse_verdict_receipts_file(),
+    cache_key: parse_verdict_restore_receipts_key(ordinal: ordinal),
+    condition: parse_verdict_receipts_restore_condition(ordinal: ordinal)
+  )
+}
+
+// THE ANCESTOR THE WALK WILL REPORT: the sha at the first ordinal whose identity restore hit, or
+// empty when none did. The expression is passed to the record step through env, never spliced into
+// the script, because the emitter quotes literals and a quote inside an expression would split it.
+fn parse_verdict_restored_ancestor_expression() -> Expression {
+  LogicalOr {
+    left: fold_list(
+      xs: parse_verdict_restore_ancestor_ordinals,
+      empty: StringLiteral { value: "" },
+      cons: fn(acc, ordinal) {
+        LogicalOr {
+          left: acc,
+          right: LogicalAnd {
+            left: parse_verdict_identity_hit(ordinal: ordinal),
+            right: ContextAccess { context: Steps, path: [parse_verdict_locate_step_id, "outputs", parse_verdict_ordinal_output(ordinal: ordinal)] }
+          }
+        }
+      }
+    ),
+    right: StringLiteral { value: "" }
+  }
+}
+
+fn parse_verdict_record_script() -> String {
+  match bash_emit_stmts(
+    statements: [parse_verdict_tee_append(line: parse_verdict_var(n: "RESTORED_ANCESTOR"), path: parse_verdict_lit(t: parse_verdict_restore_ancestors_basename))],
+    set_e: true
+  ) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => parse_verdict_locate_unemittable_marker
+  }
+}
+
+fn parse_verdict_record_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_record_step_name },
+    id: none,
+    run: parse_verdict_record_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "RESTORED_ANCESTOR", value: yaml_string(s: serialize_template(template: ExpressionTemplate {
+        segments: [Interpolation { expression: parse_verdict_restored_ancestor_expression() }]
+      })))]
+    },
+    working_directory: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE INVOCATION IS RENDERED BY THE DECLARATION, not spelled here. The option tokens used to be typed
+// into this join, which meant the string that EMITS the walk and the content hash that CERTIFIES it were
+// two separate acts of typing that could agree by habit rather than by construction -- and one of them
+// (the hash) is what the guard trusts. Renaming an option in the parser would have moved neither.
+// THE WALK'S WHOLE ARGUMENT POPULATION, INCLUDING THE SOURCE-ROOT TAIL. The roots used to be appended as
+// a rendered string by source_root_argv(), which put an option the walk ALWAYS receives outside every
+// declared list -- so no stamped shape contained it. They are arguments now, spelled through
+// parse_verdict_invocation_source_root_args, and this list is what the command renders from AND what the
+// contract stamp reads. Its VALUES are not contract (see that function); its SHAPE is.
+fn parse_verdict_reuse_args() -> List<ParseVerdictInvocationArg> {
+  list_append(
+    left: [
+      ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+      ParseVerdictInvocationArg { option: cli_option_reuse_from, value: parse_verdict_cache_working_directory }
+    ],
+    right: parse_verdict_invocation_source_root_args(roots: v2_native_cli_source_roots())
+  )
+}
+
+fn parse_verdict_reuse_command() -> String {
+  parse_verdict_invocation_command(
+    bin: parse_verdict_generation_one_bin(),
+    verb: cli_verb_parse_population,
+    args: parse_verdict_reuse_args()
+  )
+}
+
+fn parse_verdict_reuse_walk_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_reuse_walk_step_name },
+    id: none,
+    run: concat(parse_verdict_reuse_command(), "\n"),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}

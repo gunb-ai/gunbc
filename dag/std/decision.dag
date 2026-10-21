@@ -1,0 +1,1796 @@
+module std.decision
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
+import std.measure {
+  MoneyAmountMicro, SignedMoneyAmountMicro,
+  money_amount_micro_count, signed_money_amount_micro, signed_money_amount_micro_count,
+}
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationRepeatedExpected,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  observation_completeness,
+}
+import extdeps.currency.currency { CurrencyCode, currency_code_eq }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority, ObservedByReceipt,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
+import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
+import std.frame_boundary { boundary_grade_meet }
+import std.pareto {
+  AxisGoal,
+  HigherIsBetter,
+  LowerIsBetter,
+  AxisComparison,
+  Better,
+  Same,
+  Worse,
+  UndecidedOnEvidence,
+  DominanceVerdict,
+  Dominates,
+  Dominated,
+  Equivalent,
+  Incomparable,
+  DominanceUndecided,
+  SelectionAxis,
+  AxisReading,
+  AxisGap,
+  ParetoEntry,
+  ParetoStanding,
+  ProvisionallyNonDominated,
+  DominatedBy,
+  NotComputable,
+  PendingEvidence,
+  SelectionRefused,
+  ReadingLookup,
+  ReadingFound,
+  ReadingAbsent,
+  ReadingDuplicated,
+  axis_comparison_interval,
+  entry_standing,
+  reading_for,
+}
+
+// Named for the FRAMEWORK (choose-under-objectives), not for std.realization. Nothing in this
+// module's types or functions references Materialization, Recompute/Memoize/Share, or
+// goal assessment (std.goal_assessment): convergence's selection is a consumer, not the namesake. A fleet operating point
+// is not a realization in the Materialization sense. Fence: std.disposition is Terminal | Scaffold
+// — a triage outcome, not choice-under-objectives. The thing that would reverse this name: if
+// decision VARIABLES were typed to materialization choices, the general name would overclaim.
+//
+// REALIZATION SELECTION (policy-bound choose-one) lives in this same module as the consumer path
+// over Pareto assessment. std.pareto computes the frontier; a front of two is not a winner.
+//
+// Completeness remains a closed subject (DESIGN §3d): scalarization, Pareto assessment, feasibility
+// and enumeration do not mint the subject and may not silently drop a term, variable, constraint or
+// candidate the subject still owns. Completeness is a bidirectional identity join over required
+// (objective-term × decision-variable) cells, derived from named authorities — never from the
+// disposition list that carries answers for those cells.
+//
+// std.pareto.SelectionAxis stays a criterion for ordering candidate readings. It is not widened
+// here: DecisionVariable / ContextParameter / DecisionConstraint / ObjectiveTerm are the split
+// that prevents that meaning fork (DESIGN section 3).
+
+type DecisionVariable {
+  identity: DeclarationRef
+}
+
+type ContextParameter {
+  identity: DeclarationRef
+}
+
+type DecisionConstraint {
+  identity: DeclarationRef
+}
+
+type ObjectiveTerm {
+  identity: DeclarationRef
+  ground: CitedFigureStanding
+}
+
+// ONE explicitly chosen measure. Throughput-per-watt, cores-per-watt, max throughput under a hard
+// cap, and min energy per job are DIFFERENT objectives: each is its own identity. Switching among
+// them without changing this row is a silent objective fork.
+type ObjectiveMeasure {
+  identity: DeclarationRef
+  goal: AxisGoal
+  terms: List<ObjectiveTerm>
+}
+
+// The authoritative choice population — candidates the subject admits — named apart from any
+// method's explored set. Closing one variable's axis does not close this population.
+type ChoiceDomain {
+  identity: DeclarationRef
+  variables: List<DecisionVariable>
+}
+
+type DecisionSubject {
+  identity: DeclarationRef
+  question: NonEmptyStr
+  parameters: List<ContextParameter>
+  constraints: List<DecisionConstraint>
+  objective: ObjectiveMeasure
+  choice_domain: ChoiceDomain
+}
+
+// THREE WARRANTS, NOT TWO LISTS THE SAME AUTHOR WROTE. Terms close against the cited physical
+// model (external/versioned authority — CitedFigureStanding, the same coproduct 2DPC ceilings use).
+// Variables close against the declared decision (stated intent; the compiler does not invent it).
+// Coupling closes against the declared causal model: vendor-documented coupling is an extdeps fact;
+// coupling this fleet observed is a gunbc-layer receipt and is never authored back into upstream.
+type PhysicalModelPopulation
+  = PhysicalModelEstablished { terms: List<DeclarationRef> }
+  | PhysicalModelUnestablished { subject: DeclarationRef, read_obligation: NonEmptyStr }
+
+type CausalCoupling
+  = VendorDocumentedCoupling {
+      authority: ExternalAuthority
+      term: DeclarationRef
+      variable: DeclarationRef
+      subject: DeclarationRef
+    }
+  | FleetObservedCoupling {
+      receipt: DeclarationRef
+      term: DeclarationRef
+      variable: DeclarationRef
+      subject: DeclarationRef
+    }
+
+type CausalModelPopulation
+  = CausalModelEstablished { couplings: List<CausalCoupling> }
+  | CausalModelUnestablished { subject: DeclarationRef, read_obligation: NonEmptyStr }
+
+type TermSetJoin
+  = TermSetsJoinComplete
+  | ObjectiveUnderModeled { subject: DeclarationRef, missing_from_objective: List<DeclarationRef> }
+  | ObjectiveDeclaresUnwarrantedTerms { subject: DeclarationRef, extras: List<DeclarationRef> }
+
+fn coupling_cell(c: CausalCoupling) -> SensitivityCell {
+  match c {
+    VendorDocumentedCoupling { authority: _, term: t, variable: v, subject: _ } =>
+      SensitivityCell { term: t, variable: v }
+    FleetObservedCoupling { receipt: _, term: t, variable: v, subject: _ } =>
+      SensitivityCell { term: t, variable: v }
+  }
+}
+
+fn declared_objective_term_identities(objective: ObjectiveMeasure) -> List<DeclarationRef> {
+  map(objective.terms, t => t.identity)
+}
+
+fn term_in_list(ids: List<DeclarationRef>, wanted: DeclarationRef) -> Bool {
+  any(ids, id => declaration_ref_eq(a: id, b: wanted))
+}
+
+fn term_set_join(
+  terms: List<DeclarationRef>,
+  objective: ObjectiveMeasure,
+  subject: DeclarationRef,
+) -> TermSetJoin {
+  let required = terms
+  let declared = declared_objective_term_identities(objective: objective)
+  let missing = filter(required, id => !term_in_list(ids: declared, wanted: id))
+  let extra = filter(declared, id => !term_in_list(ids: required, wanted: id))
+  if (missing |> count) > 0 {
+    ObjectiveUnderModeled { subject: subject, missing_from_objective: missing }
+  } else {
+    if (extra |> count) > 0 {
+      ObjectiveDeclaresUnwarrantedTerms { subject: subject, extras: extra }
+    } else {
+      TermSetsJoinComplete
+    }
+  }
+}
+
+fn physical_model_read_obligations(physical: PhysicalModelPopulation) -> List<NonEmptyStr> {
+  match physical {
+    PhysicalModelUnestablished { subject: _, read_obligation: o } => [o]
+    PhysicalModelEstablished { terms: _ } => []
+  }
+}
+
+// A RECEIPT GRADES BY CONSTRUCTION FOR THE REASON A FLEET-OBSERVED COUPLING IS ADMITTED BESIDE A
+// VENDOR-DOCUMENTED ONE IN CausalCoupling: the reading was executed, and its acquiring declaration holds
+// it. The arm can only be minted by a fold over that reading: extdeps.external_authority ObservedReceipt
+// is sole_constructor and observed_receipt admits only zero-argument folds (for example
+// gunbc.cloudflare.r2_conditional_put_race_probe r2_conditional_put_linearizability_ground), so the grade
+// rests on an executed judgement of committed data.
+// It is not ranked ABOVE a citation, because LifecycleGrade is two-valued and a cell needs only
+// "grounded"; what it adds over a citation (the figure was read, not asserted) is carried by the arm.
+fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
+  match standing {
+    CitedToAuthority { authority: _ } => LifecycleByConstruction
+    TranscribedUncited { read_obligation: _ } => LifecycleByConvention
+    ObservedByReceipt { observed: _ } => LifecycleByConstruction
+  }
+}
+
+fn objective_term_ground_obligations(objective: ObjectiveMeasure) -> List<NonEmptyStr> {
+  flat_map(objective.terms, t =>
+    match cited_figure_read_obligation(standing: t.ground) {
+      Present { value: o } => [o]
+      Absent => []
+    }
+  )
+}
+
+fn term_ground_for(objective: ObjectiveMeasure, identity: DeclarationRef) -> CitedFigureStanding? {
+  match (filter(objective.terms, t => declaration_ref_eq(a: t.identity, b: identity))).first() {
+    Absent => Absent
+    Present { value: t } => Present { value: t.ground }
+  }
+}
+
+fn required_cells_from_physical_and_variables(
+  physical: PhysicalModelPopulation,
+  subject: DecisionSubject,
+) -> List<SensitivityCell> {
+  match physical {
+    PhysicalModelUnestablished { subject: _, read_obligation: _ } => []
+    PhysicalModelEstablished { terms: ts } =>
+      flat_map(ts, t =>
+        map(subject.choice_domain.variables, variable =>
+          SensitivityCell { term: t, variable: variable.identity }
+        )
+      )
+  }
+}
+
+fn coupling_closure(
+  physical: PhysicalModelPopulation,
+  subject: DecisionSubject,
+  causal: CausalModelPopulation,
+) -> ObservationCompleteness<SensitivityCell> {
+  match causal {
+    CausalModelUnestablished { subject: _, read_obligation: _ } =>
+      ObservationMissingExpected { keys: required_cells_from_physical_and_variables(physical: physical, subject: subject) }
+    CausalModelEstablished { couplings: cs } =>
+      observation_completeness(
+        expected: required_cells_from_physical_and_variables(physical: physical, subject: subject),
+        observed: map(cs, c => coupling_cell(c: c)),
+        key_eq: sensitivity_cell_eq,
+      )
+  }
+}
+
+type DecisionRegion {
+  identity: DeclarationRef
+}
+
+type TermVariableRelation
+  = MonotoneIncreasing
+  | MonotoneDecreasing
+  | NonMonotone
+  | RelationOtherwiseEstablished { note: NonEmptyStr }
+
+// Invariance is a RELATION over (term, variable, region), never a property of an axis alone.
+// Region and evidence are required fields: omitting them is unwritable at construction.
+type ObjectiveTermSensitivity
+  = VariesAlong {
+      term: DeclarationRef
+      variable: DeclarationRef
+      region: DecisionRegion
+      relation: TermVariableRelation
+      coupling: CitedFigureStanding
+    }
+  | InvariantAlong {
+      term: DeclarationRef
+      variable: DeclarationRef
+      region: DecisionRegion
+      coupling: CitedFigureStanding
+    }
+  | SensitivityUnestablished {
+      term: DeclarationRef
+      variable: DeclarationRef
+      obligation: NonEmptyStr
+    }
+
+type SensitivityCell {
+  term: DeclarationRef
+  variable: DeclarationRef
+}
+
+fn sensitivity_cell_eq(a: SensitivityCell, b: SensitivityCell) -> Bool {
+  declaration_ref_eq(a: a.term, b: b.term) && declaration_ref_eq(a: a.variable, b: b.variable)
+}
+
+fn sensitivity_cell_of(row: ObjectiveTermSensitivity) -> SensitivityCell {
+  match row {
+    VariesAlong { term: t, variable: v, region: _, relation: _, coupling: _ } =>
+      SensitivityCell { term: t, variable: v }
+    InvariantAlong { term: t, variable: v, region: _, coupling: _ } =>
+      SensitivityCell { term: t, variable: v }
+    SensitivityUnestablished { term: t, variable: v, obligation: _ } =>
+      SensitivityCell { term: t, variable: v }
+  }
+}
+
+fn sensitivity_coupling(row: ObjectiveTermSensitivity) -> CitedFigureStanding? {
+  match row {
+    VariesAlong { term: _, variable: _, region: _, relation: _, coupling: c } => Present { value: c }
+    InvariantAlong { term: _, variable: _, region: _, coupling: c } => Present { value: c }
+    SensitivityUnestablished { term: _, variable: _, obligation: _ } => Absent
+  }
+}
+
+fn sensitivity_obligation(row: ObjectiveTermSensitivity) -> NonEmptyStr? {
+  match row {
+    SensitivityUnestablished { term: _, variable: _, obligation: o } => Present { value: o }
+    VariesAlong { term: _, variable: _, region: _, relation: _, coupling: c } =>
+      cited_figure_read_obligation(standing: c)
+    InvariantAlong { term: _, variable: _, region: _, coupling: c } =>
+      cited_figure_read_obligation(standing: c)
+  }
+}
+
+// Required (term, variable) cells are the cartesian product of the objective's term population and
+// the choice-domain variables. Derived from the subject authorities — never from the sensitivity
+// disposition list. A method that varies only one domain variable while the domain still includes
+// another cannot close this join (ObservationMissingExpected) and therefore cannot mint Settled.
+fn required_sensitivity_cells(subject: DecisionSubject) -> List<SensitivityCell> {
+  flat_map(subject.objective.terms, term =>
+    map(subject.choice_domain.variables, variable =>
+      SensitivityCell { term: term.identity, variable: variable.identity }
+    )
+  )
+}
+
+fn assessed_sensitivity_cells(rows: List<ObjectiveTermSensitivity>) -> List<SensitivityCell> {
+  map(rows, row => sensitivity_cell_of(row: row))
+}
+
+fn sensitivity_closure(
+  subject: DecisionSubject,
+  rows: List<ObjectiveTermSensitivity>,
+) -> ObservationCompleteness<SensitivityCell> {
+  observation_completeness(
+    expected: required_sensitivity_cells(subject: subject),
+    observed: assessed_sensitivity_cells(rows: rows),
+    key_eq: sensitivity_cell_eq,
+  )
+}
+
+type ConstraintDisposition
+  = ConstraintSatisfied { constraint: DeclarationRef, evidence: NonEmptyStr }
+  | ConstraintViolated { constraint: DeclarationRef, evidence: NonEmptyStr }
+  | ConstraintUnestablished { constraint: DeclarationRef, obligation: NonEmptyStr }
+
+fn constraint_identity(row: ConstraintDisposition) -> DeclarationRef {
+  match row {
+    ConstraintSatisfied { constraint: c, evidence: _ } => c
+    ConstraintViolated { constraint: c, evidence: _ } => c
+    ConstraintUnestablished { constraint: c, obligation: _ } => c
+  }
+}
+
+fn required_constraint_identities(subject: DecisionSubject) -> List<DeclarationRef> {
+  map(subject.constraints, c => c.identity)
+}
+
+fn constraint_closure(
+  subject: DecisionSubject,
+  rows: List<ConstraintDisposition>,
+) -> ObservationCompleteness<DeclarationRef> {
+  observation_completeness(
+    expected: required_constraint_identities(subject: subject),
+    observed: map(rows, r => constraint_identity(row: r)),
+    key_eq: declaration_ref_eq,
+  )
+}
+
+type ParameterDisposition
+  = ParameterBound { parameter: DeclarationRef, evidence: NonEmptyStr }
+  | ParameterUnestablished { parameter: DeclarationRef, obligation: NonEmptyStr }
+
+fn parameter_identity(row: ParameterDisposition) -> DeclarationRef {
+  match row {
+    ParameterBound { parameter: p, evidence: _ } => p
+    ParameterUnestablished { parameter: p, obligation: _ } => p
+  }
+}
+
+fn required_parameter_identities(subject: DecisionSubject) -> List<DeclarationRef> {
+  map(subject.parameters, p => p.identity)
+}
+
+fn parameter_closure(
+  subject: DecisionSubject,
+  rows: List<ParameterDisposition>,
+) -> ObservationCompleteness<DeclarationRef> {
+  observation_completeness(
+    expected: required_parameter_identities(subject: subject),
+    observed: map(rows, r => parameter_identity(row: r)),
+    key_eq: declaration_ref_eq,
+  )
+}
+
+// A method may drop an objective term only with an order-preservation derivation against the
+// actual objective composition. Absent that authority, scalarization that eliminates a term refuses.
+type OrderPreservationAuthority
+  = OrderPreservationEstablished {
+      authority: DeclarationRef
+      dropped_term: DeclarationRef
+      evidence: NonEmptyStr
+    }
+  | OrderPreservationAbsent { dropped_term: DeclarationRef, obligation: NonEmptyStr }
+
+type TermDropStanding
+  = TermDropAdmitted { authority: DeclarationRef }
+  | TermDropRefused { cause: NonEmptyStr }
+
+fn term_drop_standing(authority: OrderPreservationAuthority) -> TermDropStanding {
+  match authority {
+    OrderPreservationEstablished { authority: a, dropped_term: _, evidence: _ } =>
+      TermDropAdmitted { authority: a }
+    OrderPreservationAbsent { dropped_term: _, obligation: o } =>
+      TermDropRefused { cause: o }
+  }
+}
+
+type DecisionAssessment {
+  subject: DecisionSubject
+  sensitivities: List<ObjectiveTermSensitivity>
+  constraints: List<ConstraintDisposition>
+  parameters: List<ParameterDisposition>
+  selected_candidate: DeclarationRef?
+  term_drops: List<OrderPreservationAuthority>
+  physical_model: PhysicalModelPopulation
+  causal_model: CausalModelPopulation
+}
+
+type StructuralClosureCause
+  = SensitivityCellsIncomplete { detail: ObservationCompleteness<SensitivityCell> }
+  | ConstraintsIncomplete { detail: ObservationCompleteness<DeclarationRef> }
+  | ParametersIncomplete { detail: ObservationCompleteness<DeclarationRef> }
+  | TermDropWithoutOrderPreservation { cause: NonEmptyStr }
+  | SelectedCandidateAbsent
+  | ObjectiveUnderModeledCause { missing_from_objective: List<DeclarationRef> }
+  | ObjectiveDeclaresUnwarrantedTermsCause { extras: List<DeclarationRef> }
+  | CausalCouplingIncomplete { detail: ObservationCompleteness<SensitivityCell> }
+  | ConstraintViolatedCause { constraint: DeclarationRef, evidence: NonEmptyStr }
+
+type DecisionClosure
+  = DecisionClosureSettledReady
+  | DecisionClosureDeferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | DecisionClosureRefused { cause: StructuralClosureCause }
+
+fn collect_sensitivity_obligations(rows: List<ObjectiveTermSensitivity>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match sensitivity_obligation(row: row) {
+      Present { value: o } => [o]
+      Absent => []
+    }
+  )
+}
+
+fn cell_effective_grade(
+  objective: ObjectiveMeasure,
+  row: ObjectiveTermSensitivity,
+) -> LifecycleGrade? {
+  match sensitivity_coupling(row: row) {
+    Absent => Absent
+    Present { value: coupling } =>
+      match term_ground_for(objective: objective, identity: sensitivity_cell_of(row: row).term) {
+        Absent => Absent
+        Present { value: ground } => Present {
+          value: boundary_grade_meet(
+            a: cited_figure_lifecycle(standing: ground),
+            b: cited_figure_lifecycle(standing: coupling),
+          )
+        }
+      }
+  }
+}
+
+fn collect_convention_grade_obligations(
+  objective: ObjectiveMeasure,
+  rows: List<ObjectiveTermSensitivity>,
+) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match cell_effective_grade(objective: objective, row: row) {
+      Absent => []
+      Present { value: g } =>
+        match g {
+          LifecycleByConstruction => []
+          LifecycleByConvention =>
+            ["cell effective standing is LifecycleByConvention: cited term ground and cited coupling are both required before Settled" as NonEmptyStr]
+        }
+    }
+  )
+}
+
+// ConstraintViolated is refused by first_constraint_violation as ConstraintViolatedCause.
+// This collector only gathers Deferred obligations; putting a violation here would mint Deferred
+// instead of a loud refusal.
+fn collect_constraint_obligations(rows: List<ConstraintDisposition>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match row {
+      ConstraintUnestablished { constraint: _, obligation: o } => [o]
+      ConstraintSatisfied { constraint: _, evidence: _ } => []
+      ConstraintViolated { constraint: _, evidence: _ } => []
+    }
+  )
+}
+
+fn first_constraint_violation(rows: List<ConstraintDisposition>) -> StructuralClosureCause? {
+  flat_map(rows, row =>
+    match row {
+      ConstraintViolated { constraint: c, evidence: e } =>
+        [ConstraintViolatedCause { constraint: c, evidence: e }]
+      ConstraintSatisfied { constraint: _, evidence: _ } => []
+      ConstraintUnestablished { constraint: _, obligation: _ } => []
+    }
+  ).first()
+}
+
+fn collect_parameter_obligations(rows: List<ParameterDisposition>) -> List<NonEmptyStr> {
+  flat_map(rows, row =>
+    match row {
+      ParameterUnestablished { parameter: _, obligation: o } => [o]
+      ParameterBound { parameter: _, evidence: _ } => []
+    }
+  )
+}
+
+fn first_term_drop_refusal(drops: List<OrderPreservationAuthority>) -> NonEmptyStr? {
+  flat_map(drops, d =>
+    match term_drop_standing(authority: d) {
+      TermDropRefused { cause: c } => [c]
+      TermDropAdmitted { authority: _ } => []
+    }
+  ).first()
+}
+
+fn structural_join_refuses(
+  sensitivity: ObservationCompleteness<SensitivityCell>,
+  constraints: ObservationCompleteness<DeclarationRef>,
+  parameters: ObservationCompleteness<DeclarationRef>,
+) -> StructuralClosureCause? {
+  match sensitivity {
+    ObservationComplete =>
+      match constraints {
+        ObservationComplete =>
+          match parameters {
+            ObservationComplete => Absent
+            ObservationRepeatedExpected { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationMissingExpected { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationForeignObserved { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationRepeatedObserved { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+          }
+        ObservationRepeatedExpected { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationMissingExpected { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationForeignObserved { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationRepeatedObserved { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+      }
+    ObservationRepeatedExpected { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationMissingExpected { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationForeignObserved { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationRepeatedObserved { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+  }
+}
+
+// THE ORDINARY CONSUMER PATH. Settlement is minted only here. An incomplete closure cannot produce
+// Settled — that invalid state is unwritable because SettledPolicy is sole_constructor and this
+// mint is the only admitted constructor, and it refuses incomplete structure.
+fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
+  match first_constraint_violation(rows: assessment.constraints) {
+    Present { value: violated } => DecisionClosureRefused { cause: violated }
+    Absent =>
+  match assessment.physical_model {
+    PhysicalModelUnestablished { subject: _, read_obligation: o } =>
+      DecisionClosureDeferred {
+        obligations: [o],
+        reopen_trigger: "cite or type-uncite every physical-model term for this subject" as NonEmptyStr,
+      }
+    PhysicalModelEstablished { terms: ts } =>
+      match term_set_join(terms: ts, objective: assessment.subject.objective, subject: assessment.subject.identity) {
+        ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+          DecisionClosureRefused { cause: ObjectiveUnderModeledCause { missing_from_objective: missing } }
+        ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: extra } =>
+          DecisionClosureRefused { cause: ObjectiveDeclaresUnwarrantedTermsCause { extras: extra } }
+        TermSetsJoinComplete =>
+          match assessment.causal_model {
+            CausalModelUnestablished { subject: _, read_obligation: o } =>
+              DecisionClosureDeferred {
+                obligations: concat(
+                  concat(
+                    physical_model_read_obligations(physical: assessment.physical_model),
+                    objective_term_ground_obligations(objective: assessment.subject.objective),
+                  ),
+                  concat(
+                    [o],
+                    concat(
+                      collect_sensitivity_obligations(rows: assessment.sensitivities),
+                      concat(
+                        collect_constraint_obligations(rows: assessment.constraints),
+                        collect_parameter_obligations(rows: assessment.parameters),
+                      ),
+                    ),
+                  ),
+                ),
+                reopen_trigger: "establish vendor-documented or fleet-observed coupling for every required (term, variable) cell" as NonEmptyStr,
+              }
+            CausalModelEstablished { couplings: _ } => {
+              let coup = coupling_closure(
+                physical: assessment.physical_model,
+                subject: assessment.subject,
+                causal: assessment.causal_model,
+              )
+              match coup {
+                ObservationComplete => {
+                  let sens = sensitivity_closure(subject: assessment.subject, rows: assessment.sensitivities)
+                  let cons = constraint_closure(subject: assessment.subject, rows: assessment.constraints)
+                  let params = parameter_closure(subject: assessment.subject, rows: assessment.parameters)
+                  match structural_join_refuses(sensitivity: sens, constraints: cons, parameters: params) {
+                    Present { value: cause } => DecisionClosureRefused { cause: cause }
+                    Absent =>
+                      match first_term_drop_refusal(drops: assessment.term_drops) {
+                        Present { value: cause } => DecisionClosureRefused { cause: TermDropWithoutOrderPreservation { cause: cause } }
+                        Absent => {
+                          let uncited = concat(
+                            physical_model_read_obligations(physical: assessment.physical_model),
+                            objective_term_ground_obligations(objective: assessment.subject.objective),
+                          )
+                          let sens_obs = collect_sensitivity_obligations(rows: assessment.sensitivities)
+                          let grade_obs = collect_convention_grade_obligations(
+                            objective: assessment.subject.objective,
+                            rows: assessment.sensitivities,
+                          )
+                          let cons_obs = collect_constraint_obligations(rows: assessment.constraints)
+                          let param_obs = collect_parameter_obligations(rows: assessment.parameters)
+                          let obligations = concat(uncited, concat(sens_obs, concat(grade_obs, concat(cons_obs, param_obs))))
+                          if (obligations |> count) > 0 {
+                            DecisionClosureDeferred {
+                              obligations: obligations,
+                              reopen_trigger: "every listed obligation discharged with evidence that closes its cell or constraint without dropping an objective term absent an order-preservation authority" as NonEmptyStr,
+                            }
+                          } else {
+                            DecisionClosureSettledReady
+                          }
+                        }
+                      }
+                  }
+                }
+                ObservationRepeatedExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationMissingExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationForeignObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationRepeatedObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+              }
+            }
+          }
+      }
+  }
+  }
+}
+
+// Settled is reachable only through mint_settled_policy. Deferred and Refused stay ordinary —
+// unresolved evidence is honest standing, not the invalid state. The invalid state is Settled
+// carrying an incomplete closure, and sole_constructor + this mint make that unwritable.
+type SettledPolicy sole_constructor {
+  subject: DeclarationRef
+  selected_candidate: DeclarationRef
+}
+
+type DecisionStanding
+  = Settled { policy: SettledPolicy }
+  | Deferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | DecisionRefused { cause: StructuralClosureCause }
+
+fn mint_settled_policy(assessment: DecisionAssessment) -> DecisionStanding {
+  match decision_closure(assessment: assessment) {
+    DecisionClosureSettledReady =>
+      match assessment.selected_candidate {
+        Present { value: selected } => Settled {
+          policy: SettledPolicy {
+            subject: assessment.subject.identity,
+            selected_candidate: selected,
+          }
+        }
+        Absent => DecisionRefused { cause: SelectedCandidateAbsent }
+      }
+    DecisionClosureDeferred { obligations: o, reopen_trigger: t } =>
+      Deferred { obligations: o, reopen_trigger: t }
+    DecisionClosureRefused { cause: c } => DecisionRefused { cause: c }
+  }
+}
+
+// Consumer wall: convergence / actuation accepts only Settled. Deferred and Refused cannot pass.
+type SettledPolicyAcceptance
+  = SettledPolicyAccepted { policy: SettledPolicy }
+  | SettledPolicyRejectedDeferred { obligations: List<NonEmptyStr>, reopen_trigger: NonEmptyStr }
+  | SettledPolicyRejectedRefused { cause: StructuralClosureCause }
+
+fn accept_settled_policy(standing: DecisionStanding) -> SettledPolicyAcceptance {
+  match standing {
+    Settled { policy: p } => SettledPolicyAccepted { policy: p }
+    Deferred { obligations: o, reopen_trigger: t } =>
+      SettledPolicyRejectedDeferred { obligations: o, reopen_trigger: t }
+    DecisionRefused { cause: c } => SettledPolicyRejectedRefused { cause: c }
+  }
+}
+
+// Candidate comparison reuses std.pareto's vocabulary: Incomparable is a proved trade-off;
+// UndecidedOnEvidence / DominanceUndecided means the evidence is too coarse. Opposite remedies.
+type CandidateComparisonStanding
+  = CandidatesComparable { verdict: DominanceVerdict }
+  | CandidatesIncomparableTradeoff
+  | CandidatesUndecidedOnEvidence
+  | CandidateComparisonRefused { cause: NonEmptyStr }
+
+fn candidate_comparison_standing(verdict: DominanceVerdict) -> CandidateComparisonStanding {
+  match verdict {
+    Incomparable => CandidatesIncomparableTradeoff
+    DominanceUndecided => CandidatesUndecidedOnEvidence
+    Dominates => CandidatesComparable { verdict: Dominates }
+    Dominated => CandidatesComparable { verdict: Dominated }
+    Equivalent => CandidatesComparable { verdict: Equivalent }
+  }
+}
+
+type CandidateFieldStanding
+  = CandidateFieldEstablished { identities: List<DeclarationRef> }
+  | CandidateFieldUnestablishedStanding { causes: List<NonEmptyStr> }
+
+// One row per declared objective term the caller supplies. Completeness against the
+// assessment terms (membership, uniqueness, orientation vs funded Pareto axes) is
+// admit_term_valuations, not a closed record of one domain's units. A zero scale is
+// present, never dropped. scale_micro is MoneyAmountMicro so a negative scale is
+// unwritable; orientation lives on goal. CONSUMERS: ValuedObjective; product.fabric.demand
+// interpret_demand_objective.
+type TermValuation {
+  term: DeclarationRef
+  scale_micro: MoneyAmountMicro
+  goal: AxisGoal
+}
+
+// NetValue is the signed sum (LowerIsBetter adds, HigherIsBetter subtracts).
+// CostPerAcceptedUnit divides the non-unit cost by the unit *reading* (not by
+// scale times reading). The unit row must be HigherIsBetter with scale_micro 1,
+// so an unused or inverted scale cannot disagree with the denominator. Zero or
+// negative accepted units are unbounded, never a zero cost.
+// CONSUMERS: apply_policy; product.fabric.demand profiles.
+type ValuedObjectiveMeasure
+  = NetValue
+  | CostPerAcceptedUnit { unit: DeclarationRef }
+
+// ValuedObjective applies AFTER hard constraints and Pareto. It never scalarizes before the
+// frontier, so a dominated candidate cannot win by a weighted sum. Unread evidence on a valued
+// term is SelectionNeedsEvidence, never a zero. Equal scores fall through to identity order.
+// CONSUMERS: apply_policy (this module); product.fabric.demand valued_objective_policy;
+// test.claim.fabric.valued_objective_witness.
+type SelectionPolicy
+  = UniqueSurvivorRequired { identity: DeclarationRef }
+  | PreferSurvivor { identity: DeclarationRef, preferred: DeclarationRef }
+  | ValuedObjective {
+      identity: DeclarationRef
+      valuations: List<TermValuation>
+      measure: ValuedObjectiveMeasure
+      currency: CurrencyCode
+    }
+
+// NonMoneyConstraint is the arm that does not require currency agreement; it does
+// not claim the bound is dimensionless.
+type BoundDenomination
+  = NonMoneyConstraint
+  | MoneyConstraint { currency: CurrencyCode }
+
+type HardConstraint {
+  identity: DeclarationRef
+  axis: DeclarationRef
+  bound_micro: Int
+  denomination: BoundDenomination
+}
+
+// ── WHAT WAS ASKED, SEPARATED FROM WHAT CAME OF IT ─────────────────────────────────────────────
+//
+// A DECISION SCOPE IDENTIFIES THE QUESTION. Section 3d states the law this record implements: a
+// different candidate field, constraint set, evidence snapshot or funded-axis set is A DIFFERENT
+// DECISION, so a stale choice is mechanically detectable. Every one of those discriminators lives here,
+// and none of them depends on how the decision turned out.
+//
+// IT IS SEPARATE FROM THE RECEIPT BECAUSE A REFUSAL HAS A SCOPE AND NO OUTCOME. `SelectionReceipt` used
+// to carry both halves in one record, which made it unusable for the arm that most needs it: a refusal
+// could not be minted without naming a selected identity that does not exist, Pareto survivors from a
+// fold that may never have run, and a policy authority that may never have been consulted. Three fields
+// with no referent, in the carrier whose whole purpose is making a claim's scope checkable.
+//
+// THE WORST OF THE THREE WAS `pareto_survivors`, AND IT IS WHY THIS IS A DECOMPOSITION RATHER THAN A
+// CONVENIENCE. `select_realization` reaches `FeasibilityNone` BEFORE Pareto runs. An empty survivor list
+// there does not mean "the front was computed and nothing survived" -- it means the question was never
+// asked. Two different facts with one spelling, which is exactly the conflation this record exists to
+// prevent, and shipping it INTO the scope carrier would have put the defect inside the instrument.
+type DecisionScope {
+  decision_subject: DeclarationRef
+  candidate_field_identity: DeclarationRef
+  candidate_field_standing: CandidateFieldStanding
+  constraint_authority: DeclarationRef
+  funded_axes: List<DeclarationRef>
+  evidence_snapshot: DeclarationRef
+}
+
+// THE RECEIPT IS THE SCOPE PLUS THE OUTCOME, and it is still the only thing a SELECTION produces. It
+// loses nothing: every field it carried is still carried, and the six that describe the question now
+// have a name of their own so the refusal arm can carry them too.
+type SelectionReceipt {
+  scope: DecisionScope
+  pareto_survivors: List<DeclarationRef>
+  policy_authority: DeclarationRef
+  selected_identity: DeclarationRef
+}
+
+// AxisGap.axis is an axis identity (std.pareto). Candidate standing and subject-closure
+// obligations are different scopes; stuffing those identities into AxisGap.axis is a meaning fork.
+type SelectionEvidenceNeed
+  = UnfundedAxis { gap: AxisGap }
+  | CandidateStandingIncomplete { candidate: DeclarationRef, cause: NonEmptyStr }
+  | SubjectClosureIncomplete { subject: DeclarationRef, obligation: NonEmptyStr }
+
+type RealizationSelectionResult<C>
+  = SelectedWithin { candidate: C, receipt: SelectionReceipt }
+  | CandidateFieldUnestablished { causes: List<NonEmptyStr> }
+  | NoFeasibleRealization { causes: List<NonEmptyStr>, scope: DecisionScope }
+  | SelectionNeedsEvidence { needs: List<SelectionEvidenceNeed> }
+  | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
+  | RealizationSelectionRefused { defects: List<NonEmptyStr> }
+
+// THE NEED, RENDERED FOR A CONSUMER THAT CARRIES IT ONTO ITS OWN AXIS. A caller that consumes one
+// selection's result as evidence for another decision needs the cause as text, and deriving it here
+// keeps the three arms' distinctions visible instead of letting each consumer flatten them its own
+// way.
+fn selection_evidence_need_cause(n: SelectionEvidenceNeed) -> NonEmptyStr {
+  match n {
+    UnfundedAxis { gap: g } =>
+      join(["unfunded axis ", declaration_ref_display_key(ref: g.axis), ": ", g.cause as String], "") as NonEmptyStr
+    CandidateStandingIncomplete { candidate: c, cause: cz } =>
+      join(["candidate ", declaration_ref_display_key(ref: c), " standing incomplete: ", cz as String], "") as NonEmptyStr
+    SubjectClosureIncomplete { subject: sb, obligation: o } =>
+      join(["subject ", declaration_ref_display_key(ref: sb), " closure incomplete: ", o as String], "") as NonEmptyStr
+  }
+}
+
+fn as_unfunded_axis_needs(gaps: List<AxisGap>) -> List<SelectionEvidenceNeed> {
+  map(gaps, g => UnfundedAxis { gap: g })
+}
+
+fn candidate_identities(field: List<ParetoEntry>) -> List<DeclarationRef> {
+  map(field, e => e.identity)
+}
+
+fn identity_duplicated(ids: List<DeclarationRef>) -> Bool {
+  fold(ids, init: false, f: (acc, id) =>
+    if acc { true } else { (filter(ids, x => declaration_ref_eq(a: x, b: id)) |> count) > 1 }
+  )
+}
+
+fn establish_candidate_field(field: List<ParetoEntry>) -> CandidateFieldStanding {
+  let ids = candidate_identities(field: field)
+  if (ids |> count) == 0 {
+    CandidateFieldUnestablishedStanding { causes: ["candidate field is empty" as NonEmptyStr] }
+  } else {
+    if identity_duplicated(ids: ids) {
+      CandidateFieldUnestablishedStanding { causes: ["duplicate candidate identity in field" as NonEmptyStr] }
+    } else {
+      CandidateFieldEstablished { identities: ids }
+    }
+  }
+}
+
+type FeasibilityScan
+  = FeasibilityReady { remaining: List<ParetoEntry> }
+  | FeasibilityNeedsEvidence { gaps: List<AxisGap> }
+  | FeasibilityRefused { defects: List<NonEmptyStr> }
+  | FeasibilityNone { causes: List<NonEmptyStr> }
+
+type FeasibilityAccum {
+  remaining: List<ParetoEntry>
+  gaps: List<AxisGap>
+  exclusions: List<NonEmptyStr>
+}
+
+fn axis_goal_for(axes: List<SelectionAxis>, wanted: DeclarationRef) -> AxisGoal? {
+  match (filter(axes, a => declaration_ref_eq(a: a.identity, b: wanted))).first() {
+    Absent => Absent
+    Present { value: ax } => Present { value: ax.goal }
+  }
+}
+
+fn constraint_cmp(entry: ParetoEntry, constraint: HardConstraint, axes: List<SelectionAxis>) -> AxisComparison? {
+  match axis_goal_for(axes: axes, wanted: constraint.axis) {
+    Absent => Absent
+    Present { value: g } =>
+      match reading_for(e: entry, wanted: constraint.axis) {
+        ReadingFound { interval_micro: iv } =>
+          Present {
+            value: axis_comparison_interval(
+              goal: g,
+              a: iv,
+              b: degenerate_interval(point: constraint.bound_micro),
+            )
+          }
+        ReadingAbsent { absent_axis: _ } => Absent
+        ReadingDuplicated { duplicated_axis: _ } => Absent
+      }
+  }
+}
+
+fn entry_declares_gap(entry: ParetoEntry, axis: DeclarationRef) -> Bool {
+  any(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: axis))
+}
+
+fn unique_decl_refs(ids: List<DeclarationRef>) -> List<DeclarationRef> {
+  fold(ids, init: [], f: (acc, id) =>
+    if any(acc, x => declaration_ref_eq(a: x, b: id)) {
+      acc
+    } else {
+      concat(acc, [id])
+    }
+  )
+}
+
+fn feasibility_unread_axes(axes: List<SelectionAxis>, constraints: List<HardConstraint>) -> List<DeclarationRef> {
+  unique_decl_refs(ids: concat(map(axes, a => a.identity), map(constraints, c => c.axis)))
+}
+
+fn unfunded_constraint_axis_defects(axes: List<SelectionAxis>, constraints: List<HardConstraint>) -> List<NonEmptyStr> {
+  flat_map(constraints, c =>
+    match axis_goal_for(axes: axes, wanted: c.axis) {
+      Absent => ["hard constraint axis is not a funded selection axis" as NonEmptyStr]
+      Present { value: _ } => []
+    }
+  )
+}
+
+fn constraint_undecided_gaps(
+  entry: ParetoEntry,
+  constraints: List<HardConstraint>,
+  axes: List<SelectionAxis>,
+) -> List<AxisGap> {
+  flat_map(constraints, c =>
+    match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+      Present { value: cmp } =>
+        match cmp {
+          UndecidedOnEvidence =>
+            [AxisGap {
+              axis: c.axis,
+              cause: "constraint bound not separable from candidate reading" as NonEmptyStr,
+            }]
+          Better => []
+          Same => []
+          Worse => []
+        }
+      Absent => []
+    }
+  )
+}
+
+fn unread_axis_gaps(entry: ParetoEntry, wanted: List<DeclarationRef>) -> List<AxisGap> {
+  flat_map(wanted, ax =>
+    match reading_for(e: entry, wanted: ax) {
+      ReadingFound { interval_micro: _ } => []
+      ReadingDuplicated { duplicated_axis: dax } =>
+        [AxisGap { axis: dax, cause: "duplicated funded-axis reading" as NonEmptyStr }]
+      ReadingAbsent { absent_axis: aax } =>
+        if entry_declares_gap(entry: entry, axis: aax) {
+          filter(entry.missing_inputs, g => declaration_ref_eq(a: g.axis, b: aax))
+        } else {
+          [AxisGap { axis: aax, cause: "required funded-axis reading absent" as NonEmptyStr }]
+        }
+    }
+  )
+}
+
+fn constraint_definite_infeasibilities(
+  entry: ParetoEntry,
+  constraints: List<HardConstraint>,
+  axes: List<SelectionAxis>,
+) -> List<HardConstraint> {
+  flat_map(constraints, c =>
+    match constraint_cmp(entry: entry, constraint: c, axes: axes) {
+      Present { value: cmp } =>
+        match cmp {
+          Worse => [c]
+          Better => []
+          Same => []
+          UndecidedOnEvidence => []
+        }
+      Absent => []
+    }
+  )
+}
+
+fn constraint_infeasibility_cause(entry: ParetoEntry, constraint: HardConstraint) -> NonEmptyStr {
+  join([
+    "candidate ",
+    declaration_ref_display_key(ref: entry.identity),
+    " violates hard constraint ",
+    declaration_ref_display_key(ref: constraint.identity),
+    " on axis ",
+    declaration_ref_display_key(ref: constraint.axis),
+  ], "") as NonEmptyStr
+}
+
+fn scan_feasibility(
+  field: List<ParetoEntry>,
+  axes: List<SelectionAxis>,
+  constraints: List<HardConstraint>,
+) -> FeasibilityScan {
+  let unfunded = unfunded_constraint_axis_defects(axes: axes, constraints: constraints)
+  if (unfunded |> count) > 0 {
+    FeasibilityRefused { defects: unfunded }
+  } else {
+  let wanted = feasibility_unread_axes(axes: axes, constraints: constraints)
+  let folded = fold(field, init: FeasibilityAccum { remaining: [], gaps: [], exclusions: [] }, f: (acc, entry) => {
+    let infeas = constraint_definite_infeasibilities(entry: entry, constraints: constraints, axes: axes)
+    if (infeas |> count) > 0 {
+      FeasibilityAccum {
+        remaining: acc.remaining,
+        gaps: acc.gaps,
+        exclusions: concat(acc.exclusions, map(infeas, c => constraint_infeasibility_cause(entry: entry, constraint: c))),
+      }
+    } else {
+    let unread = unread_axis_gaps(
+      entry: entry,
+      wanted: wanted,
+    )
+    if (unread |> count) > 0 {
+      FeasibilityAccum { remaining: acc.remaining, gaps: concat(acc.gaps, unread), exclusions: acc.exclusions }
+    } else {
+      let undecided = constraint_undecided_gaps(entry: entry, constraints: constraints, axes: axes)
+      if (undecided |> count) > 0 {
+        FeasibilityAccum {
+          remaining: acc.remaining,
+          gaps: concat(acc.gaps, undecided),
+          exclusions: acc.exclusions,
+        }
+      } else {
+        FeasibilityAccum {
+          remaining: concat(acc.remaining, [entry]),
+          gaps: acc.gaps,
+          exclusions: acc.exclusions,
+        }
+      }
+    }
+    }
+  })
+  if (folded.gaps |> count) > 0 {
+    FeasibilityNeedsEvidence { gaps: folded.gaps }
+  } else {
+    if (folded.remaining |> count) == 0 {
+      FeasibilityNone { causes: folded.exclusions }
+    } else {
+      FeasibilityReady { remaining: folded.remaining }
+    }
+  }
+  }
+}
+
+fn funded_axis_refs(axes: List<SelectionAxis>) -> List<DeclarationRef> {
+  map(axes, a => a.identity)
+}
+
+type SurvivorFoldAccum {
+  survivors: List<DeclarationRef>
+  needs: List<SelectionEvidenceNeed>
+  defects: List<NonEmptyStr>
+}
+
+fn pareto_survivor_identities(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> RealizationSelectionResult<ParetoEntry> {
+  let folded = fold(field, init: SurvivorFoldAccum { survivors: [], needs: [], defects: [] }, f: (acc, entry) =>
+    match entry_standing(subject: entry, field: field, axes: axes, sensitivities: []) {
+      ProvisionallyNonDominated { sensitivities: _ } =>
+        SurvivorFoldAccum {
+          survivors: concat(acc.survivors, [entry.identity]),
+          needs: acc.needs,
+          defects: acc.defects,
+        }
+      DominatedBy { dominators: _ } => acc
+      NotComputable { missing: m } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: concat(acc.needs, [CandidateStandingIncomplete { candidate: entry.identity, cause: m }]),
+          defects: acc.defects,
+        }
+      PendingEvidence { undecided: u } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: concat(acc.needs, [CandidateStandingIncomplete { candidate: entry.identity, cause: u }]),
+          defects: acc.defects,
+        }
+      SelectionRefused { cause: c } =>
+        SurvivorFoldAccum {
+          survivors: acc.survivors,
+          needs: acc.needs,
+          defects: concat(acc.defects, [c]),
+        }
+    }
+  )
+  if (folded.defects |> count) > 0 {
+    RealizationSelectionRefused { defects: folded.defects }
+  } else if (folded.needs |> count) > 0 {
+    SelectionNeedsEvidence { needs: folded.needs }
+  } else {
+    SelectionNeedsPolicy { survivors: folded.survivors }
+  }
+}
+
+fn entry_by_identity(field: List<ParetoEntry>, wanted: DeclarationRef) -> ParetoEntry? {
+  (filter(field, e => declaration_ref_eq(a: e.identity, b: wanted))).first()
+}
+
+fn declaration_refs_same_set(a: List<DeclarationRef>, b: List<DeclarationRef>) -> Bool {
+  (a |> count) == (b |> count)
+    && all(a, x => any(b, y => declaration_ref_eq(a: x, b: y)))
+    && all(b, x => any(a, y => declaration_ref_eq(a: x, b: y)))
+}
+
+fn nonempty_str_lists_same_set(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  (a |> count) == (b |> count)
+    && all(a, x => any(b, y => x == y))
+    && all(b, x => any(a, y => x == y))
+}
+
+fn candidate_field_standing_eq(a: CandidateFieldStanding, b: CandidateFieldStanding) -> Bool {
+  match a {
+    CandidateFieldEstablished { identities: ia } =>
+      match b {
+        CandidateFieldEstablished { identities: ib } => declaration_refs_same_set(a: ia, b: ib)
+        CandidateFieldUnestablishedStanding { causes: _ } => false
+      }
+    CandidateFieldUnestablishedStanding { causes: ca } =>
+      match b {
+        CandidateFieldUnestablishedStanding { causes: cb } => nonempty_str_lists_same_set(a: ca, b: cb)
+        CandidateFieldEstablished { identities: _ } => false
+      }
+  }
+}
+
+// SCOPE EQUALITY IS THE OPERATIVE TEST FOR SECTION 3d, and separating it is what makes the law checkable
+// on a refusal. Two refusals of the same field under the same constraints, axes and evidence are the same
+// refusal; change any one of those and they are answers to different questions, whatever their cause text
+// says. A consumer that quotes a refusal outside its scope is now making a claim a machine can contradict.
+fn scopes_eq(a: DecisionScope, b: DecisionScope) -> Bool {
+  declaration_ref_eq(a: a.decision_subject, b: b.decision_subject)
+    && declaration_ref_eq(a: a.candidate_field_identity, b: b.candidate_field_identity)
+    && candidate_field_standing_eq(a: a.candidate_field_standing, b: b.candidate_field_standing)
+    && declaration_ref_eq(a: a.constraint_authority, b: b.constraint_authority)
+    && declaration_refs_same_set(a: a.funded_axes, b: b.funded_axes)
+    && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
+}
+
+fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
+  scopes_eq(a: a.scope, b: b.scope)
+    && declaration_refs_same_set(a: a.pareto_survivors, b: b.pareto_survivors)
+    && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
+    && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
+}
+
+// ONE PLACE BUILDS A SCOPE, so the six discriminators cannot drift apart between the arm that refuses
+// and the arm that selects. Both callers of this are inside this module: nothing outside std.decision
+// mints either a scope or a receipt.
+fn mint_scope(
+  decision_subject: DeclarationRef,
+  candidate_field_identity: DeclarationRef,
+  candidate_field_standing: CandidateFieldStanding,
+  constraint_authority: DeclarationRef,
+  funded_axes: List<DeclarationRef>,
+  evidence_snapshot: DeclarationRef,
+) -> DecisionScope {
+  DecisionScope {
+    decision_subject: decision_subject,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: candidate_field_standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axes,
+    evidence_snapshot: evidence_snapshot,
+  }
+}
+
+fn mint_receipt(
+  scope: DecisionScope,
+  pareto_survivors: List<DeclarationRef>,
+  policy_authority: DeclarationRef,
+  selected_identity: DeclarationRef,
+) -> SelectionReceipt {
+  SelectionReceipt {
+    scope: scope,
+    pareto_survivors: pareto_survivors,
+    policy_authority: policy_authority,
+    selected_identity: selected_identity,
+  }
+}
+
+fn identity_ref_before(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  declaration_ref_display_key(ref: a) < declaration_ref_display_key(ref: b)
+}
+
+// CONSUMER: apply_policy ValuedObjective equal-sum arm, and the valuation-blind RED in
+// test.claim.fabric.valued_objective_witness that shows a selector ignoring valuations cannot
+// discriminate a real tradeoff.
+fn identity_order_pick(survivors: List<DeclarationRef>) -> DeclarationRef? {
+  fold(survivors, init: none, f: (acc, id) =>
+    match acc {
+      Absent => Present { value: id }
+      Present { value: best } =>
+        if identity_ref_before(a: id, b: best) {
+          Present { value: id }
+        } else {
+          Present { value: best }
+        }
+    }
+  )
+}
+
+type ValuedContribution
+  = ValuedContributionReady { micros: SignedMoneyAmountMicro }
+  | ValuedContributionNeeds { need: SelectionEvidenceNeed }
+  | ValuedContributionRefused { defect: NonEmptyStr }
+
+// CONSUMER: valued_sum / cost_sum.
+fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: MoneyAmountMicro) -> ValuedContribution {
+  match reading_for(e: entry, wanted: term) {
+    ReadingDuplicated { duplicated_axis: ax } =>
+      ValuedContributionNeeds {
+        need: UnfundedAxis { gap: AxisGap { axis: ax, cause: "duplicated valued-term reading" as NonEmptyStr } },
+      }
+    ReadingAbsent { absent_axis: ax } =>
+      ValuedContributionNeeds {
+        need: UnfundedAxis { gap: AxisGap { axis: ax, cause: "valued-term reading unread" as NonEmptyStr } },
+      }
+    ReadingFound { interval_micro: iv } =>
+      if interval_low(interval: iv) != interval_high(interval: iv) {
+        ValuedContributionNeeds {
+          need: UnfundedAxis {
+            gap: AxisGap { axis: term, cause: "valued-term reading is an interval, not a point" as NonEmptyStr },
+          },
+        }
+      } else {
+        match checked_int_multiply(a: interval_low(interval: iv), b: money_amount_micro_count(m: scale) as Int) {
+          CheckedIntOverflow { cause: _ } =>
+            ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
+          CheckedIntReady { value: micros } => ValuedContributionReady { micros: signed_money_amount_micro(count: micros) }
+        }
+      }
+  }
+}
+
+type ValuedSum
+  = ValuedSumReady { micros: SignedMoneyAmountMicro }
+  | ValuedSumNeeds { needs: List<SelectionEvidenceNeed> }
+  | ValuedSumRefused { defects: List<NonEmptyStr> }
+
+fn add_valued_contribution(acc: ValuedSum, contribution: ValuedContribution) -> ValuedSum {
+  match acc {
+    ValuedSumNeeds { needs: ns } =>
+      match contribution {
+        ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: concat(ns, [n]) }
+        ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
+        ValuedContributionReady { micros: _ } => acc
+      }
+    ValuedSumRefused { defects: ds } => ValuedSumRefused { defects: ds }
+    ValuedSumReady { micros: so_far } =>
+      match contribution {
+        ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: [n] }
+        ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
+        ValuedContributionReady { micros: add } =>
+          match checked_int_add(a: signed_money_amount_micro_count(m: so_far), b: signed_money_amount_micro_count(m: add)) {
+            CheckedIntOverflow { cause: _ } => ValuedSumRefused { defects: ["valued sum overflowed" as NonEmptyStr] }
+            CheckedIntReady { value: total } => ValuedSumReady { micros: signed_money_amount_micro(count: total) }
+          }
+      }
+  }
+}
+
+fn negate_contribution(contribution: ValuedContribution) -> ValuedContribution {
+  match contribution {
+    ValuedContributionNeeds { need: n } => ValuedContributionNeeds { need: n }
+    ValuedContributionRefused { defect: d } => ValuedContributionRefused { defect: d }
+    ValuedContributionReady { micros: m } =>
+      match checked_int_subtract(a: 0, b: signed_money_amount_micro_count(m: m)) {
+        CheckedIntOverflow { cause: _ } =>
+          ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
+        CheckedIntReady { value: n } => ValuedContributionReady { micros: signed_money_amount_micro(count: n) }
+      }
+  }
+}
+
+fn signed_term_contribution(entry: ParetoEntry, valuation: TermValuation) -> ValuedContribution {
+  let raw = valued_scale_contribution(entry: entry, term: valuation.term, scale: valuation.scale_micro)
+  match valuation.goal {
+    LowerIsBetter => raw
+    HigherIsBetter => negate_contribution(contribution: raw)
+  }
+}
+
+fn fold_term_contributions(entry: ParetoEntry, valuations: List<TermValuation>, include: fn(TermValuation) -> Bool) -> ValuedSum {
+  fold(valuations, init: ValuedSumReady { micros: signed_money_amount_micro(count: 0) }, f: (acc, tv) =>
+    if include(tv) {
+      add_valued_contribution(acc: acc, contribution: signed_term_contribution(entry: entry, valuation: tv))
+    } else {
+      acc
+    }
+  )
+}
+
+fn cost_sum(entry: ParetoEntry, valuations: List<TermValuation>, unit: DeclarationRef) -> ValuedSum {
+  fold_term_contributions(
+    entry: entry,
+    valuations: valuations,
+    include: tv => !declaration_ref_eq(a: tv.term, b: unit),
+  )
+}
+
+fn valued_sum(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedSum {
+  fold_term_contributions(entry: entry, valuations: valuations, include: _ => true)
+}
+
+type ValuedObjectiveScore
+  = NetValueScore { micros: SignedMoneyAmountMicro }
+  | UnitCostScore { cost: SignedMoneyAmountMicro, accepted: Int }
+  | UnboundedUnitCost
+
+type ValuedScoreStanding
+  = ValuedScoreReady { score: ValuedObjectiveScore }
+  | ValuedScoreNeeds { needs: List<SelectionEvidenceNeed> }
+  | ValuedScoreRefused { defects: List<NonEmptyStr> }
+
+fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>, unit: DeclarationRef) -> ValuedScoreStanding {
+  match reading_for(e: entry, wanted: unit) {
+    ReadingDuplicated { duplicated_axis: ax } =>
+      ValuedScoreNeeds {
+        needs: [UnfundedAxis { gap: AxisGap { axis: ax, cause: "duplicated accepted-work reading" as NonEmptyStr } }],
+      }
+    ReadingAbsent { absent_axis: ax } =>
+      ValuedScoreNeeds {
+        needs: [UnfundedAxis { gap: AxisGap { axis: ax, cause: "accepted-work reading unread" as NonEmptyStr } }],
+      }
+    ReadingFound { interval_micro: iv } =>
+      if interval_low(interval: iv) != interval_high(interval: iv) {
+        ValuedScoreNeeds {
+          needs: [UnfundedAxis {
+            gap: AxisGap { axis: unit, cause: "accepted-work reading is an interval, not a point" as NonEmptyStr },
+          }],
+        }
+      } else {
+        if interval_low(interval: iv) <= 0 {
+          ValuedScoreReady { score: UnboundedUnitCost }
+        } else {
+          match cost_sum(entry: entry, valuations: valuations, unit: unit) {
+            ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
+            ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
+            ValuedSumReady { micros: cost } =>
+              ValuedScoreReady { score: UnitCostScore { cost: cost, accepted: interval_low(interval: iv) } }
+          }
+        }
+      }
+  }
+}
+
+fn score_valued_entry(entry: ParetoEntry, valuations: List<TermValuation>, measure: ValuedObjectiveMeasure) -> ValuedScoreStanding {
+  match measure {
+    NetValue =>
+      match valued_sum(entry: entry, valuations: valuations) {
+        ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
+        ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
+        ValuedSumReady { micros: total } => ValuedScoreReady { score: NetValueScore { micros: total } }
+      }
+    CostPerAcceptedUnit { unit: unit } => accepted_work_point(entry: entry, valuations: valuations, unit: unit)
+  }
+}
+
+fn unit_cost_beats(a_cost: SignedMoneyAmountMicro, a_work: Int, b_cost: SignedMoneyAmountMicro, b_work: Int) -> Bool? {
+  match checked_int_multiply(a: signed_money_amount_micro_count(m: a_cost), b: b_work) {
+    CheckedIntOverflow { cause: _ } => none
+    CheckedIntReady { value: left } =>
+      match checked_int_multiply(a: signed_money_amount_micro_count(m: b_cost), b: a_work) {
+        CheckedIntOverflow { cause: _ } => none
+        CheckedIntReady { value: right } => Present { value: left < right }
+      }
+  }
+}
+
+fn score_strictly_better(challenger: ValuedObjectiveScore, incumbent: ValuedObjectiveScore) -> Bool? {
+  match challenger {
+    UnboundedUnitCost => Present { value: false }
+    NetValueScore { micros: a } =>
+      match incumbent {
+        NetValueScore { micros: b } => Present { value: signed_money_amount_micro_count(m: a) < signed_money_amount_micro_count(m: b) }
+        UnitCostScore { cost: _, accepted: _ } => none
+        UnboundedUnitCost => Present { value: true }
+      }
+    UnitCostScore { cost: a_cost, accepted: a_work } =>
+      match incumbent {
+        UnboundedUnitCost => Present { value: true }
+        NetValueScore { micros: _ } => none
+        UnitCostScore { cost: b_cost, accepted: b_work } =>
+          unit_cost_beats(a_cost: a_cost, a_work: a_work, b_cost: b_cost, b_work: b_work)
+      }
+  }
+}
+
+fn scores_equal(a: ValuedObjectiveScore, b: ValuedObjectiveScore) -> Bool {
+  match a {
+    UnboundedUnitCost =>
+      match b {
+        UnboundedUnitCost => true
+        _ => false
+      }
+    NetValueScore { micros: x } =>
+      match b {
+        NetValueScore { micros: y } => signed_money_amount_micro_count(m: x) == signed_money_amount_micro_count(m: y)
+        _ => false
+      }
+    UnitCostScore { cost: ac, accepted: aw } =>
+      match b {
+        UnitCostScore { cost: bc, accepted: bw } =>
+          match unit_cost_beats(a_cost: ac, a_work: aw, b_cost: bc, b_work: bw) {
+            Absent => false
+            Present { value: a_better } =>
+              match unit_cost_beats(a_cost: bc, a_work: bw, b_cost: ac, b_work: aw) {
+                Absent => false
+                Present { value: b_better } => !a_better && !b_better
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+type ValuedPickScan {
+  pick: DeclarationRef?
+  score: ValuedObjectiveScore?
+  needs: List<SelectionEvidenceNeed>
+  defects: List<NonEmptyStr>
+}
+
+fn scan_valued_survivors(
+  remaining: List<ParetoEntry>,
+  survivors: List<DeclarationRef>,
+  valuations: List<TermValuation>,
+  measure: ValuedObjectiveMeasure,
+) -> ValuedPickScan {
+  fold(survivors, init: ValuedPickScan { pick: none, score: none, needs: [], defects: [] }, f: (acc, sid) =>
+    if (acc.needs |> count) > 0 || (acc.defects |> count) > 0 {
+      acc
+    } else {
+      match entry_by_identity(field: remaining, wanted: sid) {
+        Absent => ValuedPickScan {
+          pick: acc.pick,
+          score: acc.score,
+          needs: acc.needs,
+          defects: concat(acc.defects, ["valued survivor missing from remaining field" as NonEmptyStr]),
+        }
+        Present { value: entry } =>
+          match score_valued_entry(entry: entry, valuations: valuations, measure: measure) {
+            ValuedScoreNeeds { needs: ns } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: concat(acc.needs, ns), defects: acc.defects }
+            ValuedScoreRefused { defects: ds } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: acc.needs, defects: concat(acc.defects, ds) }
+            ValuedScoreReady { score: total } =>
+              match acc.pick {
+                Absent => ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                Present { value: best } =>
+                  match acc.score {
+                    Absent => ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                    Present { value: incumbent } =>
+                      match score_strictly_better(challenger: total, incumbent: incumbent) {
+                        Absent => ValuedPickScan {
+                          pick: acc.pick,
+                          score: acc.score,
+                          needs: acc.needs,
+                          defects: concat(acc.defects, ["valued-objective score overflowed" as NonEmptyStr]),
+                        }
+                        Present { value: better } =>
+                          if better {
+                            ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                          } else {
+                            if scores_equal(a: total, b: incumbent) && identity_ref_before(a: sid, b: best) {
+                              ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                            } else {
+                              acc
+                            }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn orientation_defects(pareto_axes: List<SelectionAxis>, wanted: DeclarationRef, expected: AxisGoal) -> List<NonEmptyStr> {
+  match axis_goal_for(axes: pareto_axes, wanted: wanted) {
+    Absent => ["valued-objective axis is not a funded Pareto axis" as NonEmptyStr]
+    Present { value: g } =>
+      if g == expected {
+        []
+      } else {
+        ["valued-objective axis orientation disagrees with the funded Pareto axis" as NonEmptyStr]
+      }
+  }
+}
+
+fn completeness_defects(join: ObservationCompleteness<DeclarationRef>) -> List<NonEmptyStr> {
+  match join {
+    ObservationComplete => []
+    ObservationRepeatedExpected { keys: _ } => ["assessment objective terms repeat an identity" as NonEmptyStr]
+    ObservationMissingExpected { keys: _ } => ["valued-objective term is missing from the assessment terms join" as NonEmptyStr]
+    ObservationForeignObserved { keys: _ } => ["valued-objective term is not an assessment objective term" as NonEmptyStr]
+    ObservationRepeatedObserved { keys: _ } => ["valued-objective terms are not distinct" as NonEmptyStr]
+  }
+}
+
+fn unit_row_defects(valuations: List<TermValuation>, unit: DeclarationRef) -> List<NonEmptyStr> {
+  match (filter(valuations, tv => declaration_ref_eq(a: tv.term, b: unit))).first() {
+    Absent => ["cost-per-accepted-unit names a term the valuations do not carry" as NonEmptyStr]
+    Present { value: tv } =>
+      concat(
+        match tv.goal {
+          HigherIsBetter => []
+          LowerIsBetter => ["cost-per-accepted-unit unit term must be HigherIsBetter" as NonEmptyStr]
+        },
+        if money_amount_micro_count(m: tv.scale_micro) == 1 {
+          []
+        } else {
+          ["cost-per-accepted-unit unit scale_micro must be 1; the denominator is the unit reading" as NonEmptyStr]
+        },
+      )
+  }
+}
+
+fn money_constraint_defects(constraints: List<HardConstraint>, policy_currency: CurrencyCode) -> List<NonEmptyStr> {
+  fold(constraints, init: [], f: (acc, c) =>
+    match c.denomination {
+      NonMoneyConstraint => acc
+      MoneyConstraint { currency: cc } =>
+        if currency_code_eq(a: cc, b: policy_currency) {
+          acc
+        } else {
+          concat(acc, ["valued-objective currency disagrees with a money constraint" as NonEmptyStr])
+        }
+    }
+  )
+}
+
+fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveTerm>, pareto_axes: List<SelectionAxis>, measure: ValuedObjectiveMeasure, policy_currency: CurrencyCode, constraints: List<HardConstraint>) -> List<NonEmptyStr> {
+  let ids = map(valuations, v => v.term)
+  let join = observation_completeness(
+    expected: map(terms, t => t.identity),
+    observed: ids,
+    key_eq: declaration_ref_eq,
+  )
+  let orientations = fold(valuations, init: [], f: (acc, tv) =>
+    concat(acc, orientation_defects(pareto_axes: pareto_axes, wanted: tv.term, expected: tv.goal))
+  )
+  let unit_defects = match measure {
+    NetValue => []
+    CostPerAcceptedUnit { unit: unit } => unit_row_defects(valuations: valuations, unit: unit)
+  }
+  concat(
+    concat(concat(completeness_defects(join: join), orientations), unit_defects),
+    money_constraint_defects(constraints: constraints, policy_currency: policy_currency),
+  )
+}
+
+fn apply_policy(
+  remaining: List<ParetoEntry>,
+  survivors: List<DeclarationRef>,
+  policy: SelectionPolicy,
+  decision_subject: DeclarationRef,
+  candidate_field_identity: DeclarationRef,
+  field_standing: CandidateFieldStanding,
+  constraint_authority: DeclarationRef,
+  axes: List<SelectionAxis>,
+  evidence_snapshot: DeclarationRef,
+  objective_terms: List<ObjectiveTerm>,
+  hard_constraints: List<HardConstraint>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  let scope = mint_scope(
+    decision_subject: decision_subject,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: field_standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axis_refs(axes: axes),
+    evidence_snapshot: evidence_snapshot,
+  )
+  match policy {
+    UniqueSurvivorRequired { identity: pol } =>
+      if (survivors |> count) == 1 {
+        match survivors.first() {
+          Absent => NoFeasibleRealization {
+            causes: ["unique-survivor policy over empty survivor set" as NonEmptyStr],
+            scope: scope,
+          }
+          Present { value: sid } =>
+            match entry_by_identity(field: remaining, wanted: sid) {
+              Absent => RealizationSelectionRefused { defects: ["unique survivor missing from remaining field" as NonEmptyStr] }
+              Present { value: cand } =>
+                SelectedWithin {
+                  candidate: cand,
+                  receipt: mint_receipt(
+                    scope: scope,
+                    pareto_survivors: survivors,
+                    policy_authority: pol,
+                    selected_identity: sid,
+                  ),
+                }
+            }
+        }
+      } else {
+        if (survivors |> count) == 0 {
+          NoFeasibleRealization {
+            causes: ["no non-dominated feasible realization" as NonEmptyStr],
+            scope: scope,
+          }
+        } else {
+          SelectionNeedsPolicy { survivors: survivors }
+        }
+      }
+    PreferSurvivor { identity: pol, preferred: pref } =>
+      if any(survivors, s => declaration_ref_eq(a: s, b: pref)) {
+        match entry_by_identity(field: remaining, wanted: pref) {
+          Absent => RealizationSelectionRefused { defects: ["preferred identity is not a remaining candidate" as NonEmptyStr] }
+          Present { value: cand } =>
+            SelectedWithin {
+              candidate: cand,
+              receipt: mint_receipt(
+                scope: scope,
+                pareto_survivors: survivors,
+                policy_authority: pol,
+                selected_identity: pref,
+              ),
+            }
+        }
+      } else {
+        RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
+      }
+    ValuedObjective { identity: pol, valuations: vals, measure: measure, currency: pol_cur } =>
+      let axis_defects = admit_term_valuations(valuations: vals, terms: objective_terms, pareto_axes: axes, measure: measure, policy_currency: pol_cur, constraints: hard_constraints)
+      if (axis_defects |> count) > 0 {
+        RealizationSelectionRefused { defects: axis_defects }
+      } else {
+      if (survivors |> count) == 0 {
+        NoFeasibleRealization {
+          causes: ["no non-dominated feasible realization" as NonEmptyStr],
+          scope: scope,
+        }
+      } else {
+        let scanned = scan_valued_survivors(remaining: remaining, survivors: survivors, valuations: vals, measure: measure)
+        if (scanned.defects |> count) > 0 {
+          RealizationSelectionRefused { defects: scanned.defects }
+        } else {
+          if (scanned.needs |> count) > 0 {
+            SelectionNeedsEvidence { needs: scanned.needs }
+          } else {
+            match scanned.pick {
+              Absent => NoFeasibleRealization {
+                causes: ["valued objective produced no pick over a non-empty survivor set" as NonEmptyStr],
+                scope: scope,
+              }
+              Present { value: sid } =>
+                match entry_by_identity(field: remaining, wanted: sid) {
+                  Absent => RealizationSelectionRefused { defects: ["valued pick missing from remaining field" as NonEmptyStr] }
+                  Present { value: cand } =>
+                    SelectedWithin {
+                      candidate: cand,
+                      receipt: mint_receipt(
+                        scope: scope,
+                        pareto_survivors: survivors,
+                        policy_authority: pol,
+                        selected_identity: sid,
+                      ),
+                    }
+                }
+            }
+          }
+        }
+      }
+      }
+  }
+}
+
+fn subject_closure_incomplete_needs(assessment: DecisionAssessment, obligations: List<NonEmptyStr>) -> List<SelectionEvidenceNeed> {
+  map(obligations, ob => SubjectClosureIncomplete {
+    subject: assessment.subject.identity,
+    obligation: ob,
+  })
+}
+
+fn merge_deferred_into_pick(
+  assessment: DecisionAssessment,
+  obligations: List<NonEmptyStr>,
+  pick: RealizationSelectionResult<ParetoEntry>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  let subj = subject_closure_incomplete_needs(assessment: assessment, obligations: obligations)
+  match pick {
+    SelectedWithin { candidate: _, receipt: _ } => SelectionNeedsEvidence { needs: subj }
+    SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: concat(ns, subj) }
+    SelectionNeedsPolicy { survivors: _ } => SelectionNeedsEvidence { needs: subj }
+    CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
+    NoFeasibleRealization { causes: cs, scope: sc } => NoFeasibleRealization { causes: cs, scope: sc }
+    RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+  }
+}
+
+fn bind_pick_to_subject_closure(
+  assessment: DecisionAssessment,
+  pick: RealizationSelectionResult<ParetoEntry>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  match decision_closure(assessment: assessment) {
+    DecisionClosureSettledReady => pick
+    DecisionClosureDeferred { obligations: o, reopen_trigger: _ } =>
+      merge_deferred_into_pick(assessment: assessment, obligations: o, pick: pick)
+    DecisionClosureRefused { cause: _ } =>
+      RealizationSelectionRefused {
+        defects: ["subject completeness join is not closed" as NonEmptyStr],
+      }
+  }
+}
+
+// THE SCOPE IS BUILT ONCE, BEFORE THE OUTCOME IS KNOWN, which is the point of separating it from the
+// receipt: the feasibility scan can refuse the whole field before Pareto runs, and that refusal is
+// still ABOUT a named field under named constraints, axes and evidence. Building it up front rather
+// than inside the refusing arm also means a refusal and any later selection cite the identical scope
+// by construction rather than by two call sites agreeing.
+fn select_realization(
+  assessment: DecisionAssessment,
+  candidate_field_identity: DeclarationRef,
+  field: List<ParetoEntry>,
+  axes: List<SelectionAxis>,
+  constraints: List<HardConstraint>,
+  constraint_authority: DeclarationRef,
+  policy: SelectionPolicy,
+  evidence_snapshot: DeclarationRef,
+) -> RealizationSelectionResult<ParetoEntry> {
+  let standing = establish_candidate_field(field: field)
+  let scope = mint_scope(
+    decision_subject: assessment.subject.identity,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axis_refs(axes: axes),
+    evidence_snapshot: evidence_snapshot,
+  )
+  let pick = match standing {
+    CandidateFieldUnestablishedStanding { causes: cs } => CandidateFieldUnestablished { causes: cs }
+    CandidateFieldEstablished { identities: _ } =>
+      match scan_feasibility(field: field, axes: axes, constraints: constraints) {
+        FeasibilityNeedsEvidence { gaps: gs } =>
+          SelectionNeedsEvidence { needs: as_unfunded_axis_needs(gaps: gs) }
+        FeasibilityRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+        FeasibilityNone { causes: cs } => NoFeasibleRealization { causes: cs, scope: scope }
+        FeasibilityReady { remaining: rem } =>
+            match pareto_survivor_identities(field: rem, axes: axes) {
+              SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
+              RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
+              CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
+              NoFeasibleRealization { causes: cs, scope: sc } => NoFeasibleRealization { causes: cs, scope: sc }
+              SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
+              SelectionNeedsPolicy { survivors: sv } =>
+                apply_policy(
+                  remaining: rem,
+                  survivors: sv,
+                  policy: policy,
+                  decision_subject: assessment.subject.identity,
+                  candidate_field_identity: candidate_field_identity,
+                  field_standing: standing,
+                  constraint_authority: constraint_authority,
+                  axes: axes,
+                  evidence_snapshot: evidence_snapshot,
+                  objective_terms: assessment.subject.objective.terms,
+                  hard_constraints: constraints,
+                )
+            }
+      }
+  }
+  bind_pick_to_subject_closure(assessment: assessment, pick: pick)
+}
+

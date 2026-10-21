@@ -1,0 +1,279 @@
+module v2.test.claim.execution.infer_atom_grounding_rules
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredTree }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_specimen_inferred
+}
+import v2.std.kind { TypeDenotationKind, TypeFactKind, kind_node }
+import v2.extdeps.languages.dag {
+  dag_grammar_surface_production_type_node,
+  dag_inhabitant_atom,
+  dag_int_inhabitant_node
+}
+import std.algebra { fold_list }
+import v2.std.compilers.target_model {
+  IsLess,
+  IsNotEqual,
+  equality_predicate_wire_symbol,
+  ordering_predicate_wire_symbol,
+  symbol_kernel_type_node,
+  target_model_canonical_operation_type_node,
+  target_model_canonical_operations_roster_root,
+  target_model_equality_predicate_type_node,
+  target_model_ordering_predicate_type_node
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  Conj,
+  Authored,
+  Node,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes
+}
+import std.optional { Absent, optional_present, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED CONTROLS FOR THE THREE ATOM-GROUNDING DERIVATIONS (`v2.compiler.infer`
+// infer_node_facts): each is a lookup into a declared authority, never an invention.
+//   - canonical-operations roster: the resolver canonicalizes surface operators to the
+//     target-model authority's declared operations; the AlgebraPrimitive wire node derives with
+//     the authority's CanonicalOperation type and its ring_field_add field atom with the field's
+//     declared Symbol type -- each member's OWN declared type, never the roster root.
+//   - grammar productions: the bridge projects a production's parse into (identity atom,
+//     captured content); the identity atom (dag_surface_module) is the production's declared
+//     emitted atom, and derives with the grammar authority's surface-production type; the
+//     namespace graft's module-body marker occupies the same identity slot and shares it (two).
+//   - binding references: an operand atom (x, y) derives with the type its enclosing arrow's
+//     domain declares for its binding -- the declaration-site annotation, itself derived.
+// The specimen is the direct-rust-door fixture's ingest. Each control pins BOTH the derivation
+// and the evidence identity, and the census pins that the witness saw the population. The
+// boundary control pins that a bare atom with no authority membership and no domain declaration
+// stays on the frontier. The roster-root red pins that no specimen node's derived type is the
+// canonical-operations roster root (provenance is not a type, DESIGN section 3). The
+// declared-inhabitant controls pin that a record derives its KIND (v2.std.kind TypeDenotationKind),
+// a fact hung off a record derives TypeFactKind -- each asserts the exact kind node, so a roster
+// root reaching derived_type reddens both. The predicate controls pin that a comparison's predicate
+// atom derives the predicate type its comparison declares -- OrderingPredicate for an ordering
+// atom, EqualityPredicate for an equality atom, so a rule answering one type for both reddens one
+// of the pair -- while an atom spelled like a predicate but declared by no roster member stays on
+// the frontier. The closing control pins the specimen's full closure: zero frontier
+// nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
+// the boundary control.
+
+fn atom_grounding_node_evidence(inferred: InferredTree, n: Node) -> Optional<Node> {
+  match inferred.facts.lookup(n) {
+    Absent => Absent
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _, site: _ } => Absent
+        DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
+      }
+  }
+}
+
+fn atom_grounding_count_evidence(
+  inferred: InferredTree,
+  wanted: Node,
+  acc: Int,
+  n: Node
+) -> Int {
+  match atom_grounding_node_evidence(inferred: inferred, n: n) {
+    Absent => acc
+    Present { value: evidence } =>
+      if evidence == wanted { acc + 1 } else { acc }
+  }
+}
+
+fn atom_grounding_census_frontier(inferred: InferredTree) -> Int {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: 0,
+    cons: fn(acc, n) {
+      match inferred.facts.lookup(n) {
+        Absent => acc
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _, site: _ } => acc + 1
+            DerivedGrounding { grounding: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let op_type = target_model_canonical_operation_type_node()
+      let field_type = symbol_kernel_type_node()
+      (fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: op_type, acc: acc, n: n) }
+      ) == 1)
+        && (fold_list(
+          xs: node_subtree_nodes(root: inferred.root),
+          empty: 0,
+          cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: field_type, acc: acc, n: n) }
+        ) == 1)
+  }
+}
+
+test fn no_node_derives_the_canonical_operations_roster_root_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let roster = target_model_canonical_operations_roster_root()
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: roster, acc: acc, n: n) }
+      ) == 0
+  }
+}
+
+test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let production_type = dag_grammar_surface_production_type_node()
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: production_type, acc: acc, n: n) }
+      ) == 2
+  }
+}
+
+fn is_domain_int_binding_evidence(inferred: InferredTree, n: Node) -> Bool {
+  match atom_grounding_node_evidence(inferred: inferred, n: n) {
+    Absent => false
+    Present { value: evidence } =>
+      match evidence.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
+        _ => false
+      }
+  }
+}
+
+fn is_operand_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (id == ^x) || (id == ^y)
+    _ => false
+  }
+}
+
+test fn binding_reference_derives_parameter_atoms_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) {
+          if is_operand_atom(n: n) && is_domain_int_binding_evidence(inferred: inferred, n: n) {
+            acc + 1
+          } else {
+            acc
+          }
+        }
+      ) == 2
+  }
+}
+
+test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
+  let unbound = Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: unbound)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(unbound) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _, site: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
+  }
+}
+
+fn atom_grounding_standalone_evidence(n: Node) -> Optional<Node> {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: n)) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: inferred, diagnostics: _ } => atom_grounding_node_evidence(inferred: inferred, n: n)
+  }
+}
+
+test fn declared_inhabitant_record_derives_type_denotation_kind_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
+    Absent => false
+    Present { value: evidence } => evidence == kind_node(kind: TypeDenotationKind)
+  }
+}
+
+test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: dag_inhabitant_atom(id: ^dag_surface_spelling_int)) {
+    Absent => false
+    Present { value: evidence } => evidence == kind_node(kind: TypeFactKind)
+  }
+}
+
+test fn door_specimen_fully_derives_holds() -> Bool {
+  match direct_rust_door_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      atom_grounding_census_frontier(inferred: inferred) == 0
+  }
+}
+
+fn predicate_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn ordering_predicate_atom_derives_ordering_predicate_type_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: predicate_atom(id: ordering_predicate_wire_symbol(predicate: IsLess))) {
+    Absent => false
+    Present { value: evidence } => evidence == target_model_ordering_predicate_type_node()
+  }
+}
+
+test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool {
+  match atom_grounding_standalone_evidence(n: predicate_atom(id: equality_predicate_wire_symbol(predicate: IsNotEqual))) {
+    Absent => false
+    Present { value: evidence } => evidence == target_model_equality_predicate_type_node()
+  }
+}
+
+test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool {
+  let undeclared = predicate_atom(id: ^ordering_predicate_is_between)
+  match infer(tree: claim_resolved_tree_without_declarations(root: undeclared)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(undeclared) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _, site: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
+  }
+}

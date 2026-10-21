@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-05",
+  "source_head_before_helper_renames": "9d9c242413cb22e0f47c3cda7210c7d5d44ad3f2",
+  "additional_source_changes": [
+    "Renamed print_preparation_kernel_witness_test to print_preparation_kernel_validation",
+    "Renamed printer_batch_workflow_witness_test to printer_batch_workflow_validation; updated import and documentation"
+  ],
+  "compiler_sha256": "dfafbebc60c9c2a1cd72a80d822fa7d39ec8756f7525b237356ee78999997854",
+  "fresh_release_build_exit": 0,
+  "publisher_test_count": 24,
+  "publisher_tests_exit": 0,
+  "registered_artifact_projection_matches": 59,
+  "regeneration_exit": 0,
+  "regeneration_compared_files": 163,
+  "regeneration_fixed_point_exit": 0,
+  "floor_exit": 1,
+  "floor_structural_refusals": [],
+  "floor_reported_blocker": "14 browser fixture outcomes: 12 host-premise-unmet and two failed browser-dependent KVM controls; srv2 is outside the declared browser runner pool (srv1, srv3, srv4). Full floor is not locally green.",
+  "floor_browser_refusals": [
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_root_page_that_navigates_cannot_destroy_the_login: WetTerminalVerdictNotExpected \u2014 expected passed, observed failed",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_viewer_without_its_feature_list_never_opens_kvm: WetTerminalVerdictNotExpected \u2014 expected passed, observed failed",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_busy_viewer_slot_refuses_the_observer_and_the_handoff: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_relative_observer_directory_is_resolved_once: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_json_reject_keeps_intent: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_foreign_snapshot_keeps_intent: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_malformed_snapshot_keeps_intent: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_lost_large_then_reload_repeats_large: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_valid_match_clears_once: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_fetch_reject_is_retryable: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it",
+    "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_list_reconciles_recorded_intent: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it"
+  ],
+  "combined_generated_lane": "Killed at local 28 GiB memory limit after all 59 projections matched; standalone regeneration and fixed-point phases each exited zero.",
+  "printer_effects": "No approvals, device observations or starts issued.",
+  "post_merge": {
+    "source_head": "19cccb5cfd67e93d6197404c28412b591a09d7c5",
+    "merged_main": "632b72544e9d43695e7361e8a0355bbe7c787e8e",
+    "registered_artifact_gate_exit": 0,
+    "production_entry_invalid_mode_expected_exit": 1,
+    "production_entry_invalid_mode_observed_exit": 1,
+    "production_entry_refusal": "Workflow mode must be prepare or print",
+    "effects": "Mode guard returned before preparation/authentication/printer operations"
+  }
+}

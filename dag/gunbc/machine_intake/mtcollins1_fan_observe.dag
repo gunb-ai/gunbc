@@ -1,0 +1,197 @@
+module gunbc.machine_intake.mtcollins1_fan_observe
+
+import extdeps.shell
+import std.algebra { string_contains, trim }
+import std.types { NonEmptyStr, String }
+import std.measure { ObservationRoundCount, Second, observation_round_count, second }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import gunbc.host.managed_host { managed_host_binding_for }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.fan_observe {
+  FanObserveAdmitted, FanObserveRefused, FanObservePolicy,
+  fan_boot_phase_refused_prefix, fan_observe_admission, fan_observe_boot_phase_with, fan_observe_refusal_text, fan_observe_with,
+}
+
+// MT. COLLINS UNIT 1'S BINDING OF THE FAN OBSERVATION (managed-host cut 5). The read, the family-selected
+// policy authority and the receipt's rendering are gunbc.machine_intake.fan_observe over the host's
+// managed binding; what stays here is what the fleet-converge workflow names (ruling (a): the workflow
+// surface moves in cut 7) -- the entry function, the credential variable its prelude materializes and
+// the receipt path its upload reads -- and this unit's own series policy: how many samples, how far
+// apart, and the window its standings are judged in.
+
+data mtcollins1_fan_credential_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE" as NonEmptyStr
+
+// THE RECEIPT PATH IS DECLARED HERE AND READ BY THE CONVERGE STEP, NOT THE OTHER WAY ROUND. Where a
+// host's observation lands is a fact about that observation; a CI module declaring it would make the
+// entry unable to write its own receipt without importing CI.
+data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-observation.txt"
+
+// THE FETCH-STATUS CARRIER, SIBLING OF THE CREDENTIAL FILE (review 81090 finding B). The boot-phase
+// lane's Secret Manager fetch reports itself through this file, never through the credential file: the
+// prelude writes "ok" on a fetch whose payload decoded, and "fetch-failed" on a refused one, and on a
+// refusal it DELETES the credential file rather than filling it with anything. A credential file is a
+// carrier for exactly one kind of value; a status written into it is a fabricated credential, and an
+// observer that cannot tell "the controller refused" from "the password is GUNBC-..." reports the
+// second as a fact about the machine. The name is owned here and used by the prelude
+// (gunbc_ci_mtcollins1_probe_credential_statements) so the writer and the reader cannot drift.
+data mtcollins1_fan_credential_fetch_status_suffix: String = "-fetch-status"
+
+// THE BOOT PHASE'S TYPED OUTCOME AS A STEP OUTPUT (operator ruling 2026-10-16: a modeled refusal stops
+// the boot, exactly as an unmodeled failure or timeout does; no rung drop, no boot-anyway arm). The
+// receipt is the carrier: a receipt that opens with fan_boot_phase_taken_prefix (gunbc.machine_intake.fan_observe,
+// the one spelling every writer builds from) is an observed reading; anything else - refused,
+// missing, unrecognized - is refused (fail-closed). The prelude tail writes this
+// output from the receipt, fails the step on refusal, and the boot step's if: reads the output, so
+// the boot runs only on an observed reading. Names are owned here so writer and reader cannot drift.
+data mtcollins1_fan_boot_phase_outcome_output: String = "fan_outcome"
+data mtcollins1_fan_boot_phase_outcome_observed: String = "observed"
+data mtcollins1_fan_boot_phase_outcome_refused: String = "refused"
+
+type MtCollins1FanCredentialFetchStatus
+  = FetchOk
+  | FetchRefused
+  // NO STATUS FILE, OR AN UNREADABLE ONE: no CI fetch reported itself, which is the shape of a human
+  // running this entry with a credential of their own. The observation proceeds and the controller
+  // itself decides; the strict standalone entry stays the fail-closed one.
+  | FetchStatusUnobserved
+
+// THE STATUS IS READ, NOT ASSUMED, AND ITS CONTENTS NEVER REACH A RECEIPT. A status file holds one of
+// two words, and the receipt names only the cause - never what was in the file - so a future writer
+// that puts something sensitive there cannot leak it through the log or the artifact. One bound read;
+// its three projections go only into the interface authority's own fold (filesystem_read_outcome),
+// which is what filesystem_read_outcome_adoption_standing counts as converted.
+fn mtcollins1_fan_credential_fetch_status(credential_path: NonEmptyStr) -> MtCollins1FanCredentialFetchStatus {
+  let r = Filesystem.Read(path: concat(credential_path as String, mtcollins1_fan_credential_fetch_status_suffix))
+  match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+    FilesystemReadRefused { error: _ } => FetchStatusUnobserved
+    FilesystemReadSucceeded { content } => if content == "ok" { FetchOk } else { FetchRefused }
+  }
+}
+
+// SIX ROUNDS AT TEN SECONDS IS A MINUTE OF SERIES, AND THE SHAPE IS THE POINT RATHER THAN THE
+// DURATION. One sample cannot distinguish a controller holding a fixed output from one that happens
+// to be commanding that output right now; a minute of samples can show whether the number moves at
+// all. It is deliberately short: this is a read against a machine in someone's home, and a longer
+// series buys resolution the first question does not need.
+data mtcollins1_fan_observation_rounds: ObservationRoundCount = observation_round_count(count: 6)
+data mtcollins1_fan_observation_interval: Second = second(count: 10)
+
+// A MINUTE IS NOT A TRANSITION WINDOW ANYBODY MEASURED, and this row says so rather than implying
+// otherwise. No family publishes how long its loop takes to close, and this run is sixty seconds
+// long, so a window at sixty seconds means "this series cannot distinguish a slow close from a held
+// failsafe" - which makes FailsafeHeldAfterPost unreachable from a six-round run and is the honest
+// state. A run that wants that finding needs a longer series, and the window is a parameter so that
+// lengthening the series does not require editing the standing.
+data mtcollins1_fan_transition_window: Second = second(count: 60)
+
+// THE BARE `import extdeps.shell` ABOVE IS WHAT MAKES shell.Env.Get RESOLVABLE AT RUN TIME, for the
+// reason gunbc.host.managed_host_boot_handoff's header states at length: service operations
+// register from the import closure, so without it this function refuses with
+// `Unimplemented { what: "unknown service operation: shell.Env.Get" }` - naming the operation
+// rather than the import, which is why that module hit it first and this one hit it second.
+//
+// A CREDENTIAL PATH IS A TYPED OUTCOME AND NOT AN OPTIONAL, the same shape
+// gunbc.fleet.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
+// different absences on one arm - the variable was never set, and it was set to whitespace - and the
+// second is a materialization that went wrong rather than one that did not happen.
+type MtCollins1FanCredentialPath
+  = FanCredentialPathReady { path: NonEmptyStr }
+  | FanCredentialPathUnset
+  | FanCredentialPathEmpty
+
+fn mtcollins1_fan_credential_path() -> MtCollins1FanCredentialPath {
+  match shell.Env.Get(name: mtcollins1_fan_credential_path_env).value {
+    Absent => FanCredentialPathUnset
+    Present { value: raw } => classify_fan_credential_path(raw: trim(s: raw))
+  }
+}
+
+fn classify_fan_credential_path(raw: String) -> MtCollins1FanCredentialPath {
+  if raw == "" {
+    FanCredentialPathEmpty
+  } else {
+    FanCredentialPathReady { path: raw as NonEmptyStr }
+  }
+}
+
+data mtcollins1_fan_observe_policy: FanObservePolicy = FanObservePolicy {
+  rounds: mtcollins1_fan_observation_rounds,
+  interval: mtcollins1_fan_observation_interval,
+  transition_window: mtcollins1_fan_transition_window,
+  receipt_path: mtcollins1_fan_observation_receipt_path,
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING. A run that reaches the controller
+// with no credential produces an authentication failure, and an authentication failure read as a
+// machine fact is how "the fans could not be observed" becomes "the fans are not reporting".
+fn mtcollins1_fan_observe_wet() -> ProcessExit
+{
+  match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
+    FanObserveRefused { cause: c } => exit_failure(reason: concat("mtcollins1 fan observation: ", fan_observe_refusal_text(cause: c) as String))
+    FanObserveAdmitted { host: admitted } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset =>
+          exit_failure(reason: join(["mtcollins1 fan observation: no ", mtcollins1_fan_credential_path_env as String, " in the environment, so this run materialized no controller credential; contacting NO host"], ""))
+        FanCredentialPathEmpty =>
+          exit_failure(reason: join(["mtcollins1 fan observation: ", mtcollins1_fan_credential_path_env as String, " is set but empty, which is not a path - the prelude ran and materialized nothing; contacting NO host"], ""))
+        FanCredentialPathReady { path: password_file } =>
+          fan_observe_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
+      }
+  }
+}
+
+fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
+  let written = Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: content)
+  if written.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 fan observation boot phase: receipt could not be written: ", written.error))
+  }
+}
+
+// BOOT WRAPPER, NON-GATING BECAUSE EVERY FAILURE IT CAN SEE IS ALREADY A TYPED RECEIPT - and it
+// sees more than it used to. Every observation refusal, every credential-path absence, and the
+// prelude's Secret Manager fetch (which reports itself through the sibling status file, review 81090)
+// are a FanObserveBootPhaseRefused receipt naming the cause, with ExitSuccess. Nothing the step models
+// is absorbed by continue-on-error: a crash or a step timeout is an UNMODELED failure and fails the
+// job at this step, before the boot, located (review 81077; DESIGN §5 - no escape hatch). Only an
+// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. A REFUSED
+// observation STOPS THE BOOT (operator ruling 2026-10-16): this entry still reports refusals as typed
+// receipts, and the step's prelude tail turns the receipt into the mtcollins1_fan_boot_phase_outcome_output
+// step output and fails the step, so the boot is ineligible.
+fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
+{
+  match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
+    FanObserveRefused { cause: c } =>
+      mtcollins1_fan_observe_boot_phase_receipt(
+          content: join([fan_boot_phase_refused_prefix, " admission=", fan_observe_refusal_text(cause: c) as String], ""),
+        )
+    FanObserveAdmitted { host: admitted } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset =>
+          mtcollins1_fan_observe_boot_phase_receipt(
+              content: join([fan_boot_phase_refused_prefix, " credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
+            )
+        FanCredentialPathEmpty =>
+          mtcollins1_fan_observe_boot_phase_receipt(
+              content: join([fan_boot_phase_refused_prefix, " credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
+            )
+        FanCredentialPathReady { path: password_file } =>
+          match mtcollins1_fan_credential_fetch_status(credential_path: password_file) {
+            FetchRefused =>
+              mtcollins1_fan_observe_boot_phase_receipt(
+                content: join([fan_boot_phase_refused_prefix, " credential=fetch-failed env=", mtcollins1_fan_credential_path_env as String], ""),
+              )
+            FetchOk =>
+              fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
+            // NO STATUS, NO LIE EITHER WAY: nothing this CI wrote says the fetch happened, so the
+            // observation proceeds on the credential that IS there and the controller itself decides.
+            // That is a real read attempted, not a fabricated one.
+            FetchStatusUnobserved =>
+              fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
+          }
+      }
+  }
+}

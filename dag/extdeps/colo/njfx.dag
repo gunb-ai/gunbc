@@ -1,0 +1,93 @@
+module extdeps.colo.njfx
+
+import std.types { NonEmptyStr }
+import std.measure { watt }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityPublished, PublishedDensityFigure,
+  CabinetPowerFigure, PublishedRealPower,
+  CoolingMediumStanding, CoolingMediumUnspecified,
+  PublishedPowerQuantity, marketed_real_interval,
+  FigureVerificationStanding, WordingVerbatim,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "njfx.net/colocation/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.njfx",
+      decl_name: "njfx_wall",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE ONLY CENTRAL-NEW-JERSEY CABLE LANDING CAMPUS IN THE CENSUS, and the census had no row for
+// it at all before this one. It sits in Monmouth County on the shore, roughly sixty road miles
+// from the Hudson waterfront where every previously modelled candidate clusters, so it is not a
+// substitute for a Secaucus cabinet on the latency axis; it is a different product - subsea cable
+// landing adjacency - that happens also to publish a per-cabinet density figure, which is why it
+// enters this census rather than a connectivity one.
+data njfx_wall: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "NJFX",
+  facility_label: "NJFX Wall Township cable landing campus",
+  address: AddressListed {
+    street: "1410 Wall Church Rd, Wall Township, NJ 07719",
+    citation: "njfx.net contact page (njfx.net/connect/), read 2026-09-08",
+  },
+  municipality: "Wall Township",
+  region_code: "NJ",
+  facility_note: "Carrier-neutral colocation campus developed on the same property as a subsea cable landing station, marketed as the only carrier-neutral CLS colocation campus on the US East Coast with 35+ global operators on one site (njfx.net pages read 2026-09-08). The operator's own pages state neither square footage nor critical IT load; figures for both circulate in directory profiles and are deliberately not carried here.",
+}
+
+// A READ DENSITY, AND THE SECOND-DENSEST MARKETED CABINET IN THE CENSUS BEHIND DATABANK LGA4.
+// The range is the operator's own: it is a band of what the campus will support per cabinet, not
+// a commitment on any particular one, and the low end being 2 kW is itself informative - the same
+// page sells cabinets an order of magnitude apart, so the figure that matters to a quote is which
+// end of the band the offered cabinet sits at.
+data njfx_wall_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: marketed_real_interval(lower: watt(count: 2000), upper: watt(count: 16000)),
+      wording: "power densities ranging from 2 kW to 16 kW per cabinet",
+      citation: "njfx.net colocation page (njfx.net/colocation/), read 2026-09-08, wording verified against raw bytes 2026-09-09 (HTTP 200, 167854 bytes, the sentence occurs literally); re-run 2026-09-09 with no user-agent and with a full browser user-agent after a short Mozilla/5.0 was found elsewhere in this census to manufacture 403s, and this host is insensitive to all three. Scope check: the sentence is one contiguous <p> immediately following <h3>High-Density Power</h3> on the operator's own colocation page for the Wall Township cable landing campus, with no other facility named in the block. THE ROW NOW CARRIES BOTH BOUNDS, WHICH IT COULD NOT BEFORE: the previous arm had ONE slot, so this row asserted only the 16 kW top and silently dropped the 2 kW floor the operator also publishes - the row asserted LESS than the page. A two-ended publication answers in both directions; a single-ended arm cannot. THE MEDIUM IS UNPUBLISHED AND THE ROW NOW SAYS SO: the page names neither air nor liquid, and the previous arm inferred air from the absence of a liquid claim.",
+      verification: WordingVerbatim {
+        retrieval: "Element boundary 2026-09-09: one contiguous <p> element, so the wording is a single authored sentence rather than adjacent cells joined by a reader. Positive control in the same pass: Wall Township present in the same capture. This row was NOT demoted on 2026-09-09 when the two capability floors in this lane were, and the reason is the distinction the ruling turned on - a floor in a maximum arm answers backwards, while a range's top is a genuine upper bound, so the maximum arm answered this row forwards even before the interval arm existed.",
+      },
+    },
+    tail: [],
+  },
+}
+
+// DENSITY READ, GRAIN NOT. The two questions are independent and this facility is the case that
+// shows why they are separate rows: a published per-cabinet band says the campus can power a
+// dense cabinet and says nothing at all about whether it will sell exactly one.
+data njfx_wall_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The pages read 2026-09-08 (njfx.net/, njfx.net/colocation/, njfx.net/about/, njfx.net/connect/) state a per-cabinet power band but never state a minimum commitment. Establish whether a single cabinet is sold, and at which end of the 2 kW to 16 kW band, before ranking this campus against the waterfront candidates.",
+}
+
+// THE OTHER OPERATOR ON THIS PROPERTY, NAMED AND DELIBERATELY NOT MODELLED. The cable landing
+// station adjacent to the NJFX colocation building is Tata Communications', and Tata does sell
+// colocation as a global product. No Tata page reachable on 2026-09-08 describes a Wall, New
+// Jersey colocation offer as a facility with an address, density or grain - the only Tata surface
+// found was a global colocation service description, which is a product page and not a facility
+// reading. So Tata contributes no row rather than a row assembled from two pages about different
+// things, and whoever asks NJFX for a quote should ask the same question of Tata directly.
+data njfx_wall_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "njfx.net/connect/ contact form",
+  obligation: "No pricing is published on any njfx.net page read 2026-09-08; the colocation page references a pricing guide it does not itself contain. The quote must ask for the 16 kW cabinet specifically, because the same page also markets 2 kW cabinets.",
+}

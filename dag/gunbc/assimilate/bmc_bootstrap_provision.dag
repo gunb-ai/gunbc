@@ -1,0 +1,144 @@
+module gunbc.assimilate.bmc_bootstrap_provision
+
+import gunbc.assimilate.bmc_token_federation { bmc_secrets_project_id, bmc_assimilator_account_id, bmc_assimilator_display_name }
+import extdeps.cloud.gcp.gcp { GcpService, GcpServiceUsage, GcpIam, GcpIamCredentials, GcpSts, GcpSecretManager, gcp_service_api_id, ServiceAccountEmail }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import std.types { Secret, List }
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.serviceusage
+
+data bmc_assimilate_service_deps: List<GcpService> = [
+  GcpServiceUsage,
+  GcpIam,
+  GcpIamCredentials,
+  GcpSts,
+  GcpSecretManager
+]
+
+data bmc_required_gcp_apis: List<String> = map(bmc_assimilate_service_deps, s => gcp_service_api_id(service: s))
+
+// NO SECRET-POLICY LEG. This bootstrap creates the assimilator's identity and federation only. The
+// srv3 secret's IAM cells are the converge's, flowing from the declarer's signed grants
+// (gunbc.assimilate.bmc_wif_delegation_chain bmc_wif_signed_grants, via gunbc.auth.gcp_iam_converge),
+// never from a direct setIamPolicy here under an operator token (writer census, gunbc#14360).
+
+// 🟡 dissolve-on: node auth calls shell.GCloud.AuthPrintAccessToken() directly instead of
+// gunbc.auth.access_token_source.ensure_access_token(source: GcloudPrintToken). DISSOLVES WHEN this
+// pattern routes token acquisition through ensure_access_token and deletes the shell.GCloud node.
+// Authority: gunbc.auth.access_token_source ensure_access_token.
+
+pattern bmc_bootstrap_provision_srv3() -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
+  node auth: shell.GCloud.AuthPrintAccessToken()
+
+  node enabled: gcp.ServiceUsage.BatchEnableServices(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    service_ids: bmc_required_gcp_apis
+  )
+
+  return match enabled {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapEnableServices, refusal: refusal }
+    RestAnswered { answer: _ } =>
+      bmc_bootstrap_create_service_account(access_token: auth.access_token)
+  }
+}
+
+// ONE REST STEP PER PATTERN, EACH REACHED ONLY FROM THE ANSWERED ARM OF THE STEP BEFORE IT. A node
+// inside one pattern is unconditional, so a chain written as six nodes would perform every later
+// effect after an earlier one refused. Each continuation below therefore holds exactly one node,
+// receives what the earlier steps answered as parameters, and is invoked from the RestAnswered arm
+// alone; a RestRefused arm ends the chain with the step named and the refusal as the transport
+// reported it. The order is the order the single pattern had: enable services, create service
+// account, create pool, create provider.
+//
+// THE REFUSED ARM CLAIMS NOTHING ABOUT WHETHER A MUTATION COMMITTED. It carries the RestRefusal and
+// the step; whether a refused write may have landed is the reader's classification
+// (extdeps.transports.rest classify_rest_refusal), not a fact this result asserts.
+type BmcBootstrapStep
+  = BmcBootstrapEnableServices
+  | BmcBootstrapCreateServiceAccount
+  | BmcBootstrapCreatePool
+  | BmcBootstrapCreateProvider
+
+type BmcBootstrapProvision
+  = BmcBootstrapProvisioned {
+      sa_email: ServiceAccountEmail
+      pool_op: String
+      provider_op: String
+    }
+  | BmcBootstrapProvisionRefused { step: BmcBootstrapStep, refusal: RestRefusal }
+
+pattern bmc_bootstrap_create_service_account(access_token: Secret) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
+  node sa: gcp.IamAdmin.CreateServiceAccount(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    account_id: bmc_assimilator_account_id,
+    display_name: bmc_assimilator_display_name
+  )
+
+  return match sa {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreateServiceAccount, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_create_pool(access_token: access_token, sa_email: answer.email)
+  }
+}
+
+pattern bmc_bootstrap_create_pool(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
+  node pool: gcp.IamAdmin.CreateWorkloadIdentityPool(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    display_name: bmc_wif_pool_display_name
+  )
+
+  return match pool {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreatePool, refusal: refusal }
+    RestAnswered { answer } =>
+      bmc_bootstrap_create_provider(
+        access_token: access_token,
+        sa_email: sa_email,
+        pool_op: answer.operation_name
+      )
+  }
+}
+
+pattern bmc_bootstrap_create_provider(
+  access_token: Secret,
+  sa_email: ServiceAccountEmail,
+  pool_op: String
+) -> BmcBootstrapProvision
+  uses net: std.resources.Network
+{
+  node provider: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    provider_id: bmc_wif_provider_id,
+    issuer_uri: bmc_wif_issuer_uri,
+    attribute_mapping: bmc_wif_attribute_mapping,
+    attribute_condition: bmc_wif_attribute_condition()
+  )
+
+  return match provider {
+    RestRefused { refusal } =>
+      BmcBootstrapProvisionRefused { step: BmcBootstrapCreateProvider, refusal: refusal }
+    RestAnswered { answer } =>
+      BmcBootstrapProvisioned {
+        sa_email: sa_email,
+        pool_op: pool_op,
+        provider_op: answer.operation_name
+      }
+  }
+}

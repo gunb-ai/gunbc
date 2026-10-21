@@ -1,0 +1,81 @@
+module gunbc.non_fold_residue
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.types { List }
+// Shared NFR class strings live once here. Owned subject modules that are not
+// seed-mirrored hold `data non_fold_residue_frontier` beside the sites (PathSubject
+// names only the symbol; the host file is the path prefix) and import these names.
+// Two observing-layer exceptions live in this file's `non_fold_residue_frontier`
+// list (one authority: the rows): (1) seed-mirrored subjects, so stage0 rust does
+// not compile the audit lists; (2) every `dag/extdeps/` and `src/v2/extdeps/`
+// subject — coverage is a receipt in this layer, not a fact of the observed upstream
+// (DESIGN §3 external upstream decomposition; those two directories are
+// `gunbc.source_layout` trees, not a second path roster). Membership is the host
+// union (`non_fold_residue_identity_join_triples`).
+// Discovery: the host reader walks production `.dag` files whose source mentions the
+// data name, parses them, and keeps the exact `data non_fold_residue_frontier` item.
+// The floor's per-diff typed verdict (`non_fold_residue_diff_verdict`) was deleted
+// with `run_required_floor`. Membership is still the host union
+// (`non_fold_residue_identity_join_triples`).
+// Detection-only: never auto-delete rows — greening a site deletes its row by hand with the
+// receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
+// burn-down for the v2 program.
+
+data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
+
+data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
+
+data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
+
+data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm over a closed coproduct that landed on main after the ca5ed1724b typed census, while that census's roster was still in review (#12980); the floor's diff-scoped typed walk named it on the roster PR's own run. Un-migrated modeling (DESIGN §6), rostered so the ratchet stays armed at unrostered=0"
+
+data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
+
+data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT: a declaration ref cannot name an arm that does not exist yet, and binding to a fabricated constructor is the DESIGN §3 fabricated-citation class. THE CAPABILITY: gunbc.namespace_cut.namespace_reference_derived_closure_admission ReferenceDerivedClosureAdmission gains an arm whose payload is the StructuralBindingResolution refusal cause — the six closed off-Resolved variants std.reference_binding_observation already distinguishes (StructuralBindingIndexTransportRefused, StructuralBindingIndexModulePathRefused, StructuralBindingIndexExposureRefused, StructuralBindingIndexAuthoredOrderRefused, StructuralBindingIndexDeclarationBucketRefused, StructuralBindingProductionRefused) — so a program matches the cause rather than option-absence. SUFFICIENT FOR: assess_reference_binding_observation routes each of those variants to a distinct assessment without Absent collapse, binding_outcome_from_resolution becomes a total match, and this row deletes with the wildcard. CONSUMERS ARE NOT LISTED HERE (DESIGN §6: name the instrument, never transcribe its output; DESIGN §3c: a declaration's consumers are already a fact of the namespace tree). The producer that re-derives the dependent set is v2.lens.module_impact_query DependentsOf over ModuleIdentity { name: gunbc.namespace_cut.namespace_reference_derived_closure_admission }. The v1 seed mirror of that same module is the emitted file whose path follows the module name (src/v1/stage0/src/gunbc_namespace_cut_namespace_reference_derived_closure_admission.rs); its dependents are that file's, not a second hand census.")
+
+// Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
+      reason: nfr_reason_trait_derive_shape_table,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
+      reason: nfr_reason_binding_outcome_resolution_wildcard,
+      dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/git.dag::git_diff_name_status_pending_after_status" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/languages/markdown.dag::md_nested" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/tools/ldd.dag::ldd_reading_of" },
+      reason: nfr_reason_typed_census_ca5ed1724b,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/dag.dag::dag_kernel_value_type_binding" },
+      reason: nfr_reason_typed_census_ca5ed1724b,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/dag.dag::namespace_graft_spine_shaped_edge_optional" },
+      reason: nfr_reason_typed_census_ca5ed1724b,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/swift/rows.dag::swl_closure_is_inline" },
+      reason: nfr_reason_typed_census_ca5ed1724b,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+]

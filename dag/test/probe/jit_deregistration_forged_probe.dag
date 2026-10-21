@@ -1,0 +1,97 @@
+module test.probe.jit_deregistration_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the JIT
+// modules would otherwise point the deregistration at a runner it chose -- here `victim-runner`,
+// a name no authorized dispatch minted -- or mint a deregistered receipt it did not earn. The
+// witness test.claim.runner.jit_deregistration_forged_probe_witness hands this source to the compiler and
+// requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { Int, List, NonEmptyStr, String }
+import extdeps.transports.rest { RestAnswered }
+import extdeps.github.app { GitHubAppInstallationId }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitWorkFolder }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
+import gunbc.auth.github_apps { DeclaredGitHubApp }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
+import gunbc.runner.runner_jit_perform { JitMintDispatch, JitMintDispatchAuthorized, AuthorizedJitMintDispatch }
+import gunbc.github_effect_perform { OrganizationRunnerListRead }
+import gunbc.runner.runner_jit_deregistration {
+  JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, RecoveredReservedRegistration, RecoveredReservedServiceRegistration, JitDeregistration, JitDeregistrationReceipt, JitRunnerDeregistered, JitSlotExit, SlotListenerExitedClean,
+  jit_registration_of, conclude_from_readback,
+}
+
+fn victim_request() -> JitRunnerConfigRequest {
+  JitRunnerConfigRequest {
+    name: JitRunnerName { value: "victim-runner" },
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [],
+    work_folder: JitWorkFolder { value: "_work" },
+  }
+}
+
+// (a) AN OUTSIDE-AUTHORED AUTHORIZED ARM. Refuses at AuthorizedJitMintDispatch.
+fn forged_dispatch(slot: JitRegistrationSubject, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitMintDispatch {
+  JitMintDispatchAuthorized {
+    dispatch: AuthorizedJitMintDispatch {
+      subject: slot,
+      app: app,
+      installation: installation,
+      organization: GitHubOrganizationRef { login: "gunb-ai" },
+      request: victim_request(),
+    },
+  }
+}
+
+// (b) A HAND-BUILT DEREGISTRATION SUBJECT. Refuses at JitRegistration.
+fn forged_registration(slot: JitRegistrationSubject, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitRegistration {
+  JitRegistration {
+    organization: GitHubOrganizationRef { login: "gunb-ai" },
+    name: JitRunnerName { value: "victim-runner" },
+    subject: slot,
+    app: app,
+    installation: installation,
+  }
+}
+
+// (b2) A HAND-BUILT REGISTRATION SUBJECT, the value a mint is planned for. Refuses at
+// JitRegistrationSubject: only a producer that proved its slot may build one.
+fn forged_subject() -> JitRegistrationSubject {
+  JitRegistrationSubject { name: JitRunnerName { value: "victim-runner" }, workflow: "gunb-ai/gunbc/x.yml@refs/heads/main", labels: [] }
+}
+
+// (c) A HAND-BUILT EMPTY LISTING FOR victim-runner. Refuses at OrganizationRunnerListRead.
+fn forged_listing(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> OrganizationRunnerListRead {
+  OrganizationRunnerListRead {
+    organization: "gunb-ai",
+    name: "victim-runner",
+    app: app,
+    installation: installation,
+    listing: RestAnswered { answer: OrganizationRunnerListWire { total_count: 0, runners: [] } },
+  }
+}
+
+// (d) THE RECEIPT'S CONSTRUCTOR, CALLED FROM OUTSIDE THE ENSURE with a real registration beside a
+// listing of the caller's choosing. Refuses at conclude_from_readback.
+fn unadmitted_conclusion(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
+  conclude_from_readback(subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback)
+}
+
+// (e) A HAND-BUILT SUCCESS RECEIPT. Refuses at JitDeregistrationReceipt.
+fn forged_receipt(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
+  JitRunnerDeregistered { receipt: JitDeregistrationReceipt { subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback } }
+}
+
+// (f) A HAND-BUILT RECOVERED SUBJECT: the deletable name chosen by the caller, bypassing the
+// service-slot round trip. Refuses at RecoveredReservedRegistration.
+fn forged_recovered(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitDeregistrationSubject {
+  RecoveredReservedServiceRegistration {
+    recovered: RecoveredReservedRegistration {
+      organization: GitHubOrganizationRef { login: "gunb-ai" },
+      name: JitRunnerName { value: "victim-runner" },
+      app: app,
+      installation: installation,
+    },
+  }
+}

@@ -1,0 +1,259 @@
+module product.supplier.oracle_oci
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { Gigabyte, gigabyte, gigabyte_count }
+import product.supplier.ubicloud { OfferBinding, OfferBindingRefused }
+import extdeps.cloud.oracle_oci {
+  OciAlwaysFreeShape, VmStandardA1Flex, VmStandardE21Micro,
+  OciCapacityType, OnDemandCapacity, PreemptibleCapacity, CapacityReservation,
+  DedicatedVirtualMachineHost, ComputeCluster,
+  OciTenancyTier, AlwaysFreeTenancy, PayAsYouGoTenancy,
+  OciRegion, oci_region_us_ashburn_1,
+  oci_a1_flex_allowance, oci_e2_micro_allowance, oci_block_volume_allowance,
+}
+
+// ORACLE'S ALWAYS FREE ALLOWANCE AS A FABRIC SUPPLIER: TWO QUESTIONS, ASKED IN ORDER.
+//
+// First: does a planned set of instances fit the allowance? oci_always_free_fit answers that for a
+// plan alone, and oci_always_free_fit_beside answers it beside other usage. Second: can one planned
+// instance become a zero-priced SupplierOffer? bind_oci_always_free_offer answers that, and today the
+// answer is a typed refusal naming the evidence a zero quote needs. Its OfferBinding is the one
+// product.supplier.ubicloud declares, not a second, because a second would be the fork DESIGN
+// section 3 forbids.
+//
+// Every vendor figure comes from extdeps.cloud.oracle_oci. Nothing here restates it.
+
+// ── THE PLAN ──────────────────────────────────────────────────────────────────────────────────
+
+type OciInstanceSize
+  = A1FlexSize { ocpus: Nat, memory: Gigabyte }
+  | E2MicroSize
+
+fn oci_instance_shape(size: OciInstanceSize) -> OciAlwaysFreeShape {
+  match size {
+    A1FlexSize { ocpus, memory } => VmStandardA1Flex
+    E2MicroSize => VmStandardE21Micro
+  }
+}
+
+// Home region and the micro availability domain are facts about THIS tenancy, so the planner states
+// them on each instance. The vendor module cannot know them.
+type OciRegionPlacement
+  = InHomeRegion
+  | OutsideHomeRegion
+
+type OciMicroDomainPlacement
+  = InMicroEligibleDomain
+  | OutsideMicroEligibleDomain
+
+type OciPlannedInstance {
+  name: NonEmptyStr
+  size: OciInstanceSize
+  boot_volume: Gigabyte
+  capacity: OciCapacityType
+  region: OciRegionPlacement
+  micro_domain: OciMicroDomainPlacement
+}
+
+// ── THE FIT ───────────────────────────────────────────────────────────────────────────────────
+//
+// Every breach is collected rather than stopping at the first one, so a planner sees the whole
+// distance from a free plan in one reading.
+//
+// CapacityTypeFreeEligibilityUnread: on-demand is the only capacity type the Always Free page
+// describes. For the other four, free eligibility is unread rather than refused, and this arm names
+// the obligation. It must never be read as "Oracle charges for this".
+type OciAllowanceBreach
+  = A1OcpusOverAllowance { planned: Nat, allowed: Nat }
+  | A1MemoryOverAllowance { planned: Gigabyte, allowed: Gigabyte }
+  | E2MicroCountOverAllowance { planned: Nat, allowed: Nat }
+  | BlockVolumeOverAllowance { planned: Gigabyte, allowed: Gigabyte }
+  | NotInHomeRegion { instance: NonEmptyStr }
+  | MicroOutsideEligibleDomain { instance: NonEmptyStr }
+  | CapacityTypeFreeEligibilityUnread { instance: NonEmptyStr, obligation: DeclarationRef }
+
+type OciAllowanceFit
+  = FitsAlwaysFree
+  | ExceedsAlwaysFree { breaches: List<OciAllowanceBreach> }
+
+data oci_capacity_type_free_eligibility_obligation: NonEmptyStr = "Whether preemptible capacity, a capacity reservation, a dedicated virtual machine host or a compute cluster can host an Always Free instance is UNREAD. extdeps.cloud.oracle_oci records that the Always Free page (read 2026-10-05) describes only ordinary instances, and that the preemptible page prices preemptible capacity at 50% of on-demand and says nothing about Always Free. RESOLVED BY an Oracle statement covering Always Free eligibility for that capacity type, in either direction."
+
+fn oci_capacity_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  let unread = [CapacityTypeFreeEligibilityUnread {
+    instance: i.name,
+    obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_capacity_type_free_eligibility_obligation"),
+  }]
+  match i.capacity {
+    OnDemandCapacity => []
+    PreemptibleCapacity => unread
+    CapacityReservation => unread
+    DedicatedVirtualMachineHost => unread
+    ComputeCluster => unread
+  }
+}
+
+fn oci_region_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  match i.region {
+    InHomeRegion => []
+    OutsideHomeRegion => [NotInHomeRegion { instance: i.name }]
+  }
+}
+
+// The single-domain rule constrains the micro shape only. An A1 instance's micro_domain field is
+// not read.
+fn oci_micro_domain_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  match i.size {
+    A1FlexSize { ocpus, memory } => []
+    E2MicroSize =>
+      match i.micro_domain {
+        InMicroEligibleDomain => []
+        OutsideMicroEligibleDomain => [MicroOutsideEligibleDomain { instance: i.name }]
+      }
+  }
+}
+
+fn oci_a1_ocpus(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => ocpus
+    E2MicroSize => 0
+  }
+}
+
+fn oci_a1_memory_gb(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => gigabyte_count(g: memory)
+    E2MicroSize => 0
+  }
+}
+
+fn oci_micro_count(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => 0
+    E2MicroSize => 1
+  }
+}
+
+fn oci_over(planned: Nat, allowed: Nat) -> Bool {
+  planned > allowed
+}
+
+// USAGE OUTSIDE THE PLAN. The allowance is TENANCY-wide: block storage counts boot and block volumes
+// combined, across every instance and unattached volume, and A1 and the micros are shared by everything
+// in the tenancy. A plan evaluated alone is only a NOMINAL fit, so the fit adds whatever else the
+// tenancy already holds. oci_no_other_usage is the nominal case: the instance converge uses it to
+// decide whether the operator's own plan is even possible, which is a statement about the plan rather
+// than about the tenancy.
+type OciOtherUsage {
+  a1_ocpus: Nat
+  a1_memory: Gigabyte
+  e2_micro_instances: Nat
+  block: Gigabyte
+}
+
+data oci_no_other_usage: OciOtherUsage = OciOtherUsage { a1_ocpus: 0, a1_memory: gigabyte(count: 0), e2_micro_instances: 0, block: gigabyte(count: 0) }
+
+fn oci_aggregate_breaches(plan: List<OciPlannedInstance>, other: OciOtherUsage) -> List<OciAllowanceBreach> {
+  let ocpus = fold(plan, init: other.a1_ocpus, f: (acc, i) => acc + oci_a1_ocpus(i: i))
+  let memory = fold(plan, init: gigabyte_count(g: other.a1_memory), f: (acc, i) => acc + oci_a1_memory_gb(i: i))
+  let micros = fold(plan, init: other.e2_micro_instances, f: (acc, i) => acc + oci_micro_count(i: i))
+  let block = fold(plan, init: gigabyte_count(g: other.block), f: (acc, i) => acc + gigabyte_count(g: i.boot_volume))
+  let ocpu_cap = oci_a1_flex_allowance.always_free_ocpus
+  let memory_cap = gigabyte_count(g: oci_a1_flex_allowance.always_free_memory)
+  let micro_cap = oci_e2_micro_allowance.max_instances
+  let block_cap = gigabyte_count(g: oci_block_volume_allowance.total)
+  let b1 = if oci_over(planned: ocpus, allowed: ocpu_cap) { [A1OcpusOverAllowance { planned: ocpus, allowed: ocpu_cap }] } else { [] }
+  let b2 = if oci_over(planned: memory, allowed: memory_cap) { [A1MemoryOverAllowance { planned: gigabyte(count: memory), allowed: oci_a1_flex_allowance.always_free_memory }] } else { [] }
+  let b3 = if oci_over(planned: micros, allowed: micro_cap) { [E2MicroCountOverAllowance { planned: micros, allowed: micro_cap }] } else { [] }
+  let b4 = if oci_over(planned: block, allowed: block_cap) { [BlockVolumeOverAllowance { planned: gigabyte(count: block), allowed: oci_block_volume_allowance.total }] } else { [] }
+  concat(concat(b1, b2), concat(b3, b4))
+}
+
+fn oci_instance_breaches(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  concat(concat(oci_capacity_breach(i: i), oci_region_breach(i: i)), oci_micro_domain_breach(i: i))
+}
+
+fn oci_always_free_fit_beside(plan: List<OciPlannedInstance>, other: OciOtherUsage) -> OciAllowanceFit {
+  let per_instance = fold(plan, init: [], f: (acc, i) => concat(acc, oci_instance_breaches(i: i)))
+  let breaches = concat(oci_aggregate_breaches(plan: plan, other: other), per_instance)
+  if breaches.length() == 0 { FitsAlwaysFree } else { ExceedsAlwaysFree { breaches: breaches } }
+}
+
+// What a breach costs depends on the tenancy tier. On an Always Free tenancy the vendor refuses the
+// excess. On Pay As You Go the excess is billed, and its rate is unread, so the consequence names the
+// obligation and no number. Neither tier makes a breaching plan free.
+type OciBreachConsequence
+  = ExcessRefusedByVendor
+  | ExcessBilledAtUnreadRate { obligation: DeclarationRef }
+
+data oci_overage_rate_obligation: NonEmptyStr = "The Pay As You Go price of OCI compute and block storage above the Always Free allowance is UNREAD; extdeps.cloud.oracle_oci carries no price row. RESOLVED BY citing Oracle's price list for VM.Standard.A1.Flex OCPU and memory hours and for block volume storage into an extdeps.pricing module."
+
+// The NOMINAL fit: the plan alone, as if the tenancy held nothing else.
+fn oci_always_free_fit(plan: List<OciPlannedInstance>) -> OciAllowanceFit {
+  oci_always_free_fit_beside(plan: plan, other: oci_no_other_usage)
+}
+
+fn oci_breach_consequence(tier: OciTenancyTier) -> OciBreachConsequence {
+  match tier {
+    AlwaysFreeTenancy => ExcessRefusedByVendor
+    PayAsYouGoTenancy => ExcessBilledAtUnreadRate {
+      obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_overage_rate_obligation"),
+    }
+  }
+}
+
+// ── THE OFFER ─────────────────────────────────────────────────────────────────────────────────
+//
+// THE OPERATOR'S TENANCY HOME REGION IS US EAST (ASHBURN), as the operator stated on 2026-10-05. It
+// is a fact about our tenancy and not about Oracle, so it lives here as an attributable operator
+// statement, bound to the vendor's region row. Always Free compute can be created only in the home
+// region, and identity calls must go there, so gunbc.oracle_oci.api derives its endpoint hosts from
+// this row. If the tenancy is ever recreated, re-read it from the OCI console's Tenancy details.
+data oci_tenancy_home_region: OciRegion = oci_region_us_ashburn_1
+
+// A ZERO-PRICED OFFER IS NOT AVAILABLE YET, AND THE BINDING SAYS SO RATHER THAN MINTING ONE (review on
+// gunbc#13335). A zero quote is true only if the offered plan fits the allowance beside everything else
+// the tenancy holds, and that needs two pieces of evidence nothing here can admit yet:
+//   - usage outside the plan, observed RELATIVE TO THAT PLAN. "Outside the plan" is a relation between
+//     an inventory and one plan, so an observation that does not carry the plan it excluded can be
+//     truthful for one plan and reused for another;
+//   - A1's monthly meter. The allowance is 1,500 OCPU-hours and 9,000 GB-hours a month, and a current
+//     inventory does not say how much of this month's credit is already spent.
+// So the binding decides everything it can decide (the member is in the plan, the plan fits nominally,
+// which includes the home-region rule) and then refuses with the obligation that names both. The nominal
+// calculator stays, because the instance converge uses it, beside tenancy usage it observes itself, to
+// decide whether a launch is possible at all. That is a different claim from a price.
+data oci_tenancy_allocation_unread_obligation: NonEmptyStr = "A zero-priced Always Free offer needs two pieces of evidence this repository cannot yet admit. (1) The tenancy's usage outside the offered plan, derived against THAT plan's member identities, so that an observation made for one plan cannot be reused for another. (2) The A1 month-to-date meter, OCPU-hours and GB-hours consumed in the current billing month against the 1,500 / 9,000 allowance, because a current inventory does not establish remaining credit. RESOLVED BY an allocation observation that carries the excluded plan's identity and the billing month's consumption, and a binding that checks both before minting a quote."
+
+data oci_member_not_in_plan_refusal: NonEmptyStr = "The requested member is not an instance of the offered plan, so nothing can be bound for it under that plan."
+
+data oci_plan_exceeds_refusal: NonEmptyStr = "The offered plan does not fit the Always Free allowance even on its own (oci_always_free_fit), so no member of it can be free."
+
+fn oci_plan_member(plan: List<OciPlannedInstance>, member: NonEmptyStr) -> OciPlannedInstance? {
+  match filter(plan, i => (i.name as String) == (member as String)).first() {
+    Present { value } => Present { value: value }
+    Absent => none
+  }
+}
+
+fn oci_refused_binding<P>(member: NonEmptyStr, cause_decl: String) -> OfferBinding<P> {
+  OfferBindingRefused { runs_on_label: member, cause: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: cause_decl) }
+}
+
+// The member is selected from the plan and the plan's nominal fit is decided here, so neither can be
+// supplied separately and disagree. A member outside the home region never reaches the final arm,
+// because the fit refuses it as NotInHomeRegion. Past
+// them, the binding refuses on the allocation obligation above. It is the offer's single entry point,
+// so the evidence lands here when it exists, rather than in a caller.
+fn bind_oci_always_free_offer<P>(plan: List<OciPlannedInstance>, member: NonEmptyStr) -> OfferBinding<P> {
+  match oci_plan_member(plan: plan, member: member) {
+    Absent => oci_refused_binding(member: member, cause_decl: "oci_member_not_in_plan_refusal"),
+    Present { value: chosen } =>
+    match oci_always_free_fit(plan: plan) {
+      ExceedsAlwaysFree { breaches } => oci_refused_binding(member: member, cause_decl: "oci_plan_exceeds_refusal"),
+      FitsAlwaysFree => oci_refused_binding(member: member, cause_decl: "oci_tenancy_allocation_unread_obligation"),
+    },
+  }
+}

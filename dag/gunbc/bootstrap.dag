@@ -1,0 +1,125 @@
+module gunbc.bootstrap
+
+
+type CompilerStage
+  = Tokenize
+  | Parse
+  | Resolve
+  | Normalize
+  | Infer
+  | Complexity
+  | Ownership
+  | Emit
+
+type StageInput
+  = SourceText { files: List<SourceEntry> }
+  | TokenStream { from_stage: CompilerStage }
+  | ParseTree { from_stage: CompilerStage }
+  | ModuleGraph { from_stage: CompilerStage }
+  | NormalizedGraph { from_stage: CompilerStage }
+  | TypedGraph { from_stage: CompilerStage }
+  | AnnotatedGraph { from_stage: CompilerStage }
+
+type StageOutput {
+  stage: CompilerStage
+  artifact_kind: ArtifactKind
+  diagnostics_forwarded: Bool
+}
+
+type ArtifactKind
+  = Tokens
+  | Ast
+  | ResolvedModules
+  | NormalizedIr
+  | TypedIr
+  | ComplexityReport
+  | OwnershipProofs
+  | RenderedFiles
+
+type SourceEntry {
+  path: std.types.FilePath
+  content: String
+  module_name: NonEmptyStr?
+}
+
+type ChangeKind
+  = AddField
+  | RemoveField
+  | RenameField
+  | ChangeFieldType
+  | AddType
+  | RemoveType
+  | ModifyVariant
+  | AddStage
+
+type BootstrapChangeClassification {
+  kind: ChangeKind
+  target_type: NonEmptyStr
+  field_name: NonEmptyStr?
+  has_default: Bool
+  affects_stages: List<CompilerStage>
+}
+
+type BootstrapStrategy = SinglePass | TwoPhase | Additive
+
+type BootstrapPlan {
+  change: BootstrapChangeClassification
+  strategy: BootstrapStrategy
+  requires_manual_stage0_edit: Bool
+  reason: String
+}
+
+type FixedPointCheck {
+  pass1_hash: ContentHash
+  pass2_hash: ContentHash
+  converged: Bool
+  diff_files: List<std.types.FilePath>
+}
+
+type BootstrapResult
+  = Converged { check: FixedPointCheck }
+  | Diverged { check: FixedPointCheck, iteration: Int }
+  | CompileError { stage: CompilerStage, message: String }
+
+type PropagationRule
+  = Preserved
+  | Recomputed
+  | Dropped
+
+type FieldPropagation {
+  stage: CompilerStage
+  field_name: NonEmptyStr
+  rule: PropagationRule
+}
+
+type TransformContract {
+  transform_name: NonEmptyStr
+  stage: CompilerStage
+  preserved_fields: List<NonEmptyStr>
+  recomputed_fields: List<NonEmptyStr>
+}
+
+fn classify_strategy(change: BootstrapChangeClassification) -> BootstrapStrategy {
+  match change.kind {
+    AddField => if change.has_default { Additive } else { TwoPhase }
+    AddType => Additive
+    AddStage => TwoPhase
+    RemoveField => TwoPhase
+    RenameField => TwoPhase
+    ChangeFieldType => TwoPhase
+    RemoveType => TwoPhase
+    ModifyVariant => SinglePass
+  }
+}
+
+fn requires_manual_edit(strategy: BootstrapStrategy) -> Bool {
+  match strategy {
+    SinglePass => false
+    TwoPhase => true
+    Additive => false
+  }
+}
+
+fn is_converged(check: FixedPointCheck) -> Bool {
+  check.pass1_hash == check.pass2_hash
+}

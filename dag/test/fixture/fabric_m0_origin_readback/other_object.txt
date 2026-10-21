@@ -1,0 +1,1 @@
+fabric-m0 origin readback fixture: a DIFFERENT object

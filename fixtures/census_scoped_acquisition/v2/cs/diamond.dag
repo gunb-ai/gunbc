@@ -1,0 +1,6 @@
+module v2.cs.diamond
+
+import v2.cs.left { left_value }
+import v2.cs.right { right_value }
+
+data diamond_value: Int = left_value

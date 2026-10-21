@@ -1,0 +1,15 @@
+module v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash
+
+import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
+
+// Priced-out lens walks. Not a *_test.dag: the freeze identities that used to live here
+// were ratchets in name only. Consumer: gunbc.offline_local_recipe RecipeFunctions on this
+// entry. Declared drop: gunbc.rung_drop.accumulator_copy_priced_out_file_gate_ratchets.
+
+fn roster_lean_file_gate_walk() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/lean.dag", refusal_ceiling: 1)
+}
+
+fn roster_bash_file_gate_walk() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/bash.dag", refusal_ceiling: 1)
+}

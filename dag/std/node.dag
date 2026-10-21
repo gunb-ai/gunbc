@@ -1,0 +1,122 @@
+module std.node
+
+import std.induction {
+  InductiveField, RecursionShape,
+  DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion
+}
+
+data compiler_inductive_fields: List<InductiveField> = [
+
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "children",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "params",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "uses",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "properties",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "body",
+    shape: OptionalRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "transport",
+    shape: OptionalRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "type_annotation",
+    shape: OptionalRecursion,
+    element_type: "Node"
+  },
+
+  InductiveField {
+    type_name: "Node",
+    variant_name: "",
+    field_name: "inferred",
+    shape: OptionalRecursion,
+    element_type: "InferredNode"
+  },
+
+  InductiveField {
+    type_name: "InferredNode",
+    variant_name: "Resolved",
+    field_name: "node",
+    shape: DirectRecursion,
+    element_type: "Node"
+  },
+
+  InductiveField {
+    type_name: "MatchPattern",
+    variant_name: "VariantPattern",
+    field_name: "field_bindings",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+
+  InductiveField {
+    type_name: "MethodSemantics",
+    variant_name: "AlgebraMethodSemantics",
+    field_name: "method_def",
+    shape: DirectRecursion,
+    element_type: "Node"
+  },
+  InductiveField {
+    type_name: "MethodSemantics",
+    variant_name: "AlgebraMethodSemantics",
+    field_name: "fold_accumulator_type",
+    shape: OptionalRecursion,
+    element_type: "Node"
+  },
+
+  InductiveField {
+    type_name: "MethodSemantics",
+    variant_name: "ServiceMethodSemantics",
+    field_name: "op_params",
+    shape: ListRecursion,
+    element_type: "Node"
+  },
+
+]
+
+data compiler_recursive_types: Map<String, Bool> = {
+  "Node": true,
+  "InferredNode": true,
+  "MatchPattern": true,
+  "MethodSemantics": true
+}
+
+fn is_compiler_recursive_type(name: String) -> Bool {
+  match map_get(compiler_recursive_types, name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}

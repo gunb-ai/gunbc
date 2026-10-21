@@ -1,0 +1,119 @@
+module gunbc.serving.session_store
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { TokenCount }
+import std.optional { Present, Absent }
+import product.fabric.work { identity_frame }
+import gunbc.serving.turn_admission {
+  ServingTurnReuse, TurnReuseRead, TurnReuseUnread, ServingSessionRecord, NoSessionRecord, SessionRecord,
+}
+
+// THE HARNESS SESSION STORE: what a session remembers between completed requests, and the one fold that
+// turns that memory into the ServingSessionRecord turn_admission reads. It replaces the NoSessionRecord
+// production placeholder (DESIGN.md 3c frontier declared at ServingSessionRecord).
+//
+// DECLARED FRONTIER (DESIGN.md 3c): this module is the READ-side route only today. harness_bind_seat
+// consumes serving_session_record_for_request, but every production caller passes no entry, so production
+// still reads NoSessionRecord until the write side lands. Consumer: the warm-trace producer / rented-cohort
+// session-keyed binder (the next PRs of this delivery), which calls serving_session_entry_after_request on
+// each completed request. Trigger: harness_wire decoding usage.prompt_tokens_details.cached_tokens (until
+// then reuse is TurnReuseUnread) and the first caller that binds more than once per session.
+//
+// THE PREFIX IS IDENTIFIED AT THE GRAIN THE HARNESS OBSERVES: the ordered request inputs. An agent trace
+// is append-only, so the next request extends the previous one exactly when its leading inputs frame to
+// the identity recorded after the previous request. The identity carries its length, so a request
+// shorter than the recorded prefix cannot extend it.
+type ServingPrefixIdentity {
+  length: Nat
+  identity: NonEmptyStr
+}
+
+// What is stored per session after a COMPLETED request. owner_launch is the launch that served it;
+// prefix covers that request's inputs followed by the reply it produced (the next request's leading
+// inputs); last_turn is that request's own attributed reuse reading. Nothing here is a residency
+// reading: no eviction or host-retention observation is stored, because none is made.
+type ServingSessionEntry {
+  owner_launch: NonEmptyStr
+  prefix: ServingPrefixIdentity
+  last_turn: ServingTurnReuse
+}
+
+fn serving_prefix_identity(inputs: List<String>) -> ServingPrefixIdentity {
+  ServingPrefixIdentity {
+    length: count(inputs),
+    identity: fold(inputs, init: identity_frame(label: "gunbc.serving.session-prefix", value: to_string(count(inputs))), f: (acc, part) => concat(acc, identity_frame(label: "input", value: part))),
+  }
+}
+
+// WHY A TURN'S CACHED-TOKENS COUNT WAS NOT OBSERVED, one arm per place the wire reading can stop. The
+// closed set is declared here, beside the reading it qualifies, so the cause reaches the unread
+// obligation as a value instead of being flattened to a string at the decoder.
+type CachedTokensUnobservedCause
+  = ResponseBodyNotAnObject
+  | UsageObjectAbsent
+  | UsageObjectDuplicated
+  | UsageNotAnObject
+  | PromptTokensDetailsAbsent
+  | PromptTokensDetailsDuplicated
+  | PromptTokensDetailsNotAnObject
+  | CachedTokensMemberAbsent
+  | CachedTokensMemberDuplicated
+  | CachedTokensNegative
+  | CachedTokensNotANumber
+  | CachedTokensNotAnInteger
+
+// The per-request prefix-cache count: observed, or unobserved with its cause. Never zero by omission: a
+// cold turn reports 0, a turn that was not observed reports nothing.
+type ServingCachedTokensReading
+  = CachedTokensObserved { cached_tokens: TokenCount }
+  | CachedTokensUnobserved { cause: CachedTokensUnobservedCause }
+
+fn cached_tokens_unobserved_obligation(cause: CachedTokensUnobservedCause) -> NonEmptyStr {
+  match cause {
+    ResponseBodyNotAnObject => "the response body is not a JSON object, so reuse at this turn was not observed" as NonEmptyStr
+    UsageObjectAbsent => "response carries no usage object, so reuse at this turn was not observed" as NonEmptyStr
+    UsageObjectDuplicated => "response carries the usage object more than once, so reuse at this turn was not observed" as NonEmptyStr
+    UsageNotAnObject => "usage is not an object, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsAbsent => "usage carries no prompt_tokens_details, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsDuplicated => "usage carries prompt_tokens_details more than once, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsNotAnObject => "usage.prompt_tokens_details is not an object, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensMemberAbsent => "usage.prompt_tokens_details carries no cached_tokens, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensMemberDuplicated => "usage.prompt_tokens_details carries cached_tokens more than once, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNegative => "usage.prompt_tokens_details.cached_tokens is negative, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNotANumber => "usage.prompt_tokens_details.cached_tokens is not a number (null when the server was not launched with --enable-prompt-tokens-details), so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNotAnInteger => "usage.prompt_tokens_details.cached_tokens is not an integer, so reuse at this turn was not observed" as NonEmptyStr
+  }
+}
+
+fn serving_turn_reuse_of_usage(reading: ServingCachedTokensReading, launch: NonEmptyStr, turn: NonEmptyStr) -> ServingTurnReuse {
+  match reading {
+    CachedTokensObserved { cached_tokens: n } => TurnReuseRead { cached_tokens: n, launch: launch, turn: turn }
+    CachedTokensUnobserved { cause: c } => TurnReuseUnread { obligation: cached_tokens_unobserved_obligation(cause: c) }
+  }
+}
+
+// Recorded when a request COMPLETES, per request: the first completion creates the entry, a later one
+// replaces it. A cancelled or failed request records nothing, so the previous entry stands.
+fn serving_session_entry_after_request(launch: NonEmptyStr, turn: NonEmptyStr, reading: ServingCachedTokensReading, inputs_and_reply: List<String>) -> ServingSessionEntry {
+  ServingSessionEntry {
+    owner_launch: launch,
+    prefix: serving_prefix_identity(inputs: inputs_and_reply),
+    last_turn: serving_turn_reuse_of_usage(reading: reading, launch: launch, turn: turn),
+  }
+}
+
+fn serving_inputs_extend_prefix(prefix: ServingPrefixIdentity, next_inputs: List<String>) -> Bool {
+  count(next_inputs) >= prefix.length && serving_prefix_identity(inputs: take(next_inputs, n: prefix.length)).identity == prefix.identity
+}
+
+// The record for the request about to be admitted. An uncertain read keeps owner attachment: only the
+// extension check is computed here, and uncertainty about it is not a break (it is computed from the
+// inputs the caller holds, so it is always decided).
+fn serving_session_record_for_request(entry: ServingSessionEntry?, next_inputs: List<String>) -> ServingSessionRecord {
+  match entry {
+    Absent => NoSessionRecord
+    Present { value: e } =>
+      SessionRecord { owner_launch: e.owner_launch, prefix_intact: serving_inputs_extend_prefix(prefix: e.prefix, next_inputs: next_inputs), last_turn: e.last_turn }
+  }
+}

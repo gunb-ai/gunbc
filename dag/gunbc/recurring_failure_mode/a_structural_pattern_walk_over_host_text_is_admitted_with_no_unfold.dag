@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_structural_pattern_walk_over_host_text_is_admitted_with_no_unfold
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_structural_pattern_walk_over_host_text_is_admitted_with_no_unfold: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_structural_pattern_walk_over_host_text_is_admitted_with_no_unfold" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a `match` over a kernel (host) String whose arms are the FreeMonoid constructors Empty and Cons with head and tail. The scrutinee is host text; the pattern reads a code-point sequence; no declared unfold stands at the crossing (DESIGN section 4, text_crossings_go_through_the_unfold). The seed admits it with no diagnostic and renders the pattern literally, so the emitted Rust indexes and iterates a Rust String.",
+    "HARM: the emitted crate does not build (E0277 str cannot be indexed by an integer on (*__fm)[0]; E0599 String is not an iterator on __fm.skip(1)), found only at the emitted-crate cargo build, and only for a closure that reaches the module: extdeps.posix.shell_command_language (REPAIRED since: posix_name_ok matches over a declared unicode_scalar_unfold; it is the future seed rule's green control) reached through extdeps.git -> extdeps.exec.command, and v2.workflow.effect_plan_bash_materialize effect_plan_bash_decimal_integer_ok. The interpreter accepts the same source and answers correctly, which is why the interpreted witnesses stayed green.",
+    "DISTINGUISHING FACTS: the native compiler refuses the same source (infer_match_scrutinee_not_coproduct, because a host-text Atom is not a declared coproduct), so the class is a seed-only admission. A Cons arm with both fields wildcarded that reads neither binding emits is_empty() and happens to build; the failure needs a binder read. A match over a BARE-IMPORTED v2.std.text String is structural and correct but reads as host in the seed, so the sites cannot be told apart by the seed's classifier today.",
+    "RUNG FOUND AT: mechanically preventable only on the emitted-Rust self-host path (the mandatory emitted-crate cargo check refuses it); unguarded on source acceptance in the seed. CEILING: structurally guaranteed (decidable once identity is read on a bare imported reference; v2 already refuses it). NEXT-RUNG TRIGGER: the resolver-identity capability named under gunbc.rung_drop text_boundary_identity_wall (fifth population): a bare imported type reference carries its declaration identity, so the seed refuses a Cons/Empty pattern over a HostText scrutinee while the structural sites stay admitted.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.match_binder.match_binder_typing", decl_name: "mbt_a_host_text_scrutinee_refuses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rung_drop.text_boundary_identity_wall", decl_name: "text_boundary_identity_wall", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_match_coproduct_of_type", field: WholeDeclaration },
+  ],
+}

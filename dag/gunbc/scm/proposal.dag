@@ -1,0 +1,70 @@
+module gunbc.scm.proposal
+
+import std.types { List }
+import v2.std.node { Node, Symbol }
+import v2.std.dependency { DependencyKind }
+
+// THIS IS THE PROPOSAL AUTHORITY, AND IT IS DELIBERATELY NOT NAMED AFTER AN OPERATION.
+//
+// These nouns previously lived in `gunbc.scm.merge`, which made an OPERATION module the home of the
+// vocabulary its callers needed. That was measurable rather than a matter of taste: of the eight
+// modules importing that module, SIX consumed only these nouns and never the operation, and three of
+// those six were production modules -- gunbc.scm.status, gunbc.scm.authoring and
+// gunbc.scm.read_command. A vocabulary with three times the consumers of the operation it was filed
+// under is not a detail of that operation.
+//
+// WHAT THIS MODULE MAY NOT BECOME. It is THE proposal authority, not one of two. A richer native
+// proposal -- one carrying authored parent, target, occurrence, frame, authority, effects and
+// evidence -- must WIDEN OR REPLACE these carriers in place. It must not arrive beside them as a
+// second `NativeProposal` while this `Proposal` stays independently authoritative for the same
+// transaction, because that is the section 3 fork this cut exists to remove, re-created one layer
+// down.
+//
+// WHAT IT DELIBERATELY DOES NOT DEPEND ON: `ObjectStore` and `ObjectId`. A requirement is authored
+// syntax; storage identity is not part of authoring it. Keeping that dependency out is what lets
+// status, authoring and read-command consume this vocabulary without acquiring a storage fact none
+// of them needs, and it fixes the direction of the graph -- proposal nouns, then integration, then
+// the object store, never back the other way.
+
+// A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. A
+// dependency-derived frontier can answer "is removing f compatible with everything that depends on
+// f", but it cannot express "the author requested that f be absent" -- that is a stated requirement,
+// not a consequence. Modelling delete as the absence of a positive requirement would make it
+// indistinguishable from silence, and silence means PRESERVE THE TARGET, so a delete expressed by
+// omission would be read as "leave f alone" -- the exact inversion of what was asked.
+type Requirement
+  = RequireBinding { role: Symbol, value: Node }
+  | RequireBindingAbsent { role: Symbol }
+
+fn requirement_role(r: Requirement) -> Symbol {
+  match r {
+    RequireBinding { role: role, value: _ } => role
+    RequireBindingAbsent { role: role } => role
+  }
+}
+
+type Proposal {
+  requirements: List<Requirement>
+  dependencies: List<RoleDependency>
+}
+
+// DEPENDENCIES ARE ROLE-GRAIN, NOT NODE-GRAIN, and that is a correctness choice rather than a
+// convenience. `DependencyView` endpoints are Nodes, and a replacement mints a NEW immutable node --
+// so a target-read edge `F1 -> K` says nothing about how `F2` relates to `K` once the binding is
+// replaced. The binding ROLE is the bridge that survives the replacement, so the relation is carried
+// at role grain and the question "does F2 still satisfy what K needed" stays answerable without
+// giving nodes a temporal identity they must not have.
+//
+// AND IT IS NAMED FOR THE RELATION, NOT FOR EITHER OF ITS POPULATIONS. It was `MergeDependency`,
+// which tied a neutral carrier to one operation. `ProposalDependency` was considered and REFUSED:
+// the integration consumes this same type in TWO populations -- the target's own dependencies and
+// the ones a proposal declares -- and combines them, so a proposal-flavoured name would make every
+// target-side use a lie. What is genuinely operation-specific is which KINDS an integration
+// supports, which kinds propagate a removal, and how an unsupported kind becomes a refusal. Those
+// are classifier policy and they stay with the operation; none of them is a property of this row.
+type RoleDependency {
+  dependent: Symbol
+  required: Symbol
+  kind: DependencyKind
+  usage_site: Symbol
+}

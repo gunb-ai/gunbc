@@ -1,0 +1,51 @@
+module extdeps.package_managers.conda_forge
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "conda-forge.org/docs/user/introduction/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.package_managers.conda_forge",
+      decl_name: "conda_forge_channel",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data conda_forge_channel: NonEmptyStr = "conda-forge"
+
+// conda-forge resolves packages into a prefix the invoking user owns, with no system privilege. Which
+// packages a consumer takes from it is that consumer's choice, not a fact of the channel: the print
+// runtime takes only its Python interpreter here, and the system libraries OCP links against come
+// from the host's apt (product.printing.cad_runtime_spec). An earlier consumer took those libraries
+// from here instead, to work without root in a session container; that consumer is deleted.
+//
+// THE PIN IS THE PREFIX, NOT A COMMAND FLAG. A create names every package and its version in one
+// solve, so the environment either resolves as a whole or refuses as a whole; installing into an
+// existing prefix one package at a time lets a later solve silently move an earlier one.
+
+// NOT sole_constructor: there is no admission decision to make about a name-plus-version pair, and
+// a mint gate that admits everything is a seal claiming a check that does not exist.
+type CondaPackageRequirement {
+  package_name: NonEmptyStr
+  version: NonEmptyStr
+}
+
+fn conda_package_name(r: CondaPackageRequirement) -> NonEmptyStr { r.package_name }
+fn conda_package_version(r: CondaPackageRequirement) -> NonEmptyStr { r.version }
+
+fn conda_requirement_spec(r: CondaPackageRequirement) -> String {
+  concat(concat(r.package_name as String, "="), r.version as String)
+}

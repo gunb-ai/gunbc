@@ -1,0 +1,104 @@
+module test.claim.native_route_seed_boundary_witness
+
+import extdeps.bazel.label { PackagePath }
+import extdeps.bazel.target_pattern {
+  SubtreeTargets, TargetPattern, TargetPatternParsed, TargetPatternRefused,
+  parse_target_pattern, render_target_pattern, target_pattern_within
+}
+import gunbc.native_route_seed_boundary_emit {
+  expected_native_route_seed_boundary_generated_rs, native_route_seed_boundary_generated_rs
+}
+import gunbc.native_route_universe { native_route_default_pattern }
+import std.types { Bool, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE AUTHORITY-MOVEMENT CLAIM FOR THE SEED'S COPY OF THE NATIVE ROUTE'S BOUNDARY.
+//
+// The seed routes `gunbc test <operand>` before any binary exists, so it needs the boundary
+// `gunbc.native_route_universe` `native_route_default_pattern` at a point where the declaration
+// cannot be evaluated. The seed therefore reads a constant that `gunbc.native_route_seed_boundary_emit`
+// renders from that declaration, and the join between the two is the generated-artifact drift wall:
+// move the declaration and the committed file stops equalling `expected_native_route_seed_boundary_generated_rs`,
+// which the wall reports, and heal regenerates.
+//
+// WHAT THIS CLAIM IS FOR, AND WHAT IT CANNOT SAY. No claim in this corpus can read the committed
+// file (a witness that did would be a wet witness, which v2.workflow.floor_changed_witness blocks for
+// any identity its own PR touches), so the committed bytes are the drift wall's to compare. What is
+// this module's to establish is the half the wall depends on: that the EXPECTED bytes are a function
+// of the declaration and of nothing else. If the emitter spelled the boundary in its own template the
+// expected bytes would stay put when the declaration moved, the wall would stay green, and the seed
+// would route by the old boundary with nothing red anywhere. So each arm below supplies the pattern
+// the emitter renders and asserts on the bytes that come out:
+//
+//   * the real call carries the declaration's rendering, so the seed constant IS the declaration;
+//   * a moved pattern carries its own rendering, and the declaration's rendering occurs nowhere in
+//     it, so the emitter holds no spelling of the boundary that survives the move;
+//   * the moved bytes differ from the default's, which is the exact condition under which a committed
+//     file left unregenerated is a located drift finding rather than a silent routing difference.
+//
+// The needle is computed from `render_target_pattern` over the declaration, never typed here, so
+// this claim spells the boundary no more than the emitter does.
+fn moved_boundary() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["gunbc" as NonEmptyStr] } }
+}
+
+fn quoted_constant(rendered: String) -> String {
+  concat(concat("NATIVE_ROUTE_DEFAULT_PATTERN: &str = \"", rendered), "\";")
+}
+
+fn default_rendering() -> String {
+  render_target_pattern(pattern: native_route_default_pattern())
+}
+
+test fn the_seed_constant_is_the_declarations_rendering() -> Bool {
+  string_contains(
+    s: expected_native_route_seed_boundary_generated_rs(),
+    pattern: quoted_constant(rendered: default_rendering())
+  )
+}
+
+test fn a_moved_boundary_is_carried_into_the_generated_rust() -> Bool {
+  string_contains(
+    s: native_route_seed_boundary_generated_rs(pattern: moved_boundary()),
+    pattern: quoted_constant(rendered: render_target_pattern(pattern: moved_boundary()))
+  )
+}
+
+test fn a_moved_boundary_leaves_no_trace_of_the_old_one() -> Bool {
+  !string_contains(
+    s: native_route_seed_boundary_generated_rs(pattern: moved_boundary()),
+    pattern: quoted_constant(rendered: default_rendering())
+  ) && !string_contains(
+    s: native_route_seed_boundary_generated_rs(pattern: moved_boundary()),
+    pattern: default_rendering()
+  )
+}
+
+test fn a_moved_boundary_changes_the_expected_bytes() -> Bool {
+  native_route_seed_boundary_generated_rs(pattern: moved_boundary())
+    != expected_native_route_seed_boundary_generated_rs()
+}
+
+// THE CONSTANT IS A FAITHFUL ENCODING OF THE DECLARATION, NOT ONLY A STRING THAT CONTAINS IT. The
+// seed parses the constant with the pattern grammar and routes by containment, so what it holds must
+// parse back to a pattern that contains and is contained by the declaration. Containment in both
+// directions is the pattern authority's own equality; this claim authors no equality of its own.
+test fn the_rendered_boundary_parses_back_to_the_declaration() -> Bool {
+  match parse_target_pattern(text: default_rendering()) {
+    TargetPatternParsed { pattern } =>
+      target_pattern_within(inner: pattern, outer: native_route_default_pattern())
+        && target_pattern_within(inner: native_route_default_pattern(), outer: pattern)
+    TargetPatternRefused { cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE TWO ARMS ABOVE THAT ASSERT AN ABSENCE. An absence assertion is green
+// over an emitter that rendered nothing at all, so this requires the moved bytes to be nonempty and
+// to be a different pattern from the declaration's under the authority's own containment.
+test fn the_moved_boundary_is_a_different_pattern_than_the_declaration() -> Bool {
+  !target_pattern_within(inner: native_route_default_pattern(), outer: moved_boundary())
+    && !target_pattern_within(inner: moved_boundary(), outer: native_route_default_pattern())
+    && native_route_seed_boundary_generated_rs(pattern: moved_boundary()).length() > 0
+}

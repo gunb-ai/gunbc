@@ -1,0 +1,34 @@
+module v2.test.claim.vacuity_evidence_derived_eq_witness
+
+import v2.lens.vacuity {
+  ProvenDuplicate,
+  ProvenIndependent,
+  Unknown
+}
+
+// D1 derived-equality backfill (nfr_dissolve_derived_equality payoff) for
+// src/v2/lens/vacuity.dag::vacuity_evidence_eq. The hand fold (param-scrutinee
+// over the three nullary arms of the fieldless coproduct VacuityEvidence,
+// off-variant wildcard arm returning false) is deleted; its call sites now read
+// the derived structural == (dag/std/algebra, DESIGN §3/§4). These two witnesses
+// are the RED + positive control for the backfill, in a production-closure module
+// (imports v2.lens.vacuity only) so they run via the entry route: the lens_vacuity
+// test module's pre-existing v2.test.nat_semiring.rung_5 import makes that module
+// unrunnable there today (fixture-registry gap, independent of this change).
+//
+// RED: the derived == must separate every pair of DISTINCT variants — the
+// failure mode the hand fold was backfilling (an equality that conflated two
+// arms) makes one of these `!=` hold false and reds here.
+test fn vacuity_evidence_derived_eq_discriminates_distinct_variants() -> Bool {
+  (ProvenDuplicate != ProvenIndependent)
+    && (ProvenDuplicate != Unknown)
+    && (ProvenIndependent != Unknown)
+}
+
+// POSITIVE CONTROL, paired with the distinguishing red above: identical arms
+// compare equal under the same derived ==.
+test fn vacuity_evidence_derived_eq_equal_values_compare_equal() -> Bool {
+  (ProvenDuplicate == ProvenDuplicate)
+    && (ProvenIndependent == ProvenIndependent)
+    && (Unknown == Unknown)
+}

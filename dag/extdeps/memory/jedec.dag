@@ -1,0 +1,50 @@
+module extdeps.memory.jedec
+
+import std.measure { byte_size }
+import extdeps.memory.types {
+  DoubleDataRate,
+  DramGeneration,
+  JedecDdrGenerationCatalogRow,
+  dram_generation_ddr4,
+  dram_generation_ddr5,
+  dram_generation_unknown,
+  dram_generation_number,
+  dram_generation_signaling_family,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/JEDEC_memory_standards"
+  }
+}
+
+data ddr4_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+  generation: dram_generation_ddr4,
+  max_monolithic_die_density: byte_size(count: 2147483648),
+  jedec_standard: "JESD79-4",
+}
+
+data ddr5_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+  generation: dram_generation_ddr5,
+  max_monolithic_die_density: byte_size(count: 8589934592),
+  jedec_standard: "JESD79-5",
+}
+
+data unknown_ddr_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+  generation: dram_generation_unknown,
+  max_monolithic_die_density: byte_size(count: 0),
+  jedec_standard: "UNKNOWN",
+}
+
+fn jedec_ddr_generation_catalog_row(dram_gen: DramGeneration) -> JedecDdrGenerationCatalogRow {
+  match dram_generation_signaling_family(dram_gen) {
+    DoubleDataRate => match dram_generation_number(dram_gen) {
+      4 => ddr4_generation_catalog
+      5 => ddr5_generation_catalog
+      _ => unknown_ddr_generation_catalog
+    }
+  }
+}

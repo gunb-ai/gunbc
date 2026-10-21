@@ -1,0 +1,139 @@
+module test.claim.serving.rented_host_grant_witness
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.scoped_authorization {
+  ScopedAuthorization, AuthorizationGranted, AuthorizationPending, OperatorGrant, Unclaimed, AttemptIdentity,
+}
+import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
+import gunbc.serving.rented_host_grant {
+  RentedHostSubject, RentedHostClock, RentedHostClockRead, RentedHostClockUnread,
+  RentedHostPermit, RentedHostPermitted, RentedHostNotPermitted,
+  rented_host_subject, rented_host_intent, rented_host_scope, rented_host_request, rented_host_permit, rented_host_authorizations,
+}
+import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, rented_host_ssh_effect, DivergesWithReason }
+import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
+import test.claim.serving.rented_enrollment_witness { e_access }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn g_grant(subject: RentedHostSubject, attempt: String, expires_at: String) -> ScopedAuthorization<RentedHostSubject> {
+  let request = rented_host_request(escalation_id: "esc-1" as NonEmptyStr, subject: subject, attempt: attempt as AttemptIdentity)
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: request.escalation_id,
+      scopes: request.scopes,
+      subject: request.subject,
+      purpose: request.purpose,
+      attempt: request.attempt,
+      intent_hash: request.intent_hash,
+      granted_by: "operator" as NonEmptyStr,
+      granted_at: "2026-10-12T10:00:00Z",
+      expires_at: expires_at,
+    },
+    claim: Unclaimed,
+  }
+}
+
+fn g_decl() -> RentedHostAccessDeclaration {
+  e_access(octet4: 7)
+}
+
+fn g_now() -> RentedHostClock {
+  RentedHostClockRead { at: "2026-10-12T11:00:00Z" }
+}
+
+fn g_live(attempt: String) -> ScopedAuthorization<RentedHostSubject> {
+  g_grant(subject: rented_host_subject(declaration: g_decl()), attempt: attempt, expires_at: "2026-10-12T12:00:00Z")
+}
+
+fn g_permitted(p: RentedHostPermit) -> Bool {
+  match p {
+    RentedHostPermitted => true
+    RentedHostNotPermitted { cause: _ } => false
+  }
+}
+
+fn g_refused_naming(p: RentedHostPermit, needle: String) -> Bool {
+  match p {
+    RentedHostPermitted => false
+    RentedHostNotPermitted { cause: c } => contains(c, needle)
+  }
+}
+
+test fn a_live_grant_for_this_subject_and_attempt_permits() -> Bool {
+  g_permitted(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: g_decl(), attempt_raw: "run-1", clock: g_now()))
+}
+
+test fn no_authorization_for_the_subject_refuses() -> Bool {
+  g_refused_naming(p: rented_host_permit(authorizations: [], declaration: g_decl(), attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+}
+
+test fn an_expired_grant_refuses() -> Bool {
+  let expired = g_grant(subject: rented_host_subject(declaration: g_decl()), attempt: "run-1", expires_at: "2026-10-12T10:30:00Z")
+  g_refused_naming(p: rented_host_permit(authorizations: [expired], declaration: g_decl(), attempt_raw: "run-1", clock: g_now()), needle: "expire")
+}
+
+test fn a_grant_for_another_node_refuses() -> Bool {
+  let other = RentedHostAccessDeclaration {
+    node: "rental-2" as NonEmptyStr, address: g_decl().address, principal: g_decl().principal,
+    host_key: g_decl().host_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
+  }
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+}
+
+test fn a_grant_for_another_host_key_refuses() -> Bool {
+  let hk = g_decl().host_key
+  let other_key = KnownHostKeyRow {
+    host: hk.host, address: hk.address, key_type: hk.key_type, public_key_base64: "AAAAdifferenthostkey",
+    sha256_fingerprint: hk.sha256_fingerprint, provenance: hk.provenance,
+  }
+  let other = RentedHostAccessDeclaration {
+    node: g_decl().node, address: g_decl().address, principal: g_decl().principal,
+    host_key: other_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
+  }
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+    && (rented_host_intent(subject: rented_host_subject(declaration: other)) as String) != (rented_host_intent(subject: rented_host_subject(declaration: g_decl())) as String)
+}
+
+test fn a_grant_for_another_key_fingerprint_refuses() -> Bool {
+  let other = RentedHostAccessDeclaration {
+    node: g_decl().node, address: g_decl().address, principal: g_decl().principal,
+    host_key: g_decl().host_key, operator_key: g_decl().operator_key, operator_key_fingerprint: "SHA256:another" as NonEmptyStr,
+  }
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+}
+
+test fn a_grant_for_another_attempt_refuses() -> Bool {
+  !g_permitted(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: g_decl(), attempt_raw: "run-2", clock: g_now()))
+}
+
+test fn a_pending_request_is_not_a_grant() -> Bool {
+  let pending = AuthorizationPending { request: rented_host_request(escalation_id: "esc-1" as NonEmptyStr, subject: rented_host_subject(declaration: g_decl()), attempt: "run-1" as AttemptIdentity) }
+  !g_permitted(p: rented_host_permit(authorizations: [pending], declaration: g_decl(), attempt_raw: "run-1", clock: g_now()))
+}
+
+test fn two_authorizations_for_one_subject_are_not_resolved_by_order() -> Bool {
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1"), g_live(attempt: "run-1")], declaration: g_decl(), attempt_raw: "run-1", clock: g_now()), needle: "more than one")
+}
+
+test fn an_unread_clock_refuses_even_a_live_grant() -> Bool {
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: g_decl(), attempt_raw: "run-1", clock: RentedHostClockUnread), needle: "clock")
+}
+
+test fn the_production_authorizations_are_empty() -> Bool {
+  count(rented_host_authorizations) == 0
+}
+
+test fn the_selection_yields_the_operator_approval_pattern_for_the_rented_host_effect() -> Bool {
+  match select_authorization_pattern(e: rented_host_ssh_effect()) {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn the_gate_site_is_censused_once_as_a_reasoned_divergence_until_redemption_is_wired() -> Bool {
+  let rows = filter(privileged_effect_census, r => r.site.module_path == "gunbc.serving.rented_host_grant")
+  length(rows) == 1 && all(rows, r => match site_verdict(row: r).conformance { DivergesWithReason { reason: _ } => true _ => false })
+}

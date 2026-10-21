@@ -1,0 +1,39 @@
+module v2.test.claim.cardinality_realization_list_specimen
+
+import std.algebra { fold_list }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import std.types { List }
+import v2.std.integer { Int }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SPECIMEN 6 OVER `List`, in its own module. It is the same fact as specimen 6 of
+// v2.test.claim.cardinality_realization_specimens, which spells the collection `FreeMonoid`; `List` is
+// an alias of it. It lives apart because the seed Rust emit erases a List nested under an Optional
+// (Option<Rc<Vec<Option<()>>>>) and the emitted crate then FAILS TO COMPILE (rustc E0308), so a module
+// holding it cannot be run at all: sharing a module would take every other specimen's seed Rust
+// observation down with it. Its rows are in v2.test.claim.cardinality_realization_coverage.
+fn specimen_present_absent_list_entries() -> Optional<List<Optional<Int>>> { Present { value: [Absent] } }
+
+fn entry_tag(e: Optional<Int>) -> Int {
+  match e {
+    Absent => 1
+    Present { value: v } => 10 + v
+  }
+}
+
+fn list_entry_sum(xs: List<Optional<Int>>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, e) { acc + entry_tag(e: e) })
+}
+
+fn tag_list_entries(x: Optional<List<Optional<Int>>>) -> Int {
+  match x {
+    Absent => 60
+    Present { value: xs } => 70 + list_entry_sum(xs: xs)
+  }
+}
+
+test fn the_list_spelling_keeps_element_absence() -> Bool {
+  tag_list_entries(x: specimen_present_absent_list_entries()) == 71
+}

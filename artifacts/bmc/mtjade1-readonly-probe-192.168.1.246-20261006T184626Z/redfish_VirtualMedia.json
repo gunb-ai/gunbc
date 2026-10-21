@@ -1,0 +1,2 @@
+{"@odata.context":"/redfish/v1/$metadata#VirtualMediaCollection.VirtualMediaCollection","@odata.etag":"\"952010547\"","@odata.id":"/redfish/v1/Managers/Self/VirtualMedia","@odata.type":"#VirtualMediaCollection.VirtualMediaCollection","Description":"Collection of Virtual Media redirected to host via this Manager","Members":[],"Members@odata.count":0,"Name":"Virtual Media Collection"}
+HTTP_CODE:200

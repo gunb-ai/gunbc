@@ -1,0 +1,85 @@
+module extdeps.systems.gigabyte_xh23_vg0_aaj1
+
+import std.types { NonEmptyStr, List }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.gigabyte { gigabyte }
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.systems.types {
+  SuperchipServerCatalogRow,
+  ServerPowerSupplies,
+  SupplyOutputRating,
+  SuppliesOnePlusOne,
+  StorageBay,
+  ExpansionSlot,
+  SystemNetworkPort,
+  WiredEthernet,
+}
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_624gb_hbm3e_catalog }
+
+// The vendor datasheet this row should be read from. Fetched 2026-10-04 it answered HTTP 404, so the
+// row is transcribed from a product listing the operator pasted and is typed uncited below.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.gigabyte.com/FileList/DataSheet/XH23-VG0-AAJ1_datasheet_v1.2.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.gigabyte_xh23_vg0_aaj1",
+      decl_name: "gigabyte_xh23_vg0_aaj1",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// GH200-4 (2026-10-04). Transcribed from the product-details text the operator pasted: "Nvidia MGX Arm
+// Server - Nvidia GH200 Grace Hopper Superchip - 2U UP 4-Bay Gen5 NVMe - XH23-VG0-AAJ1",
+// "NVIDIA-Certified Systems", "Single Nvidia GH200 Grace Hopper Superchip", "480GB CPU LPDDR5X ECC
+// memory", "Up to 144GB GPU HBM3e", "Compatible with Nvidia BlueField-3 DPUs", "2 x 10Gb/s LAN ports via
+// Intel X550-AT2", "4 x 2.5" Gen5 NVMe bays", "2 x M.2 slots with PCIe Gen5 x4 interface", "3 x FHFL PCIe
+// Gen5 x16 slots", "1+1 2000W 80 PLUS Titanium redundant power supply". The text names no BMC,
+// dimensions, fans or temperature, and not the 2.5in bays' lane width, so those are none.
+data gigabyte_xh23_standing_obligation: NonEmptyStr = "read Gigabyte's XH23-VG0-AAJ1 datasheet or product page (the datasheet URL answered 404 on 2026-10-04) and confirm: the 144GB HBM3e configuration, the 1000 W module support, the supplies' output at each AC input range (the listing's 2000W names none), the 2.5in bays' PCIe lane width, the BMC and management LAN, dimensions, fans and operating temperature" as NonEmptyStr
+
+data gigabyte_xh23_vg0_aaj1: SuperchipServerCatalogRow = SuperchipServerCatalogRow {
+  vendor: gigabyte,
+  model: "XH23-VG0-AAJ1",
+  form_factor: "2U NVIDIA MGX, single GH200",
+  dimensions: Absent,
+  supported_superchips: [nvidia_gh200_624gb_hbm3e_catalog],
+  announced_superchips: [],
+  module_power_ceiling: nvidia_gh200_624gb_hbm3e_catalog.module_power_ceiling,
+  carrier: Absent,
+  power_supplies: ServerPowerSupplies {
+    form: "80 PLUS Titanium",
+    count: 2,
+    redundancy: SuppliesOnePlusOne,
+    output_ratings: [SupplyOutputRating { input: Absent, output: watt(count: 2000) }],
+  },
+  management: Absent,
+  host_network: [
+    SystemNetworkPort { medium: WiredEthernet, product_name: "Intel X550-AT2", bandwidth: none },
+    SystemNetworkPort { medium: WiredEthernet, product_name: "Intel X550-AT2", bandwidth: none },
+  ],
+  storage_bays: [
+    StorageBay { count: 4, form_factor: "2.5in Gen5 NVMe", link: Absent, placement: "front" },
+    StorageBay { count: 2, form_factor: "M.2", link: Present { value: PcieLink { generation: Gen5, lane_count: 4 } }, placement: "internal" },
+  ],
+  expansion_slots: [
+    ExpansionSlot { count: 3, mechanical: "FHFL", link: PcieLink { generation: Gen5, lane_count: 16 }, intended_for: Present { value: "NVIDIA BlueField-3 DPUs among others" } },
+  ],
+  front_panel: [],
+  fans: Absent,
+  operating_temperature: Absent,
+  non_operating_temperature: Absent,
+  non_operating_humidity: Absent,
+  figure_standing: TranscribedUncited { read_obligation: gigabyte_xh23_standing_obligation },
+}

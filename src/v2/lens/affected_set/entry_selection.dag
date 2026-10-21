@@ -1,0 +1,31 @@
+module v2.lens.affected_set.entry_selection
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE MODULE-GRAPH IMPORT-CLOSURE IS THE SINGLE AUTHORITY FOR TEST SELECTION.
+// This module declares the scaffold binding that identifies the authority.
+// The authority itself is v2.lens.module_graph.entry_affected_by_touched_paths_excluding.
+//
+// REPLACEMENT MIGRATION — SECTION 3 CONSOLIDATION (2026-09-05):
+// Three mechanisms answered "which tests are affected by this diff?":
+//   1. v2.lens.affected_set (semantic Node-level lens) — stays as regen authority.
+//   2. v2.lens.affected_set.corpus_dependency_view (fn-arrow Decl-level) — DELETED.
+//      The fn-arrow corpus_dependency_views_live composition was the selection
+//      mechanism removed. The lower-level fn-arrow primitives (fn_arrow_decl_facts_live,
+//      dependency_lens) remain as general-purpose lens infrastructure, not selection
+//      mechanisms — the §3 fork was about the composition, not those primitives.
+//   3. v2.lens.module_graph.entry_affected_by_touched_paths (import-closure) —
+//      THE SURVIVOR.
+//
+// THE IDENTITY DEFECT (decl.output conflated with decl identity) that existed in
+// the deleted fn-arrow composition is resolved because module-graph import-closure
+// operates on module-level import edges, not fn-arrow output nodes.
+data entry_file_touched_grain_interim: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.module_graph",
+    decl_name: "entry_affected_by_touched_paths_excluding",
+    field: WholeDeclaration
+  }
+}

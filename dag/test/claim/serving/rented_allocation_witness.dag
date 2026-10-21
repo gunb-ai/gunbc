@@ -1,0 +1,151 @@
+module test.claim.serving.rented_allocation_witness
+
+import std.types { String, Bool, NonEmptyStr, Port }
+import std.measure { byte_size }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.principal_projection { PrincipalRef }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, RemoteForward }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
+import gunbc.serving.rented_ninfer_source { ninfer_serve_81c8ce09_sm120_release }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
+import gunbc.serving.rented_replica { RentedGpuDevice }
+import product.supplier.vast_ai { VastAiAskReceipt }
+import std.measure { MoneyRate, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import gunbc.serving.rented_enrollment { rented_enrollment_index, rented_enrolled_routes }
+import gunbc.serving.serving_enrollment { ServingRouteResolved, ServingRouteUnresolved, serving_route_endpoint_wire, serving_route_turn_ceiling_count }
+import gunbc.serving.rented_allocation {
+  RentedServingAllocation, RentedAllocationImported, RentedAllocationAcquired, RentedEndsOnOperatorRelease, RentedNinferEngine,
+  RentedAccessRoute, RentedDirectPublishedPort, RentedSshLocalForward, RentedContractUnread,
+  RentedAllocationEnrollment, RentedAllocationEnrollable, RentedAllocationNotEnrollable,
+  rented_allocation_identity, rented_allocation_wire, rented_allocation_enrollment,
+  rented_route_lands_off_engine_port_obligation, rented_route_forward_not_local_obligation,
+}
+import test.claim.serving.rented_enrollment_witness { e_access }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn a_operator() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "witness-operator" as NonEmptyStr }
+}
+
+fn a_loopback(port: Port) -> SocketAddress {
+  socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: port)
+}
+
+fn a_public(port: Port) -> SocketAddress {
+  socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: 7)), port: port)
+}
+
+fn a_tunnel(target_port: Port) -> RentedAccessRoute {
+  RentedSshLocalForward {
+    forward_host: "harness-host" as HostIdentity,
+    forward: PortForwardSpec { direction: LocalForward, listener: a_loopback(port: 18090), target: a_loopback(port: target_port) },
+  }
+}
+
+// The supplied engine listens on 8000; every route below is judged against that port.
+fn a_allocation(route: RentedAccessRoute) -> RentedServingAllocation {
+  RentedServingAllocation {
+    identity: rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr),
+    origin: RentedAllocationImported { imported_by: a_operator(), imported_at: 1792022400000, found_running: decl_ref(module_path: "gunbc.harness.operator_pod_launch", decl_name: "operator_pod_ninfer_launch") },
+    contract: RentedContractUnread { obligation: "witness: price not read" as NonEmptyStr },
+    card: RentedGpuDevice { index: 0, model: "RTX PRO 5000 Blackwell" as NonEmptyStr, memory: byte_size(count: 51539607552) },
+    end: RentedEndsOnOperatorRelease { decided_by: a_operator() },
+    engine: RentedNinferEngine { engine_release: ninfer_serve_81c8ce09_sm120_release, launch: operator_pod_ninfer_launch, listen_port: 8000 },
+    artifact: qwen3_8_27b_nvfp4_row,
+    host: e_access(octet4: 7),
+    route: route,
+  }
+}
+
+fn a_endpoint_wire(e: RentedAllocationEnrollment) -> String {
+  match e {
+    RentedAllocationEnrollable { allocation: _, enrollment: r } => serving_route_endpoint_wire(e: r.endpoint) as String
+    RentedAllocationNotEnrollable { allocation: _, obligation: o } => join(["refused: ", o as String], "")
+  }
+}
+
+fn a_refused_with(e: RentedAllocationEnrollment, wanted: NonEmptyStr) -> Bool {
+  match e {
+    RentedAllocationEnrollable { allocation: _, enrollment: _ } => false
+    RentedAllocationNotEnrollable { allocation: _, obligation: o } => o == wanted
+  }
+}
+
+// A TUNNEL AND A PUBLISHED PORT ARE TWO REALIZATIONS OF ONE ROUTE: both derive an endpoint, at the forward's
+// listener and at the published address respectively, and nothing else about the enrollment differs.
+test fn a_tunnel_derives_its_listener_as_the_endpoint() -> Bool {
+  a_endpoint_wire(e: rented_allocation_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000)))) == "127.0.0.1:18090"
+}
+
+test fn a_published_port_derives_the_public_address_as_the_endpoint() -> Bool {
+  a_endpoint_wire(e: rented_allocation_enrollment(a: a_allocation(route: RentedDirectPublishedPort { published: a_public(port: 41234), card_port: 8000 }))) == "203.0.113.7:41234"
+}
+
+// THE DRIFT THE OPERATOR ROUTE CARRIED: a tunnel landing on 8080 while the engine listens on 8000 is refused
+// when the endpoint is derived. The same allocation with the target on 8000 is the positive control above.
+test fn a_tunnel_landing_off_the_engine_port_is_refused() -> Bool {
+  a_refused_with(e: rented_allocation_enrollment(a: a_allocation(route: a_tunnel(target_port: 8080))), wanted: rented_route_lands_off_engine_port_obligation)
+}
+
+test fn a_published_port_mapped_off_the_engine_port_is_refused() -> Bool {
+  a_refused_with(e: rented_allocation_enrollment(a: a_allocation(route: RentedDirectPublishedPort { published: a_public(port: 41234), card_port: 8080 })), wanted: rented_route_lands_off_engine_port_obligation)
+}
+
+test fn a_remote_forward_gives_the_harness_no_listener_and_is_refused() -> Bool {
+  a_refused_with(
+    e: rented_allocation_enrollment(a: a_allocation(route: RentedSshLocalForward {
+      forward_host: "harness-host" as HostIdentity,
+      forward: PortForwardSpec { direction: RemoteForward, listener: a_loopback(port: 18090), target: a_loopback(port: 8000) },
+    })),
+    wanted: rented_route_forward_not_local_obligation)
+}
+
+// THE DERIVED ROW IS ADMITTED BY THE EXISTING ENROLLMENT INDEX, under the launch's model id and its
+// concurrency flag: the route is read through rented_enrolled_routes, the consumer the harness seat uses.
+test fn the_derived_row_resolves_through_the_enrollment_index() -> Bool {
+  match rented_allocation_enrollment(a: a_allocation(route: a_tunnel(target_port: 8000))) {
+    RentedAllocationNotEnrollable { allocation: _, obligation: _ } => false
+    RentedAllocationEnrollable { allocation: _, enrollment: row } =>
+      match first(rented_enrolled_routes(index: rented_enrollment_index(rows: [row]))) {
+        Present { value: r } => match r {
+          ServingRouteResolved { endpoint: e, ceiling: c } =>
+            (e.replica.served_name as String) == (operator_pod_ninfer_launch.model_id as String)
+              && serving_route_turn_ceiling_count(c: c) == operator_pod_ninfer_launch.max_concurrency
+          ServingRouteUnresolved { replica: _, obligation: _ } => false
+        }
+        Absent => false
+      }
+  }
+}
+
+test fn two_providers_with_one_contract_number_are_two_allocations() -> Bool {
+  let vast = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr)
+  let packet = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr)
+  (rented_allocation_wire(id: vast) as String) != (rented_allocation_wire(id: packet) as String)
+}
+
+// THE ORIGIN DOES NOT CHANGE WHERE A TURN IS SENT: a bidder-acquired allocation with the same route derives
+// the same endpoint as an imported one.
+test fn an_acquired_allocation_derives_the_same_endpoint_as_an_imported_one() -> Bool {
+  let imported = a_allocation(route: a_tunnel(target_port: 8000))
+  let acquired = RentedServingAllocation {
+    identity: imported.identity,
+    origin: RentedAllocationAcquired {
+      owner: "gunbc-flex" as NonEmptyStr,
+      asked_at: 1792008000000,
+      asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
+      provider_ask: VastAiAskReceipt { ask_id: 77, machine_id: 42 },
+    },
+    contract: imported.contract, card: imported.card, end: imported.end, engine: imported.engine,
+    artifact: imported.artifact, host: imported.host, route: imported.route,
+  }
+  a_endpoint_wire(e: rented_allocation_enrollment(a: acquired)) == a_endpoint_wire(e: rented_allocation_enrollment(a: imported))
+}

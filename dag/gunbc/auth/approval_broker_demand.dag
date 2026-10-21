@@ -1,0 +1,196 @@
+module gunbc.auth.approval_broker_demand
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+
+// ── THE BROKER'S OWN MEASURED DEMAND ────────────────────────────────────────────────────────
+// WHY THIS MODULE EXISTS AT ALL: the cutover plan refuses to repoint the front door while the
+// demand reading is DemandUnmeasured, and until this module there was NOTHING THAT COULD BUILD THE
+// ADMITTING VALUE. Corpus-wide, DemandMeasured was constructed in exactly one place -- a witness
+// fixture -- so the gate's refusal arm was real and its admission arm was unreachable in
+// production. A gate that can only ever refuse looks like safety and is an unfinished path; the
+// only way to advance would have been to hand-author six numbers into a data row, which is the
+// transcription DESIGN section 6 forbids. So the readings get a producer, and the producer is the
+// point of this module rather than the vocabulary.
+//
+// THE READING IS TAKEN ONE INCARNATION PER ROUTE CLASS, and that protocol is forced by a measured
+// kernel fact rather than chosen: see broker_demand_reset_unavailable below. Each incarnation is
+// started, allowed to cold-load, made to perform EXACTLY ONE route class, read, and stopped. So
+// each number is that incarnation's TRUE PEAK and includes its cold load.
+//
+// INCLUDING THE COLD LOAD IS THE POINT, NOT AN IMPURITY. The slice has to hold a process that has
+// cold-loaded and is serving, because every incarnation systemd starts does exactly that. A
+// hypothetical "marginal cost of the confirm page above a warm process" would be a smaller number
+// that no running process ever exhibits, and sizing a cgroup from it would produce a bound the
+// first restart under load violates.
+
+// ── THE KERNEL FACT THAT DECIDES THE PROTOCOL ───────────────────────────────────────────────
+// MEASURED ON srv1, NOT ASSUMED, and it is recorded because it is the whole reason the readings are
+// six incarnations rather than six samples of one. cgroup v2 exposes memory.peak, which is MONOTONE
+// over the life of the cgroup: it never falls, so a second read cannot describe a later phase in
+// isolation. Resetting it by writing to the file is a LATER KERNEL'S feature; on the deployed
+// kernel the write is refused.
+//
+// The alternative that suggests itself and is REFUSED here: sampling memory.current in a loop and
+// taking the maximum. That substitutes a sampled approximation for an exact counter the kernel
+// already maintains, and it silently misses any peak between two samples -- a weaker instrument
+// wearing the same field name, which is the degradation DESIGN section 5 forbids. Restarting is
+// exact and costs nothing while the broker is dark.
+type PerPhaseAttributionLimit {
+  observed_kernel: NonEmptyStr
+  observed_on: NonEmptyStr
+  reset_outcome: NonEmptyStr
+  consequence: NonEmptyStr
+  retirement_trigger: NonEmptyStr
+}
+
+data broker_demand_reset_unavailable: PerPhaseAttributionLimit = PerPhaseAttributionLimit {
+  observed_kernel: "6.8.0-138-generic" as NonEmptyStr,
+  observed_on: "srv1, measured 2026-09-19 against a throwaway transient unit rather than the broker, by the operating lane" as NonEmptyStr,
+  reset_outcome: "writing '0' to memory.peak returns EINVAL; reset-by-write is a later-kernel feature and is not available here" as NonEmptyStr,
+  consequence: "a phase's peak cannot be isolated within one incarnation, so each reading is taken from its OWN incarnation and necessarily includes that incarnation's cold load" as NonEmptyStr,
+  retirement_trigger: "THE CAPABILITY: memory.peak reset admitted on the deployed kernel -- verified by writing to it and observing success rather than EINVAL -- which permits exact per-phase peaks within ONE incarnation and retires the one-incarnation-per-phase protocol. Nothing smaller retires this row: a newer kernel being released does not, nor does the fleet being upgraded, until the write is observed to succeed on the host the broker runs on." as NonEmptyStr,
+}
+
+// ── THE PHASES ──────────────────────────────────────────────────────────────────────────────
+// ColdLoadOnly IS A PHASE AND NOT A BASELINE SUBTRACTED FROM THE OTHERS. It is the incarnation that
+// binds and serves nothing, so it measures what the process costs before any route runs. It is
+// carried as a peer reading rather than as a correction term precisely because the other readings
+// are NOT differences -- each is its own incarnation's true peak -- so there is nothing to subtract
+// it from and any code that tried would be inventing a marginal cost no process exhibits.
+type BrokerDemandPhase
+  = ColdLoadOnly
+  | SubmissionAndNotification
+  | ConfirmPage
+  | Redemption
+  | StatusPoll
+
+// THE ROSTER IS THE COMPLETENESS SUBJECT. Coverage below is an identity join against this list, not
+// a count -- five readings that happen to number five while two name the same phase is not a
+// complete measurement (DESIGN section 5: completeness is an identity join, not a count equality).
+data broker_demand_phases: List<BrokerDemandPhase> = [
+  ColdLoadOnly, SubmissionAndNotification, ConfirmPage, Redemption, StatusPoll,
+]
+
+fn broker_demand_phase_label(p: BrokerDemandPhase) -> NonEmptyStr {
+  match p {
+    ColdLoadOnly => "cold-load-only" as NonEmptyStr
+    SubmissionAndNotification => "submission-and-notification" as NonEmptyStr
+    ConfirmPage => "confirm-page" as NonEmptyStr
+    Redemption => "redemption" as NonEmptyStr
+    StatusPoll => "status-poll" as NonEmptyStr
+  }
+}
+
+// THE TYPE NAME SAYS WHAT THE NUMBER IS, which is the correction this whole reading went through.
+// It is not "the confirm page's peak"; it is the peak of an incarnation that cold-loaded AND
+// exercised the confirm page. A field called confirm_page_peak invited a reader to treat it as the
+// route's marginal cost, and every consumer that did would be reasoning about a process that never
+// runs.
+type PeakOfIncarnationExercising {
+  phase: BrokerDemandPhase
+  bytes: ByteSize
+}
+
+type BrokerDemandReading
+  = DemandUnmeasured { missing: NonEmptyStr }
+  | DemandMeasured {
+      incarnation_peaks: List<PeakOfIncarnationExercising>
+      idle_resident_before: ByteSize
+      idle_resident_after: ByteSize
+      declared_concurrency: Int
+    }
+
+// ── THE PRODUCER ────────────────────────────────────────────────────────────────────────────
+// IT REFUSES INTO DemandUnmeasured RATHER THAN RETURNING A PARTIAL MEASURED VALUE, so an incomplete
+// run reaches the cutover plan as the state that stops it. The missing string names what to go and
+// take, which is what separates a typed refusal from a boolean gate.
+fn phase_is_covered(peaks: List<PeakOfIncarnationExercising>, p: BrokerDemandPhase) -> Bool {
+  fold(peaks, init: false, f: (acc, r) =>
+    if acc { true } else { broker_demand_phase_label(p: r.phase) == broker_demand_phase_label(p: p) }
+  )
+}
+
+fn phase_reading_count(peaks: List<PeakOfIncarnationExercising>, p: BrokerDemandPhase) -> Int {
+  fold(peaks, init: 0, f: (acc, r) =>
+    if broker_demand_phase_label(p: r.phase) == broker_demand_phase_label(p: p) { acc + 1 } else { acc }
+  )
+}
+
+fn missing_phase_labels(peaks: List<PeakOfIncarnationExercising>) -> List<String> {
+  fold(broker_demand_phases, init: [], f: (acc, p) =>
+    if phase_is_covered(peaks: peaks, p: p) { acc }
+    else { concat(acc, [broker_demand_phase_label(p: p) as String]) }
+  )
+}
+
+fn duplicated_phase_labels(peaks: List<PeakOfIncarnationExercising>) -> List<String> {
+  fold(broker_demand_phases, init: [], f: (acc, p) =>
+    if phase_reading_count(peaks: peaks, p: p) > 1 {
+      concat(acc, [broker_demand_phase_label(p: p) as String])
+    } else { acc }
+  )
+}
+
+// A READING AT OR BELOW THE IDLE RESIDENT IS NOT A PEAK, and refusing it catches the failure this
+// protocol is most exposed to: reading memory.peak from the WRONG cgroup, or after the incarnation
+// has already gone, both of which hand back a small plausible number rather than an error. A peak
+// that does not exceed what the process is sitting on when idle has not observed the exercise.
+fn peaks_below_idle(peaks: List<PeakOfIncarnationExercising>, idle: ByteSize) -> List<String> {
+  fold(peaks, init: [], f: (acc, r) =>
+    if byte_size_count(b: r.bytes) <= byte_size_count(b: idle) {
+      concat(acc, [broker_demand_phase_label(p: r.phase) as String])
+    } else { acc }
+  )
+}
+
+fn broker_demand_from_incarnations(
+  peaks: List<PeakOfIncarnationExercising>,
+  idle_resident_before: ByteSize,
+  idle_resident_after: ByteSize,
+  declared_concurrency: Int,
+) -> BrokerDemandReading {
+  let missing = missing_phase_labels(peaks: peaks)
+  let duplicated = duplicated_phase_labels(peaks: peaks)
+  let thin = peaks_below_idle(peaks: peaks, idle: idle_resident_before)
+  if length(xs: missing) > 0 {
+    DemandUnmeasured {
+      missing: join(["no incarnation peak was recorded for: ", join(missing, ", ")], "") as NonEmptyStr
+    }
+  } else if length(xs: duplicated) > 0 {
+    DemandUnmeasured {
+      missing: join([
+        "more than one incarnation peak names the same phase (", join(duplicated, ", "),
+        "); the protocol is one incarnation per phase, so two readings for one phase means two runs were folded together and neither is attributable",
+      ], "") as NonEmptyStr
+    }
+  } else if length(xs: thin) > 0 {
+    DemandUnmeasured {
+      missing: join([
+        "these incarnation peaks do not exceed the idle resident, so the exercise was not observed (wrong cgroup, or read after the incarnation ended): ",
+        join(thin, ", "),
+      ], "") as NonEmptyStr
+    }
+  } else if declared_concurrency < 1 {
+    DemandUnmeasured {
+      missing: "declared concurrency must be at least 1: a bound sized for zero in-flight requests describes a process that serves nothing" as NonEmptyStr
+    }
+  } else {
+    DemandMeasured {
+      incarnation_peaks: peaks,
+      idle_resident_before: idle_resident_before,
+      idle_resident_after: idle_resident_after,
+      declared_concurrency: declared_concurrency,
+    }
+  }
+}
+
+// ── WHAT THE BOUND IS DERIVED FROM ──────────────────────────────────────────────────────────
+// THE MAX ACROSS INCARNATIONS, because the slice must hold whichever incarnation is running, and
+// each incarnation is one of these. This is the fold stage 3 tightens
+// gunbc.live_deploy.slice_bounds from, so the readings are CONSUMED rather than merely gating.
+fn broker_demand_observed_max(peaks: List<PeakOfIncarnationExercising>) -> ByteSize {
+  fold(peaks, init: byte_size(0), f: (acc, r) =>
+    if byte_size_count(b: r.bytes) > byte_size_count(b: acc) { r.bytes } else { acc }
+  )
+}

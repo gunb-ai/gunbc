@@ -1,0 +1,26 @@
+module extdeps.standards.ocp_nic_3_0
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// OCP NIC 3.0 Revision 1.00, mechanical overview: SFF and LFF are distinct
+// physical variants within one generation. Consumer: nic_attachment and the
+// Mt. Collins candidate verdict witness; neither variant implies a host topology.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "www.opencompute.org/documents/ocp-nic-3-0-r1v00-20191219a-tn-no-cb-pdf",
+} }
+
+type OcpNic3PhysicalVariant = Sff | Lff
+
+data ocp_nic_3_generation_label: NonEmptyStr = "OCP 3.0"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.standards.ocp_nic_3_0", decl_name: "OcpNic3PhysicalVariant", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

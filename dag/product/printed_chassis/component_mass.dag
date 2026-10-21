@@ -1,0 +1,131 @@
+module product.printed_chassis.component_mass
+
+import product.printed_chassis.cooler_configuration {CoolerConfiguration,DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
+import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
+import std.types {Bool,Int,List,String,NonEmptyStr}
+import std.measure {Gram,gram,gram_count,Micrometer}
+import std.affine_space {Point3,signed_frame_component_count}
+import std.optional {Present,Absent}
+import extdeps.cpu.ampere {ampere_altra_max_typical_package_mass}
+import extdeps.memory.samsung {m393a8g40d40_crb0q_catalog}
+import extdeps.memory.types {HostMemoryPopulation}
+import extdeps.cooling.dynatron {dynatron_w1_mass_active,dynatron_w1_mass_tolerance}
+import extdeps.storage.samsung {samsung_970_evo_family_max_mass}
+import extdeps.fans.arctic {arctic_p8_mass}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Printed,Purchased,Metal,Clearance,placed}
+import product.printed_chassis.stack_geometry {cassette_parts,part_bounds}
+
+// Each component has its own mass and position evidence. This roster replaces the
+// legacy BOARD/RAM slab-only mass approximation. Missing mass never folds as zero.
+// Positions inherited from review CAD are envelope centres, NOT measured centres of mass.
+type MassEvidence
+ = VendorNominal {mass:Gram}
+ | BoundedMass {lower:Gram,upper:Gram,basis:NonEmptyStr}
+ | PlanningMassRange {lower:Gram,upper:Gram,basis:NonEmptyStr}
+ | MassNeeded {reason:MassNeed}
+type MassNeed = BoardWithCpu | BoardWithSocket | ProcessorPackage | OneDimm | SlicedOrWeighedPrint
+ | MountingHardware | HarnessAndConnectors | SelectedPowerSupply | DistributionHardware
+ | PowerEnclosure | CornerStructure | ServiceSupport
+
+type PositionEvidence = EnvelopeCentre | PlacementNeeded | SurveyedCentre
+
+type MassComponent {
+ id:String,quantity:Int,mass:MassEvidence,at:Point3,position:PositionEvidence,
+}
+type MassMeasurement {id:String,lower:Gram,upper:Gram,basis:NonEmptyStr}
+type MassIssue = EmptyInventory | MissingMass {id:String,reason:MassNeed}
+ | DuplicateComponent {id:String} | DuplicateMeasurement {id:String}
+ | UnknownMeasurement {id:String} | InvalidMassRange {id:String} | InvalidQuantity {id:String}
+type MassTotals {lower:Gram,upper:Gram,components:Int,nominal_vendor_rows:Int,estimated_rows:Int,provisional_positions:Int}
+type MassLedger = MassIncomplete {issues:List<MassIssue>} | MassComplete {total:MassTotals,rows:List<MassComponent>}
+
+fn component(id:String,quantity:Int,mass:MassEvidence,x:Int,y:Int,z:Int,position:PositionEvidence) -> MassComponent {
+ MassComponent {id:id,quantity:quantity,mass:mass,at:placed(x:x,y:y,z:z),position:position}
+}
+fn envelope_centre(p:AssemblyPart) -> Point3 {
+ match part_bounds(p:p) {
+  Absent=>p.at
+  Present {value:b}=>placed(x:signed_frame_component_count(c:p.at.x)+(b.lo_x+b.hi_x)/4,y:signed_frame_component_count(c:p.at.y)+(b.lo_y+b.hi_y)/4,z:signed_frame_component_count(c:p.at.z)+(b.lo_z+b.hi_z)/4)
+ }
+}
+fn geometry_component(p:AssemblyPart) -> MassComponent {
+ let mass=if p.id=="CPU" {BoundedMass {lower:gram(count:gram_count(g:dynatron_w1_mass_active)-gram_count(g:dynatron_w1_mass_tolerance)),upper:gram(count:gram_count(g:dynatron_w1_mass_active)+gram_count(g:dynatron_w1_mass_tolerance)),basis:"Dynatron active W1 vendor mass +/- tolerance; includes its fan"}}
+ else {if p.id=="F1" || p.id=="F2" || p.id=="F3" {VendorNominal {mass:arctic_p8_mass}} else {MassNeeded {reason:SlicedOrWeighedPrint}}}
+ MassComponent {id:if p.id=="CPU" {"COOLER"} else {p.id},quantity:1,mass:mass,at:envelope_centre(p:p),position:EnvelopeCentre}
+}
+fn dimm_count(population:HostMemoryPopulation) -> Int {fold(population.rows,init:0,f:(n,r)=>n+r.stick_count)}
+
+// RAM bank slab geometry is not another mass. The population supplies the count.
+// Until surveyed, all DIMMs share a central placement placeholder: the ledger reports
+// that fact, so its mass completeness is never confused with stability qualification.
+fn node_components(population:HostMemoryPopulation) -> List<MassComponent> {
+ let geometry=map(filter(cassette_parts(),p=>match p.kind {Printed=>true Purchased=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3" Metal=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3" Clearance=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3"}),p=>geometry_component(p:p))
+ concat(geometry,[
+  component(id:"BOARD",quantity:1,mass:board_planning_mass,x:0,y:27000,z:0,position:EnvelopeCentre),
+  component(id:"PROCESSOR",quantity:1,mass:VendorNominal {mass:ampere_altra_max_typical_package_mass},x:0,y:29000,z:0,position:PlacementNeeded),
+  component(id:"DIMMS",quantity:dimm_count(population:population),mass:if all(population.rows,r=>r.module.part_number==m393a8g40d40_crb0q_catalog.part_number) {dimm_planning_mass} else {MassNeeded {reason:OneDimm}},x:0,y:47000,z:0,position:PlacementNeeded),
+  component(id:"SSD",quantity:1,mass:BoundedMass {lower:gram(count:0),upper:samsung_970_evo_family_max_mass,basis:"Samsung 970 EVO / EVO Plus brochure: maximum 8 g; this is an upper bound, not an 8 g measurement"},x:0,y:29000,z:0,position:PlacementNeeded),
+  component(id:"BOARD_MOUNTING",quantity:1,mass:MassNeeded {reason:MountingHardware},x:0,y:18000,z:0,position:PlacementNeeded),
+  component(id:"FASTENERS",quantity:1,mass:MassNeeded {reason:MountingHardware},x:0,y:30000,z:0,position:PlacementNeeded),
+  component(id:"NODE_HARNESS",quantity:1,mass:MassNeeded {reason:HarnessAndConnectors},x:0,y:30000,z:0,position:PlacementNeeded),
+  component(id:"CORNER_STRUCTURE",quantity:1,mass:MassNeeded {reason:CornerStructure},x:0,y:65000,z:0,position:PlacementNeeded),
+ ])
+}
+fn station_components() -> List<MassComponent> {[
+ component(id:"PSU",quantity:1,mass:MassNeeded {reason:SelectedPowerSupply},x:0,y:50000,z:0,position:PlacementNeeded),
+ component(id:"POWER_DISTRIBUTION",quantity:1,mass:MassNeeded {reason:DistributionHardware},x:0,y:30000,z:0,position:PlacementNeeded),
+ component(id:"POWER_HARNESS",quantity:1,mass:MassNeeded {reason:HarnessAndConnectors},x:0,y:30000,z:0,position:PlacementNeeded),
+ component(id:"POWER_CASSETTE",quantity:1,mass:MassNeeded {reason:PowerEnclosure},x:0,y:50000,z:0,position:PlacementNeeded),
+]}
+fn resolve_mass(row:MassComponent,measurements:List<MassMeasurement>) -> MassComponent {
+ let found=filter(measurements,m=>m.id==row.id)
+ let mass=match found.first() {Absent=>row.mass Present {value:m}=>BoundedMass {lower:m.lower,upper:m.upper,basis:m.basis}}
+ MassComponent {id:row.id,quantity:row.quantity,mass:mass,at:row.at,position:row.position}
+}
+fn mass_range_valid(m:MassEvidence) -> Bool {match m {VendorNominal {mass:g}=>gram_count(g:g)>0 PlanningMassRange {lower:l,upper:u,basis:_}=>gram_count(g:u)>0 && gram_count(g:u)>=gram_count(g:l) BoundedMass {lower:l,upper:u,basis:_}=>gram_count(g:u)>0 && gram_count(g:u)>=gram_count(g:l) MassNeeded {reason:_}=>true}}
+fn lower_mass(m:MassEvidence) -> Gram {match m {VendorNominal {mass:g}=>g PlanningMassRange {lower:l,upper:_,basis:_}=>l BoundedMass {lower:l,upper:_,basis:_}=>l MassNeeded {reason:_}=>gram(count:0)}}
+fn upper_mass(m:MassEvidence) -> Gram {match m {VendorNominal {mass:g}=>g PlanningMassRange {lower:_,upper:u,basis:_}=>u BoundedMass {lower:_,upper:u,basis:_}=>u MassNeeded {reason:_}=>gram(count:0)}}
+
+fn mass_ledger(components:List<MassComponent>,measurements:List<MassMeasurement>) -> MassLedger {
+ if count(components)==0 {return MassIncomplete {issues:[EmptyInventory]}}
+ let rows=map(components,r=>resolve_mass(row:r,measurements:measurements))
+ let component_issues=flat_map(rows,r=>concat(
+  if count(filter(rows,q=>q.id==r.id))!=1 {[DuplicateComponent {id:r.id}]} else {[]},
+  concat(if r.quantity<=0 {[InvalidQuantity {id:r.id}]} else {[]},
+  concat(if !mass_range_valid(m:r.mass) {[InvalidMassRange {id:r.id}]} else {[]},
+  match r.mass {MassNeeded {reason:n}=>[MissingMass {id:r.id,reason:n}] VendorNominal {mass:_}=>[] PlanningMassRange {lower:_,upper:_,basis:_}=>[] BoundedMass {lower:_,upper:_,basis:_}=>[]}))))
+ let measurement_issues=flat_map(measurements,m=>concat(
+  if count(filter(measurements,q=>q.id==m.id))!=1 {[DuplicateMeasurement {id:m.id}]} else {[]},
+  if !any(rows,r=>r.id==m.id) {[UnknownMeasurement {id:m.id}]} else {[]}))
+ let issues=concat(component_issues,measurement_issues)
+ if count(issues)>0 {MassIncomplete {issues:issues}} else {
+  MassComplete {rows:rows,total:MassTotals {
+   lower:gram(count:fold(rows,init:0,f:(g,r)=>g+r.quantity*gram_count(g:lower_mass(m:r.mass)))),
+   upper:gram(count:fold(rows,init:0,f:(g,r)=>g+r.quantity*gram_count(g:upper_mass(m:r.mass)))),
+   components:fold(rows,init:0,f:(n,r)=>n+r.quantity),
+   nominal_vendor_rows:count(filter(rows,r=>match r.mass {VendorNominal {mass:_}=>true PlanningMassRange {lower:_,upper:_,basis:_}=>false BoundedMass {lower:_,upper:_,basis:_}=>false MassNeeded {reason:_}=>false})),
+   estimated_rows:count(filter(rows,r=>match r.mass {PlanningMassRange {lower:_,upper:_,basis:_}=>true VendorNominal {mass:_}=>false BoundedMass {lower:_,upper:_,basis:_}=>false MassNeeded {reason:_}=>false})),
+   provisional_positions:count(filter(rows,r=>r.position!=SurveyedCentre)),
+  }}
+ }
+}
+
+// Operator direction: research online and use explicit planning ranges; do not
+// request weighing or disassembly. These are scenario assumptions, not vendor
+// tolerances or certified bounds. A complete estimated ledger is still only a screen.
+data board_planning_mass: MassEvidence = PlanningMassRange {
+ lower:gram(count:910),upper:gram(count:1700),
+ basis:"Operator-supplied 0.91-1.70 kg planning bracket. Published store weights conflict and may include packaging; ASRock's reviewed specification gives geometry, not a verified bare-board mass. Do not treat either endpoint as a certified bound.",
+}
+data dimm_planning_mass: MassEvidence = PlanningMassRange {
+ lower:gram(count:20),upper:gram(count:100),
+ basis:"Engineering sensitivity allowance, 20-100 g per bare Samsung M393A8G40D40-CRB-family DIMM. Samsung Rev1.3 section18 specifies a 133.35 x 31.25 x 3.9 mm maximum envelope, not mass. No supplier shipping weight is promoted to component weight; endpoints are assumed, not certified.",
+}
+
+// Swap the cooler assembly once; its two fans are already included in vendor mass.
+fn node_components_for_cooler(population:HostMemoryPopulation,cooler:CoolerConfiguration,contact_plane_um:Micrometer) -> List<MassComponent> {
+ map(node_components(population:population),r=>if r.id=="COOLER" {match cooler {
+  DynatronW1=>r
+  NoctuaU14sAmp4926=>MassComponent {id:r.id,quantity:1,mass:VendorNominal {mass:nh_u14s_amp_4926.mass},at:envelope_centre(p:noctua_envelope(contact_plane_um:contact_plane_um)),position:EnvelopeCentre}
+ }} else {r})
+}

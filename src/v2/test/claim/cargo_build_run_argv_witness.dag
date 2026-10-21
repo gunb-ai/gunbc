@@ -1,0 +1,55 @@
+module v2.test.claim.cargo_build_run_argv_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.operation_argv {
+  operation_argv_bind_text,
+  operation_argv_bind_text_list,
+  operation_argv_tokens_or_refusal_label,
+}
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cargo_build_run_path: String = "dag/extdeps/rust/cargo_build.dag"
+data cargo_build_run_service: String = "cargo.Build"
+data cargo_build_run_operation: String = "Run"
+data cargo_build_run_package: String = "v1-compiler"
+data cargo_build_run_bin: String = "gunbc"
+data cargo_build_run_args: List<String> = ["compile", "--help"]
+
+fn argv_token_at(argv: List<String>, index: Int) -> String {
+  match argv.skip(n: index).first() {
+    Present { value: token } => token
+    Absent => ""
+  }
+}
+
+fn witness_cargo_build_run_argv_materializes() -> Bool {
+  let argv = operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      cargo_build_run_path,
+      cargo_build_run_service,
+      cargo_build_run_operation,
+      [
+        operation_argv_bind_text(name: "package", text: cargo_build_run_package),
+        operation_argv_bind_text(name: "bin", text: cargo_build_run_bin),
+        operation_argv_bind_text_list(name: "args", items: cargo_build_run_args)
+      ]
+    )
+  )
+  length(xs: argv) == 9
+    && argv_token_at(argv: argv, index: 0) == "cargo"
+    && argv_token_at(argv: argv, index: 1) == "run"
+    && argv_token_at(argv: argv, index: 2) == "-p"
+    && argv_token_at(argv: argv, index: 3) == cargo_build_run_package
+    && argv_token_at(argv: argv, index: 4) == "--bin"
+    && argv_token_at(argv: argv, index: 5) == cargo_build_run_bin
+    && argv_token_at(argv: argv, index: 6) == "--"
+    && argv_token_at(argv: argv, index: 7) == "compile"
+    && argv_token_at(argv: argv, index: 8) == "--help"
+}
+
+test fn cargo_build_run_argv_holds() -> Bool {
+  witness_cargo_build_run_argv_materializes()
+}

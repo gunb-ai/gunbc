@@ -1,0 +1,26 @@
+module v2.test.claim.module_own_declaration_peer_alpha
+
+import v2.std.integer { Int }
+
+// ONE HALF OF A HOMONYM PAIR, AUTHORED HERE RATHER THAN BORROWED. `section_sentinel` is declared
+// with this exact spelling in the beta peer beside it, and each peer's own entry calls it BARE --
+// which is how every plan carrier in dag/gunbc/plans is written, and how the defect this fixture
+// holds was produced there.
+//
+// THE SENTINEL IS AN Int RATHER THAN A Bool BECAUSE THE QUESTION IS WHICH FUNCTION ANSWERED, not
+// which of two answers came back. 100 and 200 are same-arity, same-type, total, and disagree only
+// in the value returned, so a reading of 200 through the alpha entry LOCATES the beta declaration
+// as the producer instead of merely disagreeing with alpha's.
+fn section_sentinel() -> Int {
+  100
+}
+
+fn alpha_entry() -> Int {
+  section_sentinel()
+}
+
+// THE IMPORT-TIER SUBJECT. A name BOTH peers declare, exported so a third module can import it
+// explicitly and state which one it means. `alpha_entry` above cannot cover this: it is a
+// reference from the declaring module itself, which the own-module tier settles. This one is
+// reached from OUTSIDE both declarers, where the only thing distinguishing them is the import.
+data shared_anchor: Int = 11

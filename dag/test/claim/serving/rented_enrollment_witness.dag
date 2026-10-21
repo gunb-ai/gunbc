@@ -1,0 +1,204 @@
+module test.claim.serving.rented_enrollment_witness
+
+import std.types { String, Bool, NonEmptyStr, List, Int }
+import std.nat { Nat }
+import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, IndependentlyAnchored }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint, CeilingFromRouteLaunch,
+}
+import gunbc.serving.replica_endpoint_launch { replica_endpoint_launch }
+import gunbc.serving.replica_incarnation { ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread }
+import gunbc.serving.rented_enrollment {
+  RentedEnrollment, RentedEnrollmentLookup, RentedEnrollmentFound, RentedEnrollmentNotFound,
+  rented_cohort_index, rented_enrollment_index, rented_enrolled_routes, rented_enrollment_for, rented_incarnation_standing,
+  rented_replica_enrolled_twice_obligation, rented_replica_unenrolled_obligation,
+  rented_endpoint_enrolled_twice_obligation, rented_replica_node_differs_from_access_node_obligation,
+}
+import std.scoped_authorization { ScopedAuthorization, AuthorizationGranted, OperatorGrant, Unclaimed, AttemptIdentity }
+import gunbc.serving.rented_host_grant { RentedHostSubject, RentedHostClock, RentedHostClockRead, rented_host_subject, rented_host_request }
+import gunbc.harness.harness_seat { harness_observe_incarnation }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn e_replica(device: Nat) -> RentedReplicaIdentity {
+  RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: device, served_name: "qwen-first-row" as NonEmptyStr }
+}
+
+// The rental's sshd, on the TEST-NET-3 address the fixtures share, at the standard port.
+fn e_ssh_address(octet4: Int) -> SocketAddress {
+  socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: octet4)), port: 22)
+}
+
+fn e_row_key() -> KnownHostKeyRow {
+  KnownHostKeyRow {
+    host: "rental-1" as HostIdentity,
+    address: e_ssh_address(octet4: 7),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture",
+    sha256_fingerprint: "SHA256:fixture",
+    provenance: IndependentlyAnchored { authority: "synthetic fixture standing for the provider console fingerprint" as NonEmptyStr },
+  }
+}
+
+fn e_access(octet4: Int) -> RentedHostAccessDeclaration {
+  RentedHostAccessDeclaration {
+    node: "rental-1" as NonEmptyStr,
+    address: e_ssh_address(octet4: octet4),
+    principal: "root" as NonEmptyStr,
+    host_key: e_row_key(),
+    operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIOperatorOperatorOperatorOperatorOperatorOp" as NonEmptyStr, comment: "operator-rental" },
+    operator_key_fingerprint: "SHA256:operator" as NonEmptyStr,
+  }
+}
+
+fn e_row(device: Nat, ssh_octet4: Int) -> RentedEnrollment {
+  RentedEnrollment {
+    endpoint: ServingRouteEndpoint { replica: e_replica(device: device), address: "203.0.113.7" as NonEmptyStr, port: 8000 + device },
+    ceiling: CeilingFromRouteLaunch { count: 4, basis: "witness" as NonEmptyStr },
+    access: e_access(octet4: ssh_octet4),
+    engine_pattern: "vllm serve" as NonEmptyStr,
+  }
+}
+
+fn e_launch(device: Nat) -> ReplicaEndpointLaunch {
+  replica_endpoint_launch(replica: e_replica(device: device), endpoint: "203.0.113.7:8000" as NonEmptyStr, process_start_field: "1789300000.12" as NonEmptyStr)
+}
+
+fn e_unread_with(s: ReplicaIncarnationStanding, needle: String) -> Bool {
+  match s {
+    ReplicaIncarnationUnread { obligation: o } => string_contains(o as String, needle)
+    ReplicaIncarnationBound { incarnation: _ } => false
+  }
+}
+
+fn e_resolved_device(r: ServingRoute) -> Int {
+  match r {
+    ServingRouteResolved { endpoint: e, ceiling: _ } => e.replica.device_index
+    ServingRouteUnresolved { replica: _, obligation: _ } => 0 - 1
+  }
+}
+
+// THE ROSTER IS DERIVED FROM THE ENROLLMENT ROWS: a two-GPU rental enrolls two replicas of one host,
+// each a resolved route at its own endpoint.
+test fn a_two_gpu_rental_enrolls_two_distinct_resolved_routes() -> Bool {
+  let routes = rented_enrolled_routes(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7), e_row(device: 1, ssh_octet4: 7)]))
+  let devices = map(routes, r => e_resolved_device(r: r))
+  count(routes) == 2 && any(devices, d => d == 0) && any(devices, d => d == 1)
+}
+
+test fn a_replica_enrolled_twice_is_unresolved_never_resolved_by_order() -> Bool {
+  let routes = rented_enrolled_routes(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7), e_row(device: 0, ssh_octet4: 9)]))
+  count(routes) == 2 && all(routes, r => e_resolved_device(r: r) == 0 - 1)
+}
+
+test fn an_unenrolled_replica_has_no_host_and_names_the_obligation() -> Bool {
+  match rented_enrollment_for(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7)]), replica: e_replica(device: 1)) {
+    RentedEnrollmentNotFound { replica: _, obligation: o } => (o as String) == (rented_replica_unenrolled_obligation as String)
+    RentedEnrollmentFound { enrollment: _ } => false
+  }
+}
+
+test fn a_replica_enrolled_twice_has_no_host() -> Bool {
+  match rented_enrollment_for(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7), e_row(device: 0, ssh_octet4: 9)]), replica: e_replica(device: 0)) {
+    RentedEnrollmentNotFound { replica: _, obligation: o } => (o as String) == (rented_replica_enrolled_twice_obligation as String)
+    RentedEnrollmentFound { enrollment: _ } => false
+  }
+}
+
+fn e_now() -> RentedHostClock {
+  RentedHostClockRead { at: "2026-10-12T11:00:00Z" }
+}
+
+fn e_grant(ssh_octet4: Int, attempt: String) -> ScopedAuthorization<RentedHostSubject> {
+  let request = rented_host_request(escalation_id: "esc-1" as NonEmptyStr, subject: rented_host_subject(declaration: e_access(octet4: ssh_octet4)), attempt: attempt as AttemptIdentity)
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject, purpose: request.purpose,
+      attempt: request.attempt, intent_hash: request.intent_hash, granted_by: "operator" as NonEmptyStr,
+      granted_at: "2026-10-12T10:00:00Z", expires_at: "2026-10-12T12:00:00Z",
+    },
+    claim: Unclaimed,
+  }
+}
+
+// THE TRANSPORT IS REACHED THROUGH THE ENROLLED ACCESS: a host key row for another endpoint is refused
+// by the real rented_host_access before any leg runs, an unsafe attempt identity likewise, and an
+// unenrolled replica or a launch naming another replica never reaches a host.
+test fn an_unenrolled_replica_reads_its_incarnation_unread() -> Bool {
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: []), authorizations: [], clock: e_now(), endpoint: e_row(device: 0, ssh_octet4: 7).endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "no enrollment row")
+}
+
+test fn a_launch_naming_another_replica_is_not_observed_at_this_endpoint() -> Bool {
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7)]), authorizations: [], clock: e_now(), endpoint: e_row(device: 0, ssh_octet4: 7).endpoint, launch: e_launch(device: 1), attempt_raw: "e-1"), needle: "another replica")
+}
+
+test fn an_enrolled_host_whose_key_row_names_another_endpoint_reads_unread() -> Bool {
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 8)]), authorizations: [e_grant(ssh_octet4: 8, attempt: "e-1")], clock: e_now(), endpoint: e_row(device: 0, ssh_octet4: 8).endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "203.0.113.8")
+}
+
+test fn an_unsafe_attempt_identity_reads_the_incarnation_unread() -> Bool {
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_octet4: 7)]), authorizations: [e_grant(ssh_octet4: 7, attempt: "../escape")], clock: e_now(), endpoint: e_row(device: 0, ssh_octet4: 7).endpoint, launch: e_launch(device: 0), attempt_raw: "../escape"), needle: "attempt identity")
+}
+
+// THE INHABITANCE CLAIM: the REAL production enrollment is empty, so the REAL harness seam reads every
+// incarnation unread and the roster is empty. Supplying fixture rows in production, or deleting the
+// harness wiring, breaks this claim.
+test fn the_production_enrollment_is_empty_and_the_harness_seam_reads_unread() -> Bool {
+  count(rented_enrolled_routes(index: rented_cohort_index)) == 0
+    && e_unread_with(s: harness_observe_incarnation(endpoint: e_row(device: 0, ssh_octet4: 7).endpoint, launch: e_launch(device: 0), attempt: "e-1"), needle: "no enrollment row")
+}
+
+fn e_row_at(device: Nat, port: Nat, access_node: String) -> RentedEnrollment {
+  RentedEnrollment {
+    endpoint: ServingRouteEndpoint { replica: e_replica(device: device), address: "203.0.113.7" as NonEmptyStr, port: port },
+    ceiling: CeilingFromRouteLaunch { count: 4, basis: "witness" as NonEmptyStr },
+    access: RentedHostAccessDeclaration {
+      node: access_node as NonEmptyStr, address: e_ssh_address(octet4: 7), principal: "root" as NonEmptyStr,
+      host_key: e_row_key(), operator_key: e_access(octet4: 7).operator_key,
+      operator_key_fingerprint: "SHA256:operator" as NonEmptyStr,
+    },
+    engine_pattern: "vllm serve" as NonEmptyStr,
+  }
+}
+
+test fn two_replicas_at_one_address_and_port_are_both_refused() -> Bool {
+  let routes = rented_enrolled_routes(index: rented_enrollment_index(rows: [e_row_at(device: 0, port: 8000, access_node: "rental-1"), e_row_at(device: 1, port: 8000, access_node: "rental-1")]))
+  count(routes) == 2 && all(routes, r => e_resolved_device(r: r) == 0 - 1)
+}
+
+test fn the_same_host_at_different_ports_admits_both() -> Bool {
+  let routes = rented_enrolled_routes(index: rented_enrollment_index(rows: [e_row_at(device: 0, port: 8000, access_node: "rental-1"), e_row_at(device: 1, port: 8001, access_node: "rental-1")]))
+  count(routes) == 2 && all(routes, r => e_resolved_device(r: r) >= 0)
+}
+
+test fn a_conflicting_endpoint_has_no_host_and_names_the_endpoint() -> Bool {
+  match rented_enrollment_for(index: rented_enrollment_index(rows: [e_row_at(device: 0, port: 8000, access_node: "rental-1"), e_row_at(device: 1, port: 8000, access_node: "rental-1")]), replica: e_replica(device: 0)) {
+    RentedEnrollmentNotFound { replica: _, obligation: o } => (o as String) == (rented_endpoint_enrolled_twice_obligation as String)
+    RentedEnrollmentFound { enrollment: _ } => false
+  }
+}
+
+test fn a_replica_on_one_node_with_another_nodes_access_is_refused() -> Bool {
+  let idx = rented_enrollment_index(rows: [e_row_at(device: 0, port: 8000, access_node: "rental-2")])
+  all(rented_enrolled_routes(index: idx), r => e_resolved_device(r: r) == 0 - 1)
+    && match rented_enrollment_for(index: idx, replica: e_replica(device: 0)) {
+      RentedEnrollmentNotFound { replica: _, obligation: o } => (o as String) == (rented_replica_node_differs_from_access_node_obligation as String)
+      RentedEnrollmentFound { enrollment: _ } => false
+    }
+}
+
+test fn a_matching_node_and_access_admits() -> Bool {
+  match rented_enrollment_for(index: rented_enrollment_index(rows: [e_row_at(device: 0, port: 8000, access_node: "rental-1")]), replica: e_replica(device: 0)) {
+    RentedEnrollmentFound { enrollment: _ } => true
+    RentedEnrollmentNotFound { replica: _, obligation: _ } => false
+  }
+}

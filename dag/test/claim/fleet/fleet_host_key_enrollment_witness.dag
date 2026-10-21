@@ -1,0 +1,105 @@
+module test.claim.fleet.fleet_host_key_enrollment_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.network.endpoint { socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.fleet.fleet_host_key_enrollment {
+  KnownHostKeyRow,
+  ScannedFirstContact,
+  fleet_host_key_enrollments,
+  enrolled_fingerprint_for,
+  known_hosts_line,
+}
+import gunbc.host.host_reach_identity_probe {
+  classify_reach_probe_wire_with_expectation,
+  ProbeHostKeyUnenrolled,
+  ProbeHostKeyMismatch,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Hosts are read from the registry, never a roster name. The Absent subject cannot equal
+// any enrolled host because it is prefixed and then the enrolled names themselves; adding
+// or dropping a row cannot make it Present. The Present subject is the first row when the
+// registry holds one.
+fn host_the_registry_does_not_hold() -> String {
+  concat("unenrolled:", join(map(fleet_host_key_enrollments, k => k.host as String), ","))
+}
+
+fn first_enrolled_host() -> String? {
+  match fleet_host_key_enrollments.first() {
+    Present { value: k } => Present { value: k.host as String }
+    Absent => none
+  }
+}
+
+// Acceptance item 4: a host the registry does not hold answers none (no fabricated
+// Mismatch from an unenrolled lookup), and a known_hosts line renders exactly
+// "endpoint keytype key". The line-shape row is a supplied fixture, not a roster cite.
+test fn witness_unenrolled_host_yields_no_expectation_and_line_shape_is_exact() -> Bool {
+  let absent_host = host_the_registry_does_not_hold()
+  !any(fleet_host_key_enrollments, k => (k.host as String) == absent_host)
+    && match enrolled_fingerprint_for(host: absent_host) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && known_hosts_line(k: KnownHostKeyRow {
+      host: "srv5" as HostIdentity,
+      address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)), port: 22),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
+      sha256_fingerprint: "SHA256:fakefake",
+      provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
+    }) == "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
+}
+
+// The same row behind a provider's ssh port mapping is written under the bracketed form ssh looks it up
+// by; the bare form above is the port-22 control, byte-identical to the line before the address had a
+// port.
+test fn witness_a_row_on_a_non_standard_port_writes_the_bracketed_host_field() -> Bool {
+  known_hosts_line(k: KnownHostKeyRow {
+    host: "srv5" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)), port: 15648),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
+    sha256_fingerprint: "SHA256:fakefake",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
+  }) == "[192.168.1.222]:15648 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
+}
+
+// A registry row's fingerprint reaches the probe classifier as a Present expectation:
+// with it, a host-key verification failure classifies Mismatch carrying that exact
+// expected fingerprint; without it, the same wire stays Unenrolled — the enrollment is
+// what moves a host between the two remedies. The Present host is the first registry
+// row; an empty registry is the Unenrolled control.
+test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() -> Bool {
+  let expectation = match first_enrolled_host() {
+    Present { value: h } => enrolled_fingerprint_for(host: h)
+    Absent => none
+  }
+  match classify_reach_probe_wire_with_expectation(
+    success: false,
+    stdout: "",
+    stderr: "Host key verification failed.",
+    expected_fingerprint: expectation,
+  ) {
+    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => match first_enrolled_host() { Absent => true  Present { value: _ } => false }
+    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
+      match first_enrolled_host() {
+        Present { value: h } => match enrolled_fingerprint_for(host: h) { Present { value: f } => e == f  Absent => false }
+        Absent => false
+      }
+    _ => false
+  }
+    && match classify_reach_probe_wire_with_expectation(
+      success: false,
+      stdout: "",
+      stderr: "Host key verification failed.",
+      expected_fingerprint: Present { value: "SHA256:enrolled" },
+    ) {
+      ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } => e == "SHA256:enrolled"
+      _ => false
+    }
+}

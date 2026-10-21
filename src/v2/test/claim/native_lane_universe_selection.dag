@@ -1,0 +1,524 @@
+module v2.test.claim.native_lane_universe_selection
+
+import std.types { List }
+import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }
+import v2.compiler.native_test_vocabulary { native_route_identity_qualified }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.source_root_eval { native_lane_acquire_verified, native_lane_universe_selected }
+import v2.compiler.module_acquisition {
+  AcquiredModule,
+  AcquisitionEnv,
+  AcquisitionGrammarUnprepared,
+  AcquisitionMemberRead,
+  AcquisitionMemberReadOk,
+  AcquisitionMemberReadRefused,
+  AcquisitionMemberRefused,
+  AcquisitionRefused,
+  acquisition_member_requests,
+  acquisition_verified
+}
+import v2.compiler.parse { prepare_grammar }
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { list_snoc_item, contains, fold_list, length }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE UNIVERSE THE LANE DERIVES FROM THE MODULES IT ACQUIRED, AND HOW A PATTERN NARROWS IT. The subject
+// is native_lane_universe_selected, driven end to end over supplied acquired modules rather than over
+// the predicates it is built from: a test that stopped at a predicate would prove the case is
+// RECOGNIZED and nothing about whether recognition REACHES the verdict (the defect this suite already
+// repaired once, when a terminal-marker test turned out to be intercepted by an unrelated earlier
+// refusal and had stopped exercising its own subject). So every control here asserts on the Outcome the
+// derivation returns.
+//
+// A TEST IS A DECLARATION CARRYING THE AUTHORED `test` MARKER, AND NOTHING ELSE (DESIGN section 3, the
+// name-to-path rule's neighbour: a location that restates identity is a second authority). The universe
+// is therefore the marked declarations of the acquired modules wherever those modules live, and the
+// pattern only SELECTS within it by label. The fixtures differ in the one property each control names:
+// where the module lives (inside `v2.test`, beside it in `v2.testing`, or in a namespace that has
+// nothing to do with tests), whether it carries a marker, and what the marker names.
+//
+// WHAT IS NOT HERE, AND WHERE IT LIVES. Which names are requested at all, the default pattern as the
+// route boundary and the nonempty-where-required contract are claimed beside the lane
+// (v2.test.v2_native_route). That an import line which names no module refuses rather than narrowing the
+// closure is the acquirer's, because the acquirer is the only reader of import lines now
+// (v2.test.claim.module_acquisition). The last section here drives the REAL member reader, so the
+// markers a control selects are the markers the acquirer captures and not values this file made up.
+//
+// WHERE THIS RUNS. `v2.test.claim.*` is stored under `src/v2`, a floor discovery root
+// (`gunbc.ci.ci_layer_roots` `witness_layer_roots`), and lies inside the native route's boundary
+// (`gunbc.native_route_universe` `native_route_default_pattern`), so both routes address it. Neither is
+// on the required merge path for it: the floor is withdrawn from that path (`gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`) and the native route does not execute this universe on a merge
+// candidate (`gunbc.rung_drop` `v2_native_route_off_the_merge_path`). The controls need nothing from a
+// repository tree: each supplies or reads one module.
+
+fn a_probe(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
+  AcquiredModule {
+    name: name,
+    file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+    host_directory: "src/v2",
+    content: content,
+    requests: [],
+    test_markers: markers
+  }
+}
+
+// TWO DECLARATIONS IN THE SELECTED MODULE, deliberately: a consumer that filtered MODULES and then took
+// every declaration would pass a one-declaration fixture, and carrying two lets a control tell
+// module-grain filtering from identity-grain filtering.
+fn inside_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.selection_probe",
+    path: "test/selection_probe.dag",
+    markers: ["probe_one", "probe_two"],
+    content: "module v2.test.selection_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_two() -> Bool { true }\n"
+  )
+}
+
+// SHARES THE CHARACTER PREFIX OF `v2.test.` AND IS NOT UNDER IT: the case a label separator exists to
+// separate, differing from the inside module in its declared namespace and in nothing else.
+fn outside_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.testing.selection_probe",
+    path: "testing/selection_probe.dag",
+    markers: ["probe_one"],
+    content: "module v2.testing.selection_probe\n\ntest fn probe_one() -> Bool { true }\n"
+  )
+}
+
+// A MARKED DECLARATION IN A NAMESPACE THAT IS NOT A TEST NAMESPACE AT ALL.
+fn elsewhere_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.workflow.marked_probe",
+    path: "workflow/marked_probe.dag",
+    markers: ["probe_one"],
+    content: "module v2.workflow.marked_probe\n\ntest fn probe_one() -> Bool { true }\n"
+  )
+}
+
+// INSIDE `v2.test` AND CARRYING NO MARKER: ordinary declarations, which are not tests however the module
+// is named.
+fn unmarked_inside() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.unmarked_probe",
+    path: "test/unmarked_probe.dag",
+    markers: [],
+    content: "module v2.test.unmarked_probe\n\nfn plain() -> Bool { true }\n"
+  )
+}
+
+// A DECLARATION NO LABEL CAN NAME: `all` is a pattern word, so `//pkg:all` never denotes it. A marked
+// declaration is a test wherever it lives, so one no label can name is a located defect of the lane
+// wherever it lives, never a test that silently is not one.
+fn unlabelable_outside() -> AcquiredModule {
+  a_probe(
+    name: "v2.testing.unlabelable_probe",
+    path: "testing/unlabelable_probe.dag",
+    markers: ["all"],
+    content: "module v2.testing.unlabelable_probe\n\ntest fn all() -> Bool { true }\n"
+  )
+}
+
+fn unlabelable_inside() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.unlabelable_probe",
+    path: "test/unlabelable_probe.dag",
+    markers: ["all"],
+    content: "module v2.test.unlabelable_probe\n\ntest fn all() -> Bool { true }\n"
+  )
+}
+
+// ONE DECLARATION NAME CAPTURED TWICE: the shape discovery would silently collapse to one row.
+fn duplicate_marker_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.duplicate_probe",
+    path: "test/duplicate_probe.dag",
+    markers: ["probe_one", "probe_one"],
+    content: "module v2.test.duplicate_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_one() -> Bool { true }\n"
+  )
+}
+
+fn combined() -> List<AcquiredModule> {
+  [inside_probe(), outside_probe()]
+}
+
+// The population is the bound modules' names, which is what the single-target misspelling check reads;
+// these fixtures list the one module they treat as a package.
+fn population() -> List<String> {
+  ["v2.test.selection_probe"]
+}
+
+fn selected_names(modules: List<AcquiredModule>, text: String) -> List<String> {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => []
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: universe, diagnostics: _ } =>
+          fold_list(
+            xs: universe.identities,
+            empty: [],
+            cons: fn(acc, identity) {
+              list_snoc_item(xs: acc, item: native_route_identity_qualified(identity: identity))
+            }
+          )
+      }
+  }
+}
+
+fn selected_admits(modules: List<AcquiredModule>, text: String, qualified: String) -> Bool {
+  contains(xs: selected_names(modules: modules, text: text), item: qualified, eq: fn(a, b) { a == b })
+}
+
+// ACCEPTANCE, asserted apart from any population: an excluded module and a broken one both yield no
+// identity, so a population control alone cannot tell them apart. Every "selects nothing" control below
+// pairs this with its emptiness, which is what attributes the absence to selection and to nothing else.
+fn selected_accepted(modules: List<AcquiredModule>, text: String) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+// Whether a refusal's detail diagnostic (the interned second diagnostic native_lane_refused carries)
+// names `text`: the identity a refusal must locate.
+fn detail_mentions(diagnostics: NonEmptyDiagnostics, text: String) -> Bool {
+  diagnostics.tail |> any(fn(x) { string_contains(s: symbol_lexeme(sym: x.reason), pattern: text) })
+}
+
+fn selected_refusal_reason_is(modules: List<AcquiredModule>, text: String, reason: Symbol) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == reason
+      }
+  }
+}
+
+// ── the universe is the marked declarations, wherever their modules live ──────────────────────────────
+
+// Both declarations of the selected module reach the universe -- the control a module-grain filter would
+// also pass, kept so the identity-grain one can be told apart from it.
+test fn every_declaration_of_a_selected_module_reaches_the_universe() -> Bool {
+  selected_admits(modules: [inside_probe()], text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: [inside_probe()], text: "//...", qualified: "v2.test.selection_probe.probe_two")
+}
+
+// A MARKED DECLARATION IS A TEST WHEREVER IT LIVES. Neither the character-prefix neighbour nor a module
+// of an unrelated namespace is excluded by where it lives; a universe that kept the retired `v2.test`
+// predicate reds both of the last two conjuncts, one that admitted nothing reds the first.
+test fn a_marked_declaration_outside_v2_test_is_in_the_universe() -> Bool {
+  let modules = [inside_probe(), outside_probe(), elsewhere_probe()]
+  selected_admits(modules: modules, text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: modules, text: "//...", qualified: "v2.testing.selection_probe.probe_one")
+  && selected_admits(modules: modules, text: "//...", qualified: "v2.workflow.marked_probe.probe_one")
+}
+
+// AN UNMARKED DECLARATION INSIDE `v2.test` IS NOT A TEST. The module sits in the namespace the retired
+// predicate called the test namespace and contributes nothing; the universe is exactly the marked
+// module's two declarations, so a universe that took the namespace as identity gains `plain` and reds
+// the count, and one that dropped the marked module reds the first conjunct.
+test fn an_unmarked_declaration_inside_v2_test_is_not_in_the_universe() -> Bool {
+  let modules = [unmarked_inside(), inside_probe()]
+  selected_admits(modules: modules, text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(modules: modules, text: "//...", qualified: "v2.test.unmarked_probe.plain")
+  && (length(xs: selected_names(modules: modules, text: "//...")) == 2)
+}
+
+// A module with nothing marked is accepted and selects nothing: absence of tests is a fact about the
+// population, not a refusal of the derivation (the contract that a lane requiring claims refuses an empty
+// universe is the receipt's, claimed beside the lane).
+test fn a_module_carrying_no_marker_is_accepted_and_selects_nothing() -> Bool {
+  selected_accepted(modules: [unmarked_inside()], text: "//...")
+  && (length(xs: selected_names(modules: [unmarked_inside()], text: "//...")) == 0)
+}
+
+// ── a pattern selects by label, through the same producer ───────────────────────────────────────────
+
+// THE PATTERN IS THE ONLY SELECTION: `//v2/test/...` is the `v2.test` subtree by package segments, so
+// `v2.testing` -- which shares the characters and not the segment -- is not selected, while the pattern
+// that names it selects it. Both directions are asserted over ONE acquisition carrying both modules.
+test fn a_subtree_pattern_selects_by_package_segment_not_by_character_prefix() -> Bool {
+  selected_admits(modules: combined(), text: "//v2/test/...", qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(modules: combined(), text: "//v2/test/...", qualified: "v2.testing.selection_probe.probe_one")
+  && selected_admits(modules: combined(), text: "//v2/testing/...", qualified: "v2.testing.selection_probe.probe_one")
+  && !selected_admits(modules: combined(), text: "//v2/testing/...", qualified: "v2.test.selection_probe.probe_one")
+}
+
+// A SINGLE TARGET SELECTS ONE DECLARATION of a module that holds two: the identity grain, driven end to
+// end. An admit-everything selection reds the second conjunct, admit-nothing the first.
+test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Bool {
+  let text = "//v2/test/selection_probe:probe_one"
+  selected_admits(modules: combined(), text: text, qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(modules: combined(), text: text, qualified: "v2.test.selection_probe.probe_two")
+  && (length(xs: selected_names(modules: combined(), text: text)) == 1)
+}
+
+// EXCLUDED IS NOT REFUSED. A pattern that selects nothing in a sound acquisition is an ACCEPTED empty
+// universe.
+test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool {
+  selected_accepted(modules: combined(), text: "//elsewhere/...")
+  && (length(xs: selected_names(modules: combined(), text: "//elsewhere/...")) == 0)
+}
+
+// THE FILE-AS-TARGET SPELLING REFUSES AND NAMES THE RIGHT ONE (manager ruling 2026-09-21). Under the
+// lane's correspondence `//v2/test:selection_probe` asks for a DECLARATION named `selection_probe` in
+// module `v2.test`; none exists, but module `v2.test.selection_probe` is listed in the population, so
+// the route refuses rather than answering with an empty universe, and the detail carries the module
+// spelling. A route that returned universe 0 here reds the first conjunct.
+test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bool {
+  match parse_target_pattern(text: "//v2/test:selection_probe") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: combined(), population: population(), pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_pattern_names_a_module
+            && detail_mentions(diagnostics: d, text: "//v2/test/selection_probe:all")
+      }
+  }
+}
+
+// The positive side: the spelling the refusal suggests selects the module's declarations.
+test fn the_suggested_module_spelling_selects_the_module() -> Bool {
+  selected_admits(modules: combined(), text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: combined(), text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_two")
+}
+
+// ── a marker the lane cannot identify is a refusal, wherever its module lives ──────────────────────
+
+// An unlabelable marked declaration refuses the derivation with its typed cause from inside `v2.test` and
+// from outside it alike -- the location excuses nothing -- and the same population without it is accepted
+// with the other module's identity intact, which attributes the refusal to the declaration.
+test fn an_unlabelable_marked_declaration_refuses_typed_wherever_it_lives() -> Bool {
+  selected_refusal_reason_is(
+    modules: [inside_probe(), unlabelable_outside()],
+    text: "//...",
+    reason: ^native_lane_identity_label_refused
+  )
+  && selected_refusal_reason_is(
+    modules: [inside_probe(), unlabelable_inside()],
+    text: "//...",
+    reason: ^native_lane_identity_label_refused
+  )
+  && selected_admits(modules: [inside_probe()], text: "//...", qualified: "v2.test.selection_probe.probe_one")
+}
+
+// ── one declaration, one entry ─────────────────────────────────────────────────────────────────────
+
+// A MARKER LIST THAT NAMES ONE DECLARATION TWICE REFUSES, WITH ITS IDENTITY. Discovery would otherwise
+// collapse the pair to one row and the second declaration would be a test nobody ran. The accepting
+// controls differ from it in the one property: a module whose markers are distinct, and the SAME
+// declaration name in two different modules (distinct identities).
+test fn two_markers_naming_one_declaration_refuse_the_lane_with_the_identity() -> Bool {
+  match parse_target_pattern(text: "//...") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: [duplicate_marker_probe()], population: population(), pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_duplicate_marker
+            && detail_mentions(diagnostics: d, text: "v2.test.duplicate_probe.probe_one")
+      }
+  }
+}
+
+test fn distinct_markers_and_one_name_in_two_modules_are_accepted() -> Bool {
+  selected_accepted(modules: [inside_probe()], text: "//...")
+  && selected_admits(modules: combined(), text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: combined(), text: "//...", qualified: "v2.testing.selection_probe.probe_one")
+}
+
+// A namespace name whose dummy label cannot be formed is filtered from entries so it is not
+// acquired, but the listing still carries it: the universe fold refuses with the same located
+// cause rather than dropping the name (DESIGN section 5).
+test fn an_unformable_population_name_refuses_typed() -> Bool {
+  match parse_target_pattern(text: "//...") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(
+        modules: [inside_probe()],
+        population: ["v2.test.selection_probe", "v2.test.foo..bar"],
+        pattern: pattern
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_identity_label_refused
+            && (d.tail |> any(fn(x) {
+                 string_contains(s: symbol_lexeme(sym: x.reason), pattern: "v2.test.foo..bar")
+                   && string_contains(s: symbol_lexeme(sym: x.reason), pattern: "empty package segment")
+               }))
+      }
+  }
+}
+
+// ── discovery covers the acquired marked modules, and refuses for them ─────────────────────────────
+
+fn disposition_broken() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.disposition_probe",
+    path: "test/disposition_probe.dag",
+    markers: ["probe_one"],
+    content: "module v2.test.disposition_probe\n\ndata live_tree_disposition: LiveTreeDisposition = NoSuchVariant\n"
+  )
+}
+
+// A DISPOSITION ROW THE WALK CANNOT READ STOPS THE LINE FOR AN ACQUIRED MARKED MODULE, and a narrower
+// pattern does not make a broken acquisition sound: the finalize judges every acquired marked module
+// before the pattern keeps any of them.
+test fn a_marked_module_with_an_unreadable_disposition_refuses_even_under_a_narrow_pattern() -> Bool {
+  selected_refusal_reason_is(
+    modules: [inside_probe(), disposition_broken()],
+    text: "//v2/test/selection_probe:probe_one",
+    reason: ^native_lane_universe_derivation_refused
+  )
+}
+
+// THE CONTROL THAT PAIRS THE NARROWING. A module with no marker has nothing to discover, so the same
+// unreadable row in an unmarked module raises nothing in this lane: the required floor owns repository
+// hygiene over that population, and this lane's subject is the completeness of the tests it was asked
+// for. Identical content and identical row, one property away from the control above: the marker.
+test fn the_same_unreadable_disposition_in_an_unmarked_module_raises_nothing_here() -> Bool {
+  selected_admits(
+    modules: [
+      inside_probe(),
+      a_probe(
+        name: "v2.test.disposition_probe",
+        path: "test/disposition_probe.dag",
+        markers: [],
+        content: "module v2.test.disposition_probe\n\ndata live_tree_disposition: LiveTreeDisposition = NoSuchVariant\n"
+      )
+    ],
+    text: "//...",
+    qualified: "v2.test.selection_probe.probe_one"
+  )
+}
+
+// ── the markers the lane selects are the markers the REAL member reader captures ───────────────────
+//
+// THE SUBJECT IS THE PRODUCER OF `AcquiredModule.test_markers`, not a list this file made up. The
+// pairing obligation (DESIGN section 3, a witness discriminates at one interface) is carried here: a
+// supplied marker list proves what the universe does with a shape, and these controls prove the real
+// acquirer emits that shape and that a member it refuses reaches the lane as a refusal. The first link
+// is the real front end (v2.compiler.module_acquisition acquisition_member_requests); the rest are the
+// folds the acquirer itself applies to a refused member (acquisition_verified, then the lane's
+// native_lane_acquire_verified), so deleting the integration makes the controls red.
+
+fn real_member_read(name: String, path: String, content: String) -> AcquisitionMemberRead {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: d } => AcquisitionMemberReadRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d } }
+    Accepted { value: prepared, diagnostics: _ } =>
+      acquisition_member_requests(
+        env: AcquisitionEnv {
+          layout: repository_storage_layout(),
+          bindings: [],
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          grammar: prepared
+        },
+        module: name,
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+        content: content
+      )
+  }
+}
+
+// The module the real reader hands the lane: the markers are the ones it captured; a refused member
+// contributes no module here, so a control expecting one is red rather than vacuously green.
+fn module_from_real_read(name: String, path: String, content: String) -> List<AcquiredModule> {
+  match real_member_read(name: name, path: path, content: content) {
+    AcquisitionMemberReadRefused { refusal: _ } => []
+    AcquisitionMemberReadOk { requests: _, test_markers: markers } =>
+      [a_probe(name: name, path: path, markers: markers, content: content)]
+  }
+}
+
+// Whether the lane refuses, with the acquirer's own reason, the acquisition a refused member makes.
+fn real_member_refuses_the_lane(name: String, path: String, content: String) -> Bool {
+  match real_member_read(name: name, path: path, content: content) {
+    AcquisitionMemberReadOk { requests: _, test_markers: _ } => false
+    AcquisitionMemberReadRefused { refusal: refusal } =>
+      match native_lane_acquire_verified(
+        verified: acquisition_verified(acquisition: AcquisitionRefused { refusal: refusal, reads: [] }),
+        population: []
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == ^acquisition_refused
+      }
+  }
+}
+
+fn well_formed_marked_content() -> String {
+  "module v2.test.real_probe\n\ntest fn probe_one() -> Bool { true }\n"
+}
+
+// A MODULE THAT DOES NOT PARSE AND CONTAINS A MARKER-SHAPED SPELLING REFUSES THE LANE; it is never read
+// as a module with no tests. The positive control is the same text with the one malformation repaired
+// (the unclosed parameter list), so the refusal is attributable to it: it is acquired, its marker is
+// captured by the real reader, and the universe selects it.
+test fn a_malformed_module_with_a_marker_shaped_spelling_refuses_the_lane_not_zero_tests() -> Bool {
+  real_member_refuses_the_lane(
+    name: "v2.test.real_probe",
+    path: "test/real_probe.dag",
+    content: "module v2.test.real_probe\n\ntest fn probe_one( -> Bool { true }\n"
+  )
+  && selected_admits(
+    modules: module_from_real_read(name: "v2.test.real_probe", path: "test/real_probe.dag", content: well_formed_marked_content()),
+    text: "//...",
+    qualified: "v2.test.real_probe.probe_one"
+  )
+}
+
+// THE REAL READER DOES NOT EMIT A DUPLICATE MARKER, AND THE REFUSAL SAYS WHY. A module declaring one test
+// name twice is refused at the member read by normalize's graft (namespace_graft_declaration_name_repeated),
+// so the acquirer hands the lane no module for it and the lane refuses the acquisition. That makes this the
+// pairing control for the duplicate-marker refusal above: that refusal guards the universe's own contract
+// over SUPPLIED markers (AcquiredModule.test_markers), not a shape the real producer emits, and the
+// producer's refusal is what is asserted here, by cause. The positive control is the same module with the
+// second name changed: it is read, both markers are captured, and the universe selects the second.
+fn real_member_refusal_cause_is(name: String, path: String, content: String, reason: Symbol) -> Bool {
+  match real_member_read(name: name, path: path, content: content) {
+    AcquisitionMemberReadOk { requests: _, test_markers: _ } => false
+    AcquisitionMemberReadRefused { refusal: refusal } =>
+      match refusal {
+        AcquisitionMemberRefused { module: _, file: _, diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+        _ => false
+      }
+  }
+}
+
+test fn a_module_declaring_one_test_name_twice_is_refused_at_the_member_read_and_so_by_the_lane() -> Bool {
+  real_member_refusal_cause_is(
+    name: "v2.test.real_probe",
+    path: "test/real_probe.dag",
+    content: "module v2.test.real_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_one() -> Bool { true }\n",
+    reason: ^namespace_graft_declaration_name_repeated
+  )
+  && real_member_refuses_the_lane(
+    name: "v2.test.real_probe",
+    path: "test/real_probe.dag",
+    content: "module v2.test.real_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_one() -> Bool { true }\n"
+  )
+  && selected_admits(
+    modules: module_from_real_read(
+      name: "v2.test.real_probe",
+      path: "test/real_probe.dag",
+      content: "module v2.test.real_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_two() -> Bool { true }\n"
+    ),
+    text: "//...",
+    qualified: "v2.test.real_probe.probe_two"
+  )
+}

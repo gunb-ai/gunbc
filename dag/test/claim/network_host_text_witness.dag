@@ -1,0 +1,133 @@
+module test.claim.network_host_text_witness
+
+import std.types { String, Bool, Int, NonEmptyStr, Port }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.network.ipv4 { ipv4_address, Ipv4WrongOctetCount, Ipv4OctetOutOfRange }
+import extdeps.network.ipv6 { ipv6_address }
+import extdeps.network.address { ip_v6 }
+import extdeps.network.endpoint {
+  NetworkHost, HostByName, HostByAddress, SocketAddress, socket_address, host_by_ipv4,
+  render_network_host, render_uri_host,
+  NetworkHostParse, NetworkHostParsed, NetworkHostRefused,
+  NetworkHostIpv6LiteralUnparsed, NetworkHostIpv4Malformed, NetworkHostNameMalformed,
+  parse_network_host,
+}
+import extdeps.dns.domain_name { BadLabelChar }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, render_forward_argument }
+import extdeps.ssh.client_options { RemotePort, serialize_ssh_client_option }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h_card() -> NetworkHost {
+  host_by_ipv4(addr: ipv4_address(octet1: 221, octet2: 181, octet3: 169, octet4: 114))
+}
+
+fn h_v6_loopback() -> NetworkHost {
+  HostByAddress { address: ip_v6(addr: ipv6_address(group1: 0, group2: 0, group3: 0, group4: 0, group5: 0, group6: 0, group7: 0, group8: 1)) }
+}
+
+fn parsed_text(p: NetworkHostParse) -> String {
+  match p {
+    NetworkHostParsed { host: h } => render_network_host(host: h) as String
+    NetworkHostRefused { refusal: _ } => "refused"
+  }
+}
+
+fn parsed_as_name(p: NetworkHostParse) -> Bool {
+  match p {
+    NetworkHostParsed { host: h } => match h { HostByName { name: _ } => true  HostByAddress { address: _ } => false }
+    NetworkHostRefused { refusal: _ } => false
+  }
+}
+
+fn parsed_as_address(p: NetworkHostParse) -> Bool {
+  match p {
+    NetworkHostParsed { host: h } => match h { HostByName { name: _ } => false  HostByAddress { address: _ } => true }
+    NetworkHostRefused { refusal: _ } => false
+  }
+}
+
+// PARSING. Dotted decimal is an ADDRESS, a name is a NAME, and the arm each lands in is asserted, not
+// only the text, because a name parser would round-trip `221.181.169.114` to the same characters.
+test fn dotted_decimal_text_parses_as_an_address() -> Bool {
+  let p = parse_network_host(raw: "221.181.169.114")
+  parsed_as_address(p: p) && parsed_text(p: p) == "221.181.169.114"
+}
+
+test fn a_host_name_parses_as_a_name() -> Bool {
+  let p = parse_network_host(raw: "srv1.tail0e1f2a.ts.net")
+  parsed_as_name(p: p) && parsed_text(p: p) == "srv1.tail0e1f2a.ts.net"
+}
+
+// RED: an out-of-range dotted quad is an IPv4 refusal. RFC 1123 admits all-digit labels, so a reader
+// that fell through to the name parser would accept `10.0.0.256` as a host name.
+test fn an_out_of_range_dotted_quad_is_an_ipv4_refusal_not_a_name() -> Bool {
+  match parse_network_host(raw: "10.0.0.256") {
+    NetworkHostRefused { refusal: r } => match r {
+      NetworkHostIpv4Malformed { raw: _, error: e } => match e { Ipv4OctetOutOfRange { position: _, value: v } => v == 256  _ => false }
+      _ => false
+    }
+    NetworkHostParsed { host: _ } => false
+  }
+}
+
+test fn a_three_field_dotted_quad_is_an_ipv4_refusal() -> Bool {
+  match parse_network_host(raw: "10.0.1") {
+    NetworkHostRefused { refusal: r } => match r {
+      NetworkHostIpv4Malformed { raw: _, error: e } => match e { Ipv4WrongOctetCount { observed_count: n } => n == 3  _ => false }
+      _ => false
+    }
+    NetworkHostParsed { host: _ } => false
+  }
+}
+
+// v6 text parsing is unbuilt, and v6 literal text refuses on its own arm rather than as a bad name.
+test fn v6_literal_text_refuses_as_unparsed() -> Bool {
+  match parse_network_host(raw: "fe80::1") {
+    NetworkHostRefused { refusal: r } => match r { NetworkHostIpv6LiteralUnparsed { raw: t } => t == "fe80::1"  _ => false }
+    NetworkHostParsed { host: _ } => false
+  }
+}
+
+test fn a_name_with_a_bad_character_is_a_name_refusal() -> Bool {
+  match parse_network_host(raw: "srv_1") {
+    NetworkHostRefused { refusal: r } => match r { NetworkHostNameMalformed { raw: _, error: e } => e == BadLabelChar  _ => false }
+    NetworkHostParsed { host: _ } => false
+  }
+}
+
+// KNOWN_HOSTS HOST FIELD (sshd(8)). At 22 the host is bare, which is every line the fleet registry
+// writes today; anywhere else it is `[host]:port`. RED: the card's 11055 without brackets.
+test fn known_hosts_field_is_bare_at_the_standard_port() -> Bool {
+  known_hosts_host_field(address: socket_address(host: h_card(), port: 22)) as String == "221.181.169.114"
+}
+
+test fn known_hosts_field_brackets_a_non_standard_port() -> Bool {
+  let f = known_hosts_host_field(address: socket_address(host: h_card(), port: 11055)) as String
+  f == "[221.181.169.114]:11055" && f != "221.181.169.114"
+}
+
+test fn the_same_host_at_two_ports_is_two_known_hosts_fields() -> Bool {
+  (known_hosts_host_field(address: socket_address(host: h_card(), port: 22)) as String)
+    != (known_hosts_host_field(address: socket_address(host: h_card(), port: 11055)) as String)
+}
+
+// URI AND FORWARD HOST FORMS. A v6 host in a `host:port` authority is bracketed (RFC 3986 §3.2.2,
+// ssh(1) -L); a v4 host is not. The bare render stays bare.
+test fn a_v6_host_is_bracketed_in_a_uri_authority_only() -> Bool {
+  (render_uri_host(host: h_v6_loopback()) as String) == "[::1]"
+    && (render_network_host(host: h_v6_loopback()) as String) == "::1"
+    && (render_uri_host(host: h_card()) as String) == "221.181.169.114"
+}
+
+test fn an_ssh_forward_brackets_a_v6_listener() -> Bool {
+  let spec = PortForwardSpec { direction: LocalForward, listener: socket_address(host: h_v6_loopback(), port: 18090), target: socket_address(host: h_card(), port: 8000) }
+  (render_forward_argument(spec: spec) as String) == "[::1]:18090:221.181.169.114:8000"
+}
+
+// THE PORT OPTION (ssh_config(5)). The arm is RemotePort; the keyword on the wire is Port.
+test fn the_port_option_serializes_as_the_port_keyword() -> Bool {
+  let words = serialize_ssh_client_option(option: RemotePort { port: 11055 })
+  join(words, " ") == "-o Port=11055"
+}

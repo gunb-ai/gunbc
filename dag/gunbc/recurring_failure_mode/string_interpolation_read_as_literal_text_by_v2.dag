@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.string_interpolation_read_as_literal_text_by_v2
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data string_interpolation_read_as_literal_text_by_v2: RecurringFailureMode = RecurringFailureMode {
+  identity: "string_interpolation_read_as_literal_text_by_v2" as NonEmptyStr,
+
+  receipts: [
+    "**FOUND: a string literal that interpolates a name in v1 was read by v2 as the literal bytes of that name** (INVALID STATE: `\"\{repository_path}\"` in a .dag source. The seed tokenizer (v1.compiler.tokenize scan_string_body) ends the string body at the interpolation start and reads `repository_path` as a reference. Until XL-2, the v2 lexer's string rule (v2.extdeps.languages.dag dag_string_literal_lex_rule, body dag_string_body_element_pattern) had no interpolation arm, so the same source was one string literal whose text contained the braces. HARM: one spelling, two meanings across the two compilers, the meaning fork of DESIGN section 3. DISTINGUISHING FACTS: the escape `\\{` is a literal brace in both compilers, so only an unescaped brace differed.)",
+
+    "CLIMBED (XL-2, gunbc#13693): dag_string_body_element_pattern now admits no hole opener, disjointly from dag_string_hole_opener_pattern (the same starts v1.compiler.tokenize should_start_interpolation uses: IdentStartChar, `(`, `!`, `-`). A hole-free spelling is dag_token_string_literal; a hole is dag_token_string_template_head plus the hole's ordinary tokens. The grammar reads ^dag_string_template. Lowering then refused that shell as body_lowering_reason_string_template_unlowered until PR 2.",
+
+    "CLIMBED (XL-2 PR2): v2.compiler.body_lowering_fold body_lower_string_template rewrites a well-formed template to a concat chain through std.algebra collection_concat_shape (the free-monoid roster row #13693 established). Holes are resolve references, not interpolated text. body_lowering_reason_string_template_unlowered no longer fires for a well-formed template; an unread or unlowerable hole shape still refuses, typed and located (body_lowering_reason_string_template_unread, body_lowering_reason_string_template_hole_unlowered). A non-text hole refuses at the concat argument with no implicit to_string. Discriminating red: v2.test.claim.compiler.string_template_hole_type an_int_hole_refuses_at_the_hole. Positive control: v2.test.claim.compiler.string_template_unlowered a_lowered_template_binds_concat_and_infers (assemble+infer; v2 eval of a lowered template is a typed located refusal, not concatenated bytes). Host-text crossing remains the declared Unicode scalar unfold (DESIGN section 4, 2026-09-27).",
+
+    "FRONTIER: a template evaluates through v2 eval. Trigger: that capability -- v2 eval represents a string literal's value (its literal shapes are bool, unit and int: v2.extdeps.runtimes.v2_evaluator v2_eval_is_literal_shaped_node) AND has a concat arm for the kernel String concat witness the lowered tree binds. EXECUTED READINGS: v2.compiler.eval of a call whose body is a lowered template refuses eval_rejected_runtime_binding_lookup_miss at the template's first string-literal piece (v2.test.claim.compiler.string_template_unlowered a_lowered_template_refuses_at_v2_eval); v2.compiler.translate of the same tree to rust_target_model refuses translate_module_not_a_type_expression (a_lowered_template_refuses_at_translate). Both read *_grounding_not_derived until the operand reader kept a string literal's decoded value (v2.compiler.body_lowering_fold body_lower_operand_raw_read): the pieces had reached eval and translate as bare, valueless atoms. Neither path emits concatenated host bytes. The eval refusal is the expecting-red that flips to the positive control when the capability lands (DESIGN 4b-4).",
+
+    "RESIDUAL FORK, review 78485 on gunbc#13693: the eight single-character escapes were admitted as a sequence, but the unicode-scalar form (backslash, u, brace, hex, brace) was not. In a letter-hex spelling the backslash and u lexed as StringTextChar and the brace plus letter matched the hole opener (the letter is IdentStartChar), so a documented Unicode escape was a template hole. A digit-hex spelling survived only because a digit is not a hole start. That is a meaning fork against this module's own escape table (DESIGN sections 3 and 5). CLIMBED on the same PR: dag_string_unicode_escape_prefix_pattern consumes the backslash-u-brace prefix the way v1 scan_string_body does, so a unicode-escape brace is never a hole opener. Discriminating red: v2.test.claim.tokenize.string_literal_raw_newline unicode_escape_letter_hex_lexes_as_one_string_literal. Positive control: unicode_escape_digit_hex_lexes_as_one_string_literal.",
+
+    "SPECIMEN, found 2026-10-02 grounding XL-2 PR3a (service realization). Grep sizing over dag/ and src/v2 at authoring time, not an oracle: 758 string literals in 87 files carry an unescaped `\{name}`, 633 of them on service transport lines.",
+
+    "RUNG FOUND AT (original class): below the floor -- silent. CEILING: structurally guaranteed. The interpolation split and the unicode-escape prefix are both lex-decidable. NEXT-RUNG TRIGGER for any remaining escape/hole fork: a documented numeric escape that still opens a hole, or a hole opener that v1 opens and v2 does not.",
+
+    "RECOGNITION RULE: a v2 string token stream disagrees with v1 scan_string_body on whether a brace starts interpolation, including a brace that v1 consumed as the unicode-escape prefix.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_string_unicode_escape_prefix_pattern", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_string_body_element_pattern", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.tokenize.string_literal_raw_newline", decl_name: "unicode_escape_letter_hex_lexes_as_one_string_literal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.tokenize.string_literal_raw_newline", decl_name: "unicode_escape_digit_hex_lexes_as_one_string_literal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_unlowered", decl_name: "a_string_template_assembles_as_a_concat_chain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_unlowered", decl_name: "a_lowered_template_binds_concat_and_infers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_unlowered", decl_name: "a_plain_string_literal_assembles", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_unlowered", decl_name: "a_lowered_template_refuses_at_v2_eval", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_unlowered", decl_name: "a_lowered_template_refuses_at_translate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.string_template_hole_type", decl_name: "an_int_hole_refuses_at_the_hole", field: WholeDeclaration },
+  ],
+}

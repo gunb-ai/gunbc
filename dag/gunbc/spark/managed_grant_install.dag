@@ -1,0 +1,416 @@
+module gunbc.spark.managed_grant_install
+
+import std.types { String, NonEmptyStr, List, Bool, FilePath }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+}
+import gunbc.fleet.fleet_multi_principal_probe {
+  spark_converge_target_selection,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
+}
+import gunbc.file_access { FileTreeScope }
+import gunbc.remote_operation { PlannedRemoteStep, RemoteOperation, RemoteArgv, RemoteFileBytes }
+import gunbc.typed_remote_file_write {
+  RemoteFileModeOwnerReadWrite,
+  TypedRemoteFileWrite,
+  typed_remote_file_staging_path,
+  typed_remote_file_write_seal,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
+import gunbc.spark.managed_access_bootstrap {
+  SparkManagedGrant,
+  spark_managed_grant_wire,
+  spark_managed_executor_login,
+  spark_managed_principal_home,
+  SparkGrantOutcome,
+  GrantEnumerated,
+  GrantAbsent,
+  GrantProbeRefused,
+}
+import gunbc.host.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref_for,
+  SparkAdministratorCredentialRefFound,
+  SparkAdministratorCredentialHostNotEnrolled,
+}
+import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
+import gunbc.spark.grant_privileged_operation {
+  spark_bootstrap_credential_lease,
+
+  run_privileged_step,
+  privileged_step_succeeded,
+  privileged_step_outcome_wire,
+  PrivilegedStepOutcome,
+  CredentialNotEnrolled,
+  CredentialNotMaterialized,
+  CredentialRejected,
+  PrivilegedCommandFailed,
+  PrivilegedCommandSucceeded,
+  AdmittedRootArgv,
+  admitted_root_argv_label,
+  admitted_root_argv_words,
+  GrantSudoersValidation,
+  GrantSudoersInstallation,
+  grant_sudoers_validation_argv,
+  grant_sudoers_installation_argv,
+  run_retired_dropin_removal, ConfirmedGrantInstall, spark_confirmed_installs_of,
+  admit_retired_dropin_removal, retired_dropin_removal_receipts_missing,
+  StageGrantFile, CleanupGrantStaging, stage_grant_file_step, cleanup_grant_staging_argv, cleanup_grant_staging_step,
+  SparkGrantInstallPlan, SparkGrantInstallSteps, SparkGrantInstallRefused, spark_grant_staging_path, spark_grant_install_plan,
+  spark_grant_install_operation_labels, spark_grant_cleanup_standing, spark_grant_install_plan_wire, spark_grant_install_transport, spark_grant_install_target,
+  SparkGrantReadback, GrantReadbackConfirmed, GrantReadbackDisagreed, GrantReadbackNotAttempted,
+  SparkGrantInstallOutcome, SparkGrantInstallAwaitingOperatorCredential, SparkGrantInstallNotAttempted, SparkGrantInstallExecuted,
+  SparkGrantInstallStep, spark_grant_install_execute, spark_grant_install_from_privileged, spark_grant_read_back,
+  spark_grant_install_succeeded, spark_grant_credential_requirement, spark_grant_install_outcome_wire,
+  spark_grant_install_first_failure_cause, spark_grant_install_ci_attempt_raw, spark_grant_probe_outcome,
+}
+import gunbc.spark.managed_grant_reconcile {
+  spark_managed_grants_to_install,
+  spark_managed_grants_withheld,
+  spark_managed_grants_install_unobserved,
+  spark_managed_grants_admitted_on_accepted_risk,
+  SparkGrantInstallAdmission,
+  spark_managed_grant_report,
+  spark_managed_grant_standing_from_outcome,
+  GrantHeld,
+  GrantNotHeld,
+  GrantStandingUnobserved,
+  spark_managed_grant_dropin_name,
+  spark_managed_grant_dropin_path,
+  spark_managed_grant_sudoers_content,
+  SparkInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing,
+  spark_inspect_grants_to_relocate, spark_grant_named_in, spark_retired_dropin_removal_confirmed,
+  SharedInspectDropinShape, PerContainerInspectDropinShape,
+}
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.host.host_effect_realize { HostEffectTransport, FleetSsh }
+import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
+import gunbc.spark.remote_step_sequence {
+  run_remote_step_sequence,
+  remote_step_sequence_failed,
+  remote_step_sequence_wire,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+
+// ── The entry ───────────────────────────────────────────────────────────────────────────────────
+
+data spark_grant_install_receipt_path: String = "target/spark-grant-install-receipt.txt"
+
+
+// THE GAP IS MEASURED BEFORE IT IS CLOSED, on the same run, and only the measured-missing grants are
+// installed. Installing the whole desired population unconditionally would be cheaper to write and
+// would be the absorbing fallback: it cannot tell a host that needs one grant from a host we could
+// not read at all, and it would rewrite a correct drop-in on every run so no receipt could ever say
+// nothing was needed.
+// WHAT HAPPENED TO THE RETIRED SHARED DROP-IN on this run (spark_retired_dropin_converge decides,
+// through gunbc.spark.grant_privileged_operation admit_retired_dropin_removal; this records the effect
+// and its readback).
+type SparkRetiredDropinStanding
+  = RetiredDropinAbsent
+  | RetiredDropinRemovalWithheldOnRun { cause: NonEmptyStr }
+  | RetiredDropinRemoved
+  | RetiredDropinRemovalFailed { cause: NonEmptyStr }
+
+type SparkGrantInstallRun {
+  standing_report: String
+  retired_dropin: SparkRetiredDropinStanding
+  outcomes: List<SparkGrantInstallOutcome>
+  withheld: List<SparkGrantInstallAdmission>
+  unobserved: List<SparkGrantInstallAdmission>
+  admitted_on_accepted_risk: List<SparkGrantInstallAdmission>
+}
+
+fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: HostIdentity) -> SparkInspectDropinShape {
+  match spark_grant_install_target(host: host, principal: spark_managed_executor_login as NonEmptyStr) {
+    SshTargetRefused { endpoint: e, refusal: why } => InspectDropinShapeUnobserved { cause: ssh_target_refusal_text(endpoint: e, refusal: why) as NonEmptyStr }
+    SshTargetResolved { target: target } =>
+      match run_typed_argv_transport(
+        argv: spark_sudoers_dropin_listing_argv(),
+        transport: spark_grant_install_transport(context: context, target: target),
+      ) {
+        TypedArgvExecRefused { reason: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
+        TypedArgvExecConverged { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      }
+  }
+}
+
+// THE REMOVAL, on a fresh drop-in reading. The admission is minted only from this run's sealed
+// ConfirmedGrantInstall results (whole canonical sequence, confirmed readback) covering every modeled inspect grant (gunbc.spark.grant_privileged_operation
+// admit_retired_dropin_removal), and the removal effect consumes it; the readback is a fresh third
+// reading -- the shared file gone and every inspect grant held under its own file.
+fn spark_retired_dropin_converge(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  administrator: SparkCredentialStanding,
+  confirmed: List<ConfirmedGrantInstall>,
+) -> SparkRetiredDropinStanding
+{
+  match spark_inspect_dropin_shape_read(context: context, host: host) {
+    PerContainerInspectDropinShape { per_container: _ } => RetiredDropinAbsent
+    InspectDropinShapeUnobserved { cause: c } =>
+      RetiredDropinRemovalWithheldOnRun { cause: join(["the drop-in directory was not read: ", c as String], "") as NonEmptyStr }
+    SharedInspectDropinShape { per_container: _ } =>
+      match admit_retired_dropin_removal(host: host, attempt: spark_grant_install_ci_attempt_raw as NonEmptyStr, confirmed: confirmed) {
+        Absent =>
+          RetiredDropinRemovalWithheldOnRun {
+            cause: join([
+              "removing the shared drop-in would lapse inspect grants this run holds no install receipt for: ",
+              join(map(retired_dropin_removal_receipts_missing(host: host, attempt: spark_grant_install_ci_attempt_raw as NonEmptyStr, confirmed: confirmed), p => p as String), ","),
+            ], "") as NonEmptyStr,
+          }
+        Present { value: admission } => {
+          let removed = run_retired_dropin_removal(
+            context: context, admission: admission, administrator: administrator,
+            attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
+          )
+          if !privileged_step_succeeded(outcome: removed) {
+            RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+          } else if spark_retired_dropin_removal_confirmed(
+            outcome: spark_grant_probe_outcome(context: context, host: host),
+            shape: spark_inspect_dropin_shape_read(context: context, host: host),
+          ) {
+            RetiredDropinRemoved
+          } else {
+            RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+          }
+        }
+      }
+  }
+}
+
+// The install set is the reconcile's admitted NOT-HELD grants plus the inspect grants observed HELD
+// while the shared file is present (spark_inspect_grants_to_relocate: relocation of an already-held
+// capability, never a route around the admission wall for a not-held or unread grant).
+fn spark_grant_install_host(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+  administrator: SparkCredentialStanding,
+) -> SparkGrantInstallRun
+{
+  let outcome = spark_grant_probe_outcome(context: context, host: host)
+  let missing = spark_managed_grants_to_install(outcome: outcome)
+  let relocate = filter(
+    spark_inspect_grants_to_relocate(outcome: outcome, shape: spark_inspect_dropin_shape_read(context: context, host: host)),
+    g => !spark_grant_named_in(grants: missing, g: g),
+  )
+  let steps = map(concat(missing, relocate), g =>
+    spark_grant_install_execute(
+      context: context, host: host, principal: principal,
+      administrator: administrator, grant: g,
+    ))
+  let outcomes = map(steps, st => st.outcome)
+  SparkGrantInstallRun {
+    standing_report: spark_managed_grant_report(host: host, outcome: outcome),
+    retired_dropin: if fold(outcomes, init: true, f: fn(acc, o) { acc && spark_grant_install_succeeded(outcome: o) }) {
+      spark_retired_dropin_converge(
+        context: context, host: host, administrator: administrator,
+        confirmed: spark_confirmed_installs_of(steps: steps),
+      )
+    } else {
+      RetiredDropinRemovalWithheldOnRun { cause: "a grant install on this run did not succeed, so the shared drop-in is left in place" as NonEmptyStr }
+    },
+    outcomes: outcomes,
+    withheld: spark_managed_grants_withheld(outcome: outcome),
+    unobserved: spark_managed_grants_install_unobserved(outcome: outcome),
+    admitted_on_accepted_risk: spark_managed_grants_admitted_on_accepted_risk(outcome: outcome),
+  }
+}
+
+fn spark_retired_dropin_standing_wire(standing: SparkRetiredDropinStanding) -> String {
+  match standing {
+    RetiredDropinAbsent => "retired-shared-dropin absent\n"
+    RetiredDropinRemovalWithheldOnRun { cause: c } => join(["retired-shared-dropin REMOVAL-WITHHELD ", c as String, "\n"], "")
+    RetiredDropinRemoved => "retired-shared-dropin REMOVED (readback: file gone, every inspect grant held under its own file)\n"
+    RetiredDropinRemovalFailed { cause: c } => join(["retired-shared-dropin REMOVAL-FAILED ", c as String, "\n"], "")
+  }
+}
+
+fn spark_retired_dropin_converged(standing: SparkRetiredDropinStanding) -> Bool {
+  match standing {
+    RetiredDropinAbsent => true
+    RetiredDropinRemoved => true
+    RetiredDropinRemovalWithheldOnRun { cause: _ } => false
+    RetiredDropinRemovalFailed { cause: _ } => false
+  }
+}
+
+// THE RUN TEXT ENDS WITH WHAT IS STILL OWED. A run that installed a grant on accepted risk has an
+// obligation open after it greens; that fact is a typed list on the run (admitted_on_accepted_risk)
+// and this projection renders one line per entry so the receipt cannot read as clean. The verdict
+// below deliberately does not consult the list: the operator accepted the risk and proceeding is
+// the point; what must not happen is the receipt forgetting it.
+//
+// IT WAS IN THE REPORT TEXT AND NOT IN THE TYPE. Before this list existed the admission reached the
+// receipt only as prose -- standing_report already rendered "install=admitted-on-accepted-risk ...
+// outstanding=<obligation>" -- so the rendered text said the obligation was open while the typed run
+// said nothing, and every consumer that matches on the result rather than parsing a string read
+// the two runs as the same (raised by bright-boar-435 on the first cut of the acceptance row). A
+// rendered report is not a carrier, for the same reason DESIGN 4c gives for commentary: nothing
+// downstream can match on it.
+fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
+  join(concat(
+    concat(
+      [run.standing_report],
+      concat(map(run.outcomes, o => spark_grant_install_outcome_wire(outcome: o)), [spark_retired_dropin_standing_wire(standing: run.retired_dropin)]),
+    ),
+    map(run.admitted_on_accepted_risk, a => spark_grant_install_outstanding_wire(admission: a)),
+  ), "")
+}
+
+fn spark_grant_install_outstanding_wire(admission: SparkGrantInstallAdmission) -> String {
+  match admission {
+    GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: _ } =>
+      join(["outstanding-after-install grant=", spark_managed_grant_wire(grant: g) as String, " obligation=", o as String, "\n"], "")
+    GrantInstallWithheld { grant: _, obligation: _ } => ""
+    GrantInstallAdmitted { grant: _ } => ""
+    GrantInstallStandingUnobserved { grant: _, cause: _ } => ""
+    GrantInstallNotNeeded => ""
+  }
+}
+
+// Whether the run, green or not, leaves a disclosure obligation open. A consumer that reads a green
+// verdict and wants to conclude "nothing outstanding" asks this and not the verdict. Its executing
+// consumer is spark_grant_install_ci_wet, whose receipt header carries the answer as
+// obligation_outstanding_after_install= so a fleet-converge log states it on its first line.
+fn spark_grant_install_run_leaves_obligation_outstanding(run: SparkGrantInstallRun) -> Bool {
+  run.admitted_on_accepted_risk.length() > 0
+}
+
+// THE VERDICT COMES FROM THE VARIANTS, never from the receipt text. This module's sibling records
+// exactly this defect landing once already: an exit status decided by string_contains(body,
+// "REFUSED") passed a run whose refusal arm spells "probe-refused" in lower case. Text is a
+// projection of the outcomes; a projection cannot be the thing decided upon.
+//
+// An empty outcome list is SUCCESS here and only here: it means the reconcile found nothing missing,
+// which the standing report states in its own words. The reconcile has already refused to put an
+// unobserved grant in the install set, so "nothing to install" cannot arrive from ignorance.
+//
+// A WITHHELD GRANT IS NOT "NOTHING TO INSTALL". An empty install set because nothing was missing and an
+// empty install set because every missing grant was withheld are different facts, and the second is a
+// refusal the run must stop on: the reconcile has already decided the host needs a grant it may not
+// have, so exiting green would put that refusal in the receipt text and nowhere in the process result.
+// AN UNREAD STANDING IS THE SAME CLASS: a probe that never ran or failed yields no install set and no
+// withheld grant, and inferring success from those empty lists would pass a host nobody measured.
+fn spark_grant_install_run_succeeded(run: SparkGrantInstallRun) -> Bool {
+  run.withheld.length() == 0 && run.unobserved.length() == 0 && spark_retired_dropin_converged(standing: run.retired_dropin) && fold(run.outcomes, init: true, f: fn(acc, o) {
+    acc && spark_grant_install_succeeded(outcome: o)
+  })
+}
+
+// CLEANUP COMPLETION IS ITS OWN FACT, asked separately because it answers a different question than
+// "does the host hold the grant". Folding it into the grant verdict would let a failed rm report a
+// confirmed grant as absent; leaving it out of the EXIT entirely was the other error -- a confirmed
+// grant with a stranded staging file exited green, the next reconcile saw no missing grant, and
+// nothing ever came back for the file. So the receipt carries both and the exit requires both.
+fn spark_grant_install_cleanup_completed(outcome: SparkGrantInstallOutcome) -> Bool {
+  match outcome {
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => true
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => true
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _, readback: _, cleanup: c } =>
+      match c {
+        RemoteStepCompleted { identity: _, execution: _ } => true
+        RemoteStepFailed { identity: _, execution: _ } => false
+        RemoteStepUnattempted { identity: _ } => false
+      }
+  }
+}
+
+fn spark_grant_install_run_cleanup_completed(run: SparkGrantInstallRun) -> Bool {
+  fold(run.outcomes, init: true, f: fn(acc, o) {
+    acc && spark_grant_install_cleanup_completed(outcome: o)
+  })
+}
+
+// THE INSTALL NAMES ITS TARGET OR IT DOES NOT RUN, the same rule the reboot probe applies to itself
+// and for the same reason: writing sudoers across a whole fleet from an unset variable is a fan-out
+// nobody asked for, and the observe entry's all-hosts arm exists for reading, not writing.
+fn spark_grant_install_ci_wet() -> ProcessExit
+{
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
+      match spark_converge_target_selection(execute_apply: true) {
+        SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+        SparkConvergeTargetAllObserveOnly =>
+          exit_failure(
+            reason: "spark_grant_install_ci_wet: SPARK_CONVERGE_TARGET names no host, and installing sudoers must never fan out across the fleet from an unset variable",
+          )
+        SparkConvergeTargetSingle { host: only } => {
+          let now = clock_now_probed_at()
+          let run = spark_grant_install_host(
+            context: context,
+            host: only,
+            principal: spark_grant_install_principal(),
+            administrator: spark_grant_install_administrator_standing(host: only),
+          )
+          let body = join([
+            "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String,
+            " obligation_outstanding_after_install=", if spark_grant_install_run_leaves_obligation_outstanding(run: run) { "true" } else { "false" }, "\n",
+            context_receipt,
+            spark_grant_install_run_text(run: run),
+          ], "")
+          let w = Filesystem.Write(path: spark_grant_install_receipt_path, content: body)
+          if w.success == false {
+            exit_failure(reason: join(["grant install receipt write failed: ", w.error], ""))
+          } else if spark_grant_install_run_succeeded(run: run) == false
+              || spark_grant_install_run_cleanup_completed(run: run) == false {
+            exit_failure(reason: body)
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+  }
+}
+
+// WHICH PRINCIPAL INSTALLS PRIVILEGE, stated once. The automation account is the GRANTEE and cannot
+// install its own sudoers entries, so the honest default is the operator account the bootstrap model
+// already names as the transport for privileged effects. If that account cannot do it either, the
+// run refuses with sudo's own diagnostic rather than leaving a human to guess who could.
+fn spark_grant_install_principal() -> NonEmptyStr {
+  fleet_bootstrap_principal_login()
+}
+
+// THE STANDING NAMES THE ENROLLED REFERENCE, and that is ALL it names. Secret names are CARRIED,
+// never derived (operator ruling 2026-08-07); the reference is spark_credential_workflow's authored
+// row at its explicit version, whose own note says it sits on the serving-install critical path
+// because "widening sudoers is itself a privileged effect that requires the administrator credential
+// this lane resolves".
+//
+// IT IS NOT A REPORT ON THIS PROCESS'S FILE READ, and an intermediate revision made it one. That
+// revision derived the standing from an observed materialization and looked stricter; it was a
+// regression. Every unsuccessful read -- missing environment variable, unreadable file, empty
+// payload, line-bearing payload -- collapsed into pending, pending became CredentialNotEnrolled, and
+// that became "awaiting operator credential". So the located cause was destroyed one producer BEFORE
+// the arm that exists to carry it, defeating that separation in the same commit that built it. The
+// two questions are "is an exact credential enrolled" and "did this run receive its bytes", and
+// answering the first with the second is the state-space conflation this outcome model is for.
+//
+// Naming the reference unconditionally is honest AT THIS ENTRY because the workflow step that
+// precedes it does not reach a host at all unless the exact-version fetch returned 200: it exits on
+// 403, on 404, on any other status, and on an empty payload, and writes the decoded exact bytes only
+// on success. A run that bypasses that step reports "this run did not receive the enrolled
+// credential" through CredentialNotMaterialized -- which is the truth -- rather than rewriting
+// enrollment as pending.
+fn spark_grant_install_administrator_standing(host: HostIdentity) -> SparkCredentialStanding {
+  match spark_administrator_password_secret_ref_for(host: host) {
+    SparkAdministratorCredentialRefFound { ref: r } => CredentialMaterialized { ref: r }
+    SparkAdministratorCredentialHostNotEnrolled { host: _ } => CredentialMaterializationPending
+  }
+}

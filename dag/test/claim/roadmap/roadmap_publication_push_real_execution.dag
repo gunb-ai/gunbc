@@ -1,0 +1,143 @@
+module test.claim.roadmap.roadmap_publication_push_real_execution
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, CommitSha, Secret, GitRef }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.plumbing { GitWorktreeAt }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import gunbc.roadmap.roadmap_publish_actuate {
+  stage_captured_candidate_sha, CapturedShaStaged, CapturedShaStageRefused,
+  push_captured_sha_from_bare_mirror,
+  CapturedShaPushed, CapturedShaPushRefused, CapturedShaPushNetrcResidueRemains,
+  publication_source_git_dir, PublicationGitDirResolved, PublicationGitDirRefused,
+  publication_mirror_ref,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn write_file(repo: FilePath, name: String, content: String) -> Bool {
+  Filesystem.Write(path: concat(concat(repo as String, "/"), name), content: content).success
+}
+
+fn seed_source_repository(repo: FilePath) -> Bool {
+  let initialized = git.Core.InitInRepo(repo: repo).success
+  let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid").success
+  let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc publication push witness").success
+  let seeded = write_file(repo: repo, name: "candidate.txt", content: "one\n")
+  let staged = git.Core.AddAllInRepo(repo: repo).exit_code
+  let committed = git.Core.CommitInRepo(repo: repo, message: "candidate").exit_code
+  initialized && email && name && seeded && staged == 0 && committed == 0
+}
+
+fn source_head(repo: FilePath) -> String {
+  trim(s: git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef).revision)
+}
+
+fn scratch_child(root: FilePath, name: String) -> FilePath {
+  concat(concat(root as String, "/"), name) as FilePath
+}
+
+fn mkdir_for_git_c(path: FilePath) -> Bool {
+  shell.Mkdir.Parents(path: path).success
+}
+
+fn with_scratch(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn with_seeded_linked_and_mirror(scenario: fn(FilePath, FilePath, FilePath, String) -> Bool) -> Bool {
+  with_scratch(scenario: fn(scratch) {
+    let source = scratch_child(root: scratch, name: "source")
+    let linked = scratch_child(root: scratch, name: "linked")
+    let mirror = scratch_child(root: scratch, name: "mirror.git")
+    let prepared = mkdir_for_git_c(path: source)
+      && seed_source_repository(repo: source)
+      && mkdir_for_git_c(path: mirror)
+    let sha = source_head(repo: source)
+    let added = git.Core.WorktreeAddInRepo(repo: source, path: linked, start_point: "HEAD").exit_code
+    prepared && added == 0 && scenario(scratch, linked, mirror, sha)
+  })
+}
+
+test fn stage_linked_worktree_into_persistent_mirror_by_real_execution() -> Bool {
+  with_seeded_linked_and_mirror(scenario: fn(_scratch, linked, mirror, sha) {
+    let first = stage_captured_candidate_sha(
+      source_worktree: linked,
+      mirror: mirror,
+      expected_head: sha as CommitSha,
+    )
+    let second = stage_captured_candidate_sha(
+      source_worktree: linked,
+      mirror: mirror,
+      expected_head: sha as CommitSha,
+    )
+    match first { CapturedShaStaged => true _ => false }
+      && match second { CapturedShaStaged => true _ => false }
+  })
+}
+
+test fn push_from_bare_mirror_to_a_file_remote_by_real_execution() -> Bool {
+  with_seeded_linked_and_mirror(scenario: fn(scratch, linked, mirror, sha) {
+    let remote = scratch_child(root: scratch, name: "remote.git")
+    let placed = mkdir_for_git_c(path: remote)
+    let staged = stage_captured_candidate_sha(
+      source_worktree: linked,
+      mirror: mirror,
+      expected_head: sha as CommitSha,
+    )
+    let inited = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: remote }, path: remote)
+    let branch = "dispatch/n1-aabc" as NonEmptyStr
+    let pushed = push_captured_sha_from_bare_mirror(
+      mirror: mirror,
+      remote: remote as String as NonEmptyStr,
+      branch: branch,
+      expected_head: sha as CommitSha,
+      token: "dummy-token" as Secret,
+    )
+    let remote_head = trim(s: git.Core.RevParseInRepo(repo: remote, target: publication_mirror_ref(branch: branch) as GitRef).revision)
+    placed
+      && match staged { CapturedShaStaged => true _ => false }
+      && inited.exit_code == 0
+      && match pushed { CapturedShaPushed => true _ => false }
+      && remote_head == sha
+  })
+}
+
+test fn refused_push_to_a_missing_remote_shreds_by_real_execution() -> Bool {
+  with_seeded_linked_and_mirror(scenario: fn(scratch, linked, mirror, sha) {
+    let staged = stage_captured_candidate_sha(
+      source_worktree: linked,
+      mirror: mirror,
+      expected_head: sha as CommitSha,
+    )
+    let pushed = push_captured_sha_from_bare_mirror(
+      mirror: mirror,
+      remote: scratch_child(root: scratch, name: "missing.git") as String as NonEmptyStr,
+      branch: "dispatch/n1-aabc" as NonEmptyStr,
+      expected_head: sha as CommitSha,
+      token: "dummy-token" as Secret,
+    )
+    match staged { CapturedShaStaged => true _ => false }
+      && match pushed {
+        CapturedShaPushRefused { exit_code: _, stderr: _ } => true
+        CapturedShaPushNetrcResidueRemains { captured_sha_on_remote: _, exit_code: _, stderr: _ } => false
+        CapturedShaPushed => false
+      }
+  })
+}
+
+test fn a_worktree_without_a_gitdir_file_or_directory_refuses_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = match publication_source_git_dir(source_worktree: dir.path) {
+    PublicationGitDirRefused { stderr: _ } => true
+    PublicationGitDirResolved { git_dir: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}

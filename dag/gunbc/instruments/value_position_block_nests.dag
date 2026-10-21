@@ -1,0 +1,92 @@
+module gunbc.instruments.value_position_block_nests
+
+import std.types { String, Bool, List }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import v2.std.grammar { ParseTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module_prepared, prepare_grammar, ParseArtifact }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.host_text { chars }
+
+// Native lowering of the committed depth-14 value-position block nests (RFM
+// a_value_position_block_re_lowered_through_the_walker). The child reads the measurement fixtures
+// and runs tokenize → parse_module_prepared → normalize — the walk that was exponential on the
+// defect. Those sources are not in this module, so seed emit does not lower them (interpreter
+// memoization cannot flatten the child's work). compile_dag_source_to_target_text is not this
+// door: v2.compiler.compile declares compiler_pipeline_entry, and importing it would make this
+// crate's entry ambiguous.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type NestCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
+  artifact.tree
+}
+
+fn single_d14_path() -> String {
+  "docs/measurements/value_position_block_nests/single_d14/dag/gunbc/t.dag"
+}
+
+fn multi_d14_path() -> String {
+  "docs/measurements/value_position_block_nests/multi_d14/dag/gunbc/t.dag"
+}
+
+fn nest_expected_identities() -> List<String> {
+  ["single_d14_normalize_completes", "multi_d14_normalize_completes"]
+}
+
+fn lowering_observed(source: String) -> String {
+  match prepare_grammar(grammar: dag_grammar()) {
+    Rejected { diagnostics: _ } => "prepare_grammar_refused"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match lex_walk_artifact(source: chars(text: source), file: ^nest_fixture, rules: dag_lex_rules()) {
+        Rejected { diagnostics: _ } => "lex_refused"
+        Accepted { value: lexed, diagnostics: _ } =>
+          match parse_module_prepared(tokens: lex_artifact_semantic_tokens(artifact: lexed), prepared: prepared) {
+            Rejected { diagnostics: _ } => "parse_refused"
+            Accepted { value: parsed, diagnostics: _ } =>
+              match normalize(parse_tree: artifact_tree(artifact: parsed)) {
+                Accepted { value: _, diagnostics: _ } => "normalize_accepted"
+                Rejected { diagnostics: _ } => "normalize_refused"
+              }
+          }
+      }
+  }
+}
+
+fn nest_case(identity: String, path: String) -> NestCase {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    NestCase { identity: identity, held: false, observed: concat("read_refused:", read.error) }
+  } else {
+    let observed = lowering_observed(source: read.content)
+    NestCase { identity: identity, held: observed == "normalize_accepted", observed: observed }
+  }
+}
+
+fn nest_cases() -> List<NestCase> {
+  [
+    nest_case(identity: "single_d14_normalize_completes", path: single_d14_path()),
+    nest_case(identity: "multi_d14_normalize_completes", path: multi_d14_path())
+  ]
+}
+
+fn case_row(c: NestCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = nest_cases()
+  let roster = concat("roster ", concat(nest_expected_identities() |> join(separator: ","), "\n"))
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
+}

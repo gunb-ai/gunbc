@@ -1,0 +1,5 @@
+module uab.ncar_one
+
+import uab.named_sq { named_sq_marker }
+
+fn ncarry_one() -> Int { named_sq_marker() }

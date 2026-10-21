@@ -1,0 +1,105 @@
+{
+  "probes": [
+    {
+      "arm": "tp4-ctl",
+      "target": 512,
+      "tokenized": 510,
+      "prompt_tokens": 510,
+      "cached": 0,
+      "wall_ms": 831.6,
+      "iter_delta": 1,
+      "computed_delta": 510,
+      "flops_delta": 264765440.0,
+      "read_bytes_delta": 794304512.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 2048,
+      "tokenized": 2048,
+      "prompt_tokens": 2048,
+      "cached": 0,
+      "wall_ms": 2210.9,
+      "iter_delta": 1,
+      "computed_delta": 2048,
+      "flops_delta": 264765440.0,
+      "read_bytes_delta": 794304512.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 4096,
+      "tokenized": 4095,
+      "prompt_tokens": 4095,
+      "cached": 0,
+      "wall_ms": 4334.9,
+      "iter_delta": 1,
+      "computed_delta": 4095,
+      "flops_delta": 529530880.0,
+      "read_bytes_delta": 1059078144.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 8192,
+      "tokenized": 8192,
+      "prompt_tokens": 8192,
+      "cached": 0,
+      "wall_ms": 8653.8,
+      "iter_delta": 1,
+      "computed_delta": 8192,
+      "flops_delta": 1059061760.0,
+      "read_bytes_delta": 1588625408.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 12288,
+      "tokenized": 12396,
+      "prompt_tokens": 12396,
+      "cached": 0,
+      "wall_ms": 13253.3,
+      "iter_delta": 1,
+      "computed_delta": 12396,
+      "flops_delta": 1853358080.0,
+      "read_bytes_delta": 2382946304.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 16384,
+      "tokenized": 16501,
+      "prompt_tokens": 16501,
+      "cached": 0,
+      "wall_ms": 17564.8,
+      "iter_delta": 1,
+      "computed_delta": 16501,
+      "flops_delta": 2382888960.0,
+      "read_bytes_delta": 2912493568.0
+    },
+    {
+      "arm": "tp4-ctl",
+      "target": 20082,
+      "tokenized": 20192,
+      "prompt_tokens": 20192,
+      "cached": 0,
+      "wall_ms": 21360.7,
+      "iter_delta": 1,
+      "computed_delta": 20192,
+      "flops_delta": 2647654400.0,
+      "read_bytes_delta": 3177267200.0
+    }
+  ],
+  "cotenant": {
+    "arm": "tp4-ctl",
+    "prefill_tokens": 16528,
+    "prefill_wall_ms": 17822.9,
+    "decode_alone": {
+      "n": 123,
+      "median_ms": 30.2,
+      "p95_ms": 31.2,
+      "max_ms": 268.4
+    },
+    "decode_during_prefill": {
+      "n": 13,
+      "median_ms": 2146.3,
+      "p95_ms": 2175.8,
+      "max_ms": 2175.8
+    }
+  }
+}

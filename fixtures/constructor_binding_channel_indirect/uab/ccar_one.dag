@@ -1,0 +1,5 @@
+module uab.ccar_one
+
+import uab.cop_one { one_cop_marker }
+
+fn ccarry_one() -> Int { one_cop_marker() }

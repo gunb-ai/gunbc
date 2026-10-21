@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.workflow_job_selection_diverges_from_mode_assignment
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data workflow_job_selection_diverges_from_mode_assignment: RecurringFailureMode = RecurringFailureMode {
+  identity: "workflow_job_selection_diverges_from_mode_assignment" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607, fleet-converge run 37887389027: microvm_controller_install maps to its dedicated job, but the shared job used a separate exclusion list that did not exclude that mode. Both jobs queued under the same host-mutation concurrency group, so the unnecessary shared job delayed installation and selected its cloud credential prelude for a local-only install.",
+    "Invalid state: execution conditions disagree with the modeled mode-to-job assignment. A dedicated job exists but does not exclusively own its dispatch. Harm: extra runner occupancy, unrelated credential demands and failure paths, and a blocked dependent operation despite a successful build.",
+    "Repair: fleet_converge_shared_job_if derives its positive selectors from fleet_converge_mode_job_id over the closed mode roster. The actual shared Job witness admits plan and workspace modes while excluding dedicated controller, dashboard and IAM modes. Deleting that integration restores the duplicate-job specimen and fails the control.",
+    "Ceiling: structurally derive every job selector from its mode assignment; no independent exclusion list remains for the shared job. Runtime acceptance still reads the dispatched job set rather than treating generated text as evidence that GitHub ran it.",
+  ],
+  evidence: [],
+}

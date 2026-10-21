@@ -1,0 +1,270 @@
+module std.target_representation
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.kernel_type_name { KernelTypeName }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+
+// THREE IDENTITIES THAT ONE CHECKPOINT ROW USED TO FUSE, separated because each has a different
+// owner and a different reason to change. A std.coercion TypeCheckpoint row says "the dag name X
+// spells as Y on this target" -- one row carrying the SOURCE identity (a bare spelling), the target
+// REPRESENTATION (implicit in Y), and the emitted SPELLING (Y itself). Keyed on the bare spelling it
+// answers one thing for every declaration sharing that spelling, and carrying the spelling unqualified
+// it can be captured by any import that binds the same token. Both defects were measured on one
+// name: v2.std.node Symbol, an opaque declaration, rendered as the bare token `String` in every module
+// that also imports v2.std.text String (a structural FreeMonoid<Char>), so `fn f(identity: Symbol)`
+// came out expecting the text carrier while every caller passed the host string -- ~2400 of the first
+// self-host typeck run's 2799 refusals, one defect (XL-0, gunbc#9665 freeze).
+//
+// The split, by owner:
+//   SourceTypeTargetBinding  -- source DeclarationRef -> representation. Owned by the CORPUS, because
+//                               only the corpus knows which of its declarations realize natively on a
+//                               target and which render structurally. Keyed on the exact declaration,
+//                               never on a spelling: two declarations sharing a name are two rows or
+//                               one row and one absence, never one answer.
+//   RepresentationSpelling   -- representation -> fully qualified spelling per position. Owned by the
+//                               TARGET authority (extdeps.languages.<target>), cited to the target's
+//                               own reference. Fully qualified always: a spelling no use-line can
+//                               shadow is the construction that makes capture unwritable, where the
+//                               bare token was validation that never ran.
+// The reference/grounding position split is inherited from std.coercion TypeCheckpoint and kept for
+// the same reason it was introduced there: an alias declaration shadows its own name on the
+// right-hand side, so the two positions are two questions.
+type SourceTypeTargetBinding<R> {
+  source: DeclarationRef
+  representation: R
+}
+
+type RepresentationSpelling<R> {
+  representation: R
+  reference_position: NonEmptyStr
+  grounding_position: NonEmptyStr
+}
+
+// WHAT A RENDERER GETS BACK, AND WHY ONLY THE FIRST ARM EMITS A TABLE SPELLING. ExactBindingAbsent is
+// not a refusal by itself: the corpus binds only the declarations that realize natively, and every
+// other declaration renders its own structure -- so an absent row means "no table spelling; render
+// the declaration" and is the ordinary answer for almost every type in the corpus. It becomes a
+// refusal exactly where the declaration has no structure to render (an opaque `type X`), and that
+// refusal belongs to the renderer that knows the declaration's shape, not here. The other two arms
+// ARE refusals: an ambiguous binding is a corpus authoring defect (two rows for one declaration) and
+// an unavailable source identity is a caller that reached a declaration-keyed authority with a
+// spelling -- the bare-name fallback this carrier exists to delete. Neither arm may be answered by
+// widening to the spelling table (DESIGN section 5: a failure arm refuses, never widens).
+type ExactBindingResolution<R>
+  = ResolvedExactBinding { binding: SourceTypeTargetBinding<R> }
+  | ExactBindingAbsent
+  | ExactBindingAmbiguous { candidate_count: Int }
+  | ExactSourceIdentityUnavailable { cause: NonEmptyStr }
+
+fn exact_binding_candidates<R>(source: DeclarationRef, rows: List<SourceTypeTargetBinding<R>>) -> List<SourceTypeTargetBinding<R>> {
+  rows |> filter(r => declaration_ref_eq(a: r.source, b: source))
+}
+
+fn resolve_exact_binding<R>(source: DeclarationRef?, rows: List<SourceTypeTargetBinding<R>>) -> ExactBindingResolution<R> {
+  match source {
+    Absent => ExactSourceIdentityUnavailable { cause: "the caller reached the declaration-keyed resolver with no DeclarationRef" as NonEmptyStr }
+    Present { value: s } =>
+      let hits = exact_binding_candidates(source: s, rows: rows)
+      let candidate_count = hits |> count
+      if candidate_count == 0 { ExactBindingAbsent }
+      else if candidate_count == 1 {
+        match hits |> first {
+          Present { value: b } => ResolvedExactBinding { binding: b }
+          Absent => ExactBindingAbsent
+        }
+      } else { ExactBindingAmbiguous { candidate_count: candidate_count } }
+  }
+}
+
+fn exact_binding_is_resolved<R>(resolution: ExactBindingResolution<R>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
+// The representation is generic here because equality on it is the target authority's fact (a
+// target names its own representations), so the comparison is passed in rather than assumed.
+fn representation_spelling_for<R>(representation: R, spellings: List<RepresentationSpelling<R>>, same_representation: fn(R, R) -> Bool) -> RepresentationSpelling<R>? {
+  spellings |> filter(s => same_representation(s.representation, representation)) |> first
+}
+
+// EVERY BARE-NAME CHECKPOINT ROW MUST SAY WHAT BECAME OF IT, so the spelling-keyed table shrinks by
+// declared verdicts rather than by silence. Three arms, and the middle one carries a proof because
+// "unique" asserted bare is the claim a reader most wants to check:
+//   MigratedToExactBinding    -- the declarations this name resolved to now carry exact rows and the
+//                                bare row is DELETED; a spelling-keyed lookup of this name answers
+//                                nothing, which is the census (DESIGN section 3 delete-first).
+//   ProvenUniqueKernelBinding -- the bare row survives for the kernel mint (a reference the compiler
+//                                itself creates, carrying no declaration), and the proof states why
+//                                its spelling cannot be captured: a Rust primitive token, or a token
+//                                whose only capturing import binds the same name.
+//   StillBareNameDebt         -- the bare row survives because a declaration still depends on the
+//                                bypass; the trigger names the CAPABILITY that retires it, not an
+//                                artifact contributing to one (DESIGN section 4b(3)).
+type CheckpointRowDisposition
+  = MigratedToExactBinding { bindings: List<DeclarationRef> }
+  | ProvenUniqueKernelBinding { proof: NonEmptyStr }
+  | StillBareNameDebt { reason: NonEmptyStr, restoration_trigger: NonEmptyStr }
+
+type CheckpointRowMigration {
+  dag_name: NonEmptyStr
+  disposition: CheckpointRowDisposition
+}
+
+fn checkpoint_row_disposition_keeps_bare_row(disposition: CheckpointRowDisposition) -> Bool {
+  match disposition {
+    MigratedToExactBinding { bindings: _ } => false
+    ProvenUniqueKernelBinding { proof: _ } => true
+    StillBareNameDebt { reason: _, restoration_trigger: _ } => true
+  }
+}
+
+fn checkpoint_row_migration_for(dag_name: NonEmptyStr, migrations: List<CheckpointRowMigration>) -> CheckpointRowMigration? {
+  migrations |> filter(m => m.dag_name == dag_name) |> first
+}
+
+// A NATIVELY REALIZED COPRODUCT HAS ARMS, AND EACH ARM NEEDS A TARGET VALUE. A SourceTypeTargetBinding
+// says the declaration std.types Bool realizes as the target's `bool`; it says nothing about which
+// of Bool's arms is which of `bool`'s values, so a renderer holding only the type binding spelled
+// the arm by its SOURCE name (`Bool::True`) against a carrier that has no such path -- accepted
+// source emitting an uncompilable target (gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target). The fact is split by owner exactly as the type half is:
+//   RepresentationValue      -- representation -> one of its values, spelled. Owned by the TARGET
+//                               authority and naming no source declaration (Rust's `bool` has the
+//                               two values `true` and `false`).
+//   SourceVariantTargetValue -- source arm (its parent declaration by identity, the arm by name within
+//                               it) -> one of those values. Owned by the CORPUS, because only the
+//                               corpus knows which of its arms it means by which value.
+// Keyed on the parent DeclarationRef, never on the parent's spelling: a module-local coproduct that
+// happens to be named Bool with True/False arms has no binding and renders its own enum.
+type RepresentationValue<R> {
+  representation: R
+  value_spelling: NonEmptyStr
+}
+
+// WHICH COPRODUCT AN ARM BELONGS TO, as one exhaustive key. A reference to a kernel type name
+// (std.types kernel_type_set) resolves to the KERNEL MINT, which carries no declaration: the kernel
+// namespace is closed, so the mint's name IS its identity -- the same standing
+// gunbc.rust_source_type_bindings ProvenUniqueKernelBinding gives the kernel mint at the type level.
+// The kernel arm holds std.kernel_type_name KernelTypeName -- the one carrier for "a name
+// admitted by std.types is_kernel_type" -- so it is built through kernel_type_name and nowhere else.
+type VariantParentKey
+  = VariantParentDeclaration { declaration: DeclarationRef }
+  | VariantParentKernelType { kernel_name: KernelTypeName }
+
+fn variant_parent_key_eq(a: VariantParentKey, b: VariantParentKey) -> Bool {
+  match a {
+    VariantParentDeclaration { declaration: da } =>
+      match b {
+        VariantParentDeclaration { declaration: db } => declaration_ref_eq(a: da, b: db)
+        VariantParentKernelType { kernel_name: _ } => false
+      }
+    VariantParentKernelType { kernel_name: ka } =>
+      match b {
+        VariantParentDeclaration { declaration: _ } => false
+        VariantParentKernelType { kernel_name: kb } => ka.name == kb.name
+      }
+  }
+}
+
+fn variant_parent_key_label(k: VariantParentKey) -> String {
+  match k {
+    VariantParentDeclaration { declaration: d } => concat(d.module_path as String, ".", d.decl_name as String)
+    VariantParentKernelType { kernel_name: n } => concat("kernel ", n.name)
+  }
+}
+
+type SourceVariantTargetValue<R> {
+  parent: VariantParentKey
+  variant: NonEmptyStr
+  value: RepresentationValue<R>
+}
+
+// WHICH DECLARATION A VARIANT OCCURRENCE BELONGS TO, read ONCE at inference where the scrutinee's (or
+// the value's) resolved type is live, and carried on the typed tree for emission -- the same shape
+// std.operator_realization OperandDeclaration carries for a binary operator, for the same measured
+// reason: at emission only the module env survives, and re-resolving a spelling there answers by pool
+// precedence, not by the reference's own binding. Identified carries the key; Unrecovered is the
+// located refusal and says why; BeforeInference is the parser's state for a pattern inference has
+// not yet read, and emission treats it as unrecovered. There is no default.
+type VariantParentIdentity
+  = VariantParentIdentified { key: VariantParentKey }
+  | VariantParentUnrecovered { cause: NonEmptyStr }
+  | VariantParentBeforeInference
+
+type VariantValueRealization
+  = VariantRealizesAsTargetValue { value_spelling: NonEmptyStr }
+  | VariantRealizesStructurally
+  | VariantTargetValueUnbound { parent: VariantParentKey, variant: NonEmptyStr }
+  | VariantTargetValueAmbiguous { parent: VariantParentKey, variant: NonEmptyStr, candidate_count: Int }
+  | VariantParentIdentityUnavailable { cause: NonEmptyStr }
+
+fn variant_rows_for<R>(key: VariantParentKey, variant: NonEmptyStr, values: List<SourceVariantTargetValue<R>>) -> List<SourceVariantTargetValue<R>> {
+  values |> filter(v => variant_parent_key_eq(a: v.parent, b: key) && (v.variant as String) == (variant as String))
+}
+
+fn variant_value_from_hits<R>(key: VariantParentKey, variant: NonEmptyStr, hits: List<SourceVariantTargetValue<R>>) -> VariantValueRealization {
+  let n = hits |> count
+  if n == 1 {
+    match hits |> first {
+      Present { value: v } => VariantRealizesAsTargetValue { value_spelling: v.value.value_spelling }
+      Absent => VariantTargetValueUnbound { parent: key, variant: variant }
+    }
+  } else if n == 0 {
+    VariantTargetValueUnbound { parent: key, variant: variant }
+  } else {
+    VariantTargetValueAmbiguous { parent: key, variant: variant, candidate_count: n }
+  }
+}
+
+// THE DECISION, total over the identity arms. A declared parent with no type binding renders its own
+// structure (the ordinary answer); a declared parent bound natively MUST bind every arm it is asked
+// about, and a value row whose value belongs to a different representation than the parent is
+// bound to cannot answer for it. A kernel parent has no declaration binding to consult: it realizes
+// natively exactly where the kernel name has variant rows, and then every arm asked about must have
+// one. An arm with no row refuses rather than falling back to the source spelling, because that
+// spelling is precisely what the target cannot express. An identity that is not Identified is
+// answered as unavailable, never as structural.
+fn variant_value_realization<R>(
+  parent: VariantParentIdentity,
+  variant: NonEmptyStr,
+  bindings: List<SourceTypeTargetBinding<R>>,
+  values: List<SourceVariantTargetValue<R>>,
+  same_representation: fn(R, R) -> Bool
+) -> VariantValueRealization {
+  match parent {
+    VariantParentBeforeInference => VariantParentIdentityUnavailable { cause: "the variant was never read by inference" as NonEmptyStr }
+    VariantParentUnrecovered { cause: c } => VariantParentIdentityUnavailable { cause: c }
+    VariantParentIdentified { key: key } =>
+      match key {
+        VariantParentKernelType { kernel_name: _ } =>
+          let kernel_rows = values |> filter(v => variant_parent_key_eq(a: v.parent, b: key))
+          if kernel_rows |> count == 0 { VariantRealizesStructurally }
+          else { variant_value_from_hits(key: key, variant: variant, hits: variant_rows_for(key: key, variant: variant, values: values)) }
+        VariantParentDeclaration { declaration: d } =>
+          match resolve_exact_binding(source: Present { value: d }, rows: bindings) {
+            ExactBindingAbsent => VariantRealizesStructurally
+            ExactSourceIdentityUnavailable { cause: c } => VariantParentIdentityUnavailable { cause: c }
+            ExactBindingAmbiguous { candidate_count: n } => VariantTargetValueAmbiguous { parent: key, variant: variant, candidate_count: n }
+            ResolvedExactBinding { binding: b } =>
+              variant_value_from_hits(key: key, variant: variant, hits: variant_rows_for(key: key, variant: variant, values: values) |> filter(v => same_representation(v.value.representation, b.representation)))
+          }
+      }
+  }
+}
+
+fn variant_value_realization_refusal_message(r: VariantValueRealization) -> String? {
+  match r {
+    VariantRealizesAsTargetValue { value_spelling: _ } => none
+    VariantRealizesStructurally => none
+    VariantTargetValueUnbound { parent: p, variant: v } =>
+      Present { value: concat("variant realization: ", variant_parent_key_label(k: p), " realizes natively on this target but its arm `", v as String, "` has no target value row; the source spelling cannot be emitted against the native carrier") }
+    VariantTargetValueAmbiguous { parent: p, variant: v, candidate_count: n } =>
+      Present { value: concat("variant realization: arm `", v as String, "` of ", variant_parent_key_label(k: p), " has ", to_string(value: n), " target value rows (corpus authoring defect)") }
+    VariantParentIdentityUnavailable { cause: c } =>
+      Present { value: concat("variant realization: the coproduct this variant belongs to was not recovered (", c as String, "), so whether it realizes natively cannot be decided") }
+  }
+}

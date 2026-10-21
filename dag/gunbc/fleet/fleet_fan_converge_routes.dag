@@ -1,0 +1,86 @@
+module gunbc.fleet.fleet_fan_converge_routes
+
+import std.decl_ref { decl_ref }
+import product.fan_policy_standing {
+  ConvergeRouteBound,
+  ConvergeRouteUnbound,
+  FanDutyConvergeRoute,
+  FanPolicyAuthority,
+}
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+
+// ONE CONVERGE ROUTE PER BMC FAMILY, AND THE DISPATCH THAT PICKS ONE.
+//
+// WHY THIS IS NOT IN product.fan_policy_standing. That module owns the SHAPE of a converge route -
+// bound with its write, transport and readback, or unbound with what would bind it - and DESIGN §3
+// forbids a generic hub from enumerating concrete products or dispatching among their authorities.
+// These rows name two specific upstreams, so they sit outside it.
+//
+// WHY THIS IS NOT IN EITHER extdeps MODULE EITHER. A route is interface + transport + policy joined:
+// it says WHICH upload operation carries the config and WHICH fold reads it back. §3 calls that a
+// workflow fact and modelling it in extdeps a layer inversion, so neither phosphor_fan_control nor
+// megarac_fan_policy may hold it. The dispatch below is realization and therefore peripheral by the
+// same rule.
+//
+// WHY IT EXISTS AT ALL RATHER THAN LIVING IN THE WITNESS, which is where both rows were authored:
+// a route reachable only from test.claim is a route no production consumer can use, and Mt. Jade's
+// fan standing needs exactly this dispatch. Two consumers now share these rows instead of one lane
+// re-typing them.
+
+// THE OPENBMC ROUTE IS BOUND, and every declaration it names resolves: phosphor-fan's zone policy
+// is the authority, the config is projected locally, uploaded over the password-SSH transport and
+// read back by a verify fold. "This family can be converged" is therefore checkable by resolving
+// names rather than by reading prose.
+data openbmc_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteBound {
+  authority: FanPolicyAuthority {
+    declaration: decl_ref("extdeps.bmc.phosphor_fan_control", "phosphor_fan_zone_policy_contract"),
+  },
+  write_operation: decl_ref("extdeps.bmc.openbmc_fan_control", "openbmc_fan_config_project_local"),
+  transport: decl_ref("extdeps.bmc.openbmc_fan_control", "openbmc_upload_file"),
+  readback: decl_ref("extdeps.bmc.openbmc_fan_control", "openbmc_fan_config_verify"),
+}
+
+// THE MEGARAC CONVERGE ROUTE IS UNBOUND UNTIL A WET WRITE EXISTS. megarac_fan_mode_surface is
+// ReadsCited for the GET contract (get_manager_status / get_fan_info) and still carries a
+// write_obligation. set_fan_speed and set_manager_status are UI-cited shape rows, not yet
+// executed by this repository, and no wet caller runs them. Binding those catalog names as
+// ConvergeRouteBound would make a ceiling look enforceable. Duty is still the closed 20..100
+// step-5 set; get_fan_info pwm echo plus thermal-guard dwell is the readback once a wet write exists.
+data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
+  authority: FanPolicyAuthority {
+    declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_mode_surface"),
+  },
+  read_obligation: "bind extdeps.bmc.megarac_fan_policy megarac_fan_mode_surface to a wet write/readback fold that POSTs set_fan_speed (fan_pwm_all) and set_manager_status and reads get_fan_info pwm echo plus thermal-guard dwell; catalog rows megarac_op_fan_set_fan_speed and megarac_op_session_login are shape, not that fold",
+}
+
+fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRoute {
+  match family {
+    OpenBmc => openbmc_fan_converge_route
+    AmiMegaRac => megarac_fan_converge_route
+  }
+}
+
+// THE AUTHORITY AN OBSERVED FAN SERIES IS READ AGAINST, PER BMC FAMILY (managed-host cut 5). Which
+// family's policy governs a host's fans is selected from what its controller was OBSERVED to be, never
+// assumed, so this dispatch takes an observed family and has no arm for "unobserved": a host whose
+// family is unread refuses before it reaches here (gunbc.machine_intake.fan_observe). It is the same
+// peripheral realization as the route dispatch above, and for the same reason it is not in either
+// extdeps module or in product.fan_policy_standing. The two rows differ from the routes' on purpose:
+// an observation is read against the family's POLICY (what holds a failsafe and when), while a converge
+// route names the WRITE surface; OpenBMC's phosphor zone contract is both, MegaRAC's policy standing
+// and its ReadsCited GET surface (megarac_fan_mode_surface) are two declarations, and the converge route
+// stays Unbound until a wet write fold exists.
+data megarac_fan_observation_authority: FanPolicyAuthority = FanPolicyAuthority {
+  declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_policy_standing"),
+}
+
+data openbmc_fan_observation_authority: FanPolicyAuthority = FanPolicyAuthority {
+  declaration: decl_ref("extdeps.bmc.phosphor_fan_control", "phosphor_fan_zone_policy_contract"),
+}
+
+fn fan_observation_authority_for_family(family: BmcFirmwareFamily) -> FanPolicyAuthority {
+  match family {
+    OpenBmc => openbmc_fan_observation_authority
+    AmiMegaRac => megarac_fan_observation_authority
+  }
+}

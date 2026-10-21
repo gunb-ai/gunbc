@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.upstream_input_constraint_held_only_by_prose
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data upstream_input_constraint_held_only_by_prose: RecurringFailureMode = RecurringFailureMode {
+  identity: "upstream_input_constraint_held_only_by_prose" as NonEmptyStr,
+
+  receipts: [
+    "upstream input constraint held only by prose: an external API rejects an input that our model admits -- a length cap, a character class, an enum the upstream narrowed -- and the constraint is recorded as a source annotation on the operation rather than on the input it constrains. The annotation is unreadable by any Accepted program (DESIGN section 4c), so the wall is the author having read it. Every new call site is a fresh chance to violate a constraint the corpus already learned.",
+
+    "SPECIMEN, 2026-09-17, gunbc.auth.heal_publisher_federation heal_publisher_wif_pool_display_name. The declared pool display name was 'GitHub heal publisher (protected publication only)' -- 49 characters. gcp.IamAdmin CreateWorkloadIdentityPool answers HTTP 400 INVALID_ARGUMENT: \"The WorkloadIdentityPool's display name must be less than or equal to 32 characters.\" The cost was not the failure: it was that an operator-authorized run, holding a freshly minted control-plane token, reached a live cloud API before anything checked a property of a string literal already sitting in the corpus.",
+
+    "WHAT WAS DONE, AND WHY IT IS NOT THE CEILING. The name was shortened, the limit recorded on the operation as an annotation, and a claim added over OUR declared name (test.claim.heal_publisher_provision_witness witness_the_pool_display_name_is_within_the_services_limit) with a discriminating control beside it. That takes THIS row to mechanically preventable. It does NOT generalise: a second consumer declaring a 40-character pool name is admitted by the compiler and caught by nothing, because the claim quantifies over one literal rather than over the operation's input.",
+
+    "ATTAINABLE CEILING: structurally impossible. The constraint is a property of the OPERATION'S INPUT FIELD, so it belongs there -- a bounded-length carrier on display_name, the same move std.integer makes for machine widths, after which an over-long literal has no constructor. NEXT-RUNG TRIGGER: a length-refined string carrier admitted by the .dag type system and consumable from an extdeps operation input declaration. Until that exists, a lens over call sites is the honest interim, and the per-consumer claim is the interim's interim.",
+
+    "SECOND SPECIMEN, 2026-10-14, gunbc.auth.branch_dispatch_federation hetzner_cloud_control_federation. Pool display name 'Fleet converge (approved branch runs)', 37 characters: the second consumer the receipt above predicted, admitted by the compiler and caught by nothing. The operator-authorized bootstrap (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply, receipt c2-cursor-20261014a) read its supplied token, completed its services stage, and refused at its identities stage with the same 400; its plan had exited 0 over the same name.",
+
+    "WHAT CHANGED AT THE SECOND SPECIMEN: the cap is data on the operation's own module (extdeps.cloud.gcp.iam_admin workload_identity_pool_display_name_max_characters, read by workload_identity_pool_display_name_admitted), and gunbc.auth.heal_publisher_provision dedicated_federation_input_refusals (named for the display name alone at that change) refuses a whole creation population before a token is read: the bootstrap plan and apply over gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_identity_population, the same rows its identities stage folds, and dedicated_federation_provision_with_supplied_token over its one federation. test.claim.auth.gcp_iam_bootstrap_witness holds the population claim and the specimen as its discriminating control. That is mechanically preventable at POPULATION grain for every DedicatedFederation route. gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_create_pool still creates a pool with no check, and the ceiling and next-rung trigger above are unchanged.",
+
+    "THIRD SPECIMEN, 2026-10-15, a different input of the same operation family. gunbc.auth.branch_dispatch_federation branch_dispatch_wif_provider_id 'github-fleet-converge-dispatch-oidc', 35 characters: gcp iam converge (fleet-converge run 38673630844), under an approved request, applied the printer federation and then refused at CreateWorkloadIdentityPoolProvider with 400 INVALID_ARGUMENT ('The WorkloadIdentityPoolProvider ID length must be between 4 and 32 characters', and only [a-z0-9-]); nothing after it applied, the Cursor grant set included. The display-name check could not see it, because it quantified over one input of the population, not over every input the upstream constrains.",
+
+    "WHAT CHANGED AT THE THIRD SPECIMEN: extdeps.cloud.gcp.iam_admin workload_identity_resource_id_admitted holds the syntax a pool id and a provider id share (4 to 32 characters of [a-z0-9-], the gcp- prefix reserved); dedicated_federation_input_refusals folds every constrained input a DedicatedFederation creation sends -- pool id, pool display name, provider id -- over a population; and gunbc.auth.gcp_iam_converge federation_input_refused_plan refuses such a target before it is observed, so consent is never requested for a create that cannot succeed and the rest of the estate still plans. The provider id is now 'gh-fleet-converge-dispatch-oidc' (31). Ceiling and trigger unchanged.",
+
+    "RECOGNITION RULE: an extdeps operation whose annotation states a numeric or lexical limit on an input, with no carrier or check between that sentence and the field. Grep shape: a comment containing 'must be', 'at most', 'no more than', 'maximum' or a digit-plus-'characters' within an operation body. The tell that it is THIS class rather than a documented-but-enforced one is that deleting the annotation changes no verdict anywhere.",
+  ],
+
+  evidence: [],
+}

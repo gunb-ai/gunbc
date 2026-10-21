@@ -1,0 +1,6 @@
+# Sole in-repo rustup channel authority (CI + local). Hand-maintained (no
+# regen step overwrites this file). `dag/extdeps/rust/rustup.dag` documents rustup
+# installer behavior only — it must not introduce a second pinned channel literal.
+[toolchain]
+channel = "1.93.0"
+components = ["clippy", "rustfmt"]

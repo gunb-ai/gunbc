@@ -1,0 +1,204 @@
+module v2.compiler.emit_module
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredTree }
+import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.emission_provenance {
+  EmissionAuthoredFragment,
+  EmissionContribution,
+  EmissionSourceComposition,
+  EmissionUnobservedFragment,
+  emission_contribution_source
+}
+import std.types { NonEmptyStr, List }
+import v2.std.compilers.target_model { TargetModel }
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid, fold_list }
+
+// The module source is ASSEMBLED FROM the contribution tree, never reconstructed by concatenating
+// strings beside it (std.emission_provenance): emit_module_text materializes what
+// emit_module_contribution built, so there is one authority for what bytes this fold produces and
+// where they came from. A refused declaration still REFUSES -- EmissionUnobservedFragment records
+// missing ORIGINS, never a missing emission, so this is not a widening failure arm (DESIGN.md S5).
+data emit_module_emit_origins_unobserved_cause: String = "v2.compiler.emit yields Medium<String> carrying no contribution structure, so the origins of one declaration's emitted text are not observed at this seam"
+
+fn emit_module_emit_unobserved_fragment(source: String) -> EmissionContribution {
+  EmissionUnobservedFragment {
+    producer: decl_ref(module_path: "v2.compiler.emit", decl_name: "emit"),
+    cause: emit_module_emit_origins_unobserved_cause as NonEmptyStr,
+    source: source
+  }
+}
+
+// The separator is AUTHORED: its bytes are the literal declared in v2.compiler.target_carriers, so its
+// origin is that declaration and not the fold that placed it.
+fn emit_module_separator_fragment() -> EmissionContribution {
+  EmissionAuthoredFragment {
+    origin: decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "emit_module_decl_separator"),
+    source: emit_module_decl_separator
+  }
+}
+
+fn emit_module_decl_contribution(
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<EmissionContribution> {
+  bind_outcome(
+    o: emit(tree: tree, target: target),
+    f: fn(medium) {
+      outcome_accepted(
+        value: EmissionSourceComposition {
+          origin: decl_ref(
+            module_path: "v2.compiler.emit_module",
+            decl_name: "emit_module_decl_contribution"
+          ),
+          parts: [
+            emit_module_emit_unobserved_fragment(source: medium.carried),
+            emit_module_separator_fragment()
+          ]
+        }
+      )
+    }
+  )
+}
+
+// ONE accumulation for every contribution fold in this module. The module fold and the family
+// fold differ only in how an element becomes a contribution, so that difference is a parameter,
+// not a second copy of the fold (DESIGN.md S2): a fix to the seed, the append order or the
+// composition wrap cannot land on one and miss the other.
+fn emit_contribution_parts_step<T>(
+  acc: Outcome<FreeMonoid<EmissionContribution>>,
+  item: T,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
+) -> Outcome<FreeMonoid<EmissionContribution>> {
+  bind_outcome(
+    o: acc,
+    f: fn(parts) {
+      bind_outcome(
+        o: contribution_of(item),
+        f: fn(part) {
+          outcome_accepted(value: parts.append(part))
+        }
+      )
+    }
+  )
+}
+
+fn emit_contribution_composition<T>(
+  items: List<T>,
+  origin: DeclarationRef,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
+) -> Outcome<EmissionContribution> {
+  bind_outcome(
+    o: fold_list(
+      xs: items,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, item) {
+        emit_contribution_parts_step(acc: acc, item: item, contribution_of: contribution_of)
+      }
+    ),
+    f: fn(parts) {
+      outcome_accepted(value: EmissionSourceComposition { origin: origin, parts: parts })
+    }
+  )
+}
+
+fn emit_module_contribution(
+  decls: List<InferredTree>,
+  target: TargetModel
+) -> Outcome<EmissionContribution> {
+  emit_contribution_composition(
+    items: decls,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_module_contribution"
+    ),
+    contribution_of: fn(tree) { emit_module_decl_contribution(tree: tree, target: target) }
+  )
+}
+
+fn emit_module_text(decls: List<InferredTree>, target: TargetModel) -> Outcome<String> {
+  bind_outcome(
+    o: emit_module_contribution(decls: decls, target: target),
+    f: fn(contribution) {
+      outcome_accepted(value: emission_contribution_source(contribution: contribution))
+    }
+  )
+}
+
+fn emit_module(decls: List<InferredTree>, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: emit_module_text(decls: decls, target: target),
+    f: fn(joined) {
+      target_source_medium(text: joined, target: target)
+    }
+  )
+}
+
+// Family-grain source producer (std.emit_on_demand witness_family_build_grain_ruling): one crate
+// per witness FAMILY, not per witness. emit_module emits N decls under ONE target model; a witness
+// family's members each carry their OWN target model (per-member translation rows), so emit_family
+// folds emit(member.tree, member.target) into one concatenated source. The transport target (the
+// family dispatcher descriptor) owns the resulting medium — it is a parameter, not a member fact.
+
+type EmitFamilyMember {
+  tree: InferredTree,
+  target: TargetModel
+}
+
+fn emit_family_contribution(members: List<EmitFamilyMember>) -> Outcome<EmissionContribution> {
+  emit_contribution_composition(
+    items: members,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_family_contribution"
+    ),
+    contribution_of: fn(member) {
+      emit_module_decl_contribution(tree: member.tree, target: member.target)
+    }
+  )
+}
+
+fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
+  bind_outcome(
+    o: emit_family_contribution(members: members),
+    f: fn(contribution) {
+      outcome_accepted(value: emission_contribution_source(contribution: contribution))
+    }
+  )
+}
+
+fn emit_family(
+  members: List<EmitFamilyMember>,
+  transport_target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: emit_family_text(members: members),
+    f: fn(joined) {
+      target_source_medium(text: joined, target: transport_target)
+    }
+  )
+}
+
+// THE PORTABLE PROJECTION of one emit_family product, keyed for the native build's cache. A
+// family pipeline's member list is not shareable across claims — EmitFamilyMember carries an
+// InferredTree, whose facts PartialFunction is origin-bound — so a cross-claim share of the
+// pipeline (v2.workflow.floor_pure_producer_share) must publish a closure-free stage: the
+// emitted source and the content key the native build is cached under. The key's DERIVATION
+// stays with each family's own native_key function; this record only joins the two portable
+// outputs, and it lives here — one type, not one per family (DESIGN §2/§3) — because the family
+// emit authority is the one module both family pipelines already import for emit_family itself.
+type EmittedFamilyCrate {
+  source: Medium<String>,
+  native_key: ContentHash
+}

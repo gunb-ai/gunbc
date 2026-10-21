@@ -1,0 +1,636 @@
+module gunbc.runner.runner_host_grants
+
+// THE HOST'S GRANT POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. This is a separate module from
+// gunbc.executor_privileged_operation on purpose, and the reason is structural rather than tidy:
+// the operation authority is consumed by gunbc.runner.runner_slot_provision (which projects its scripts
+// from the same argv), so an operation module that also read the slot ROSTER would close an import
+// cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
+// know nothing about hosts; this module joins the two.
+
+import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
+import gunbc.workspace_allocation_operations { workspace_launch_operations }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.fleet.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
+import std.types { String, NonEmptyStr, List, FilePath, list_length }
+import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
+import extdeps.virtualization.firecracker { kvm_device_group }
+import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  ReadDirectoryIdentity,
+  ListDirectoryEntries,
+  EnsureOwnedDirectory,
+  SystemdDaemonReload,
+  SystemdEnableUnit,
+  SystemdStartUnit,
+  SystemdMaskNowUnit,
+  SystemdSetUnitProperty,
+  executor_managed_directory_mode,
+  executor_privileged_operations_sudoers_body,
+  runner_slot_privileged_operations,
+}
+import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_reserve_unit_name }
+import gunbc.runner.runner_revision_job_unit { revision_job_host_instances, revision_job_runner_unit_instance_name }
+import gunbc.fabric.fabric_cell_converge {
+  fabric_cell_base_dir,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
+}
+import gunbc.fabric.fabric_cell_effect {
+  FabricCellEffect,
+  FabricCellDirectoryEnsure,
+  FabricCellSliceEnsure,
+  FabricCellSubstrateOwner,
+  CellSubstrateRootOwned,
+  CellAttemptWriterOwned,
+  fabric_cell_slice_desired_directives_of_slot,
+}
+import gunbc.fabric.fabric_allocation_store_substrate {
+  AllocationStoreEffect,
+  AllocationStoreDirectoryChainEnsure,
+  fabric_allocation_store_ensure_effect,
+}
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir, RunnerSlotMember }
+import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_host_has_deploy_slot }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.runner.runner_host_deploy { runner_index_seq }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner.runner_slot_retirement { host_maskable_units }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
+import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_root }
+
+// THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
+// gunbc.fleet.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
+// twice more as the leading segment of fleet_converge_generation_store_path and
+// fleet_converge_generation_lock_path. The grant below has to name the same directory, which would
+// have made a fourth. §3 RESIDUAL, with a trigger rather than only prose: this row is the authority,
+// and it dissolves when fleet_converge_plan derives all three of its spellings from it instead of
+// re-typing the path. Until then the drift is real -- moving the state directory today requires
+// finding three unrelated string sites, and missing one produces a lease that guards a directory
+// nothing else uses.
+// WHERE THE RENDERED gunbc-ghrunner.sudoers IS INSTALLED ON A HOST: one fact, read by the fci1 sha256
+// probe and by gunbc.fleet.fleet_host_grant_coverage (which reads the installed drop-in to tell a
+// rendered grant from one installed by hand).
+data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
+
+data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
+
+// THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
+// line for every desired slot. That is what makes gunbc.runner.runner_service_activation's separation
+// enforceable rather than stylistic: sudoers matches the whole command, so neither derived line
+// matches `systemctl enable --now <unit>`, and the fused form the hand loop ran has no grant on any
+// executor host. It is refused by sudo, not by anybody remembering.
+//
+// THE ROSTER IS desired_runner_slot_members FOR BOTH POPULATIONS, which is why the fabric cell
+// carries no activation grant: srv3-06 is a reserved compute-fabric identity, it is not a desired
+// runner member, so it contributes neither a directory pair nor a transition pair. srv3 therefore
+// derives one fewer of each than srv4, and the difference is the carve doing its job rather than an
+// omission. The fabric cell's OWN grants -- its substrate directories and its slice boundary --
+// enter through fabric_cell_privileged_operations below, derived from the fabric identity
+// authority; the slice start granted there activates a cgroup boundary, not an actions-runner
+// unit, so this activation carve stays exact.
+fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  flat_map(
+    desired_runner_slot_members(deploy: deploy),
+    m => {
+      let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
+      [SystemdEnableUnit { unit: unit }, SystemdStartUnit { unit: unit }]
+    },
+  )
+}
+
+// THE HOST'S REQUIRED PRIVILEGED POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. Nothing here is
+// srv-specific: a host's slot roster, job user and runner user decide its grants, so adding a slot
+// or retargeting an account changes the authorization with no second edit. This is the function the
+// emitted sudoers artifact is rendered from.
+// THE FABRIC CELL SUBSTRATE'S PRINCIPALS, RESOLVED IN EXACTLY ONE PLACE. The cell substrate --
+// base directory and cell root -- is ROOT-OWNED, and that is a parent ruling (warm-seal-35,
+// 2026-08-29) rather than an inheritance from the GitHub slot family: a job-user-owned cell root
+// would let any CI job mutate or delete the persistent cell, and FCI-1's
+// release-does-not-mutate-the-substrate control would become unfalsifiable. The job user is
+// delegated exactly one writable directory, the attempt root beneath the cell.
+data fabric_cell_substrate_root_principal: NonEmptyStr = "root" as NonEmptyStr
+
+fn fabric_cell_substrate_owner_principal(
+  owner: FabricCellSubstrateOwner,
+  job_user: NonEmptyStr,
+) -> NonEmptyStr {
+  match owner {
+    CellSubstrateRootOwned => fabric_cell_substrate_root_principal
+    CellAttemptWriterOwned => job_user
+  }
+}
+
+// ONE CONSTRUCTOR PER EFFECT SHAPE, CONSUMED BY BOTH RENDERINGS. The sudoers grant below and the
+// apply-shell command gunbc.fleet.fleet_converge_plan emits are DERIVED from the same operation values
+// these functions return, so the executed argv and its authorization cannot drift -- the same seam
+// runner_slot_provision established for the GitHub family, extended to the fabric one.
+fn fabric_cell_directory_operation(
+  path: String,
+  owner: FabricCellSubstrateOwner,
+  job_user: NonEmptyStr,
+) -> ExecutorPrivilegedOperation {
+  let principal = fabric_cell_substrate_owner_principal(owner: owner, job_user: job_user)
+  EnsureOwnedDirectory {
+    path: path as NonEmptyStr,
+    owner: principal,
+    group: principal,
+    mode: executor_managed_directory_mode,
+  }
+}
+
+// THE BOUNDARY CROSSES THE PRIVILEGE SEAM AS TYPED WORDS, NEVER AS FILE BYTES. Each directive
+// renders one `systemctl set-property <slice> <Property>=<value>` operation -- systemd persists
+// its own drop-in under root's authority -- followed by one start, which applies the directives to
+// the live cgroup (starting an already-active slice re-applies directives and kills nothing;
+// stopping or restarting a slice kills every process in it, so neither is granted).
+fn fabric_cell_slice_property_operations(
+  unit: NonEmptyStr,
+  directives: List<SystemdSliceDirective>,
+) -> List<ExecutorPrivilegedOperation> {
+  concat(
+    map(
+      directives,
+      d => SystemdSetUnitProperty {
+        unit: unit,
+        assignment: systemd_slice_directive_line(directive: d) as NonEmptyStr,
+      },
+    ),
+    [SystemdStartUnit { unit: unit }],
+  )
+}
+
+// THE SLICE PROPERTY GRANTS ARE `fabric_cell_slice_desired_directives`'S COMPLETE LIST, six lines
+// including the CPUQuota line -- a ceiling or the affirmative unset, never omitted. The fold has no
+// refusing arm since the quota's only refusing producer (a vendor survey) was deleted.
+fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
+  fabric_cell_slice_property_operations(
+    unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives_of_slot(slot: slot),
+  )
+}
+
+// THE EFFECT-TO-OPERATION PROJECTION THE APPLY SHELL CONSUMES. gunbc.fleet.fleet_converge_plan renders
+// its executable fabric lines from THESE operations, and the sudoers roster above is derived from
+// the same constructors over the same authorities -- so the command apply runs and the grant that
+// authorizes it are one value rendered twice, never two authorings kept in step (the exact defect
+// executor_privileged_operation exists to close, measured on srv3 2026-08-24).
+fn fabric_cell_effect_operations(
+  effect: FabricCellEffect,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  match effect {
+    FabricCellDirectoryEnsure { path: p, owner: o } =>
+      [fabric_cell_directory_operation(path: p as String, owner: o, job_user: job_user)]
+    FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
+      fabric_cell_slice_property_operations(unit: u, directives: ds)
+  }
+}
+
+fn fabric_cell_slot_privileged_operations(
+  slot: RunnerSlotIdentity,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  concat(
+    [
+      fabric_cell_directory_operation(
+        path: fabric_cell_root_path(slot: slot),
+        owner: CellSubstrateRootOwned,
+        job_user: job_user,
+      ),
+      fabric_cell_directory_operation(
+        path: fabric_cell_attempt_root_path(slot: slot),
+        owner: CellAttemptWriterOwned,
+        job_user: job_user,
+      ),
+    ],
+    fabric_cell_slice_operations(slot: slot),
+  )
+}
+
+// THE FABRIC CONTRIBUTION IS DERIVED FROM THE SAME EXACT-IDENTITY AUTHORITY THE DESIRED MEMBERSHIP
+// READS (gunbc.runner.runner_slot_allocation fabric_execution_slot_identities), so a second fabric cell
+// admitted there acquires its grants here with no second edit -- and a host with no fabric slot
+// contributes no fabric grants, including the base directory's.
+fn fabric_cell_host_slots(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
+  fold(
+    fabric_execution_slot_identities(),
+    init: [],
+    f: (acc, s) =>
+      if (s.host as String) == (deploy.host_label as String) { concat(acc, [s]) } else { acc },
+  )
+}
+
+fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let slots = fabric_cell_host_slots(deploy: deploy)
+  if list_length(items: slots) == 0 {
+    []
+  } else {
+    concat(
+      [
+        fabric_cell_directory_operation(
+          path: fabric_cell_base_dir,
+          owner: CellSubstrateRootOwned,
+          job_user: deploy.job_user,
+        ),
+      ],
+      flat_map(slots, s => fabric_cell_slot_privileged_operations(slot: s, job_user: deploy.job_user)),
+    )
+  }
+}
+
+// The allocation store is host-scoped substrate, not a cell action. Its grant is present on a
+// host that carries a fabric slot even when every cell member is already converged, so the empty
+// cell-action case cannot erase the control-plane prerequisite.
+fn fabric_allocation_store_effect_operations(
+  effect: AllocationStoreEffect,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  match effect {
+    AllocationStoreDirectoryChainEnsure { spec: s } => {
+      let namespace_principal = fabric_cell_substrate_owner_principal(owner: s.namespace_owner, job_user: job_user)
+      let store_principal = fabric_cell_substrate_owner_principal(owner: s.owner, job_user: job_user)
+      [
+        EnsureOwnedDirectory { path: s.namespace_path, owner: namespace_principal, group: namespace_principal, mode: s.namespace_mode },
+        EnsureOwnedDirectory { path: s.path, owner: store_principal, group: store_principal, mode: s.mode },
+      ]
+    }
+  }
+}
+
+fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if list_length(items: fabric_cell_host_slots(deploy: deploy)) == 0 {
+    []
+  } else {
+    fabric_allocation_store_effect_operations(
+      effect: fabric_allocation_store_ensure_effect(),
+      job_user: deploy.job_user,
+    )
+  }
+}
+
+// THE TEARDOWN GRANT ENROLLS THE SLOT GRAMMAR, NOT THE CURRENT WIDTH. Sudoers is derived from desired
+// state, but the trees a reconcile removes are RETIRED ones -- by definition outside the desired
+// width -- so a grant that named only desired dirs authorized exactly the removals that never
+// happen and refused every one that does (runner_slot_teardown_grant_note). The removal grant now
+// names every slot dir the host's grammar can render up to a declared index bound, still one exact
+// path per line with no wildcard (the `..` traversal argument in executor_privileged_operation
+// stands). The bound is a policy budget: the widest committed width in the fleet is 21 and the
+// retired incarnations reclaimed on srv2 on 2026-09-04 ran well past it, so 64 covers every tree
+// that exists with headroom for growth, at 64 sudoers lines per host. A retired tree above the bound refuses at apply exactly as
+// before, and the witness pins the bound above every committed width so a width change cannot
+// silently outgrow its own teardown.
+data runner_slot_teardown_grant_index_bound: Int = 64
+
+fn runner_slot_grammar_dirs_to_bound(host: HostIdentity, bound: Int) -> List<NonEmptyStr> {
+  map(runner_index_seq(n: bound), i =>
+    runner_slot_instance_dir(instance_name: runner_slot_instance_name(slot: RunnerSlotIdentity { host: host, slot_index: i }) as NonEmptyStr))
+}
+
+fn runner_slot_teardown_grant_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  runner_slot_refused_teardown_operations(host_label: deploy.host_label)
+}
+
+// The last rows are host-wide: the executor launches runner micro-VMs
+// (gunbc.runner.runner_microvm_host_ready), so it must be able to open /dev/kvm, and the
+// group that owns the device is udev's, not ours.
+fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  runner_host_wide_refused_operations(spec: runner_host_spec_of(deploy: deploy))
+}
+
+// THE HOST-WIDE ROWS TAKE THE PRINCIPAL, NOT THE DEPLOY. They describe the executor's own operation on
+// the machine -- a converge state directory and /dev/kvm group membership -- and depend on no runner
+// population, so a refused host can render them from its spec alone. Splitting the parameter is what
+// lets one body serve both the admitted and refused projections instead of forking the rows.
+fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  let job = spec.job_user
+  [
+    EnsureOwnedDirectory {
+      path: gunbc_fleet_converge_state_dir,
+      owner: job,
+      group: job,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureOwnedDirectory {
+      path: actions_runner_base_dir as NonEmptyStr,
+      owner: spec.runner_user,
+      group: spec.runner_user,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureOwnedDirectory {
+      path: actions_runner_cache_dir as NonEmptyStr,
+      owner: spec.runner_user,
+      group: spec.runner_user,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
+    SystemdDaemonReload
+  ] + unit_hold_store_operations(spec: spec)
+}
+
+// THE UNIT HOLD STORE LIVES ONLY WHERE A MANAGED HOST'S HOLD NAMES IT. gunbc.host.managed_host_unit_hold
+// unit_hold_store_hosts derives the store hosts from the managed rows' own hold decisions -- the host
+// a unit's boot job is pinned to and where the operator takes its maintenance holds; the boot refuses when the store root
+// is unreadable, so the root must exist before the first acquire and nothing else creates it. It is
+// the job user's (the boot and the operator's session both write slots as that account); the store
+// publishes DefaultAccessCreateOnly (gunbc.durable_exclusive_hold_file_store), so the directory
+// carries no confidentiality requirement beyond the executor's managed mode. Every other host
+// contributes nothing: a store root on a host no hold-owner runs on would be an unused authority.
+//
+// THE BOOT ATTEMPT ADMISSION STORE IS ITS NEIGHBOUR, NOT ITS CHILD (gunbc.host.host_boot_attempt_admission
+// boot_attempt_slot_root). Admission writes through the same store-host executor, so the root lives on
+// the same hosts with the same owner and mode; it is a separate directory because a hold's release or
+// recovery must never reach an attempt's create-once slot.
+fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
+    [
+      EnsureOwnedDirectory {
+        path: unit_hold_store_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: boot_attempt_slot_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+// No designated workspace slot means no workspace launch or credential publication grant.
+fn workspace_host_launch_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  flat_map(filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (deploy.host_label as String)), slot => workspace_launch_operations(slot: slot))
+}
+
+// THE SHAKEDOWN BROKER'S ONE GRANT: START ITS FIXED UNIT, ON THE HOST THAT CARRIES THE SHAKEDOWN SLOT
+// AND NOWHERE ELSE. The job user may ask systemd to start gunbc-microvm-slot-reserve.service and do
+// nothing else to it: the unit is root-owned, installed from the root-owned locus, and derives what it
+// reserves inside the root process (gunbc.runner.runner_microvm_slot_reserve), so this line authorizes a
+// request and carries no payload. It is one exact argv rendered from SystemdStartUnit, never a pattern.
+fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if (deploy.host_label as String) == (srv1_microvm_shakedown_slot().host as String) {
+    [SystemdStartUnit { unit: microvm_slot_reserve_unit_name }]
+  } else {
+    []
+  }
+}
+
+// THE REVISION JOB'S ONE GRANT PER JOB UNIT: START IT, ON THE HOST THAT CARRIES ITS SLOT. Same shape
+// and the same reasoning as the shakedown broker's: the unit is root-owned, installed from the
+// root-owned locus, and re-derives and verifies everything it runs (the spec's commit tree, the pinned
+// image, the cell grant), so the line authorizes a request and carries no payload. One exact argv per
+// declared revision-job slot (gunbc.runner.runner_slot_allocation revision_job_slots), never a pattern.
+fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  map(revision_job_host_instances(host: deploy.host_label as String), instance =>
+    SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: instance) })
+}
+
+// THE MASK GRANT IS THE STATIC "MAY BE MASKED" SET, AND THE APPLY DRAWS FROM THE SAME SET. The sudoers is
+// rendered before any observation and the apply's mask set depends on observed membership and standings,
+// so the grants cannot equal a runtime set; they render the superset every runtime set is drawn from,
+// gunbc.runner.runner_slot_retirement host_maskable_units (the units the operator's interruption
+// authorization names for this host), one exact `systemctl mask --now <unit>` line each and never a
+// pattern. gunbc.runner.runner_slot_provision retirement_actuation_units masks only a candidate inside that
+// same set and withholds every other candidate in a typed line, so sudo is never asked for a line it
+// refuses under set -e. Which pattern authorizes the effect is a section 3d selection, recorded at the
+// census row for retirement_mask_line.
+fn runner_slot_retirement_mask_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  host_maskable_units(host: deploy.host_label as HostIdentity)
+    |> map(u => SystemdMaskNowUnit { unit: u })
+}
+
+// EACH SLOT DIRECTORY IS INSTALLED AS THE ACCOUNT ITS SLOT RUNS AS: the CI job user for a CI slot and
+// the deploy account for the deploy slot (gunbc.runner.runner_slot_job_role). The grant is the same
+// EnsureOwnedDirectory row the provisioner's install command renders, one line per directory, so
+// the owner a line names is the owner the unit's drop-in runs as.
+fn runner_slot_member_install_operations(deploy: RunnerHostDeploy, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
+  flat_map(members, m => runner_slot_install_operations(
+    slot_dirs: [m.slot_dir],
+    slot_owner: runner_instance_job_user(host: deploy.host_label as HostIdentity, instance_name: m.instance_name, ci_job_user: deploy.job_user),
+  ))
+}
+
+// THE DEPLOY ACCOUNT'S GRANTS ARE PER-UNIT AND NOTHING ELSE (plan decision D5): the retirement mask
+// lines (#14390) and the fabric-cell slice set-property lines. No whole-binary entry of
+// fleet_posix_ci_runner_sudo_grants appears here, and the account is granted no install, visudo,
+// apt-get or systemctl as a binary. Empty on a host with no deploy slot.
+fn deploy_slot_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
+    runner_slot_retirement_mask_operations(deploy: deploy)
+      + flat_map(fabric_cell_host_slots(deploy: deploy), s => fabric_cell_slice_operations(slot: s))
+  } else {
+    []
+  }
+}
+
+fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let members = desired_runner_slot_members(deploy: deploy)
+  runner_slot_teardown_grant_operations(deploy: deploy)
+    + runner_slot_member_install_operations(deploy: deploy, members: members)
+    + runner_slot_activation_operations(deploy: deploy)
+    + runner_slot_retirement_mask_operations(deploy: deploy)
+    + fabric_cell_privileged_operations(deploy: deploy)
+    + fabric_allocation_store_privileged_operations(deploy: deploy)
+    + workspace_host_launch_operations(deploy: deploy)
+    + microvm_slot_reserve_start_operations(deploy: deploy)
+    + revision_job_start_operations(deploy: deploy)
+    + runner_host_wide_privileged_operations(deploy: deploy)
+    + microvm_network_granted_operations()
+    + dashboard_directory_observation_operations(deploy: deploy)
+}
+
+// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
+// that defines the renderer AND the repository path this host's bytes are rendered to. It has now
+// been wrong twice, in two different ways, which is why it is DERIVED rather than authored: it
+// named executor_privileged_operation.dag until the module split moved the function (review 55626),
+// and then named srv3's entry point for every host once srv1 and srv4 rendered through the same
+// function (review 55653) -- so srv1's installed file told a reader to reproduce it with srv3's
+// command. A hand-written entry-point string could be wrong for the host it described; the
+// artifact path cannot be, because the caller that supplies it IS the artifact whose bytes these
+// are (gunbc.generated_artifact RunnerHostSudoersArtifact, dispatched through
+// gunbc.generated_artifact_emit artifact_generate).
+fn runner_host_sudoers_header(artifact_path: String) -> String {
+  join([
+    "# GENERATED from dag/gunbc/runner/runner_host_grants.dag into ",
+    artifact_path,
+    " — do not hand-edit; regenerate through gunbc.generated_artifact_emit artifact_generate\n"
+  ], "")
+}
+
+// THE RENDERED ARTIFACT'S CONTENT, AND THE ONLY PRODUCER OF IT. Until this host's file was enrolled
+// as a gunbc.generated_artifact row it could be produced only by hand-writing an entry module per
+// host -- three near-identical wrappers whose whole content was a deploy row and a string naming
+// themselves -- so the one artifact an operator has to install had no path, no ignore rule and no
+// place in the artifact population that every other generated file is adjudicated through. The
+// enrollment is what deleted them: the registry maps this function over the deploy roster, so a
+// fifth executor host acquires its rendered sudoers file with no second edit here.
+// THE REFUSED HOST'S GRANTS, DERIVED FROM ITS SPEC AND NOT FROM A POPULATION IT DOES NOT HAVE.
+//
+// A host whose width refuses has no desired slot roster, so the two families that are FUNCTIONS OF
+// THAT ROSTER cannot be rendered and must not be:
+//
+//   runner_slot_install_operations     -- creates and chowns slot working trees: this is the widening
+//                                         authority, and granting it to a host nobody can size is the
+//                                         one thing a refusal must prevent.
+//   runner_slot_activation_operations  -- enables and starts slot units for the same population.
+//
+// WHAT IS RETAINED IS INDEPENDENTLY JUSTIFIED, and the distinction is the ruling's: "no new deployment
+// admitted" does not mean "delete every administrative grant". Teardown is retained precisely BECAUSE
+// srv2 still carries live runner trees from the width it ran before the refusal -- withdrawing the
+// authority to remove them would strand them with no sanctioned cleanup route, which is a worse state
+// than the one the refusal is protecting against. Teardown is bounded by the host's slot GRAMMAR
+// (index bound), not by a desired width, so it does not depend on a roster this host lacks.
+//
+// Host-wide rows (the converge state dir, /dev/kvm group membership) describe the executor's own
+// operation on the machine and are not derived from any runner population at all.
+//
+// THE FILE IS STILL GENERATED, NOT REFUSED. An `ArtifactGenerationRefused` here would leave the
+// previously committed bytes on disk -- the wide grants of the width that no longer exists -- which is
+// stale authority retained by silence. The refusal must produce a NARROWER artifact, not the absence
+// of one.
+fn runner_host_refused_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  runner_slot_refused_teardown_operations(host_label: spec.host_label)
+    + runner_host_wide_refused_operations(spec: spec)
+}
+
+fn runner_slot_refused_teardown_operations(host_label: NonEmptyStr) -> List<ExecutorPrivilegedOperation> {
+  map(
+    runner_slot_grammar_dirs_to_bound(
+      host: host_label as HostIdentity,
+      bound: runner_slot_teardown_grant_index_bound,
+    ),
+    d => RemoveDirectoryTree { path: d },
+  )
+}
+
+fn runner_host_refused_sudoers_content(spec: RunnerHostSpec, cause: String, artifact_path: String) -> String {
+  join([
+    runner_host_sudoers_header(artifact_path: artifact_path),
+    join(["# WIDTH REFUSED: ", cause, "\n"], ""),
+    "# No slot-install or slot-activation grants are rendered: both derive from a desired runner\n",
+    "# population, and this host has none. Teardown and host-wide rows are retained -- they are\n",
+    "# bounded by the host slot grammar and by the executor's own operation, not by a width.\n",
+    executor_privileged_operations_sudoers_body(
+      grantee: spec.job_user,
+      ops: runner_host_refused_privileged_operations(spec: spec),
+    ),
+  ], "")
+}
+
+// THE ONE DECISION between the found, refused-width and unmodeled renderings of a host's sudoers file.
+// It lived inline in gunbc.tier_o_artifact_emit, which cannot be imported by the converge route that
+// installs the file (it pulls the witness modules in, closing a cycle); both now consume this.
+type RunnerHostSudoersBody
+  = RunnerHostSudoersBodyProduced { content: String }
+  | RunnerHostSudoersBodyRefused { reason: String }
+
+fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy } =>
+      RunnerHostSudoersBodyProduced { content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path) }
+    RunnerHostDeployUnmodeled { host: unmodeled } =>
+      RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
+    RunnerHostDeployRefused { host: refused, cause: why } =>
+      match runner_host_spec_for(host: refused) {
+        RunnerHostSpecFound { spec: spec } =>
+          RunnerHostSudoersBodyProduced { content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path) }
+        RunnerHostSpecAbsent { host: h } =>
+          RunnerHostSudoersBodyRefused { reason: concat("runner host refused with no spec: ", h as String) }
+      }
+  }
+}
+
+fn runner_host_deploy_slot_sudoers_block(deploy: RunnerHostDeploy) -> String {
+  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
+    executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(deploy: deploy))
+  } else {
+    ""
+  }
+}
+
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
+  join([
+    runner_host_sudoers_header(artifact_path: artifact_path),
+    executor_privileged_operations_sudoers_body(
+      grantee: deploy.job_user,
+      ops: runner_host_privileged_operations(deploy: deploy),
+    ),
+    runner_host_deploy_slot_sudoers_block(deploy: deploy),
+  ], "")
+}
+
+
+// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
+// future edit that points both at one account fails a witness rather than silently creating an
+// account that authorizes itself.
+fn bootstrap_principal_is_not_the_grantee(
+  bootstrap: ExecutorBootstrapPrincipal,
+  deploy: RunnerHostDeploy,
+) -> Bool {
+  bootstrap_principal_is_not_the_job_user(bootstrap: bootstrap, job_user: deploy.job_user)
+}
+
+// THE SAME LAW OVER THE JOB USER ALONE. A deploy row is a spec plus an ADMITTED WIDTH, and the
+// privilege law does not depend on the width: whether the writer is the account CI jobs run as is a
+// fact about the two principals, not about how many slots a host admits. A custody converge that
+// resolves its host from runner_host_spec_for asks this directly rather than re-spelling the
+// comparison, so the law has one authority and the deploy arm above is one caller of it.
+fn bootstrap_principal_is_not_the_job_user(
+  bootstrap: ExecutorBootstrapPrincipal,
+  job_user: NonEmptyStr,
+) -> Bool {
+  bootstrap.login != job_user
+}
+
+// THE DASHBOARD DEPLOYMENT'S DIRECTORY OBSERVATIONS, AS PINNED READ-ONLY GRANTS. The live_deploy
+// transaction plans and reads back every directory its spec demands (gunbc.live_deploy.spec
+// deployment_directory_demands) under the job user, and a managed directory may admit only its owner,
+// so the job user is granted exactly two read-only metadata operations per bound directory: stat of each
+// demanded directory, and a listing of each directory whose listing establishes a demand's presence
+// (its parent and ancestors, gunbc.owned_directory owned_directory_listed_ancestors). Every path is named
+// in full; nothing here mutates. Empty on every host that does not run the dashboard deployment.
+fn dashboard_directory_observation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  dashboard_directory_observation_operations_for(deploy: deploy, selected: prod_role_desired_deployment())
+}
+
+// The grants FOLLOW THE PROD-ROLE HOLDER (gunbc.live_deploy.desired prod_role_desired_deployment), the
+// same selection every apply entry reads, so a moved holder moves the grants with the deploy. A refused
+// selection grants NOTHING: least privilege is the safe empty, and the deploy's own entries refuse
+// loudly on the same cause before they would need a grant.
+fn dashboard_directory_observation_operations_for(deploy: RunnerHostDeploy, selected: ProdRoleDeployment) -> List<ExecutorPrivilegedOperation> {
+  match selected {
+    ProdRoleDeploymentRefused { cause: _ } => []
+    ProdRoleDeploymentRosterRefused { refusal: _ } => []
+    ProdRoleDeploymentHolderRowMismatch { holder: _, rostered: _ } => []
+    ProdRoleDeploymentSelected { deployment } =>
+      dashboard_directory_observation_operations_of(deploy: deploy, spec: selected_deployment_spec(row: deployment))
+  }
+}
+
+fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec: DeploymentSpec) -> List<ExecutorPrivilegedOperation> {
+  if (deploy.host_label as String) != (spec.target.host.identity as String) {
+    []
+  } else {
+    let demanded = map(deployment_directory_demands(spec: spec), t => owned_directory_path(t: t) as String)
+    let listed = fold(flat_map(demanded, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
+    concat(
+      map(demanded, p => ReadDirectoryIdentity { path: p as NonEmptyStr }),
+      map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr }),
+    )
+  }
+}

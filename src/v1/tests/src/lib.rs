@@ -1,0 +1,46 @@
+#![allow(
+    clippy::disallowed_macros,
+    clippy::absurd_extreme_comparisons,
+    dead_code
+)]
+
+pub mod helpers;
+
+#[cfg(test)]
+mod grounded_shared_carrier_wrap_test;
+
+#[cfg(test)]
+mod map_insert_record_shaped_refusal_test;
+
+#[cfg(test)]
+mod unknown_pipeline_driver_refusal_test;
+
+#[cfg(test)]
+mod native_driver_cost_refusal_test;
+
+#[cfg(test)]
+mod ambiguous_prefix_infix_newline_test;
+#[cfg(test)]
+mod anonymous_record_struct_resolution_test;
+#[cfg(test)]
+mod class_b_trim_specimen_test;
+#[cfg(test)]
+mod decl_facts_dimensionless_projection_test;
+#[cfg(test)]
+mod emitted_symbol_collision_test;
+#[cfg(test)]
+mod field_of_fractions_construction_test;
+#[cfg(test)]
+mod field_of_fractions_single_declaration_test;
+#[cfg(test)]
+mod item_kind_dispatch_totality_test;
+#[cfg(test)]
+mod namespace_unique_on_chain_policy_test;
+#[cfg(test)]
+mod none_undetermined_carrier_refuse_test;
+#[cfg(test)]
+mod record_literal_declared_type_inhabitance_test;
+#[cfg(test)]
+mod record_literal_names_a_union_type_refusal_test;
+#[cfg(test)]
+mod whole_tree_wiring_enum_test;

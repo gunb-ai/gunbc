@@ -1,0 +1,216 @@
+module test.claim.map_key_derive_requirement_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing floor witness for the USAGE-DERIVED half of v1.compiler.trait_derive_emit derive selection
+// (v1.compiler.trait_derive_emit v1_with_map_key_requirement). compile_dag_rust_emit_check is the
+// enrolled consumer: it
+// compiles an inline fixture through the real emit path and asserts emitted Rust spellings, so a claim
+// here is green by execution rather than by declaration. THE SUBJECT: a type that reaches a keyed-
+// collection key position must derive Eq + Hash, because the container Map lowers to im::HashMap whose
+// key parameter is bounded K: Hash + Eq — a fact about the type's USE that no shape classification
+// produces. Every positive row is paired with a control that must stay silent, because the failure
+// mode this mechanism can have is not missing the requirement (rustc refuses loudly) but fabricating
+// it on a type no one keys by, which nothing downstream would ever report.
+// w_non_key_record_derives_no_hash is that control at record grain and
+// w_map_value_position_does_not_seed is the sharper one: it puts the SAME type in the VALUE position
+// of the same container, so a rule that keyed on 'mentioned by a Map' rather than 'occupies the key
+// slot' goes red on it while every other row here stays green.
+// w_map_key_requirement_propagates_to_field_types pins the fixpoint rather than a one-hop read, and
+// w_nullary_coproduct_key_gains_only_hash pins the union's idempotence — a nullary coproduct already
+// deriving Eq and Ord from its shape roster must gain Hash alone, which is the asymmetry a wider
+// constant roster cannot express and the reason the union is append-only.
+// w_fn_field_record_as_map_key_refuses pins the fail-closed arm: Rc<dyn Fn> is neither Eq nor Hash, so
+// a callable-field record in a key position is refused with compile_error! rather than emitted with a
+// derive that cannot hold.
+fn w_map_key_record_earns_eq_and_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.keyed\n\ntype PositionKey {\n  position: Int\n}\n\ntype MemoTable {\n  entries: Map<PositionKey, Int>\n}\n",
+    "src/map_key_witness_keyed.rs",
+    ["Eq, std::hash::Hash)]\npub struct PositionKey"],
+    []
+  )
+}
+
+fn w_non_key_record_derives_no_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.unkeyed\n\ntype PlainRecord {\n  position: Int\n}\n\ntype PlainHolder {\n  held: PlainRecord\n}\n",
+    "src/map_key_witness_unkeyed.rs",
+    ["pub struct PlainRecord"],
+    ["std::hash::Hash"]
+  )
+}
+
+fn w_map_value_position_does_not_seed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.valued\n\ntype ValueOnly {\n  payload: Int\n}\n\ntype ValueTable {\n  entries: Map<String, ValueOnly>\n}\n",
+    "src/map_key_witness_valued.rs",
+    ["pub struct ValueOnly"],
+    ["std::hash::Hash"]
+  )
+}
+
+fn w_map_key_requirement_propagates_to_field_types() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.propagate\n\ntype InnerLeaf {\n  tag: Int\n}\n\ntype OuterKey {\n  inner: InnerLeaf\n}\n\ntype PropagateTable {\n  entries: Map<OuterKey, Int>\n}\n",
+    "src/map_key_witness_propagate.rs",
+    [
+      "Eq, std::hash::Hash)]\npub struct InnerLeaf",
+      "Eq, std::hash::Hash)]\npub struct OuterKey"
+    ],
+    []
+  )
+}
+
+fn w_fn_return_type_seeds_the_requirement() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.returned\n\ntype ReturnedKey {\n  tag: Int\n}\n\nfn empty_returned_table() -> Map<ReturnedKey, Int> {\n  empty_map()\n}\n",
+    "src/map_key_witness_returned.rs",
+    ["Eq, std::hash::Hash)]\npub struct ReturnedKey"],
+    []
+  )
+}
+
+fn w_nullary_coproduct_key_gains_only_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.nullary_key\n\ntype ChoiceKey\n  = ChoiceLeft\n  | ChoiceRight\n\ntype ChoiceTable {\n  entries: Map<ChoiceKey, Int>\n}\n",
+    "src/map_key_witness_nullary_key.rs",
+    ["pub enum ChoiceKey", "Ord, serde::Serialize, serde::Deserialize, std::hash::Hash)]"],
+    ["serde::Deserialize, Eq"]
+  )
+}
+
+fn w_fn_field_record_as_map_key_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.callable\n\ntype CallableKey {\n  step: fn(Int) -> Int\n}\n\ntype CallableTable {\n  entries: Map<CallableKey, Int>\n}\n",
+    "src/map_key_witness_callable.rs",
+    ["compile_error!"],
+    ["std::hash::Hash)]\npub struct CallableKey"]
+  )
+}
+
+test fn map_key_record_earns_eq_and_hash() -> Bool {
+  w_map_key_record_earns_eq_and_hash()
+}
+
+test fn non_key_record_derives_no_hash() -> Bool {
+  w_non_key_record_derives_no_hash()
+}
+
+test fn map_value_position_does_not_seed() -> Bool {
+  w_map_value_position_does_not_seed()
+}
+
+test fn map_key_requirement_propagates_to_field_types() -> Bool {
+  w_map_key_requirement_propagates_to_field_types()
+}
+
+test fn fn_return_type_seeds_the_requirement() -> Bool {
+  w_fn_return_type_seeds_the_requirement()
+}
+
+test fn nullary_coproduct_key_gains_only_hash() -> Bool {
+  w_nullary_coproduct_key_gains_only_hash()
+}
+
+test fn fn_field_record_as_map_key_refuses() -> Bool {
+  w_fn_field_record_as_map_key_refuses()
+}
+
+// THE GENERIC-KEY HALF OF THE REQUIREMENT, in both directions. The derive rows above decide which
+// DECLARED types gain Eq + Hash; these decide which fn GENERICS owe the same bound. Each red failed
+// before the bound was generalised (the generic stayed `K: Clone`, rustc E0277 at the HashMap bridge)
+// and passes after; the negative control is the sharper one, because an over-wide inference widens
+// silently: a generic that never reaches a key position must stay free of the host key bounds.
+//
+// w_generic_nested_in_a_key_type_argument_earns_eq_and_hash: `Map<Wrapper<K>, V>` keys on
+// `Wrapper<K>`, whose derived Hash holds only when K: Hash, so K owes the bound at any depth.
+// w_generic_caller_reaching_the_map_only_through_a_callee_earns_it: the wrapper's SIGNATURE names no Map (only the callee's does), so signature
+// derivation alone cannot bound A and only forwarding can green it; it
+// owes K the bound because the callee DECLARES it on the parameter K is passed to (propagated, not
+// re-derived at the call site).
+// w_generic_outside_every_key_position_stays_unbounded: K is a plain parameter and the map is keyed by
+// String, so no key bound may be fabricated.
+fn w_generic_nested_in_a_key_type_argument_earns_eq_and_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.nested_generic\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn nested_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "src/map_key_witness_nested_generic.rs",
+    ["std::cmp::Eq + std::hash::Hash, V"],
+    ["pub fn nested_probe<K: Clone, V", "pub fn nested_probe<K, V"]
+  )
+}
+
+fn w_generic_caller_reaching_the_map_only_through_a_callee_earns_it() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.callee_forwarded\nimport v2.std.collection { Map, map_lookup, empty_map }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn inner_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\nfn outer_probe<A, B>(key: Wrapper<A>) -> Optional<B> {\n  inner_probe(m: empty_map(), key: key)\n}\n",
+    "src/map_key_witness_callee_forwarded.rs",
+    ["std::cmp::Eq + std::hash::Hash, B"],
+    ["pub fn outer_probe<A: Clone, B", "pub fn outer_probe<A, B"]
+  )
+}
+
+fn w_generic_outside_every_key_position_stays_unbounded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.unkeyed_generic\nimport v2.std.collection { Map }\ntype Tagged<K> {\n  subject: K\n}\nfn unkeyed_probe<K, V>(m: Map<String, V>, tag: Tagged<K>) -> Map<String, V> {\n  m\n}\n",
+    "src/map_key_witness_unkeyed_generic.rs",
+    ["pub fn unkeyed_probe<"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn generic_nested_in_a_key_type_argument_earns_eq_and_hash() -> Bool {
+  w_generic_nested_in_a_key_type_argument_earns_eq_and_hash()
+}
+
+test fn generic_caller_reaching_the_map_only_through_a_callee_earns_it() -> Bool {
+  w_generic_caller_reaching_the_map_only_through_a_callee_earns_it()
+}
+
+test fn generic_outside_every_key_position_stays_unbounded() -> Bool {
+  w_generic_outside_every_key_position_stays_unbounded()
+}
+
+// TYPE DECLARATIONS earn the same bound (PR C item 2): a struct generic reaching a map key through a
+// FIELD owes Eq + Hash on its own header (the derives copy header bounds onto each impl), a carrier
+// naming such a struct propagates it, and a fn whose signature names the carrier owes it at the same
+// argument position. The negative control keeps a generic outside every key position bare.
+fn w_struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_header\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\n",
+    "src/map_key_witness_struct_header.rs",
+    ["pub struct Index<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
+    ["pub struct Index<K, V", "pub struct Index<K: Clone, V"]
+  )
+}
+
+fn w_struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_propagates\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\ntype Holder<A, B> {\n  inner: Index<A, B>\n}\nfn size_of<P, Q>(h: Holder<P, Q>) -> Int {\n  0\n}\n",
+    "src/map_key_witness_struct_propagates.rs",
+    ["pub struct Holder<A: Clone + std::cmp::Eq + std::hash::Hash, B", "pub fn size_of<P: Clone + std::cmp::Eq + std::hash::Hash, Q"],
+    ["pub struct Holder<A, B", "pub fn size_of<P, Q"]
+  )
+}
+
+fn w_struct_generic_outside_every_key_position_stays_unbounded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_unkeyed\nimport v2.std.collection { Map }\ntype Tagged<K> {\n  subject: K\n}\ntype Plain<K, V> {\n  tag: Tagged<K>\n  slots: Map<String, V>\n}\n",
+    "src/map_key_witness_struct_unkeyed.rs",
+    ["pub struct Plain<"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash() -> Bool {
+  w_struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash()
+}
+
+test fn struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound() -> Bool {
+  w_struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound()
+}
+
+test fn struct_generic_outside_every_key_position_stays_unbounded() -> Bool {
+  w_struct_generic_outside_every_key_position_stays_unbounded()
+}

@@ -1,0 +1,14 @@
+module v2.test.fixture.tail_construct.f15_one_segment_qualified_record_match_arm
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(arg_capture: Node, mentions: List<Symbol>) -> PortReading {
+  match arg_value_symbol(arg_capture: arg_capture) {
+    Present { value: sym } => m.PortBareName { name: sym }
+    Absent => PortComputedExpression { mentions: mentions }
+  }
+}

@@ -1,0 +1,22 @@
+module gunbc.parse_population_refusals
+
+import std.types { List, String }
+
+// THE POPULATION PARSE'S DECLARED REFUSALS (rung drops, DESIGN section 4b(3)). `gunbc test //gunbc/instruments:v2-native-cli` walks
+// `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file
+// key (`<tree>:<path>`) and parse cause, one class per standing drop and cause the verb reports; a module is in exactly one class.
+// The rule is two-sided: a module outside the list that fails to parse (or fails for another cause) is red, and a listed module that
+// parses is red, so a list can only shrink; a listed module the verb never meets is red too (`v2.cli.population_verbs`
+// `population_parse_report`), so an entry cannot outlive its file. A class is retired by the capability its drop's restoration trigger
+// names, never by editing a list.
+type RefusalClass {
+  drop: String
+  cause: String
+  keys: List<String>
+}
+
+// No class stands: the nested shorthand class (population_parse_nested_record_shorthand) was retired by the capability its trigger names,
+// the tagged-record field pun in v2's grammar (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
+fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
+  []
+}

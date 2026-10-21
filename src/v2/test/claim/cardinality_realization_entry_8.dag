@@ -1,0 +1,14 @@
+module v2.test.claim.cardinality_realization_entry_8
+
+import std.types { String }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld }
+import v2.test.claim.cardinality_realization_specimens { tag_presence_text, specimen_foreign_member_null_text }
+
+// ONE SPECIMEN AS A PROGRAM of the wet instrument gunbc.instruments.cardinality_realization_conformance:
+// its closure is emitted by the seed, built, and run, and the one line it prints is the specimen's tag
+// as the REALIZED program computes it. The instrument joins that line to the coverage rows by identity.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport {
+  NativeClaimReport { stdout: concat("tag=", to_string(value: tag_presence_text(text: specimen_foreign_member_null_text))), terminal: NativeClaimHeld }
+}

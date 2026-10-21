@@ -1,0 +1,1512 @@
+module gunbc.live_deploy.spec
+
+import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
+import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
+import std.os.types { OsPackageManager }
+import std.optional { Present }
+import extdeps.package_managers.apt {
+  package_tailscale,
+  package_tmux,
+}
+import extdeps.tailscale.serve {
+  tailscale_serve_unix_target,
+  tailscale_serve_unix_target_path,
+  TailscaleServeEndpoint,
+  TailscaleServeMount,
+  ServeRootMount,
+  ServeSetPath,
+  TailscaleServeCapability,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
+  ScopedRemovalUnobserved,
+  tailscale_serve_route_member_path,
+}
+import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.live_deploy.lab_host_plan {
+  LabDeployPlan,
+  srv1_lab_deploy_plan,
+}
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_os_package_manager_optional,
+  host_tailscale_client,
+}
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name,
+  attempt_worker_slice_unit_name,
+  repository_convergence_slice_unit_name,
+  approval_broker_slice_unit_name,
+}
+import gunbc.fleet.fleet_intent_network {
+  srv1_tailscale_endpoint,
+  fleet_intent_network,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
+import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
+import gunbc.host.host_layout {
+  srv1_gunbc_repo_root,
+  srv1_gunbc_approval_broker_root,
+  srv1_gunbc_serve_binary,
+  srv1_devboot_artifact_store_root,
+}
+import gunbc.fabric.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket, FabricStorageOwnershipMarkerSpec, fabric_storage_ownership_marker_spec }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_live_dashboard_instance,
+  ProdRoleRealization,
+  ProdRoleHolder,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_tailnet_door_socket,
+  dashboard_instance_tailnet_door_directory,
+}
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_test_lab_https_port,
+  tracker_web_oidc_serve_placement,
+  TrackerWebOidcServeReady,
+  TrackerWebOidcPlacementUnassigned,
+  TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
+}
+import extdeps.http.server { HttpServerListenConfig }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
+import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
+import product.network_topology { NetworkEndpoint }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
+import gunbc.ownership { Ownership, Owned, Ensured }
+
+// Belt B membership: the service is `gunbc
+// serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary +
+// GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host.host_layout authority the
+// belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is
+// never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when
+// belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user;
+// unit_user=root is NOT the authorization principal). #7011 realization: tree sync AS service user
+// via gunbc-tree-sync.service; six roster sudo grants (Wave C adds visudo for dropin gate). Wave C
+// envelope: in-script preflight + roster-emitted sudoers dropin (gunbc.live_deploy.emit
+// deploy_apply_preamble_shell).
+
+data gunbc_service_user: NonEmptyStr = "briansrls"
+
+// THE SERVICE PRINCIPAL'S UID IS CARRIED FOR THE SAME REASON ITS NAME IS: a host allocation the graph
+// states and never derives. It is needed because the serve and belt units run as SYSTEM services under
+// this principal and reach the principal's USER manager -- to start a dispatched worker as a transient
+// user unit and to read its ExecMainStatus afterwards -- which needs XDG_RUNTIME_DIR and the session
+// bus address, both spelled with the uid. Without them every such call answers "Failed to connect to
+// bus: No medium found" (srv1 belt journal, 2026-09-05, after the first converge deploy of the roles).
+// systemd's %U specifier is not usable here: in a system unit it names the manager's uid (0), not the
+// User= line's. The user manager itself must be running, which is loginctl linger for this account.
+data gunbc_service_uid: Int = 1000
+
+// NO DIRECTORY IS AN OWNED ARTIFACT OR AN ENSURED DEPENDENCY ANY MORE. The dispatch worktree root,
+// the attempt-state root, the compute root, the provider-state root, the fabric store's areas and the
+// srv1 host roots were each a kind here, created by an install -d the emitter spelled per kind and
+// read back by owner alone -- one of two creators for the dashboard's directories, the other being
+// the dashboard provision plan's mkdir. Both are deleted: a directory is an owned-directory target
+// (gunbc.owned_directory) its consumer demands, the spec carries the instance's demands
+// (DeploymentSpec.directories, from gunbc.roadmap.dashboard_instance_directories) and the host's
+// (DeploymentHostTarget.host_directories), and the one provider decides, installs and reads back
+// every one of them (gunbc.live_deploy.emit owned_directory_apply_steps,
+// gunbc.live_deploy.member_observe observe_owned_directory). No directory is torn down by a retract:
+// the roots that were Owned were removed by an empty-directory rmdir, and that teardown is not carried
+// forward -- a retract leaves directories exactly as it found them.
+
+// Nested by realization route so each variant name exists once. Compose-owned
+// kinds are unwritable at emit_artifact_upsert; that function takes
+// UpsertArtifactKind only. The one apply/retract dispatch matches ComposeOwned
+// vs UpsertOwned totally — no mapping function.
+type ComposeOwnedArtifactKind =
+    SystemdUnit
+  | FleetConvergeTimerUnit
+  | FabricStorageServeUnit
+  | FabricStorageServeMapping
+  | TailnetDoorServeUnit
+  | OidcConfigArtifact
+
+type UpsertArtifactKind =
+    ServeBinary
+  | GunbcSourceTree
+  | BeltEventPathUnit
+  | TailscaleServeMapping
+  | DeployedTreeRemoteUnit
+  | PublicationHelperPathUnit
+  | ApprovalBrokerFrontDoor
+
+type OwnedArtifactKind
+  = ComposeOwned { kind: ComposeOwnedArtifactKind }
+  | UpsertOwned { kind: UpsertArtifactKind }
+
+// AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
+// TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
+type EnsuredDependencyKind =
+    TailscalePackage
+  | TmuxPackage
+  | FabricStorageOwnershipMarker
+
+type EnsuredSubject
+  = EnsuredPackage { package: NonEmptyStr }
+  | EnsuredOwnershipMarker { marker: FabricStorageOwnershipMarkerSpec }
+
+fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
+  match subject {
+    EnsuredPackage { package } => package
+    EnsuredOwnershipMarker { marker } => marker.path
+  }
+}
+
+type DeploymentArtifactStep {
+  kind: OwnedArtifactKind
+  path: NonEmptyStr
+}
+
+type DeploymentDependencyStep {
+  kind: EnsuredDependencyKind
+  subject: EnsuredSubject
+}
+
+type DeploymentStep
+  = ArtifactStep { step: DeploymentArtifactStep }
+  | Dependency { step: DeploymentDependencyStep }
+
+fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
+  match step {
+    ArtifactStep { step: _ } => Owned
+    Dependency { step: _ } => Ensured
+  }
+}
+
+// WHETHER A MEMBER CAN BE TORN DOWN IS A FACT ABOUT THE MEMBER, so it lives here beside
+// deployment_step_ownership rather than as a predicate in the emitter (review 45217). The emitter
+// previously classified this by hand-walking three coproducts in one Boolean — MemberEffect, then
+// DeploymentStep, then OwnedArtifactKind — which put a fact about the deployment model inside the
+// thing that renders it, and encoded the model's storage shape as recursion in a reusable
+// predicate. Adding an artifact kind then meant remembering to visit the emitter, and the answer
+// was a bare true with no way to ask WHY.\n\nEVERY OWNED ARTIFACT NOW ACTS, and the second refusal
+// cause is deleted with the claim that justified it. TailscaleServeMapping used to answer
+// TeardownRefuses of TeardownWouldExceedOwnership on the premise that the CLI offers no per-port
+// removal and only a node-global reset. That premise was false and uncited: the upstream documents
+// scoped removal via `off` (extdeps.tailscale.serve, review 2026-07-30). Once the mapping is
+// modeled as the endpoint tailscale actually keys on, its teardown replays that endpoint with `off`
+// and removes exactly what this deployment created — so the arm is an ordinary teardown, not a
+// refusal, and TeardownWouldExceedOwnership had exactly one inhabitant which was wrong.\n\nWhat
+// survives is the refusal that was always correct and is about ownership rather than tooling: an
+// ensured dependency is outside ownership entirely — tailscale and tmux were installed for the
+// host, not for this deployment, so removing them is not this retract's business at any
+// scope.\n\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a
+// teardown answer by omission — the match fails to compile until the new kind states its own.
+
+type TeardownRefusalCause
+  = | TeardownOutsideOwnership
+
+type TeardownDisposition
+  = TeardownActs
+  | TeardownRefuses { cause: TeardownRefusalCause }
+
+fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
+  match kind {
+    ComposeOwned { kind: ck } => match ck {
+      SystemdUnit => TeardownActs
+      FleetConvergeTimerUnit => TeardownActs
+      FabricStorageServeUnit => TeardownActs
+      FabricStorageServeMapping => TeardownActs
+      TailnetDoorServeUnit => TeardownActs
+      OidcConfigArtifact => TeardownActs
+    }
+    UpsertOwned { kind: uk } => match uk {
+      ServeBinary => TeardownActs
+      GunbcSourceTree => TeardownActs
+      BeltEventPathUnit => TeardownActs
+      TailscaleServeMapping => TeardownActs
+      DeployedTreeRemoteUnit => TeardownActs
+      PublicationHelperPathUnit => TeardownActs
+      ApprovalBrokerFrontDoor => TeardownActs
+    }
+  }
+}
+
+fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposition {
+  match step {
+    ArtifactStep { step: art } => owned_artifact_teardown_disposition(kind: art.kind)
+    Dependency { step: _ } => TeardownRefuses { cause: TeardownOutsideOwnership }
+  }
+}
+
+// SCOPED TEARDOWN IS A PROPERTY OF THE CLIENT ON THIS MACHINE, so it is a field of the target
+// rather than a constant in the emitter. The tailscale Serve CLI CHANGED in client 1.52, so `serve
+// <flags> off` is available on some hosts and not others, and the previous code answered the
+// question with a data row asserting it for every host at every time.\n\nsrv1 was measured at
+// 1.102.2 (inhabitance receipt 2026-10-15) and its row says so, with the measurement carried as the observed string rather than as a
+// Bool — a verdict that has forgotten what it was computed from cannot be re-checked when the host
+// is upgraded. srv2 and srv3 are ScopedRemovalUnobserved, which is NOT a claim that they lack the
+// capability: it is the statement that nobody looked. Collapsing that to either pole is the
+// two-states-one-label defect this whole change is repairing, and asserting the fleet from one
+// measured host is the same shape as the claim being retracted (operator, 2026-07-30).\n\nTHE
+// REFUSAL FIRES AT EMIT, NOT AT RUN. A retract script is simply not produced for a target whose
+// client is unobserved or too old, so there is no arm in the emitted shell that could stop the line
+// halfway through a teardown, and no ordering question about where such an arm would sit. Refusing
+// before mutation is what the operator required, and refusing before EMISSION is the
+// construction-side reading of it: the dangerous artifact does not exist rather than existing and
+// declining to run.
+
+type DeploymentHostTarget {
+  host: ComputeHost
+  ssh_host: NonEmptyStr
+  tailscale_endpoint: NetworkEndpoint
+  tailnet_domain: NonEmptyStr?
+  lab_plan: LabDeployPlan
+  os_package_manager: OsPackageManager?
+  tailscale_client: TailscaleServeCapability
+  host_directories: List<OwnedDirectoryTarget>
+}
+
+// serve_function WAS DROPPED HERE AND THE EMITTER FELL BACK TO A LITERAL. HostDashboardInstance
+// carries it — the instance IS the choice of which handler answers — and this record simply did not
+// have the field, so emit_systemd_unit_doc hardcoded --function roadmap_serve_handle. That literal
+// binds srv1_live_dashboard_instance().\n\nThe consequence is worse than a wrong flag. A deployed
+// srv1_lab twin would listen on the lab port, work out of the lab tree, own the lab unit — and then
+// IDENTIFY AND OPERATE AS PRODUCTION, because the handler is what selects the instance. Every
+// path-level check passes; the process is simply serving the wrong dashboard. A path-disjointness
+// witness cannot see it, which is exactly why the twin proof had to move from declared members to
+// emitted effects (review, 2026-07-30).\n\nCarrying it makes the fallback impossible rather than
+// unlikely: the emitter has no literal to reach for, because the field it needs is only obtainable
+// from the instance.
+
+type DeploymentServiceConfig<Binary> {
+  unit_name: NonEmptyStr
+  serve_binary: Binary
+  serve_entry: NonEmptyStr
+  provider_state_root: NonEmptyStr
+  serve_function: NonEmptyStr
+  instance_root: NonEmptyStr
+  repo_root: NonEmptyStr
+  service_user: NonEmptyStr
+  service_uid: Int
+  listen: HttpServerListenConfig
+  serve_cpu_limit: EvaluationLimit
+  serve_wall_limit: EvaluationLimit
+}
+
+// THE BOUND EXISTS BECAUSE ITS ABSENCE WAS MEASURED IN PRODUCTION, NOT BECAUSE A BOUND IS
+// TIDY. Read off srv1 2026-08-10, on every restart that day including the process then
+// serving: `gunbc serve listening on 0.0.0.0:8080 -> roadmap_serve_handle()
+// eval_budget_cpu_ms=unset eval_budget_wall_ms=unset`. The per-request deadline machinery
+// existed and was armed around every route call, and both CLI flags existed typed
+// Option<u64> — the unit simply never passed them, so every request was armed with None.
+// cli_run handle_serve stated the consequence itself: the 500 existed and was unreachable,
+// (that handler was deleted by the cli-run driver cut, PR #8286; the citation is HISTORICAL —
+// it records what the seam said when the incident was measured, and a reader should not expect
+// to find the symbol at HEAD. The measurement it grounds is unaffected: the incident happened.)
+// and because the accept loop is serial the stuck request held the accept queue for every
+// later one. That is how ~1.5s of per-request work became a 10-16 hour unresponsive
+// dashboard: nothing made a request slow, nothing made it STOP.
+//
+// WHY A DECLARED POLICY ROW RATHER THAN A CONSTANT. DESIGN's oracle rule admits a numeric
+// literal grounded in an explicit policy budget, and rejects one grounded in a measurement
+// of the current tree. The measurement below is the BASIS recorded beside the policy, not
+// its justification: a later reader changing this number is amending a declared cap, not
+// tuning a constant, and the row is falsifiable when its basis moves.
+//
+// BOTH CLOCKS ARE SET, for the reason std.evaluation_budget evaluation_clock_split_note
+// already gives — CPU catches a spin, wall catches a stall that consumes almost no CPU
+// while still holding the listener. The measured serve cost is mostly the SECOND kind: a
+// jq subprocess over the attempt event files, which is wait rather than CPU and would
+// never cross a CPU cap.
+// MEASURED BASIS FOR THE DECLARED CAP (session crisp-gull-269, 2026-08-10, replay against a local
+// copy of srv1 attempt-state). Per request on the daily page: render evaluation 840ms self-time; jq
+// provider projection 486ms across 25,744,152 B spanning five current attempts; ~1.5s total. The
+// largest retained attempt (60,257,673 B, the 2026-08-08 wedge artifact) is roughly three times the
+// jq term, putting a realistic worst case near 2.5-3s. The declared caps are an order of magnitude
+// above that so a legitimate render is never refused, while still converting an unbounded listener
+// hold into a bounded typed refusal. THE ASYMMETRY THAT SETS THE DIRECTION: today's failure mode is
+// a silent multi-hour hang observable only to whoever eventually restarts the process; a too-tight
+// cap fails as an immediate, typed, visible 500 on one request. Those are not equally bad, which
+// argues for arming a defensible cap now and refining it against this basis rather than converging
+// on a perfect number first. VALUE IS OPERATOR POLICY: these numbers are a proposal carrying their
+// basis, not a derivation that forecloses the operator's choice.
+
+fn dashboard_serve_cpu_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
+}
+
+// THE WALL CAP WAS RAISED TO 120 S ON A SECOND MEASUREMENT (2026-09-06, srv1 serve journal at
+// 03:57Z, three POST /dispatch requests refused at 30.06-30.21 s). The dispatch route is not a
+// render: it observes every current attempt's session through host processes (about twenty
+// gunbc.WitnessBin.Run steps at roughly 0.8 s each in that journal), observes both engine replicas
+// twice (six http.Client.Get at about 0.5 s), and prepares a worktree -- all wait, almost no CPU,
+// which is exactly the clock this cap exists to bound. The 30 s basis above was a page render; a
+// dispatch is an operator click that may take a minute, and refusing it at 30 s spawned nothing
+// while still paying the whole cost. The CPU cap stays at 30 s: a spin is still a spin. The route's
+// per-step cost (a host process spawn near 0.8 s) is the thing to shrink; this row is the cap that
+// lets the click complete meanwhile, and it is falsifiable against the journal that set it.
+fn dashboard_serve_wall_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 119999)) }
+}
+
+// THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE.
+// DeploymentServiceConfig briefly carried release_revision, which put a per-invocation fact inside
+// the slot topology — and the tell was visible on the retract path: a retract installs no release,
+// yet it had to construct a DeploymentSpec and therefore had to name a revision it never read. A
+// field that is meaningful on one path and merely along for the ride on another is not a model of
+// either.\n\nEvery field that remains here is stable across deploys of this slot: which unit name,
+// which binary, which handler, which root, which principal, which port. Deploying blue twice at two
+// different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a
+// topology rather than a log.\n\nThe launch identity now travels beside the spec as
+// gunbc.live_deploy.release_locus ReleaseRevisionBinding, supplied at the apply seam and read only where
+// ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a
+// revision even by accident — the arm that would render one refuses loudly instead of emitting a
+// plausible line.
+
+// A DEPLOYMENT IS (WHAT × WHERE), AND THIS MODULE USED TO FUSE THEM. deployment_owned_steps and
+// deployment_service_config were NULLARY — zero arguments — so they returned THE deployment rather
+// than A deployment, and gunbc_roadmap_unit_name was a single value naming the only unit that could
+// ever exist. The consequence is sharper than 'srv1 is hardcoded': a second deployment was not hard
+// to add, it was UNEXPRESSIBLE. A twin on srv1 would have collided on the unit name, the unit path,
+// the binary path, the repo root and port 8080, every one of them a lone data row.\n\nThat framing
+// hid the real axis. Host is not what varies — INSTANCE is, and host is one of its fields.
+// Deploying twice on one machine and once on each of two machines are the same operation with
+// different arguments, and any model where the first is impossible has picked the wrong
+// parameter.\n\nThe correct placement model already existed and this module referenced it zero
+// times. HostDashboardInstance carries instance_root, repo_root, serve_binary,
+// dispatch_worktree_root, listen_host, listen_port, serve_function and instance_id, and it already
+// proves the point: srv1_live on 8080 and srv1_lab on 18081 are two instances on ONE host with
+// disjoint roots and distinct named tmux servers. So this is a de-fork onto an existing authority,
+// not new modeling — two placement models existed, one was right, and the deploy path consumed
+// neither.\n\nUnit and tailscale-mapping names travel together as DeploymentNames, supplied by the
+// caller. The annotation on DeploymentNames explains why they are passed rather than derived, and
+// why that is a deliberate stop short of the stronger model rather than the model itself.
+
+// ── THE ENTRY EACH SERVED PROCESS IS LAUNCHED WITH ──────────────────────────────────────────
+// THE ENTRY FILE USED TO BE A LITERAL IN THE EMITTER. `--entry dag/gunbc/roadmap/roadmap_serve.dag`
+// was spelled inside the ExecStart renderer, which was tolerable while there was exactly one served
+// process and became a fork the moment there were two: the approval broker is a different entry in
+// a different module, and an emitter that reaches for a literal cannot render it. The entry is a
+// fact about WHICH SERVER this config describes, so it sits beside serve_function, which is the
+// other half of the same fact.
+
+// THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
+// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// this one value rather than each spelling the flags.
+data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
+
+data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
+
+data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"
+
+// ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
+// Every other unit this deployment installs is named per deployment identity, so a lab twin gets
+// its own and collides with nothing. The broker is deliberately NOT: its names are host-level
+// constants, because the thing it serves is a host-level SINGLE-WRITER store
+// (gunbc.auth.approval_decision_store approval_decision_store_root, 0600 generations owned by one
+// process). Two brokers on one host would be two writers, and the store's whole discipline is that
+// there is one.
+//
+// THIS FIXES A HAZARD THAT ALREADY EXISTED RATHER THAN CREATING A NEW CONSTRAINT. Before the split,
+// srv1-live and srv1-lab both served /approve and /approvals from the same route table against the
+// same store root -- two processes able to write it, differing only in whether anyone routed to the
+// second. Removing the routes from every roadmap instance and putting them in one host unit is what
+// makes "one writer" a fact about the deployment rather than a fact about the traffic.
+//
+// THE CONSEQUENCE FOR MEMBERSHIP IS DELIBERATE: the broker units are written by the deploy beside
+// the slice unit rather than enrolled as owned artifact steps. Owned means torn down by retract,
+// and a per-instance retract that removed the host's broker would take the approval loop down for
+// every other instance -- the same hazard attempt_state_root_member_note and the ensured-directory
+// ruling already caught for host-level resources (operator ruling 2026-08-08: a twin retract must
+// not remove what production owns).
+//
+// AND THAT REASONING COVERED ONLY HALF THE HAZARD, WHICH REVIEW 68094 FOUND. It stopped a twin
+// RETRACT from removing the unit and did nothing about a twin APPLY re-owning it. Every spec that
+// flows through the release-member emitter wrote /etc/systemd/system/gunbc-approval-broker.service
+// and restarted it, and that file's content is instance-derived -- WorkingDirectory, serve_binary
+// and instance_root all come from the instance being applied. gunbc.live_deploy.desired
+// desired_deployment_roster carries srv1_lab beside production ON THE SAME HOST, so a lab apply
+// would have overwritten the host's broker unit to point at the lab tree and restarted it, killing
+// and replacing production's broker on the same port. That is precisely the state the paragraph
+// above claims is unwritable, asserted in prose while the mechanism did not reach it -- the same
+// shape as the freeze review 68050 removed, one layer further in.
+//
+// SO OWNERSHIP IS DECLARED AND THE EMITTER READS IT. One instance per host owns the broker unit;
+// every other spec emits no broker step at all, writes nothing and restarts nothing.
+// THE INSTANCE THAT OWNS THE HOST'S BROKER IS THE REALIZATION OF THE PROD-ROLE HOLDER
+// (gunbc.deployment_risk prod_role_selection, resolved by gunbc.roadmap.roadmap_dashboard_instance
+// prod_role_realization). The approval store is the prod deployment's state -- one single-writer
+// path that exactly one process opens -- so the broker follows the role, not a host or an
+// instance_id literal. Moving prod is an edit to the selection row and to nothing here.
+//
+// UNDER NoProdRole NOBODY OWNS IT. The realization refuses with a typed cause and every spec emits
+// no broker step; there is no fallback to srv1. A second host serving approvals still retires the
+// single-owner shape, at which point ownership becomes per-host.
+
+data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
+
+data gunbc_approval_broker_slice_unit_name: NonEmptyStr = approval_broker_slice_unit_name
+
+// The device-crypto verifier sidecar's unit: a HOST singleton like the broker's, owned by the same deployment
+// (deployment_owns_the_host_approval_broker), installed from the same release locus.
+data gunbc_device_crypto_sidecar_unit_name: NonEmptyStr = "gunbc-device-crypto-sidecar.service"
+
+// THE REPOSITORY CONVERGENCE ONESHOT'S SLICE, ONE PER HOST. Its bounds and the reason it is one per
+// host rather than per instance live with the rows in gunbc.live_deploy.slice_bounds; the admission
+// that refuses to place the oneshot inside a serving slice lives in
+// gunbc.live_deploy.repository_convergence_placement. The name deliberately shares no systemd
+// hierarchy prefix with a serving slice: a dash in a slice name is a parent edge, so a name like
+// gunbc-roadmap-convergence.slice would sit INSIDE gunbc-roadmap.slice and inherit the bound it
+// exists to escape. That admission checks descent, not only equality, for this reason.
+data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = repository_convergence_slice_unit_name
+
+fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// USER-MANAGER SLICE FILE. --user transients look up Slice= in the user manager; a system
+// unit of the same name is a different object. /etc/systemd/user/ is the system-wide user
+// unit directory (systemd.unit(5)).
+fn gunbc_user_work_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/user/", user_work_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// THE ROLE-FOLLOWING SINGLETONS A SPEC HOLDS -- the approval broker unit and front door, the fabric
+// storage unit, route, socket, root and directories -- as ONE subject, carried on the spec as a
+// holder token (gunbc.roadmap.roadmap_dashboard_instance ProdRoleHolder, sole_constructor: only a successful
+// resolution of prod_role_selection mints one). Every singleton effect is BUILT FROM the token's
+// instance, never from a caller-supplied instance_id, so no spec can take ownership by spelling one.
+// Which spec carries the token is decided by the role model's own identity (DeploymentId, a
+// structural record), and under every refused realization no spec holds anything.
+type RoleSingletonHolding
+  = HoldsProdRoleSingletons { holder: ProdRoleHolder }
+  | HoldsNoRoleSingleton
+
+fn role_singleton_holding_under(realization: ProdRoleRealization, instance: HostDashboardInstance) -> RoleSingletonHolding {
+  match realization {
+    ProdRoleRealizedBy { holder } =>
+      if holder.instance.deployment == instance.deployment { HoldsProdRoleSingletons { holder: holder } } else { HoldsNoRoleSingleton }
+    ProdRoleRealizationRefused { cause: _ } => HoldsNoRoleSingleton
+  }
+}
+
+// A SPEC THAT DOES NOT HOLD THE ROLE EMITS NO BROKER STEP. This is the predicate the emitter
+// consults; the steps are CONSTRUCTED from it -- a non-holding apply produces an empty list, so there
+// is nothing to skip and nothing to get wrong.
+fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => true
+    HoldsNoRoleSingleton => false
+  }
+}
+
+fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_approval_broker_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_device_crypto_sidecar_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_approval_broker_slice_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", attempt_worker_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process
+// needs -- a unit name, a binary, an entry, a function, a root to run in, a principal, an address
+// and a pair of evaluation caps -- does not differ by which routes it serves, and minting a second
+// record for the second server would be one concept in two shapes (DESIGN section 2, horizontal).
+// What differs is the VALUES, and every one of them that differs is a value this function supplies.
+//
+// IT REUSES THE INSTANCE'S ROOTS DELIBERATELY. The broker runs the same admitted binary out of the
+// same published tree as the roadmap server on that host; sharing the tree is not co-tenancy,
+// because a tree is read and a heap is not. What it does NOT share is the cgroup, the process, the
+// restart lifecycle or the port -- which is the entire content of the split.
+//
+// ONE PORT, FOR THE PROCESS'S WHOLE LIFE (side-chat HOLD item 1). An earlier cut derived this from
+// the cutover's routing row so the broker sat on a second "dark" port until the front door moved;
+// that made the repoint stage name a port nothing was bound to, and it never delivered the property
+// it was reaching for, because a loopback client reaches a process whatever the front door says.
+// What actually keeps a second writer off the store is gunbc.auth.approval_writer_authority,
+// consulted by both serving processes before any store effect, and this address stays put so that
+// every stage's release readback, MainPID and measured demand describe the same process.
+//
+// THE EVALUATION CAPS ARE THE ROADMAP'S, and that is a stated divergence rather than a derivation:
+// the broker's own per-request cost has never been measured, the roadmap's caps are an order of
+// magnitude above any measured render, and a cap that is too loose fails as a slow request while a
+// cap invented for an unmeasured workload fails as a refused approval. The cutover plan's
+// measurement stage (gunbc.auth.approval_broker_cutover) is what replaces them with the broker's
+// own, and until it runs, inheriting a known-safe ceiling is the honest arm.
+// THE BROKER DOES NOT INHERIT THE ROADMAP INSTANCE'S LISTEN HOST, and the stage-A run is why this
+// is stated rather than assumed. It did inherit it, which is instance.listen_host = 0.0.0.0, so the
+// dark unit bound every interface on srv1. The readiness probe still passed -- it dials 127.0.0.1
+// and 0.0.0.0 includes loopback -- so the deployment reported a correct bind while the broker was
+// reachable from anything that could route to the host, bypassing the tailnet front door and
+// therefore the identity header the decide route requires.
+//
+// The host now comes from gunbc.auth.approval_broker_endpoint approval_broker_listen_host, which is
+// the SAME declaration the loopback URL builder consumes, so the address the unit binds and the
+// address a client dials cannot drift apart.
+//
+// THE REPO ROOT IS THE BROKER'S OWN AND NOT THE INSTANCE'S, for the same class of reason. It used
+// to be instance.repo_root -- the roadmap's deployed tree -- which is frozen at a release that
+// predates this module, so the unit could not resolve its own entry and systemd restart-looped it
+// (stage-A run, 2026-09-20). gunbc.host.host_layout srv1_gunbc_approval_broker_root is a root this
+// deployment populates from the candidate during the dark install, so the broker's tree and the
+// roadmap's move independently -- which is what a separate process at a separate revision means.
+// THE BROKER HAS NO CONSTANT SERVE BINARY: its serve_binary is PerReleaseBinary
+// (gunbc.live_deploy.serve_binary), resolved per revision over gunbc.live_deploy.release_locus
+// release_locus_binary_path. It used to carry instance.serve_binary -- the ROADMAP's binary, frozen at a release
+// predating this module -- and a seed older than the sources it is handed refuses to parse them, so the unit
+// would have started, refused and restart-looped (review 69066, operator ruling 2026-09-20). A refusal marker
+// stood in the field until the type could hold the per-release arm; the type holds it now and the marker is gone.
+
+fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig<ServeBinarySource> {
+  DeploymentServiceConfig {
+    unit_name: gunbc_approval_broker_unit_name,
+    serve_binary: PerReleaseBinary,
+    serve_entry: approval_broker_serve_entry_file,
+    provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
+    serve_function: "approval_broker_handle" as NonEmptyStr,
+    instance_root: instance.instance_root as String as NonEmptyStr,
+    repo_root: srv1_gunbc_approval_broker_root as String as NonEmptyStr,
+    service_user: gunbc_service_user,
+    service_uid: gunbc_service_uid,
+    listen: HttpServerListenConfig {
+      host: approval_broker_listen_host as String,
+      port: port,
+    },
+    serve_cpu_limit: dashboard_serve_cpu_limit(),
+    serve_wall_limit: dashboard_serve_wall_limit(),
+  }
+}
+
+// THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL.
+// Deriving it from instance_id is what this module should eventually do — derivation is what
+// makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-
+// roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving
+// here would rename a live unit as a side effect of an abstraction change: the next apply installs
+// the new unit while the old one keeps serving, and retract then targets the new path and orphans
+// the running process.
+//
+// So the caller states them. srv1_live_deployment_names preserves production byte-identically and
+// carries the reason with it; derived_deployment_names is the shape new instances use, and it is a
+// real function rather than a comment so the second deployment does not re-litigate the question.
+// Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.
+//
+// The condition that ends this stop is carried by srv1_live_unit_naming_debt_dissolution rather
+// than by this prose, because a retirement no mechanism can read is a retirement nothing will ever
+// fire. Until it fires the collision guard is the witness that every declared spec has a distinct
+// unit name, path and port — validation standing where a construction wall belongs, and marked as
+// such rather than presented as the wall.
+
+// THIS FIELD USED TO BE A NAME NOTHING CONFIGURED, and that is the whole of the twin-collision
+// defect. tailscale_serve_path held \"tailscale-serve\" for production and
+// \"tailscale-serve-srv1-lab\" for the twin — two distinct strings, which is exactly what the
+// member-path disjointness witness checked and exactly why it passed. The emitter referenced the
+// field zero times. It emitted `tailscale serve --bg <port>` from the port alone, and a bare serve
+// binds the DEFAULT HTTPS listener at the ROOT mount, so both deployments configured the SAME
+// endpoint and the twin's apply silently repointed production's routing at the lab (review,
+// 2026-07-30).\n\nSo the disjointness was real and meaningless: the model's identity axis and
+// tailscale's configuration key were unrelated quantities, and no witness over the former could
+// observe a collision in the latter. This is not a check that was too weak — it is a check of the
+// wrong thing, which no strengthening would have fixed.\n\nThe field is now the endpoint ITSELF,
+// imported from extdeps.tailscale.serve where the upstream key is modeled. Two consequences follow
+// by construction rather than by witness: the emitter cannot fall back to a port-only spelling
+// because the port-only operation no longer exists, and the member path is a PROJECTION of the
+// endpoint (tailscale_serve_endpoint_key), so member-path disjointness and endpoint disjointness
+// became the same statement instead of two that could disagree.
+
+// THE PUBLICATION PRINCIPAL IS A HOST ALLOCATION THIS GRAPH CARRIES, NEVER ONE IT MINTS.
+// name_requirements_authority_note in gunbc.fleet.fleet_posix_accounts records the reverted attempt to
+// spell service usernames in the model, and the reason it was reverted is exactly the reason this
+// is a field: once a role is legible in a label, consumers start reading the label as authority.
+// What the model owns is the PRINCIPAL -- FleetAccountPublicationHelper, its login policy and its
+// empty sudo roster; what a host calls it is an allocation the operator performs, and this field
+// carries that allocated handle to the two places a POSIX name is unavoidable: systemd's User= and
+// install's -o. Neither parses it back into anything.
+//
+// It is passed rather than derived for the same reason unit_name is (the annotation on
+// DeploymentNames),
+// with one difference that makes the case stronger rather than weaker: a unit name derived wrongly
+// renames a unit, while a principal derived wrongly names an account that does not exist, and the
+// deploy would then install a unit systemd refuses to start. The account is created out of band, so
+// the graph must state the name it was told, not the name it would have chosen.
+type DeploymentNames {
+  unit_name: NonEmptyStr
+  tailscale_serve_endpoint: TailscaleServeEndpoint
+  tree_sync_unit_name: NonEmptyStr
+  tree_sync_env_path: NonEmptyStr
+  publication_principal: NonEmptyStr
+}
+
+fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", names.unit_name as String], "") as NonEmptyStr
+}
+
+// THE DEPLOYMENT'S SLICE, DERIVED LIKE THE BELT'S NAMES. Every gunbc process this deployment runs --
+// the server, the belt tick, the tree-sync and convergence oneshots -- is the same admitted binary,
+// and that binary refuses to plan without a cgroup memory bound on the process
+// (HostBudgetUnreadable, measured on srv1 2026-09-04 from gunbc-tree-sync.service under system.slice
+// with MemoryMax=infinity). A [Service] carries no resource-control directive in this model on
+// purpose; the bound belongs to a slice, so the deployment owns one and each unit joins it. One
+// name per deployment identity, so a twin instance gets its own slice rather than sharing a bound.
+fn deployment_slice_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), ".slice"], "") as NonEmptyStr
+}
+
+fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_slice_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
+  let service_unit = names.unit_name as String
+  service_unit.replace(from: ".service", to: "")
+}
+
+// THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
+// only by the deployment whose instance holds the fabric DB placement (RoleSingletonHolding). It is
+// deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
+// are owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands).
+fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
+}
+
+fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE DOOR SOCKET OF THE HOLDER THIS SPEC CARRIES, built from the token's instance like every other
+// role singleton. A spec holding no role has no socket, and the emitter refuses rather than invent one.
+fn deployment_fabric_storage_door_socket(spec: DeploymentSpec) -> NonEmptyStr? {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } => Present { value: fabric_storage_door_socket(instance: holder.instance) }
+    HoldsNoRoleSingleton => none
+  }
+}
+
+fn deployment_fabric_storage_serve_endpoint(door_socket: NonEmptyStr) -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: fabric_storage_https_port,
+    mount: ServeRootMount,
+    backend: tailscale_serve_unix_target(path: door_socket),
+  }
+}
+
+// THE TAILNET DOOR'S UNIT. A deployment whose serve route targets a unix socket runs a second
+// `gunbc serve` on that socket beside its loopback one: the loopback listener keeps serving the
+// host's own readers (the healthz and digest readbacks, the belt), and the door is what tailscale
+// serve proxies to, so a request through it carries a kernel-attested peer. The socket is the
+// route's own backend, read back out of the endpoint, so the unit and the mapping cannot name two
+// sockets. A deployment whose route targets a port has no door and no door unit.
+fn deployment_tailnet_door_socket(names: DeploymentNames) -> NonEmptyStr? {
+  tailscale_serve_unix_target_path(endpoint: names.tailscale_serve_endpoint)
+}
+
+fn deployment_tailnet_door_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-tailnet-door.service"], "") as NonEmptyStr
+}
+
+fn deployment_tailnet_door_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_tailnet_door_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// The door's served entry is the loopback entry's name with this suffix, so each instance's door
+// is selected by its launch argument exactly as its loopback entry is.
+data deployment_tailnet_door_function_suffix: String = "_door"
+
+fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match deployment_tailnet_door_socket(names: names) {
+    Absent => []
+    Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: TailnetDoorServeUnit }, path: deployment_tailnet_door_unit_path(names: names) }]
+  }
+}
+
+fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
+}
+
+// THE BELT'S EVENT UNITS (dogfood intervention #4: event-driven, not timer-driven). There is no belt
+// timer. A worker, reviewer or auditor ending writes an exit record into the instance's exit inbox
+// (gunbc.roadmap.roadmap_attempt_exit_spool), and the exit path unit starts the drain service, which
+// hands each recorded exit to its attempt's obligation unit. A publication answer arriving starts the
+// discovery service, which queues the attempts whose publication is still owed. The belt service
+// stays: it is the launch obligation, started by a drained worker exit or by an operator.
+fn deployment_belt_exit_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_exit_drain_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
+}
+
+// THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
+// field (see that type's header for why a name is carried rather than derived). It is one account
+// for the host rather than one per instance, and that is correct rather than a shortcut: the
+// principal exists to hold ONE capability -- listing pull requests for this repository -- and two
+// accounts holding the same capability would be two names for one authority. What must not fuse is
+// the SPOOL, and it does not: gunbc.host.host_layout publication_spool_root derives from the instance
+// root, so a twin's requests and answers live under the twin's own tree.
+//
+// THE ACCOUNT IS CREATED OUT OF BAND AND THIS DEPLOY CANNOT CREATE IT. The deploy principal holds
+// six sudo grants -- apt-get, install, visudo, systemctl, tailscale, rm -- and useradd is not among
+// them, so account creation is an operator action exactly as placing the token is. That is not a
+// gap this member papers over: `install -o` against a name no account holds FAILS, loudly, naming
+// the account, which is the located refusal a missing precondition should produce.
+data gunbc_publication_principal_name: NonEmptyStr = "gunbc-publication"
+
+fn deployment_publication_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-publication.service"], "") as NonEmptyStr
+}
+
+fn deployment_publication_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-publication.path"], "") as NonEmptyStr
+}
+
+fn deployment_publication_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-publication.timer"], "") as NonEmptyStr
+}
+
+fn deployment_retired_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
+}
+
+fn deployment_publication_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_publication_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_publication_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_publication_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_publication_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_retired_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
+// rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
+// service-user-owned and the deploy principal is the unprivileged ci-runner
+// (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner),
+// so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
+// other. That argues for the tree-sync unit, which already has the right principal.
+//
+// It cannot be the tree-sync unit. That unit was installed and started inside the GunbcSourceTree
+// step, and when this member was written that step came FIRST in deployment_owned_steps with
+// ServeBinary second -- so on a fresh instance the gunbc binary the convergence invokes did not
+// exist yet, and the leg would red the first deploy of every new slot. Ordering the member AFTER
+// ServeBinary is what makes the binary a precondition the membership itself establishes. (The two
+// have since swapped -- deployment_steps_apply_order says why binary now lands before the tree --
+// and this member's position after BOTH is unchanged by that.)
+//
+// It sits THIRD -- immediately after ServeBinary and GunbcSourceTree, and before the belt event
+// units. An earlier cut of this change said "last" and placed it last; that was an inversion of
+// the rule deployment_steps_apply_order's annotation states, that dependencies precede their
+// consumers, because the
+// remote is a prerequisite of every belt observation and a candidate belt would otherwise fire once
+// against the known-broken observation state before the correction ran. Third is the EARLIEST
+// position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
+// only one. Witness: deployed_tree_remote_witness_test
+// `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
+// binary,tree,remote,publication,belt,route.
+fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
+}
+
+fn deployment_tree_remote_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_tree_remote_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_exit_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE BOOT TARGET FOLLOWS THE MANAGER THE UNIT IS INSTALLED INTO. Every belt unit this deployment emits is
+// written under /etc/systemd/system, so it belongs to the SYSTEM manager, whose boot target is
+// multi-user.target; a user manager would install under a user unit directory and boot at default.target
+// (and only if the principal lingers). The dispatched attempt and worker units are transient units in the
+// principal's USER manager, but they are started by these system units and are never installed. One
+// derivation, so a unit-directory change cannot leave a boot target naming a manager that never runs it.
+fn deployment_belt_unit_install_target(names: DeploymentNames) -> NonEmptyStr {
+  if starts_with(s: deployment_belt_exit_drain_service_unit_path(names: names) as String, prefix: "/etc/systemd/system/") { "multi-user.target" as NonEmptyStr } else { "default.target" as NonEmptyStr }
+}
+
+fn deployment_belt_exit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_answer_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_discovery_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_credential_recovery_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_credential_recovery_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
+// The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
+// derived from the instance stem (unconditional membership, so the twin mirror holds and
+// two instances cannot mint one path), one member owning .timer + .service, teardown
+// removes both, retirement stops the runtime. The converge pass itself is idempotent
+// observe→verdict→apply-on-drift, so a twin's duplicate cadence against the same host is
+// duplicated observation, never duplicated mutation. CONTENT cadence/catch-up facts
+// (OnCalendar, Persistent=true, jitter) derive from the gunbc.fleet.fleet_converge_timer
+// authority rows; only the NAMES derive here. That module's fixed ctrl-fleet-converge
+// unit-name rows remain the standalone/host-standup authority and are not consumed by
+// this member.
+fn deployment_fleet_converge_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.service"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.timer"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+data tailscale_default_https_port: Port = 443
+
+// THE MOUNT PATH IS NAMESPACED BY instance_id, which is the same axis that already namespaces the
+// instance root, the repo root, the serve binary, the listen port, the worktree root, the unit name
+// and the tmux session. The twin's endpoint is /srv1-lab because the twin IS srv1-lab, so two
+// instances cannot produce one endpoint without sharing an identity the instance registry already
+// forbids — the collision is unwritable rather than merely witnessed (operator: use literal
+// namespacing in the repo, 2026-07-30).\n\nHand-picking a mount would have re-created the defect
+// this replaces. tailscale_serve_path was hand-picked too, and being distinct is precisely what it
+// was: distinct, unconsumed, and unrelated to the thing tailscale keys on. A second hand-picked
+// string differs only in being the right KIND of string, and the next instance would re-litigate
+// it.\n\nDISSOLVES ON the containment tree becoming the naming authority (namespace-only
+// resolution): instance_id is itself a flat identifier, so this derivation is namespacing by string
+// prefix where namespacing by position is the end state. The mount then projects from the
+// instance's position rather than from its name, and this function stops spelling a separator.
+
+fn srv1_lab_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  let derived = derived_deployment_names(instance: instance)
+  DeploymentNames {
+    unit_name: derived.unit_name,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tracker_web_test_lab_https_port,
+      mount: ServeRootMount,
+      backend: to_string(instance.listen_port) as NonEmptyStr,
+    },
+    tree_sync_unit_name: derived.tree_sync_unit_name,
+    tree_sync_env_path: derived.tree_sync_env_path,
+    publication_principal: derived.publication_principal,
+  }
+}
+
+fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  DeploymentNames {
+    unit_name: join(["gunbc-", instance.instance_id as String, ".service"], "") as NonEmptyStr,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tailscale_default_https_port,
+      mount: ServeSetPath { path: join(["/", instance.instance_id as String], "") as NonEmptyStr },
+      backend: to_string(instance.listen_port) as NonEmptyStr,
+    },
+    tree_sync_unit_name: join(["gunbc-", instance.instance_id as String, "-tree-sync.service"], "") as NonEmptyStr,
+    tree_sync_env_path: join(["/etc/gunbc-", instance.instance_id as String, "-tree-sync.env"], "") as NonEmptyStr,
+    publication_principal: gunbc_publication_principal_name,
+  }
+}
+
+// PRODUCTION'S NAMES AS THEY ACTUALLY ARE ON THE MACHINE, not as the derivation would mint them.
+// srv1-live runs as gunbc-roadmap.service and owns the tailscale mapping named tailscale-serve; the
+// derivation produces gunbc-srv1-live.service and tailscale-serve-srv1-live. Both differences would
+// be silent renames — the apply installs under the new name while the old unit keeps serving, and
+// retract then removes the new one and orphans the running process. Neither belongs in a change
+// whose purpose is to make placement a parameter.
+
+data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
+// PRODUCTION STAYS ON THE ROOT MOUNT, and it is the one place a derived mount would be wrong.
+// srv1-live is serving https://srv1.tailecbe08.ts.net/ today; giving it --set-path=/srv1-live would
+// move the dashboard to a different URL as a side effect of an abstraction change, which is the
+// same silent-rename hazard the annotation on DeploymentNames refuses for the unit name and
+// refuses here for the same reason.
+//
+// The root mount is therefore a DECLARED PLACEMENT for production and
+// derived for everyone else — the identical shape, and the identical stop, as
+// gunbc-roadmap.service.\n\nTHE BACKEND IS THE INSTANCE'S TAILNET DOOR SOCKET, not its loopback
+// port. A port backend is reachable by every account on the host, each able to present a forged
+// Tailscale-User-Login, so a request arriving on it cannot be told apart from a proxied one; the
+// door's peer is kernel-attested (gunbc.auth.request_authentication RequestIngress). The path is
+// projected from the instance (dashboard_instance_tailnet_door_socket), never
+// transcribed.\n\nWHAT DOES CHANGE ON THE WIRE: the emitted command gains an explicit --https=443 where it
+// previously passed the port alone. That is not byte-preservation and is not claimed as such. It is
+// required, because the upstream `off` form demands every original flag, so a mapping applied
+// without the listener flag cannot state the listener flag when removing itself. 443 is the
+// listener production already serves on, so the resulting mapping is the one that is
+// live.
+//
+// It dissolves on the same condition as the unit name, carried by
+// srv1_live_unit_naming_debt_dissolution: once srv1-live moves to its derived names it takes a
+// derived mount with them, and this function collapses into derived_deployment_names.
+
+fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  DeploymentNames {
+    unit_name: gunbc_roadmap_unit_name,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tailscale_default_https_port,
+      mount: ServeRootMount,
+      backend: tailscale_serve_unix_target(path: dashboard_instance_tailnet_door_socket(instance: instance)),
+    },
+    tree_sync_unit_name: gunbc_tree_sync_unit_name,
+    tree_sync_env_path: gunbc_tree_sync_env_path,
+    publication_principal: gunbc_publication_principal_name,
+  }
+}
+
+// THE MIGRATION DEBT ENDS BY DELETION, WHICH IS WHY THE TRIGGER IS A RETIREMENT AND NOT A PROSE
+// SENTENCE. srv1_live_deployment_names exists for one reason: production runs under names the
+// derivation would not mint, and renaming a live unit as a side effect of an abstraction change
+// orphans the running process. So the scheduled rename (stop old, install derived, verify health,
+// remove old) does not ADD a declaration that could be named forward — it removes this one, and
+// its absence IS the discharge. That makes the condition verifiable today over a declaration that
+// exists, rather than a forward reference to a name nobody has chosen.
+data srv1_live_unit_naming_debt_dissolution: DissolutionCondition = retires_dissolution(
+  ref: DeclarationRef {
+    module_path: "gunbc.live_deploy.spec",
+    decl_name: "srv1_live_deployment_names",
+    field: WholeDeclaration,
+  }
+)
+
+// gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent
+// member: a oneshot unit running AS the service user (the tree's owner writes its own tree —
+// ownership by construction, no chown), installed/started by the deploy through the granted
+// install+systemctl channel because the ci-runner principal holds no rsync grant and no write
+// access to the service-user-owned tree (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner). Its
+// EnvironmentFile carries
+// the runner checkout path (varies per runner slot), written by the apply at run time. Both files
+// are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm.
+// THE SYNC TRANSPORT WAS ONE SET OF FILES FOR THE WHOLE HOST, and it never appeared in the five-
+// member footprint the twin witness compares. gunbc-tree-sync.service and /etc/gunbc-tree-sync.env
+// were fixed literals, so a twin apply OVERWROTE both with its own tree destination and restarted
+// the shared unit — pointing production's sync at the lab's tree — and a twin retract DELETED both,
+// disabling production's sync entirely. Neither effect is a path in DeploymentArtifactStep, so a
+// claim over declared members could not see either (review, 2026-07-30).
+//
+// They are derived from the deployment identity now, for the same reason the unit and binary are:
+// the collision becomes unwritable rather than unlikely, because two deployments cannot produce one
+// filename without sharing an identity the registry already forbids. gunbc_tree_sync_note calls
+// these files owned host state torn down with the tree; that description is only true once they are
+// per-deployment, and it was describing an intent the literals contradicted.
+//
+// The names still derive from the SERVICE unit name rather than from instance_id directly, so
+// srv1-live's migration-debt unit name carries through to its sync files and its emitted paths stay
+// byte-identical.
+
+data gunbc_tree_sync_unit_name: NonEmptyStr = "gunbc-tree-sync.service"
+data gunbc_tree_sync_env_path: NonEmptyStr = "/etc/gunbc-tree-sync.env"
+
+fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join([
+    "/etc/systemd/system/",
+    names.tree_sync_unit_name as String,
+  ], "") as NonEmptyStr
+}
+
+type DeploymentSpec {
+  target: DeploymentHostTarget
+  steps: List<DeploymentStep>
+  service: DeploymentServiceConfig<AdmittedFixedServeBinary>
+  approval_broker: DeploymentServiceConfig<ServeBinarySource>
+  names: DeploymentNames
+  instance_id: NonEmptyStr
+  directories: List<OwnedDirectoryTarget>
+  role_singletons: RoleSingletonHolding
+}
+
+// TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20):
+// TailscaleServeMapping.path is tailscale_serve_route_member_path —
+// tailscale_serve_route_key_label(tailscale_serve_route_key(endpoint)), the route key WITHOUT its
+// TailscaleServeScope node. deployment_step_key and spec_owned_paths both read art.path, so the
+// serve_route_key Optional field and its emit dispatch are deleted from
+// DeploymentArtifactStep.\n\nHONEST PRECONDITION (not a defect today): a DeploymentSpec is bound to
+// one host, so within a spec the node is constant and a node-free route label is sufficient for
+// membership reconcile and twin disjointness. The twin-safety witnesses pin
+// deployment_plan_host_identity(live) == deployment_plan_host_identity(twin), so owned-path
+// disjointness is same-host by construction. This path is NOT node-qualified: the first consumer
+// that compares owned paths ACROSS hosts — fleet-wide reconcile, multi-host teardown — will treat
+// two hosts serving the same listener×mount as one identity and report a collision that is not one.
+// extdeps.tailscale.serve scopes the relation; live_deploy does not yet thread scope into
+// art.path.\n\nDELIBERATE DECISION: art.path stays scope-free for this PR. Scoped identity in
+// art.path would require deployment_step_key (and emit's plain membership_reconcile) to carry
+// ScopedKey rather than NonEmptyStr — a wider change than unifying the two projections. Document
+// the precondition now; revisit scoped art.path when a cross-host consumer exists.
+
+// THE BELT HAD NO DRIVER, AND THE HOST-LEVEL PATTERN THAT LOOKED LIKE ITS HOME DOES NOT INSTALL
+// ANYTHING. belt_run_once_cli (gunbc.roadmap.roadmap_belt_actuate) is a complete ProcessExit entrypoint
+// with a fail-closed exit mapping, and nothing invoked it — so a dispatched roadmap item reached
+// Verification and stopped there, which is what the operator observed on the live site.
+// gunbc.roadmap.roadmap_serve's serve_publish_note already names the consequence from the other side: POST
+// /publish/{node_id} 'exists because belt_tick has none'.
+//
+// The obvious home was a host timer beside gunbc.host.host_hygiene_reaper, and that is the wrong
+// precedent for a reason worth recording rather than rediscovering: the reaper is modeled, scripted
+// and witnessed, and it is installed by NOBODY. gunbc.host_hygiene_reaper_script has zero consumers
+// and is a declared Scaffold; the only reference to the reaper outside its own module is a residue
+// row about a fold shape; and the module's own header describes its precedent, ctrl-runner-
+// reclaim.timer, as 'a hand-deployed host timer with no prior .dag model'. Copying it would have
+// produced a second modeled timer that never runs — the specification-without-execution trap in
+// DESIGN section 5, reproduced while fixing an instance of it.
+//
+// So the belt timer rides the one host-effect path this repo can show executing: this deployment.
+// That also makes its lifecycle honest rather than merely convenient — the belt drives THIS
+// instance's roadmap, spawns into THIS instance's dispatch worktree root and writes THIS instance's
+// attempt state, so a belt that outlived its deployment would be acting on roots the retract had
+// already removed. Retract disabling it is the correct behavior, not a limitation, and the twin
+// case falls out for free: srv1-lab gets its own timer against its own roots instead of a host
+// singleton that two instances would have to share.
+//
+// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN, AND MAKING IT TRUE IS WHY gunbc.roadmap.roadmap_belt_actuate
+// CHANGED IN THE SAME CHANGE. belt_actuate_workdir was a literal projection of srv1_gunbc_repo_root
+// and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever
+// instance installed it. The first cut of this member papered over that by making membership
+// conditional — production got a timer, the twin got none — which is the author-side workaround
+// DESIGN §5 names: it routed around the defect instead of fixing it, and it silently broke the one-
+// for-one twin mirror that a_twin_deployment_on_one_host_collides_with_nothing asserts as its non-
+// degeneracy guard (review 46541 caught both). The spawn root is now a per-deployment parameter
+// carried to the tick through the unit's Environment= line, so every instance actuates its own tree
+// and this member is unconditional again — the mirror holds because the twin genuinely has a
+// correct timer, not because the asymmetry was argued away.
+//
+// THE TIMER IS GONE (dogfood intervention #4, gunbc#13124: event-driven, not timer-driven; the timer
+// is not a product requirement and does not become a desired-state row). The member is now the belt's
+// EVENT units: the exit path unit and the drain service it starts, the publication-answer path unit
+// and the discovery service it starts, and the belt service itself, which no timer starts -- a drained
+// worker exit or an operator does. Everything the paragraphs above say about lifecycle and per-instance
+// roots holds unchanged for these units.
+//
+// One member, five files, as GunbcSourceTree owns gunbc-tree-sync.service plus its env file: the
+// member's identity is the exit .path unit and its teardown removes the four files beside it. The
+// names DERIVE from unit_name rather than being carried as DeploymentNames fields the way tree-
+// sync's are, and the difference is that tree-sync had migration debt to express — production runs
+// under names the derivation would not mint, so both constructors must state them. No belt unit
+// exists on any host, so there is no live name to preserve and no silent-rename hazard
+// (the concern the annotation on DeploymentNames states); storing a value that would be identical in every
+// constructor is the second representation DESIGN section 2 forbids.
+fn deployment_owned_steps(
+  instance: HostDashboardInstance,
+  names: DeploymentNames,
+  holding: RoleSingletonHolding,
+) -> List<DeploymentArtifactStep> {
+  concat([
+    DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: GunbcSourceTree }, path: instance.repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep {
+      kind: UpsertOwned { kind: DeployedTreeRemoteUnit },
+      path: deployment_tree_remote_unit_path(names: names),
+    },
+  ], concat(deployment_oidc_config_steps(instance: instance), concat([
+    DeploymentArtifactStep { kind: ComposeOwned { kind: SystemdUnit }, path: deployment_systemd_unit_path(names: names) },
+    DeploymentArtifactStep {
+      kind: UpsertOwned { kind: PublicationHelperPathUnit },
+      path: deployment_publication_path_unit_path(names: names),
+    },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
+  ], concat(deployment_tailnet_door_steps(names: names), concat([
+    DeploymentArtifactStep {
+      kind: UpsertOwned { kind: TailscaleServeMapping },
+      path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
+    },
+  ], concat(
+    deployment_fabric_storage_steps(holding: holding, names: names),
+    deployment_approval_broker_front_door_steps(holding: holding),
+  ))))))
+}
+
+// THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
+// tracker_web_oidc_serve_placement admits ServeReady only for the instances assigned a realized
+// Google login environment; production's assignment is unbound, so it owns none, and the lab
+// instance that is ServeReady owns the file. Same shape as fabric storage, the approval-broker
+// front door, and the tailnet door: presence is decided by a named function, the other twin owns
+// zero of them, and a_twin_deployment_on_one_host_collides_with_nothing subtracts them from the
+// kind join rather than demanding a mirror.
+fn deployment_oidc_config_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
+  match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [
+      DeploymentArtifactStep { kind: ComposeOwned { kind: OidcConfigArtifact }, path: cfg.config_path },
+    ]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
+// THE BROKER'S TAILNET EXPOSURE IS ONE OWNED MEMBER OF THE DEPLOYMENT THAT OWNS THE BROKER, and its
+// presence is DERIVED from the cutover's routing row rather than decided here. The public contract
+// (gunbc.auth.approval_broker_endpoint, the front door) mounts /approve and /approvals on the
+// roadmap's own https listener, so every path the phone uses -- the approval links AND the device
+// routes under /approve/device/ -- reaches the broker through the host name the app already names
+// (approve_ios_project reads the same tailnet base). gunbc.auth.approval_broker_cutover
+// approval_front_door_mounts_installed says whether the mounts exist at all, so the member appears
+// exactly when the posture routes the approval paths to the broker, and a retract of the posture
+// removes it through the ordinary membership reconcile.
+//
+// BEFORE THIS MEMBER THE STAGE-4 ARGV HAD NO PRODUCTION CONSUMER: the cutover declared the two
+// mounts as a value and nothing on the deploy path installed them, so the split moved the device
+// routes to a process no request could reach (the enrolment 404, 2026-09-30).
+//
+// One member, two mappings: its identity is the /approve mount's route key and its apply and
+// teardown realize every endpoint approval_broker_front_door_endpoints returns, the way
+// GunbcSourceTree's one member owns its sync unit and env file. It is emitted only by the instance
+// that owns the host's broker (RoleSingletonHolding).
+fn deployment_approval_broker_front_door_endpoints() -> List<TailscaleServeEndpoint> {
+  approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
+}
+
+fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) -> List<DeploymentArtifactStep> {
+  let holds = match holding { HoldsProdRoleSingletons { holder: _ } => true  HoldsNoRoleSingleton => false }
+  if holds && approval_front_door_mounts_installed() {
+    [
+      DeploymentArtifactStep {
+        kind: UpsertOwned { kind: ApprovalBrokerFrontDoor },
+        path: tailscale_serve_route_member_path(endpoint: approval_broker_confirm_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+// The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart
+// references the binary and tree installed above) and then its tailscale route (routes to a live
+// service, the same reason the dashboard's mapping is last). Empty on every instance that does not
+// hold the placement.
+fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match holding {
+    HoldsProdRoleSingletons { holder } => [
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
+    ]
+    HoldsNoRoleSingleton => []
+  }
+}
+
+fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
+  [
+    DeploymentDependencyStep {
+      kind: TailscalePackage,
+      subject: EnsuredPackage { package: package_tailscale },
+    },
+    DeploymentDependencyStep {
+      kind: TmuxPackage,
+      subject: EnsuredPackage { package: package_tmux },
+    },
+  ]
+}
+
+fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
+  match holding {
+    HoldsNoRoleSingleton => []
+    HoldsProdRoleSingletons { holder } => [
+      DeploymentDependencyStep {
+        kind: FabricStorageOwnershipMarker,
+        subject: EnsuredOwnershipMarker { marker: fabric_storage_ownership_marker_spec(instance: holder.instance) },
+      },
+    ]
+  }
+}
+
+// THE BUILD SERVICE'S ROOTS ARE THE HOST'S DEMAND, NOT ANY INSTANCE'S. The devboot artifact store and
+// the codex runtime release root are written by host-level services, so a per-instance list would hand
+// srv2's preview slot srv1's literal paths (gunbc_host_layout_note names that defect). They are
+// owned-directory targets on the host target, created and read back by the same provider as the
+// instance's demands, at the shared 0755 they were installed at, and no retract removes them.
+// Dissolve-on: devboot deployed to a second host, at which point the roots become fields of a host
+// layout resolved through a total host-identity lookup.
+fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
+  let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
+  let host = [
+    OwnedDirectoryDeclared {
+      member: "devboot-artifact-store" as NonEmptyStr,
+      path: srv1_devboot_artifact_store_root,
+      owner: owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
+    },
+    OwnedDirectoryDeclared {
+      member: "codex-runtime-release" as NonEmptyStr,
+      path: srv1_codex_runtime_release_root,
+      owner: owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
+    },
+  ]
+  match srv1_live_dashboard_instance().materialization_store_root {
+    Absent => host
+    Present { value: store } => concat(host, [
+      OwnedDirectoryDeclared {
+        member: "materialization-store" as NonEmptyStr,
+        path: materialization_store_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+      OwnedDirectoryDeclared {
+        member: "materialization-store-staging" as NonEmptyStr,
+        path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+    ])
+  }
+}
+
+fn deployment_ensured_steps(target: DeploymentHostTarget, holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
+  concat(deployment_ensured_packages(), deployment_role_singleton_ensured_steps(holding: holding))
+}
+
+// EVERY DIRECTORY THIS DEPLOYMENT CREATES AND READS BACK: the instance's demands, then the host's. The
+// emitted install and the read-back roster both iterate this, so a directory created and a directory
+// read back cannot be two lists.
+fn deployment_directory_demands(spec: DeploymentSpec) -> List<OwnedDirectoryTarget> {
+  concat(spec.directories, spec.target.host_directories)
+}
+// Apply order is dependency-honest: the binary lands before the tree, because the tree is published
+// by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
+// convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
+// the tree, which is true of the running process but not of the installation, and the identity emitter
+// had to override it downstream until this authority said it (review on PR #10696); both before the
+// unit (ExecStart references binary + tree), then the publication and belt event units (their
+// ExecStart references that same binary and tree), and the tailscale mapping last (routes to a live
+// service). The directories every
+// one of these writes into are not steps: the apply ensures all of them before the first step
+// (gunbc.live_deploy.emit owned_directory_apply_steps), so no member runs before the roots it writes.
+// FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13,
+// sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml on-demand
+// plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by
+// gunbc.fleet.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the
+// reverse of the owned steps and touches no directory.
+fn deployment_steps_apply_order(
+  instance: HostDashboardInstance,
+  target: DeploymentHostTarget,
+  names: DeploymentNames,
+  holding: RoleSingletonHolding,
+) -> List<DeploymentStep> {
+  concat(
+    map(deployment_ensured_steps(target: target, holding: holding), s => Dependency { step: s }),
+    map(
+      deployment_owned_steps(instance: instance, names: names, holding: holding),
+      s => ArtifactStep { step: s },
+    )
+  )
+}
+
+// THE STORE ROOT IS AN ENSURED HOST RESOURCE, NOT AN OWNED ARTIFACT, and the route to that answer
+// is worth keeping because the obvious fix was the dangerous one. Review asked for
+// devboot_owned_steps to be wired into deployment_steps_apply_order. That was done, and two
+// existing claims went red immediately: a_twin_deployment_on_one_host_collides_with_nothing and
+// twin_teardown_removes_nothing_production_owns. The second is not a technicality -- appending a
+// host-level root to every per-instance spec means a lab twin retract would rm the PRODUCTION
+// artifact store.\n\nThe claims were right and the placement was wrong. Owned means torn down by
+// retract, and produced artifacts are exactly what a deploy must never delete --
+// devboot_root_realization_note argued this while the root sat in the owned roster anyway. So the
+// root moved to the ensured side, where converged-on-apply and never-torn-down are what the
+// category already means, and neither claim was edited. The rejected alternative was to narrow
+// those two claims to per-instance ownership so a host-shared resource fell outside them; it was
+// refused because editing a safety claim to accommodate a change is the DESIGN section 5 tell, and
+// a claim that has just caught a real hazard is not the thing to weaken (operator ruling,
+// 2026-08-08).\n\nThe service still runs git init --bare itself, which remains correct and is not
+// made redundant: the deploy ensures the DIRECTORY exists and is owned, and only the service can
+// turn a directory into a repository, because git is not on the deploy principal sudo roster.
+
+// RETRACT IS THE REVERSE OF WHAT THIS SPEC APPLIES, derived from the spec rather than transcribed
+// beside it. It used to be a second hand-written list repeating the same five steps in opposite
+// order — one fact in two places, so editing either alone makes them disagree, and the disagreement
+// surfaces as a teardown that removes the binary while the unit still references it.
+// deployment_steps_apply_order carries the ordering law as prose on itself; this computes it.
+//
+// Deriving from
+// spec.steps rather than re-deriving from instance and identity matters: it makes the retract order
+// the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec
+// would apply. Those differ exactly when a spec is constructed with something other than the
+// standard order, which is the case a hand-mirrored list gets wrong. Ensured dependencies drop out
+// because they are never torn down (R5) — the filter states that, rather than a comment claiming
+// it.
+
+fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<DeploymentArtifactStep> {
+  reverse(
+    spec.steps |> flat_map(s => match s {
+      ArtifactStep { step } => [step]
+      Dependency { step: _ } => []
+    })
+  )
+}
+
+fn deployment_srv1_target() -> DeploymentHostTarget {
+  let surface = srv1_software_surface()
+  DeploymentHostTarget {
+    host: srv1_host,
+    ssh_host: operator_host_srv1 as NonEmptyStr,
+    tailscale_endpoint: srv1_tailscale_endpoint,
+    tailnet_domain: fleet_intent_network.tailnet_domain,
+    lab_plan: srv1_lab_deploy_plan(),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
+    host_directories: deployment_srv1_host_directories(),
+  }
+}
+
+fn deployment_service_config(
+  instance: HostDashboardInstance,
+  names: DeploymentNames,
+) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
+  DeploymentServiceConfig {
+    unit_name: names.unit_name,
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr),
+    serve_entry: roadmap_serve_entry_file,
+    provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
+    serve_function: instance.serve_function,
+    instance_root: instance.instance_root as String as NonEmptyStr,
+    repo_root: instance.repo_root as String as NonEmptyStr,
+    service_user: gunbc_service_user,
+    service_uid: gunbc_service_uid,
+    listen: HttpServerListenConfig {
+      host: instance.listen_host as String,
+      port: instance.listen_port,
+    },
+    serve_cpu_limit: dashboard_serve_cpu_limit(),
+    serve_wall_limit: dashboard_serve_wall_limit(),
+  }
+}
+
+// THE CONSTRUCTOR THE MODULE WAS MISSING. Everything downstream of DeploymentSpec —
+// deployment_plan_host_identity, deployment_plan_ssh_host, deployment_plan_listen_port,
+// deployment_tailnet_url, and the whole emit/apply chain — was ALREADY parameterized over the spec
+// value. Only construction was fused, which is why the defect survived: reading any consumer shows
+// a clean function of its argument, and the single point where the argument gets invented is three
+// nullary calls in one file.\n\nThe three parameters are the three genuinely independent axes.
+// instance says WHAT is placed and at which root and port; target says WHICH machine and how to
+// reach it; identity says which names the deployment owns in the host's unit and tailscale
+// namespaces. Twins on one host share a target and differ in the other two; the same instance on
+// two machines shares instance and identity and differs in target. Neither case needs a new
+// function, which is the property that was missing.
+
+
+// THE REALIZATION IS SUPPLIED, never resolved here: the spec cannot see the desired roster that decides
+// whether the holder is actuatable, so gunbc.live_deploy.desired resolves it
+// (prod_role_actuated_realization) and every caller passes it in. A witness passes a moved one.
+fn deployment_spec_for(
+  realization: ProdRoleRealization,
+  instance: HostDashboardInstance,
+  target: DeploymentHostTarget,
+  names: DeploymentNames,
+) -> DeploymentSpec {
+  let holding = role_singleton_holding_under(realization: realization, instance: instance)
+  DeploymentSpec {
+    target: target,
+    steps: deployment_steps_apply_order(instance: instance, target: target, names: names, holding: holding),
+    role_singletons: holding,
+    service: deployment_service_config(
+      instance: instance,
+      names: names,
+    ),
+    approval_broker: approval_broker_service_config(
+      instance: instance,
+      port: approval_broker_listen_port,
+    ),
+    names: names,
+    instance_id: instance.instance_id,
+    directories: concat(dashboard_instance_directory_demands(realization: realization, instance: instance), deployment_tailnet_door_directories(instance: instance, names: names)),
+  }
+}
+
+// THE DOOR'S DIRECTORY IS A DEPLOYMENT DEMAND, NOT AN INSTANCE ONE: only a deployment whose serve
+// route targets a unix socket runs a door (deployment_tailnet_door_socket), and only the spec knows
+// the route. It joins the instance's own list here, so the one provider ensures and reads it back
+// before the door unit binds; a deployment routed to a port demands nothing.
+fn deployment_tailnet_door_directories(instance: HostDashboardInstance, names: DeploymentNames) -> List<OwnedDirectoryTarget> {
+  match deployment_tailnet_door_socket(names: names) {
+    Present { value: _ } => [dashboard_instance_tailnet_door_directory(instance: instance)]
+    Absent => []
+  }
+}
+
+
+// THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED.
+// It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy
+// provisioned per candidate, leaving two alternating state roots. Blue/green was deleted at the
+// root on 2026-08-19, so there is one deployment, one dispatch-worktree root and one attempt-state
+// root -- not two shared ones, but one, which satisfies the condition more completely than the
+// host-scoped-sharing shape it anticipated. The bounded outage repair it accompanied
+// (deployment_retiring_slot_spec) went with it: retirement of an old slot is not an operation this
+// model has any more.
+//
+// Recorded rather than silently dropped because a scaffold row that vanishes with its subject
+// leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution
+// on climb deletes the production machinery, never the receipt).
+//
+// Retirement classification went with it. RetirementDisposition and
+// owned_artifact_retirement_disposition -- a coproduct and the total fold over OwnedArtifactKind
+// that answered which members a retiring slot stops and which it preserves -- had exactly one
+// consumer, deployment_retiring_slot_spec, and no other. With no retiring slot there is nothing to
+// classify, so they are deleted here rather than left as a total fold nobody calls. Review caught
+// them: the first cut of this change claimed zero production residue and this was part of what
+// refuted it.
+
+fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
+  spec.target.host.identity
+}
+
+fn deployment_plan_ssh_host(spec: DeploymentSpec) -> NonEmptyStr {
+  spec.target.ssh_host
+}
+
+fn deployment_plan_listen_port(spec: DeploymentSpec) -> Int {
+  spec.service.listen.port
+}
+
+fn deployment_tailnet_url(spec: DeploymentSpec) -> String? {
+  match spec.target.tailnet_domain {
+    Present { value: domain } =>
+      Present {
+        value: concat(
+          concat("https://", spec.target.host.identity),
+          concat(".", domain)
+        )
+      }
+    Absent => none
+  }
+}

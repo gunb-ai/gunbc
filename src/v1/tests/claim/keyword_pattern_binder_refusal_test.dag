@@ -1,0 +1,126 @@
+module v1.tests.claim.keyword_pattern_binder_refusal_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, Bool, SourceSpan }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+  ParseError,
+}
+
+// KEYWORD BINDER REFUSAL at parse_pattern (fallback B of
+// gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup).
+//
+// RED specimen is `Variant { match }` / `reported_alias: match`: `match` is name-admissible in
+// the parse environment but is refused as a pattern binder at that token. Name-admissible
+// keywords that the corpus actually binds (`module`) still parse. true/false stay LitPattern.
+// These controls import v1.compiler.parse, so no witness under dag/test/claim can call them;
+// they run on no required path.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/keyword_pattern_binder_refusal_test.dag \
+//     --function keyword_binder_refused_at_pattern_span_holds
+
+data keyword_binder_file: String = "zqxkwbind_probe.dag"
+
+data match_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { match: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { match } => true, _ => false } }\n"
+
+data match_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: match } => true, _ => false } }\n"
+
+data acquire_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { held: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { acquire } => true, _ => false } }\n"
+
+data acquire_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: acquire } => true, _ => false } }\n"
+
+data release_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: release } => true, _ => false } }\n"
+
+data identifier_binder_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: value } => value == \"abc\", _ => false } }\n"
+
+data match_field_colon_value_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { match: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { match: value } => value == \"abc\", _ => false } }\n"
+
+data name_keyword_module_binder_source: String = "module zqxkwbind.probe\n\ntype Exposure = ModuleExposure { module: String }\n\nfn probe(e: Exposure) -> Bool { match e { ModuleExposure { module: module } => module == \"m\", _ => false } }\n"
+
+data true_false_lit_pattern_source: String = "module zqxkwbind.probe\n\nfn probe(b: Bool) -> Int { match b { true => 1, false => 0 } }\n"
+
+data missing_field_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { no_such: value } => value == \"abc\", _ => false } }\n"
+
+fn parse_source(source: String) -> ParseWithTableResult {
+  parse_with_table(
+    tokens: tokenize(source: source, file: keyword_binder_file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), keyword_binder_file, build_newline_index(file: keyword_binder_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}
+
+fn span_text(source: String, span: SourceSpan) -> String {
+  substring(s: source, start: span.start, end: span.end)
+}
+
+fn parse_error_at_keyword(source: String, keyword: String) -> Bool {
+  let parsed = parse_source(source: source)
+  match parsed.result.error {
+    Absent => false
+    Present { value: e } => match e.diagnostic {
+      ParseError { message: m, span: s } =>
+        string_contains(s: m, pattern: "reserved keyword")
+          && string_contains(s: m, pattern: keyword)
+          && span_text(source: source, span: s) == keyword
+      _ => false
+    }
+  }
+}
+
+fn parsed_ok(source: String) -> Bool {
+  match parse_source(source: source).result.error {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// RED: `Ordered { match }` (shorthand) is a ParseError at the `match` token.
+test fn keyword_binder_refused_at_pattern_span_holds() -> Bool {
+  parse_error_at_keyword(source: match_shorthand_source, keyword: "match")
+}
+
+// RED: `reported_alias: match` is the same refusal at parse_pattern, not FieldNotFound.
+test fn colon_match_binder_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: match_colon_source, keyword: "match")
+}
+
+test fn acquire_shorthand_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: acquire_shorthand_source, keyword: "acquire")
+}
+
+test fn acquire_colon_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: acquire_colon_source, keyword: "acquire")
+}
+
+test fn release_colon_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: release_colon_source, keyword: "release")
+}
+
+// CONTROL: identifier binder `value` parses.
+test fn identifier_binder_value_is_accepted_holds() -> Bool {
+  parsed_ok(source: identifier_binder_source)
+}
+
+// CONTROL: name-admissible `match` as a field name with identifier binder `value`.
+test fn match_field_colon_value_is_accepted_holds() -> Bool {
+  parsed_ok(source: match_field_colon_value_source)
+}
+
+// CONTROL: name-admissible keyword `module` remains a binder (corpus shape).
+test fn name_admissible_module_binder_is_accepted_holds() -> Bool {
+  parsed_ok(source: name_keyword_module_binder_source)
+}
+
+// CONTROL: true/false in pattern position are LitPattern, not binder refusal.
+test fn true_false_still_parse_as_lit_pattern_holds() -> Bool {
+  parsed_ok(source: true_false_lit_pattern_source)
+}
+
+// CONTROL: a genuine missing field is still parseable; FieldNotFound is infer.
+test fn missing_field_pattern_is_not_a_parse_error_holds() -> Bool {
+  parsed_ok(source: missing_field_source)
+}

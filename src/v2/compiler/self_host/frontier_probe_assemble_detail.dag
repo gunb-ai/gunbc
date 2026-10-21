@@ -1,0 +1,87 @@
+module v2.compiler.self_host.frontier_probe_assemble_detail
+
+import std.algebra { list_snoc_item, Empty, fold_list, FreeSemigroup }
+import v2.compiler.self_host.frontier_probe_types {
+  AssembleMissingModule,
+  AssembleRejectionCause,
+  AssembleRejectionDetail,
+  FrontierProbeAssembleDetail,
+  FrontierProbeDetail,
+  FrontierProbeReceipt,
+  MissingModuleIdentityUnavailable,
+  OtherAssembleRefusal,
+  frontier_classify_rejection_reason,
+  frontier_probe_cause_location_from_locus,
+  ProbeStageAssemble
+}
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_fatal, diagnostics_fatal_reason }
+import std.optional { Absent, Optional, Present, optional_absent }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+
+fn non_empty_symbol_chain_from_non_empty_diagnostics(
+  d: NonEmptyDiagnostics
+) -> FreeSemigroup<Symbol> {
+  FreeSemigroup {
+    head: d.head.reason,
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
+    )
+  }
+}
+
+// diagnostic_module_root_missing_qn_optional always returns Absent: no diagnostic carries the
+// module root it failed to find, so resolve_module_not_found assemble causes classify as
+// MissingModuleIdentityUnavailable rather than AssembleMissingModule { requested }.
+// FrontierProbeDetail.MissingModule (#7762) carries the structural QualifiedName on receipt.detail
+// when frontier_probe_detail_from_diagnostic binds it. Trigger: a diagnostic evidence carrier for
+// ModuleRootMissing (one that does not reintroduce the diagnostic.dag ↔ qualified_name import
+// cycle); then extract it here and map Present -> AssembleMissingModule { requested }.
+fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<QualifiedName> {
+  optional_absent()
+}
+
+// THE CAUSE IS THE FATAL DIAGNOSTIC, THE CHAIN'S LAST (advisories step 2, gunbc#13103). An advisory
+// rejected_with_pending prepended is not the cause, so the cause, its location and the receipt's
+// located reason are all read from the fatal element; the chain keeps the whole ordered list.
+fn assemble_rejection_cause_from_diagnostics(
+  d: NonEmptyDiagnostics
+) -> AssembleRejectionCause {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: fatal) {
+      Present { value: requested } => AssembleMissingModule { requested: requested }
+      Absent => MissingModuleIdentityUnavailable
+    }
+  } else {
+    OtherAssembleRefusal { reason: fatal.reason }
+  }
+}
+
+fn frontier_probe_assemble_detail_from_rejection(
+  d: NonEmptyDiagnostics
+) -> FrontierProbeAssembleDetail {
+  AssembleRejectionDetail {
+    rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
+    cause: assemble_rejection_cause_from_diagnostics(d: d),
+    at: frontier_probe_cause_location_from_locus(at: diagnostics_fatal(d: d).at)
+  }
+}
+
+fn frontier_probe_receipt_from_assemble_rejection(
+  module_path: String,
+  diagnostics: NonEmptyDiagnostics,
+  detail: FrontierProbeDetail
+) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: frontier_classify_rejection_reason(reason: diagnostics_fatal_reason(d: diagnostics)),
+    located_stage: ProbeStageAssemble,
+    located_reason: diagnostics_fatal_reason(d: diagnostics),
+    detail: detail,
+    assemble_detail: frontier_probe_assemble_detail_from_rejection(d: diagnostics)
+  }
+}

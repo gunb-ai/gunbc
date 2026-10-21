@@ -1,0 +1,192 @@
+module product.supplier.packet_ai
+
+import std.types { List, Bool, Int, NonEmptyStr, Timestamp }
+import std.measure {
+  HardwareThreadCount, MoneyPerHour, Second, money_amount_micro, gibibyte, gibibyte_to_byte_size,
+}
+import std.decl_ref { decl_ref, DeclarationRef }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import product.fabric.isolation { IsolationProfile, DedicatedDevice }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedSupply }
+import product.fabric.provider_route {
+  ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import product.supplier.ubicloud {
+  SupplierOfferProjection, UnexpressedSupplyFact, IsolationNotObserved, OfferBinding, OfferBound,
+  OfferBindingRefused, ReadinessObservation, ReadinessMeasured, ReadinessUnmeasured,
+}
+import extdeps.gpu.types { Cuda }
+import extdeps.currency.currency { Usd }
+import extdeps.cloud.packet_ai { Dedicated, Dynamic, PacketAiProduct, PacketAiPool, PacketAiStorefrontProduct }
+
+// PACKET.AI AS A SUPPLIER: BINDING OVER extdeps.cloud.packet_ai, NOTHING RESTATED AND NO POLICY. What a demand
+// may rent is negotiated on each offer's shape, quote and isolation, never on which supplier made it.
+
+// HOW MANY GPUs ONE PACKET INSTANCE HAS IS NOT A REQUEST PARAMETER: the create body names a pool and
+// a region and carries no count, so the pool the vendor sells fixes it. The count therefore arrives
+// as a typed fact about the pool, and a pool whose count nobody has established refuses to bind, so a
+// 2x requirement is met only by a pool KNOWN to hand out two.
+type PacketAiPoolGpuCount
+  = CountFixedByPool { gpus_per_instance: Int }
+  | CountUnestablished { obligation: DeclarationRef }
+
+// THE DYNAMIC (SHARED) TIER IS A TYPED FACT, NOT A SILENT ASSUMPTION. Packet sells the RTX 6000 Pro
+// 96GB as shared infrastructure whose scheduler co-locates workloads; a Dedicated tier gives the whole
+// card. The tier is READ FROM THE WIRE: the storefront row's `allocation` ("dedicated" / "dynamic") joined to the
+// launch-options product by name. An unread row, a name that does not join, or an unrecognised value is
+// TierNotEstablished, never a defaulted claim. It is lifted onto the offer's isolation profile: only a pool
+// established as whole-card provides DedicatedDevice, so a requirement for dedicated tenancy refuses a
+// shared or unestablished pool at the fabric's fungibility screen (DESIGN 4b).
+type PacketAiTierFact
+  = TierShared
+  | TierWholeCard
+  | TierNotEstablished
+
+fn packet_ai_tier(product: PacketAiProduct, storefront: PacketAiStorefrontProduct?) -> PacketAiTierFact {
+  match storefront {
+    Absent => TierNotEstablished
+    Present { value: row } =>
+      if row.name != product.name { TierNotEstablished }
+      else {
+        match row.allocation {
+          Absent => TierNotEstablished
+          Present { value: Dedicated } => TierWholeCard
+          Present { value: Dynamic } => TierShared
+        }
+      }
+  }
+}
+
+fn packet_ai_isolation(tier: PacketAiTierFact) -> IsolationProfile {
+  match tier {
+    TierWholeCard => IsolationProfile { guarantees: [DedicatedDevice] }
+    TierShared => IsolationProfile { guarantees: [] }
+    TierNotEstablished => IsolationProfile { guarantees: [] }
+  }
+}
+
+data packet_ai_vram_unstated_obligation: NonEmptyStr = "A Packet product with vramGb null states no per-GPU memory, so no shape can be projected from it. Read the pool's GPU model memory from the vendor's console or datasheet and cite it."
+
+data packet_ai_pool_region_unread_obligation: NonEmptyStr = "A Packet pool whose region is omitted states no location, so no route can be minted from it. Read the pool's region from the vendor's console and cite the row that records it."
+
+// An omitted pool region is an unread location; the existing region admission refuses it at the bind.
+fn packet_ai_pool_region(pool: PacketAiPool, region_row: DeclarationRef) -> ProviderRegionObservation {
+  match pool.region {
+    Absent =>
+      ProviderRegionUnread {
+        obligation: decl_ref(module_path: "product.supplier.packet_ai", decl_name: "packet_ai_pool_region_unread_obligation"),
+      }
+    Present { value: _ } => ProviderRegionRead { region: region_row }
+  }
+}
+
+fn packet_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "packet_ai_pricing_page"),
+    region: region,
+  )
+}
+
+// pricePerHourCents is PER GPU-HOUR: the vendor's OpenAPI (dash.packet.ai/api/v1/openapi,
+// /api/v1/launch-options) describes pool price_per_hour as "Customer price per GPU-hour in USD, from
+// the matching Packet product", and the product carries the same figure in integer cents. An offer
+// is one INSTANCE, so its hourly rate is that figure times the pool's gpus_per_instance. One cent is
+// 10_000 micro-dollars, so the conversion is exact integer arithmetic.
+fn packet_ai_quote(product: PacketAiProduct, gpus_per_instance: Int) -> OfferQuote {
+  QuotedPerHour(MoneyPerHour {
+    amount: money_amount_micro(count: product.pricePerHourCents * 10000 * gpus_per_instance),
+    currency: Usd,
+  })
+}
+
+data packet_ai_offer_quantity_bound: Int = 1
+
+// IsolationNotObserved means nobody looked (product.supplier.ubicloud): it rides only the tier arm that
+// was never established. A read dedicated or dynamic allocation is an observation, whatever profile it yields.
+fn packet_ai_unexpressed(tier: PacketAiTierFact) -> List<UnexpressedSupplyFact> {
+  match tier {
+    TierWholeCard => []
+    TierShared => []
+    TierNotEstablished => [IsolationNotObserved]
+  }
+}
+
+fn bind_packet_ai_offer<P>(
+  principal: P,
+  executor: P,
+  product: PacketAiProduct,
+  gpu_count: PacketAiPoolGpuCount,
+  storefront: PacketAiStorefrontProduct?,
+  threads: HardwareThreadCount,
+  billing_quantum: Second,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  region: ProviderRegionObservation,
+  quoted_at: Timestamp,
+  valid_until: Timestamp,
+  receipt: ObservationReceiptRef,
+) -> OfferBinding<P> {
+  match gpu_count {
+    CountUnestablished { obligation } =>
+      OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+    CountFixedByPool { gpus_per_instance } =>
+    match product.vramGb {
+      Absent =>
+        OfferBindingRefused {
+          runs_on_label: product.name,
+          cause: decl_ref(module_path: "product.supplier.packet_ai", decl_name: "packet_ai_vram_unstated_obligation"),
+        }
+      Present { value: vram_gb } =>
+      match packet_ai_route(region: region) {
+        ProviderRouteRegionUnobserved { obligation } =>
+          OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+        ProviderRouteObserved { route: bound_route } =>
+        match readiness {
+          ReadinessUnmeasured { obligation } =>
+            OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+          ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+            OfferBound {
+              bound: SupplierOfferProjection {
+                offer: SupplierOffer {
+                  id: FabricIdentity { principal: principal, key: product.name },
+                  executor: executor,
+                  route: bound_route,
+                  shape: Shape {
+                    hard: HardRequirements { threads: threads },
+                    envelope: ResourceEnvelope {
+                      cpu: none,
+                      gpu: Present {
+                        value: GpuRequirement {
+                          count: gpus_per_instance,
+                          min_vram: gibibyte_to_byte_size(g: gibibyte(count: vram_gb)),
+                          runtimes: [Cuda],
+                        },
+                      },
+                      memory: none,
+                      storage: none,
+                      network: none,
+                    },
+                  },
+                  capabilities: capabilities,
+                  trust_domain: trust_domain,
+                  isolation: packet_ai_isolation(tier: packet_ai_tier(product: product, storefront: storefront)),
+                  quantity_bound: packet_ai_offer_quantity_bound,
+                  ready_at: ready_at,
+                  quote: packet_ai_quote(product: product, gpus_per_instance: gpus_per_instance),
+                  billing_quantum: billing_quantum,
+                  evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
+                },
+                unexpressed: packet_ai_unexpressed(tier: packet_ai_tier(product: product, storefront: storefront)),
+              },
+            },
+        },
+      },
+    },
+  }
+}

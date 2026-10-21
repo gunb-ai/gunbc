@@ -1,0 +1,327 @@
+module v2.test.claim.body_lowering.string_template
+
+import std.types { List }
+import v2.compiler.body_lowering_fold { body_lower_string_template }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_emit_terminals_text,
+  dag_language_model,
+  dag_lex,
+  dag_string_literal_node_from_lexeme,
+  dag_string_literal_value_optional,
+  dag_string_template_part_node_from_lexeme,
+  dag_string_template_part_value_optional,
+  string_template_optional,
+  StringTemplateSegment,
+  StringTemplateText
+}
+import std.occurrence_identity { OccurrenceSynthetic, NodeOccurrenceIdentity, OccurrenceId, OccurrencePending, node_occurrence_identity_minted }
+
+import std.algebra { Cons, Empty, FreeSemigroup, length, list_at_optional }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// STRING TEMPLATES: LEXED DISJOINTLY FROM PLAIN LITERALS, READ AS ONE NODE, LOWERED TO A CONCAT CHAIN
+// (XL-2 PR2b).
+//
+// Every claim here supplies its input at ONE interface (DESIGN section 3, a witness discriminates at
+// one interface): the lexer over a short source, the part decoder over a lexeme, and the reader and
+// the lowering over a supplied template shell. The ONE real-path claim -- lexer, parse, normalize,
+// infer, end to end -- is v2.test.claim.compiler.string_template_hole_type.
+
+// Fixture sources are written with every brace escaped (`\{`), so THIS module's own literals stay
+// plain; the tokenizer reads the unescaped text shown beside each.
+
+// ---- the lexer's interface --------------------------------------------------------------------
+
+fn st_classes(source: String) -> List<Symbol> {
+  match tokenize(text: source, file: ^string_template_file, rules: dag_language_model().lex) {
+    Rejected { diagnostics: d } => [diagnostics_fatal_reason(d: d)]
+    Accepted { value: ts, diagnostics: _ } => fold(ts.all, init: [], f: fn(acc, t) { concat(acc, [t.class]) })
+  }
+}
+
+// HOLE-FREE LITERALS STAY ONE PLAIN LITERAL TOKEN. A brace not followed by a hole start, an escaped
+// brace, an empty pair and a Unicode scalar escape are all text, so each source is exactly one
+// dag_token_string_literal -- the class, and so the node and hash, it had before templates existed.
+//   "a{ b"   "\{x"   "{}"   "\u{e9}"   "\uZ"
+test fn a_hole_free_literal_lexes_as_one_plain_literal() -> Bool {
+  (st_classes(source: "\"a\{ b\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\\{x\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\{\}\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\u\{e9\}\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\uZ\"") == [^dag_token_string_literal])
+}
+
+// A HOLE SPLITS THE STRING: head, the hole's ordinary tokens, tail.   "a{x}b"
+test fn a_hole_lexes_as_head_expression_tail() -> Bool {
+  st_classes(source: "\"a\{x\}b\"")
+    == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_tail]
+}
+
+// TWO HOLES ARE SEPARATED BY A MIDDLE.   "{a}-{b}"
+// v1 fuses holes separated only by `-` or `/` into one binary-operator hole (the census row
+// v1_fused_adjacent_holes, gunbc#13405; e.g. "{s}-{e}" in cron render_cron_field). That is a seed
+// defect v2 does not carry (DESIGN section 7): the `-` is template text, and each hole is its own
+// operand, as the census lists them.
+test fn two_holes_lex_with_a_middle() -> Bool {
+  let two = [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail]
+  (st_classes(source: "\"\{a\}-\{b\}\"") == two)
+    && (st_classes(source: "\"\{a\}/\{b\}\"") == two)
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}-\{") == "-")
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}/\{") == "/")
+}
+
+// BRACE DEPTH IS THE MODE STACK. A record literal inside a hole opens a brace the hole's closer may
+// not take: its `}` is an ordinary rbrace, and only the next `}` closes the hole.   "p{R { v: y }}q"
+test fn a_nested_brace_closes_before_the_hole() -> Bool {
+  st_classes(source: "\"p\{R \{ v: y \}\}q\"")
+    == [
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_lbrace,
+      ^dag_token_ident,
+      ^dag_token_colon,
+      ^dag_token_ident,
+      ^dag_token_rbrace,
+      ^dag_token_string_template_tail
+    ]
+}
+
+// A TEMPLATE INSIDE A HOLE IS ITS OWN HEAD AND TAIL.   "a{f(s: "x{y}")}b"
+test fn a_template_nests_inside_a_hole() -> Bool {
+  st_classes(source: "\"a\{f(s: \"x\{y\}\")\}b\"")
+    == [
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_lparen,
+      ^dag_token_ident,
+      ^dag_token_colon,
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_string_template_tail,
+      ^dag_token_rparen,
+      ^dag_token_string_template_tail
+    ]
+}
+
+// ---- the part decoder's interface --------------------------------------------------------------
+
+fn st_part_value(token_class: Symbol, lexeme: String) -> String {
+  match dag_string_template_part_node_from_lexeme(token_class: token_class, lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } =>
+      match dag_string_template_part_value_optional(node: n) {
+        Present { value: v } => v
+        Absent => "<no value payload>"
+      }
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+// Each part drops its own frame and decodes its escapes with the string literal's one decoder.
+test fn each_template_part_decodes_inside_its_frame() -> Bool {
+  (st_part_value(token_class: ^dag_token_string_template_head, lexeme: "\"a\\tb\{") == "a\tb")
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}-\{") == "-")
+    && (st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\}\\\{z\"") == "\{z")
+    && (st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\}\"") == "")
+}
+
+// A part framed as another part refuses: a head's lexeme is not a tail.
+test fn a_misframed_template_part_refuses() -> Bool {
+  st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\"a\{") == "dag_string_literal_lexeme_unframed"
+}
+
+// ---- the reader and the lowering, over a supplied template shell -----------------------------------
+//
+// The shell is built here exactly as the parser builds one (v2.compiler.parse parse_wrap_production_captured:
+// a Conj carrying the production's identity and its captured child), for the template "x{a}y": a head
+// part, one hole whose expression is the reference `a`, a tail part. Each piece carries its own minted
+// occurrence, so the claims can see where the lowering puts its generated nodes. The real route --
+// lexer, parse, normalize, infer -- runs once, in v2.test.claim.compiler.string_template_hole_type.
+
+fn st_minted(n: Int) -> NodeOccurrenceIdentity {
+  node_occurrence_identity_minted(id: OccurrenceId { value: n })
+}
+
+fn st_production(emitted: Symbol, captured: Node, occurrence: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      grammar_named_edge(name: ^grammar_production_identity_node_projection, target: node_synthetic(kind: TypeNode { connective: Atom { identity: emitted } }, children: [])),
+      grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
+    ],
+    occurrence_id: occurrence
+  )
+}
+
+fn st_part(token_class: Symbol, lexeme: String, occurrence: NodeOccurrenceIdentity) -> Node {
+  match dag_string_template_part_node_from_lexeme(token_class: token_class, lexeme: lexeme, occurrence_id: occurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Atom { identity: ^st_part_refused } }, children: [])
+  }
+}
+
+fn st_hole() -> Node {
+  st_production(
+    emitted: ^dag_surface_expr,
+    captured: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^a } }, children: [], occurrence_id: st_minted(n: 3)),
+    occurrence: st_minted(n: 2)
+  )
+}
+
+fn st_shell() -> Node {
+  st_production(
+    emitted: ^dag_string_template,
+    captured: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
+        Edge { label: Positional, target: st_hole() },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+      ]
+    ),
+    occurrence: st_minted(n: 0)
+  )
+}
+
+fn st_head_is(t: StringTemplateText, value: String) -> Bool { t.value == value }
+
+fn st_one_segment(segments: FreeSemigroup<StringTemplateSegment>, tail: String) -> Bool {
+  match segments.tail {
+    Empty => segments.head.text.value == tail
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+// THE READER: the grammar shape — head text, then (hole, text) — with each text decoded.
+test fn the_reader_yields_text_hole_text() -> Bool {
+  match string_template_optional(node: st_shell()) {
+    Present { value: t } => st_head_is(t: t.head, value: "x") && st_one_segment(segments: t.segments, tail: "y")
+    Absent => false
+  }
+}
+
+// The reader answers Absent for anything that is not a template, so a consumer cannot mistake a plain
+// production for one.
+test fn the_reader_is_absent_off_a_template() -> Bool {
+  match string_template_optional(node: st_hole()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn st_child(n: Node, index: Int) -> Optional<Node> {
+  match list_at_optional(xs: n.children, index: index) {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+// The operator is the roster row's declaration identity (a marked declaration_reference_node to
+// std.algebra.collection_concat_shape), never a bare atom of that spelling or of `concat`.
+fn st_names_roster_concat_row(op: Node) -> Bool {
+  match declaration_reference_path_optional(node: op) {
+    Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+    Absent => false
+  }
+}
+
+fn st_is_concat_of(n: Node, cause: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      (length(xs: n.children) == 3)
+        && (match st_child(n: n, index: 0) {
+              Present { value: op } => st_names_roster_concat_row(op: op)
+              Absent => false
+            })
+        && (n.occurrence_id == OccurrencePending { caused_by: OccurrenceId { value: cause } })
+    _ => false
+  }
+}
+
+fn st_text_is(n: Optional<Node>, value: String) -> Bool {
+  match n {
+    Present { value: t } => dag_string_literal_value_optional(node: t) == optional_present(value: value)
+    Absent => false
+  }
+}
+
+// THE LOWERING: "x{a}y" becomes concat(concat("x", a), "y"). The texts are string literals at their
+// parts' own occurrences; each concat and its operator are PENDING members caused by the part they
+// append (the inner one by the hole, 2; the outer by the tail, 4), never a second minted copy of it.
+test fn a_template_lowers_to_a_located_concat_chain() -> Bool {
+  match body_lower_string_template(shell: st_shell()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: outer, diagnostics: _ } =>
+      st_is_concat_of(n: outer, cause: 4)
+        && st_text_is(n: st_child(n: outer, index: 2), value: "y")
+        && (match st_child(n: outer, index: 1) {
+              Present { value: inner } => st_is_concat_of(n: inner, cause: 2) && st_text_is(n: st_child(n: inner, index: 1), value: "x")
+              Absent => false
+            })
+  }
+}
+
+// ---- the reader refuses what it cannot read whole ---------------------------------------------------
+//
+// A template's parts alternate text, hole, text. A sequence that does not -- here "x" then "y" with the
+// hole's expression wrapper gone, which is what a fold of the children before this read leaves -- is
+// Absent, never the surviving fragments, so body lowering refuses it located instead of building
+// concat("x","y") with the hole and its dependency dropped. The normalize route that used to feed it
+// such a shell is the real-path claim's subject (v2.test.claim.compiler.string_template_hole_type).
+fn st_holeless_shell() -> Node {
+  st_production(
+    emitted: ^dag_string_template,
+    captured: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+      ]
+    ),
+    occurrence: st_minted(n: 0)
+  )
+}
+
+test fn a_template_whose_hole_was_lowered_away_is_unreadable_and_refuses() -> Bool {
+  (match string_template_optional(node: st_holeless_shell()) {
+    Present { value: _ } => false
+    Absent => true
+  })
+    && (match body_lower_string_template(shell: st_holeless_shell()) {
+          Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_string_template_unread
+          Accepted { value: _, diagnostics: _ } => false
+        })
+}
+
+// ---- emission keeps a hole a hole ---------------------------------------------------------------------
+//
+// A template head or middle token ends AT the hole opener, and a hole opens only when that brace is followed
+// directly by an identifier start, `(`, `!` or `-`. The emitter used to write one space between every pair
+// of tokens, giving `"a{ x }b"`, which re-lexes as ONE plain literal: the holes became text. So the text is
+// asserted exactly, and then lexed again: head, ident, MIDDLE, ident, tail.   "a{x}b{y}c"
+fn st_terminals() -> List<GrammarEmitTerminal> {
+  [
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_head, captured: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"a\{", occurrence: OccurrenceSynthetic) },
+    GrammarEmitLexemeTerminal { token_class: ^dag_token_ident, lexeme: ^x },
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_middle, captured: st_part(token_class: ^dag_token_string_template_middle, lexeme: "\}b\{", occurrence: OccurrenceSynthetic) },
+    GrammarEmitLexemeTerminal { token_class: ^dag_token_ident, lexeme: ^y },
+    GrammarEmitClassTerminal { token_class: ^dag_token_string_template_tail, captured: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}c\"", occurrence: OccurrenceSynthetic) }
+  ]
+}
+
+test fn emitted_template_tokens_stay_adjacent_so_the_holes_survive_a_re_lex() -> Bool {
+  match dag_emit_terminals_text(lex: dag_lex(), terminals: st_terminals()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } =>
+      (text == "\"a\{x\}b\{y\}c\"")
+        && (st_classes(source: text) == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail])
+  }
+}

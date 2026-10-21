@@ -1,0 +1,1108 @@
+module v2.compiler.self_host.promotion_admission
+
+import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  CandidateGeneration,
+  GenerationAxis,
+  GenerationIdentity,
+  SuccessorGeneration,
+  generation_axis_symbol,
+  generation_identity_mismatched_axes
+}
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensGrain,
+  compile_lens_grain_eq,
+  RequiredLensCoverage,
+  RequiredLensCoverageRow,
+  required_lens_join_cause_reason,
+  required_lens_roster_digest_of,
+  CompileLensRoot,
+  CompileLensSubtree,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused
+}
+import std.decl_ref { declaration_ref_display_key }
+import std.content_hash { content_hash_atom }
+import std.types { NonEmptyStr, List, Map }
+import std.algebra { freemonoid_empty, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
+
+import v2.std.integer { Int }
+import std.optional { Absent, Present }
+import v2.std.node { Hash, Symbol }
+import v2.std.text { String }
+
+// WHAT THIS MODULE DELIBERATELY CANNOT DO.
+//
+// It imports no filesystem surface and no Medium<String>, so no admission path can
+// read or compare canonical emitted source bytes. That is not an omission to fill in
+// later — it is the whole point. The superseded authority defined the self-host
+// fixed point as matching source digests, which makes the milestone mean the wrong
+// thing in both directions at once: a generation that is byte-identical to the seed
+// but behaviorally wrong is ADMITTED, and a generation that emits cleaner source and
+// behaves identically is REFUSED. DESIGN §7 is explicit that a byte-identical fixed
+// point is not the goal, because it forces the emitter to reproduce the seed's warts
+// to match bytes and thereby cements the seed's accidents.
+//
+// Byte identity is therefore not an input here. It is not weighed, not preferred,
+// and not recorded. Behavior decided against an external oracle is the whole
+// admission fact.
+
+// An observation that could not be made is its OWN state. Folding it into either
+// verdict is the failure DESIGN names twice: as ⊤-as-ignorance when an unavailable
+// check widens to "assume equivalent", and as ⊥-as-ignorance when it narrows to
+// "assume divergent". A receipt whose observation is unavailable can therefore never
+// reach an admitting arm, and never impersonates a divergence either — it refuses
+// under its own name so the deficit stays countable.
+type ObservationAvailability<T>
+  = ObservationPresent { value: T }
+  | ObservationUnavailable { cause: Symbol }
+
+type EquivalenceOutcome
+  = BehaviorAgrees
+  | BehaviorDiverges { at_case: String }
+  | BehaviorDivergesExactly { cases: List<String> }
+
+// THE SEED IS A REGRESSION ORACLE, NEVER THE SPECIFICATION (DESIGN section 7, operator ruling
+// 2026-10-02). A divergence from the seed is one of two things: a v2 regression -- something the
+// seed got right that v2 lost, a defect -- or a seed defect v2 does not carry forward, which v2 fixes
+// and records as the correction it is. This row is that record. It names the corpus and case it
+// disposes of, the `.dag` contract claim that pins v2's behaviour there, and why the seed's
+// behaviour is the defect. A divergence with no row is a regression by default, so the gate stays
+// fail-closed: recording a correction is the only way a divergence admits.
+//
+// WHY ONLY A COMPLETE ENUMERATION CAN BE DISPOSED OF. `BehaviorDiverges { at_case }` reports the
+// FIRST diverging case, so the cases after it were never judged; a row for that case would admit a
+// run whose later cases may have regressed unseen -- one wall masking the next. Only
+// `BehaviorDivergesExactly`, which names EVERY diverging case of a run that compared the whole
+// declared corpus, can be matched against the rows. A first-divergence receipt refuses whether or
+// not its case is recorded.
+type SeedDefectCorrection {
+  corpus: String
+  at_case: String
+  contract: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+type FaultOutcome
+  = FaultCaught
+  | FaultNotCaught { at_case: String }
+
+type BuildOutcome
+  = BuildGreen
+  | BuildFailed { cause: Symbol }
+
+// A corpus is a NAME plus the population that name stands for. Carrying the name
+// alone made the label decorative in exactly the way an unjoined field always is: two
+// receipts could agree that they ran "the logic truth table" while one compared ten
+// cases and the other compared one, and admission read the matching labels as matching
+// runs. A truncated successor run is the shape that mattered — it is what a partially
+// emitted compiler produces — and it promoted.
+//
+// expected_cases is declared by the corpus rather than reported by a run, so a receipt
+// cannot lower the bar it is measured against. The population is then joined twice: the
+// three receipts must name the same corpus AND the same size (a same-named corpus that
+// disagrees about its own population is two corpora), and each run's cases_compared must
+// equal that size. Neither join alone is sufficient — agreeing sizes with differing runs
+// is the truncation, and agreeing runs against differing sizes is the moved goalpost.
+type BehavioralCorpus {
+  identity: String
+  expected_cases: Int
+}
+
+// Every receipt names the generation it is ABOUT. Admission joins on that subject,
+// so a receipt carried over from an earlier compiler, source closure, target model,
+// toolchain, build configuration or artifact refuses as stale and names the axis
+// that moved. Without the subject field a receipt is just an assertion, and the
+// candidate could be admitted on evidence gathered about something else.
+type BehavioralEquivalenceReceipt {
+  subject: GenerationIdentity
+  oracle: GenerationIdentity
+  corpus: BehavioralCorpus
+  cases_compared: Int
+  outcome: ObservationAvailability<EquivalenceOutcome>
+}
+
+// The discriminating RED. A behavioral corpus that cannot fail proves nothing, so a
+// planted fault must have been executed AND caught. DESIGN §5: "done" means a real
+// consumer green by execution PLUS a discriminating input that goes red when the
+// behavior is wrong.
+type DiscriminatingFaultReceipt {
+  subject: GenerationIdentity
+  corpus: BehavioralCorpus
+  planted_fault: String
+  outcome: ObservationAvailability<FaultOutcome>
+}
+
+type BuildReceipt {
+  subject: GenerationIdentity
+  outcome: ObservationAvailability<BuildOutcome>
+}
+
+type GenerationProvenanceReceipt {
+  subject: GenerationIdentity
+  producer: GenerationIdentity
+}
+
+// The evidence bundle for ONE promotion. Candidate and successor each carry their
+// own build and behavioral evidence, because "the candidate builds" and "the thing
+// the candidate produced builds" are different facts, and a compiler that builds but
+// cannot reproduce itself has not self-hosted.
+// THE COVERAGE RECEIPT NAMES ITS GENERATION AND ITS CONTRACT MATERIAL, and both halves exist
+// because the earlier revision shipped without them and could be satisfied by a submitter alone.
+//
+// SUBJECT. Every other receipt here carries a GenerationIdentity checked against the generation
+// being promoted; this one did not, so coverage from an older compiler could be attached to both
+// new generations and pass every check whenever the lens identities happened to match. Naming a
+// field `successor_lens_coverage` does not perform that join -- `subject` and `stale_causes_for` do,
+// exactly as `build_receipt_causes` has always done.
+//
+// CONTRACT MATERIAL, AND WHY A DIGEST ALONE WOULD NOT DO. The obligations have to be FOLDED -- a
+// required identity must be reported by name when it is uncovered -- and a digest is not an
+// enumerable population. So the material is supplied, and its BINDING is verified: the digest of the
+// supplied registrations must equal the `required_lens_contract` axis of the generation being
+// promoted. That axis comes from the promotion subject, never from this receipt, which is what makes
+// the obligations independent of the submitter. Measured on the revision that lacked it: coverage
+// whose required set and rows were shortened together, and coverage that was entirely empty, both
+// promoted.
+// SECTION 3C STANDING, STATED BECAUSE THE HONEST ANSWER IS A FRONTIER AND NOT AN EXECUTING
+// CONSUMER. `admit_promotion` has ZERO production callers and `CandidateGeneration` has ZERO
+// production constructors: every one is a witness fixture. So this binding is consumed by execution
+// only in the suite, and claiming otherwise would be the grep-matched-prose mistake -- three of the
+// four "readers" that claim was first built on are comments.
+//
+// The tree already carries this fact and names its trigger, so this row cites rather than restates:
+// `gunbc.compiler_frontend_program_status` `milestone_status`, arm
+// `SelfHostSuccessorPromotionAdmitted`, whose cause is `needs(i: PersistedPromotionOutcome)`. That
+// persisted outcome over a named candidate is the trigger for this frontier too, and it is the same
+// moment the procedure stops being inert. KILL CONDITION: if a PromotionOutcome is persisted and
+// this binding is still reached only from tests, the frontier was wrong and the coverage fields are
+// dangling rather than deferred.
+type GenerationLensCoverage {
+  subject: GenerationIdentity
+  contract_material: List<CompileLens>
+  observed: RequiredLensCoverage
+}
+
+type SelfHostCandidate {
+  candidate: CandidateGeneration
+  successor: SuccessorGeneration
+  candidate_build: BuildReceipt
+  successor_build: BuildReceipt
+  candidate_equivalence: BehavioralEquivalenceReceipt
+  successor_equivalence: BehavioralEquivalenceReceipt
+  discriminating_fault: DiscriminatingFaultReceipt
+  candidate_provenance: GenerationProvenanceReceipt
+  successor_provenance: GenerationProvenanceReceipt
+  candidate_lens_coverage: GenerationLensCoverage
+  successor_lens_coverage: GenerationLensCoverage
+}
+
+// WHAT A COMPARISON RUN LEARNS, separated from what it does not.
+//
+// A transport executes emit → compile → run → compare against the seed oracle and
+// learns exactly three things: whether the driver built, whether behavior agreed, and
+// whether a planted fault was caught. It does NOT learn the generation axes — those
+// are derived from the build's own inputs and artifacts, elsewhere. Fusing them would
+// put the transport in the position of asserting the identity of the thing it measured,
+// which is the self-authorization hole one layer down: a run that names its own subject
+// can name a subject that agrees with whatever it found.
+//
+// So the observation carries outcomes and a corpus, and the identities arrive from the
+// caller at assembly time. That seam is the point: the same three projections below turn
+// one observation into receipts about ANY declared generation, so a transport is a
+// realization handler rather than a fact about which generation was under test.
+type BehavioralComparisonObservation {
+  corpus: BehavioralCorpus
+  cases_compared: Int
+  build: ObservationAvailability<BuildOutcome>
+  equivalence: ObservationAvailability<EquivalenceOutcome>
+  fault: ObservationAvailability<FaultOutcome>
+}
+
+fn build_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity
+) -> BuildReceipt {
+  BuildReceipt { subject: subject, outcome: o.build }
+}
+
+fn equivalence_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  oracle: GenerationIdentity
+) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    subject: subject,
+    oracle: oracle,
+    corpus: o.corpus,
+    cases_compared: o.cases_compared,
+    outcome: o.equivalence
+  }
+}
+
+fn fault_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  planted_fault: String
+) -> DiscriminatingFaultReceipt {
+  DiscriminatingFaultReceipt {
+    subject: subject,
+    corpus: o.corpus,
+    planted_fault: planted_fault,
+    outcome: o.fault
+  }
+}
+
+type PromotionRefusalCause
+  = StaleReceiptSubject { receipt: Symbol, axis: Symbol }
+  | ReceiptObservationUnavailable { receipt: Symbol, cause: Symbol }
+  | BuildNotGreen { receipt: Symbol }
+  | BehaviorDivergedFromOracle { receipt: Symbol, at_case: String }
+  | SeedDefectCorrectionNotObserved { receipt: Symbol, at_case: String }
+  | DivergenceEnumerationEmpty { receipt: Symbol }
+  | DiscriminatingFaultNotCaught { at_case: String }
+  | EmptyBehavioralCorpus { receipt: Symbol }
+  | ProvenanceNotDeclaredProducer { receipt: Symbol }
+  | PromotionArtifactNotMaterialized { receipt: Symbol }
+  | OracleNotDeclaredSeed { receipt: Symbol }
+  | SuccessorNotProducedByCandidate
+  | CorpusMismatchAcrossReceipts { receipt: Symbol }
+  | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
+  | RequiredLensCoverageNotClosed { receipt: Symbol, cause: Symbol }
+  | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
+  | RequiredLensObligationCoveredAtWrongGrain { receipt: Symbol, lens: String }
+  | RequiredLensContractMaterialUnbound { receipt: Symbol, derived: String }
+  | RequiredLensCoverageRanADifferentRoster { receipt: Symbol, derived: String, observed: String }
+  | RequiredLensCoverageRowDuplicated { receipt: Symbol, lens: String }
+  | RequiredLensObligationObservedZeroTimes { receipt: Symbol, lens: String }
+  | RequiredLensRootObligationObservedMoreThanOnce { receipt: Symbol, lens: String }
+
+type PromotionOutcome
+  = Promoted { successor: SuccessorGeneration, cases_compared: Int }
+  | PromotionRefused { causes: List<PromotionRefusalCause> }
+
+fn stale_causes_for(
+  receipt: Symbol,
+  subject: GenerationIdentity,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: generation_identity_mismatched_axes(left: expected, right: subject),
+    empty: freemonoid_empty(),
+    cons: fn(acc, axis) {
+      list_snoc_item(
+        xs: acc,
+        item: StaleReceiptSubject {
+          receipt: receipt,
+          axis: generation_axis_symbol(axis: axis)
+        }
+      )
+    }
+  )
+}
+
+fn build_receipt_causes(
+  receipt: Symbol,
+  r: BuildReceipt,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
+  match r.outcome {
+    ObservationUnavailable { cause: c } =>
+      list_snoc_item(
+        xs: stale,
+        item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
+      )
+    ObservationPresent { value: v } =>
+      match v {
+        BuildGreen => stale
+        BuildFailed { cause: _ } =>
+          list_snoc_item(xs: stale, item: BuildNotGreen { receipt: receipt })
+      }
+  }
+}
+
+// A corpus of zero cases is agreement over nothing, so the DECLARED population is
+// checked here: admitting it would be the vacuous-green failure, since every claim
+// quantified over an empty population is true. The check reads the corpus rather than
+// the run, because a run reporting zero against a corpus declaring ten is a
+// truncation the population join names precisely, not an empty corpus.
+//
+// The population join is what makes cases_compared load-bearing rather than a number
+// beside a label. Comparing fewer cases than the corpus declares is the truncated run;
+// comparing more is a run that did not execute the corpus it names. Both refuse, and
+// both carry the two numbers so the refusal says which.
+//
+// The oracle is joined against the DECLARED seed, not taken on the receipt's word.
+// Without this the receipt's oracle field is decorative: a bundle could name the
+// candidate as its own oracle, compare it against itself, agree trivially, and clear
+// admission — the self-authorization hole wearing a different field name. The seed
+// comes from the generation chain, which construction already fixed, so the receipt
+// cannot choose what it was measured against.
+fn seed_defect_correction_recorded(
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  at_case: String
+) -> Bool {
+  fold_list(
+    xs: corrections,
+    empty: false,
+    cons: fn(acc, k) { acc || (k.corpus == corpus && k.at_case == at_case) }
+  )
+}
+
+fn diverging_case_listed(cases: List<String>, at_case: String) -> Bool {
+  fold_list(xs: cases, empty: false, cons: fn(acc, c) { acc || c == at_case })
+}
+
+// A recorded correction this corpus's run does not observe as a divergence. Where v2 now agrees
+// with the seed on a case it declared corrected, v2 has reverted to the seed's defect -- the
+// correction regressed -- so the row refuses until it is deleted or the behaviour restored.
+fn unobserved_correction_causes(
+  receipt: Symbol,
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  observed: List<String>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: corrections,
+    empty: freemonoid_empty(),
+    cons: fn(acc, k) {
+      if k.corpus == corpus && !diverging_case_listed(cases: observed, at_case: k.at_case) {
+        list_snoc_item(xs: acc, item: SeedDefectCorrectionNotObserved { receipt: receipt, at_case: k.at_case })
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn unrecorded_divergence_causes(
+  receipt: Symbol,
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  cases: List<String>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: cases,
+    empty: freemonoid_empty(),
+    cons: fn(acc, c) {
+      if seed_defect_correction_recorded(corrections: corrections, corpus: corpus, at_case: c) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: BehaviorDivergedFromOracle { receipt: receipt, at_case: c })
+      }
+    }
+  )
+}
+
+fn concat_cause_lists(left: List<PromotionRefusalCause>, right: List<PromotionRefusalCause>) -> List<PromotionRefusalCause> {
+  fold_list(xs: right, empty: left, cons: fn(acc, c) { list_snoc_item(xs: acc, item: c) })
+}
+
+fn equivalence_receipt_causes(
+  receipt: Symbol,
+  r: BehavioralEquivalenceReceipt,
+  expected: GenerationIdentity,
+  expected_oracle: GenerationIdentity,
+  corrections: List<SeedDefectCorrection>
+) -> List<PromotionRefusalCause> {
+  let subject_stale = stale_causes_for(
+    receipt: receipt,
+    subject: r.subject,
+    expected: expected
+  )
+  let stale = if length(
+    xs: generation_identity_mismatched_axes(left: expected_oracle, right: r.oracle)
+  ) == 0 {
+    subject_stale
+  } else {
+    list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
+  }
+  let declared = if r.corpus.expected_cases <= 0 {
+    list_snoc_item(xs: stale, item: EmptyBehavioralCorpus { receipt: receipt })
+  } else {
+    stale
+  }
+  let sized = if r.cases_compared == r.corpus.expected_cases {
+    declared
+  } else {
+    list_snoc_item(
+      xs: declared,
+      item: CorpusPopulationMismatch {
+        receipt: receipt,
+        expected: r.corpus.expected_cases,
+        compared: r.cases_compared
+      }
+    )
+  }
+  match r.outcome {
+    ObservationUnavailable { cause: c } =>
+      list_snoc_item(
+        xs: sized,
+        item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
+      )
+    ObservationPresent { value: v } =>
+      match v {
+        BehaviorAgrees =>
+          concat_cause_lists(
+            left: sized,
+            right: unobserved_correction_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, observed: freemonoid_empty())
+          )
+        BehaviorDiverges { at_case: c } =>
+          list_snoc_item(
+            xs: sized,
+            item: BehaviorDivergedFromOracle { receipt: receipt, at_case: c }
+          )
+        BehaviorDivergesExactly { cases: cs } =>
+          if length(xs: cs) == 0 {
+            list_snoc_item(xs: sized, item: DivergenceEnumerationEmpty { receipt: receipt })
+          } else {
+            concat_cause_lists(
+              left: concat_cause_lists(
+                left: sized,
+                right: unrecorded_divergence_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, cases: cs)
+              ),
+              right: unobserved_correction_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, observed: cs)
+            )
+          }
+      }
+  }
+}
+
+fn fault_receipt_causes(
+  r: DiscriminatingFaultReceipt,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let stale = stale_causes_for(
+    receipt: ^receipt_discriminating_fault,
+    subject: r.subject,
+    expected: expected
+  )
+  match r.outcome {
+    ObservationUnavailable { cause: c } =>
+      list_snoc_item(
+        xs: stale,
+        item: ReceiptObservationUnavailable {
+          receipt: ^receipt_discriminating_fault,
+          cause: c
+        }
+      )
+    ObservationPresent { value: v } =>
+      match v {
+        FaultCaught => stale
+        FaultNotCaught { at_case: c } =>
+          list_snoc_item(xs: stale, item: DiscriminatingFaultNotCaught { at_case: c })
+      }
+  }
+}
+
+// Provenance is checked against the DECLARED producer carried in the generation
+// itself, not against a producer the receipt names on its own authority. This is
+// what keeps a candidate from authorizing its own promotion: the candidate cannot
+// assert who produced it, because the fact is already fixed by the type that
+// required a seed to construct it.
+fn provenance_receipt_causes(
+  receipt: Symbol,
+  r: GenerationProvenanceReceipt,
+  expected: GenerationIdentity,
+  declared_producer: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
+  if length(
+    xs: generation_identity_mismatched_axes(
+      left: declared_producer,
+      right: r.producer
+    )
+  ) == 0 {
+    stale
+  } else {
+    list_snoc_item(
+      xs: stale,
+      item: ProvenanceNotDeclaredProducer { receipt: receipt }
+    )
+  }
+}
+
+// An unbuilt artifact is refused by name rather than treated as "nothing to compare,
+// therefore fine" — the same unavailable-is-not-equivalent rule the receipts follow,
+// applied to the generation itself.
+fn artifact_causes(
+  receipt: Symbol,
+  identity: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  match identity.materialized_artifact {
+    ArtifactMaterialized { digest: _ } => freemonoid_empty()
+    ArtifactNotMaterialized =>
+      [PromotionArtifactNotMaterialized { receipt: receipt }]
+  }
+}
+
+// Both fields, deliberately. Joining the name alone would let three receipts agree they
+// ran "the logic truth table" while disagreeing about how many cases that is, and the
+// per-receipt population join would then hold against three different bars — each run
+// self-consistent, the bundle incoherent.
+fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> Bool {
+  left.identity == right.identity && left.expected_cases == right.expected_cases
+}
+
+fn concat_causes(
+  parts: List<List<PromotionRefusalCause>>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: parts,
+    empty: freemonoid_empty(),
+    cons: fn(acc, part) {
+      fold_list(
+        xs: part,
+        empty: acc,
+        cons: fn(inner, cause) { list_snoc_item(xs: inner, item: cause) }
+      )
+    }
+  )
+}
+
+// Both generations are measured against the SEED oracle: a successor that agreed only
+// with the candidate would prove the two agree with each other while both drifted from
+// the compiler they claim to reproduce.
+//
+// chain_causes joins on the whole declared producer, not on its identity alone. The
+// successor carries its OWN produced_by_candidate, so bundling candidate A with a
+// successor that says it was produced by candidate B is otherwise constructible: each
+// half's receipts join internally and nothing proves the two halves are one chain. And
+// two distinct candidates can share an identity while descending from DIFFERENT seeds,
+// so an identity-only join leaves that splice admissible and unwitnessed (review 51231).
+//
+// corpus_causes joins the three behavioral receipts' corpora. Unjoined, equivalence can
+// be measured over one corpus while the planted fault was proven discriminating over a
+// different one — so the fault receipt would vouch for teeth the equivalence run never
+// had.
+// A REQUIRED OBLIGATION NEVER DISAPPEARS INTO A REFUSAL ARM, which is the whole reason this is a
+// fold over the REQUIRED set rather than a fold over the coverage rows. Folding the rows answers
+// "is every row I have satisfied", and a refused join has no rows -- so the obligations would vanish
+// exactly when the compile failed to establish them, which reads as nothing-to-report and is the
+// silence DESIGN section 5 refuses. Folding the required set answers "is every obligation I owe
+// accounted for", and that question is total on both arms.
+//
+// SO THE REFUSED ARM EMITS BOTH: the join's own cause, once, so the reason the coverage is unusable
+// is not lost, AND one uncovered-obligation cause per required identity, so the population survives
+// the refusal. An admission that reported only the first would tell a reader the join failed while
+// leaving them to guess what it failed to cover.
+// THE OBSERVATIONS ARE INDEXED ONCE, and the obligations are folded against the index. The earlier
+// shape scanned every observed row for every required registration, which is the quadratic fold
+// DESIGN section 6 says is always fixed regardless of the realized n -- and the compile-side join
+// already had the answer: `required_lens_registration_keys` builds exactly this Map in one pass.
+// Reproducing its shape here rather than inventing one keeps the two joins recognisably the same
+// operation.
+// LAST-WINS WOULD ERASE THE ROW IT DISAGREES WITH. A submitted coverage carrying a lens twice --
+// once at the wrong grain, once at the right one -- resolved to whichever row came last, so the
+// wrong-grain observation was silently dropped instead of refused, and the obligation walk then
+// reported a population it had already edited. The compile-side join refuses a duplicate
+// registration by name (`RegistrationDuplicated`); a coverage receipt that reports the same lens
+// twice is the same defect one layer out, so it carries its own cause rather than a resolution rule.
+type CoverageObservationIndex {
+  seen: Map<String, RequiredLensCoverageRow>
+  duplicated: List<String>
+}
+
+fn coverage_observation_index(
+  rows: List<RequiredLensCoverageRow>
+) -> CoverageObservationIndex {
+  fold_list(
+    xs: rows,
+    empty: CoverageObservationIndex { seen: empty_map(), duplicated: freemonoid_empty() },
+    cons: fn(acc, row) {
+      let key = declaration_ref_display_key(ref: row.lens)
+      match map_lookup(acc.seen, key) {
+        Absent =>
+          CoverageObservationIndex {
+            seen: map_insert(acc.seen, key, row),
+            duplicated: acc.duplicated
+          }
+        Present { value: _ } =>
+          CoverageObservationIndex {
+            seen: acc.seen,
+            duplicated: list_snoc_item(xs: acc.duplicated, item: key)
+          }
+      }
+    }
+  )
+}
+
+// PRESENT, EXECUTED AND SATISFIED ARE THREE FACTS, AND THIS FOLD SEPARATES ONLY THE FIRST TWO.
+// A row's existence says the obligation was named; a positive count says something ran. Neither says
+// the run was ACCEPTED, and `RequiredLensCoverageRow` carries no field that could: it is lens, grain
+// and count. At the door that gap is closed by construction rather than by a check -- a rejected gate
+// returns `outcome_rejected` and no `Validated` is minted, so a `RequiredLensCoverageClosed` the door
+// produced cannot describe a failed lens. At promotion the receipt is submitter-authored, so that
+// construction does not carry: nothing here can distinguish a closed coverage the door minted from
+// one authored beside it, and the count cannot be read as a verdict.
+//
+// What IS separated: the generation. The coverage carries its own `subject` and is joined to the
+// promotion subject through `stale_causes_for`, so a count belonging to a different generation is
+// refused as a stale receipt rather than counted here. What is NOT separated is the ATTEMPT -- no
+// carrier in this module identifies which run produced an observation, so two attempts of the same
+// generation are indistinguishable.
+//
+// EXACTLY-ONE-FOR-ROOT IS NOT THE DOOR'S ALONE, AND AN EARLIER REVISION OF THIS ANNOTATION SAID IT
+// WAS. The door refuses `RootLensObservedMoreThanOnce` because a root lens observed twice means the
+// root roster ran more than once per tree; subtree grain is observed once per node, so its obligation
+// is at-least-one. Deferring the root case to the door repeated the mistake the zero-count arm had
+// just fixed: the receipt is submitter-authored, so no check that ran upstream can be assumed to have
+// run at all. Promotion therefore applies the same per-grain rule the canonical join applies, and
+// refuses a root obligation observed more than once by its own name.
+//
+// NEXT-RUNG TRIGGER, stated rather than left implicit: a per-row observed RESULT and an attempt
+// identity on `RequiredLensCoverageRow`, minted by the door. Until that lands, the honest rung for
+// "the required lenses were satisfied" is the one this fold establishes -- named and executed -- and
+// this annotation exists so the count is not read as more than that.
+//
+// A ROW IS NOT AN EXECUTION, AND THE COUNT IS THE DIFFERENCE. `RequiredLensCoverageRow` carries
+// `observations` because the door's obligation is at-least-one per registration -- it refuses
+// `RegistrationUnobserved` there. An earlier revision of this fold decided coverage by the PRESENCE
+// of a row and dropped the count, which left the hole this module exists to close standing one field
+// further in: the receipt is submitter-authored, so rows naming every required identity at the right
+// grain with `observations: 0`, a roster digest derived from the same material and a material bound
+// to the generation's axis would promote a generation on a roster where no lens ran. Exactly-one for
+// root grain is applied here too, for the same reason the count is read at all.
+//
+// GRAIN IS PART OF THE OBLIGATION, NOT DECORATION, and the earlier revision compared identity alone.
+// A lens registered at SUBTREE grain runs per node; the same identity observed once at ROOT is a
+// different execution, so coverage closed over root registrations would have satisfied a contract
+// requiring subtree ones. That is the `ObservedAtWrongGrain` distinction the compile-side join
+// already draws, and dropping it here meant admitting a generation on evidence of the wrong shape.
+// Covered-at-the-wrong-grain is its own cause rather than folded into not-covered, because the two
+// have different remedies: one lens never ran, the other ran the wrong way.
+fn lens_coverage_uncovered_causes(
+  receipt: Symbol,
+  required: List<CompileLens>,
+  rows: List<RequiredLensCoverageRow>
+) -> List<PromotionRefusalCause> {
+  let index = coverage_observation_index(rows: rows)
+  let observed = index.seen
+  let duplicate_causes = fold_list(
+    xs: index.duplicated,
+    empty: freemonoid_empty(),
+    cons: fn(acc, key) {
+      list_snoc_item(
+        xs: acc,
+        item: RequiredLensCoverageRowDuplicated { receipt: receipt, lens: key }
+      )
+    }
+  )
+  concat_causes(parts: [duplicate_causes, fold_list(
+    xs: required,
+    empty: freemonoid_empty(),
+    cons: fn(acc, reg) {
+      let key = declaration_ref_display_key(ref: reg.identity)
+      match map_lookup(observed, key) {
+        Absent =>
+          list_snoc_item(
+            xs: acc,
+            item: RequiredLensObligationNotCovered { receipt: receipt, lens: key }
+          )
+        Present { value: row } =>
+          if !compile_lens_grain_eq(a: row.grain, b: reg.grain) {
+            list_snoc_item(
+              xs: acc,
+              item: RequiredLensObligationCoveredAtWrongGrain { receipt: receipt, lens: key }
+            )
+          } else {
+            match reg.grain {
+              CompileLensRoot =>
+                if row.observations == 1 {
+                  acc
+                } else {
+                  if row.observations > 1 {
+                    list_snoc_item(
+                      xs: acc,
+                      item: RequiredLensRootObligationObservedMoreThanOnce {
+                        receipt: receipt,
+                        lens: key
+                      }
+                    )
+                  } else {
+                    list_snoc_item(
+                      xs: acc,
+                      item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
+                    )
+                  }
+                }
+              CompileLensSubtree =>
+                if row.observations > 0 {
+                  acc
+                } else {
+                  list_snoc_item(
+                    xs: acc,
+                    item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
+                  )
+                }
+            }
+          }
+      }
+    }
+  )])
+}
+
+// THE FAMILY-SPECIFIC MINT, NOT THE UNION ONE. `Hash` is `Fnv1a64Structural`, and
+// `content_hash_of_value` answers the union carrier `ContentHash`; putting one in the other's slot
+// is the inverse of the carrier wall `content_hash_family_grounding_note` states, and this value
+// reaches `combine_hash` beside a real structural digest in `pre_materialization_digest`.
+fn contract_axis_of_roster_digest(digest: String) -> Hash {
+  content_hash_atom(value: digest as NonEmptyStr)
+}
+
+// THE BINDING, AND IT IS CHECKED AGAINST THE GENERATION RATHER THAN AGAINST THE RECEIPT. The
+// previous revision derived a digest from the submitted registrations and compared it to a digest
+// submitted beside them -- two values from one submitter, which agree by construction however short
+// they are. This compares the derived digest to the `required_lens_contract` axis of the EXPECTED
+// generation, so shortening the material changes the derived digest and no longer matches a contract
+// the submitter does not control.
+//
+// AN UNBOUND MATERIAL IS NOT A COVERAGE COMPLAINT, which is why it is its own cause: the obligations
+// this generation owes are then unknown, and reporting "these were uncovered" over a population that
+// was never established would be answering a question the receipt cannot pose.
+fn lens_contract_binding_cause(
+  receipt: Symbol,
+  derived: String,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  if contract_axis_of_roster_digest(digest: derived) == expected.required_lens_contract {
+    freemonoid_empty()
+  } else {
+    list_snoc_item(
+      xs: freemonoid_empty(),
+      item: RequiredLensContractMaterialUnbound { receipt: receipt, derived: derived }
+    )
+  }
+}
+
+// TWO RELATIONS, AND THE BINDING IS ONLY ONE OF THEM. The material is pinned to the generation's
+// `required_lens_contract` axis, which the submitter does not supply -- that is what stops the
+// obligations from shrinking. It says nothing about WHICH roster the join that produced these rows
+// ran over, and the closed observation states that itself. Holding a roster beside a summary of a
+// different roster with no arm relating them is the rostered class
+// `subject_and_its_digest_as_independent_parameters`; the earlier revision of this branch compared
+// the observed digest to one derived from the same submitted list, which agreed by construction and
+// was correctly deleted. The comparison here is not that one: `derived` is now anchored to the axis,
+// so an observed digest that disagrees with it names a roster the contract does not.
+fn lens_coverage_causes(
+  receipt: Symbol,
+  coverage: GenerationLensCoverage,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let subject_causes = stale_causes_for(
+    receipt: receipt,
+    subject: coverage.subject,
+    expected: expected
+  )
+  let derived = required_lens_roster_digest_of(lenses: coverage.contract_material)
+  let binding = lens_contract_binding_cause(
+    receipt: receipt,
+    derived: derived,
+    expected: expected
+  )
+  if length(xs: binding) > 0 {
+    concat_causes(parts: [subject_causes, binding])
+  } else {
+    concat_causes(parts: [
+      subject_causes,
+      match coverage.observed {
+        RequiredLensCoverageRefused { cause: cause } =>
+          list_snoc_item(
+            xs: lens_coverage_uncovered_causes(
+              receipt: receipt,
+              required: coverage.contract_material,
+              rows: freemonoid_empty()
+            ),
+            item: RequiredLensCoverageNotClosed {
+              receipt: receipt,
+              cause: required_lens_join_cause_reason(cause: cause)
+            }
+          )
+        RequiredLensCoverageClosed { roster_digest: roster_digest, rows: rows } =>
+          concat_causes(parts: [
+            if roster_digest == derived {
+              freemonoid_empty()
+            } else {
+              list_snoc_item(
+                xs: freemonoid_empty(),
+                item: RequiredLensCoverageRanADifferentRoster {
+                  receipt: receipt,
+                  derived: derived,
+                  observed: roster_digest
+                }
+              )
+            },
+            lens_coverage_uncovered_causes(
+              receipt: receipt,
+              required: coverage.contract_material,
+              rows: rows
+            )
+          ])
+      }
+    ])
+  }
+}
+
+fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
+  promotion_refusal_causes_with_seed_corrections(c: c, corrections: freemonoid_empty())
+}
+
+fn promotion_refusal_causes_with_seed_corrections(
+  c: SelfHostCandidate,
+  corrections: List<SeedDefectCorrection>
+) -> List<PromotionRefusalCause> {
+  let candidate_identity = c.candidate.identity
+  let successor_identity = c.successor.identity
+  let seed_identity = c.candidate.produced_by_seed.identity
+  let chain_causes = if length(
+    xs: generation_identity_mismatched_axes(
+      left: candidate_identity,
+      right: c.successor.produced_by_candidate.identity
+    )
+  ) == 0 && length(
+    xs: generation_identity_mismatched_axes(
+      left: c.candidate.produced_by_seed.identity,
+      right: c.successor.produced_by_candidate.produced_by_seed.identity
+    )
+  ) == 0 {
+    freemonoid_empty()
+  } else {
+    [SuccessorNotProducedByCandidate]
+  }
+  let corpus_causes = if behavioral_corpus_agrees(
+    left: c.candidate_equivalence.corpus,
+    right: c.discriminating_fault.corpus
+  ) && behavioral_corpus_agrees(
+    left: c.successor_equivalence.corpus,
+    right: c.discriminating_fault.corpus
+  ) {
+    freemonoid_empty()
+  } else {
+    [CorpusMismatchAcrossReceipts { receipt: ^receipt_discriminating_fault }]
+  }
+  concat_causes(
+    parts: [
+      chain_causes,
+      corpus_causes,
+      artifact_causes(receipt: ^subject_candidate, identity: candidate_identity),
+      artifact_causes(receipt: ^subject_successor, identity: successor_identity),
+      build_receipt_causes(
+        receipt: ^receipt_candidate_build,
+        r: c.candidate_build,
+        expected: candidate_identity
+      ),
+      build_receipt_causes(
+        receipt: ^receipt_successor_build,
+        r: c.successor_build,
+        expected: successor_identity
+      ),
+      equivalence_receipt_causes(
+        receipt: ^receipt_candidate_equivalence,
+        r: c.candidate_equivalence,
+        expected: candidate_identity,
+        expected_oracle: seed_identity,
+        corrections: corrections
+      ),
+      equivalence_receipt_causes(
+        receipt: ^receipt_successor_equivalence,
+        r: c.successor_equivalence,
+        expected: successor_identity,
+        expected_oracle: seed_identity,
+        corrections: corrections
+      ),
+      fault_receipt_causes(r: c.discriminating_fault, expected: candidate_identity),
+      provenance_receipt_causes(
+        receipt: ^receipt_candidate_provenance,
+        r: c.candidate_provenance,
+        expected: candidate_identity,
+        declared_producer: c.candidate.produced_by_seed.identity
+      ),
+      provenance_receipt_causes(
+        receipt: ^receipt_successor_provenance,
+        r: c.successor_provenance,
+        expected: successor_identity,
+        declared_producer: c.successor.produced_by_candidate.identity
+      ),
+      lens_coverage_causes(
+        receipt: ^receipt_candidate_lens_coverage,
+        coverage: c.candidate_lens_coverage,
+        expected: candidate_identity
+      ),
+      lens_coverage_causes(
+        receipt: ^receipt_successor_lens_coverage,
+        coverage: c.successor_lens_coverage,
+        expected: successor_identity
+      )
+    ]
+  )
+}
+
+// Admission is the ABSENCE of every refusal cause, never the presence of a passing
+// flag. Adding a new obligation therefore cannot be forgotten into silence: an
+// unhandled case has no arm that produces Promoted.
+fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
+  admit_promotion_with_seed_corrections(c: c, corrections: freemonoid_empty())
+}
+
+// The seed-defect correction roster is supplied by the caller from its recorded authority, never
+// read off the candidate: a candidate that carried its own dispositions could excuse any
+// divergence it produced.
+fn admit_promotion_with_seed_corrections(
+  c: SelfHostCandidate,
+  corrections: List<SeedDefectCorrection>
+) -> PromotionOutcome {
+  let causes = promotion_refusal_causes_with_seed_corrections(c: c, corrections: corrections)
+  if length(xs: causes) == 0 {
+    Promoted {
+      successor: c.successor,
+      cases_compared: c.candidate_equivalence.cases_compared
+    }
+  } else {
+    PromotionRefused { causes: causes }
+  }
+}
+
+fn promotion_refusal_carries(o: PromotionOutcome, cause: Symbol) -> Bool {
+  match o {
+    Promoted { successor: _, cases_compared: _ } => false
+    PromotionRefused { causes: cs } =>
+      fold_list(
+        xs: cs,
+        empty: false,
+        cons: fn(acc, c) { acc || promotion_refusal_cause_symbol(c: c) == cause }
+      )
+  }
+}
+
+fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
+  match c {
+    StaleReceiptSubject { receipt: _, axis: _ } => ^refusal_stale_receipt_subject
+    ReceiptObservationUnavailable { receipt: _, cause: _ } =>
+      ^refusal_receipt_observation_unavailable
+    BuildNotGreen { receipt: _ } => ^refusal_build_not_green
+    BehaviorDivergedFromOracle { receipt: _, at_case: _ } =>
+      ^refusal_behavior_diverged_from_oracle
+    SeedDefectCorrectionNotObserved { receipt: _, at_case: _ } =>
+      ^refusal_seed_defect_correction_not_observed
+    DivergenceEnumerationEmpty { receipt: _ } => ^refusal_divergence_enumeration_empty
+    DiscriminatingFaultNotCaught { at_case: _ } =>
+      ^refusal_discriminating_fault_not_caught
+    EmptyBehavioralCorpus { receipt: _ } => ^refusal_empty_behavioral_corpus
+    ProvenanceNotDeclaredProducer { receipt: _ } =>
+      ^refusal_provenance_not_declared_producer
+    PromotionArtifactNotMaterialized { receipt: _ } => ^refusal_artifact_not_materialized
+    OracleNotDeclaredSeed { receipt: _ } => ^refusal_oracle_not_declared_seed
+    SuccessorNotProducedByCandidate => ^refusal_successor_not_produced_by_candidate
+    CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts
+    CorpusPopulationMismatch { receipt: _, expected: _, compared: _ } =>
+      ^refusal_corpus_population_mismatch
+    RequiredLensCoverageNotClosed { receipt: _, cause: _ } =>
+      ^refusal_required_lens_coverage_not_closed
+    RequiredLensObligationNotCovered { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_not_covered
+    RequiredLensObligationCoveredAtWrongGrain { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_covered_at_wrong_grain
+    RequiredLensContractMaterialUnbound { receipt: _, derived: _ } =>
+      ^refusal_required_lens_contract_material_unbound
+    RequiredLensCoverageRanADifferentRoster { receipt: _, derived: _, observed: _ } =>
+      ^refusal_required_lens_coverage_ran_a_different_roster
+    RequiredLensCoverageRowDuplicated { receipt: _, lens: _ } =>
+      ^refusal_required_lens_coverage_row_duplicated
+    RequiredLensObligationObservedZeroTimes { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_observed_zero_times
+    RequiredLensRootObligationObservedMoreThanOnce { receipt: _, lens: _ } =>
+      ^refusal_required_lens_root_obligation_observed_more_than_once
+  }
+}
+
+// WHY A STANDING EXISTS BESIDE THE OBSERVATION, and it is the smallest possible change that
+// makes a real defect unrepresentable rather than merely caught.
+//
+// BehavioralComparisonObservation already separates what a run learned from what it did not:
+// three ObservationAvailability values, each either ObservationPresent or ObservationUnavailable carrying a located
+// cause. The transports populate it correctly and have all along. What consumed it was a
+// predicate returning Bool, and in the logic transport that predicate collapsed the payload at
+// THREE sites, each spelled `ObservationUnavailable { cause: _ } => false` -- the cause bound and
+// explicitly discarded. The match is exhaustive over ObservationUnavailable, so there is no
+// missing arm, no warning and nothing incomplete to see: total at the level examined, blind one
+// level down, three times in one function.
+//
+// The test that clause names is whether every cause collapsed shares one remedy. These do not.
+// stage_incomplete means the compile never ran; comparison_unreported means it ran and said
+// nothing; fault_run_did_not_run means the fault arm never executed. Three owners, three repairs,
+// one `false`.
+//
+// MEASURED COST OF THE COLLAPSE (2026-08-26): four wet executions of the logic receipt produced
+// four DIFFERENT causes -- a hermetic route gap, an absent binary, an OOM-killed toolchain, and a
+// whole-corpus memory-budget admission refusal that emitted zero files. Every one rendered as a
+// bare FAIL, and each was diagnosed only by reading a transcript. The located cause was computed
+// correctly every time and discarded one function from the end.
+//
+// So the standing is not new evidence. It is the evidence the observation already carries,
+// surviving to its consumer.
+type BehavioralReceiptStanding
+  = ReceiptHolds
+  | ReceiptBuildUnobserved { cause: Symbol }
+  | ReceiptBuildFailed { cause: Symbol }
+  | ReceiptEquivalenceUnobserved { cause: Symbol }
+  | ReceiptBehaviorDiverges { at_case: String }
+  | ReceiptFaultUnobserved { cause: Symbol }
+  | ReceiptFaultNotCaught { at_case: String }
+
+// THE ORDER OF INTERROGATION IS THE CAUSAL ORDER, not a preference. A build that was never
+// observed makes the equivalence and fault verdicts meaningless rather than false, so reporting
+// an equivalence cause over an unobserved build would name a downstream symptom as the finding.
+fn behavioral_receipt_standing(o: BehavioralComparisonObservation) -> BehavioralReceiptStanding {
+  match o.build {
+    ObservationUnavailable { cause: c } => ReceiptBuildUnobserved { cause: c }
+    ObservationPresent { value: b } =>
+      match b {
+        BuildFailed { cause: c } => ReceiptBuildFailed { cause: c }
+        BuildGreen =>
+          match o.equivalence {
+            ObservationUnavailable { cause: c } => ReceiptEquivalenceUnobserved { cause: c }
+            ObservationPresent { value: e } =>
+              match e {
+                BehaviorDiverges { at_case: a } => ReceiptBehaviorDiverges { at_case: a }
+                BehaviorDivergesExactly { cases: cs } =>
+                  ReceiptBehaviorDiverges {
+                    at_case: fold_list(xs: cs, empty: "", cons: fn(acc, c) { if acc == "" { c } else { acc } })
+                  }
+                BehaviorAgrees =>
+                  match o.fault {
+                    ObservationUnavailable { cause: c } => ReceiptFaultUnobserved { cause: c }
+                    ObservationPresent { value: f } =>
+                      match f {
+                        FaultNotCaught { at_case: a } => ReceiptFaultNotCaught { at_case: a }
+                        FaultCaught => ReceiptHolds
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE Bool SURVIVES because the witness harness's boundary is Bool, and that is a real contract
+// rather than a defect to route around. What changes is that it is DERIVED from the standing at
+// one site instead of hand-matched at three, so a new ObservationUnavailable cause cannot be
+// silently absorbed: it arrives at the standing, and any consumer that wants the reason has one.
+fn behavioral_receipt_standing_holds(s: BehavioralReceiptStanding) -> Bool {
+  match s {
+    ReceiptHolds => true
+    ReceiptBuildUnobserved { cause: _ } => false
+    ReceiptBuildFailed { cause: _ } => false
+    ReceiptEquivalenceUnobserved { cause: _ } => false
+    ReceiptBehaviorDiverges { at_case: _ } => false
+    ReceiptFaultUnobserved { cause: _ } => false
+    ReceiptFaultNotCaught { at_case: _ } => false
+  }
+}
+
+fn behavioral_observation_holds(o: BehavioralComparisonObservation) -> Bool {
+  behavioral_receipt_standing_holds(s: behavioral_receipt_standing(o: o))
+}

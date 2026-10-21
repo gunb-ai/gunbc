@@ -1,0 +1,76 @@
+module gunbc.shell_command_text
+
+import std.types { String, List }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_word_lit,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node, bash_fold_serialize_stmts_semi }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected, None, Some, NonEmptyDiagnostics, diagnostics_reason_lexemes }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+
+// One authority for "an argv this repository intends to run" becoming shell text. The argv is built
+// as a bash grammar tree (v2.extdeps.languages.bash_build) and serialized once, at the
+// foreign-executor edge, by v2.workflow.bash_command_fold_serialize — so word quoting is the
+// serializer's structural job (POSIX single-quote, cited at extdeps.posix.shell_command_language),
+// not an apostrophe an author remembered to type, and an argv element boundary survives into the
+// emitted text. The host-axis cap scripts and the live-deploy operation spellings reached for this
+// construction independently; a second spelling would be the §3 fork.
+data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
+// THE MARKER NAMES WHY THE SERIALIZER REFUSED. A refusal swallowed into a constant marker leaves the
+// operator holding "a command intent was rejected" with no reason, which is a located refusal turned
+// into an unlocated one (DESIGN section 5); the reasons ride behind the marker on its one line.
+fn shell_command_text_refused_with_cause(diagnostics: NonEmptyDiagnostics) -> String {
+  join([shell_command_text_refused_poison, " reasons: ", diagnostics_reason_lexemes(diagnostics: diagnostics)], "")
+}
+
+fn shell_literal_words(words: List<String>) -> List<Node> {
+  map(words, w => bash_build_word_lit(text: w))
+}
+
+fn shell_command_intent(words: List<String>) -> Node {
+  bash_build_command_with_words(words: shell_literal_words(words: words))
+}
+
+// THE TWO ELEVATION TOKENS ARE READ, NOT RESPELLED. This function previously carried its own
+// ["sudo", "-n"] literal pair, which is extdeps.sudo.elevation's calling convention authored a
+// second time -- and a second spelling of one binary is the §3 fork, not a shorthand. sudo_elevate
+// answers WHICH binary and WHICH flag in WHICH position; the delta visible in emitted bytes is that
+// sudo is now named by absolute path, which is the claim elevation.dag's
+// program_spelling_is_an_observation_claim requires of a privilege boundary: a PATH-resolved
+// spelling lets the caller's own PATH decide which binary crosses it.
+fn shell_privileged_command_intent(argv: List<String>) -> Node {
+  shell_command_intent(words: sudo_elevate_argv(command: argv))
+}
+
+fn shell_command_text_of_node(stmt: Node) -> String {
+  match bash_fold_serialize_node(stmt: stmt) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+      }
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+  }
+}
+
+fn shell_command_text_of_stmts(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+      }
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+  }
+}
+
+fn shell_command_text_of_argv(argv: List<String>) -> String {
+  shell_command_text_of_node(stmt: shell_command_intent(words: argv))
+}
+
+fn shell_privileged_command_text_of_argv(argv: List<String>) -> String {
+  shell_command_text_of_node(stmt: shell_privileged_command_intent(argv: argv))
+}

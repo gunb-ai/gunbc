@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.unbound_interpolation_in_service_argv_accepted_until_runtime
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unbound_interpolation_in_service_argv_accepted_until_runtime: RecurringFailureMode = RecurringFailureMode {
+  identity: "unbound_interpolation_in_service_argv_accepted_until_runtime" as NonEmptyStr,
+
+  receipts: [
+    "**an interpolation in a service argv names a variable the operation does not bind, the front end accepts the program, and evaluation refuses on the live path** (INVALID STATE: a transport argv string contains `\{name}` that is not an operation input. The tokenizer treats it as interpolation. Compile and typecheck succeed. The first wet call evaluates the argv and refuses NoSuchVariable. HARM: DESIGN section 4b's floor -- names resolve -- is below baseline here: the miss is silent until hardware, a credential, or a destructive step has already run. DISTINGUISHING FACTS: the spelling is a LITERAL the foreign CLI owns, not a gunbc binding. curl -w `%\{http_code}` is curl's write-out token. jq object literals use `\{key: ...}`. Both are valid argv bytes and invalid interpolations.)",
+
+    "SPECIMEN, found 2026-09-18 on gunbc#11484 boot 14 after operator grant, claim, SOL ActivateHeld, and MegaRAC OpenSession/GetRemoteConfigurations/CloseSession. extdeps.bmc.megarac GetSession argv carried `\\n%\{http_code}`. Evaluation of mtcollins1_boot_wet refused `NoSuchVariable \{ name: \"http_code\" \}`. The session GET is the re-observation that distinguishes a released MegaRAC session from a sentinel CSRF 401; the miss fired after the write path had already succeeded.",
+
+    "PRECEDENT IN THE SAME TREE: extdeps.bmc.openbmc_password_ssh_transport escapes jq braces as a backslash-brace so they are bytes, not interpolations. The repair is that same escape on the curl write-out token so the argv bytes remain curl's percent-brace http_code marker.",
+
+    "ATTAINABLE CEILING: structurally guaranteed on the compile path -- an argv interpolation whose name is not an input of that operation is a resolution miss, which the floor already knows how to refuse. TODAY it is outside that path: accepted source, runtime NoSuchVariable. NEXT-RUNG TRIGGER: refuse at ingest or bind_argv when a `\{name}` in a service argv is not an operation input, with a fixture-authored RED whose argv contains curl's `%\{http_code}` (or a jq `\{key}`) and whose operation declares no such input, plus a positive control that `\{cookie_jar}` still interpolates.",
+
+    "RECOGNITION RULE: a wet diagnostic names a variable that does not appear in the operation's input list, and the argv string contains that name inside braces that a foreign CLI also uses. The tell is that a grep for the CLI token looks correct while the tokenizer has already claimed the braces.",
+  ],
+
+  evidence: [],
+}

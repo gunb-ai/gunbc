@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.a_verification_reads_its_own_label_not_its_output
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_verification_reads_its_own_label_not_its_output: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_verification_reads_its_own_label_not_its_output" as NonEmptyStr,
+
+  receipts: [
+    "**a verification reads its own label, not its output** (a check runs, reports the defect correctly, and the author's OWN adjacent narration asserts the opposite -- and the narration is what gets read. The instrument is innocent at every coordinate: right command, right output, honest exit status. What fails is the sentence the author wrote next to it.",
+
+    "INVALID STATE: a result consumed from author-authored text that sits beside the command's output rather than from the output itself.",
+
+    "IT IS NOT THE EMPTY-EDIT CLASS AND THE DIFFERENCE DECIDES THE REMEDY. In gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success the command genuinely establishes nothing, so the fix is a stronger assertion inside the command. Here the command establishes exactly the right thing and is OVERRULED downstream, so a stronger command buys nothing -- the defect lives in the gap between the output and the reader.",
+
+    "SPECIMEN, 2026-09-14, gunbc#11182, merging main into an adopted branch. The sweep `grep -rln '^<<<<<<< ' dag/ src/` printed TEN FILES carrying live conflict markers, and the next line of the same command block was `echo \"(no markers above)\"`. The ten-file list and the three-word denial rendered adjacently; the denial was read. The identical structure repeated in the SAME command block: `git diff --name-only --diff-filter=U` printed ten unmerged paths under `echo \"(no unmerged)\"`. Both commits were made and pushed. Repaired at 30771e76cda; the pushed head was then verified marker-free by reading the files back from origin rather than from the local copy.",
+
+    "WHY IT SURVIVES REVIEW AND SELF-REVIEW: the label is written BEFORE the command runs, when its claim is a prediction the author believes. It is therefore always plausible, always adjacent, and always in the author's own voice -- three properties that make it read as a summary of the output rather than a competing claim about it. A reviewer scanning a transcript sees a check and a conclusion side by side and has no reason to re-derive the conclusion.",
+
+    "THE DISCRIMINATOR IS TO EMIT THE MEASUREMENT, NEVER A SENTENCE ABOUT IT: print `markers: $(... | wc -l)` and `unmerged: $(... | wc -l)` so the number IS the report and no author-authored text stands between the command and the answer. A label may annotate a number; it may never stand in for one. The same discipline kills the adjacent shape where a status line follows a pipe and reports the last stage rather than the stage under test.",
+
+    "AND THE LABEL MUST NOT ENCODE THE EXPECTED VALUE. `echo \"(0 = clean)\"` beside a result of 8 is this class in miniature: the reader's eye takes the parenthetical as the finding. Where an expectation is worth stating, state it as an ASSERTION that refuses -- a check that compares against the expected value and exits nonzero -- rather than as prose that cannot.",
+
+    "RUNG FOUND AT: mitigatable, and only by author discipline, which is the same standing this class's own specimen shows to be unreliable -- the author who wrote the count-not-sentence rule violated it twice in one command block an hour later, and separately mis-measured a roster by counting a struct DEFINITION alongside its rows, which gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success had already documented in those words.",
+
+    "CEILING: mechanically preventable. A transcript is an ordinary artifact and the class is decidable over it: a lens can refuse a command block in which a literal echo of a verdict word -- none, clean, no, ok, zero -- immediately follows a command whose stdout is not consumed by a comparison.",
+
+    "NEXT-RUNG TRIGGER: a session-transcript lens that reads command blocks and refuses a verdict-word echo adjacent to an unconsumed command output, so the substitution is caught at authoring rather than at the next reader. An author remembering to print counts does NOT retire this row; that is precisely the state the specimen was in.)",
+  ],
+
+  evidence: [
+    decl_ref(
+      module_path: "gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success",
+      decl_name: "edit_pass_that_matched_nothing_reports_success",
+    ),
+  ],
+}

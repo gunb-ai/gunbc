@@ -1,0 +1,283 @@
+module gunbc.bmc.bmc_onboarding
+
+import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
+import std.credentials { FactoryLogin }
+import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
+import std.types { NonEmptyStr, Int, List }
+import std.logic { Bool }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, AccountRoleAdministrator }
+import gunbc.auth.access_token_source { AccessEnsurePlan }
+import extdeps.bmc.openbmc { openbmc_factory_login }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13 }
+import product.host_identity { HostIdentity }
+
+// QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
+// FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
+// SYNTHETIC progression: the pure functions below advance it to steady state
+// without consuming any receipt producer. It is retained as legacy vocabulary
+// and is explicitly NON-AUTHORITATIVE for machine intake. Standing conditions:
+// no new producer or consumer may be added to BmcOnboardingPhase; no
+// BmcOnboardingPhase, BmcLifecycleState or FabricJoined value may construct an
+// IntakePhaseStanding, an intake receipt, a disposition or a fleet admission
+// (test.claim.bmc.bmc_onboarding_quarantine_witness derives both populations
+// from the parse-only declaration census and requires each empty: consumers of
+// this module's names under gunbc.machine_intake_*, and declarations in the
+// intake and bmc pools whose atoms bridge this module's names to a
+// gunbc.machine_intake_* name at field-type or top-level-expression grain; its
+// authored RED is dag/test/fixture/onboarding_quarantine); the split of this module's BMC-security,
+// OS-provisioning and fabric-join content into the three intake transactions
+// (gunbc.machine_intake.phase) must land before the effectful intake executor
+// or before any live producer for BmcSecure, OsInstalled or
+// ServiceRuntimeAdmitted; and that migration terminates by DELETING this
+// lifecycle after its consumers move, never by keeping it as a second lifecycle
+// beside the three transactions.
+type BmcOnboardingPhase =
+    FactoryDefault
+  | CredentialsRotated
+  | OsInstalled
+  | FabricJoined
+
+fn bmc_onboarding_next_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
+  match phase {
+    FactoryDefault => Present { value: CredentialsRotated }
+    CredentialsRotated => Present { value: OsInstalled }
+    OsInstalled => Present { value: FabricJoined }
+    FabricJoined => Absent
+  }
+}
+
+fn bmc_phase_chain_from(
+  phase: BmcOnboardingPhase,
+  acc: List<BmcOnboardingPhase>
+) -> List<BmcOnboardingPhase> {
+  let acc2 = acc |> list_push(phase)
+  match bmc_onboarding_next_phase(phase: phase) {
+    Present { value: nxt } => bmc_phase_chain_from(phase: nxt, acc: acc2)
+    Absent => acc2
+  }
+}
+
+data bmc_onboarding_phase_order: List<BmcOnboardingPhase> = bmc_phase_chain_from(phase: FactoryDefault, acc: [])
+
+type BmcCredentialPosture =
+    FactoryPublished
+  | RotatedSecretManaged
+  | KeylessFederated
+
+fn bmc_phase_credential_posture(phase: BmcOnboardingPhase) -> BmcCredentialPosture {
+  match phase {
+    FactoryDefault => FactoryPublished
+    CredentialsRotated => RotatedSecretManaged
+    OsInstalled => RotatedSecretManaged
+    FabricJoined => KeylessFederated
+  }
+}
+
+data bmc_posture_hardening_order: List<BmcCredentialPosture> = [
+  FactoryPublished,
+  RotatedSecretManaged,
+  KeylessFederated
+]
+
+fn bmc_credential_lifecycle() -> List<BmcCredentialPosture> {
+  fold(
+    bmc_onboarding_phase_order,
+    init: [],
+    f: (acc, ph) => acc |> list_push(bmc_phase_credential_posture(phase: ph))
+  )
+}
+
+type BmcPostureDedup {
+  out: List<BmcCredentialPosture>
+  last: BmcCredentialPosture?
+}
+
+fn bmc_distinct_postures(postures: List<BmcCredentialPosture>) -> List<BmcCredentialPosture> {
+  fold(
+    postures,
+    init: BmcPostureDedup { out: [], last: Absent },
+    f: (acc, p) => match acc.last {
+      Absent => BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } }
+      Present { value: lp } =>
+        if (lp == p) { acc } else { BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } } }
+    }
+  ).out
+}
+
+fn bmc_lifecycle_is_monotone_hardening() -> Bool {
+  bmc_distinct_postures(postures: bmc_credential_lifecycle()) == bmc_posture_hardening_order
+}
+
+fn bmc_lifecycle_length() -> Int {
+  bmc_onboarding_phase_order.length()
+}
+
+fn bmc_onboarding_prev_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
+  match phase {
+    FactoryDefault => Absent
+    CredentialsRotated => Present { value: FactoryDefault }
+    OsInstalled => Present { value: CredentialsRotated }
+    FabricJoined => Present { value: OsInstalled }
+  }
+}
+
+fn bmc_onboard_to_steady(phase: BmcOnboardingPhase) -> BmcOnboardingPhase {
+  match bmc_onboarding_next_phase(phase: phase) {
+    Present { value: nxt } => bmc_onboard_to_steady(phase: nxt)
+    Absent => phase
+  }
+}
+
+fn bmc_decom_to_factory(phase: BmcOnboardingPhase) -> BmcOnboardingPhase {
+  match bmc_onboarding_prev_phase(phase: phase) {
+    Present { value: prv } => bmc_decom_to_factory(phase: prv)
+    Absent => phase
+  }
+}
+
+type BmcLifecycleState {
+  phase: BmcOnboardingPhase
+  credential: BmcCredentialPosture
+  secret_epoch: Int
+  boot_cleared: Bool
+}
+
+fn bmc_factory_state() -> BmcLifecycleState {
+  BmcLifecycleState {
+    phase: FactoryDefault,
+    credential: FactoryPublished,
+    secret_epoch: 0,
+    boot_cleared: true
+  }
+}
+
+fn bmc_install_step(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_next_phase(phase: s.phase) {
+    Present { value: nxt } => BmcLifecycleState {
+      phase: nxt,
+      credential: bmc_phase_credential_posture(phase: nxt),
+      secret_epoch: if (nxt == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (nxt == OsInstalled) { false } else { s.boot_cleared }
+    }
+    Absent => s
+  }
+}
+
+fn bmc_decom_step(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: prv } => BmcLifecycleState {
+      phase: prv,
+      credential: bmc_phase_credential_posture(phase: prv),
+      secret_epoch: if (s.phase == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (s.phase == OsInstalled) { true } else { s.boot_cleared }
+    }
+    Absent => s
+  }
+}
+
+type BmcRecoverableInvariant {
+  phase: BmcOnboardingPhase
+  boot_cleared: Bool
+}
+
+fn bmc_recoverable_quotient(s: BmcLifecycleState) -> BmcRecoverableInvariant {
+  BmcRecoverableInvariant {
+    phase: s.phase,
+    boot_cleared: s.boot_cleared
+  }
+}
+
+fn bmc_transition_roundtrips_on_quotient(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_recoverable_quotient(s: bmc_decom_step(s: bmc_install_step(s: s)))
+  let original = bmc_recoverable_quotient(s: s)
+  recovered == original
+}
+
+fn bmc_full_state_is_lossy_after_roundtrip(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_decom_step(s: bmc_install_step(s: s))
+  !(recovered == s)
+}
+
+fn bmc_onboard_to_steady_state(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_next_phase(phase: s.phase) {
+    Present { value: _ } => bmc_onboard_to_steady_state(s: bmc_install_step(s: s))
+    Absent => s
+  }
+}
+
+fn bmc_decom_to_factory_state(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: _ } => bmc_decom_to_factory_state(s: bmc_decom_step(s: s))
+    Absent => s
+  }
+}
+
+type BmcOnboardingPlan {
+  host: HostIdentity
+  bmc: BmcEndpoint
+  redfish_system_id: NonEmptyStr
+  factory_login: FactoryLogin
+  secret_name: NonEmptyStr
+  rotated_account_role: RedfishAccountRole
+  start_phase: BmcOnboardingPhase
+}
+
+fn bmc_plan_steady_state_phase(plan: BmcOnboardingPlan) -> BmcOnboardingPhase {
+  bmc_onboard_to_steady(phase: plan.start_phase)
+}
+
+fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPosture {
+  bmc_phase_credential_posture(phase: bmc_plan_steady_state_phase(plan: plan))
+}
+
+// ONE HOST CARRIER, EVERY NAME DERIVED FROM IT. The plan carries the fleet host identity beside its
+// BMC endpoint, and the custody secret name is derived from that identity rather than typed next to
+// it, so no caller can pair one host's secret with another host's BMC (review 67867). Both inputs
+// come from the fleet authorities: the identity from gunbc.fleet.fleet_intent_network, the endpoint from
+// that host's gunbc.fleet.fleet_intent baseboard.
+fn altra_onboarding_plan(host: HostIdentity, bmc_host: NonEmptyStr) -> BmcOnboardingPlan {
+  BmcOnboardingPlan {
+    host: host,
+    bmc: BmcEndpoint { host: bmc_host, protocol: Redfish },
+    redfish_system_id: asrock_altrad8ud_redfish_system_id,
+    factory_login: openbmc_factory_login,
+    secret_name: concat("bmc-", host as String, "-admin") as NonEmptyStr,
+    rotated_account_role: AccountRoleAdministrator,
+    start_phase: FactoryDefault,
+  }
+}
+
+data srv3_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv3, bmc_host: srv3_baseboard.bmc.host)
+
+data srv4_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv4, bmc_host: srv4_baseboard.bmc.host)
+
+data srv13_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv13, bmc_host: srv13_baseboard.bmc.host)
+
+// srv1 AND srv2 JOIN THE LIFECYCLE srv3 AND srv4 WENT THROUGH, with their BMC endpoints read from the
+// fleet intent rather than retyped. They do NOT start from the factory credential: both were brought
+// up by hand on an operator-chosen root password (operator, 2026-09-18), and the one factory probe
+// against srv1 was refused (401). Their route in is therefore gunbc.tools.bmc_onboard
+// bmc_takeover_credential, which rotates from an operator-supplied current password; the
+// OpenBMC factory login below still names the ACCOUNT the rotation acts on, which is root on both.
+data srv1_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv1, bmc_host: srv1_baseboard.bmc.host)
+
+data srv2_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv2, bmc_host: srv2_baseboard.bmc.host)
+
+type BmcCredentialProbeResult
+  = FactoryCredentialActive
+  | RotatedCredentialActive
+  | CredentialAccessUpsertRequired { plan: AccessEnsurePlan }
+  | CredentialEnsureRefused { reason: NonEmptyStr }
+  | CredentialStateUnknown { reason: String }
+
+fn bmc_credential_probe_to_phase(probe: BmcCredentialProbeResult) -> BmcOnboardingPhase? {
+  match probe {
+    FactoryCredentialActive => Present { value: FactoryDefault }
+    RotatedCredentialActive => Present { value: CredentialsRotated }
+    CredentialAccessUpsertRequired { plan: _ } => Absent
+    CredentialEnsureRefused { reason: _ } => Absent
+    CredentialStateUnknown { reason: _ } => Absent
+  }
+}

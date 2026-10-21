@@ -1,0 +1,77 @@
+# gunbc .gitattributes — generated from dag/gunbc/gitattributes_emit.dag — do not hand-edit.
+# Authority: docs/plans/generated-file-conflict-policy.md (lane 2).
+
+# Presentation policy — linguist classification is independent of merge/integration policy.
+**/*.dag linguist-language=Rust
+
+# Integration policy — deterministic generated projections: provisional ours during merge,
+# then regenerate from merged authorities before commit (charter four-case policy row 1).
+# ROW ORDER IS LOAD-BEARING: the last matching line wins, so the stage0 unset rows must
+# follow the stage0 glob. Transposed, they are inert and a hand-maintained file silently
+# acquires the driver.
+
+.cargo/config.toml merge=generated-artifact
+.gitattributes merge=generated-artifact
+.githooks/generated-artifact-merge merge=generated-artifact
+.githooks/pre-commit merge=generated-artifact
+.githooks/pre-push merge=generated-artifact
+.github/workflows/branch-run-grant-broker.yml merge=generated-artifact
+.github/workflows/drift-watch.yml merge=generated-artifact
+.github/workflows/fleet-converge.yml merge=generated-artifact
+.github/workflows/heal-publish.yml merge=generated-artifact
+.github/workflows/heal.yml merge=generated-artifact
+.github/workflows/instrument-dispatch.yml merge=generated-artifact
+.github/workflows/microvm-shakedown.yml merge=generated-artifact
+.github/workflows/witnesses.yml merge=generated-artifact
+.gitignore merge=generated-artifact
+DESIGN.md merge=generated-artifact
+apps/approve-ios/Approve/EnrolmentMachine.swift merge=generated-artifact
+apps/approve-ios/Approve/Protocol.swift merge=generated-artifact
+apps/approve-ios/Approve/Wire.swift merge=generated-artifact
+apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift merge=generated-artifact
+apps/approve-ios/ApproveTests/ProtocolVectorTests.swift merge=generated-artifact
+apps/approve-ios/project.yml merge=generated-artifact
+dag/gunbc/stage0/stage0_crate_layout_generated.dag merge=generated-artifact
+dag/gunbc/stage0/stage0_crate_partition_generated.dag merge=generated-artifact
+dag/gunbc/stage0/stage0_executable_assembly_generated.dag merge=generated-artifact
+dag/test/fixture/approval_device_redemption/vectors.json merge=generated-artifact
+provisioning/srv1/gunbc-ghrunner.sudoers merge=generated-artifact
+provisioning/srv2/gunbc-ghrunner.sudoers merge=generated-artifact
+provisioning/srv3/gunbc-ghrunner.sudoers merge=generated-artifact
+provisioning/srv4/gunbc-ghrunner.sudoers merge=generated-artifact
+src/v1/stage0/linked_partition_crates.generated.txt merge=generated-artifact
+src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs merge=generated-artifact
+src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
+src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
+src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
+src/v1/stage0/src/native_route_seed_boundary_generated.rs merge=generated-artifact
+src/v1/stage0/src/release_locus_seed_constants_generated.rs merge=generated-artifact
+src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
+tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact
+tools/whole_corpus_compile_measured_root_demands.json merge=generated-artifact
+src/v1/stage0/src/*.rs merge=generated-artifact
+src/v1/stage0/Cargo.toml merge=generated-artifact
+src/v1/stage0/src/behavioral_receipt_host.rs !merge
+src/v1/stage0/src/bounded_shell_host_drain.rs !merge
+src/v1/stage0/src/cli_run.rs !merge
+src/v1/stage0/src/closure_identity.rs !merge
+src/v1/stage0/src/codex_app_server_stdio_session.rs !merge
+src/v1/stage0/src/coproduct_reflection.rs !merge
+src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs !merge
+src/v1/stage0/src/data_initializer_identity.rs !merge
+src/v1/stage0/src/declaration_index.rs !merge
+src/v1/stage0/src/emitted_closure_compile_host.rs !merge
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
+src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
+src/v1/stage0/src/main.rs !merge
+src/v1/stage0/src/memory_governor.rs !merge
+src/v1/stage0/src/namespace_baseline.rs !merge
+src/v1/stage0/src/partition_crate_boundary_host.rs !merge
+src/v1/stage0/src/phase_profile.rs !merge
+src/v1/stage0/src/pre_push.rs !merge
+src/v1/stage0/src/process_group.rs !merge
+src/v1/stage0/src/recorded_fixture.rs !merge
+src/v1/stage0/src/required_regen_host.rs !merge
+src/v1/stage0/src/std_logic.rs !merge
+src/v1/stage0/src/target_invocation_host.rs !merge
+src/v1/stage0/src/v1_interpreter.rs !merge

@@ -1,0 +1,45 @@
+module gunbc.rung_drop.renderer_hop_structural_arm_undiscriminated
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// WHAT WAS LOST. v1.compiler.compiler_tests_rust ct_renderer_hop_identity_keying_test's PAIR 1 held
+// the renderer hop's structural arm (v1.compiler.emit_rust provenance_declares_structurally) against
+// its checkpoint arm with one discriminating subject: v2.std.logic Bool, a structurally-declared
+// carrier whose dag spelling ("Bool") differs from its checkpoint spelling ("bool"). The Bool de-fork
+// (gunbc#12583) deleted that declaration, so the structural half was retired as dissolution and its
+// .dag twin (table_present_bool_refuses_under_structural_declaration_logic) went with it.
+//
+// WHY NO REPLACEMENT CONTROL. Every surviving row of v1.compiler.coercion
+// structural_declaration_modules_for is non-discriminating at this hop: Hash answers Unrealized on
+// both arms (the vacuity that module records) and String renders "String" on both (the MEASURED
+// VACUITY row of the same test). The roster is a fixed match over corpus paths, so no fixture can
+// supply a structural declaration to it either. A pair over either surviving row would be green by
+// construction -- a decoration, not a control (DESIGN section 4b).
+//
+// The previous rung is the mechanism's rung, not the lane's: the unit test that carried PAIR 1 runs
+// on no merge path under gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row does not
+// restate and does not depend on.
+
+data renderer_hop_structural_arm_undiscriminated: RungDrop = RungDrop {
+  identity: "renderer_hop_structural_arm_undiscriminated" as NonEmptyStr,
+
+  subject: "the renderer hop's structural arm (v1.compiler.emit_rust provenance_declares_structurally): a reference resolving to a structurally-declared carrier must render its dag spelling, never the checkpoint row's host spelling, and no executing pair now distinguishes the two arms",
+
+  declared: "2026-10-05",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "v2.std.logic Bool, the one structural declaration whose spelling differed from its checkpoint row, deleted by the Bool de-fork (gunbc#12583)" },
+    population: [
+      "v1.compiler.compiler_tests_rust ct_renderer_hop_identity_keying_test renderer_hop_decides_realization_from_declaration_identity_without_an_env PAIR 1 (structural half)",
+      "v1.tests.claim.checkpoint_identity_keying_witness_test table_present_bool_refuses_under_structural_declaration_logic",
+      "every reference the renderer hop routes through provenance_declares_structurally: the Hash and String rows of v1.compiler.coercion structural_declaration_modules_for and any row added to it",
+    ],
+    restoration_trigger: "THE CAPABILITY: the renderer hop's structural arm is discriminated by an executing pair -- a structurally-declared carrier the gate admits whose structural rendering differs from its checkpoint spelling, asserted on both arms by an enrolled claim that goes red when the hop answers from the checkpoint row. SUFFICIENT FOR: deleting the structural arm (or routing it through the checkpoint arm) to turn a control red. It may come from a corpus row or from a fixture-supplied declaration once structural admission is keyed by declaration identity rather than the path roster. Nothing smaller retires this row: not a pair over Hash or String while both arms answer alike, not re-adding a row to structural_declaration_modules_for without that pair, and not the rust unit tests returning to a merge path.",
+  }
+}

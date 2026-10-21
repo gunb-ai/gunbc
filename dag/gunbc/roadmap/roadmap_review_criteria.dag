@@ -1,0 +1,186 @@
+module gunbc.roadmap.roadmap_review_criteria
+
+import std.types { String, Bool, List }
+import std.syllogism { Proposition }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_domain_homes }
+
+// ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
+// change good" is one judgment over every concern at once, and its verdict cannot say which concern
+// it failed; a review that asks one question can. So each criterion here is one checkable question
+// derived from one proposition of the modeled design argument (gunbc.design_argument), grounded by
+// that proposition's id -- a criterion naming a proposition the argument does not carry is a witness
+// failure, not prose drift -- and the belt spawns one reviewer per criterion. Their verdicts are
+// reconciled in gunbc.roadmap.roadmap_review_role (operator, 2026-09-05: break the reviews down as
+// small as possible, each design axiom as a modeled input; the reviews may conflict and get sorted
+// out there).
+//
+// THE GOAL QUESTION IS NOT HERE. "Does the change do what the node asked" is the goal audit's whole
+// question (gunbc.roadmap.roadmap_goal_audit_role), asked by a role that is never shown the worker's
+// brief; asking it here as well would be two authorities for one judgment. The review roster is the
+// design's criteria only. GroundedOnTheNodeContract stays in the vocabulary for a criterion that
+// genuinely reads the contract rather than the goal, and is currently uninhabited.
+type ReviewCriterionGround
+  = GroundedOnTheNodeContract
+  | GroundedOnDesignProposition { proposition_id: String }
+
+type ReviewCriterion sole_constructor {
+  key: String
+  ground: ReviewCriterionGround
+  question: String
+  tells: List<String>
+  answer: ReviewAnswerAlgebra
+  homes: List<DeclarationRef>
+}
+
+// THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per review PART of every design row that is
+// reviewable on a change (gunbc.design_argument DesignRow.review), keyed by the part's own name. There
+// is no second list to keep in step with DESIGN: a criterion is added, changed or retired by editing
+// the proposition's own row in the design argument, and a proposition that mints no reviewer says why.
+//
+// CONSTRUCTION IS SOLE-MINTED: ReviewCriterion values are created only through these construction
+// functions. defect_criterion mints homes: [] with YesIsADefect; conformance_criterion_from_domain
+// copies flattened domain homes. A generic record still permits other combinations; the mints are
+// the admitted path, not a type-system wall on empty FreeSemigroup literals.
+
+fn defect_criterion(part: String, question: String, tells: List<String>, proposition_id: String) -> ReviewCriterion {
+  ReviewCriterion {
+    key: part,
+    ground: GroundedOnDesignProposition { proposition_id: proposition_id },
+    question: question,
+    tells: tells,
+    answer: YesIsADefect,
+    homes: [],
+  }
+}
+
+fn conformance_criterion_from_domain(domain: ConformanceDomain, proposition_id: String) -> ReviewCriterion {
+  ReviewCriterion {
+    key: domain.key,
+    ground: GroundedOnDesignProposition { proposition_id: proposition_id },
+    question: domain.question,
+    tells: domain.tells,
+    answer: ConformanceThreeValued,
+    homes: conformance_domain_homes(d: domain),
+  }
+}
+
+data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r.review {
+  ReviewableOnChange { parts } => map(parts, part => match part {
+    DefectReview { part: p, question, tells } => defect_criterion(part: p, question: question, tells: tells, proposition_id: r.proposition.id)
+    ConformanceReview { domain } => conformance_criterion_from_domain(domain: domain, proposition_id: r.proposition.id)
+  })
+  NotReviewableOnChange { reason: _ } => []
+})
+
+fn review_criterion_proposition_ids() -> List<String> {
+  fold(review_criteria, init: [], f: (acc, c) => match c.ground {
+    GroundedOnTheNodeContract => acc
+    GroundedOnDesignProposition { proposition_id } => concat(acc, [proposition_id])
+  })
+}
+
+// Every design-grounded criterion names a proposition the argument actually carries. This is the
+// entailment the roster claims, checked against the argument rather than asserted beside it.
+fn review_criteria_grounded_in_the_argument() -> Bool {
+  all(review_criterion_proposition_ids(), id => any(design_propositions, p => p.id == id))
+}
+
+// IDENTITIES ARE UNIQUE; THAT IS ALL THIS PROVES. No two criteria share a key, so every verdict names
+// one criterion and the plan's calls are a set. It does NOT prove the questions are semantically
+// disjoint (review 5125854144: distinct ids are not a partition proof; several questions visibly
+// overlap on literals, duplicated types and parallel paths). Semantic exclusivity would need a closed
+// concern vocabulary each finding is tagged with; until then two criteria may legitimately report the
+// same defect from two perspectives, and the worker feedback groups by file for presentation only.
+fn review_criterion_identities_are_unique() -> Bool {
+  let keys = review_criterion_keys()
+  count(keys) == count(distinct_strings(xs: keys))
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold(xs, init: [], f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
+}
+
+fn review_criterion_keys() -> List<String> {
+  map(review_criteria, c => c.key)
+}
+
+fn review_criterion_by_key(key: String) -> ReviewCriterion? {
+  (filter(review_criteria, c => c.key == key)).first()
+}
+
+fn review_criterion_ground_text(g: ReviewCriterionGround) -> String {
+  match g {
+    GroundedOnTheNodeContract => "the node's own contract"
+    GroundedOnDesignProposition { proposition_id } => join(["DESIGN proposition ", proposition_id], "")
+  }
+}
+
+fn review_home_text(h: DeclarationRef) -> String {
+  declaration_ref_display_key(ref: h)
+}
+
+// A CONFORMANCE CRITERION NAMES WHAT TO CONFORM TO. The reviewer is handed the home declarations of
+// its domain (DESIGN section 3b) so it reads one diff against one named interface, not the corpus.
+// HOMES NONEMPTINESS IS NOT YET A TYPE-SYSTEM WALL. Missing `head` on a FreeSemigroup construction
+// is refused (MissingField / head). An empty-literal (`[]` / Empty) at a FreeSemigroup position is
+// still silently accepted; that inhabitance seam is gunbc.recurring_failure_mode
+// a_possibly_empty_producer_enters_a_nonempty_consumer, next-rung trigger cardinality-vertical-slice
+// (being fixed by jolly-otter-220). DefectReview still carries no homes; ConformanceReview still
+// carries a domain whose authored rows use nonempty construction. Those are mint and roster facts,
+// not "an invalid combination cannot be constructed."
+fn review_criterion_homes_text(c: ReviewCriterion) -> String {
+  if count(c.homes) == 0 { "" } else {
+    join(["Home authorities the change must inhabit or name its departure from: ", join(map(c.homes, h => review_home_text(h: h)), "; "), "\n"], "")
+  }
+}
+
+// THE CRITERION'S IDENTITY FOR THE PLAN REVISION: every field a reviewer's brief or verdict reading
+// depends on. Homes and the answer algebra change what a verdict MEANS, so a revision that hashed only
+// key, question and tells would let an approval produced under old homes or yes/no semantics be reused
+// for a call whose meaning had moved (review on gunbc#10679).
+fn review_answer_key(a: ReviewAnswerAlgebra) -> String {
+  match a {
+    YesIsADefect => "yes-is-a-defect"
+    ConformanceThreeValued => "conformance-three-valued"
+  }
+}
+
+fn review_criterion_identity_text(c: ReviewCriterion) -> String {
+  join([c.key, "|", c.question, "|", join(c.tells, "|"), "|", review_answer_key(a: c.answer), "|", join(map(c.homes, h => review_home_text(h: h)), "|")], "")
+}
+
+fn review_criterion_tells_heading(a: ReviewAnswerAlgebra) -> String {
+  match a {
+    YesIsADefect => "Tells that the answer is yes:\n"
+    ConformanceThreeValued => "Tells that the change diverges:\n"
+  }
+}
+
+fn review_criterion_brief_text(c: ReviewCriterion) -> String {
+  join([
+    "Criterion (", c.key, ", grounded on ", review_criterion_ground_text(g: c.ground), "): ", c.question, "\n",
+    review_criterion_homes_text(c: c),
+    review_criterion_tells_heading(a: c.answer),
+    join(map(c.tells, t => join(["  - ", t], "")), "\n"),
+    "\n",
+  ], "")
+}
+
+// EVERY CONFORMANCE CRITERION NAMES AT LEAST ONE HOME, AND NO YES/NO CRITERION NAMES ANY: a home is
+// what a three-valued answer is measured against, so a conformance row without one has nothing to
+// conform to, and a yes/no row with one would be a conformance question wearing the wrong algebra.
+// THIS WITNESS READS THE DERIVED ROSTER, not a construction wall. It returns true when every
+// minted criterion currently matches:
+//   defect_criterion  → homes: [], answer: YesIsADefect
+//   conformance_criterion_from_domain → homes: nonempty flattened list from the domain, answer: ConformanceThreeValued
+// It does not prove empty homes are unwritable. Missing-head FreeSemigroup construction is refused;
+// empty-literal admission at a FreeSemigroup position is not (a_possibly_empty_producer_enters_a_nonempty_consumer;
+// next-rung trigger cardinality-vertical-slice). A domain authored with homes: [] would still be a
+// red of this fold if flattening yielded zero homes — a roster check, not a type-system guarantee.
+fn review_criteria_homes_match_their_algebra() -> Bool {
+  all(review_criteria, c => match c.answer {
+    YesIsADefect => count(c.homes) == 0
+    ConformanceThreeValued => count(c.homes) > 0
+  })
+}

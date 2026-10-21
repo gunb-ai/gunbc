@@ -1,0 +1,2 @@
+IPMI command failed: Destination unavailable
+Unable to Get Channel Info
