@@ -1859,7 +1859,7 @@ mod compiler_tests {
                 shared.clone(),
                 "FreeMonoid".to_string(),
                 index,
-                std::rc::Rc::new(Vec::new()),
+                std::rc::Rc::new(Vec::new().into()),
             )
         };
         assert!(
