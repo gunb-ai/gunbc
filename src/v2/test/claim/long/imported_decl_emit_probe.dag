@@ -251,7 +251,7 @@ fn probe_facts_tag(tree: InferredTree, node: Node) -> String {
     Present { value: facts } =>
       match facts.grounding {
         DerivedGrounding { grounding: _ } => "derived"
-        GroundingNotDerived { node: _ } => "not-derived"
+        GroundingNotDerived { node: _, site: _ } => "not-derived"
       }
   }
 }

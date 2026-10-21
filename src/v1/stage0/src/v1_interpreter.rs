@@ -9940,7 +9940,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -15425,7 +15425,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]

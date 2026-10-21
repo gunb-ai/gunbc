@@ -1,5 +1,7 @@
 module gunbc.file_access
 
+import std.host_text { chars }
+
 
 type FileTreeScope {
   root_path: NonEmptyStr
@@ -37,7 +39,7 @@ fn path_has_dotdot_segment(path: String) -> Bool {
 // expression at the call site, and neither is a second derivation of the prefixes.
 fn path_ancestor_prefixes(path: String) -> List<String> {
   map(
-    filter(enumerate(chars(s: path)), pair => pair.second == 47 && pair.first > 0),
+    filter(enumerate(chars(text: path)), pair => pair.second == 47 && pair.first > 0),
     pair => substring(s: path, start: 0, end: pair.first),
   )
 }

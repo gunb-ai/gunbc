@@ -7,7 +7,7 @@ import gunbc.rung_drop { TypedDeclaration, AuthoredProse }
 import std.algebra { fold_list, length, list_head, list_map }
 import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
   ArgvMaterializationRefused,
