@@ -258,6 +258,49 @@ type LogicGateSpecification {
   pins: List<GatePin>
 }
 
+// A PROGRAMMABLE-LOGIC DEVICE, BY WHAT DECIDES WHETHER IT IS DOING ANYTHING. Its function is whatever
+// configuration it holds, which this row cannot carry; what it carries is how that configuration
+// arrives (volatile parts load it at every power-up over one of the declared schemes), the signals that
+// request and report configuration, and what its user pins do before it is configured. A device whose
+// user pins are weak pull-ups until CONF_DONE drives nothing on a board until that signal says so.
+type ConfigurationMemory
+  = VolatileConfiguration
+  | NonVolatileConfiguration
+
+type ConfigurationScheme
+  = ActiveSerial { data_lanes: Nat, flash_family: NonEmptyStr }
+  | AvalonStreaming
+  | JtagDownload
+
+type ConfigurationSignalRole
+  = ConfigurationRequest
+  | ConfigurationStatus
+  | ConfigurationDone
+  | InitializationDone
+  | ModeSelect
+
+type ConfigurationSignal {
+  name: NonEmptyStr
+  role: ConfigurationSignalRole
+}
+
+type UnconfiguredIoState
+  = WeakPullUp
+  | HighImpedance
+
+type ProgrammableLogicSpecification {
+  logic_elements: Nat
+  memory: ConfigurationMemory
+  schemes: List<ConfigurationScheme>
+  signals: List<ConfigurationSignal>
+  io_before_configuration: UnconfiguredIoState
+}
+
+// The signal that reports a completed configuration, if the row names one.
+fn configuration_done_signal(spec: ProgrammableLogicSpecification) -> ConfigurationSignal? {
+  (filter(spec.signals, s => match s.role { ConfigurationDone => true, _ => false })).first()
+}
+
 type GatePinStanding
   = GateInputPin { pin: GatePin }
   | GateOutputPin { pin: GatePin }
@@ -335,6 +378,7 @@ type ComponentSpecification
   | ShiftRegisterSpec { register: ShiftRegisterSpecification }
   | LevelTranslatorSpec { translator: LevelTranslatorSpecification }
   | LogicGateSpec { gate: LogicGateSpecification }
+  | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -370,5 +414,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     ShiftRegisterSpec { register: _ } => Absent
     LevelTranslatorSpec { translator: _ } => Absent
     LogicGateSpec { gate: _ } => Absent
+    ProgrammableLogicSpec { logic: _ } => Absent
   }
 }

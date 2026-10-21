@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity }
-import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
+import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, terminal_ref_equal }
 import product.electrical.continuity {
   BenchConditions,
   EvidenceRef,
@@ -179,14 +179,40 @@ type ProbeAttachment {
   ruling: List<EvidenceRef>
 }
 
+// A CHANGE THE OPERATOR MADE TO THE ASSET THAT IS NEITHER A PROBE NOR A READING: a part's heatsink
+// lifted to read its marking, its thermal interface removed and another applied. Readings before and
+// after are of different physical states, so the alteration is keyed and dated; what was applied is
+// Absent until the refit is reported, and a report says so rather than assuming it.
+type ThermalInterface
+  = ThermalPad
+  | ThermalPaste
+
+type AssetAlteration {
+  key: NonEmptyStr
+  asset: PhysicalAssetIdentity
+  part: ComponentInstanceIdentity
+  performed_on: NonEmptyStr
+  removed: ThermalInterface
+  applied: ThermalInterface?
+  evidence: EvidenceRef
+}
+
+fn thermal_interface_text(t: ThermalInterface) -> String {
+  match t {
+    ThermalPad => "a thermal pad"
+    ThermalPaste => "thermal paste"
+  }
+}
+
 type BenchRecord {
   incidents: List<BenchIncident>
   attachments: List<ProbeAttachment>
+  alterations: List<AssetAlteration>
   voltages: List<NodeVoltageObservation>
   resistances: List<ResistanceObservation>
 }
 
-data no_bench_record: BenchRecord = BenchRecord { incidents: [], attachments: [], voltages: [], resistances: [] }
+data no_bench_record: BenchRecord = BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: [] }
 
 // Whether a reading may stand for the board's state before every incident it is ordered against.
 fn is_before_incidents(o: ReadingOrder) -> Bool {

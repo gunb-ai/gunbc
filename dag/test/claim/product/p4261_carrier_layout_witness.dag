@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
@@ -125,6 +125,7 @@ import product.electrical.continuity {
   junction_between,
 }
 import product.p4261_carrier_layout {
+  e1_u4, u4_configuration_text, alterations_text,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -779,7 +780,7 @@ fn rl_attachment(a: ProbeAttachment) -> ProbeAttachment {
 }
 
 fn rl_bench(b: BenchRecord) -> BenchRecord {
-  BenchRecord { incidents: b.incidents, attachments: map(b.attachments, a => rl_attachment(a: a)), voltages: map(b.voltages, o => rl_voltage(o: o)), resistances: map(b.resistances, o => rl_resistance(o: o)) }
+  BenchRecord { incidents: b.incidents, alterations: b.alterations, attachments: map(b.attachments, a => rl_attachment(a: a)), voltages: map(b.voltages, o => rl_voltage(o: o)), resistances: map(b.resistances, o => rl_resistance(o: o)) }
 }
 
 fn relabelled_e1() -> CarrierLayoutObservation {
@@ -1101,7 +1102,7 @@ test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
 // ── THE INPUT SWITCHES AND THEIR CONTROLLER ───────────────────────────────────────────────────
 
 fn e1_with_attached(attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
 }
 
 fn e1_with_bench(vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
@@ -1265,7 +1266,7 @@ fn baselined(o: ResistanceObservation) -> ResistanceObservation {
 fn baselined_board(b: MeasuredBoard) -> MeasuredBoard {
   MeasuredBoard {
     asset: b.asset, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
-    bench: BenchRecord { incidents: b.bench.incidents, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: map(b.bench.resistances, o => baselined(o: o)) },
+    bench: BenchRecord { incidents: b.bench.incidents, alterations: b.bench.alterations, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: map(b.bench.resistances, o => baselined(o: o)) },
     phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
   }
 }
@@ -2277,4 +2278,33 @@ test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
     && count(e1_site_resistances) == 1 && all(e1_site_resistances, o => reads_pair(o: o, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity)) && match valued_ohms(o: o) { Present { value: v } => v == 500, Absent => false })
     && !one_node(net: live, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity))
     && all(component_of(layout: p4261_e1_layout, c: e1_u3), c => count(c.terminals) == 6) && count(component_of(layout: p4261_e1_layout, c: e1_u3)) == 1
+}
+
+// U4 (2026-10-21): the heatsink lifted, its marking reads Intel's Cyclone 10 GX 10CX085YF672E6G with the
+// Intel logo, an identified row carrying a programmable-logic specification: volatile configuration,
+// four schemes, CONF_DONE named; the report says what it is and names CONF_DONE as where whether it is
+// doing anything is read. The thermal pad tore and no refit is yet reported, recorded as an alteration
+// whose applied interface is Absent and rendered as such. Supplied: the same layout without U4's row
+// renders the not-a-component text, so the report reads the row, not the designator.
+test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
+  let rows = component_of(layout: p4261_e1_layout, c: e1_u4)
+  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_u4)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let text = u4_configuration_text(layout: p4261_e1_layout)
+  count(rows) == 1
+    && all(rows, c => match identified_row(c: c) {
+      Present { value: row } => (row.ordering_code as String).contains("10CX085YF672E6G") && match row.specification {
+        ProgrammableLogicSpec { logic } => logic.logic_elements == 85000 && count(logic.schemes) == 4
+          && match logic.memory { VolatileConfiguration => true, _ => false }
+          && match configuration_done_signal(spec: logic) { Present { value: s } => (s.name as String).contains("CONF_DONE"), Absent => false }
+        _ => false
+      }
+      Absent => false
+    })
+    && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups until it is configured, so whether it drives anything is read at CONF_DONE")
+    && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("read at CONF_DONE")
+    && count(e1_measured.bench.alterations) == 1
+    && all(e1_measured.bench.alterations, a => match a.applied { Absent => true, Present { value: _ } => false })
+    && alterations_text(layout: p4261_e1_layout).contains("2026-10-21 U4 heatsink lifted: U4 had a thermal pad removed, and no refit is yet reported")
+    && alterations_text(layout: without).contains("U4 had a thermal pad removed")
 }
