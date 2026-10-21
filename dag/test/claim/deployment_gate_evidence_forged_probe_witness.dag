@@ -222,6 +222,45 @@ test fn the_axis_source_reports_some_refusal() -> Bool {
   axis_blocking_row_count() >= 1
 }
 
+// THE CLASS SWEEP. The axis census runs and blocks -- so the foreign-carrier line is refused --
+// but not under TypeMismatch, while the run-digits line in the sibling probe IS. Same construct
+// (a value in EnabledDeploymentProtectionRule.id), different value kind: a kernel Int against a
+// nominal record, versus a foreign nominal record against another nominal record. These claims
+// are written as == 0 so exactly one goes red and the failing NAME is the measurement; they are
+// scaffolding around one fact, and they collapse into the refusal claim (or the refusal claim is
+// deleted) as soon as the class is known.
+fn axis_class_count(class: String) -> Int {
+  match axis_census() {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: class))
+  }
+}
+
+test fn the_axis_refusal_is_not_declared_type_inhabitance_undecided() -> Bool {
+  axis_class_count(class: "DeclaredTypeInhabitanceUndecided") == 0
+}
+
+test fn the_axis_refusal_is_not_declared_type_not_inhabited() -> Bool {
+  axis_class_count(class: "DeclaredTypeNotInhabited") == 0
+}
+
+test fn the_axis_refusal_is_not_unresolved_type() -> Bool {
+  axis_class_count(class: "UnresolvedType") == 0
+}
+
+test fn the_axis_refusal_is_not_field_not_found() -> Bool {
+  axis_class_count(class: "FieldNotFound") == 0
+}
+
+test fn the_axis_refusal_is_not_kernel_mint_shape_mismatch() -> Bool {
+  axis_class_count(class: "KernelMintShapeMismatch") == 0
+}
+
+test fn the_axis_refusal_is_not_unlisted_import_use() -> Bool {
+  axis_class_count(class: "UnlistedImportUse") == 0
+}
+
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
 // identity; if it were open, a caller could mint the identity and then the token, without GitHub
 // having confirmed anything about this repository.
