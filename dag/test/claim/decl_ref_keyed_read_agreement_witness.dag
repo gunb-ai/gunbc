@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import test.fixture.decl_facts_reflection.witness_support { decl_facts_reflection_fixture_pool_roots }
 import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.decl_index { decl_facts }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   DeclarationRefAmbiguous,
   DeclarationRefDeclarationAbsent,
   DeclarationRefFieldAbsent,

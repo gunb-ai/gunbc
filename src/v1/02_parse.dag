@@ -48,6 +48,7 @@ import v1.std.core { Unmarked, TestMarked,
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span, byte_to_line_col,
+  render_span_location, locate_span, unlocated_cause_phrase, Located,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
@@ -971,12 +972,6 @@ fn parse_int_literal_value(tokens: TokenStream) -> IntLitResult {
 
 fn is_ident_shape(shape: TokenShape) -> Bool { match shape { ShIdent => true  _ => false } }
 fn is_lit_str_shape(shape: TokenShape) -> Bool { match shape { ShLitStr => true  _ => false } }
-fn is_lit_int_shape(shape: TokenShape) -> Bool { match shape { ShLitInt => true  _ => false } }
-fn is_lit_float_shape(shape: TokenShape) -> Bool { match shape { ShLitFloat => true  _ => false } }
-fn is_str_begin_shape(shape: TokenShape) -> Bool { match shape { ShStrBegin => true  _ => false } }
-fn is_str_mid_shape(shape: TokenShape) -> Bool { match shape { ShStrMid => true  _ => false } }
-fn is_str_end_shape(shape: TokenShape) -> Bool { match shape { ShStrEnd => true  _ => false } }
-fn is_unknown_shape(shape: TokenShape) -> Bool { match shape { ShUnknown => true  _ => false } }
 fn is_newline_shape(shape: TokenShape) -> Bool { match shape { ShNewline => true  _ => false } }
 fn is_eof_shape(shape: TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
 fn is_keyword_shape(shape: TokenShape) -> Bool { match shape { ShKeyword => true  _ => false } }
@@ -989,8 +984,6 @@ fn is_lbracket_shape(shape: TokenShape) -> Bool { match shape { ShLBracket => tr
 fn is_rbracket_shape(shape: TokenShape) -> Bool { match shape { ShRBracket => true  _ => false } }
 fn is_lt_shape(shape: TokenShape) -> Bool { match shape { ShLt => true  _ => false } }
 fn is_gt_shape(shape: TokenShape) -> Bool { match shape { ShGt => true  _ => false } }
-fn is_le_shape(shape: TokenShape) -> Bool { match shape { ShLe => true  _ => false } }
-fn is_ge_shape(shape: TokenShape) -> Bool { match shape { ShGe => true  _ => false } }
 fn is_fat_arrow_shape(shape: TokenShape) -> Bool { match shape { ShFatArrow => true  _ => false } }
 fn is_arrow_shape(shape: TokenShape) -> Bool { match shape { ShArrow => true  _ => false } }
 fn is_colon_shape(shape: TokenShape) -> Bool { match shape { ShColon => true  _ => false } }
@@ -998,18 +991,7 @@ fn is_comma_shape(shape: TokenShape) -> Bool { match shape { ShComma => true  _ 
 fn is_dot_shape(shape: TokenShape) -> Bool { match shape { ShDot => true  _ => false } }
 fn is_dot_dot_shape(shape: TokenShape) -> Bool { match shape { ShDotDot => true  _ => false } }
 fn is_eq_shape(shape: TokenShape) -> Bool { match shape { ShEq => true  _ => false } }
-fn is_eq_eq_shape(shape: TokenShape) -> Bool { match shape { ShEqEq => true  _ => false } }
-fn is_ne_shape(shape: TokenShape) -> Bool { match shape { ShNe => true  _ => false } }
-fn is_plus_shape(shape: TokenShape) -> Bool { match shape { ShPlus => true  _ => false } }
-fn is_minus_shape(shape: TokenShape) -> Bool { match shape { ShMinus => true  _ => false } }
-fn is_star_shape(shape: TokenShape) -> Bool { match shape { ShStar => true  _ => false } }
-fn is_slash_shape(shape: TokenShape) -> Bool { match shape { ShSlash => true  _ => false } }
-fn is_percent_shape(shape: TokenShape) -> Bool { match shape { ShPercent => true  _ => false } }
-fn is_bang_shape(shape: TokenShape) -> Bool { match shape { ShBang => true  _ => false } }
-fn is_and_shape(shape: TokenShape) -> Bool { match shape { ShAnd => true  _ => false } }
-fn is_or_shape(shape: TokenShape) -> Bool { match shape { ShOr => true  _ => false } }
 fn is_question_shape(shape: TokenShape) -> Bool { match shape { ShQuestion => true  _ => false } }
-fn is_null_coalesce_shape(shape: TokenShape) -> Bool { match shape { ShNullCoalesce => true  _ => false } }
 fn is_pipe_shape(shape: TokenShape) -> Bool { match shape { ShPipe => true  _ => false } }
 fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
 
@@ -1106,9 +1088,6 @@ fn tok_is_rparen(tok: Token?) -> Bool {
 fn tok_is_lbracket(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_lbracket_shape(shape: t.shape)  Absent => false }
 }
-fn tok_is_rbracket(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_rbracket_shape(shape: t.shape)  Absent => false }
-}
 fn tok_is_colon(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_colon_shape(shape: t.shape)  Absent => false }
 }
@@ -1127,26 +1106,8 @@ fn tok_is_eq(tok: Token?) -> Bool {
 fn tok_is_fat_arrow(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_fat_arrow_shape(shape: t.shape)  Absent => false }
 }
-fn tok_is_arrow(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_arrow_shape(shape: t.shape)  Absent => false }
-}
-fn tok_is_lt(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_lt_shape(shape: t.shape)  Absent => false }
-}
-fn tok_is_gt(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_gt_shape(shape: t.shape)  Absent => false }
-}
 fn tok_is_pipe(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_pipe_shape(shape: t.shape)  Absent => false }
-}
-fn tok_is_pipe_arrow(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_pipe_arrow_shape(shape: t.shape)  Absent => false }
-}
-fn tok_is_question(tok: Token?) -> Bool {
-  match tok { Present { value: t } => is_question_shape(shape: t.shape)  Absent => false }
-}
-fn tok_span(tok: Token?) -> SourceSpan {
-  match tok { Present { value: t } => t.span  Absent => no_span() }
 }
 fn tok_keyword_to_name(tok: Token?, env: ParseEnvironment) -> String? {
   match tok {
@@ -1741,19 +1702,6 @@ fn parse_context_after_node_list(ctx: ParseContext, nodes: List<Node>) -> ParseC
     occurrence_allocator: occurrence_allocator_after_node_list(
       alloc: ctx.occurrence_allocator,
       nodes: nodes
-    ),
-    occurrence_index: ctx.occurrence_index,
-    declaration_occurrences: ctx.declaration_occurrences,
-    reference_occurrences: ctx.reference_occurrences
-  )
-}
-
-fn parse_context_after_optional_node(ctx: ParseContext, node: Node?) -> ParseContext {
-  parse_context_with_occurrence_state(
-    ctx: ctx,
-    occurrence_allocator: occurrence_allocator_after_optional_node(
-      alloc: ctx.occurrence_allocator,
-      node: node
     ),
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
@@ -2926,14 +2874,6 @@ fn make_capability_node(occurrence_identity: NodeOccurrenceIdentity, name: Strin
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-fn parse_type_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
-  let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "type" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
-  parse_type_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
-}
-
 fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 
@@ -3340,10 +3280,6 @@ fn parse_variant_fields(tokens: TokenStream, ctx: ParseContext, vname: String, v
       VariantResult { variant: v, tokens: tokens, ctx: minted.ctx, err: none }
     }
   }
-}
-
-fn parse_more_variants(tokens: TokenStream, ctx: ParseContext) -> VariantsResult {
-  parse_more_variants_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
 fn parse_more_variants_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> VariantsResult {
@@ -4451,20 +4387,6 @@ fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
   }
 }
 
-fn first_child_or_self(n: Node) -> Node {
-  match n.children |> first {
-    Present { value: ch } => ch
-    Absent => n
-  }
-}
-
-fn last_child_or_self(n: Node) -> Node {
-  match n.children |> last {
-    Present { value: ch } => ch
-    Absent => n
-  }
-}
-
 fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
@@ -4956,14 +4878,6 @@ fn parse_io_blocks_acc(tokens: TokenStream, ctx: ParseContext, inputs: List<Node
       IOResult { inputs: inputs, outputs: outputs, tokens: tokens, ctx: ctx, err: none }
     }
   }
-}
-
-fn parse_data_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
-  let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "data" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
-  parse_data_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
@@ -6765,13 +6679,16 @@ fn duplicate_field_init_message(ctx: ParseContext, field: String, first: SourceS
   concat("duplicate field '", field, "' in record literal: first at ", field_init_position(ctx: ctx, span: first), ", again at ", field_init_position(ctx: ctx, span: again))
 }
 
+// ONE RENDERER FOR BOTH POSITIONS IN THIS MESSAGE, and the one place that decides what an
+// unlocatable position SOUNDS LIKE. The `Absent` arm used to print `byte <offset>`, which puts a
+// byte count where a reader expects `line:col` -- the same wrong-unit class as the lane line, and
+// a lie about being a position. The authority's unlocated arm keeps the file and says the position
+// is not there.
 fn field_init_position(ctx: ParseContext, span: SourceSpan) -> String {
-  match map_get(ctx.source_indices, span.file) {
-    Present { value: index } => {
-      let lc = byte_to_line_col(index: index, offset: span.start)
-      concat(int_to_string(value: lc.line), ":", int_to_string(value: lc.col))
-    }
-    Absent => concat("byte ", int_to_string(value: span.start))
+  match locate_span(span: span, source_indices: ctx.source_indices) {
+    Located { at: at } =>
+      concat(int_to_string(value: at.start_line), ":", int_to_string(value: at.start_col))
+    Unlocated { cause: cause } => unlocated_cause_phrase(cause: cause)
   }
 }
 

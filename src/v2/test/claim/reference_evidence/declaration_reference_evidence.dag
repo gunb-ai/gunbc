@@ -129,7 +129,7 @@ fn dre_uses_of(root: Node, wanted: Symbol) -> List<Node> {
 // the property: DerivedGrounding carrying the WRONG type must fail this control.
 fn dre_grounded_domain_labels(facts: InferredFacts) -> Optional<List<Symbol>> {
   match facts.grounding {
-    GroundingNotDerived { node: _ } => optional_absent()
+    GroundingNotDerived { node: _, site: _ } => optional_absent()
     DerivedGrounding { grounding: g } =>
       match arrow_domain_binder_labels(children: g.witness.structural.evidence.children) {
         DomainBinderLabelsUnreadable => optional_absent()
@@ -503,7 +503,7 @@ fn dre_return_atom_of(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<Symb
                 Absent => optional_absent()
                 Present { value: facts } =>
                   match facts.grounding {
-                    GroundingNotDerived { node: _ } => optional_absent()
+                    GroundingNotDerived { node: _, site: _ } => optional_absent()
                     DerivedGrounding { grounding: g } =>
                       match list_at_optional(xs: positional_child_target_nodes(node: g.witness.structural.evidence), index: 1) {
                         Absent => optional_absent()

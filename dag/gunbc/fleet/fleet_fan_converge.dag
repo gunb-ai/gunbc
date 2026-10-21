@@ -64,11 +64,10 @@ type FleetFanObserved sole_constructor {
   reading: FleetFanReading
 }
 
-// THE ONLY MINT OF AN OBSERVATION. It is sealed to NAMED callers and the production list is EMPTY:
-// no wire-read adapter exists yet, so a successful FleetFanObserved is uninhabited outside the named
-// terminal fixtures, and every standing below is a standing over SUPPLIED evidence, not over a
-// parsed fan read. When the adapter lands it is added here, and it must derive the reading from the
-// same raw response it hashes into the receipt (carrying both fields is not that pairing).
+// THE ONLY MINT OF AN OBSERVATION. It is sealed to NAMED callers: the named terminal fixtures. There is
+// no production mint yet: gunbc.fleet.fleet_fan_wire_read is a pure decoder over supplied bodies and
+// mints nothing; the mint is the future reader of the actual operation observations
+// (fleet_fan_wire_read_adapter_frontier), which joins this roster when it exists.
 fn fleet_fan_observed(subject: FanObserveHost, receipt: FleetFanReadReceipt, reading: FleetFanReading) -> FleetFanObserved
   admit_callers: [
     decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "read"),
@@ -226,7 +225,7 @@ fn fleet_fan_standing(decision: FleetFanDecision, readback: FleetFanObserved) ->
 // admission to the witness.
 data fleet_fan_boot_gate_ref: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_fan_boot_gate", decl_name: "fleet_fan_boot_admission")
 
-data fleet_fan_wire_read_ref: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_fan_wire_read", decl_name: "fleet_fan_observed_from_wire")
+data fleet_fan_wire_read_ref: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_fan_megarac_reader", decl_name: "megarac_fan_observation_read")
 
 data fleet_fan_boot_gate_consumer_frontier: DissolutionCondition = bound_dissolution(ref: fleet_fan_boot_gate_ref)
 
