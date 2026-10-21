@@ -8,8 +8,8 @@ import std.process { ExitSuccess, ExitFailure }
 import std.measure { sdr_undecoded_line_count }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine, sdr_decode_lines, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation }
 import gunbc.machine_intake.post_power_fan_gate_outcome { FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, post_power_fan_gate_stop_section, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
 
@@ -23,7 +23,7 @@ fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
   SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
 }
 
-fn published() -> ThermalObservation { ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) } }
+fn published() -> ThermalObservation { ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] } }
 
 fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
   FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: lines, undecoded_lines: [], failure_rows: [] } }
@@ -225,16 +225,30 @@ fn thermal_cause(t: ThermalObservation) -> String {
     PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureUndecodable } } => "undecodable"
     PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureNoSensorRows } } => "norows"
     PostPowerFanVerdictRefused { cause: PostPowerThermalRowsUndecoded { undecoded_line_count: _ } } => "undecoded-rows"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalReadingUnrecognised { texts: _ } } => "unrecognised-reading"
     PostPowerFanVerdictRefused { cause: _ } => "other"
   }
 }
 
 test fn a_published_fully_decoded_thermal_read_with_spinning_fans_is_established() -> Bool { thermal_cause(t: published()) == "established" }
 test fn an_unreadable_thermal_read_refuses() -> Bool { thermal_cause(t: ThermalUnreadable) == "unreadable" }
-test fn a_silent_pre_post_thermal_list_refuses_and_is_never_healthy() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) }) == "silent" }
-test fn an_undecodable_thermal_list_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureUndecodable, undecoded_line_count: sdr_undecoded_line_count(count: 2) }) == "undecodable" }
-test fn a_thermal_read_with_no_sensor_rows_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureNoSensorRows, undecoded_line_count: sdr_undecoded_line_count(count: 0) }) == "norows" }
-test fn a_published_temperature_beside_an_undecoded_row_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 1) }) == "undecoded-rows" }
+test fn a_silent_pre_post_thermal_list_refuses_and_is_never_healthy() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] }) == "silent" }
+test fn an_undecodable_thermal_list_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureUndecodable, undecoded_line_count: sdr_undecoded_line_count(count: 2), unrecognised_readings: [] }) == "undecodable" }
+test fn a_thermal_read_with_no_sensor_rows_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureNoSensorRows, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] }) == "norows" }
+test fn a_published_temperature_beside_an_undecoded_row_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 1), unrecognised_readings: [] }) == "undecoded-rows" }
+
+// The real route: raw sdr text -> sdr_decode_lines -> thermal_observation -> the gate. sdr_temperature_publication still answers
+// "was ANY temperature published" (TemperaturePublished here), so the unrecognised sibling must be carried by its own field.
+fn thermal_of(stdout: String) -> ThermalObservation { thermal_observation(success: true, results: sdr_decode_lines(stdout: stdout)) }
+test fn a_decoded_temperature_beside_an_unrecognised_reading_refuses() -> Bool {
+  thermal_cause(t: thermal_of(stdout: "CPU0_SOC_Temp    | 3Dh | ok  | 30.15 | 46 degrees C\nCPU1_SOC_Temp    | 3Eh | ok  | 30.16 | 46 kelvin\n")) == "unrecognised-reading"
+}
+test fn only_decoded_temperatures_are_established_by_the_same_route() -> Bool {
+  thermal_cause(t: thermal_of(stdout: "CPU0_SOC_Temp    | 3Dh | ok  | 30.15 | 46 degrees C\nCPU1_SOC_Temp    | 3Eh | ok  | 30.16 | 47 degrees C\n")) == "established"
+}
+test fn the_unrecognised_reading_refusal_text_carries_the_reading() -> Bool {
+  string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalReadingUnrecognised { texts: ["46 kelvin"] }), pattern: "46 kelvin")
+}
 
 test fn the_thermal_refusal_text_names_each_standing() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalUnreadable), pattern: "temperature sensors were unreadable")
