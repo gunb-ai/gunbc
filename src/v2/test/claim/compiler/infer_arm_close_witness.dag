@@ -151,25 +151,14 @@ test fn rb_e1_empty_list_at_declared_list_accepts() -> Bool { ers_infer_accepted
 test fn rb_e2_unfixed_empty_list_let_refuses() -> Bool { ers_fatal_is(o: rb_e2(), reason: ^infer_unsolved_constructor_type_variable) }
 test fn rb_e3_empty_list_arm_closes_at_sibling() -> Bool { ers_infer_accepted(o: rb_e3()) }
 // WITH a declared expected type, Int beside Absent must refuse at this head (no silent accept), with its accepting positive beside it.
-fn rb_x_refused(o: Outcome<ResolvedTree>) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-  }
-}
 fn rb_x1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { 1 } else { Absent } }\n") }
-test fn rb_x1_int_beside_absent_at_declared_return_refuses() -> Bool { rb_x_refused(o: rb_x1()) }
+test fn rb_x1_int_beside_absent_at_declared_return_refuses() -> Bool { ers_fatal_is(o: rb_x1(), reason: ^infer_literal_at_optional_is_not_present) }
 fn rb_x2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { Present { value: 1 } } else { Absent } }\n") }
 test fn rb_x2_present_beside_absent_at_declared_return_accepts() -> Bool { ers_infer_accepted(o: rb_x2()) }
 
 // RULE A AT A BRANCH (PR B): the expected type reaches the arms (child-frame hop). Int beside Absent at a declared return refuses (no implicit lift)
 // and no longer as a conflict between the arms; Present beside Absent still accepts.
 // The refusal is the typed literal-at-Optional reason (infer_literal_at_optional_is_not_present): no implicit lift (explicit_present_is_the_authoring_policy).
-test fn rb_x1_refuses_literal_at_optional() -> Bool { ers_fatal_is(o: rb_x1(), reason: ^infer_literal_at_optional_is_not_present) }
 fn rb_x3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f() -> Int? { 1 }\n") }
 test fn rb_x3_a_bare_literal_at_optional_refuses_the_same_way() -> Bool { ers_fatal_is(o: rb_x3(), reason: ^infer_literal_at_optional_is_not_present) }
 test fn rb_x1_is_not_an_arm_conflict() -> Bool { !ers_fatal_is(o: rb_x1(), reason: ^infer_arms_declare_conflicting_types) }

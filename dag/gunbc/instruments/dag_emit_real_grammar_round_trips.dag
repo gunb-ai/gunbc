@@ -95,7 +95,8 @@ data dag_emit_real_grammar_round_trip_cases: List<DagEmitRoundTripCase> = [
   DagEmitRoundTripCase { identity: "caret_symbol", source: "module rt.caret_symbol\ndata k: Symbol = ^some_name\n" },
   DagEmitRoundTripCase { identity: "escaped_quoted_key", source: "module rt.escaped_key\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\\\"b\": true, \"\\u\{e9\}\": false }\n" },
   DagEmitRoundTripCase { identity: "quoted_key_spelled_like_an_identifier", source: "module rt.quoted_key\ndata r: R = { \"Node\": true }\n" },
-  DagEmitRoundTripCase { identity: "bare_key", source: "module rt.bare_key\ndata r: R = { Node: true }\n" }
+  DagEmitRoundTripCase { identity: "bare_key", source: "module rt.bare_key\ndata r: R = { Node: true }\n" },
+  DagEmitRoundTripCase { identity: "none_literal", source: "module rt.none_literal\nfn f() -> Int? { none }\n" }
 ]
 
 // THE EXPECTED IDENTITIES, DECLARED RATHER THAN DERIVED FROM THE CASES, so a case removed from the
@@ -115,7 +116,8 @@ data dag_emit_real_grammar_round_trip_expected_identities: List<String> = [
   "caret_symbol",
   "escaped_quoted_key",
   "quoted_key_spelled_like_an_identifier",
-  "bare_key"
+  "bare_key",
+  "none_literal"
 ]
 
 fn dag_emit_round_trip_row(c: DagEmitRoundTripCase) -> DagEmitRoundTripRow {
