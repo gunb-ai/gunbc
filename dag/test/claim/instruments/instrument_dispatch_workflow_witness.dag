@@ -202,28 +202,10 @@ test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds()
 //
 // WHY A GROUP AT ALL. The instrument fleet and the required v2-bootstrap witnesses request the same
 // runner labels (gunbc.ci.ci_runner_placement puts both on self-hosted linux arm64), so an unbounded
-// instrument fan-out sits on the same pool as the required lane. Concurrency is the throttle, so it
-// must be neither so tight that unrelated measurements queue behind each other, nor so loose that the
-// pool is starved. These rows hold both edges.
-
-// (A) THE GROUP NAME CARRIES BOTH KEY PARTS, AND THE KEY IS INJECTIVE IN THE LABEL. Two dispatches of
-// DIFFERENT labels on the SAME ref must land in different groups, or the parallelism the operator
-// approved does not exist; two dispatches of the SAME label on the SAME ref must land in the SAME
-// group, or one measurement can run twice against itself. The fixed probe ref stands in for a ref,
-// because the group is authored as a GitHub expression and the model's job is the shape, not GitHub's
-// evaluation of it.
-fn group_for(probe_ref: String, label: String) -> String {
-  concat(concat(concat(instrument_dispatch_group_prefix, "-"), probe_ref), concat("-", label))
-}
-
-test fn the_concurrency_group_is_keyed_per_ref_and_label_holds() -> Bool {
-  let a = group_for(probe_ref: "refs/heads/x", label: render_label(l: dependency_demand_census_label()))
-  let b = group_for(probe_ref: "refs/heads/x", label: render_label(l: regen_round_cost_label()))
-  let same_label_other_ref = group_for(probe_ref: "refs/heads/y", label: render_label(l: dependency_demand_census_label()))
-  (a != b)
-    && (a != same_label_other_ref)
-    && (a == group_for(probe_ref: "refs/heads/x", label: render_label(l: dependency_demand_census_label())))
-}
+// instrument fan-out sits on the same pool as the required lane. THESE ROWS HOLD ONLY THE LOWER EDGE:
+// one measurement cannot run twice against itself, and two different labels on one ref must not collapse
+// into one group. The UPPER edge -- how many instrument runs may occupy that pool at once -- is not held
+// by any row here and is declared lost at gunbc.rung_drop instrument_dispatch_upper_edge_unmeasured.
 
 // THE RENDERED GROUP IS THE JOIN OF THE DECLARED PARTS, AND CARRIES BOTH EXPRESSIONS. The witness
 // pins the parts rather than one opaque literal, so a consumer can ask which half changed.
