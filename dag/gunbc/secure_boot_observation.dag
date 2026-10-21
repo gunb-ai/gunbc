@@ -1,6 +1,6 @@
 module gunbc.secure_boot_observation
 
-import std.types { NonEmptyStr }
+import std.types { HttpStatus, NonEmptyStr }
 
 // Repo-side observation and refusal carriers, deliberately unsealed: the standing seam and the
 // runner both construct them. Leaf module -- imports std only.
@@ -11,12 +11,15 @@ import std.types { NonEmptyStr }
 // question), AuthenticationRequired means someone must establish credentials (a human or a
 // secret store), and ReplyShapeUnrecognized means the reply did not match the schema (a
 // toolchain/version problem, and a fact worth recording because it usually means the BMC
-// firmware drifted). Four different next actions, so four arms. A family row can be checked
+// firmware drifted), and AuthorizationDenied means credentials were accepted and the account lacks the
+// privilege (HTTP 403; a role grant, not a login). UnexpectedHttpStatus carries any other non-success status verbatim. Six different next actions, so six arms. A family row can be checked
 // against this union; it cannot be checked against prose.
 type FirmwareReadRefusal
   = VendorCommandRejected { detail: NonEmptyStr }
   | ResourceNotFound { detail: NonEmptyStr }
   | AuthenticationRequired { detail: NonEmptyStr }
+  | AuthorizationDenied { detail: NonEmptyStr }
+  | UnexpectedHttpStatus { status: HttpStatus, detail: NonEmptyStr }
   | ReplyShapeUnrecognized { detail: NonEmptyStr }
 
 // ON, OFF, NEVER ASKED, and ASKED-AND-DENIED are four states, not two states plus a wrapper.
