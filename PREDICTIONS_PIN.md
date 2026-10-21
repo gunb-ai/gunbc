@@ -899,3 +899,9 @@ Both claim files run on the SAME built binary; rc captured raw. Void != pass: an
 - c_b2_accepts PASS (identical applications still accepted; no over-refusal from the Acc fold). c_b1_refused/c_b4_accepts PASS (cross-arm controls hold at PR-2 head).
 - CONTROL: applied_constructor_type_equals.dag CONTROL_RC=0 -> ALL its existing members PASS at the PR-2 head (same_applied_box_int_is_accepted printed; rc=0 means every member green).
 - c_fnval_refused FAIL (count 0): the EXPLORATORY fn-value route (same_arm(a: f, b: g) with f:(Box<T>)->Bool from fn f<T>, g:(Box<U>)->Bool from fn g<U>) is ACCEPTED at the current PR-2 head. Recorded as the pre-signal for ruling-(i)'s decision run: if it still accepts at the REBASE head (where 04_types:1465 Applied-children descent changes what callable_signatures_agree consumes), the binder comparison has no observable consumer on any today's route -> close #14056, fold leaf/binder half into PR-2 as side fix with Rust tests labelled vacant (or drop), per ruling.
+
+## PRED-E (2026-10-21, pre-bake PR-2 RED in its claim home; self-contained dispatch on PR-2 head 97e47f8e562b)
+Write the FINAL applied_constructor_type_equals.dag = its 2 existing members + new member box_int_against_box_bool_is_refused (>=1) with a §6-style comment naming the silent-wrong-type-accept it refuses (the class PRED-C confirmed arm 2 closes). Harness-execute the WHOLE file (claim-run) on the PR-2 binary.
+- P-E1: all 3 members print PASS; claim-run rc=0. (2 existing green proven CONTROL_RC=0; c_b3 body proven PASS in PRED-C — this validates the combined FILE text: header/imports/helper unchanged, new member appended.)
+- P-E2: no NoSuchFunction/ResolveError (member name unique; imports unchanged from the committed file).
+If any member FAILS the file is NOT staged; investigate (likely the new source string) before the rebase. Void/build-fail != pass.
