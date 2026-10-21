@@ -11,15 +11,14 @@ import gunbc.declined_live_tree_defect_classification {
   AttributedToChange,
   RestsOnExecutedCheck,
   PullRequest,
-  NamedChange,
 }
 import std.types { CommitSha, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.execution_mode { ExecutionMode, Wet, Hermetic }
+import std.execution_mode { Wet, Hermetic }
 import std.optional { Optional, Present, Absent }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed, ClaimExpectation, ExpectedRed, ExpectedToHold }
-import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger { Passed, ClaimExpectation, ExpectedRed, ExpectedToHold }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
