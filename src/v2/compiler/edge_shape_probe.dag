@@ -1,0 +1,18 @@
+module v2.compiler.edge_shape_probe
+
+import v2.std.node { Edge, Node, Authored, Symbol }
+import std.process { exit_failure, ProcessExit }
+
+fn label_only(e: Edge) -> Bool {
+  match e {
+    Edge { label: _ } => true
+  }
+}
+
+fn edges_equal(a: Edge, b: Edge) -> Bool {
+  a == b
+}
+
+fn edge_shape_probe_exit() -> ProcessExit {
+  exit_failure(reason: "probe")
+}
