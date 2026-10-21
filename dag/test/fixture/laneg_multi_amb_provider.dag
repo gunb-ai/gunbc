@@ -1,0 +1,22 @@
+module test.fixture.laneg_multi_amb_provider
+
+// Lane G (v1-interface-cull-audit@63a464edf01 P1.5 steps 1-2) emission evidence, provider side of
+// the MULTI-FIELD / many-candidates case for test.claim.record_emission_candidate_set_witness.
+// Two record types sharing the consumer's two-field shape with the SAME field types, so no
+// type-hint narrowing is possible and the changed multi-field candidate-set arm must refuse rather
+// than silently pick. Its own module, not shared: the candidate pool IS the specimen (witness-cost
+// ruling, as in test.fixture.anonhead_provider).
+
+type LanegDupA {
+  left: Bool
+  right: Int
+}
+
+type LanegDupB {
+  left: Bool
+  right: Int
+}
+
+fn takes_da(a: LanegDupA) -> Int {
+  1
+}
