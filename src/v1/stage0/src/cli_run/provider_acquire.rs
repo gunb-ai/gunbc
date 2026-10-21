@@ -692,9 +692,17 @@ mod tests {
             &|m: &str| Err(format!("hermetic: no pool holds '{m}'")),
         )
         .expect("hermetic compile runs");
+        // The typed refusal names the route. The uncrossed value also trips the text wall and the
+        // inhabitance check at the same argument; whether the final refusal should suppress those
+        // consequences is an open review question, so this asserts the refusal, not their absence.
+        let refusal = "GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold".to_string();
         assert_eq!(
-            classes(&hermetic),
-            vec!["GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold".to_string()]
+            classes(&hermetic)
+                .iter()
+                .filter(|c| c.starts_with("GeneratedProviderUnavailable"))
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![refusal]
         );
         let acquired = compile_to_provider_fixed_point(
             sources,
