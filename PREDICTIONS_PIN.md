@@ -861,3 +861,13 @@ Runner instances rotate; some have no systemd user manager AND no cgroup limit. 
   export GITHUB_ACTIONS=1            # CiExempt: skip systemd wrapping (the CI path)
   export GUNBC_MEMORY_BUDGET_BYTES=10737418240  # declared-unverified 10GiB planning ceiling (corpus-precedent value, host_budget_source.dag:351 receipt)
 Also: ctrl-build mirrors LOCAL worktree state (git apply patch) — a fresh clone inside the dispatch is still subject to runner rotation; the binary path must be re-derived from CARGO_TARGET_DIR IN THE SAME dispatch as the run, never relied on from a previous dispatch.
+
+### PRED-B2 (dispatch 8, both arms with escape-hatch env). p_b5 was a FLAWED specimen: in
+###   same_arm(a: y, b: f(x: y)) both sides are Box<T_g> — ONE binder — so acceptance is CORRECT
+###   and p_b5 discriminates nothing (dropped). Real discriminator = p_b1 FLIP, measured with BOTH
+###   polarities per arm (member PASS/FAIL pairs read as the measurement):
+- m_b1_accepts (count==0): MAIN FAIL (measured 1), FIXED PASS (dc1b92c makes unmarked T of the fn its inference variable). If FIXED m_b1_accepts FAILs (still refused): the binder fix does NOT reach authorable census programs -> condition (a) as scoped UNSATISFIABLE -> report to parent with both counts, invent no alternative claim shape unasked.
+- m_b1_refused (count>=1): MAIN PASS, FIXED FAIL (mirror of above).
+- m_b3_refused (Box<Int> vs Box<Bool> >=1): MAIN FAIL (measured 0). FIXED: PASS if the PR head's still-present applied half (04_types.dag:1436+ retains Applied handling) refuses it; FAIL => applied refusal is PR-2-only. Recorded, drives which half #14056 keeps.
+- m_b2/m_b4 ==0 on both arms (measured PASS on both so far; re-measured identically).
+- Text-diagnostic route: real-file probes (probe_src/probe/binder1.dag, binder3.dag) through `gunbc run --entry` on EACH arm: main binder1 prints a refusal naming T (class recorded VERBATIM — this is what distinguishes unbound/unknown-T from unify-mismatch); fixed binder1 expected clean (no diagnostic) if the flip is real. Any panic/rc!=0 on the runs: record, do not interpret.
