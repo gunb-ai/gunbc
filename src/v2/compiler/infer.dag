@@ -3362,6 +3362,20 @@ fn infer_arm_type_closed_at(t: Node, declaring: Optional<Node>, resolved: Resolv
 
 fn infer_type_is_open(t: Node) -> Bool { !is_empty(xs: infer_produced_open_type_params(produced: t)) }
 
+// The coproduct match's NoneDeclare: some arm is open and no arm (nor the expected type) declares a type, the same verdict infer_join_arm_types gives a Bool match.
+fn infer_match_no_arm_declares(rows: List<InferCoproductArmRow>, entries: Map<Node, List<InferredFacts>>, instances: List<TypeVariableInstance>, expected: Optional<Node>, resolved: ResolvedTree) -> Bool {
+  let any_open = fold(rows, init: false, f: fn(any, row) {
+    any || match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
+      Absent => false
+      Present { value: t } => infer_type_is_open(t: t)
+    }
+  })
+  any_open && match infer_join_declaring_at_expected(declaring: infer_arm_declaring_type(rows: rows, entries: entries, instances: instances, resolved: resolved), any_open: any_open, expected: expected) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 fn infer_coproduct_arm_body_types(
   rows: List<InferCoproductArmRow>,
   entries: Map<Node, List<InferredFacts>>,
@@ -3448,7 +3462,9 @@ fn infer_match_coproduct_rows(
         Accepted { value: _, diagnostics: _ } =>
           {
             let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, expected: expected, resolved: resolved)
-            if bodies.mismatch {
+            if infer_match_no_arm_declares(rows: rows, entries: entries, instances: coproduct.instances, expected: expected, resolved: resolved) {
+              outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: node))
+            } else if bodies.mismatch {
               outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
             } else {
               match bodies.underived {
