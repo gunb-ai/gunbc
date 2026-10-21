@@ -5134,7 +5134,6 @@ type DarkInstallStep
   | DarkStepRetire
   | DarkStepBrokerTree
   | DarkStepSidecarDigest
-  | DarkStepSidecarAdmission
   | DarkStepSidecarEnv
   | DarkStepSidecarUnit
   | DarkStepSidecarDaemonReload
@@ -5460,24 +5459,6 @@ fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, dig
   ]
 }
 
-data dark_sidecar_required_steps: List<DarkInstallStep> = [
-  DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarDaemonReload, DarkStepSidecarEnable, DarkStepSidecarRestart,
-]
-
-fn dark_leg_step(l: DarkLeg) -> DarkInstallStep {
-  match l {
-    DarkLegArgv { step: s, command: _ } => s
-    DarkLegStdin { step: s, command: _, payload: _ } => s
-    DarkLegExpectEmpty { step: s, command: _ } => s
-    DarkLegSameHash { step: s, left: _, right: _ } => s
-  }
-}
-
-// ADMISSION BEFORE ANY LEG RUNS: the plan that precedes the broker swap must be exactly the sidecar sequence, in order.
-fn dark_sidecar_plan_admitted(legs: List<DarkLeg>) -> Bool {
-  map(legs, l => dark_leg_step(l: l)) == dark_sidecar_required_steps
-}
-
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
   match approval_broker_tree_install(
     owner: i.spec.service.service_user,
@@ -5489,36 +5470,32 @@ fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
   ) {
     TreeInstallRefused { step: ts, reason: r } =>
       DarkInstallRefused { step: DarkStepBrokerTree, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
-    TreeInstallConverged { installed_digest: d, files_installed: _ } =>
-      match observe_sha256_over_transport(path: device_crypto_sidecar_binary_path(spec: i.spec, revision: i.revision), transport: i.transport) {
-        Sha256Unobserved { cause: c } =>
-          DarkInstallRefused { step: DarkStepSidecarDigest, reason: join(["the installed sidecar binary could not be digested: ", sha256_unobserved_cause_text(cause: c)], "") }
-        Sha256Observed { digest: sd } =>
-          dark_stage_sidecar(i: i, tree_digest: d, deployed: sd.hex as String, legs: dark_sidecar_legs(spec: i.spec, revision: i.revision, digest: sd.hex as String))
-      }
+    TreeInstallConverged { installed_digest: d, files_installed: _ } => dark_stage_sidecar_digest(i: i, tree_digest: d)
   }
 }
 
-fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: String, legs: List<DarkLeg>) -> DarkInstallVerdict {
-  if !dark_sidecar_plan_admitted(legs: legs) {
-    DarkInstallRefused {
-      step: DarkStepSidecarAdmission,
-      reason: join(["the plan ahead of the broker swap is not the sidecar sequence (", join(map(legs, l => dark_install_step_name(step: dark_leg_step(l: l))), ", "), "); no leg ran, the broker still runs its previous release"], ""),
-    }
-  } else {
-    match dark_run_legs(legs: legs, transport: i.transport) {
-      DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-      DarkOk =>
-        match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: deployed as NonEmptyStr) {
-          Absent => DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the broker's own device-crypto realization is not bound, so it would answer 503 on every device route" }
-          Present { value: expectation } =>
-            match device_crypto_sidecar_readback(expectation: expectation) {
-              SidecarReplied { answer: _, admission: _ } => dark_stage_broker_unit(i: i, tree_digest: tree_digest)
-              SidecarReplyFailed { cause: c } =>
-                DarkInstallRefused { step: DarkStepSidecarReadback, reason: join(["the running sidecar does not join the installed binary: ", c as String], "") }
-            }
-        }
-    }
+// THE LOCUS MUST HOLD THE SIDECAR: an installed locus whose sidecar binary cannot be digested refuses here, before any sidecar or broker leg runs.
+fn dark_stage_sidecar_digest(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {
+  match observe_sha256_over_transport(path: device_crypto_sidecar_binary_path(spec: i.spec, revision: i.revision), transport: i.transport) {
+    Sha256Unobserved { cause: c } =>
+      DarkInstallRefused { step: DarkStepSidecarDigest, reason: join(["the installed sidecar binary could not be digested: ", sha256_unobserved_cause_text(cause: c)], "") }
+    Sha256Observed { digest: sd } => dark_stage_sidecar(i: i, tree_digest: tree_digest, deployed: sd.hex as String)
+  }
+}
+
+fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: String) -> DarkInstallVerdict {
+  match dark_run_legs(legs: dark_sidecar_legs(spec: i.spec, revision: i.revision, digest: deployed), transport: i.transport) {
+    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkOk =>
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: deployed as NonEmptyStr) {
+        Absent => DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the broker's own device-crypto realization is not bound, so it would answer 503 on every device route" }
+        Present { value: expectation } =>
+          match device_crypto_sidecar_readback(expectation: expectation) {
+            SidecarReplied { answer: _, admission: _ } => dark_stage_broker_unit(i: i, tree_digest: tree_digest)
+            SidecarReplyFailed { cause: c } =>
+              DarkInstallRefused { step: DarkStepSidecarReadback, reason: join(["the running sidecar does not join the installed binary: ", c as String], "") }
+          }
+      }
   }
 }
 
@@ -5561,7 +5538,6 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"
-    DarkStepSidecarAdmission => "sidecar-admission"
     DarkStepSidecarEnv => "sidecar-digest-env"
     DarkStepSidecarUnit => "sidecar-unit"
     DarkStepSidecarDaemonReload => "sidecar-daemon-reload"

@@ -34,8 +34,8 @@ import gunbc.host.host_effect_realize {
   dark_slice_control_legs,
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
-  DarkStepSidecarAdmission, DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
-  dark_sidecar_legs, dark_sidecar_plan_admitted, dark_stage_sidecar, DarkInstallInputs,
+  DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
+  DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, DarkInstallInputs,
 }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
@@ -235,27 +235,25 @@ fn inputs() -> DarkInstallInputs {
   DarkInstallInputs { spec: deployment_spec_srv1(), revision: rev(), principal: fleet_posix_ci_runner_principal(), source_root: "/nonexistent-sidecar-source", transport: refusing_transport }
 }
 
-// POSITIVE CONTROL: the real sidecar plan is admitted, and every one of its steps is ordered before the broker's unit legs.
-test fn the_real_sidecar_plan_is_admitted_and_precedes_every_broker_unit_leg() -> Bool {
+// POSITIVE CONTROL: the real sidecar plan is the sidecar sequence, and every one of its steps is ordered before the broker's unit legs.
+test fn the_real_sidecar_plan_precedes_every_broker_unit_leg() -> Bool {
   let unit_steps = map(dark_unit_legs(spec: deployment_spec_srv1(), revision: rev()), l => leg_step(l: l))
-  dark_sidecar_plan_admitted(legs: sidecar_plan())
-    && map(sidecar_plan(), l => leg_step(l: l)) == [DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarDaemonReload, DarkStepSidecarEnable, DarkStepSidecarRestart]
+  map(sidecar_plan(), l => leg_step(l: l)) == [DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarDaemonReload, DarkStepSidecarEnable, DarkStepSidecarRestart]
     && !any(unit_steps, u => any(map(sidecar_plan(), l => leg_step(l: l)), t => t == u))
 }
 
-// RED, ON THE REAL ROUTE: a plan missing the sidecar unit leg is refused at the admission step before any leg runs, so no
-// broker leg (and no transport call) is reached. POSITIVE CONTROL: the complete plan over the same refusing transport is
-// NOT stopped by admission -- it reaches its first leg and the transport refuses THERE (DarkStepSidecarEnv).
-test fn a_plan_missing_the_sidecar_member_refuses_before_the_broker_swap_while_the_complete_plan_reaches_its_first_leg() -> Bool {
-  let missing = filter(sidecar_plan(), l => leg_step(l: l) != DarkStepSidecarUnit)
-  let red = dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d", legs: missing)
-  let control = dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d", legs: sidecar_plan())
-  (match red { DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarAdmission
-    DarkInstallConverged { broker_tree_digest: _ } => false })
-    && (match control { DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarEnv
-      DarkInstallConverged { broker_tree_digest: _ } => false })
+// RED: a locus whose sidecar binary cannot be observed refuses at the sidecar digest, before any sidecar or broker leg.
+test fn a_locus_missing_the_sidecar_binary_refuses_before_any_leg() -> Bool {
+  match dark_stage_sidecar_digest(i: inputs(), tree_digest: "t") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarDigest
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
 }
 
-test fn an_empty_plan_is_not_admitted() -> Bool {
-  !dark_sidecar_plan_admitted(legs: [])
+// POSITIVE CONTROL: with the sidecar digest in hand, the same transport is first reached at the sidecar's own first leg.
+test fn a_present_sidecar_binary_reaches_the_first_sidecar_leg() -> Bool {
+  match dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarEnv
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
 }
