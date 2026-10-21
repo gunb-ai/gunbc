@@ -3,13 +3,17 @@ module test.claim.live_deploy.owned_directory_route_witness
 import std.types { Bool, String, NonEmptyStr, FilePath, List, Int }
 import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.live_deploy.emit { owned_directory_apply_steps }
+import gunbc.live_deploy.emit { owned_directory_apply_steps, git_worker_subtree_apply_steps, repository_shared_posture_apply_steps }
 import gunbc.live_deploy.member_identity {
   DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
   directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, MemberRefusedOnHost, EffectsDerived, EffectsRefused, plan_mutation_count, ReleaseEffectPlan,
   ConvergedMember, MemberIdentity, EffectDerivation,
+  // WORKER-ROOT-EQUIVALENT-3: the plan-side probe, so a claim can say exactly what the prod plan does NOT
+  // mutate and what the lab plan DOES. The members themselves come from the roster builders.
+  RegroupGitWorkerSubtree, AssertRepositorySharedPosture, plan_mutation_is,
 }
-import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
+import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision, deployment_git_worker_subtree_members, deployment_repository_shared_posture_members }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
@@ -25,13 +29,18 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
   dashboard_instance_provider_state_directory, dashboard_instance_worker_git_directories,
+  // WORKER-ROOT-EQUIVALENT-3: the apply-render proof uses the SAME builders the fragments call -- the
+  // declared subtree children and the maintenance unit names -- so the claim compares against the
+  // authority, never a hand-typed spelling.
+  dashboard_git_worker_directory_children, dashboard_git_maintenance_service_unit_name,
+  dashboard_git_maintenance_timer_unit_name,
 }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_root, credential_acquisition_slots_directory, cursor_attempt_runtime_directory, cursor_attempt_runtime_parent }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory, deploy_witness_full_install_plan }
 
 // THE ROUTE, NOT ONLY THE ANSWER. For a consumer the production route used to leave without a creator,
 // each claim joins four facts on srv1_live: the path the consumer WRITES (its runtime layout) is its
@@ -373,4 +382,58 @@ test fn the_deploy_principal_is_granted_the_pinned_reads_the_plan_observes_throu
     }
     _ => false
   }
+}
+// THE OTHER SIDE OF THE SAME FACT (bright-moth-475, amendment 3 of msg_32acd088). The two git-subtree
+// members and the maintenance unit belong to the DEDICATED-WORKER route and to NOTHING else. The move put
+// them on the live_deploy roster, which is ALSO srv1_live's route -- so the load-bearing obligation is
+// that a WorkerIsServiceUser host gains NOT ONE thing from it, while the lab's plan carries the whole set.
+// The claim runs the PRODUCTION route's own builders (the roster builders, the full-install plan, and the
+// two fragment apply-steps) rather than a hand-written list, so it is the transitive chain -- the roster
+// gate excludes the members for prod, the plan therefore carries no regroup/assert mutation for them, and
+// the fragments (which key on plan_mutation_is, not on the worker type) therefore render NOTHING -- proven
+// end to end, not assumed. If the roster gate were widened to prod by mistake, the FIRST leg (the empty
+// subtree/posture member lists) turns red before any apply step is even reached.
+test fn the_dedicated_worker_move_touches_the_lab_and_leaves_prod_untouched() -> Bool {
+  let prod_spec = deployment_spec_srv1()
+  let lab_spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let lab = srv1_lab_dashboard_instance()
+  // THE PROD SIDE, through the route's own builders.
+  let prod_subtrees = deployment_git_worker_subtree_members(spec: prod_spec)
+  let prod_posture = deployment_repository_shared_posture_members(spec: prod_spec)
+  let prod_plan = deploy_witness_full_install_plan(spec: prod_spec)
+  let prod_subtree_steps = pipeline_steps_text(steps: git_worker_subtree_apply_steps(spec: prod_spec, plan: prod_plan))
+  let prod_posture_steps = pipeline_steps_text(steps: repository_shared_posture_apply_steps(spec: prod_spec, plan: prod_plan))
+  // THE LAB SIDE.
+  let lab_subtrees = deployment_git_worker_subtree_members(spec: lab_spec)
+  let lab_posture = deployment_repository_shared_posture_members(spec: lab_spec)
+  let lab_plan = deploy_witness_full_install_plan(spec: lab_spec)
+  let lab_subtree_steps = pipeline_steps_text(steps: git_worker_subtree_apply_steps(spec: lab_spec, plan: lab_plan))
+  let lab_posture_steps = pipeline_steps_text(steps: repository_shared_posture_apply_steps(spec: lab_spec, plan: lab_plan))
+  // prod gains nothing: no subtree member, no posture member in the roster ...
+  count(prod_subtrees) == 0
+    && count(prod_posture) == 0
+    // ... nor one regroup/assert mutation for the lab's OWN members in prod's plan (checking the lab's
+    // members against the PROD plan proves the plan -- not just the member list -- carries nothing) ...
+    && all(lab_subtrees, m => !plan_mutation_is(plan: prod_plan, member: m, expected: RegroupGitWorkerSubtree))
+    && all(lab_posture, m => !plan_mutation_is(plan: prod_plan, member: m, expected: AssertRepositorySharedPosture))
+    // ... and both git fragments render NOTHING for prod (the privileged unit install included) ...
+    && prod_subtree_steps == ""
+    && prod_posture_steps == ""
+    // the lab carries the whole set: the three declared subtree children and the posture member ...
+    && count(lab_subtrees) == count(dashboard_git_worker_directory_children)
+    && count(lab_posture) == 1
+    // ... each subtree member is planned to REGROUP and the posture member to ASSERT ...
+    && all(lab_subtrees, m => plan_mutation_is(plan: lab_plan, member: m, expected: RegroupGitWorkerSubtree))
+    && all(lab_posture, m => plan_mutation_is(plan: lab_plan, member: m, expected: AssertRepositorySharedPosture))
+    // ... the subtree apply actually emits the sweep naming the shared attempt group ...
+    && string_contains(s: lab_subtree_steps, pattern: fleet_posix_worker_shared_group_name as String)
+    // ... and the posture apply carries BOTH deferral keys AND the maintenance unit + timer. The unit and
+    // the keys are one member and one fragment (bright-moth-475's amendment 1): a posture that switches off
+    // the repo's only repack without installing its replacement is the externalized degradation the
+    // amendment refused, so the keys and the unit must appear together or this leg is red.
+    && string_contains(s: lab_posture_steps, pattern: "core.sharedRepository")
+    && string_contains(s: lab_posture_steps, pattern: "gc.auto")
+    && string_contains(s: lab_posture_steps, pattern: "maintenance.auto")
+    && string_contains(s: lab_posture_steps, pattern: dashboard_git_maintenance_service_unit_name(instance: lab))
+    && string_contains(s: lab_posture_steps, pattern: dashboard_git_maintenance_timer_unit_name(instance: lab))
 }

@@ -2512,6 +2512,26 @@ fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
   }
 }
 
+// THE APPLY STEPS FOR THE TWO GIT-SUBTREE MEMBERS, exposed so a claim can run the SAME projection the
+// apply uses (host_script_mutate_projection) rather than re-deriving it -- the same reason
+// owned_directory_apply_steps is public. An admitted regroup/posture renders its argv; a plan that makes
+// no claim about the member renders nothing.
+fn git_worker_subtree_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  let fragments = git_worker_subtree_fragments(spec: spec, plan: plan)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
+  }
+}
+
+fn repository_shared_posture_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  let fragments = repository_shared_posture_fragments(spec: spec, plan: plan)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
+  }
+}
+
 fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> {
   let fragments = owned_directory_target_fragments(t: t)
   match host_script_mutate_projection(fragments: fragments) {
