@@ -1650,10 +1650,17 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
          ) {
            ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           // THE COMPARISON'S AXIS, MATCHED DIRECTLY (round-7 Q3). There is no
+           // ProtectionWasReadForAnotherEnvironment any more; the join carries subject_comparison's own
+           // EnvironmentDiffers. Matching the SPECIFIC axis arm (not `ProtectionJoinRefused { because: _ }`)
+           // is what makes the witness discriminate: if the join stopped naming the environment axis, this
+           // claim goes red rather than accepting any refusal. observed=protection, other=ownership.
            ProtectionJoinRefused {
-             because: ProtectionWasReadForAnotherEnvironment {
-               observed_environment: seen,
-               ownership_environment: expected,
+             because: ProtectionSubjectsDiffer {
+               because: EnvironmentDiffers {
+                 observed_environment: seen,
+                 other_environment: expected,
+               },
              },
            } => seen == sibling_env && expected == gate_env
            ProtectionJoinRefused { because: _ } => false
@@ -1676,10 +1683,13 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
          ) {
            ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           // THE INVERSE, SAME CARRIED AXIS (Q3): observed=protection=gate, other=ownership=sibling.
            ProtectionJoinRefused {
-             because: ProtectionWasReadForAnotherEnvironment {
-               observed_environment: seen,
-               ownership_environment: expected,
+             because: ProtectionSubjectsDiffer {
+               because: EnvironmentDiffers {
+                 observed_environment: seen,
+                 other_environment: expected,
+               },
              },
            } => seen == gate_env && expected == sibling_env
            ProtectionJoinRefused { because: _ } => false
@@ -1702,10 +1712,14 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
          ) {
            ProtectionJoinEstablished { protection: _, ownership: _ } => false
+           // THE REPOSITORY AXIS, CARRIED (Q3). Environments are per-repository objects, so this is the
+           // arm that tells a fork's gcp-iam-bootstrap from ours; it matches RepositoryDiffers directly.
            ProtectionJoinRefused {
-             because: ProtectionWasReadForAnotherRepository {
-               observed_repository: seen,
-               ownership_repository: expected,
+             because: ProtectionSubjectsDiffer {
+               because: RepositoryDiffers {
+                 observed_repo: seen,
+                 other_repo: expected,
+               },
              },
            } => seen == other_repo && expected == gate_repo
            ProtectionJoinRefused { because: _ } => false
@@ -1895,15 +1909,20 @@ test fn the_act_refuses_a_standing_sealed_for_another_account_or_another_reposit
     now: clock_read(instant: standing_instant),
   ) {
     ReviewerRemovalReady { admitted: _ } => false
+    // THE OWNER AXIS, MATCHED AS THE COMPARISON NAMED IT (round-7 Q2/Q3). The act now carries
+    // subject_comparison's OwnerDiffers instead of rebuilding a BoundaryMismatch after a Bool collapse, so
+    // this witness matches the AXIS the comparison chose -- not `missing: _`, which would let any refusal
+    // (a stale standing, an unread clock) pass this claim and hide the mutation. Observed is the standing's
+    // boundary, other is the requested one. Under M6 (the comparison's owner term dropped) the arms above
+    // the boundary match cannot catch this -- they compare the standing against the two RECEIPTS, not
+    // against the boundary -- so the act falls through to Ready and this claim goes red.
     ReviewerRemovalBlocked {
-      missing: ActStandingIsForAnotherBoundary { subject: m },
+      missing: ActStandingIsForAnotherBoundary {
+        because: OwnerDiffers { observed_owner: seen_owner, other_owner: asked_owner },
+      },
     } =>
-      m.standing_owner == foreign_owner
-        && m.requested_owner == gate_owner
-        && m.standing_repo == gate_repo
-        && m.requested_repo == gate_repo
-        && m.standing_environment == gate_env
-        && m.requested_environment == gate_env
+      seen_owner == foreign_owner
+        && asked_owner == gate_owner
     ReviewerRemovalBlocked { missing: _ } => false
   })
     // M7: THE STANDING IS HONESTLY ABOUT gunb-ai/someone-elses-fork/srv1-production -- same account, same
@@ -1936,15 +1955,16 @@ test fn the_act_refuses_a_standing_sealed_for_another_account_or_another_reposit
       now: clock_read(instant: standing_instant),
     ) {
       ReviewerRemovalReady { admitted: _ } => false
+      // THE REPOSITORY AXIS, MATCHED (Q3). The act carries RepositoryDiffers: same account, different
+      // repository, so owner and environment are byte-equal and the only thing that can fail is the repo
+      // term (manager M7). Matching RepositoryDiffers rather than any refusal is what makes M7 red.
       ReviewerRemovalBlocked {
-        missing: ActStandingIsForAnotherBoundary { subject: m },
+        missing: ActStandingIsForAnotherBoundary {
+          because: RepositoryDiffers { observed_repo: seen_repo, other_repo: asked_repo },
+        },
       } =>
-        m.standing_owner == gate_owner
-          && m.requested_owner == gate_owner
-          && m.standing_repo == other_repo
-          && m.requested_repo == gate_repo
-          && m.standing_environment == gate_env
-          && m.requested_environment == gate_env
+        seen_repo == other_repo
+          && asked_repo == gate_repo
       ReviewerRemovalBlocked { missing: _ } => false
     })
     // THE CONTROL: the identical construction, gunb-ai/gunbc. The act is ISSUED. An act that refused every
@@ -2173,9 +2193,19 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
     ),
     observed_at: clock_read(instant: standing_instant_fresh),
   ) {
+    // THE COMPLETION'S SUBJECT CHECK, CARRIED (Q3). `observed` is the post-removal read (sibling),
+    // `other` is the requested boundary (srv1). The completion mint is the arm that CERTIFIES the reviewer
+    // is gone -- the one that releases the boundary -- so this claim matching EnvironmentDiffers (not `_`)
+    // is what keeps a sibling read from certifying srv1's removal. The old standing_*/requested_* names
+    // belonged to the standing mint's roles; they would lie here.
     ReviewerRemovalCompletionRefused {
-      because: CompletionReadIsOfAnotherSubject { subject: m },
-    } => m.requested_environment == gate_env && m.standing_environment == sibling_env
+      because: CompletionReadIsOfAnotherSubject {
+        because: EnvironmentDiffers {
+          observed_environment: seen,
+          other_environment: asked,
+        },
+      },
+    } => seen == sibling_env && asked == gate_env
     _ => false
   }
 }
@@ -2843,15 +2873,19 @@ test fn a_standing_refuses_a_pair_witnessed_in_another_account() -> Bool {
       attempt: standing_attempt(),
       observed_at: clock_read(instant: standing_instant),
     ) {
+      // THE TYPED OWNER DIFFERENCE, NOT `because: _` (manager Q3 + round-7 blocker 1). The mint compares
+      // the protection read (`observed`) against the requested boundary (`other`); here owners differ while
+      // repo and environment are byte-identical on both sides. Matching OwnerDiffers BY NAME is the point:
+      // under the M1s mutation (owner dropped at the standing site) the mint returns StandingRead, this arm
+      // does not match, and the claim fails. A wildcard would have accepted a JoinWasRefused and passed on
+      // an accident. The old standing_*/requested_* spelling is gone -- one vocabulary, the comparison's.
       StandingRefused {
-        because: StandingIsAboutAnotherBoundary { subject: m },
+        because: StandingIsAboutAnotherBoundary {
+          because: OwnerDiffers { observed_owner: seen_owner, other_owner: asked_owner },
+        },
       } =>
-        m.standing_owner == foreign_owner
-          && m.requested_owner == gate_owner
-          && m.standing_repo == gate_repo
-          && m.requested_repo == gate_repo
-          && m.standing_environment == gate_env
-          && m.requested_environment == gate_env
+        seen_owner == foreign_owner
+          && asked_owner == gate_owner
       StandingRefused { because: _ } => false
       StandingRead { standing: _ } => false
     })

@@ -62,8 +62,12 @@ import gunbc.auth.deployment_gate_authorization {
   DeploymentGateBoundary,
   srv1_deployment_gate_boundary,
   boundary_repository_label,
-  boundary_mismatch,
-  BoundaryMismatch,
+  // THE ONE SUBJECT COMPARISON (round-7 blocker 4). The act's boundary arm now routes through these
+  // instead of three site-local `!=`s and the deleted boundary_mismatch report: subject_of_the_boundary
+  // turns each DeploymentGateBoundary into the shared GateSubject, and subject_comparison answers once.
+  // The refusal arms (SubjectsDiffer/OwnerDiffers/...) are constructor PATTERNS and need no import.
+  subject_of_the_boundary,
+  subject_comparison,
   standing_max_age,
   standing_is_within_age_bound,
   reviewer_removal_admission,
@@ -390,73 +394,85 @@ fn reviewer_removal_act_for(
                   rejected_environment: evidence.rejected.environment_name,
                 },
               }
-            } else if read_now.boundary.repository.owner != boundary.repository.owner
-              || read_now.boundary.repository.name != boundary.repository.name
-              || read_now.boundary.environment_name != boundary.environment_name {
+            } else {
               // REACHABLE, AND ONLY THIS FORM OF THE QUESTION IS. The mint already compared the READS to
-              // the boundary it was handed, so re-checking the ownership halves here could never fire --
-              // that is the unreachable re-validation §4b removes. What the mint cannot know is which
-              // boundary the ACT is being asked about: a caller may hand a standing sealed for
+              // the boundary it was handed, so re-checking the ownership halves against the boundary here
+              // could never fire -- that is the unreachable re-validation §4b removes. What the mint cannot
+              // know is which boundary the ACT is being asked about: a caller may hand a standing sealed for
               // gcp-iam-bootstrap to a request for srv1-production, and the two boundary values are
               // independent arguments.
-              // ONE COMPARISON AGAINST THE SEALED SUBJECT, not two against its halves. The standing
-              // carries the boundary it vouches for, so the question "is this the standing for THAT
-              // environment" is answered once, and the answer carries both halves (environments are
-              // per-repository objects: the name alone is not a subject).
-              ReviewerRemovalBlocked {
-                missing: ActStandingIsForAnotherBoundary {
-                  subject: boundary_mismatch(
-                    standing_owner: read_now.boundary.repository.owner,
-                    standing_repo: read_now.boundary.repository.name,
-                    standing_environment: read_now.boundary.environment_name,
-                    requested: boundary,
-                  ),
-                },
-              }
-            } else if read_now.observation_attempt != removal_attempt {
-              // THE READ IS FOR ANOTHER DISPATCH. The trial pair and the standing can both be genuine and
-              // still belong to a run that has since been retried: a re-run is a new attempt with a new
-              // pending deployment, and the read that vouched for the old one says nothing about this one.
-              ReviewerRemovalBlocked {
-                missing: ActStandingIsForAnotherAttempt {
-                  standing_attempt: read_now.observation_attempt,
-                  removal_attempt: removal_attempt,
-                },
-              }
-            } else if match now {
-              Absent => true
-              Present { value: stamp } => !standing_is_within_age_bound(
-                observed_at: read_now.observed_at,
-                now: stamp.instant,
-              )
-            } {
-              // EITHER NO CLOCK WAS READ FOR THIS ACT, OR THE READ IS GENUINE BUT AGED. The first is
-              // refused rather than defaulted: filling in a time the caller never read is exactly the
-              // dial that made every stale standing spendable. The second is not a forged standing and
-              // not a wrong subject -- it is a true statement about a world that may have moved, and
-              // refusing on age is what makes "immediately beforehand" a checked property rather than a
-              // comment (§5). The two share an arm only in this `if`; each carries its own reason.
-              ReviewerRemovalBlocked {
-                missing: match now {
-                  Absent => ActClockWasNotRead
-                  Present { value: stamp } => ActStandingIsStale {
-                    observed_at: read_now.observed_at,
-                    now: stamp.instant,
-                    max_age: standing_max_age,
+              //
+              // THE ONE COMPARISON, NOW AT THE FOURTH SITE TOO (round-7 blocker 4, manager + side chat).
+              // This arm was three site-local `!=`s, and the manager's srv2 mutations M6 (drop the owner
+              // term) and M7 (drop the repo term) BOTH SURVIVED at 30/30 -- no witness handed the act a
+              // standing whose boundary differed from the requested one in exactly one field while the rest
+              // agreed. The three arms above compare the STANDING against the two RECEIPTS (rule id,
+              // installation, environment), not against the boundary, so they cannot catch that. Routing
+              // through subject_comparison makes all three fields THIS module's, and the two dropped terms
+              // now have REDs of their own
+              // (the_act_refuses_a_standing_sealed_for_another_account_or_another_repository).
+              //
+              // THE DECISION AND THE REPORT ARE THE SAME CALL (Q2/Q3). It used to collapse to a Bool and
+              // then rebuild the field-by-field report through boundary_mismatch -- the triple consulted by
+              // two authorities. Now subject_comparison is asked ONCE, its SubjectsDiffer arm both decides
+              // the refusal AND carries the axis it named, un-restated; the SubjectsAgree arm falls through
+              // to the attempt and age checks below. BoundaryMismatch and boundary_mismatch are deleted.
+              match subject_comparison(
+                observed: subject_of_the_boundary(boundary: read_now.boundary),
+                other: subject_of_the_boundary(boundary: boundary),
+              ) {
+                SubjectsDiffer { because: difference } =>
+                  ReviewerRemovalBlocked {
+                    missing: ActStandingIsForAnotherBoundary { because: difference },
                   }
-                },
-              }
-            } else {
-              // EVERY CHECK HAS PASSED, AND NOTHING BELOW THEM CAN BE REARRANGED INTO A BYPASS: the
-              // sealed record is minted here and nowhere else, so a Ready decision a consumer reads out
-              // of the sequence carries inside it the boundary these checks compared.
-              ReviewerRemovalReady {
-                admitted: AdmittedReviewerRemovalAct {
-                  intervention: build_reviewer_removal_act(boundary: boundary),
-                  evidence: evidence,
-                  boundary: boundary,
-                  standing: read_now,
-                },
+                SubjectsAgree =>
+                  if read_now.observation_attempt != removal_attempt {
+                    // THE READ IS FOR ANOTHER DISPATCH. The trial pair and the standing can both be genuine
+                    // and still belong to a run that has since been retried: a re-run is a new attempt with a
+                    // new pending deployment, and the read that vouched for the old one says nothing about
+                    // this one.
+                    ReviewerRemovalBlocked {
+                      missing: ActStandingIsForAnotherAttempt {
+                        standing_attempt: read_now.observation_attempt,
+                        removal_attempt: removal_attempt,
+                      },
+                    }
+                  } else if match now {
+                    Absent => true
+                    Present { value: stamp } => !standing_is_within_age_bound(
+                      observed_at: read_now.observed_at,
+                      now: stamp.instant,
+                    )
+                  } {
+                    // EITHER NO CLOCK WAS READ FOR THIS ACT, OR THE READ IS GENUINE BUT AGED. The first is
+                    // refused rather than defaulted: filling in a time the caller never read is exactly the
+                    // dial that made every stale standing spendable. The second is not a forged standing and
+                    // not a wrong subject -- it is a true statement about a world that may have moved, and
+                    // refusing on age is what makes "immediately beforehand" a checked property rather than a
+                    // comment (§5). The two share an arm only in this `if`; each carries its own reason.
+                    ReviewerRemovalBlocked {
+                      missing: match now {
+                        Absent => ActClockWasNotRead
+                        Present { value: stamp } => ActStandingIsStale {
+                          observed_at: read_now.observed_at,
+                          now: stamp.instant,
+                          max_age: standing_max_age,
+                        }
+                      },
+                    }
+                  } else {
+                    // EVERY CHECK HAS PASSED, AND NOTHING BELOW THEM CAN BE REARRANGED INTO A BYPASS: the
+                    // sealed record is minted here and nowhere else, so a Ready decision a consumer reads out
+                    // of the sequence carries inside it the boundary these checks compared.
+                    ReviewerRemovalReady {
+                      admitted: AdmittedReviewerRemovalAct {
+                        intervention: build_reviewer_removal_act(boundary: boundary),
+                        evidence: evidence,
+                        boundary: boundary,
+                        standing: read_now,
+                      },
+                    }
+                  }
               }
             }
         }

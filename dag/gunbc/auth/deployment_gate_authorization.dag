@@ -1297,35 +1297,14 @@ fn boundary_repository_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
 
 // THE WHOLE SUBJECT, FOR REPORTS. Both halves, so a refusal that says "another boundary" can be acted
 // on without guessing which half moved.
-// THE SUBJECT MISMATCH, AS ONE RECORD. Two decisions need to say the same thing -- the standing mint
-// refusing a read that is about somewhere else, and the act function refusing a standing that is about
-// somewhere else -- and minting two shapes for one fact is how they start to drift (§3). Both halves are
-// carried, owner/repo/environment, because environments are PER-REPOSITORY objects: an environment name on
-// its own does not identify a subject, and a report that shows only the name cannot say which half moved.
-type BoundaryMismatch {
-  standing_owner: NonEmptyStr,
-  standing_repo: NonEmptyStr,
-  standing_environment: NonEmptyStr,
-  requested_owner: NonEmptyStr,
-  requested_repo: NonEmptyStr,
-  requested_environment: NonEmptyStr,
-}
-
-fn boundary_mismatch(
-  standing_owner: NonEmptyStr,
-  standing_repo: NonEmptyStr,
-  standing_environment: NonEmptyStr,
-  requested: DeploymentGateBoundary
-) -> BoundaryMismatch {
-  BoundaryMismatch {
-    standing_owner: standing_owner,
-    standing_repo: standing_repo,
-    standing_environment: standing_environment,
-    requested_owner: requested.repository.owner,
-    requested_repo: requested.repository.name,
-    requested_environment: requested.environment_name,
-  }
-}
+// BOUNDARYMISMATCH and boundary_mismatch ARE DELETED (round-7 blocker 4, manager + side chat). They carried
+// a field-by-field re-spelling of "these two subjects differ" -- standing_owner/standing_repo/
+// standing_environment against requested_owner/requested_repo/requested_environment -- built by a second
+// function that re-read the triple subject_comparison had ALREADY read. Every refusal that used to hold one
+// (StandingIsAboutAnotherBoundary, ActStandingIsForAnotherBoundary, CompletionReadIsOfAnotherSubject) now
+// carries the comparison's own SubjectDifference: one authority over the fact, no report that can disagree
+// with the check it reports. Nothing else consumed the pair, and DESIGN §3 does not keep a type with no
+// consumer "in case".
 
 fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
   concat(boundary_repository_label(boundary: boundary),
@@ -1479,22 +1458,14 @@ type ProtectionJoinRefusal
   // THE READ WAS REFUSED AT ITS OWN MINT, and the reason travels unchanged -- the join adds no second
   // name for a refusal that already has one (§3).
   | ProtectionReadWasRefused { because: ProtectionResponseNamedAnotherEnvironment }
-  // THE ACCOUNTS DIFFER. Listed FIRST among the subject arms because the join walks the triple in a fixed
-  // order (owner, repository, environment) and because this is the axis whose absence was round-6 blocker
-  // 1b: two repositories in two accounts that share a name are not the same repository, and until this arm
-  // existed every subject comparison in the module was satisfied by the second one.
-  | ProtectionWasReadForAnotherOwner {
-      observed_owner: NonEmptyStr,
-      ownership_owner: NonEmptyStr,
-    }
-  | ProtectionWasReadForAnotherEnvironment {
-      observed_environment: NonEmptyStr,
-      ownership_environment: NonEmptyStr,
-    }
-  | ProtectionWasReadForAnotherRepository {
-      observed_repository: NonEmptyStr,
-      ownership_repository: NonEmptyStr,
-    }
+  // THE READS ARE ABOUT DIFFERENT THINGS, and the refusal names the axis WITHOUT RESTATING it: the
+  // comparison's own SubjectDifference travels. There are deliberately not three arms here
+  // (…ForAnotherOwner / …ForAnotherRepository / …ForAnotherEnvironment), because a per-site copy of the
+  // axis vocabulary is a second authority over one fact -- each copy can drift, and only one of them is
+  // ever the definition (Q3, side chat). The axis whose absence was round-6 blocker 1b -- two repositories
+  // in two accounts sharing a name are not the same repository -- is the OwnerDiffers arm of the carried
+  // value, named by the comparison and matched by witnesses through it.
+  | ProtectionSubjectsDiffer { because: SubjectDifference }
 
 type ProtectionOwnershipJoin
   = ProtectionJoinEstablished {
@@ -1529,20 +1500,37 @@ type ProtectionOwnershipJoin
 // OWNER FIRST because it is the axis whose absence was the vulnerability and whose presence in a mismatch
 // means the two reads are about different repositories in the strict sense, not differently-labelled
 // siblings.
-type SubjectDisagreement
-  = SubjectsAgree
-  | OwnerDiffers {
+// THE COMPARISON'S ANSWER, SIDE-NEUTRAL (round-7 Q3, side chat via the manager). One value answers "are
+// these two subjects the same thing", and it is consumed UNCHANGED by every site: the join's refusal, the
+// standing mint's refusal, the completion mint's refusal and the act's refusal all carry THIS, so there is
+// no one-for-one copy of the axes per consumer and no per-consumer vocabulary to drift.
+//
+// WHY `observed`/`other` AND NOT `observed`/`ownership`: the comparison was written for the join, where the
+// other side is an ownership read -- but the standing, completion and act sites compare a read against a
+// REQUESTED BOUNDARY, where "ownership_owner" is simply wrong: nothing on that side is an ownership. A
+// field named for one caller's role is how a later site reuses the type and inherits a lie about what its
+// fields mean (round 6's whole lesson, one level down). `observed` is the side that came off a read;
+// `other` is the side it is being compared to. Which one that is, each site says in its own comment.
+type SubjectDifference
+  = OwnerDiffers {
       observed_owner: NonEmptyStr,
-      ownership_owner: NonEmptyStr,
+      other_owner: NonEmptyStr,
     }
   | RepositoryDiffers {
-      observed_repository: NonEmptyStr,
-      ownership_repository: NonEmptyStr,
+      observed_repo: NonEmptyStr,
+      other_repo: NonEmptyStr,
     }
   | EnvironmentDiffers {
       observed_environment: NonEmptyStr,
-      ownership_environment: NonEmptyStr,
+      other_environment: NonEmptyStr,
     }
+
+// AGREE, OR NAME THE AXIS. The `SubjectsDiffer` wrapper exists so the sum is complete -- a caller has to
+// handle "they differ" as a case rather than remembering that a returned difference is one. Consumers match
+// on THIS sum and carry `because` verbatim.
+type SubjectComparison
+  = SubjectsAgree
+  | SubjectsDiffer { because: SubjectDifference }
 
 // THE SUBJECT OF A READ, AS ONE CARRIER, so the whole-subject comparison below can be asked of any two
 // reads. This is deliberately NOT extdeps.github.github.Repository reused: Repository carries `full_name`,
@@ -1597,24 +1585,37 @@ fn subject_of_the_boundary(
 // THE COMPARISON ITSELF: one function, all three fields, in a fixed order. Comparing whole carriers
 // (`left != right`) would answer the question in one operation, but it would also refuse to say WHICH axis
 // moved, so the fields are walked here and nowhere else.
-fn subject_disagreement(
+//
+// WHY IT RETURNS THE DIFFERENCE INSTEAD OF A BOOL (Q2, ruled in by the side chat): every consumer needs
+// the axis, not just the verdict, and the earlier shape made that a two-step -- `if match comparison(...) {
+// SubjectsAgree => false  _ => true } { refusal }`, where the refusal then rebuilt the mismatch field by
+// field through a second function. That is the same question asked twice, through two authorities, with a
+// collapse (`_ => true`) in between that silently accepts ANY difference the rebuild does not expect. Now
+// the comparison is matched once and the refusal carries its answer.
+fn subject_comparison(
   observed: GateSubject,
   other: GateSubject
-) -> SubjectDisagreement {
+) -> SubjectComparison {
   if observed.owner != other.owner {
-    OwnerDiffers {
-      observed_owner: observed.owner,
-      ownership_owner: other.owner,
+    SubjectsDiffer {
+      because: OwnerDiffers {
+        observed_owner: observed.owner,
+        other_owner: other.owner,
+      },
     }
   } else if observed.repo != other.repo {
-    RepositoryDiffers {
-      observed_repository: observed.repo,
-      ownership_repository: other.repo,
+    SubjectsDiffer {
+      because: RepositoryDiffers {
+        observed_repo: observed.repo,
+        other_repo: other.repo,
+      },
     }
   } else if observed.environment_name != other.environment_name {
-    EnvironmentDiffers {
-      observed_environment: observed.environment_name,
-      ownership_environment: other.environment_name,
+    SubjectsDiffer {
+      because: EnvironmentDiffers {
+        observed_environment: observed.environment_name,
+        other_environment: other.environment_name,
+      },
     }
   } else {
     SubjectsAgree
@@ -1641,7 +1642,7 @@ fn join_protection_to_ownership(
           because: OwnershipWasNotEstablished { because: because },
         }
       OwnedByGateApp { observation: observation } =>
-        match subject_disagreement(
+        match subject_comparison(
           observed: subject_of_the_protection_read(protection: protection),
           other: subject_of_the_ownership_read(observation: observation),
         ) {
@@ -1650,32 +1651,14 @@ fn join_protection_to_ownership(
               protection: protection,
               ownership: observation,
             }
-          OwnerDiffers { observed_owner: observed_owner, ownership_owner: ownership_owner } =>
+          // THE JOIN'S REFUSAL CARRIES THE COMPARISON'S ANSWER, UNRESTATED (Q3). Three site-local arms
+          // (ProtectionWasReadForAnother{Owner,Repository,Environment}) used to re-spell the axes here,
+          // which meant the join, the standing, the completion and the act each kept their own dialect of
+          // "different subject" -- four vocabularies for one fact, and no guarantee the fourth meant what
+          // the first did. The difference is minted once, by the comparison, and travels.
+          SubjectsDiffer { because: difference } =>
             ProtectionJoinRefused {
-              because: ProtectionWasReadForAnotherOwner {
-                observed_owner: observed_owner,
-                ownership_owner: ownership_owner,
-              },
-            }
-          RepositoryDiffers {
-            observed_repository: observed_repository,
-            ownership_repository: ownership_repository,
-          } =>
-            ProtectionJoinRefused {
-              because: ProtectionWasReadForAnotherRepository {
-                observed_repository: observed_repository,
-                ownership_repository: ownership_repository,
-              },
-            }
-          EnvironmentDiffers {
-            observed_environment: observed_environment,
-            ownership_environment: ownership_environment,
-          } =>
-            ProtectionJoinRefused {
-              because: ProtectionWasReadForAnotherEnvironment {
-                observed_environment: observed_environment,
-                ownership_environment: ownership_environment,
-              },
+              because: ProtectionSubjectsDiffer { because: difference },
             }
         }
     }
@@ -1752,7 +1735,7 @@ type StandingRefusalReason
   // THE READS ARE CONSISTENT WITH EACH OTHER BUT ABOUT ANOTHER SUBJECT. Distinct from JoinWasRefused (the
   // two READS disagreeing with each other): here the pair is coherent and simply not about the boundary
   // whose reviewer is about to be removed.
-  | StandingIsAboutAnotherBoundary { subject: BoundaryMismatch }
+  | StandingIsAboutAnotherBoundary { because: SubjectDifference }
   // The human required-reviewer is gone. If the reviewer has already been removed, there is no act to
   // perform, and answering as if there were one is how a second removal gets waved through -- and it is
   // also the state in which the App gate is the ONLY thing left, which is the configuration this whole
@@ -1941,45 +1924,44 @@ fn standing_from_join(
         StandingRefused {
           because: BranchPolicyIsNoLongerMainOnly { environment: observation.environment_name },
         }
-      } else if match subject_disagreement(
-        observed: subject_of_the_protection_read(protection: protection),
-        other: subject_of_the_boundary(boundary: boundary),
-      ) {
-        SubjectsAgree => false
-        _ => true
-      } {
-        // THE READ AND THE REQUESTED SUBJECT DISAGREE. Distinct from JoinWasRefused, which is the two READS
-        // disagreeing with EACH OTHER: here each read is internally fine and the pair is consistent, but
-        // neither is about the boundary the caller wants to weaken. The operator needs those two problems
-        // told apart -- one is a wrong argument, the other is a wrong environment.
-        //
-        // THE COMPARISON IS THE SHARED ONE, NOT A SITE-LOCAL PAIR OF `!=`s. This condition used to name
-        // environment and repository and nothing else, so a read of another ACCOUNT's same-named repository
-        // passed it (round-6 blocker 1b): owner is in the BoundaryMismatch it REPORTS and was in none of the
-        // fields it COMPARES. Routing through subject_disagreement means the same three fields this module
-        // compares everywhere are the three compared here, and the refusal below still names which moved.
-        StandingRefused {
-          because: StandingIsAboutAnotherBoundary {
-            subject: boundary_mismatch(
-              standing_owner: protection.owner,
-              standing_repo: protection.repo,
-              standing_environment: protection.environment_name,
-              requested: boundary,
-            ),
-          },
-        }
       } else {
-        StandingRead {
-          standing: CurrentRemovalBoundaryStanding {
-            boundary: boundary,
-            ownership: observation,
-            protection: protection,
-            observation_attempt: attempt,
-            // UNSEALED HERE AND ONLY HERE, inside the module that sealed it. The helper's caller cannot
-            // author the value, and this record's field is the plain Timestamp the age comparison
-            // consumes; the unsealing happens once, at the last step of the only admitted path.
-            observed_at: observed_at.instant,
-          },
+        // THE SUBJECT CHECK, MATCHED ONCE, ANSWER CARRIED (Q2, side chat via the manager). The earlier
+        // shape asked the comparison a Bool question (`SubjectsAgree => false  _ => true`) and then, in the
+        // refusal, REBUILT the mismatch field by field through boundary_mismatch -- the same triple walked
+        // by two authorities with a collapse between them that accepted any difference the rebuild did not
+        // expect. Now one match decides, and the refusal carries the comparison's own answer: the axis,
+        // with both sides as the comparison read them. Nothing here can disagree with the comparison
+        // because nothing here re-derives what the comparison already said.
+        //
+        // THE READ AND THE REQUESTED SUBJECT, NOT THE READ AND THE OTHER READ. Distinct from JoinWasRefused,
+        // which is the two READS disagreeing with EACH OTHER: here each read is internally fine and the pair
+        // is consistent, but neither is about the boundary the caller wants to weaken. The operator needs
+        // those two problems told apart -- one is a wrong argument, the other is a wrong environment. And
+        // THE COMPARISON IS THE SHARED ONE, not a site-local trio of `!=`s: this site compared
+        // environment-and-repo-only until round 6 let owner in, and the M1s mutation showed its owner term
+        // could still be deleted with every witness green. Here the three fields are the comparison's, and
+        // the owner arm has a RED (a_standing_refuses_a_pair_witnessed_in_another_account).
+        match subject_comparison(
+          observed: subject_of_the_protection_read(protection: protection),
+          other: subject_of_the_boundary(boundary: boundary),
+        ) {
+          SubjectsAgree =>
+            StandingRead {
+              standing: CurrentRemovalBoundaryStanding {
+                boundary: boundary,
+                ownership: observation,
+                protection: protection,
+                observation_attempt: attempt,
+                // UNSEALED HERE AND ONLY HERE, inside the module that sealed it. The helper's caller cannot
+                // author the value, and this record's field is the plain Timestamp the age comparison
+                // consumes; the unsealing happens once, at the last step of the only admitted path.
+                observed_at: observed_at.instant,
+              },
+            }
+          SubjectsDiffer { because: difference } =>
+            StandingRefused {
+              because: StandingIsAboutAnotherBoundary { because: difference },
+            }
         }
       }
   }
@@ -2091,7 +2073,7 @@ type RemovalRefusalReason
   // (environments are per-repository objects, so a name alone is not a subject). The two …OnEnvironment/
   // …OnInstallation arms above stay, because those compare the standing against the TWO RECEIPTS, which
   // is a different question with a different answer.
-  | ActStandingIsForAnotherBoundary { subject: BoundaryMismatch }
+  | ActStandingIsForAnotherBoundary { because: SubjectDifference }
   // THE STANDING BELONGS TO ANOTHER DISPATCH. Both arms below are "genuine but not usable now", and they
   // are separate because the operator's repair differs: re-read for this attempt, versus re-read because
   // time has passed.
@@ -2161,7 +2143,7 @@ type ReviewerRemovalCompletionRefusal
   // the mint's, carried unchanged (§3): the completion does not re-name a refusal that already exists, and
   // it cannot -- ProtectionResponseNamedAnotherEnvironment is sole_constructor.
   | CompletionReadWasRefused { because: ProtectionResponseNamedAnotherEnvironment }
-  | CompletionReadIsOfAnotherSubject { subject: BoundaryMismatch }
+  | CompletionReadIsOfAnotherSubject { because: SubjectDifference }
   | ReviewerIsStillPresent { environment: NonEmptyStr }
   | BranchPolicyWentWithTheReviewer { environment: NonEmptyStr }
 
@@ -2210,35 +2192,29 @@ fn reviewer_removal_from_read(
       }
     ProtectionReadEstablished { observation: after } =>
       // THE READ WAS NOT OF THE SUBJECT BEING WEAKENED. Distinct from a read that came back wrong: this one
-      // is about somewhere else, and certifying an absence that nobody looked for is worse than reporting
-      // that nothing was certified.
-      //
-      // THE COMPARISON IS THE SHARED THREE-FIELD ONE (round-6 blocker 1b). This condition used to read
+      // is about somewhere else, and certifying an absence nobody looked for is worse than reporting that
+      // nothing was certified -- this mint is the arm that releases the srv1 boundary. It now goes through
+      // the SAME shared three-field comparison as the join and the standing, in one match whose refusal arm
+      // carries the comparison's own difference (Q2/Q3): no rebuild through a report record that could
+      // disagree with the check that just ran. It used to read
       // `after.repo != boundary.repository.name || after.environment_name != boundary.environment_name` --
-      // repository NAME and environment, never OWNER, while the BoundaryMismatch it reports carries owner.
-      // So a post-removal read of `someone-else/gunbc/srv1-production` certified completion of
-      // `gunb-ai/gunbc/srv1-production`'s reviewer removal, and the certificate was real evidence about the
-      // wrong repository -- the worst kind, because it audits. Any two of the three fields matching was
-      // enough to pass, which is precisely the gap: GitHub addresses a repository by (owner, name), so two
-      // of its three subject fields agreeing does not make it the same repository.
-      if match subject_disagreement(
+      // repository NAME and environment, never OWNER -- so a post-removal read of
+      // `someone-else/gunbc/srv1-production` certified THIS boundary's removal with real evidence about the
+      // wrong repository, the worst kind, because it audits. Two of GitHub's three subject fields agreeing
+      // does not make it the same repository.
+      match subject_comparison(
         observed: subject_of_the_protection_read(protection: after),
         other: subject_of_the_boundary(boundary: boundary),
       ) {
-        SubjectsAgree => false
-        _ => true
-      } {
-        ReviewerRemovalCompletionRefused {
-          because: CompletionReadIsOfAnotherSubject {
-            subject: boundary_mismatch(
-              standing_owner: after.owner,
-              standing_repo: after.repo,
-              standing_environment: after.environment_name,
-              requested: boundary,
-            ),
-          },
-        }
-      } else if environment_protection_requires_reviewers(settings: after.protection) {
+        SubjectsDiffer { because: difference } =>
+          // THE COMPARISON'S ANSWER, CARRIED -- one match, the axis travels; the comparison is not asked
+          // twice (Q2). `observed` is the post-removal read, `other` is the requested boundary. Round-7
+          // Q3: not `standing_*` names, which described the standing mint's roles and would lie here.
+          ReviewerRemovalCompletionRefused {
+            because: CompletionReadIsOfAnotherSubject { because: difference },
+          }
+        SubjectsAgree =>
+          if environment_protection_requires_reviewers(settings: after.protection) {
         // THE REVIEWER IS STILL THERE, so nothing was completed. Refusing rather than minting a receipt with
         // reviewer_removed: false is deliberate: a receipt type that can hold "not removed" is a receipt type
         // that the next consumer will count as removed (§5).
@@ -2252,13 +2228,14 @@ fn reviewer_removal_from_read(
           because: BranchPolicyWentWithTheReviewer { environment: boundary.environment_name },
         }
       } else {
-        ReviewerRemovalCompletionRecorded {
-          receipt: ReviewerRemovalObserved {
-            boundary: boundary,
-            reviewer_removed: true,
-            main_only_policy_present: true,
-            observed_at: stamp.instant,
-          },
+          ReviewerRemovalCompletionRecorded {
+            receipt: ReviewerRemovalObserved {
+              boundary: boundary,
+              reviewer_removed: true,
+              main_only_policy_present: true,
+              observed_at: stamp.instant,
+            },
+          }
         }
       }
   }
