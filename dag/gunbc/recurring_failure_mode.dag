@@ -185,8 +185,8 @@ type RungPosition
   | FoundOnRung { rung: GuaranteeRung }
 
 // BELOW CEILING WITHOUT A BLOCKER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
-// (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is a bare
-// String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
+// (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is the
+// payload of the blocker arm, a bare String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
 // (validation, rung 2). AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
 // current-above-ceiling have no constructor.
 //
@@ -194,7 +194,7 @@ type RungPosition
 // CLIMBED receipt); where no receipt states a later rung, the standing is the rung as filed.
 type RungStanding
   = AtCeiling { rung: GuaranteeRung, ceiling_reason: NonEmptyStr }
-  | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker, trigger_capability: String }
+  | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker }
 
 // RELATION TO gunbc.rung_drop OffLadderJudgment.NotJudgeableFromProse: the same honest refusal (a
 // rung cannot be read from authored prose), but that arm is one undifferentiated answer about a
@@ -241,12 +241,19 @@ type StandingAdmission
   | StandingNotBelowCeiling { subject: String }
   | StandingTriggerRefused { subject: String, admission: TriggerAdmission }
 
+fn blocker_capability(b: ClimbBlocker) -> String {
+  match b {
+    AwaitsOneGrounding { grounding: g } => g
+    ClimbableButUnbuilt { capability: c } => c
+  }
+}
+
 fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
   match s {
     AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
-    BelowCeiling { current: c, ceiling: k, blocker: b, trigger_capability: t } =>
+    BelowCeiling { current: c, ceiling: k, blocker: b } =>
       if rung_position_index(p: c) < guarantee_rung_index(r: k) {
-        let admission = trigger_capability_admission(subject: subject, capability: t)
+        let admission = trigger_capability_admission(subject: subject, capability: blocker_capability(b: b))
         match admission {
           TriggerAdmitted => StandingAdmitted
           _ => StandingTriggerRefused { subject: subject, admission: admission }

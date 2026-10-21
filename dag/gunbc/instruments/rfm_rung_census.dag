@@ -24,6 +24,9 @@ import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 // fact from a refused one; no count literal is compared (a count copied from the tree is a change
 // detector, DESIGN section 5), so a green here does not say how many rows are unread.
 //
+// KNOWN GAP 2, tracked at gunbc.recurring_failure_mode below_ceiling_order_is_checked_at_runtime_not_constructed: current < ceiling is
+// refused by StandingNotBelowCeiling at runtime because no strict-order witness over GuaranteeRung exists.
+//
 // KNOWN GAP, tracked at gunbc.recurring_failure_mode ledger_row_authored_unread_after_the_rung_migration (its trigger names the
 // capability): nothing here stops a row authored after the migration from choosing a
 // RungUnread cause. The cause arms are real prose classes, not a grandfather list, so the wall that
@@ -79,7 +82,7 @@ fn row_is_below_ceiling(r: RecurringFailureMode) -> Bool {
     RungRead { found_at: _, standing: s } =>
       match s {
         AtCeiling { rung: _, ceiling_reason: _ } => false
-        BelowCeiling { current: _, ceiling: _, blocker: _, trigger_capability: _ } => true
+        BelowCeiling { current: _, ceiling: _, blocker: _ } => true
       }
   }
 }
@@ -110,28 +113,24 @@ data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
-  trigger_capability: "control capability restored",
 }
 
 data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "control grounding" },
-  trigger_capability: "",
+  blocker: AwaitsOneGrounding { grounding: "" },
 }
 
 data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: StructurallyGuaranteed },
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
-  trigger_capability: "control capability restored",
 }
 
 data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
   current: FoundBelowTheLadder,
   ceiling: Mitigatable,
   blocker: AwaitsOneGrounding { grounding: "control grounding" },
-  trigger_capability: "control capability restored",
 }
 
 data control_at_ceiling: RungStanding = AtCeiling {

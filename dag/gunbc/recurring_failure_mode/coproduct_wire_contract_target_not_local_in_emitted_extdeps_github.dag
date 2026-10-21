@@ -8,7 +8,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 data coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: RecurringFailureMode = RecurringFailureMode {
   identity: "coproduct_wire_contract_target_not_local_in_emitted_extdeps_github" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the emitter lowering a CoproductWireContract whose target coproduct is declared outside the emitting module, or the extdeps.github closure being emitted without that contract, so an emitted closure that reaches extdeps.github builds" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt { capability: "the emitter lowering a CoproductWireContract whose target coproduct is declared outside the emitting module, or the extdeps.github closure being emitted without that contract, so an emitted closure that reaches extdeps.github builds" } } },
 
   receipts: [
     "**coproduct wire contract target not local in the emitted extdeps.github closure** (INVALID STATE: an emitted crate containing extdeps_github_github.rs whose CoproductWireContract names a coproduct, IssueState, that is not a local coproduct of the emitted module, so the target compiler refuses.",

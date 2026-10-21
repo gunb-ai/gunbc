@@ -8,7 +8,7 @@ data grounding_ledger_residue_uninhabited_stall: GuaranteeStall = GuaranteeStall
   subject: "v2.lens.grounding_ledger ResidueReason (DecodeReturnedNone | UnrecognizedSiblingArm) remains inhabitable beside GroundingVerdict",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "ResidueReason uninhabited so every ledger row is a GroundingVerdict — sufficient for the ledger subject to be a wall" },
   population: BoundedPopulation { members: ["v2.lens.grounding_ledger"] },
   next_rung_trigger: climbs_when(capability: "ResidueReason uninhabited so every ledger row is a GroundingVerdict — sufficient for the ledger subject to be a wall")
 }

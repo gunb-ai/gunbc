@@ -9,7 +9,7 @@ data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
   subject: "parse and ingest disagree over the same grammar round trip",
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "the same-grammar parse-to-ingest round trip holds" },
   population: BoundedPopulation { members: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when(capability: "the same-grammar parse-to-ingest round trip holds")
 }

@@ -32,7 +32,7 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
   subject: "a declared section 4b(3) rung drop states its five fields only as prose, so its reason, population and restoration trigger are unreadable by any fold",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty" },
   population: BoundedPopulation {
     members: [
       "gunbc.rung_drop spark_serving_local_artifact_not_reproducible",

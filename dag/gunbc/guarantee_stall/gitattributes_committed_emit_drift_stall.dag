@@ -18,7 +18,7 @@ data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
   subject: "the committed .gitattributes differs from the bytes derived by its emitting authority",
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "the authority edit that introduced the drift is identified, .gitattributes is regenerated from that authority, and a required generated-artifact drift gate is restored so later authority/artifact disagreement refuses" },
   population: BoundedPopulation { members: Cons { head: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when_awaiting(
     capability: "the authority edit that introduced the drift is identified, .gitattributes is regenerated from that authority, and a required generated-artifact drift gate is restored so later authority/artifact disagreement refuses",

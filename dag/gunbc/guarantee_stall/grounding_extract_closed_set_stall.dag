@@ -8,7 +8,7 @@ data grounding_extract_closed_set_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2.lens.grounding EXTRACT (is_bare_string AND name_coincides) is WallAfterGrounding; closed-set-by-comparison cases still reach a judge",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "every field that is closed-set-by-comparison deciding role-versus-reference from structure, so a name-only residual never reaches a judge — sufficient for the EXTRACT subject to be a wall; the name-only confirm-judge residual stays OutsideModeledGuarantee" },
   population: BoundedPopulation { members: ["v2.lens.grounding"] },
   next_rung_trigger: climbs_when(capability: "every field that is closed-set-by-comparison deciding role-versus-reference from structure, so a name-only residual never reaches a judge — sufficient for the EXTRACT subject to be a wall; the name-only confirm-judge residual stays OutsideModeledGuarantee")
 }

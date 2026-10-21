@@ -15,7 +15,7 @@ data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = Guarantee
   subject: "a routed entry's exact loader-boundary closure can be enumerated by repository path before typed resolution, but cannot be enumerated by resolved module identity at that same pre-resolution boundary",
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
-  blocker: ClimbableButUnbuilt,
+  blocker: ClimbableButUnbuilt { capability: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling" },
   population: BoundedPopulation { members: ["claim_batch --print-entry-closure"] },
   next_rung_trigger: climbs_when(capability: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling")
 }

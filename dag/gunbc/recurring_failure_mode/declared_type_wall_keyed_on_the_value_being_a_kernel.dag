@@ -9,7 +9,7 @@ import gunbc.rung_climb { AwaitsOneGrounding }
 data declared_type_wall_keyed_on_the_value_being_a_kernel: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_type_wall_keyed_on_the_value_being_a_kernel" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "The trigger names ONE JUDGMENT FROM THE FORMAL'S DECLARATION FOR AN ACTUAL OF ANY KIND, sufficient for removing the offending-value guards entirely; the repair removes one such guard and leaves `kernel_value_declared_type_mismatch` and the " }, trigger_capability: "The trigger names ONE JUDGMENT FROM THE FORMAL'S DECLARATION FOR AN ACTUAL OF ANY KIND, sufficient for removing the offending-value guards entirely; the repair removes one such guard and leaves `kernel_value_declared_type_mismatch` and the " } },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "The trigger names ONE JUDGMENT FROM THE FORMAL'S DECLARATION FOR AN ACTUAL OF ANY KIND, sufficient for removing the offending-value guards entirely; the repair removes one such guard and leaves `kernel_value_declared_type_mismatch` and the " } } },
 
   receipts: [
     "**the declared-type inhabitance wall decides on the KIND OF THE OFFENDING VALUE rather than on inhabitance, so it refuses a kernel literal at a declared type and admits a WRONG COPRODUCT ARM at the same position.** DESIGN section 4b puts `values inhabit declared types` in the ordinary compiler floor, so a breach is a below-baseline safety regression and not a rung on the ladder.",
