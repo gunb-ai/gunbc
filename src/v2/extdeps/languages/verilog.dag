@@ -16,7 +16,7 @@ import v2.std.node {
   TypeNode,
 }
 
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   EmitSpellingWrap,
   EmitLineBreaks,
   ProducedDeclUnwired,
@@ -1172,6 +1172,7 @@ fn verilog_emission_translation_rules() -> Node {
 
 fn verilog_emission_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -1194,6 +1195,7 @@ fn verilog_emission_target_model() -> TargetModel {
 // program. The composition is real, and it happens at derivation.
 fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -1293,6 +1295,7 @@ fn verilog_emission_rules_for_row(row: Node) -> Node {
 
 fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,

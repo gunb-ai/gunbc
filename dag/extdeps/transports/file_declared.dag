@@ -28,7 +28,7 @@ fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
   else if key == "path" { optional_present(value: FilePath) }
   else if key == "error" { optional_present(value: FileError) }
   else if key == "error_kind" { optional_present(value: FileErrorKind) }
-  else if key == "content" || key == "entries" { optional_present(value: FileContent) }
+  else if key == "content" || key == "entries" { optional_present(value: extdeps.transports.file_declared.FileContent) }
   else { optional_absent() }
 }
 

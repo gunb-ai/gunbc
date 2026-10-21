@@ -418,6 +418,7 @@ import v2.compiler.inferred_tree {
   AuthoredOccurrenceCollision,
   DerivedGrounding,
   GroundingNotDerived,
+  NotDerivedSite,
   authored_occurrence_collisions,
 }
 import v2.std.node_query {
@@ -555,6 +556,7 @@ type NativeInferAdvisoryCount {
 
 type NativeInferAcceptedFrontier {
   grounding_not_derived: Int
+  not_derived_sites: List<NativeInferSiteCount>
   advisories: List<NativeInferAdvisoryCount>
 }
 
@@ -584,16 +586,38 @@ fn native_infer_advisory_counts(d: Diagnostics) -> List<NativeInferAdvisoryCount
   }
 }
 
-fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
+// THE CENSUS OF WHICH SITE LEFT EACH NODE UNDERIVED (v2.compiler.inferred_tree NotDerivedSite). The advisory
+// is one reason, so its count says how many and never why; the site on each GroundingNotDerived fact is the
+// cause. One row per site present, in first-met order, keyed on the NotDerivedSite value itself. The frontier's
+// grounding_not_derived total is the sum of these rows: one walk, not two.
+type NativeInferSiteCount {
+  site: NotDerivedSite
+  count: Int
+}
+
+fn native_infer_site_counts_add(acc: List<NativeInferSiteCount>, site: NotDerivedSite) -> List<NativeInferSiteCount> {
+  match acc {
+    Empty => [NativeInferSiteCount { site: site, count: 1 }]
+    Cons { head: row, tail: rest } =>
+      if row.site == site {
+        Cons { head: NativeInferSiteCount { site: site, count: row.count + 1 }, tail: rest }
+      } else {
+        Cons { head: row, tail: native_infer_site_counts_add(acc: rest, site: site) }
+      }
+  }
+}
+
+fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferSiteCount> {
   fold_list(
     xs: node_subtree_nodes(root: tree.root),
-    empty: 0,
+    empty: [],
     cons: fn(acc, n) {
       match tree.facts.lookup(n) {
         Absent => acc
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => acc + 1
+            GroundingNotDerived { node: _, site: s } =>
+              native_infer_site_counts_add(acc: acc, site: s)
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -601,11 +625,20 @@ fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
   )
 }
 
-fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+fn native_infer_site_rows_total(rows: List<NativeInferSiteCount>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.count })
+}
+
+fn native_infer_accepted_frontier_from_sites(sites: List<NativeInferSiteCount>, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
   NativeInferAcceptedFrontier {
-    grounding_not_derived: native_infer_grounding_not_derived_count(tree: tree),
+    grounding_not_derived: native_infer_site_rows_total(rows: sites),
+    not_derived_sites: sites,
     advisories: native_infer_advisory_counts(d: diagnostics)
   }
+}
+
+fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+  native_infer_accepted_frontier_from_sites(sites: native_infer_not_derived_site_counts(tree: tree), diagnostics: diagnostics)
 }
 
 fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason: Symbol) -> Int {
@@ -1330,7 +1363,6 @@ fn native_test_eval_one(
             TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
-            TypeNode { connective: Occupancy } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }

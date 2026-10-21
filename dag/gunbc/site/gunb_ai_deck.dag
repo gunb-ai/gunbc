@@ -1,0 +1,1506 @@
+module gunbc.site.gunb_ai_deck
+
+import std.types { String, Int, List, Bool }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.ecmascript.emit {
+  EsExpr, EsString, EsInt, EsNull, EsCall, EsArray, EsPropertyPath, es_text, es_member, es_member_separated,
+  es_property_key, es_separated,
+  es_lbrace, es_rbrace, es_lbracket, es_rbracket, es_lparen, es_rparen
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.site.aligned_columns { aligned_row, spaces, text_width }
+import gunbc.site.markup { page_render_refusal_prefix }
+
+// gunb.ai's assets/cards.js, the story-deck renderer. The CARD CONTENT is typed rows below (the three
+// cards' code listings, graphs, lanes, panels and receipts, plus the shared USERS_SYSTEM artifacts); the
+// served bytes are the render of deck_segments, checked against dag/test/fixture/gunb_ai/live_cards.js by
+// test.claim.site_gunb_ai_deck_witness.
+//
+// THE RENDERER IS NOT MODELLED HERE AND SAYS SO. Every RetainedJs block is hand-written JavaScript kept as
+// lines (the Roles table, the DOM builders, validation, navigation, the card-builder wrappers and
+// bootstrap). It is a declared retained row, not an unexplained blob: its `extends` names the
+// declaration in extdeps.languages.ecmascript.emit that must grow statement forms before the renderer can be
+// emitted from it. Until then there is nothing to type those lines against.
+//
+// THE EMITTER IS THE ECMASCRIPT GRAMMAR ROWS, NOT STRING FOLDS OVER JS SYNTAX. String quoting, call,
+// array and object literals, property keys, separators, punctuators and column alignment are
+// extdeps.languages.ecmascript.emit (EsExpr, es_text, aligned_row); the fns below choose which
+// expression each typed row is and where the layout whitespace goes. Only the whitespace/line layout is
+// authored here.
+//
+// FORMATTING IS DATA TOO. The cards.js text is hand-authored and column-aligned, so alignment is derived,
+// never padded by hand: a column is the longest cell plus the table's own gap, the line-number column of
+// the code listing is the longest `ln(N,` of its group, and a wrapped listing line continues under its
+// first part. The witness checks each derivation against the served file.
+//
+// Consumers (§3c): deck_write_arg is the build route; test.claim.site_gunb_ai_deck_witness executes
+// render_deck. Outside the claim runner:
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_deck.dag \
+//     --function deck_write_arg --arg dir=/tmp/gunbai/assets
+
+data deck_output_name: String = "cards.js"
+
+type DeckRole = RoleStable | RoleFocus | RoleDerived | RoleTransitive | RoleArtifact | RoleBoundary | RoleContext
+
+type CodePart
+  = PartText { text: String }
+  | PartKeyword { text: String }
+  | PartType { text: String }
+  | PartComment { text: String }
+  | PartRef { id: String }
+  | PartRefAs { id: String, label: String, role: DeckRole }
+
+// A listing line is a source line, a removed or added diff line, or a blank; `rows` are the physical rows a
+// wrapped line is written over.
+type CodeLine
+  = SourceLine { n: Int, rows: List<List<CodePart>> }
+  | RemovedLine { n: Int, rows: List<List<CodePart>> }
+  | AddedLine { n: Int, rows: List<List<CodePart>> }
+  | BlankLine { n: Int }
+
+type ValuePiece = PieceText { text: String } | PieceRole { role: DeckRole, text: String }
+
+type ReceiptRow
+  = ReceiptValue { label: String, pieces: List<ValuePiece> }
+  | ReceiptCode { label: String, lines: List<String> }
+
+type CellExtra = CellVia { text: String } | CellKindArtifact
+
+type LaneCell = LaneGap | LaneItem { id: String, label: String, role: DeckRole, extra: CellExtra? }
+
+type LaneRow {
+  id: String
+  cells: List<LaneCell>
+}
+
+type ArtifactDecl {
+  key: String
+  label: String
+  from: String
+}
+
+type LayoutNode {
+  id: String
+  label: String
+  x: Int
+  y: Int
+}
+
+type ArtifactSlot {
+  key: String
+  x: Int
+  y: Int
+}
+
+type EdgeRow {
+  from: String
+  to: String
+  label: String?
+}
+
+type RoleRow {
+  key: String
+  role: DeckRole
+}
+
+type PanelRow {
+  id: String
+  label: String
+  sublabel: String
+  cols: Int
+  rows: Int
+  budget_rows: Int
+}
+
+type CardNode {
+  id: String
+  label: String
+  x: Int
+  y: Int
+  role: DeckRole
+}
+
+type CardShape = LaneTree | CostArea
+
+type DeckContent
+  = ArtifactRows { rows: List<ArtifactDecl> }
+  | LayoutNodeRows { nodes: List<LayoutNode>, artifacts: List<ArtifactSlot> }
+  | LayoutEdgeRows { groups: List<List<EdgeRow>> }
+  | CardHeader { id: String, num: String, name: String }
+  | CardFile { code_file: String, shape: CardShape? }
+  | CodeRows { lines: List<CodeLine> }
+  | RoleMapRows { rows: List<RoleRow> }
+  | ReceiptRows { rows: List<ReceiptRow> }
+  | LanesBlock { columns: List<String>, rows: List<LaneRow> }
+  | PanelRows { rows: List<PanelRow> }
+  | CardNodeRows { rows: List<CardNode> }
+  | DeckName { name: String }
+
+// What dissolves every RetainedJs block: the capability "ECMAScript statement and function emit rows" in
+// extdeps.languages.ecmascript.emit, which grows statement and function forms (const, arrow functions, if/for, member calls). EsExpr models only the expression forms the typed
+// rows are written in, so the renderer's statements have nothing to be typed against yet.
+data retention_extends: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.languages.ecmascript.emit",
+  decl_name: "EsExpr",
+  field: WholeDeclaration
+}
+
+type RetainedJs {
+  extends: DeclarationRef
+  lines: List<String>
+}
+
+type DeckSegment = SegmentRetained { block: RetainedJs } | SegmentGenerated { content: DeckContent }
+
+// DECK-LOCAL GLUE, NOT AN ECMA-262 FORM: a call whose argument list is still open because the next argument is an ArrayLiteral that
+// continues on following lines: `callee(a, b,`. call_array_end closes it.
+fn call_open(callee: String, leading: List<EsExpr>) -> String {
+  join([callee, "(", join(map(leading, x => es_text(e: x)), ", "), ","], "")
+}
+
+data call_array_end: String = "])"
+
+fn str(s: String) -> EsExpr {
+  EsString { value: s }
+}
+
+fn lit(s: String) -> String {
+  es_text(e: str(s: s))
+}
+
+fn num(n: Int) -> EsExpr {
+  EsInt { value: n }
+}
+
+fn call(callee: String, arguments: List<EsExpr>) -> String {
+  es_text(e: EsCall { callee: callee, arguments: arguments })
+}
+
+fn inline_open() -> String {
+  concat(es_lbrace, " ")
+}
+
+fn role_wire(r: DeckRole) -> String {
+  match r {
+    RoleStable => "stable"
+    RoleFocus => "focus"
+    RoleDerived => "derived"
+    RoleTransitive => "transitive"
+    RoleArtifact => "artifact"
+    RoleBoundary => "boundary"
+    RoleContext => "context"
+  }
+}
+
+fn shape_wire(s: CardShape) -> String {
+  match s {
+    LaneTree => "lane-tree"
+    CostArea => "cost-area"
+  }
+}
+
+fn part_wire(p: CodePart) -> String {
+  match p {
+    PartText { text: t } => call(callee: "tx", arguments: [str(s: t)])
+    PartKeyword { text: t } => call(callee: "kw", arguments: [str(s: t)])
+    PartType { text: t } => call(callee: "ty", arguments: [str(s: t)])
+    PartComment { text: t } => call(callee: "com", arguments: [str(s: t)])
+    PartRef { id: i } => call(callee: "ref", arguments: [str(s: i)])
+    PartRefAs { id: i, label: l, role: r } => call(callee: "ref", arguments: [str(s: i), str(s: l), str(s: role_wire(r: r))])
+  }
+}
+
+fn line_prefix(l: CodeLine) -> String {
+  match l {
+    SourceLine { n: n, rows: _ } => call_open(callee: "ln", leading: [num(n: n)])
+    RemovedLine { n: n, rows: _ } => call_open(callee: "diffRm", leading: [num(n: n)])
+    AddedLine { n: n, rows: _ } => call_open(callee: "diffAdd", leading: [num(n: n)])
+    BlankLine { n: n } => call(callee: "blank", arguments: [num(n: n)])
+  }
+}
+
+fn wider(acc: Int, w: Int) -> Int {
+  if w > acc { w } else { acc }
+}
+
+// The `[` of a listing line sits one space after the longest prefix of its group: source lines are one
+// group, the removed and added diff lines are the other.
+fn source_width(lines: List<CodeLine>) -> Int {
+  fold(lines, init: 0, f: (acc, l) => match l {
+    SourceLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
+    RemovedLine { n: _, rows: _ } => acc
+    AddedLine { n: _, rows: _ } => acc
+    BlankLine { n: _ } => acc
+  })
+}
+
+fn diff_width(lines: List<CodeLine>) -> Int {
+  fold(lines, init: 0, f: (acc, l) => match l {
+    SourceLine { n: _, rows: _ } => acc
+    RemovedLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
+    AddedLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
+    BlankLine { n: _ } => acc
+  })
+}
+
+fn listing_head(l: CodeLine, width: Int) -> String {
+  join([spaces(n: 8), line_prefix(l: l), spaces(n: width - text_width(s: line_prefix(l: l)) + 1), es_lbracket], "")
+}
+
+fn listing_rows(head: String, rows: List<List<CodePart>>) -> String {
+  concat(join(map(enumerate(rows), pair => concat(if pair.first == 0 { head } else { spaces(n: text_width(s: head)) }, join(map(pair.second, p => part_wire(p: p)), ", "))), ",\n"), call_array_end)
+}
+
+fn listing_line(l: CodeLine, lines: List<CodeLine>) -> String {
+  match l {
+    SourceLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: source_width(lines: lines)), rows: rs)
+    RemovedLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: diff_width(lines: lines)), rows: rs)
+    AddedLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: diff_width(lines: lines)), rows: rs)
+    BlankLine { n: _ } => concat(spaces(n: 8), line_prefix(l: l))
+  }
+}
+
+fn pieces_wire(pieces: List<ValuePiece>) -> String {
+  join(map(pieces, piece => match piece {
+    PieceText { text: t } => t
+    PieceRole { role: r, text: t } => join(["\{", role_wire(r: r), ":", t, "}"], "")
+  }), "")
+}
+
+fn receipt_label_cell(r: ReceiptRow) -> String {
+  match r {
+    ReceiptValue { label: l, pieces: _ } => concat(inline_open(), es_member_separated(key: "label", value: str(s: l)))
+    ReceiptCode { label: l, lines: _ } => concat(inline_open(), es_member_separated(key: "label", value: str(s: l)))
+  }
+}
+
+fn receipt_value_cell(r: ReceiptRow) -> String {
+  match r {
+    ReceiptValue { label: _, pieces: ps } => join([es_member(key: "value", value: str(s: pieces_wire(pieces: ps))), " ", es_rbrace], "")
+    ReceiptCode { label: _, lines: ls } => join(["code: ", es_lbracket, "\n", join(map(ls, x => concat(spaces(n: 10), lit(s: x))), ",\n"), "\n", spaces(n: 8), es_rbracket, es_rbrace], "")
+  }
+}
+
+fn receipt_wire(rows: List<ReceiptRow>) -> String {
+  let table = map(rows, r => [receipt_label_cell(r: r), receipt_value_cell(r: r)])
+  join(map(table, row => concat(spaces(n: 8), aligned_row(row: row, table: table, gaps: [1]))), ",\n")
+}
+
+fn artifact_row_cells(a: ArtifactDecl) -> List<String> {
+  [es_property_key(key: a.key), concat(inline_open(), es_member_separated(key: "label", value: str(s: a.label))), es_member(key: "from", value: str(s: a.from)), es_rbrace]
+}
+
+fn artifact_wire(rows: List<ArtifactDecl>) -> String {
+  let table = map(rows, a => artifact_row_cells(a: a))
+  join(map(table, row => concat(spaces(n: 6), aligned_row(row: row, table: table, gaps: [1, 2, 1]))), ",\n")
+}
+
+fn role_map_wire(rows: List<RoleRow>) -> String {
+  let table = map(rows, r => [es_property_key(key: r.key), lit(s: role_wire(r: r.role))])
+  join(map(table, row => concat(spaces(n: 10), aligned_row(row: row, table: table, gaps: [1]))), ",\n")
+}
+
+fn node_cells(n: LayoutNode) -> List<String> {
+  [es_separated(e: str(s: n.id)), es_separated(e: str(s: n.label)), es_separated(e: num(n: n.x)), concat(es_text(e: num(n: n.y)), es_rparen)]
+}
+
+fn slot_cells(a: ArtifactSlot) -> List<String> {
+  [es_separated(e: str(s: a.key)), es_separated(e: EsPropertyPath { segments: ["system", "artifacts", a.key, "label"] }), es_separated(e: num(n: a.x)), concat(es_text(e: num(n: a.y)), es_rparen)]
+}
+
+fn call_rows(callee: String, table: List<List<String>>, gaps: List<Int>, indent: Int) -> List<String> {
+  map(table, row => join([spaces(n: indent), callee, es_lparen, aligned_row(row: row, table: table, gaps: gaps)], ""))
+}
+
+fn layout_node_wire(nodes: List<LayoutNode>) -> List<String> {
+  call_rows(callee: "node", table: map(nodes, n => node_cells(n: n)), gaps: [1, 1, 1], indent: 6)
+}
+
+fn layout_slot_wire(slots: List<ArtifactSlot>) -> List<String> {
+  call_rows(callee: "artifact", table: map(slots, a => slot_cells(a: a)), gaps: [1, 1, 1], indent: 6)
+}
+
+fn edge_label_expr(e: EdgeRow) -> EsExpr {
+  match e.label {
+    Present { value: v } => str(s: v)
+    Absent => str(s: "")
+  }
+}
+
+fn edge_cells(e: EdgeRow) -> List<String> {
+  [es_separated(e: str(s: e.from)), es_separated(e: str(s: e.to)), concat(es_text(e: edge_label_expr(e: e)), es_rparen)]
+}
+
+fn edge_group_wire(group: List<EdgeRow>) -> List<String> {
+  call_rows(callee: "edge", table: map(group, e => edge_cells(e: e)), gaps: [1, 1], indent: 6)
+}
+
+fn card_node_cells(n: CardNode) -> List<String> {
+  [es_separated(e: str(s: n.id)), es_separated(e: str(s: n.label)), es_separated(e: num(n: n.x)), es_separated(e: num(n: n.y)), concat(es_text(e: str(s: role_wire(r: n.role))), es_rparen)]
+}
+
+fn card_nodes_wire(rows: List<CardNode>) -> String {
+  join(call_rows(callee: "node", table: map(rows, n => card_node_cells(n: n)), gaps: [1, 1, 1, 1], indent: 10), ",\n")
+}
+
+fn panel_cells(p: PanelRow) -> List<String> {
+  [concat(inline_open(), es_member_separated(key: "id", value: str(s: p.id))), es_member_separated(key: "label", value: str(s: p.label)), es_member_separated(key: "sublabel", value: str(s: p.sublabel)), es_member_separated(key: "cols", value: num(n: p.cols)), es_member_separated(key: "rows", value: num(n: p.rows)), join([es_member(key: "budgetRows", value: num(n: p.budget_rows)), " ", es_rbrace], "")]
+}
+
+fn panels_wire(rows: List<PanelRow>) -> String {
+  let table = map(rows, p => panel_cells(p: p))
+  join(map(table, row => concat(spaces(n: 8), aligned_row(row: row, table: table, gaps: [1, 1, 1, 1, 1]))), ",\n")
+}
+
+fn lane_extra_wire(extra: CellExtra?) -> String {
+  match extra {
+    Present { value: CellVia { text: t } } => join([",\n", spaces(n: 16), es_member(key: "via", value: str(s: t)), " ", es_rbrace], "")
+    Present { value: CellKindArtifact } => join([",\n", spaces(n: 16), es_member(key: "kind", value: str(s: "artifact")), " ", es_rbrace], "")
+    Absent => concat(" ", es_rbrace)
+  }
+}
+
+fn lane_item_cells(id: String, label: String, role: DeckRole, extra: CellExtra?) -> List<String> {
+  [concat(inline_open(), es_member_separated(key: "id", value: str(s: id))), es_member_separated(key: "label", value: str(s: label)), concat(es_member(key: "role", value: str(s: role_wire(r: role))), lane_extra_wire(extra: extra))]
+}
+
+fn lane_table(rows: List<LaneRow>) -> List<List<String>> {
+  flat_map(rows, r => flat_map(r.cells, c => match c {
+    LaneGap => []
+    LaneItem { id: i, label: l, role: ro, extra: e } => [lane_item_cells(id: i, label: l, role: ro, extra: e)]
+  }))
+}
+
+fn lane_cell_wire(c: LaneCell, table: List<List<String>>) -> String {
+  match c {
+    LaneGap => concat(spaces(n: 14), es_text(e: EsNull))
+    LaneItem { id: i, label: l, role: r, extra: e } => concat(spaces(n: 14), aligned_row(row: lane_item_cells(id: i, label: l, role: r, extra: e), table: table, gaps: [1, 2]))
+  }
+}
+
+fn lane_row_wire(row: LaneRow, table: List<List<String>>) -> String {
+  join([spaces(n: 10), es_lbrace, "\n", spaces(n: 12), es_member_separated(key: "id", value: str(s: row.id)), "\n", spaces(n: 12), "cells: ", es_lbracket, "\n", join(map(row.cells, c => lane_cell_wire(c: c, table: table)), ",\n"), "\n", spaces(n: 12), es_rbracket, "\n", spaces(n: 10), es_rbrace], "")
+}
+
+fn lanes_wire(columns: List<String>, rows: List<LaneRow>) -> String {
+  let table = lane_table(rows: rows)
+  join([spaces(n: 8), es_member_separated(key: "columns", value: EsArray { elements: map(columns, c => str(s: c)) }), "\n", spaces(n: 8), "rows: ", es_lbracket, "\n", join(map(rows, r => lane_row_wire(row: r, table: table)), ",\n"), "\n", spaces(n: 8), es_rbracket], "")
+}
+
+fn card_file_wire(code_file: String, shape: CardShape?) -> String {
+  concat(concat(spaces(n: 6), es_member_separated(key: "codeFile", value: str(s: code_file))), match shape {
+    Present { value: s } => join(["\n", spaces(n: 6), es_member_separated(key: "shape", value: str(s: shape_wire(s: s)))], "")
+    Absent => ""
+  })
+}
+
+fn content_wire(c: DeckContent) -> String {
+  match c {
+    ArtifactRows { rows: rs } => artifact_wire(rows: rs)
+    LayoutNodeRows { nodes: ns, artifacts: slots } => join(concat(layout_node_wire(nodes: ns), layout_slot_wire(slots: slots)), ",\n")
+    LayoutEdgeRows { groups: gs } => join(flat_map(gs, g => edge_group_wire(group: g)), ",\n")
+    CardHeader { id: i, num: n, name: nm } => join([spaces(n: 6), es_member_separated(key: "id", value: str(s: i)), "\n", spaces(n: 6), es_member_separated(key: "num", value: str(s: n)), "\n", spaces(n: 6), es_member_separated(key: "name", value: str(s: nm))], "")
+    CardFile { code_file: f, shape: s } => card_file_wire(code_file: f, shape: s)
+    CodeRows { lines: ls } => join(map(ls, l => listing_line(l: l, lines: ls)), ",\n")
+    RoleMapRows { rows: rs } => role_map_wire(rows: rs)
+    ReceiptRows { rows: rs } => receipt_wire(rows: rs)
+    LanesBlock { columns: cs, rows: rs } => lanes_wire(columns: cs, rows: rs)
+    PanelRows { rows: rs } => panels_wire(rows: rs)
+    CardNodeRows { rows: rs } => card_nodes_wire(rows: rs)
+    DeckName { name: n } => concat(spaces(n: 4), es_member_separated(key: "name", value: str(s: n)))
+  }
+}
+
+fn segment_text(s: DeckSegment) -> String {
+  match s {
+    SegmentRetained { block: b } => join(b.lines, "\n")
+    SegmentGenerated { content: c } => content_wire(c: c)
+  }
+}
+
+fn render_deck() -> String {
+  join(map(deck_segments, s => segment_text(s: s)), "\n")
+}
+
+type DeckWrite = DeckWritten { path: String } | DeckWriteRefused { reason: String }
+
+fn deck_write(dir: String) -> DeckWrite {
+  let path = join([dir, "/", deck_output_name], "")
+  let wrote = Filesystem.Write(path: path, content: render_deck())
+  if wrote.success { DeckWritten { path: path } } else { DeckWriteRefused { reason: join(["write failed: ", path], "") } }
+}
+
+fn deck_exit(run: DeckWrite) -> ProcessExit {
+  match run {
+    DeckWritten { path: _ } => ExitSuccess
+    DeckWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
+  }
+}
+
+fn deck_write_arg(dir: String) -> ProcessExit {
+  deck_exit(run: deck_write(dir: dir))
+}
+
+data retained_1: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "/* ════════════════════════════════════════════════════════════════════",
+  "   gunb.ai · story-deck renderer",
+  "   ────────────────────────────────────────────────────────────────────",
+  "   One Users system. Three isolated views. Same underlying source",
+  "   model; each card renders only the slice it argues from.",
+  "",
+  "     01  projection closure       — one system, four target artifacts",
+  "     02  affected-set propagation — Timestamp edit ripples through",
+  "     03  complexity budget        — O(n) declared, O(n²) observed,",
+  "                                    suggested replacement shape",
+  "",
+  "   Each card is independent visually (no accreting layers). Card 03",
+  "   absorbs the diagnostic — the suggested fix is just another row of",
+  "   its receipt, not a separate panel.",
+  "",
+  "   HTML owns text. SVG owns structure (and small node labels for",
+  "   identifiability). Cards are validated for ref→graph correspondence,",
+  "   role consistency, no line-number semantics, and shared systemId.",
+  "",
+  "   Navigation: prev/next buttons or ← / → keys.",
+  "   No build step. Plain script tag, IIFE, vanilla DOM.",
+  "   ══════════════════════════════════════════════════════════════════ */",
+  "",
+  "(function () \{",
+  "  \"use strict\";",
+  "",
+  "  /* ── Roles → CSS class ──────────────────────────────────────── */",
+  "  const Roles = \{",
+  "    stable:     \"map-stable\",",
+  "    focus:      \"map-focus\",",
+  "    derived:    \"map-derived\",",
+  "    transitive: \"map-transitive\",",
+  "    artifact:   \"map-artifact\",",
+  "    removed:    \"map-removed\",",
+  "    boundary:   \"map-boundary\",",
+  "    context:    \"map-context\",",
+  "    skipped:    \"map-skipped\"",
+  "  };",
+  "  const roleClass = r => Roles[r] || Roles.context;",
+  "",
+  "  /* ── Code spec helpers ─────────────────────────────────────── */",
+  "  const tx  = v => (\{ kind: \"text\", value: v });",
+  "  const kw  = v => (\{ kind: \"kw\",   value: v });",
+  "  const ty  = v => (\{ kind: \"ty\",   value: v });",
+  "  const com = v => (\{ kind: \"com\",  value: v });",
+  "  const lit = v => (\{ kind: \"lit\",  value: v });",
+  "  const ref = (id, text, role) => (\{ kind: \"ref\", id, text: text || id, role: role || null });",
+  "  const mark = (text, role) => (\{ kind: \"mark\", text, role });",
+  "  const ln       = (n, parts) => (\{ n, parts });",
+  "  const blank    = (n)        => (\{ n, parts: [] });",
+  "  const diffRm   = (n, parts) => (\{ n, parts, diff: \"rm\" });",
+  "  const diffAdd  = (n, parts) => (\{ n, parts, diff: \"add\" });",
+  "",
+  "  /* ── Graph spec helpers ────────────────────────────────────── */",
+  "  const node = (id, label, col, row, role) =>",
+  "    (\{ kind: \"node\", id, label, col, row, role: role || \"context\" });",
+  "  const artifact = (id, label, col, row) =>",
+  "    (\{ kind: \"artifact\", id, label, col, row, role: \"artifact\", generated: true });",
+  "  const edge = (from, to, label, role) =>",
+  "    (\{ from, to, label: label || \"\", role: role || \"derived\" });",
+  "",
+  "  /* ── Layout (column grid with demand-driven gaps) ──────────── */",
+  "  const COL_GAP_MIN   = 56;",
+  "  const Y_GAP         = 46;",
+  "  const BASE_X        = 18;",
+  "  const BASE_Y        = 22;",
+  "  const NODE_H        = 28;",
+  "  const PAD           = 18;",
+  "  const ELBOW_OFFSET  = 18;",
+  "  const LABEL_FONT_PX = 5;",
+  "  const LABEL_PAD     = 8;",
+  "",
+  "  function labelWidth(label) \{ return Math.max(60, label.length * 7.2 + 22); }",
+  "  function edgeLabelWidth(label) \{ return label ? label.length * LABEL_FONT_PX + 4 : 0; }",
+  "  function columnXs(nodes, edges) \{",
+  "    const widest = \{};",
+  "    for (const n of nodes) \{",
+  "      const w = labelWidth(n.label);",
+  "      if (!(n.col in widest) || w > widest[n.col]) widest[n.col] = w;",
+  "    }",
+  "    const byId = \{};",
+  "    for (const n of nodes) byId[n.id] = n;",
+  "    const gapDemand = \{};",
+  "    for (const e of edges) \{",
+  "      if (!e.label) continue;",
+  "      const a = byId[e.from];",
+  "      const b = byId[e.to];",
+  "      if (!a || !b || a.col === b.col) continue;",
+  "      const startCol = Math.min(a.col, b.col);",
+  "      const need = ELBOW_OFFSET + edgeLabelWidth(e.label) + LABEL_PAD * 2;",
+  "      if (!(startCol in gapDemand) || need > gapDemand[startCol]) gapDemand[startCol] = need;",
+  "    }",
+  "    const cols = Object.keys(widest).map(Number).sort((a, b) => a - b);",
+  "    const x = \{};",
+  "    let cx = BASE_X;",
+  "    for (let i = 0; i < cols.length; i++) \{",
+  "      const c = cols[i];",
+  "      x[c] = cx;",
+  "      cx += widest[c] + Math.max(COL_GAP_MIN, gapDemand[c] || 0);",
+  "    }",
+  "    return x;",
+  "  }",
+  "  function layoutNodes(nodes, edges) \{",
+  "    const x = columnXs(nodes, edges);",
+  "    return nodes.map(n => Object.assign(\{}, n, \{",
+  "      x: x[n.col],",
+  "      y: BASE_Y + n.row * Y_GAP,",
+  "      w: labelWidth(n.label),",
+  "      h: NODE_H",
+  "    }));",
+  "  }",
+  "  function graphBounds(nodes) \{",
+  "    const maxX = Math.max.apply(null, nodes.map(n => n.x + n.w));",
+  "    const maxY = Math.max.apply(null, nodes.map(n => n.y + n.h));",
+  "    return \{ width: maxX + PAD, height: maxY + PAD };",
+  "  }",
+  "  function edgeGeom(a, b) \{",
+  "    const sx = a.x + a.w;",
+  "    const sy = a.y + a.h / 2;",
+  "    const tx = b.x;",
+  "    const ty = b.y + b.h / 2;",
+  "    const sameRow = Math.abs(sy - ty) < 1;",
+  "    const baseMid = sx + ELBOW_OFFSET;",
+  "    const mid = Math.min(baseMid, tx - 8);",
+  "    return \{ sx, sy, tx, ty, mid, sameRow };",
+  "  }",
+  "  function edgePath(a, b) \{",
+  "    const g = edgeGeom(a, b);",
+  "    if (g.sameRow) return \"M \" + g.sx + \" \" + g.sy + \" L \" + g.tx + \" \" + g.ty;",
+  "    return \"M \" + g.sx + \" \" + g.sy + \" H \" + g.mid + \" V \" + g.ty + \" H \" + g.tx;",
+  "  }",
+  "",
+  "  /* ── Escape ────────────────────────────────────────────────── */",
+  "  function esc(s) \{",
+  "    return String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     VALIDATORS — fail-closed",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  const LINE_NUM_RE = /\\bL\\d+\\b/;",
+  "",
+  "  // Card-shape-aware accessors. A lane-tree card carries its graph",
+  "  // structure in card.lanes (cells × columns); a relation card uses",
+  "  // card.graph (nodes + edges); a cost-area card has neither.",
+  "  function cardCells(card) \{",
+  "    if (card.shape === \"lane-tree\") \{",
+  "      const out = [];",
+  "      for (const row of card.lanes.rows) \{",
+  "        for (const cell of row.cells) \{",
+  "          if (cell) out.push(cell);",
+  "        }",
+  "      }",
+  "      return out;",
+  "    }",
+  "    if (card.graph) return card.graph.nodes;",
+  "    return [];",
+  "  }",
+  "  function cardNodeIds(card) \{",
+  "    return new Set(cardCells(card).map(c => c.id));",
+  "  }",
+  "",
+  "  function validateRefsAnchored(card) \{",
+  "    const ids = cardNodeIds(card);",
+  "    for (const line of card.code) \{",
+  "      for (const p of line.parts) \{",
+  "        if (p.kind === \"ref\" && !ids.has(p.id)) \{",
+  "          throw new Error(card.id + \": code ref '\" + p.id + \"' has no graph node\");",
+  "        }",
+  "      }",
+  "    }",
+  "    if (card.graph) \{",
+  "      for (const e of card.graph.edges) \{",
+  "        if (!ids.has(e.from)) throw new Error(card.id + \": edge from '\" + e.from + \"' missing\");",
+  "        if (!ids.has(e.to))   throw new Error(card.id + \": edge to '\"   + e.to   + \"' missing\");",
+  "      }",
+  "    }",
+  "  }",
+  "  function validateRoleConsistency(card) \{",
+  "    const byId = \{};",
+  "    for (const c of cardCells(card)) byId[c.id] = c;",
+  "    for (const line of card.code) \{",
+  "      for (const p of line.parts) \{",
+  "        if (p.kind !== \"ref\" || !p.role) continue;",
+  "        const g = byId[p.id];",
+  "        if (g && g.role && p.role !== g.role) \{",
+  "          throw new Error(card.id + \": role mismatch for '\" + p.id +",
+  "                          \"': code=\" + p.role + \", graph=\" + g.role);",
+  "        }",
+  "      }",
+  "    }",
+  "  }",
+  "  function validateNoUnanchoredActiveNodes(card) \{",
+  "    const codeRefs = new Set();",
+  "    for (const line of card.code) \{",
+  "      for (const p of line.parts) if (p.kind === \"ref\") codeRefs.add(p.id);",
+  "    }",
+  "    for (const c of cardCells(card)) \{",
+  "      if (c.generated || c.kind === \"artifact\" || c.role === \"context\") continue;",
+  "      if (!codeRefs.has(c.id)) \{",
+  "        throw new Error(card.id + \": active graph node '\" + c.id + \"' has no code anchor\");",
+  "      }",
+  "    }",
+  "  }",
+  "  function validateNoLineNumbersInGraph(card) \{",
+  "    for (const c of cardCells(card)) \{",
+  "      const label = c.label || c.id;",
+  "      if (LINE_NUM_RE.test(label)) throw new Error(card.id + \": graph label '\" + label + \"' uses L## semantics\");",
+  "    }",
+  "    if (card.graph) \{",
+  "      for (const e of card.graph.edges) \{",
+  "        if (e.label && LINE_NUM_RE.test(e.label)) throw new Error(card.id + \": edge label '\" + e.label + \"' uses L## semantics\");",
+  "      }",
+  "    }",
+  "    if (card.shape === \"lane-tree\") \{",
+  "      for (const row of card.lanes.rows) \{",
+  "        for (const cell of row.cells) \{",
+  "          if (cell && cell.via && LINE_NUM_RE.test(cell.via)) \{",
+  "            throw new Error(card.id + \": lane via label uses L## semantics\");",
+  "          }",
+  "        }",
+  "      }",
+  "    }",
+  "  }",
+  "  function validateReceiptNoLineNumbers(card) \{",
+  "    for (const row of card.receipt) \{",
+  "      const txt = typeof row === \"string\" ? row : (row.value || \"\") + (row.code ? (Array.isArray(row.code) ? row.code.join(\" \") : row.code) : \"\");",
+  "      if (LINE_NUM_RE.test(txt)) throw new Error(card.id + \": receipt uses L## shorthand\");",
+  "    }",
+  "  }",
+  "  function validateCard(card) \{",
+  "    validateRefsAnchored(card);",
+  "    validateRoleConsistency(card);",
+  "    validateNoUnanchoredActiveNodes(card);",
+  "    validateNoLineNumbersInGraph(card);",
+  "    validateReceiptNoLineNumbers(card);",
+  "  }",
+  "  function validateContinuity(cards) \{",
+  "    if (!cards.length) return;",
+  "    const base = cards[0].systemId;",
+  "    for (const c of cards) \{",
+  "      if (c.systemId !== base && !c.standalone) \{",
+  "        throw new Error(c.id + \": breaks continuity; expected systemId='\" + base + \"'\");",
+  "      }",
+  "    }",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     CODE RENDERER",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function partHtml(p, refRole) \{",
+  "    if (p.kind === \"text\") return esc(p.value);",
+  "    if (p.kind === \"kw\")   return '<span class=\"ck-kw\">'  + esc(p.value) + '</span>';",
+  "    if (p.kind === \"ty\")   return '<span class=\"ck-ty\">'  + esc(p.value) + '</span>';",
+  "    if (p.kind === \"lit\")  return '<span class=\"ck-lit\">' + esc(p.value) + '</span>';",
+  "    if (p.kind === \"com\")  return '<span class=\"ck-com\">' + esc(p.value) + '</span>';",
+  "    if (p.kind === \"mark\") return '<span class=\"' + roleClass(p.role) + '\">' + esc(p.text) + '</span>';",
+  "    if (p.kind === \"ref\") \{",
+  "      const role = p.role || refRole(p.id);",
+  "      const cls  = role ? roleClass(role) : \"\";",
+  "      return '<span class=\"ck-ref ' + cls + '\" data-id=\"' + esc(p.id) + '\">' + esc(p.text) + '</span>';",
+  "    }",
+  "    return \"\";",
+  "  }",
+  "  function lineHtml(line, refRole) \{",
+  "    const lnNo = line.n != null",
+  "      ? '<span class=\"ck-ln\">' + String(line.n).padStart(2, \"0\") + '</span> '",
+  "      : '<span class=\"ck-ln\">  </span> ';",
+  "    const parts = line.parts.map(p => partHtml(p, refRole)).join(\"\");",
+  "    if (line.diff === \"rm\")  return '<div class=\"ck-line ck-diff-rm\">'  + lnNo + '<span class=\"ck-diff-sign\">-</span> ' + parts + '</div>';",
+  "    if (line.diff === \"add\") return '<div class=\"ck-line ck-diff-add\">' + lnNo + '<span class=\"ck-diff-sign\">+</span> ' + parts + '</div>';",
+  "    return '<div class=\"ck-line\">' + lnNo + '  ' + (parts || '&nbsp;') + '</div>';",
+  "  }",
+  "  function renderCode(card) \{",
+  "    const roleById = \{};",
+  "    for (const c of cardCells(card)) roleById[c.id] = c.role;",
+  "    const refRole = id => roleById[id];",
+  "    const head = '<div class=\"card-code-head\">'",
+  "               + '<span class=\"ck-dot\">●</span> '",
+  "               + '<span class=\"ck-file\">' + esc(card.codeFile || (card.id + \".dag\")) + '</span>'",
+  "               + '</div>';",
+  "    const body = '<div class=\"card-code-body\">'",
+  "               + card.code.map(l => lineHtml(l, refRole)).join(\"\")",
+  "               + '</div>';",
+  "    return '<div class=\"card-code\">' + head + body + '</div>';",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     GRAPH RENDERERS — relation graph (cards 01, 02) and cost-area (03)",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function renderRelationGraph(card) \{",
+  "    const nodes = layoutNodes(card.graph.nodes, card.graph.edges);",
+  "    const byId  = \{};",
+  "    for (const n of nodes) byId[n.id] = n;",
+  "    const bounds = graphBounds(nodes);",
+  "",
+  "    // Two-axis edge staggering so multi-incoming convergence and",
+  "    // multi-outgoing fan-outs don't pile arrows on top of each other:",
+  "    //   - incoming offset: when N arrows converge on one target, they",
+  "    //     enter the left edge at different y points so their final",
+  "    //     horizontal segments don't superimpose.",
+  "    //   - outgoing elbow fan: when N arrows leave one source, they",
+  "    //     turn at slightly different elbow x columns so the verticals",
+  "    //     don't share a single bus line.",
+  "    const incomingCount = \{};",
+  "    const outgoingCount = \{};",
+  "    for (const e of card.graph.edges) \{",
+  "      incomingCount[e.to] = (incomingCount[e.to] || 0) + 1;",
+  "      outgoingCount[e.from] = (outgoingCount[e.from] || 0) + 1;",
+  "    }",
+  "    const incomingIdx = new Map();",
+  "    const outgoingIdx = new Map();",
+  "    \{",
+  "      const inSeen = \{};",
+  "      const outSeen = \{};",
+  "      for (const e of card.graph.edges) \{",
+  "        inSeen[e.to]    = inSeen[e.to]    || 0;",
+  "        outSeen[e.from] = outSeen[e.from] || 0;",
+  "        incomingIdx.set(e, inSeen[e.to]++);",
+  "        outgoingIdx.set(e, outSeen[e.from]++);",
+  "      }",
+  "    }",
+  "    function tyFor(e) \{",
+  "      const b = byId[e.to];",
+  "      const total = incomingCount[e.to];",
+  "      if (total <= 1) return b.y + b.h / 2;",
+  "      const spread = Math.min(b.h * 0.55, 12);",
+  "      const step = spread / (total - 1);",
+  "      return b.y + b.h / 2 - spread / 2 + incomingIdx.get(e) * step;",
+  "    }",
+  "    function midFor(e, sx, tx) \{",
+  "      const total = outgoingCount[e.from];",
+  "      let baseMid = sx + ELBOW_OFFSET;",
+  "      if (total > 1) \{",
+  "        // Each outgoing edge gets its own elbow column. Step is small",
+  "        // (4 px) so the fan still reads as siblings of one source",
+  "        // rather than independent arrows.",
+  "        const step = 5;",
+  "        baseMid = sx + ELBOW_OFFSET + outgoingIdx.get(e) * step;",
+  "      }",
+  "      return Math.min(baseMid, tx - 8);",
+  "    }",
+  "    function geomFor(e) \{",
+  "      const a = byId[e.from];",
+  "      const b = byId[e.to];",
+  "      const sx = a.x + a.w;",
+  "      const sy = a.y + a.h / 2;",
+  "      const tx = b.x;",
+  "      const ty = tyFor(e);",
+  "      const sameRow = Math.abs(sy - ty) < 1;",
+  "      const mid = midFor(e, sx, tx);",
+  "      return \{ sx, sy, tx, ty, mid, sameRow };",
+  "    }",
+  "    function pathFor(e) \{",
+  "      const g = geomFor(e);",
+  "      if (g.sameRow) return \"M \" + g.sx + \" \" + g.sy + \" L \" + g.tx + \" \" + g.ty;",
+  "      return \"M \" + g.sx + \" \" + g.sy + \" H \" + g.mid + \" V \" + g.ty + \" H \" + g.tx;",
+  "    }",
+  "",
+  "    const edgesSvg = card.graph.edges.map(e => \{",
+  "      const cls = roleClass(e.role);",
+  "      return '<path class=\"graph-edge ' + cls + '\" d=\"' + pathFor(e)",
+  "           + '\" marker-end=\"url(#card-arrow)\" />';",
+  "    }).join(\"\");",
+  "",
+  "    const edgeLabels = card.graph.edges.filter(e => e.label).map(e => \{",
+  "      const g = geomFor(e);",
+  "      const lx = g.sameRow ? (g.sx + g.tx) / 2 : (g.mid + g.tx) / 2;",
+  "      const ly = (g.sameRow ? g.sy : g.ty) - 4;",
+  "      const cls = roleClass(e.role);",
+  "      return '<text class=\"graph-edge-label ' + cls + '\" x=\"' + lx",
+  "           + '\" y=\"' + ly + '\" text-anchor=\"middle\">' + esc(e.label) + '</text>';",
+  "    }).join(\"\");",
+  "",
+  "    const nodesSvg = nodes.map(n => \{",
+  "      const cls = roleClass(n.role);",
+  "      if (n.kind === \"artifact\") \{",
+  "        const cut = 8;",
+  "        const d = \"M \" + n.x + \" \" + n.y",
+  "                + \" H \" + (n.x + n.w - cut)",
+  "                + \" L \" + (n.x + n.w) + \" \" + (n.y + cut)",
+  "                + \" V \" + (n.y + n.h)",
+  "                + \" H \" + n.x + \" Z\";",
+  "        return '<g class=\"graph-node ' + cls + '\">'",
+  "             + '<path d=\"' + d + '\" />'",
+  "             + '<text x=\"' + (n.x + n.w / 2) + '\" y=\"' + (n.y + n.h / 2 + 4)",
+  "             + '\" text-anchor=\"middle\">' + esc(n.label) + '</text></g>';",
+  "      }",
+  "      return '<g class=\"graph-node ' + cls + '\">'",
+  "           + '<rect x=\"' + n.x + '\" y=\"' + n.y + '\" width=\"' + n.w",
+  "           + '\" height=\"' + n.h + '\" rx=\"4\" />'",
+  "           + '<text x=\"' + (n.x + n.w / 2) + '\" y=\"' + (n.y + n.h / 2 + 4)",
+  "           + '\" text-anchor=\"middle\">' + esc(n.label) + '</text></g>';",
+  "    }).join(\"\");",
+  "",
+  "    const defs = '<defs>'",
+  "               + '<marker id=\"card-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\"'",
+  "               + ' markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">'",
+  "               + '<path d=\"M0,0 L10,5 L0,10 Z\" fill=\"context-stroke\"/>'",
+  "               + '</marker></defs>';",
+  "",
+  "    return '<div class=\"card-graph\">'",
+  "         + '<svg viewBox=\"0 0 ' + bounds.width + ' ' + bounds.height",
+  "         + '\" preserveAspectRatio=\"xMidYMid meet\" aria-label=\"' + esc(card.name || \"\") + '\">'",
+  "         + defs + edgesSvg + edgeLabels + nodesSvg",
+  "         + '</svg></div>';",
+  "  }",
+  "",
+  "  // Cost-area: two panels bottom-aligned. Each cell is colored per-row:",
+  "  // the bottom `budgetRows` rows (counting up from the bottom) are",
+  "  // budget (moss/green); rows above are overage (clay/red). For the",
+  "  // declared panel, the whole panel is budget (1 row). For observed,",
+  "  // the bottom row is budget and the rest is overage — the visual",
+  "  // claim \"observed extends UP past the budget ceiling.\"",
+  "  function renderCostArea(card) \{",
+  "    const CELL = 11;",
+  "    const GAP  = 2;",
+  "    const PANEL_GAP = 56;",
+  "    const LABEL_H   = 26;   // room for label + sublabel below each panel",
+  "    const PAD       = 14;",
+  "    function gridDims(p) \{",
+  "      return \{",
+  "        w: p.cols * CELL + (p.cols - 1) * GAP,",
+  "        h: p.rows * CELL + (p.rows - 1) * GAP",
+  "      };",
+  "    }",
+  "    const panels = card.panels.map(p => Object.assign(\{}, p, gridDims(p)));",
+  "    const totalW = panels.reduce((s, p) => s + p.w, 0) + (panels.length - 1) * PANEL_GAP;",
+  "    const maxH   = Math.max.apply(null, panels.map(p => p.h));",
+  "    const W = totalW + PAD * 2;",
+  "    const H = maxH + LABEL_H + PAD * 2;",
+  "",
+  "    const bottomY = PAD + maxH;   // shared bottom edge of all panel grids",
+  "",
+  "    let cx = PAD;",
+  "    const panelsSvg = panels.map(p => \{",
+  "      const px = cx;",
+  "      const py = bottomY - p.h;   // bottom-align",
+  "      cx += p.w + PANEL_GAP;",
+  "",
+  "      let cells = \"\";",
+  "      const budgetRows = p.budgetRows || 0;",
+  "      for (let r = 0; r < p.rows; r++) \{",
+  "        const fromBottom = p.rows - 1 - r;",
+  "        const cellRole = fromBottom < budgetRows ? \"budget\" : \"overage\";",
+  "        for (let c = 0; c < p.cols; c++) \{",
+  "          const x = px + c * (CELL + GAP);",
+  "          const y = py + r * (CELL + GAP);",
+  "          cells += '<rect class=\"cost-cell-' + cellRole + '\" x=\"' + x",
+  "                 + '\" y=\"' + y + '\" width=\"' + CELL + '\" height=\"' + CELL + '\" />';",
+  "        }",
+  "      }",
+  "",
+  "      const labelX = px + p.w / 2;",
+  "      const labelY    = bottomY + 12;",
+  "      const sublabelY = bottomY + 22;",
+  "      return '<g class=\"cost-area\">'",
+  "           + cells",
+  "           + '<text class=\"cost-area-label\" x=\"' + labelX + '\" y=\"' + labelY",
+  "           + '\" text-anchor=\"middle\">' + esc(p.label) + '</text>'",
+  "           + (p.sublabel",
+  "             ? '<text class=\"cost-area-sublabel\" x=\"' + labelX + '\" y=\"' + sublabelY",
+  "                + '\" text-anchor=\"middle\">' + esc(p.sublabel) + '</text>'",
+  "             : '')",
+  "           + '</g>';",
+  "    }).join(\"\");",
+  "",
+  "    return '<div class=\"card-graph\">'",
+  "         + '<svg viewBox=\"0 0 ' + W + ' ' + H",
+  "         + '\" preserveAspectRatio=\"xMidYMid meet\" aria-label=\"' + esc(card.name || \"\") + '\">'",
+  "         + panelsSvg",
+  "         + '</svg></div>';",
+  "  }",
+  "",
+  "  /* Lane-tree: a story renderer for affected-set cards.",
+  "     Fixed columns × fixed rows. Edges only connect adjacent columns",
+  "     within the same row, so the diagram CANNOT cross — overlap is",
+  "     structurally impossible, not \"prevented by elbow staggering.\"",
+  "",
+  "     Spec shape:",
+  "       card.shape = \"lane-tree\"",
+  "       card.lanes = \{",
+  "         columns: [\"fact\", \"field\", \"operation\", \"artifact\"],",
+  "         rows: [\{ id, cells: [cell | null, ...] }, ...]",
+  "       }",
+  "       cell = \{ id, label, role, kind?, via? }",
+  "         - via labels the OUTGOING edge from this cell to the next",
+  "         - kind: \"artifact\" renders the cut-corner pentagon */",
+  "  function renderLaneTree(card) \{",
+  "    const NODE_H = 28;",
+  "    const ROW_GAP = 50;",
+  "    const COL_GAP_MIN = 36;",
+  "    const BASE_Y = 22;",
+  "    const BASE_X = 18;",
+  "    const PAD = 18;",
+  "",
+  "    const lanes = card.lanes;",
+  "    const cols = lanes.columns;",
+  "    const rows = lanes.rows;",
+  "",
+  "    // Per-column width = max cell label width across rows",
+  "    const colWidth = cols.map((_, ci) => \{",
+  "      let max = 60;",
+  "      for (const row of rows) \{",
+  "        const cell = row.cells[ci];",
+  "        if (!cell) continue;",
+  "        const w = labelWidth(cell.label || cell.id);",
+  "        if (w > max) max = w;",
+  "      }",
+  "      return max;",
+  "    });",
+  "",
+  "    // Per-gap demand: max via label crossing this boundary + clearance",
+  "    const gapDemand = [];",
+  "    for (let ci = 0; ci < cols.length - 1; ci++) \{",
+  "      let need = 0;",
+  "      for (const row of rows) \{",
+  "        const left = row.cells[ci];",
+  "        if (!left || !left.via) continue;",
+  "        const next = row.cells[ci + 1];",
+  "        if (!next) continue;",
+  "        const w = edgeLabelWidth(left.via) + 20;",
+  "        if (w > need) need = w;",
+  "      }",
+  "      gapDemand.push(Math.max(COL_GAP_MIN, need));",
+  "    }",
+  "",
+  "    // Column x positions",
+  "    const colX = [];",
+  "    let cx = BASE_X;",
+  "    for (let i = 0; i < cols.length; i++) \{",
+  "      colX.push(cx);",
+  "      cx += colWidth[i];",
+  "      if (i < cols.length - 1) cx += gapDemand[i];",
+  "    }",
+  "    const totalW = cx + PAD;",
+  "    const totalH = BASE_Y + rows.length * ROW_GAP + PAD;",
+  "",
+  "    let nodesHtml = \"\";",
+  "    let edgesHtml = \"\";",
+  "    let labelsHtml = \"\";",
+  "",
+  "    for (let ri = 0; ri < rows.length; ri++) \{",
+  "      const row = rows[ri];",
+  "      const y = BASE_Y + ri * ROW_GAP;",
+  "      const cy = y + NODE_H / 2;",
+  "",
+  "      let prevX = null;",
+  "      let prevW = null;",
+  "      let prevCell = null;",
+  "",
+  "      for (let ci = 0; ci < row.cells.length; ci++) \{",
+  "        const cell = row.cells[ci];",
+  "        if (!cell) \{ prevX = null; prevCell = null; continue; }",
+  "",
+  "        const xx = colX[ci];",
+  "        const ww = colWidth[ci];",
+  "        const cls = roleClass(cell.role);",
+  "",
+  "        // Render box (rect or cut-corner artifact)",
+  "        if (cell.kind === \"artifact\") \{",
+  "          const cut = 8;",
+  "          const d = \"M \" + xx + \" \" + y",
+  "                  + \" H \" + (xx + ww - cut)",
+  "                  + \" L \" + (xx + ww) + \" \" + (y + cut)",
+  "                  + \" V \" + (y + NODE_H)",
+  "                  + \" H \" + xx + \" Z\";",
+  "          nodesHtml += '<g class=\"graph-node ' + cls + '\">'",
+  "                    + '<path d=\"' + d + '\" />'",
+  "                    + '<line x1=\"' + (xx + ww - cut) + '\" y1=\"' + y",
+  "                    + '\" x2=\"' + (xx + ww - cut) + '\" y2=\"' + (y + cut) + '\" />'",
+  "                    + '<line x1=\"' + (xx + ww - cut) + '\" y1=\"' + (y + cut)",
+  "                    + '\" x2=\"' + (xx + ww) + '\" y2=\"' + (y + cut) + '\" />'",
+  "                    + '<text x=\"' + (xx + ww / 2) + '\" y=\"' + (cy + 4)",
+  "                    + '\" text-anchor=\"middle\">' + esc(cell.label || cell.id) + '</text>'",
+  "                    + '</g>';",
+  "        } else \{",
+  "          nodesHtml += '<g class=\"graph-node ' + cls + '\">'",
+  "                    + '<rect x=\"' + xx + '\" y=\"' + y + '\" width=\"' + ww",
+  "                    + '\" height=\"' + NODE_H + '\" rx=\"4\" />'",
+  "                    + '<text x=\"' + (xx + ww / 2) + '\" y=\"' + (cy + 4)",
+  "                    + '\" text-anchor=\"middle\">' + esc(cell.label || cell.id) + '</text>'",
+  "                    + '</g>';",
+  "        }",
+  "",
+  "        // Edge from prevCell to this cell (straight horizontal — same row).",
+  "        // Pull endpoint back from target's left edge so the arrowhead has",
+  "        // visual separation from the box stroke. Without this gap the arrow",
+  "        // tip merges into the target's stroke and reads as a missing arrow.",
+  "        if (prevX !== null) \{",
+  "          const ex1 = prevX + prevW;",
+  "          const ex2 = xx - 3;",
+  "          // Edge color follows the TARGET's role (the downstream node)",
+  "          edgesHtml += '<line class=\"graph-edge ' + cls + '\" x1=\"' + ex1",
+  "                    + '\" y1=\"' + cy + '\" x2=\"' + ex2 + '\" y2=\"' + cy",
+  "                    + '\" marker-end=\"url(#card-arrow)\" />';",
+  "",
+  "          // Via label sits on the edge, above the line.",
+  "          // The via lives on the PREV cell (it annotates the outgoing edge).",
+  "          if (prevCell && prevCell.via) \{",
+  "            const midX = (ex1 + ex2) / 2;",
+  "            labelsHtml += '<text class=\"graph-edge-label ' + cls + '\" x=\"' + midX",
+  "                       + '\" y=\"' + (cy - 6) + '\" text-anchor=\"middle\">'",
+  "                       + esc(prevCell.via) + '</text>';",
+  "          }",
+  "        }",
+  "",
+  "        prevX = xx;",
+  "        prevW = ww;",
+  "        prevCell = cell;",
+  "      }",
+  "    }",
+  "",
+  "    const defs = '<defs>'",
+  "               + '<marker id=\"card-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\"'",
+  "               + ' markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">'",
+  "               + '<path d=\"M0,0 L10,5 L0,10 Z\" fill=\"context-stroke\"/>'",
+  "               + '</marker></defs>';",
+  "",
+  "    return '<div class=\"card-graph\">'",
+  "         + '<svg viewBox=\"0 0 ' + totalW + ' ' + totalH",
+  "         + '\" preserveAspectRatio=\"xMidYMid meet\" aria-label=\"' + esc(card.name || \"\") + '\">'",
+  "         + defs + edgesHtml + labelsHtml + nodesHtml",
+  "         + '</svg></div>';",
+  "  }",
+  "",
+  "  function renderGraph(card) \{",
+  "    if (card.shape === \"cost-area\") return renderCostArea(card);",
+  "    if (card.shape === \"lane-tree\") return renderLaneTree(card);",
+  "    return renderRelationGraph(card);",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     RECEIPT — structured array of \{label, value} or \{label, code}",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function receiptValueHtml(text) \{",
+  "    return String(text).replace(/\\\{(\\w+):([^}]*)\\}/g, function (_, role, t) \{",
+  "      return '<span class=\"' + roleClass(role) + '\">' + esc(t) + '</span>';",
+  "    });",
+  "  }",
+  "  function renderReceiptRow(row) \{",
+  "    if (typeof row === \"string\") \{",
+  "      // free-form line (fallback)",
+  "      return '<div class=\"card-receipt-row\"><div class=\"rv\">' + receiptValueHtml(row) + '</div></div>';",
+  "    }",
+  "    let html = '<div class=\"card-receipt-row\">';",
+  "    html += '<div class=\"rk\">' + esc(row.label) + '</div>';",
+  "    if (row.code) \{",
+  "      const code = Array.isArray(row.code) ? row.code.join(\"\\n\") : row.code;",
+  "      html += '<pre class=\"card-receipt-code\">' + esc(code) + '</pre>';",
+  "    } else \{",
+  "      html += '<div class=\"rv\">' + receiptValueHtml(row.value || \"\") + '</div>';",
+  "    }",
+  "    html += '</div>';",
+  "    return html;",
+  "  }",
+  "  function renderReceipt(card) \{",
+  "    if (!card.receipt || !card.receipt.length) return \"\";",
+  "    return '<div class=\"card-receipt\">'",
+  "         + card.receipt.map(renderReceiptRow).join(\"\")",
+  "         + '</div>';",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     CARD + DECK RENDERERS",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function renderCard(card) \{",
+  "    validateCard(card);",
+  "    return '<article class=\"deck-card\" data-card-id=\"' + esc(card.id) + '\">'",
+  "         + '<div class=\"deck-card-head\">'",
+  "         + '<span class=\"deck-card-num\">'  + esc(card.num)  + '</span>'",
+  "         + '<span class=\"deck-card-name\">' + esc(card.name) + '</span>'",
+  "         + '</div>'",
+  "         + '<div class=\"deck-card-body\">'",
+  "         + renderCode(card)",
+  "         + renderGraph(card)",
+  "         + '</div>'",
+  "         + renderReceipt(card)",
+  "         + '</article>';",
+  "  }",
+  "",
+  "  function renderDeck(deck) \{",
+  "    validateContinuity(deck.cards);",
+  "    const ticks = deck.cards.map(() => '<span class=\"deck-tick\"></span>').join(\"\");",
+  "    return '<section class=\"deck\" tabindex=\"0\" aria-label=\"' + esc(deck.name || \"\") + '\">'",
+  "         + '<div class=\"deck-head\">'",
+  "         + '<span class=\"deck-name\">' + esc(deck.name || \"\") + '</span>'",
+  "         + '<div class=\"deck-ticks\">' + ticks + '</div>'",
+  "         + '<span class=\"deck-pos\">'",
+  "         + '<span class=\"deck-current\">01</span> / '",
+  "         + '<span class=\"deck-total\">' + String(deck.cards.length).padStart(2, \"0\") + '</span>'",
+  "         + '</span></div>'",
+  "         + '<div class=\"deck-stage\"><div class=\"card-track\">'",
+  "         + deck.cards.map(renderCard).join(\"\")",
+  "         + '</div></div>'",
+  "         + '<div class=\"deck-nav\">'",
+  "         + '<button class=\"deck-btn\" type=\"button\" data-dir=\"prev\">← prev</button>'",
+  "         + '<span style=\"flex:1\"></span>'",
+  "         + '<button class=\"deck-btn\" type=\"button\" data-dir=\"next\">next →</button>'",
+  "         + '</div></section>';",
+  "  }",
+  "",
+  "  /* ── Navigation ────────────────────────────────────────────── */",
+  "  function initDeck(deck) \{",
+  "    const track = deck.querySelector(\".card-track\");",
+  "    const cards = deck.querySelectorAll(\".deck-card\");",
+  "    const ticks = deck.querySelectorAll(\".deck-tick\");",
+  "    const current = deck.querySelector(\".deck-current\");",
+  "    const prev = deck.querySelector('[data-dir=\"prev\"]');",
+  "    const next = deck.querySelector('[data-dir=\"next\"]');",
+  "    let idx = 0;",
+  "    function go(newIdx) \{",
+  "      idx = Math.max(0, Math.min(cards.length - 1, newIdx));",
+  "      track.style.transform = \"translateX(-\" + (idx * 100) + \"%)\";",
+  "      ticks.forEach((t, i) => t.classList.toggle(\"active\", i <= idx));",
+  "      if (current) current.textContent = String(idx + 1).padStart(2, \"0\");",
+  "      if (prev) prev.disabled = idx === 0;",
+  "      if (next) next.disabled = idx === cards.length - 1;",
+  "    }",
+  "    if (prev) prev.addEventListener(\"click\", () => go(idx - 1));",
+  "    if (next) next.addEventListener(\"click\", () => go(idx + 1));",
+  "    deck.addEventListener(\"keydown\", e => \{",
+  "      if (e.key === \"ArrowLeft\")  \{ go(idx - 1); e.preventDefault(); }",
+  "      if (e.key === \"ArrowRight\") \{ go(idx + 1); e.preventDefault(); }",
+  "    });",
+  "    go(0);",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     USERS_SYSTEM — the shared source model. All cards derive from this.",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  const USERS_SYSTEM = \{",
+  "    id: \"users-system\",",
+  "    // One service with three operations, each using a different",
+  "    // field of User. This is the \"single tree\" structure the",
+  "    // operator asked for: the three coloring categories (direct,",
+  "    // transitive, unrelated) are siblings under the same root.",
+  "    // The three operations project into three DIFFERENT backends —",
+  "    // a Rust library, a TypeScript library, and a SQL schema — to",
+  "    // show that one description emits a polyglot artifact set with",
+  "    // zero hand-written translation between them.",
+  "    artifacts: \{"
+] }
+
+data retained_2: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "    }",
+  "  };",
+  "",
+  "  // Layout for card 01 (projection view) — simple User-rooted tree.",
+  "  // Card 01 is \"one description · three operations · three artifacts\":",
+  "  // teach the SHAPE of the system. format_joined and field-level",
+  "  // dependencies belong to card 02's lane-tree view, not here.",
+  "  //",
+  "  //   User → Users.profile → profile.rs  (Rust library)",
+  "  //        → Users.email   → email.ts    (TypeScript library)",
+  "  //        → Users.token   → token.sql   (SQL schema)",
+  "  function projectionLayoutNodes(system) \{",
+  "    return ["
+] }
+
+data retained_3: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "    ];",
+  "  }",
+  "  function projectionLayoutEdges() \{",
+  "    return ["
+] }
+
+data retained_4: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "    ];",
+  "  }",
+  "  function applyNodeRoles(nodes, roleMap) \{",
+  "    return nodes.map(n => \{",
+  "      if (n.kind === \"artifact\") return n;",
+  "      return Object.assign(\{}, n, \{ role: roleMap[n.id] || n.role || \"context\" });",
+  "    });",
+  "  }",
+  "  function applyEdgeRoles(edges, roleMap, defaultRole) \{",
+  "    return edges.map(e => \{",
+  "      const key = e.from + \"→\" + e.to;",
+  "      return Object.assign(\{}, e, \{ role: roleMap[key] || defaultRole || \"derived\" });",
+  "    });",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     CARD 01 · projection closure",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function projectionClosureCard(system) \{",
+  "    return \{"
+] }
+
+data retained_5: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      systemId: system.id,"
+] }
+
+data retained_6: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      code: ["
+] }
+
+data retained_7: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ],",
+  "      graph: \{",
+  "        nodes: applyNodeRoles(projectionLayoutNodes(system), \{"
+] }
+
+data retained_8: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "        }),",
+  "        edges: applyEdgeRoles(projectionLayoutEdges(), \{}, \"derived\")",
+  "      },",
+  "      receipt: ["
+] }
+
+data retained_9: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ]",
+  "    };",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     CARD 02 · affected-set propagation — same layout, different roles",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function affectedSetCard(system) \{",
+  "    return \{"
+] }
+
+data retained_10: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      systemId: system.id,"
+] }
+
+data retained_11: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      code: ["
+] }
+
+data retained_12: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ],",
+  "      // Lane tree: 4 columns × 3 rows. Each row is a branch; edges",
+  "      // only connect adjacent cells in the same row. Overlap is",
+  "      // structurally impossible.",
+  "      lanes: \{"
+] }
+
+data retained_13: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      },",
+  "      receipt: ["
+] }
+
+data retained_14: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ]",
+  "    };",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     CARD 03 · complexity budget violation — diagnostic absorbed",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  function complexityViolationCard(system) \{",
+  "    return \{"
+] }
+
+data retained_15: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      systemId: system.id,"
+] }
+
+data retained_16: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      code: ["
+] }
+
+data retained_17: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ],",
+  "      panels: ["
+] }
+
+data retained_18: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ],",
+  "      graph: \{",
+  "        nodes: ["
+] }
+
+data retained_19: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "        ],",
+  "        edges: []",
+  "      },",
+  "      receipt: ["
+] }
+
+data retained_20: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "      ]",
+  "    };",
+  "  }",
+  "",
+  "  /* ════════════════════════════════════════════════════════════════",
+  "     BOOTSTRAP",
+  "     ══════════════════════════════════════════════════════════════ */",
+  "",
+  "  const DECK = \{"
+] }
+
+data retained_21: RetainedJs = RetainedJs { extends: retention_extends, lines: [
+  "    cards: [",
+  "      projectionClosureCard(USERS_SYSTEM),",
+  "      affectedSetCard(USERS_SYSTEM),",
+  "      complexityViolationCard(USERS_SYSTEM)",
+  "    ]",
+  "  };",
+  "",
+  "  function init() \{",
+  "    const slot = document.querySelector('[data-deck=\"api.dag\"]')",
+  "              || document.querySelector('[data-deck=\"users.dag\"]')",
+  "              || document.querySelector('[data-deck]');",
+  "    if (!slot) return;",
+  "    slot.outerHTML = renderDeck(DECK);",
+  "    const deck = document.querySelector('.deck');",
+  "    if (deck) initDeck(deck);",
+  "  }",
+  "  if (document.readyState === \"loading\") \{",
+  "    document.addEventListener(\"DOMContentLoaded\", init);",
+  "  } else \{",
+  "    init();",
+  "  }",
+  "})();",
+  ""
+] }
+
+data deck_segments: List<DeckSegment> = [
+  SegmentRetained { block: retained_1 },
+  SegmentGenerated { content: ArtifactRows { rows: [ArtifactDecl { key: "profile_rs", label: "profile.rs", from: "UsersProfile" }, ArtifactDecl { key: "email_rs", label: "email.ts", from: "UsersEmail" }, ArtifactDecl { key: "token_rs", label: "token.sql", from: "UsersToken" }] } },
+  SegmentRetained { block: retained_2 },
+  SegmentGenerated { content: LayoutNodeRows { nodes: [LayoutNode { id: "User", label: "User", x: 0, y: 1 }, LayoutNode { id: "UsersProfile", label: "Users.profile", x: 1, y: 0 }, LayoutNode { id: "UsersEmail", label: "Users.email", x: 1, y: 1 }, LayoutNode { id: "UsersToken", label: "Users.token", x: 1, y: 2 }], artifacts: [ArtifactSlot { key: "profile_rs", x: 2, y: 0 }, ArtifactSlot { key: "email_rs", x: 2, y: 1 }, ArtifactSlot { key: "token_rs", x: 2, y: 2 }] } },
+  SegmentRetained { block: retained_3 },
+  SegmentGenerated { content: LayoutEdgeRows { groups: [[EdgeRow { from: "User", to: "UsersProfile", label: Present { value: "profile" } }, EdgeRow { from: "User", to: "UsersEmail", label: Present { value: "email" } }, EdgeRow { from: "User", to: "UsersToken", label: Present { value: "token" } }], [EdgeRow { from: "UsersProfile", to: "profile_rs", label: Absent }, EdgeRow { from: "UsersEmail", to: "email_rs", label: Absent }, EdgeRow { from: "UsersToken", to: "token_rs", label: Absent }]] } },
+  SegmentRetained { block: retained_4 },
+  SegmentGenerated { content: CardHeader { id: "card-01", num: "01", name: "one description · three operations · three artifacts" } },
+  SegmentRetained { block: retained_5 },
+  SegmentGenerated { content: CardFile { code_file: "examples/users.dag", shape: Absent } },
+  SegmentRetained { block: retained_6 },
+  SegmentGenerated { content: CodeRows { lines: [
+  SourceLine { n: 1, rows: [[PartKeyword { text: "type" }, PartText { text: " " }, PartRefAs { id: "User", label: "User", role: RoleStable }, PartText { text: " \{" }]] },
+  SourceLine { n: 2, rows: [[PartText { text: "  id: String" }]] },
+  SourceLine { n: 3, rows: [[PartText { text: "  email: String" }]] },
+  SourceLine { n: 4, rows: [[PartText { text: "  name: String" }]] },
+  SourceLine { n: 5, rows: [[PartText { text: "  created_at: " }, PartType { text: "Timestamp" }]] },
+  SourceLine { n: 6, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 7 },
+  SourceLine { n: 8, rows: [[PartKeyword { text: "type" }, PartText { text: " Profile \{" }]] },
+  SourceLine { n: 9, rows: [[PartText { text: "  name: String" }]] },
+  SourceLine { n: 10, rows: [[PartText { text: "  joined: String" }]] },
+  SourceLine { n: 11, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 12 },
+  SourceLine { n: 13, rows: [[PartKeyword { text: "service" }, PartText { text: " Users \{" }]] },
+  SourceLine { n: 14, rows: [[PartText { text: "  " }, PartKeyword { text: "operation" }, PartText { text: " " }, PartRefAs { id: "UsersProfile", label: "Profile", role: RoleDerived }, PartText { text: " \{" }]] },
+  SourceLine { n: 15, rows: [[PartText { text: "    input  \{ id: String }" }]] },
+  SourceLine { n: 16, rows: [[PartText { text: "    output \{ profile: Profile }" }]] },
+  SourceLine { n: 17, rows: [[PartText { text: "  }" }]] },
+  SourceLine { n: 18, rows: [[PartText { text: "  " }, PartKeyword { text: "operation" }, PartText { text: " " }, PartRefAs { id: "UsersEmail", label: "Email", role: RoleDerived }, PartText { text: " \{" }]] },
+  SourceLine { n: 19, rows: [[PartText { text: "    input  \{ id: String }" }]] },
+  SourceLine { n: 20, rows: [[PartText { text: "    output \{ email: String }" }]] },
+  SourceLine { n: 21, rows: [[PartText { text: "  }" }]] },
+  SourceLine { n: 22, rows: [[PartText { text: "  " }, PartKeyword { text: "operation" }, PartText { text: " " }, PartRefAs { id: "UsersToken", label: "Token", role: RoleDerived }, PartText { text: " \{" }]] },
+  SourceLine { n: 23, rows: [[PartText { text: "    input  \{ id: String }" }]] },
+  SourceLine { n: 24, rows: [[PartText { text: "    output \{ token: String }" }]] },
+  SourceLine { n: 25, rows: [[PartText { text: "  }" }]] },
+  SourceLine { n: 26, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 27 },
+  SourceLine { n: 28, rows: [[PartComment { text: "// gunbc compile --target rust|ts|sql" }]] }
+] } },
+  SegmentRetained { block: retained_7 },
+  SegmentGenerated { content: RoleMapRows { rows: [RoleRow { key: "User", role: RoleStable }, RoleRow { key: "UsersProfile", role: RoleDerived }, RoleRow { key: "UsersEmail", role: RoleDerived }, RoleRow { key: "UsersToken", role: RoleDerived }] } },
+  SegmentRetained { block: retained_8 },
+  SegmentGenerated { content: ReceiptRows { rows: [
+  ReceiptValue { label: "structure", pieces: [PieceRole { role: RoleStable, text: "one description" }, PieceText { text: " · " }, PieceRole { role: RoleDerived, text: "three operations" }] },
+  ReceiptValue { label: "emissions", pieces: [PieceRole { role: RoleArtifact, text: "profile.rs" }, PieceText { text: " · " }, PieceRole { role: RoleArtifact, text: "email.ts" }, PieceText { text: " · " }, PieceRole { role: RoleArtifact, text: "token.sql" }] },
+  ReceiptValue { label: "backends", pieces: [PieceRole { role: RoleDerived, text: "Rust · TypeScript · SQL" }] },
+  ReceiptValue { label: "translations", pieces: [PieceRole { role: RoleDerived, text: "zero hand-written" }] }
+] } },
+  SegmentRetained { block: retained_9 },
+  SegmentGenerated { content: CardHeader { id: "card-02", num: "02", name: "edit Timestamp · one branch re-derived, two unrelated" } },
+  SegmentRetained { block: retained_10 },
+  SegmentGenerated { content: CardFile { code_file: "examples/users.dag", shape: Present { value: LaneTree } } },
+  SegmentRetained { block: retained_11 },
+  SegmentGenerated { content: CodeRows { lines: [
+  RemovedLine { n: 1, rows: [[PartKeyword { text: "type" }, PartText { text: " " }, PartRefAs { id: "Timestamp", label: "Timestamp", role: RoleFocus }, PartText { text: " = UnixMillis" }]] },
+  AddedLine { n: 1, rows: [[PartKeyword { text: "type" }, PartText { text: " " }, PartRefAs { id: "Timestamp", label: "Timestamp", role: RoleFocus }, PartText { text: " = IsoDateTime" }]] },
+  BlankLine { n: 2 },
+  SourceLine { n: 3, rows: [[PartKeyword { text: "type" }, PartText { text: " User \{" }]] },
+  SourceLine { n: 4, rows: [[PartText { text: "  id: String" }]] },
+  SourceLine { n: 5, rows: [[PartText { text: "  email: String" }]] },
+  SourceLine { n: 6, rows: [[PartText { text: "  name: String" }]] },
+  SourceLine { n: 7, rows: [[PartText { text: "  " }, PartRefAs { id: "user_created_at", label: "created_at", role: RoleDerived }, PartText { text: ": " }, PartRef { id: "Timestamp" }]] },
+  SourceLine { n: 8, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 9 },
+  SourceLine { n: 10, rows: [[PartKeyword { text: "type" }, PartText { text: " Profile \{" }]] },
+  SourceLine { n: 11, rows: [[PartText { text: "  name: String" }]] },
+  SourceLine { n: 12, rows: [[PartText { text: "  joined: String" }]] },
+  SourceLine { n: 13, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 14 },
+  SourceLine { n: 15, rows: [[PartKeyword { text: "fn" }, PartText { text: " format_joined(t: " }, PartRef { id: "Timestamp" }, PartText { text: ") -> String \{" }]] },
+  SourceLine { n: 16, rows: [[PartText { text: "  iso8601(t: t)" }]] },
+  SourceLine { n: 17, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 18 },
+  SourceLine { n: 19, rows: [[PartKeyword { text: "fn" }, PartText { text: " build_profile(u: " }, PartType { text: "User" }, PartText { text: ") -> Profile \{" }]] },
+  SourceLine { n: 20, rows: [[PartText { text: "  Profile \{" }]] },
+  SourceLine { n: 21, rows: [[PartText { text: "    name: u.name," }]] },
+  SourceLine { n: 22, rows: [[PartText { text: "    joined: format_joined(t: u." }], [PartRefAs { id: "user_created_at", label: "created_at", role: RoleDerived }, PartText { text: ")" }]] },
+  SourceLine { n: 23, rows: [[PartText { text: "  }" }]] },
+  SourceLine { n: 24, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 25 },
+  SourceLine { n: 26, rows: [[PartKeyword { text: "service" }, PartText { text: " Users \{" }]] },
+  SourceLine { n: 27, rows: [[PartText { text: "  " }, PartKeyword { text: "operation" }, PartText { text: " " }, PartRefAs { id: "UsersProfile", label: "Profile", role: RoleTransitive }, PartText { text: " \{" }]] },
+  SourceLine { n: 28, rows: [[PartText { text: "    input  \{ id: String }" }]] },
+  SourceLine { n: 29, rows: [[PartText { text: "    output \{ profile: Profile }" }]] },
+  SourceLine { n: 30, rows: [[PartText { text: "  }" }]] },
+  SourceLine { n: 31, rows: [[PartText { text: "}" }]] }
+] } },
+  SegmentRetained { block: retained_12 },
+  SegmentGenerated { content: LanesBlock { columns: ["fact", "field", "operation", "artifact"], rows: [LaneRow { id: "profile", cells: [LaneItem { id: "Timestamp", label: "Timestamp", role: RoleFocus, extra: Absent }, LaneItem { id: "user_created_at", label: "User.created_at", role: RoleDerived, extra: Present { value: CellVia { text: "format_joined(...)" } } }, LaneItem { id: "UsersProfile", label: "Users.profile", role: RoleTransitive, extra: Absent }, LaneItem { id: "profile_rs", label: "profile.rs", role: RoleArtifact, extra: Present { value: CellKindArtifact } }] }, LaneRow { id: "email", cells: [LaneGap, LaneItem { id: "user_email", label: "User.email", role: RoleContext, extra: Absent }, LaneItem { id: "UsersEmail", label: "Users.email", role: RoleContext, extra: Absent }, LaneItem { id: "email_rs", label: "email.ts", role: RoleContext, extra: Present { value: CellKindArtifact } }] }, LaneRow { id: "token", cells: [LaneGap, LaneItem { id: "user_id", label: "User.id", role: RoleContext, extra: Absent }, LaneItem { id: "UsersToken", label: "Users.token", role: RoleContext, extra: Absent }, LaneItem { id: "token_rs", label: "token.sql", role: RoleContext, extra: Present { value: CellKindArtifact } }] }] } },
+  SegmentRetained { block: retained_13 },
+  SegmentGenerated { content: ReceiptRows { rows: [
+  ReceiptValue { label: "changed", pieces: [PieceRole { role: RoleFocus, text: "Timestamp representation" }] },
+  ReceiptValue { label: "direct", pieces: [PieceRole { role: RoleDerived, text: "User.created_at" }] },
+  ReceiptValue { label: "transitive", pieces: [PieceRole { role: RoleTransitive, text: "Profile.joined" }, PieceText { text: " · " }, PieceRole { role: RoleTransitive, text: "Users.profile" }] },
+  ReceiptValue { label: "re-derived", pieces: [PieceRole { role: RoleArtifact, text: "profile.rs" }] },
+  ReceiptValue { label: "unrelated", pieces: [PieceRole { role: RoleContext, text: "User.email · User.id · Users.email · Users.token · email.ts · token.sql" }] },
+  ReceiptValue { label: "hand-edits", pieces: [PieceRole { role: RoleDerived, text: "zero" }] }
+] } },
+  SegmentRetained { block: retained_14 },
+  SegmentGenerated { content: CardHeader { id: "card-03", num: "03", name: "complexity budget · O(n) declared, O(n²) observed" } },
+  SegmentRetained { block: retained_15 },
+  SegmentGenerated { content: CardFile { code_file: "examples/users.dag", shape: Present { value: CostArea } } },
+  SegmentRetained { block: retained_16 },
+  SegmentGenerated { content: CodeRows { lines: [
+  SourceLine { n: 1, rows: [[PartKeyword { text: "fn" }, PartText { text: " " }, PartRefAs { id: "unique_users", label: "unique_users", role: RoleFocus }], [PartText { text: "(users: List<" }, PartRefAs { id: "User", label: "User", role: RoleContext }, PartText { text: ">) -> List<User> \{" }]] },
+  SourceLine { n: 2, rows: [[PartText { text: "  users |> " }, PartRefAs { id: "filter_call", label: "filter", role: RoleDerived }, PartText { text: "(u =>" }]] },
+  AddedLine { n: 3, rows: [[PartText { text: "    " }, PartRefAs { id: "count_call", label: "count", role: RoleBoundary }], [PartText { text: "(users, v => v.id == u.id) == 1)" }]] },
+  SourceLine { n: 4, rows: [[PartText { text: "}" }]] },
+  BlankLine { n: 5 },
+  SourceLine { n: 6, rows: [[PartComment { text: "// complexity budget: O(n)" }]] }
+] } },
+  SegmentRetained { block: retained_17 },
+  SegmentGenerated { content: PanelRows { rows: [PanelRow { id: "declared", label: "declared", sublabel: "O(n)", cols: 6, rows: 1, budget_rows: 1 }, PanelRow { id: "observed", label: "observed", sublabel: "O(n²)", cols: 6, rows: 6, budget_rows: 1 }] } },
+  SegmentRetained { block: retained_18 },
+  SegmentGenerated { content: CardNodeRows { rows: [CardNode { id: "unique_users", label: "unique_users", x: 0, y: 0, role: RoleFocus }, CardNode { id: "filter_call", label: "filter", x: 0, y: 0, role: RoleDerived }, CardNode { id: "count_call", label: "count", x: 0, y: 0, role: RoleBoundary }, CardNode { id: "User", label: "User", x: 0, y: 0, role: RoleContext }] } },
+  SegmentRetained { block: retained_19 },
+  SegmentGenerated { content: ReceiptRows { rows: [
+  ReceiptValue { label: "declared", pieces: [PieceRole { role: RoleDerived, text: "unique_users ≤ O(n) budget" }] },
+  ReceiptValue { label: "observed", pieces: [PieceRole { role: RoleBoundary, text: "filter(users) × count(users) = O(n²)" }] },
+  ReceiptValue { label: "reached through", pieces: [PieceRole { role: RoleBoundary, text: "filter(users) → count(users)" }] },
+  ReceiptValue { label: "suggested", pieces: [PieceRole { role: RoleDerived, text: "index users by id once, filter buckets of size 1" }] },
+  ReceiptCode { label: "replacement shape", lines: ["let by_id = group_by(users, key: u => u.id)", "by_id |> values |> filter(bucket => length(bucket) == 1)"] },
+  ReceiptValue { label: "result", pieces: [PieceRole { role: RoleBoundary, text: "no artifact emitted" }] }
+] } },
+  SegmentRetained { block: retained_20 },
+  SegmentGenerated { content: DeckName { name: "users.dag · one system · three views" } },
+  SegmentRetained { block: retained_21 }
+]

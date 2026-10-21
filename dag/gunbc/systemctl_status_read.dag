@@ -4,7 +4,7 @@ import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List }
 import gunbc.host.host_effect { HostEffectTransport }
-import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,

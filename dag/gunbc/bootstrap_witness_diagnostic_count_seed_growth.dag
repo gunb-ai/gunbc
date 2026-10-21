@@ -1,0 +1,26 @@
+module gunbc.bootstrap_witness_diagnostic_count_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data bootstrap_witness_diagnostic_count_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "DiagnosticCountAbsent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "CargoCheckUncategorized", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "parse_diagnostic_count", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "cargo_check_error_count", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "a_real_error_line_is_counted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "a_failed_check_with_no_error_line_refuses_with_cargos_own_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "a_real_summary_line_is_read_as_its_count", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.bootstrap_witness", decl_name: "a_missing_summary_line_refuses_with_the_compiles_own_text", field: WholeDeclaration }
+  ],
+
+  reason: "Replaces the usize::MAX stand-ins in the bootstrap_witness bin, where an absent diagnostic count read as an enormous count, with typed refusals that carry the producer's own stderr (DiagnosticCountAbsent, CargoCheckUncategorized). It removes a fabricated default; it adds no compiler capability. The four unit tests are the REDs for it. No CI step executes the v1-compiler Rust unit-test population, which is the declared drop gunbc.rung_drop rust_unit_tests_off_the_merge_path, so they are enumerated here by identity rather than claimed as run on the merge path. The base-vs-head run is not a RED, because the head's claims do not exist or compile at base; the discriminating REDs are the mutations recorded on the PR.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when the bootstrap_witness bin is emitted rather than hand-authored (the capability gunbc.target_invocation_seed_growth names for the host producers), and its unit tests are judged by a job that executes the v1-compiler population (the capability gunbc.rung_drop rust_unit_tests_off_the_merge_path restores).",
+
+  current_boundary: "src/v1/stage0/src/bin/bootstrap_witness.rs parse_diagnostic_count, cargo_check_error_count and mod diagnostic_count_tests"
+}

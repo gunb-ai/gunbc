@@ -7,6 +7,7 @@ import v2.extdeps.languages.dag { dag_string_literal_value_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.grammar { node_atom_identity_optional }
 import std.algebra { collection_concat_shape }
+import v2.std.primitive_contract_ref { primitive_contract_qualified_name }
 
 // WHERE A KERNEL PRIMITIVE IS DECLARED. A std.primitives PrimitiveContract row carries `name: "<primitive>"`, and THAT
 // field is the primitive's identity. The row is FOUND by the declaration path std.primitives.<name>_contract (the
@@ -17,7 +18,7 @@ import std.algebra { collection_concat_shape }
 // has no .dag authority yet (it lives in the seed's builtin_function_registry) and an untyped acceptance would be
 // silent wrongness.
 fn primitive_authority_path(head: Symbol) -> QualifiedName {
-  qualified_name_from_dotted_string(dotted: concat("std.primitives.", symbol_lexeme(sym: head), "_contract"))
+  primitive_contract_qualified_name(head: head)
 }
 
 // The contract row's OWN `name` field. The lowered row is a nullary arrow whose body edge is the initializer record;
