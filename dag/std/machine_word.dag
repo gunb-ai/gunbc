@@ -615,8 +615,9 @@ fn word_checked_subtract(a: Word, b: Word) -> WordResult {
   }
 }
 
-// The one guard kept here is host headroom, not range: the product of two operands near 2^32 or beyond does
-// not exist as a host Int, so overflow is decided as x > (modulus - 1) / y WITHOUT forming x * y. When the
+// The guard is a division-based width-overflow preflight: x > (modulus - 1) / y decides overflow of
+// the WIDTH without forming x * y, so it refuses a product that fits the host Int but not the width
+// (Width8 16 x 16) and also keeps an unrepresentable host product from ever being formed. When the
 // guard passes the product is in range and word_of_int still answers it.
 fn word_checked_multiply(a: Word, b: Word) -> WordResult {
   match word_pair_qualified(a: a, b: b) {
