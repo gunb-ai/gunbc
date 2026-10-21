@@ -1,8 +1,8 @@
 module v2.test.claim.binder_atom_keying
 
-import std.algebra { fold_list, list_snoc_item }
+import std.algebra { fold_list, list_map, list_snoc_item }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, DeclarationRole, ReferenceRole }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, DeclarationRole, ReferenceRole }
 import std.optional { Absent, Optional, Present }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.types { List, Map }
@@ -40,7 +40,11 @@ fn probe_env(prepared: PreparedGrammar) -> AcquisitionEnv {
 }
 
 fn variant_text(node: Node) -> String {
-  match node.occurrence_id {
+  identity_text(identity: node.occurrence_id)
+}
+
+fn identity_text(identity: NodeOccurrenceIdentity) -> String {
+  match identity {
     OccurrenceMinted { id: i } => "minted#" + int_to_decimal_string(value: i.value)
     OccurrenceProjected { id: i, caused_by: c } => "projected#" + int_to_decimal_string(value: i.value) + "<-" + int_to_decimal_string(value: c.occurrence.value)
     OccurrencePending { caused_by: c } => "pending<-" + int_to_decimal_string(value: c.value)
@@ -79,7 +83,7 @@ fn edge_declaration_row(edge: Edge, depth: Int, spelling: String, index: Map<Occ
         Authored { name: n } =>
           if symbol_lexeme(sym: n) == spelling {
             match map_lookup(m: index, key: authored_occurrence_of_identity(identity: occ)) {
-              Absent => ["E" + int_to_decimal_string(value: depth) + "/miss"]
+              Absent => ["E" + int_to_decimal_string(value: depth) + "/miss:" + identity_text(identity: occ)]
               Present { value: r } =>
                 match r.role {
                   DeclarationRole => ["E" + int_to_decimal_string(value: depth) + "/DECL"]
@@ -123,7 +127,7 @@ fn probe_norm(content: String, spelling: String) -> String {
             OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => "table-refused"
             OccurrenceRolesRead { roles: roles } =>
               let index = occurrence_role_index(roles: roles)
-              "NORM:" + joined(xs: atoms_of(acc: [], node: front.tree.root, depth: 0, via: "", spelling: spelling, index: index))
+              " KEYS:" + joined(xs: list_map(xs: roles.roles, f: fn(r) { int_to_decimal_string(value: r.occurrence.value) })) + " NORM:" + joined(xs: atoms_of(acc: [], node: front.tree.root, depth: 0, via: "", spelling: spelling, index: index))
           }
       }
   }
