@@ -58,7 +58,9 @@ test fn w_the_environment_is_named_by_the_spec_digest() -> Bool {
   let prefix = cad_environment_prefix(spec: cad_runtime_spec)
   starts_with(s: selected(), prefix: concat(prefix, "/"))
     && string_contains(s: prefix, pattern: cad_runtime_spec_digest(spec: cad_runtime_spec))
-    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "cadquery==2.8.0")
-    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "cadquery-ocp==7.9.3.1.1")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery==2.8.0")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery-ocp==7.9.3.1.1")
     && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "python_tag=cp311")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "conda:python=3.11.9")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "micromamba=2.9.0-0")
 }
