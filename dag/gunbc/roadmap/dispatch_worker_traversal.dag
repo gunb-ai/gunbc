@@ -92,15 +92,14 @@ fn dispatch_worker_handed_chain(handed: HandedPath) -> List<String> {
 // exit root). No list is assembled here, so a path a later change hands the unit is judged the moment it
 // is in the set.
 fn dispatch_worker_handed_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<HandedPath> {
-  dispatch_worker_entered_paths(set:
-    dispatch_worker_handed_set(
-      instance: instance,
-      working_directory: plan.working_directory,
-      attempt_worktree: plan.attempt_worktree,
-      stdout_path: plan.stdout_path,
-      stderr_path: plan.stderr_path,
-    ),
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
   )
+  dispatch_worker_entered_paths(set: set)
 }
 
 fn dispatch_worker_entered_paths(set: List<HandedEntry>) -> List<HandedPath> {
