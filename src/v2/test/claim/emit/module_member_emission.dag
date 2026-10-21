@@ -94,7 +94,19 @@ fn member_emission_opaque_verdict() -> MemberEmissionVerdict {
 }
 
 fn member_emission_generic_verdict() -> MemberEmissionVerdict {
-  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T: Int> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_record_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Box<T> { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_coproduct_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Either<A, B> = Left { value: A } | Right { value: B }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_sum_pair_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Sum = One | Two\n\ntype Pair { left: Sum, right: Sum }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }
 
 fn member_emission_payload_variant_verdict() -> MemberEmissionVerdict {
@@ -280,7 +292,31 @@ test fn a_bodyless_member_refuses_under_its_own_reason_holds() -> Bool {
   }
 }
 
-test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
+test fn a_generic_record_emits_with_its_declared_parameter_holds() -> Bool {
+  match member_emission_generic_record_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "struct Box<T>") && string_contains(s: t, pattern: "value: T")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_generic_coproduct_emits_with_its_declared_parameters_holds() -> Bool {
+  match member_emission_generic_coproduct_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Either<A, B>") && string_contains(s: t, pattern: "Left(A)") && string_contains(s: t, pattern: "Right(B)")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_non_generic_coproduct_and_record_still_emit_holds() -> Bool {
+  match member_emission_sum_pair_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Sum") && string_contains(s: t, pattern: "struct Pair")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_kinded_generic_member_still_refuses_under_its_own_reason_holds() -> Bool {
   match member_emission_generic_verdict() {
     MemberEmitted { text: _ } => false
     MemberRefused { reason: r } => r == ^emit_module_member_generic_not_realized
