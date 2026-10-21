@@ -184,10 +184,11 @@ type RungPosition
   = FoundBelowTheLadder
   | FoundOnRung { rung: GuaranteeRung }
 
-// BELOW CEILING WITHOUT A TRIGGER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
-// (which of the three section 4b ob.2 cases) and a trigger capability (which section 4b ob.3
-// requires; standing_admission refuses an empty or referent-spelled one). AtCeiling carries ONE
-// rung, so at-ceiling-with-a-trigger and current-above-ceiling have no constructor.
+// BELOW CEILING WITHOUT A BLOCKER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
+// (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is a bare
+// String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
+// (validation, rung 2). AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
+// current-above-ceiling have no constructor.
 //
 // `current` is the rung the row's prose last states for the class (a CURRENT RUNG / RUNG NOW /
 // CLIMBED receipt); where no receipt states a later rung, the standing is the rung as filed.
