@@ -2385,18 +2385,11 @@ fn alias_item_rhs(item: Node) -> Node? {
   }
 }
 
+// THE NEXT HOP OF A TRANSPARENT ALIAS IS ITS RHS HEAD AS RECORDED, NEVER A SPELLING RE-RESOLVED. The
+// one reader of that identity is `alias_rhs_head_of_declaration`; a generic parameter or an
+// unrecorded head answers none, so the walk ends there.
 fn alias_next_declaration(current: DeclarationRef, env: TypeEnv) -> DeclarationRef? {
-  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(current.module_path as String, ".", current.decl_name as String)) {
-    Absent => none
-    Present { value: item } =>
-      match alias_item_rhs(item: item) {
-        Absent => none
-        Present { value: rhs } =>
-          let spelled = authored_name_at(source_indices: env.source_indices, node: rhs)
-          if item.params |> any(p => generic_param_name_at(n: p, source_indices: env.source_indices) == spelled) { none }
-          else { declaration_named_in_module(name: spelled, module_path: current.module_path as String, env: env) }
-      }
-  }
+  alias_rhs_head_of_declaration(item_ref: current, env: env)
 }
 
 // The members of the alias cycle `start` is on, in chain order and closed back onto `start` (`A -> B -> A`); empty when the chain
