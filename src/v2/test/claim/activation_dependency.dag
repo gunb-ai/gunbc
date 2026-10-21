@@ -803,3 +803,13 @@ fn acd_total_for(src: String) -> Bool {
     Present { value: tree } => acd_total(d: activation_dispositions(tree: tree), root: tree.root)
   }
 }
+
+test fn zz1() -> Bool {
+  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: _ } => true }
+}
+test fn zz2() -> Bool {
+  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: t } => length(xs: activation_dispositions(tree: t).zero_alternatives) == 1 && acd_total(d: activation_dispositions(tree: t), root: t.root) }
+}
+test fn zz3() -> Bool {
+  match acd_assemble(src: acd_never_source) { Absent => false  Present { value: t } => acd_inference_accepts(tree: t) }
+}
