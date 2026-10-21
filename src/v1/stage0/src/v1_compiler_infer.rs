@@ -53,7 +53,9 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length, ContentHash, Fnv1a64Structural,
 };
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
+pub use crate::std_decl_ref::{
+    decl_field_ref, decl_ref, declaration_ref_eq, DeclField, DeclarationRef,
+};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
@@ -17560,10 +17562,17 @@ pub fn zero_field_variant_tag_reference_frontier_note() -> String {
 pub fn payload_arm_tag_reference_waiver_pairs() -> Rc<Vec<Rc<DeclarationRef>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
-            Rc::new(vec![crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "AlgebraPrimitive".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "AlgebraInverseCompose".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "OrderingComparison".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "EqualityComparison".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "CoercionCrossing".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "InfixToken".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "PrefixToken".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "CallIdent".to_string()), crate::std_decl_ref::decl_ref("v2.std.compilers.target_model".to_string(), "MethodIdent".to_string())])
+            Rc::new(vec![crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraPrimitive".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraInverseCompose".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "OrderingComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "EqualityComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "CoercionCrossing".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "InfixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "PrefixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "CallIdent".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "MethodIdent".to_string())])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
+}
+
+pub fn payload_arm_tag_reference_row_names_arm(row: Rc<DeclarationRef>, arm_name: String) -> bool {
+    match (*row.field.clone()).clone() {
+        DeclField::NamedField { field_name: f, .. } => (f.clone() == arm_name.clone()),
+        _ => false,
+    }
 }
 
 pub fn payload_arm_tag_reference_is_waived(arm_name: String, scope: Rc<InferScope>) -> bool {
@@ -17576,8 +17585,9 @@ pub fn payload_arm_tag_reference_is_waived(arm_name: String, scope: Rc<InferScop
             Some(owner_decl) => {
                 let mut __found = false;
                 for w in payload_arm_tag_reference_waiver_pairs().iter().cloned() {
-                    if ((w.module_path.clone() == owner_decl.module_path.clone())
-                        && (w.decl_name.clone() == arm_name.clone()))
+                    if (((w.module_path.clone() == owner_decl.module_path.clone())
+                        && (w.decl_name.clone() == owner_decl.decl_name.clone()))
+                        && payload_arm_tag_reference_row_names_arm(w.clone(), arm_name.clone()))
                     {
                         __found = true;
                         break;
