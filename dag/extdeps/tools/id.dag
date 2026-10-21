@@ -82,7 +82,7 @@ fn id_numbered_entry(segment: String) -> Int? {
 fn id_field_value(fields: List<String>, prefix: String) -> String? {
   match get(xs: filter(fields, f => starts_with(s: f, prefix: prefix)), index: 0) {
     Absent => none
-    Present { value: f } => some(substring(s: f, start: string_length(s: prefix), end: string_length(s: f)))
+    Present { value: f } => Present { value: substring(s: f, start: string_length(s: prefix), end: string_length(s: f)) }
   }
 }
 
