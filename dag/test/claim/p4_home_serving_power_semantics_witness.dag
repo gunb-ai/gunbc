@@ -601,6 +601,19 @@ fn p4_optional_watt_field(cite: String, field: String) -> Bool {
 // made required; OR a rule appearing that relates them — which is the good red,
 // because that is the change this plan argues for, and when it lands this claim
 // must fail until the plan is retired.
+// THE PAIR OF POSITIVE READS, AND THE TWO CONTROLS THAT STOP THEM BEING DECORATION (§4b). A
+// conjunct nobody can imagine failing is not a check, so each read here is paired with the same
+// call on an input it MUST refuse.
+//
+// `memory_bandwidth` is the sharpest available negative for the Watt read: it sits in the SAME
+// block as `tdp_watts` and is optional too, but its unit is `Bandwidth`, not `Watt`. So a bug that
+// quietly degraded the pattern from "optional Watt" to "any optional field" — a dropped `Watt?` in
+// the concatenation, say — would make the positives pass and this control go red. If this control
+// ever reddens because `memory_bandwidth` really was retyped to a watt, that is the control working:
+// a new watt field on the card row is exactly the kind of change this plan exists to notice.
+//
+// `wattage_ceiling` is the negative for the NAME read: no such field exists on the card row, so a
+// name read that accepted anything at all would be caught here rather than looking strong.
 test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool {
   p4_optional_watt_field(
     cite: "extdeps.gpu.types::GpuModelCatalogRow",
@@ -609,6 +622,18 @@ test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool
     && p4_optional_watt_field(
       cite: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization",
       field: "applied_power_limit"
+    )
+    && all(
+      p4_census_rows(cite: "extdeps.gpu.types::GpuModelCatalogRow"),
+      row => !p4_field_is_declared_optional_watt(
+        fact: row,
+        decl: "GpuModelCatalogRow",
+        field: "memory_bandwidth"
+      )
+    )
+    && !p4_declares_field_by_name(
+      cite: "extdeps.gpu.types::GpuModelCatalogRow",
+      field: "wattage_ceiling"
     )
     && !any(
       decl_facts(pool_roots: p4_census_pool_roots()),
