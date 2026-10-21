@@ -15574,12 +15574,12 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
     AttemptExitEntryMalformed { entry_name: _, reason } =>
       match move(root, entry, AttemptExitInbox, AttemptExitRefused) {
         Absent => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record: ", reason], "") }
-        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> refused", cause: why }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitRefused), cause: why }
       }
     AttemptExitEntryDecoded { record: _ } =>
       match move(root, entry, AttemptExitInbox, AttemptExitQueued) {
         Absent => BeltExitEntryClaimed { entry: entry }
-        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> queued", cause: why }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitQueued), cause: why }
       }
   }
 }
@@ -15616,7 +15616,7 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
 fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitRunning, AttemptExitQueued) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "running -> queued", cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitRunning, to: AttemptExitQueued), cause: why }]
   }
 }
 
@@ -15646,7 +15646,7 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
 fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitInbox, AttemptExitDone) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "inbox -> done", cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitDone), cause: why }]
   }
 }
 
@@ -15843,16 +15843,34 @@ fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExi
 
 // WHERE A RECORDED ENTRY LIVES, ONE SPELLING: the stage its failing step names, then the entry. The stat reading
 // and the clear's admission both take their path from here, so what is observed is exactly what is cleared.
-// The stage is read off the record's `step` ("inbox -> queued" claims from the inbox, "running -> queued" from
-// running); a step that names neither stage names no location, and nothing is observed or cleared for it.
-fn belt_exit_stall_stage_of_step(step: String) -> HostSpoolStage? {
-  if starts_with(s: step, prefix: "inbox") {
-    Present { value: AttemptExitInbox }
-  } else if starts_with(s: step, prefix: "running") {
-    Present { value: AttemptExitRunning }
-  } else {
-    none
+// The stage is recovered from the record's `step` by EXACT match against the one spelling (belt_exit_step) the
+// drain's four move sites write, never by matching text: a step that is none of them names no location, and
+// nothing is observed or cleared for it. The source stage of the move is the stage the entry sits in.
+fn belt_exit_stage_word(stage: HostSpoolStage) -> String {
+  match stage {
+    AttemptExitInbox => "inbox"
+    AttemptExitQueued => "queued"
+    AttemptExitRunning => "running"
+    AttemptExitDone => "done"
+    AttemptExitRefused => "refused"
   }
+}
+
+fn belt_exit_step(from: HostSpoolStage, to: HostSpoolStage) -> String {
+  join([belt_exit_stage_word(stage: from), " -> ", belt_exit_stage_word(stage: to)], "")
+}
+
+type BeltExitMove { from: HostSpoolStage, to: HostSpoolStage }
+
+data belt_exit_moves: List<BeltExitMove> = [
+  BeltExitMove { from: AttemptExitInbox, to: AttemptExitRefused },
+  BeltExitMove { from: AttemptExitInbox, to: AttemptExitQueued },
+  BeltExitMove { from: AttemptExitRunning, to: AttemptExitQueued },
+  BeltExitMove { from: AttemptExitInbox, to: AttemptExitDone },
+]
+
+fn belt_exit_stall_stage_of_step(step: String) -> HostSpoolStage? {
+  (belt_exit_moves |> filter(m => belt_exit_step(from: m.from, to: m.to) == step) |> map(m => m.from)).first()
 }
 
 fn belt_exit_stall_entry_path(root: String, stage: HostSpoolStage, entry: String) -> String {
@@ -15984,18 +16002,17 @@ fn belt_exit_stall_clear_argv(path: String, me: String, group: String, mode: Str
     Absent => none
     Present { value: m } => {
       let install = executor_privileged_operation_argv(op: EnsureOwnedDirectory { path: path as NonEmptyStr, owner: me as NonEmptyStr, group: group as NonEmptyStr, mode: m }) |> map(w => w as String)
-      let elevated = sudo_elevate(command: concat(["/bin/sh", "-c", belt_exit_stall_clear_guard_script, "sh", path], install))
+      let elevated = sudo_elevate(command: concat(concat(["/usr/bin/find", path, "-maxdepth", "0", "-type", "d", "-exec"], install), [";"]))
       Present { value: concat([elevated.bin_path], elevated.args) |> map(w => posix_single_quote(spelling: w)) }
     }
   }
 }
 
-// THE GUARD RUNS AS ROOT, AT EXECUTION: `install -d` on an existing path chowns what a symlink points at, and the
-// stage directory is the drain principal's own, so the entry could be swapped for a symlink between the verb's
-// observation and the operator's run. The script refuses a symlink (and a non-directory) immediately before the
-// install. What remains is the instant between this test and the install; the parent being writable by the drain
-// principal makes that a declared residual (census row exit_spool_clear_has_no_realized_edge), not a closed class.
-data belt_exit_stall_clear_guard_script: String = "if [ -L \"$1\" ] || [ ! -d \"$1\" ]; then echo \"refused: $1 is not a plain directory\" >&2; exit 1; fi; shift; exec \"$@\""
+// THE ARGV IS find(1) OVER THE ONE PATH, NOT A SHELL SCRIPT: `-type d` is lstat-based (find does not follow the
+// named path unless -L), so a path swapped for a symlink or a file matches nothing and the install (the typed
+// EnsureOwnedDirectory words) never runs. `install -d` on an existing path chowns what a symlink points at, and
+// the stage directory is the drain principal's own, so this test-then-install is the declared residual (census row
+// exit_spool_clear_has_no_realized_edge): the instant between find's lstat and the install is not closed.
 
 fn belt_exit_stall_clear_admission(path: String, stat: BeltExitStallObservation, whoami: BeltExitStallObservation, group: BeltExitStallObservation) -> BeltExitClearAdmission {
   match belt_exit_stall_ownership_of(stat: stat, whoami: whoami) {

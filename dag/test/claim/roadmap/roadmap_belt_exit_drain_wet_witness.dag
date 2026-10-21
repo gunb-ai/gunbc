@@ -15,7 +15,7 @@ import gunbc.roadmap.spool_stall { SpoolStallRead, spool_stall_read_at, SpoolSta
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
   belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
-  belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, belt_exit_stall_whoami, belt_exit_stall_whoami_group,
+  belt_exit_step, belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, belt_exit_stall_whoami, belt_exit_stall_whoami_group,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -455,7 +455,7 @@ test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadabl
 data clear_entry: String = "n+a+worker+inv+exit-code+exited+200"
 
 fn held_inbox() -> SpoolStallRead {
-  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: "inbox -> queued", cause: "mv: Permission denied" }] }
+  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: belt_exit_step(from: AttemptExitInbox, to: AttemptExitQueued), cause: "mv: Permission denied" }] }
 }
 
 fn target_refused(t: BeltExitClearTarget) -> Bool {
@@ -518,7 +518,7 @@ test fn the_real_stall_and_stat_route_yields_the_admission_shapes_and_analyze_na
   let linked = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: BeltExitStallObserved { value: "nobody-else" }, group: grp)
   wrote && count(recorded) == 1
     && admission_refused(a: own)
-    && match other { BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: worker_exit)) && any(argv, w => string_contains(s: w, pattern: "[ -L")) _ => false }
+    && match other { BeltExitClearAdmitted { argv } => any(argv, w => string_contains(s: w, pattern: worker_exit)) && any(argv, w => string_contains(s: w, pattern: "-type")) _ => false }
     && admission_refused(a: absent)
     && admission_refused(a: linked)
     && any(report, l => string_contains(s: l, pattern: "belt_exit_stall_clear_cli") && string_contains(s: l, pattern: "entry="))
