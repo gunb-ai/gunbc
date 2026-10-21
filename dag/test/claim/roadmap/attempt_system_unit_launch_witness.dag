@@ -25,7 +25,7 @@ import gunbc.live_deploy.slice_bounds {
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
 import gunbc.live_deploy.emit {
-  attempt_unit_drain_steps_for_instance, attempt_unit_drain_argv_refused_poison,
+  attempt_unit_drain_steps_for_instance, retired_attempt_unit_sudo_route_paths, attempt_unit_drain_argv_refused_poison,
   live_deploy_attempt_unit_drain_service_unit_file, live_deploy_attempt_unit_drain_path_unit_file,
   apply_intent_from_effects,
 }
@@ -45,6 +45,8 @@ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
 }
+import gunbc.live_deploy.lab_host_plan { lab_plan_selects_system_manager_launcher, LabPlanRefused, LabOsUnobserved }
+import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
   attempt_system_unit_start_admitted,
@@ -246,8 +248,27 @@ fn apply_installs_the_drain_units(spec: DeploymentSpec, own: HostDashboardInstan
     && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
 }
 
+// The roster gate is the host plan's selector (lab_plan_selects_system_manager_launcher): srv1's plan selects the
+// system-manager launcher for production and its lab alike, so both apply the drain; a plan that does not select it
+// (refused) installs neither unit.
 test fn the_production_full_install_apply_installs_the_drain_path_and_service() -> Bool {
-  apply_installs_the_drain_units(spec: deployment_spec_srv1(), own: srv1_live_dashboard_instance())
+  lab_plan_selects_system_manager_launcher(plan: deployment_spec_srv1().target.lab_plan)
+    && apply_installs_the_drain_units(spec: deployment_spec_srv1(), own: srv1_live_dashboard_instance())
+}
+
+test fn a_refused_lab_plan_owns_no_drain_steps_and_the_selected_plan_owns_them() -> Bool {
+  let names = deployment_spec_srv1().names
+  count(deployment_attempt_unit_drain_steps(names: names, lab_plan: LabPlanRefused { cause: LabOsUnobserved { obligation: "os unobserved" as NonEmptyStr } })) == 0
+    && count(deployment_attempt_unit_drain_steps(names: names, lab_plan: deployment_spec_srv1().target.lab_plan)) > 0
+}
+
+// The retired sudo route is deleted by the same apply that installs the drain, so a converged host keeps no
+// standing root-by-sudo grant beside the path-triggered oneshot.
+test fn the_lab_apply_deletes_the_retired_sudoers_receipt_and_lock() -> Bool {
+  let text = full_install_apply_text(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  let own = srv1_lab_dashboard_instance()
+  all(retired_attempt_unit_sudo_route_paths(instance: own), p => string_contains(s: text, pattern: p))
+    && string_contains(s: text, pattern: join(["/etc/sudoers.d/gunbc-attempt-system-unit-", own.instance_id as String], ""))
 }
 
 test fn the_lab_full_install_apply_installs_the_drain_path_and_service() -> Bool {
@@ -288,10 +309,10 @@ fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
 }
 
 test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_drain() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let text = full_install_apply_text(spec: deployment_spec_srv1())
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let text = full_install_apply_text(spec: spec)
   let dest = gunbc_attempt_worker_slice_unit_path() as String
-  let grant = deployment_attempt_unit_drain_service_unit_path(names: deployment_spec_srv1().names) as String
+  let grant = deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String
   match attempt_worker_slice_memory_high() {
     UserWorkSliceHighGapExceedsMax => false
     UserWorkSliceHighDerived { bytes: high } =>

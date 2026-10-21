@@ -1279,6 +1279,12 @@ fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       group: service,
       path: attempt_unit_spool_answer_dir(instance_root: instance_root),
     )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_stalled_dir(instance_root: instance_root),
+    )),
   ]
 }
 
@@ -1332,6 +1338,20 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
   }
 }
 
+// THE RETIRED SUDO ROUTE, REMOVED FROM HOSTS THAT CONVERGED UNDER IT. Before the root drain was a path-triggered
+// oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
+// helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
+// idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
+// (DESIGN section 3: the old authority ends in one motion). Removing a drop-in cannot make sudoers invalid, so no
+// visudo check follows. DISSOLUTION: delete this row and its call when no host that applied the sudo route remains.
+fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> List<String> {
+  [
+    join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], ""),
+    join([attempt_system_unit_launcher_locus(instance: instance).base, "/installed-revision"], ""),
+    join([attempt_unit_spool_root(instance_root: instance.instance_root as String), "/drain.lock"], ""),
+  ]
+}
+
 fn attempt_unit_drain_steps_for_instance(
   spec: DeploymentSpec,
   instance: HostDashboardInstance,
@@ -1347,6 +1367,8 @@ fn attempt_unit_drain_steps_for_instance(
       concat(
         apply_attempt_unit_spool_steps(spec: spec),
         concat(
+          [deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: retired_attempt_unit_sudo_route_paths(instance: instance)))],
+          concat(
           root_owned_helper_snapshot_steps(locus: locus, revision: revision),
           [
             deploy_raw(command: deploy_stage_write_command(
@@ -1372,6 +1394,7 @@ fn attempt_unit_drain_steps_for_instance(
             deploy_effect(inv: systemctl_restart_effect(unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))),
             deploy_raw(command: helper_snapshot_retire_command(base: locus.base, revision: revision)),
           ],
+        ),
         ),
       )
     }

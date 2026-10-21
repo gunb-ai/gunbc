@@ -32,6 +32,12 @@ type SpoolStallEntry {
 
 data spool_stall_schema: String = "gunbc.spool_stall.v1"
 
+// DECLARED VERSION TRANSITION (DESIGN section 3): the exit spool's record was first written under this
+// identifier, before the record layer became spool-generic. The same fields mean the same thing under both, so
+// the reader accepts it and no stall written by an earlier head is stranded as Unreadable; every writer emits
+// spool_stall_schema. Retire this row when no host holds a record written before the generic layer landed.
+data spool_stall_schema_exit_spool_v1: String = "gunbc.belt_exit_stall.v1"
+
 fn spool_stall_entry_json(u: SpoolStallEntry) -> JsonValue {
   json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
 }
@@ -90,7 +96,7 @@ fn spool_stall_of_json(doc: JsonValue) -> SpoolStallRead {
   match json_required_string_member(doc: doc, key: "schema") {
     JsonStringMemberRefused { reason } => SpoolStallUnreadable { reason: reason }
     JsonStringMemberFound { value: schema } =>
-      if schema != spool_stall_schema {
+      if schema != spool_stall_schema && schema != spool_stall_schema_exit_spool_v1 {
         SpoolStallUnreadable { reason: join(["the stall record has schema ", schema, ", not ", spool_stall_schema], "") }
       } else {
         match json_object_unique_member(v: doc, key: "unmovable") {
