@@ -140,6 +140,7 @@ type UpsertArtifactKind =
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperPathUnit
+  | AttemptUnitDrainPathUnit
   | ApprovalBrokerFrontDoor
 
 type OwnedArtifactKind
@@ -229,6 +230,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
       TailscaleServeMapping => TeardownActs
       DeployedTreeRemoteUnit => TeardownActs
       PublicationHelperPathUnit => TeardownActs
+      AttemptUnitDrainPathUnit => TeardownActs
       ApprovalBrokerFrontDoor => TeardownActs
     }
   }
@@ -794,6 +796,22 @@ fn deployment_retired_belt_timer_unit_name(names: DeploymentNames) -> NonEmptySt
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
 }
 
+fn deployment_attempt_unit_drain_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-attempt-unit-drain.service"], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-attempt-unit-drain.path"], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_attempt_unit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_attempt_unit_drain_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
 fn deployment_publication_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_publication_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
@@ -1146,6 +1164,10 @@ fn deployment_owned_steps(
     DeploymentArtifactStep {
       kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
+    },
+    DeploymentArtifactStep {
+      kind: UpsertOwned { kind: AttemptUnitDrainPathUnit },
+      path: deployment_attempt_unit_drain_path_unit_path(names: names),
     },
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([

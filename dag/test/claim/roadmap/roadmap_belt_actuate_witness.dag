@@ -404,6 +404,7 @@ fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -510,6 +511,7 @@ test fn witness_identity_survives_actuation_failure() -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -878,7 +880,7 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 20
+  belt_dispatch_label_band_rows().length() == 21
     && band_key_for_label(label: "no_placement_grant") == "loud"
     && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
@@ -898,10 +900,13 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "observe_refused") == "loud"
     && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
+    && band_key_for_label(label: "launch_pending") == "in-progress"
 }
 
-test fn witness_no_result_maps_to_in_progress() -> Bool {
-  all(belt_dispatch_label_band_rows(), row => row.band_key != "in-progress")
+// BandInProgress MEANS "the start request is enqueued and its answer has not been read": exactly the
+// launch_pending result carries it, and no other result may (DispatchBand comment in roadmap_belt_actuate).
+test fn witness_only_launch_pending_maps_to_in_progress() -> Bool {
+  all(belt_dispatch_label_band_rows(), row => (row.band_key == "in-progress") == (row.wire_label == "launch_pending"))
 }
 
 test fn witness_ok_labels_derive_from_band_fold() -> Bool {
@@ -930,6 +935,7 @@ fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
     "supervisor_convened",
+    "launch_pending",
     "spawn_failed",
     "no_instance",
     "disabled",
@@ -3340,6 +3346,7 @@ fn release_note_carried(o: BeltSpawnOutcome) -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -3358,6 +3365,7 @@ test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -
       SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
       SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
       SpawnNotAdmitted { node_id: _, refusal: _ } => false
+      SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
     }
 }
 

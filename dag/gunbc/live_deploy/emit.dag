@@ -196,10 +196,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
-  AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_gunbc_argv_at,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
   attempt_system_unit_launch_argv_refused_detail,
-  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
+  attempt_system_unit_launcher_locus,
 }
 import gunbc.live_deploy.lab_host_plan {
   LabPlanReady,
@@ -230,7 +230,7 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -245,6 +245,8 @@ import gunbc.live_deploy.spec {
   deployment_retired_belt_timer_unit_name,
   deployment_publication_service_unit_path,
   deployment_publication_path_unit_path,
+  deployment_attempt_unit_drain_service_unit_name, deployment_attempt_unit_drain_path_unit_name,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
   deployment_fleet_converge_service_unit_name,
@@ -279,7 +281,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -1276,116 +1278,118 @@ fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       group: service,
       path: attempt_unit_spool_answer_dir(instance_root: instance_root),
     )),
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
-      content: "",
-    )),
-    deploy_raw(command: deploy_stage_install_owned_command(
-      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
-      mode: "0644" as NonEmptyStr,
-      owner: root_principal,
-      group: root_principal,
-      dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root),
-    )),
   ]
 }
 
-data attempt_system_unit_grant_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant has no HostDashboardInstance for this spec.instance_id, so it will not install a host-global file or another instance's grant. instance="
-data attempt_system_unit_grant_revision_unbound_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit launcher grant was asked to install under RevisionNotInstalled; a sha-addressed root-owned release has no path that could mean.\n"
-data attempt_system_unit_grant_launch_argv_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant: the launcher named argument was refused, so it will not pin a false argv. "
+data attempt_unit_drain_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-unit drain has no HostDashboardInstance for this spec.instance_id, so it will not install a unit naming an unresolved launcher locus. "
+data attempt_unit_drain_revision_unbound_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-unit drain was asked to install under RevisionNotInstalled; a sha-addressed root-owned release has no path to run. "
+data attempt_unit_drain_argv_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-unit drain: the launcher named argument was refused, so it will not pin a false ExecStart. "
 
-fn attempt_system_unit_grant_steps_for_instance(
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL IS A SYSTEM ONESHOT STARTED BY A .path UNIT, the publication
+// helper's shape (PublicationHelperPathUnit): a request was written, so the service runs the
+// launcher entry from the root-owned release and answers the spool. No requester holds a sudo grant
+// for it and none waits on it. systemd runs one activation of the service at a time, which is the
+// mutual exclusion the retired drain.lock flock provided; a request written while a drain runs
+// leaves requests/ non-empty, and the path unit starts the service again when it finishes.
+// TimeoutStartSec is the start path's own watchdog (belt_tick_run_bound): a start-wait request holds
+// the activation for one worker's whole lifetime.
+fn live_deploy_attempt_unit_drain_service_unit_file(
   spec: DeploymentSpec,
-  principal: GroundedPosixPrincipal,
   instance: HostDashboardInstance,
   revision: ReleaseRevisionBinding,
-) -> List<PipelineStep> {
-  match attempt_system_unit_sudoers_body(instance: instance, revision: revision) {
-    AttemptSystemUnitSudoersRefused { cause } => [
-      deploy_raw(command: join([
-        attempt_system_unit_grant_launch_argv_refused_poison,
-        attempt_system_unit_launch_argv_refused_detail(cause: cause),
-        "\n",
-      ], "")),
-    ]
-    AttemptSystemUnitSudoersReady { text: sudoers_text } =>
-      attempt_system_unit_grant_steps_for_sudoers(
-        spec: spec,
-        principal: principal,
-        instance: instance,
-        revision: revision,
-        sudoers_text: sudoers_text,
-      )
+) -> SystemdUnitFile? {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause: _ } => Absent
+    AttemptSystemUnitLaunchArgvReady { argv } =>
+      Present { value: ServiceUnitFile {
+        unit: [
+          Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: NotInstallable,
+      } }
   }
 }
 
-fn attempt_system_unit_grant_steps_for_sudoers(
-  spec: DeploymentSpec,
-  principal: GroundedPosixPrincipal,
-  instance: HostDashboardInstance,
-  revision: ReleaseRevisionBinding,
-  sudoers_text: String,
-) -> List<PipelineStep> {
-  let locus = attempt_system_unit_launcher_locus(instance: instance)
-  let final_path = attempt_system_unit_sudoers_path(instance: instance)
-  let temp_path = join([final_path, ".new"], "")
-  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
-  let readback = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-readback"], "")
-  let rev_stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-revision"], "")
-  concat(
-    apply_attempt_unit_spool_steps(spec: spec),
-    concat(
-      root_owned_helper_snapshot_steps(locus: locus, revision: revision),
-      [
-          deploy_raw(command: deploy_stage_write_command(
-            stage_name: rev_stage,
-            content: join([release_revision_execstart_text(binding: revision), "\n"], ""),
-          )),
-          deploy_raw(command: deploy_stage_install_owned_command(
-            stage_name: rev_stage,
-            mode: "0644" as NonEmptyStr,
-            owner: approval_broker_helper_root_principal,
-            group: approval_broker_helper_root_principal,
-            dest: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
-          )),
-          deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: sudoers_text)),
-          deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
-          deploy_raw(command: deploy_stage_install_owned_command(
-            stage_name: stage,
-            mode: "0440" as NonEmptyStr,
-            owner: approval_broker_helper_root_principal,
-            group: approval_broker_helper_root_principal,
-            dest: temp_path,
-          )),
-          deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
-          deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
-          deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
-          deploy_raw(command: deploy_stage_install_from_command(
-            source: final_path,
-            mode: "0400" as NonEmptyStr,
-            owner: grounded_posix_principal_name(p: principal),
-            group: grounded_posix_principal_name(p: principal),
-            stage_name: readback,
-          )),
-          deploy_raw(command: deploy_stage_cmp_stages_command(left: stage, right: readback)),
-          deploy_raw(command: helper_snapshot_retire_command(base: locus.base, revision: revision)),
-        ],
-    ),
-  )
+fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc attempt-unit spool drain: a start request was written" as NonEmptyStr },
+      StartLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      StartLimitBurst { count: "2" as NonEmptyStr },
+    ],
+    path: [
+      PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      TriggerLimitBurst { count: "2" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
 }
 
-fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn attempt_unit_drain_steps_for_instance(
+  spec: DeploymentSpec,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+  path: NonEmptyStr,
+) -> List<PipelineStep> {
+  match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: instance, revision: revision) {
+    Absent => [
+      deploy_raw(command: attempt_unit_drain_argv_refused_poison),
+    ]
+    Present { value: service_file } => {
+      let locus = attempt_system_unit_launcher_locus(instance: instance)
+      concat(
+        apply_attempt_unit_spool_steps(spec: spec),
+        concat(
+          root_owned_helper_snapshot_steps(locus: locus, revision: revision),
+          [
+            deploy_raw(command: deploy_stage_write_command(
+              stage_name: deployment_attempt_unit_drain_service_unit_name(names: spec.names) as String,
+              content: render(doc: doc_text(text: serialize_systemd_unit_file(file: service_file)), proto: live_deploy_protocol),
+            )),
+            deploy_raw(command: deploy_stage_write_command(
+              stage_name: deployment_attempt_unit_drain_path_unit_name(names: spec.names) as String,
+              content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec))), proto: live_deploy_protocol),
+            )),
+            deploy_raw(command: deploy_stage_install_command(
+              stage_name: deployment_attempt_unit_drain_service_unit_name(names: spec.names) as String,
+              mode: install_file_shared_mode,
+              dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String,
+            )),
+            deploy_raw(command: deploy_stage_install_command(
+              stage_name: deployment_attempt_unit_drain_path_unit_name(names: spec.names) as String,
+              mode: install_file_shared_mode,
+              dest: path as String,
+            )),
+            deploy_effect(inv: systemctl_daemon_reload_effect()),
+            deploy_effect(inv: systemctl_enable_effect(unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))),
+            deploy_effect(inv: systemctl_restart_effect(unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))),
+            deploy_raw(command: helper_snapshot_retire_command(base: locus.base, revision: revision)),
+          ],
+        ),
+      )
+    }
+  }
+}
+
+fn attempt_unit_drain_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, path: NonEmptyStr) -> List<PipelineStep> {
   match revision {
     RevisionNotInstalled => [
-      deploy_raw(command: attempt_system_unit_grant_revision_unbound_poison),
+      deploy_raw(command: attempt_unit_drain_revision_unbound_poison),
     ]
     RevisionBoundAtEmission { revision: _ } =>
       match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
         DashboardInstanceIdUnknown { instance_id: id } => [
-          deploy_raw(command: join([attempt_system_unit_grant_unknown_instance_poison, id, "\n"], "")),
+          deploy_raw(command: join([attempt_unit_drain_unknown_instance_poison, id, "\n"], "")),
         ]
         DashboardInstanceForId { instance: instance } =>
-          attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance, revision: revision)
+          attempt_unit_drain_steps_for_instance(spec: spec, instance: instance, revision: revision, path: path)
       }
   }
 }
@@ -1399,10 +1403,7 @@ fn apply_selected_worker_sandbox_steps(spec: DeploymentSpec, principal: Grounded
     LabPlanRefused { cause: _ } => []
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
       match choice {
-        SystemManagerLauncherSelected => concat(
-          apply_attempt_worker_slice_install_steps(),
-          attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
-        )
+        SystemManagerLauncherSelected => apply_attempt_worker_slice_install_steps()
       }
   }
 }
@@ -1745,6 +1746,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
+        AttemptUnitDrainPathUnit => none
         ApprovalBrokerFrontDoor => none
       }
       ComposeOwned { kind: ck } => match ck {
@@ -3814,6 +3816,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         ]
       )
     )
+    AttemptUnitDrainPathUnit => attempt_unit_drain_steps(spec: spec, revision: revision, path: path)
     BeltEventPathUnit => concat(
       [
         deploy_raw(command: install_d_owned_command(
@@ -3995,6 +3998,16 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
+    )
+    UpsertOwned { kind: AttemptUnitDrainPathUnit } => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
+          art.path as String,
+          deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String,
+        ])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+      ],
     )
     UpsertOwned { kind: DeployedTreeRemoteUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),

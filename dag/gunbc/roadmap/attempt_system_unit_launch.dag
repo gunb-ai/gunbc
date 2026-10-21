@@ -7,9 +7,12 @@ module gunbc.roadmap.attempt_system_unit_launch
 // typed confinement fold, ExecStart the request's argv on the instance binary. Which authorization pattern performs
 // that effect is gunbc.auth.authorization_pattern_selection, not a call-site choice.
 //
-// THE GRANT IS THE LAUNCHER ARGV. Belt does not sudo systemd-run with caller-chosen -p flags.
-// sudoers matches one exact `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root
-// pinned. DESIGN §3 replacement: no --user dual path.
+// THE ROOT SIDE RUNS WHEN A REQUEST LANDS, NOT WHEN A REQUESTER WAITS. The requester (belt tick or
+// serve handler) writes a request into the spool and reads answers/<entry> once; a system `.path`
+// unit (DirectoryNotEmpty on requests/) starts a system oneshot service whose ExecStart is the
+// `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root pinned. No requester holds
+// a sudo grant for it, and no requester waits on a child it cannot signal. DESIGN §3 replacement:
+// no --user dual path.
 //
 // THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). Each request is
 // one create-only directory named from (node id, attempt key), staged then renamed into `requests/`.
@@ -18,18 +21,14 @@ module gunbc.roadmap.attempt_system_unit_launch
 // from the instance and that identity, with the same functions the belt plans with. A request cannot
 // name a `+`-prefixed exit hook (which systemd runs with full privileges) or widen ReadWritePaths:
 // those fields do not exist in it. The launcher claims by rename into `claimed/` (requester cannot
-// write that directory) and writes `answers/<entry>`. Two overlapping sudo launches cannot share one
+// write that directory) and writes `answers/<entry>`. Two overlapping requests cannot share one
 // body; a second write for the same attempt refuses (review 80347).
 //
-// ONE SUDOERS FILE PER INSTANCE, installed only by that instance's deploy
-// (`/etc/sudoers.d/gunbc-attempt-system-unit-<instance_id>`). A host-global file that named both
-// srv1-live and srv1-lab meant a lab deploy installed production's grant.
-//
-// THE BYTES ROOT RUNS ARE A ROOT-OWNED RELEASE, not the instance checkout. The grant names
+// THE BYTES ROOT RUNS ARE A ROOT-OWNED RELEASE, not the instance checkout. The service names
 // /opt/gunbc/attempt-system-unit-helpers/<instance_id>/<sha>/{gunbc,dag,src/v2}, installed by that
 // instance's deploy the same way approval-broker-helpers are: root-owned, not group- or
-// world-writable, sha-addressed, sudoers pinned to that path. The requester can edit
-// instance.serve_binary and the checkout; those paths are not the grant.
+// world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
+// edit instance.serve_binary and the checkout; those paths are not what root runs.
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
@@ -37,11 +36,10 @@ import std.algebra { trim }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
   HelperLocus, helper_locus_dir, approval_broker_helper_root_principal, release_locus_tree_subdirs,
-  release_revision_execstart_text,
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, byte_size_count }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
 import std.human_intervention { EveryProvision }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -58,10 +56,7 @@ import extdeps.tools.stat {
 import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
-  attempt_unit_spool_drain_lock_path,
 }
-import extdeps.tools.util_linux_flock { flock_exclusive_wait_words }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
   SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
@@ -79,12 +74,11 @@ import extdeps.systemd.systemd_run {
   RunUnit, Wait, Quiet, Collect, EndOfOptions,
 }
 import extdeps.systemd.systemctl
-import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.cli_invoke {
   admit_named_argument, NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
 }
 import gunbc.executor_privileged_operation {
-  gunbc_entry_run_argv, sudoers_argument_word, executor_sudoers_run_as,
+  gunbc_entry_run_argv,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_user,
@@ -96,7 +90,6 @@ import extdeps.exec.command { ArgvCommand }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
   dispatch_worker_unit_properties_for_plan,
-  host_exec_argv, HostExecArgv,
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
   dispatch_pane_working_directory, GunbcHarnessProvider,
 }
@@ -114,15 +107,6 @@ data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_syste
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
 data attempt_system_unit_request_body_name: String = "request"
 data attempt_system_unit_launcher_helpers_root: String = "/opt/gunbc/attempt-system-unit-helpers"
-data attempt_system_unit_launcher_revision_receipt_name: String = "installed-revision"
-data attempt_system_unit_launcher_busy_exit: Int = 75
-
-// THE FLOCK WAIT BOUND IS THE START PATH'S OWN WATCHDOG (belt_tick_run_bound). That Second is
-// TimeoutStartSec of the belt tick and RuntimeMaxSec of the worker the launcher may start-wait:
-// a holder can keep the drain lock for one unit's full lifetime, so a waiter that expired earlier
-// would report busy while the holder was still the honest start. A transcribed integer beside this
-// row would be a second budget.
-data attempt_system_unit_launcher_flock_wait: Second = belt_tick_run_bound
 
 fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> HelperLocus {
   HelperLocus {
@@ -133,10 +117,6 @@ fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> Helper
 
 fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
   helper_locus_dir(locus: attempt_system_unit_launcher_locus(instance: instance), revision: revision)
-}
-
-fn attempt_system_unit_launcher_revision_receipt_path(instance: HostDashboardInstance) -> String {
-  join([attempt_system_unit_launcher_locus(instance: instance).base, "/", attempt_system_unit_launcher_revision_receipt_name], "")
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
@@ -152,7 +132,7 @@ fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
     workload_identity: WorkloadIdentityBindable {
       member: join([
         srv1_live_dashboard_instance().directory_owner.user as String,
-        " on srv1, the live dashboard service user whose belt starts gunbc-attempt-* system units through this launcher",
+        " on srv1, the live dashboard service user whose belt requests gunbc-attempt-* system units by writing to the spool this launcher drains (it holds no sudo grant for it)",
       ], "") as NonEmptyStr,
     },
     minted_reach: MintsNoCredential,
@@ -514,7 +494,6 @@ fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgu
 type AttemptSystemUnitLaunchArgv
   = AttemptSystemUnitLaunchArgvReady { argv: List<String> }
   | AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentAdmission }
-  | AttemptSystemUnitLaunchArgvRevisionUnreadable
 
 fn attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentAdmission) -> String {
   match cause {
@@ -522,13 +501,6 @@ fn attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentAdmission)
     NamedArgumentNameEmpty => "instance_root named argument name is empty"
     NamedArgumentNameHoldsSeparator { name } =>
       join(["instance_root named argument holds the separator: ", name], "")
-  }
-}
-
-fn attempt_system_unit_host_exec_from_launch_argv(argv: List<String>) -> HostExecArgv {
-  match argv.first() {
-    Absent => host_exec_argv(program: "", args: [])
-    Present { value: program } => host_exec_argv(program: program, args: skip(xs: argv, n: 1))
   }
 }
 
@@ -557,85 +529,6 @@ fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, rev
   }
 }
 
-fn attempt_system_unit_launch_flocked_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
-  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
-    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitLaunchArgvRefused { cause: cause }
-    AttemptSystemUnitLaunchArgvRevisionUnreadable => AttemptSystemUnitLaunchArgvRevisionUnreadable
-    AttemptSystemUnitLaunchArgvReady { argv: gunbc_argv } =>
-      AttemptSystemUnitLaunchArgvReady {
-        argv: flock_exclusive_wait_words(
-          lock_path: attempt_unit_spool_drain_lock_path(instance_root: instance.instance_root as String) as NonEmptyStr,
-          wait: attempt_system_unit_launcher_flock_wait,
-          conflict_exit_code: attempt_system_unit_launcher_busy_exit,
-          command: gunbc_argv,
-        ),
-      }
-  }
-}
-
-fn attempt_system_unit_launch_host_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
-  match attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision) {
-    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitLaunchArgvRefused { cause: cause }
-    AttemptSystemUnitLaunchArgvRevisionUnreadable => AttemptSystemUnitLaunchArgvRevisionUnreadable
-    AttemptSystemUnitLaunchArgvReady { argv: flocked } => {
-      let elevated = sudo_elevate(command: flocked)
-      AttemptSystemUnitLaunchArgvReady { argv: concat([elevated.bin_path], elevated.args) }
-    }
-  }
-}
-
-fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> AttemptSystemUnitLaunchArgv {
-  let read = Filesystem.Read(path: attempt_system_unit_launcher_revision_receipt_path(instance: instance))
-  if !read.success {
-    AttemptSystemUnitLaunchArgvRevisionUnreadable
-  } else {
-    attempt_system_unit_launch_host_argv_at(
-      instance: instance,
-      revision: RevisionBoundAtEmission { revision: trim(s: read.content) as CommitSha },
-    )
-  }
-}
-
-type AttemptSystemUnitSudoersText
-  = AttemptSystemUnitSudoersReady { text: String }
-  | AttemptSystemUnitSudoersRefused { cause: NamedArgumentAdmission }
-
-fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitSudoersText {
-  match attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision) {
-    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitSudoersRefused { cause: cause }
-    AttemptSystemUnitLaunchArgvRevisionUnreadable =>
-      AttemptSystemUnitSudoersRefused { cause: NamedArgumentNameEmpty }
-    AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
-      AttemptSystemUnitSudoersReady {
-        text: join([
-          instance.directory_owner.user as String,
-          " ALL=(",
-          executor_sudoers_run_as as String,
-          ") NOPASSWD: ",
-          join(map(flocked, w => sudoers_argument_word(w: w)), " "),
-        ], ""),
-      }
-  }
-}
-
-fn attempt_system_unit_sudoers_path(instance: HostDashboardInstance) -> String {
-  join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], "")
-}
-
-fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitSudoersText {
-  match attempt_system_unit_sudoers_line(instance: instance, revision: revision) {
-    AttemptSystemUnitSudoersRefused { cause } => AttemptSystemUnitSudoersRefused { cause: cause }
-    AttemptSystemUnitSudoersReady { text: line } =>
-      AttemptSystemUnitSudoersReady {
-        text: join([
-          "# GENERATED by gunbc.roadmap.attempt_system_unit_launch — do not hand-edit",
-          line,
-          "",
-        ], "\n"),
-      }
-  }
-}
-
 type AttemptSystemUnitEnqueue
   = AttemptSystemUnitEnqueued { entry: String }
   | AttemptSystemUnitEnqueueOccupied { entry: String }
@@ -659,6 +552,7 @@ type AttemptSystemUnitAnswerRead
 type AttemptSystemUnitHarnessStart
   = AttemptSystemUnitHarnessStarted
   | AttemptSystemUnitHarnessFailed { detail: String }
+  | AttemptSystemUnitHarnessPending { entry: String }
 
 fn attempt_system_unit_rename_exact(source: String, destination: String) -> Bool {
   shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
@@ -835,26 +729,21 @@ fn attempt_system_unit_read_answer(instance_root: String, entry: String) -> Atte
   }
 }
 
-fn attempt_system_unit_harness_start_from_answer(reading: AttemptSystemUnitAnswerRead) -> AttemptSystemUnitHarnessStart {
+// ONE READ OF answers/<entry>, no wait: the root side answers when the spool's path unit starts it,
+// on its own clock. An answer present at this read is the outcome; a missing answer is neither a
+// failure nor a start, it is a request that is written and not yet answered (Pending), resolved by
+// the answer channel and the settlement pass. Nothing here mints Started.
+fn attempt_system_unit_harness_start_from_observation(
+  entry: String,
+  reading: AttemptSystemUnitAnswerRead,
+) -> AttemptSystemUnitHarnessStart {
   match reading {
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => AttemptSystemUnitHarnessStarted
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason } } =>
       AttemptSystemUnitHarnessFailed { detail: reason }
-    AttemptSystemUnitAnswerMissing =>
-      AttemptSystemUnitHarnessFailed { detail: "attempt-system-unit answer missing after the launcher exited" }
+    AttemptSystemUnitAnswerMissing => AttemptSystemUnitHarnessPending { entry: entry }
     AttemptSystemUnitAnswerUnreadable { detail } =>
       AttemptSystemUnitHarnessFailed { detail: detail }
-  }
-}
-
-fn attempt_system_unit_harness_start_from_launcher_exit(
-  exit_code: Int,
-  reading: AttemptSystemUnitAnswerRead,
-) -> AttemptSystemUnitHarnessStart {
-  if exit_code == attempt_system_unit_launcher_busy_exit {
-    AttemptSystemUnitHarnessFailed { detail: "launcher busy past the bound" }
-  } else {
-    attempt_system_unit_harness_start_from_answer(reading: reading)
   }
 }
 

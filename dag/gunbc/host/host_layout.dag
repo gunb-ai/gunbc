@@ -392,10 +392,6 @@ fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
 }
 
-fn attempt_unit_spool_drain_lock_path(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/drain.lock"], "")
-}
-
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on
 // opposite sides of a PRIVILEGE boundary, so neither may own the name. gunbc.roadmap.roadmap_belt_actuate
 // writes a request into it as the service principal; the publication helper reads that request and

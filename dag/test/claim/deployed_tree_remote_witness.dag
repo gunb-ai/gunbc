@@ -20,6 +20,7 @@ import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   ComposeOwned, UpsertOwned,
   PublicationHelperPathUnit,
+  AttemptUnitDrainPathUnit,
   FabricStorageServeUnit,
   FabricStorageServeMapping,
   ApprovalBrokerFrontDoor,
@@ -239,6 +240,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
       ServeBinary => "binary"
       DeployedTreeRemoteUnit => "remote"
       PublicationHelperPathUnit => "publication"
+      AttemptUnitDrainPathUnit => "attempt-unit-drain"
       BeltEventPathUnit => "belt"
       TailscaleServeMapping => "route"
       ApprovalBrokerFrontDoor => ""
