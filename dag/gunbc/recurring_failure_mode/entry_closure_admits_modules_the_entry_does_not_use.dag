@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.entry_closure_admits_modules_the_entry_does_not_use
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data entry_closure_admits_modules_the_entry_does_not_use: RecurringFailureMode = RecurringFailureMode {
   identity: "entry_closure_admits_modules_the_entry_does_not_use" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "entry closure admits modules the entry does not use (the seed's per-entry closure for gunbc.live_deploy.repository_convergence_placement -- a git ref transition -- resolves 547 modules, and they include v2.compiler.parse, v2.compiler.tokenize, v2.std.grammar and v2.extdeps.languages.python, none of which the convergence program depends on. Measured by `gunbc compile --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/repository_convergence_placement.dag --target rust`, whose own summary line reports the resolved-source count.)",

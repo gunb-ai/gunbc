@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unbound_generic_reaches_conformance_unjudged
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
   identity: "unbound_generic_reaches_conformance_unjudged" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a call's generic parameter is never bound, so the call's result type stays an unresolved type parameter, and that unresolved type reaches a declared-type position (a direct-call argument, a declared return) where v1.compiler.infer's conformance does not judge it. The program is Accepted, and the value that arrives has a type the declaration forbids.",

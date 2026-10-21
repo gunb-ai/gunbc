@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.sandboxed_worker_runs_as_account_whose_group
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data sandboxed_worker_runs_as_account_whose_groups_reach_root: RecurringFailureMode = RecurringFailureMode {
   identity: "sandboxed_worker_runs_as_account_whose_groups_reach_root" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a dispatched worker, which executes model-driven actions and candidate code, runs as the instance host account, and that account is in groups docker and lxd (and has NOPASSWD sudo). DISTINGUISHING FACT: NoNewPrivileges, RestrictSUIDSGID and an empty CapabilityBoundingSet close the sudo route but not asking a root daemon over its unix socket; ProtectSystem and ProtectHome do not block connect(). HARM: prompt injection through repo content reaches root on srv1, hence prod services and every custody file under /etc. Latent, not an observed incident.",

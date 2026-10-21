@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.comparison_operands_never_judged_in_v2_infer
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data comparison_operands_never_judged_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
   identity: "comparison_operands_never_judged_in_v2_infer" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**In v2 infer, the operands of an equality or ordering comparison are never judged against each other.** Measured on session/stern-swift-290-literal (XL-2 literal elaboration), with fixtures assembled through the production route and inferred: `fn k(n: Nat) -> Bool { n == (0 + 1) }`, where n is std.nat Nat and the right operand is an Int, is ACCEPTED. A Nat compared with an Int is a type error the compiler floor owes (DESIGN section 4b, values inhabit declared types), so this is below the floor and silently admitted.",

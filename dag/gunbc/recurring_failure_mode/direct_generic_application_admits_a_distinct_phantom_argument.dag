@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.direct_generic_application_admits_a_distinct_phantom_argument
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data direct_generic_application_admits_a_distinct_phantom_argument: RecurringFailureMode = RecurringFailureMode {
   identity: "direct_generic_application_admits_a_distinct_phantom_argument" as NonEmptyStr,
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
+
   receipts: [
     "SUBJECT: BARE marker declarations -- `type PersonalIdentity` and `type JobLog`, nominal identities with no inhabitant -- used as type arguments of one generic record, and a value at one instantiation supplied where the other is declared. This is the sibling generic_application_admits_distinct_unit_variant_arguments names as unlanded (its subject is unit variants of one closed coproduct); this row is the bare-marker population, filed by the change that first built a product carrier on it.",
     "SPECIMEN, MEASURED THROUGH compile_dag_diagnostic_census ON THE INTERPRETATION PATH (gunbc.compile_diagnostic_census), 2026-09-13, at main b2f9a0c5bbe plus the change filing this row: fixture `type Sealed<C, T> sole_constructor { value: T }` with mints at Sealed<PersonalIdentity, String> and Sealed<JobLog, String>; `fn take(v: Sealed<JobLog, String>) -> Int` called with the PersonalIdentity mint compiles with ZERO blocking rows, directly and through a generic `fn admit<C, T>(c: Sealed<C, T>, s: Sink<C>)` whose two arguments bind C to different markers. The enrolled form is test.probe.personal_identity_to_log_channel_probe, read and compiled by test.claim.data_class_refusal_probe_witness personal_identity_to_a_log_channel_still_compiles_on_the_interpretation_path, which asserts the zero and flips red when the wall lands.",
