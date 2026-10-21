@@ -855,12 +855,20 @@ mod tests {
             if has_carrier && !demands {
                 carrier_without_demand += 1;
             }
-            if has_carrier && !has_route {
-                added_by_carrier_rule += route_closure
+            let added = if has_carrier && !has_route {
+                route_closure
                     .iter()
                     .filter(|r| !sources.iter().any(|s| s.path == r.path))
-                    .count();
-            }
+                    .count()
+            } else {
+                0
+            };
+            added_by_carrier_rule += added;
+            eprintln!(
+                "cost receipt entry: {} closure={} demands_route={demands} carrier_present={has_carrier} carrier_rule_would_add={added}",
+                path.trim(),
+                sources.len()
+            );
         }
         eprintln!(
             "cost receipt: entries={entries} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
