@@ -1875,6 +1875,10 @@ fn observe_removal_boundary_standing(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
     ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
 ]
 {
   // THE INSTANT IS THE FIRST QUESTION, before the environment is even consulted: a standing is about to

@@ -155,6 +155,22 @@ data sibling_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
   environment_name: sibling_env,
 }
 
+// THE SAME ENVIRONMENT, THE SAME REPOSITORY NAME, ANOTHER ACCOUNT (round-7 M6). fork_boundary above varies
+// the NAME under gunb-ai; this varies the OWNER with the name held constant -- the axis the act's
+// site-local `!=`s dropped under the manager's M6 mutation and nobody noticed. full_name follows, because
+// that is what GitHub prints for such a repository: someone-else/gunbc is a different repository from
+// gunb-ai/gunbc that happens to share a name, not a rename of it.
+data foreign_srv1_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: Repository {
+    owner: "someone-else",
+    name: "gunbc",
+    full_name: "someone-else/gunbc",
+    private: false,
+    default_branch: "main",
+  },
+  environment_name: gate_env,
+}
+
 data fork_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
   repository: Repository {
     owner: "gunb-ai",
@@ -290,7 +306,11 @@ fn ownership_with_enabled_for_owner(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
+]
 {
   match observed_identity_for_owner(
     owner: owner,
@@ -380,7 +400,11 @@ fn ownership_with_enabled(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "ownership_for"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
+]
 {
   match observed_identity(installation_id: installation_id, identity_repo: identity_repo) {
     Present { value: observed } =>
@@ -647,7 +671,11 @@ fn admitted_pair() -> ReviewerRemovalAdmission
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
+]
 {
   admit_reviewer_removal(
     approved: approved_trial(run_id: 35447067113),
@@ -832,7 +860,11 @@ fn standing_for_trial() -> RemovalBoundaryStandingObservation
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
+]
 {
   standing_fixture(
     environment: gate_env,
@@ -1186,6 +1218,10 @@ fn protection_for(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
     ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
+    ),
 ]
 {
   observe_environment_protection(
@@ -1359,6 +1395,10 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
       decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
     ),
 ]
 {
@@ -1801,6 +1841,124 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
              && (wanted_repo as String) == "gunb-ai/someone-elses-fork"
            ReviewerRemovalBlocked { missing: _ } => false
          })
+}
+
+// THE ACT'S OWN SUBJECT CHECK IS NOT DECORATION (round-7 blockers M6/M7, manager's srv2 run).
+//
+// THE GAP: the act compared the standing's sealed boundary against the requested boundary with three
+// site-local `!=`s. Dropping the OWNER term (M6) left steps 30/30 green; dropping the REPO term (M7) left
+// steps 30/30 green. Each term was load-bearing in the world and loadless in the witnesses -- no test ever
+// handed the act a standing whose boundary differed from the requested one in EXACTLY one of the three
+// fields while everything else (rule, installation, environment, attempt, clock) agreed. The two earlier
+// `!=` arms above it compare EVIDENCE to the boundary, not the STANDING to the boundary, so they cannot
+// catch it either: an honest trial pair on srv1 plus a standing sealed elsewhere walks straight past them.
+//
+// WHY THESE ARE THE ARMS THAT MATTER: the act is what issues the human intervention that WEAKENS the srv1
+// root boundary. A standing sealed in another account is not weak evidence about this boundary -- it is
+// evidence about a different repository's boundary, and spending it here reads as corroboration to whoever
+// audits the removal later.
+//
+// EACH ARM VARIES EXACTLY ONE FIELD. Both are also mutation-REDs: with the owner term dropped the first
+// arm finds Ready; with the repo term dropped the second does. The final arm is the control -- the same
+// construction with the real account, which must issue the act. Without it, "the act refuses" would be
+// satisfiable by an act that always refuses.
+test fn the_act_refuses_a_standing_sealed_for_another_account_or_another_repository() -> Bool {
+  // M6: THE STANDING IS HONESTLY ABOUT someone-else/gunbc/srv1-production. Both reads are about it, the
+  // mint seals it (so the mint's own subject check agrees -- which is exactly why the act needs its own),
+  // and its rule, installation, environment, attempt and clock all match the trial. The act must see
+  // through the matching halves to the account that differs.
+  (match reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: admitted_pair(),
+    standing: observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: foreign_owner,
+          repo: gate_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: foreign_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: foreign_srv1_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ),
+    removal_attempt: standing_attempt(),
+    now: clock_read(instant: standing_instant),
+  ) {
+    ReviewerRemovalReady { admitted: _ } => false
+    ReviewerRemovalBlocked {
+      missing: ActStandingIsForAnotherBoundary { subject: m },
+    } =>
+      m.standing_owner == foreign_owner
+        && m.requested_owner == gate_owner
+        && m.standing_repo == gate_repo
+        && m.requested_repo == gate_repo
+        && m.standing_environment == gate_env
+        && m.requested_environment == gate_env
+    ReviewerRemovalBlocked { missing: _ } => false
+  })
+    // M7: THE STANDING IS HONESTLY ABOUT gunb-ai/someone-elses-fork/srv1-production -- same account, same
+    // environment NAME, different repository. Environments are per-repository objects, so this is not the
+    // same gate under another name; it is another gate.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: observe_removal_boundary_standing(
+        joined: join_protection_to_ownership(
+          protection: protection_for(
+            owner: gate_owner,
+            repo: other_repo,
+            environment: gate_env,
+            reviewer_present: true,
+            main_only: true,
+          ),
+          ownership: ownership_with_enabled(
+            environment: gate_env,
+            installation_id: canonical_installation_id,
+            identity_repo: other_repo,
+            rule_id: canonical_rule_id,
+          ),
+        ),
+        boundary: fork_boundary,
+        attempt: standing_attempt(),
+        observed_at: clock_read(instant: standing_instant),
+      ),
+      removal_attempt: standing_attempt(),
+      now: clock_read(instant: standing_instant),
+    ) {
+      ReviewerRemovalReady { admitted: _ } => false
+      ReviewerRemovalBlocked {
+        missing: ActStandingIsForAnotherBoundary { subject: m },
+      } =>
+        m.standing_owner == gate_owner
+          && m.requested_owner == gate_owner
+          && m.standing_repo == other_repo
+          && m.requested_repo == gate_repo
+          && m.standing_environment == gate_env
+          && m.requested_environment == gate_env
+      ReviewerRemovalBlocked { missing: _ } => false
+    })
+    // THE CONTROL: the identical construction, gunb-ai/gunbc. The act is ISSUED. An act that refused every
+    // standing would pass both arms above.
+    && (match reviewer_removal_act_for(
+      boundary: srv1_deployment_gate_boundary,
+      admission: admitted_pair(),
+      standing: standing_for_trial(),
+      removal_attempt: standing_attempt(),
+      now: clock_read(instant: standing_instant),
+    ) {
+      ReviewerRemovalReady { admitted: _ } => true
+      ReviewerRemovalBlocked { missing: _ } => false
+    })
 }
 
 // ---------------------------------------------------------------------------
