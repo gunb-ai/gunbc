@@ -210,9 +210,9 @@ fn rb_mn_d2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bo
 test fn rb_mn_a_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_mn_a(), reason: ^infer_no_arm_declares_a_type) }
 test fn rb_mn_b_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_mn_b(), reason: ^infer_no_arm_declares_a_type) }
 test fn rb_mn_c_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_c()) }
-test fn rb_mn_c2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_c2()) }
+test fn rb_mn_c2_and_does_not_accept_a_deeper_layer() -> Bool { ers_fatal_is(o: rb_mn_c2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 test fn rb_mn_d_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_d()) }
-test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { !ers_infer_accepted(o: rb_mn_d2()) }
+test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { ers_fatal_is(o: rb_mn_d2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 
 // B1 FOR THE Bool MATCH: the same deferral judgment (infer_join_defers_to_declared) as the if. Absent beside x: Int? at Optional<Int?> refuses.
 fn rb_m4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
