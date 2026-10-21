@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.an_admitted_mint_s_alias_parameter_refuses_every_argument
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// WHAT THE LEDGER IS FOR, AND THE TEST THIS ROW PASSES TO BE IN IT: a defect that recurs is
+// named once so the NEXT author who meets it recognises it instead of absorbing it. This row
+// was found while modelling the deployment-gate observation mints (gunbc PR #14336); it is a
+// compiler behaviour, so the receipts below are behaviour prose, not gunbc rows -- which is
+// what the existing rows under this directory are too.
+data an_admitted_mint_s_alias_parameter_refuses_every_argument: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_admitted_mint_s_alias_parameter_refuses_every_argument" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**a parameter typed with the plain named alias a TIMESTAMP is REFUSED AT EVERY CALL SITE, while the identical annotation elsewhere is accepted** (INVALID STATE: two declarations in one module spell a parameter identically -- `observed_at: Timestamp` -- and the checker accepts calls to one and refuses every call to the other with `expected 'Primitive(Timestamp)', got 'Primitive(String)'`. The refused declarations were the two `admit_callers`-confined mints `observe_removal_boundary_standing` and `observe_reviewer_removal`; the accepting control was a plain same-module fn `standing_is_within_age_bound(observed_at: Timestamp, now: Timestamp)`. What is proven is PER-DECLARATION scope: the refusal followed the declaration, not the annotation, the argument, or the spelling. What is NOT proven is the trigger: `admit_callers` is the only property the refused pair shares that the control lacks, and nothing here establishes causation. A fix must be measured by the control, not by the trigger.)",
+    "HARM. A refusal that no call can satisfy turns a correct signature into an unusable one, and every shape tried fails IDENTICALLY -- a literal, a cast, an annotated row passed by name, a helper with a declared return type, a forwarded annotated parameter -- so the author cannot distinguish 'your argument is wrong' from 'this declaration cannot be called'. The failure lands at the CALL SITE while the declaration is the defect, which points the author at their own argument. The route with the least visible cost is the worst one: widen the parameter to String and validate inside, which is accepted and moves the check from typechecking to a fn that can be bypassed by the next caller. That is routing around a check that will not green.",
+    "DISTINGUISHING FACTS. A real type mismatch also refuses with expected/got, so the recognition test is a CONTROL in the same module, not the message: write the identical annotation on a plain fn and pass the identical argument. If the plain fn accepts it, the refusal is per-declaration and this row applies; if it refuses too, the argument is genuinely wrong and no ledger applies. The second question is whether the defect BLOCKS -- a refusal the author can route around is a tax on honest models and an invitation to dishonest ones, so the routing decision belongs in the commit message beside the workaround, not only in a tracker nobody reads at the moment of the workaround.",
+    "RECEIPT (2026-10-20, bright-wolf-206, gunb-ai/gunbc PR #14336, found while sealing an observation's instant in dag/gunbc/auth/deployment_gate_authorization.dag). Uninhibited by the defect only for the two mints: the model now carries the instant as a sealed ObservedInstant whose sole door reads the clock, so the alias never reappears as a parameter -- a route the sealed record was worth taking independent of the defect, because a string that looks like a time is not the time a read happened. The checker is deliberately NOT touched in this PR; the refusing declarations still refuse, and the control still accepts, so this row is reproducible from the named pair.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.auth.deployment_gate_authorization", decl_name: "observe_removal_boundary_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.deployment_gate_authorization", decl_name: "observe_reviewer_removal", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.deployment_gate_authorization", decl_name: "standing_is_within_age_bound", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.deployment_gate_authorization", decl_name: "ObservedInstant", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.deployment_gate_authorization", decl_name: "read_observed_instant", field: WholeDeclaration },
+  ],
+}

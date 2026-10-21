@@ -8,12 +8,12 @@ data dependency_demand_census_seed_growth_justification: SeedGrowthJustification
   hand_authored_declarations: [
     DeclarationRef {
       module_path: "v1_compiler.cli_run.native_lane_runner",
-      decl_name: "run_v2_demand_census",
+      decl_name: "run_v2_census_verb",
       field: WholeDeclaration
     },
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
-      decl_name: "run_dependency_demand_census",
+      decl_name: "run_census_verb",
       field: WholeDeclaration
     }
   ],
@@ -24,5 +24,5 @@ data dependency_demand_census_seed_growth_justification: SeedGrowthJustification
 
   trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can spawn a built program and hand its stdout and status to a .dag fold, SUFFICIENT FOR //gunbc/instruments:dependency-demand-census to run with no hand-authored producer body.",
 
-  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_v2_demand_census, called once from src/v1/stage0/src/target_invocation_host.rs run_dependency_demand_census, behind gunbc test //gunbc/instruments:dependency-demand-census"
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_v2_census_verb, called from src/v1/stage0/src/target_invocation_host.rs run_census_verb, behind gunbc test //gunbc/instruments:dependency-demand-census"
 }
