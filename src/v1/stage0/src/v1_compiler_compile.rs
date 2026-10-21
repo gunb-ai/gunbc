@@ -1640,64 +1640,6 @@ pub fn serialize_match_pattern(
     }
 }
 
-pub fn serialize_named_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "{\"name\": ".to_string(),
-                    json_optional_string(crate::v1_std_core::arg_name_at(
-                        arg.clone(),
-                        source_indices.clone(),
-                    )),
-                ),
-                ", \"value\": ".to_string(),
-            ),
-            serialize_node_ref(
-                crate::v1_std_core::arg_value(arg.clone()),
-                key_to_id.clone(),
-            ),
-        ),
-        "}".to_string(),
-    )
-}
-
-pub fn serialize_match_arm(
-    arm: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "{\"pattern\": ".to_string(),
-                            serialize_match_pattern(
-                                crate::v1_std_core::arm_pattern(arm.clone()),
-                                source_indices.clone(),
-                            ),
-                        ),
-                        ", \"guard\": ".to_string(),
-                    ),
-                    json_optional_node_ref(
-                        crate::v1_std_core::arm_guard(arm.clone()),
-                        key_to_id.clone(),
-                    ),
-                ),
-                ", \"body\": ".to_string(),
-            ),
-            serialize_node_ref(crate::v1_std_core::arm_body(arm.clone()), key_to_id.clone()),
-        ),
-        "}".to_string(),
-    )
-}
-
 pub fn serialize_field_init(
     field_init: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1724,29 +1666,6 @@ pub fn serialize_field_init(
         ),
         "}".to_string(),
     )
-}
-
-pub fn serialize_string_part(
-    part: Rc<StringPart>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    match (*part.clone()).clone() {
-        StringPart::Text { value: inner, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"Text\", \"value\": ".to_string(),
-                crate::v1_compiler_dag_collect_support::json_quote(inner.clone()),
-            ),
-            "}".to_string(),
-        ),
-        StringPart::Interpolation { expr: inner, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"Interpolation\", \"expr\": ".to_string(),
-                serialize_node_ref(inner.clone(), key_to_id.clone()),
-            ),
-            "}".to_string(),
-        ),
-    }
 }
 
 pub fn serialize_resolved_call_formal(
@@ -2665,14 +2584,6 @@ pub fn serialize_resource_use(
         ),
         "}".to_string(),
     )
-}
-
-pub fn serialize_field(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node_ref(crate::v1_std_core::field_node_type_expr(field.clone()), key_to_id.clone())), ", \"cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(crate::v1_std_core::field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node_ref(crate::v1_std_core::field_node_default_value(field.clone()), key_to_id.clone())), ", \"from_key\": ".to_string()), json_optional_string(crate::v1_std_core::field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(crate::v1_std_core::field_node_span(field.clone()))), "}".to_string())
 }
 
 pub fn serialize_param(
