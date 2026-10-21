@@ -1828,7 +1828,8 @@ test fn every_decoder_marker_is_present_in_the_source_that_prints_it() -> Bool {
 
 // THE TIE IS NOT VACUOUS: THE SAME FUNCTION REPORTS A MOVED MARKER. A check that only ever returns empty is
 // decoration. Handed a source text with one marker's wording changed, it names that marker, qualified by the
-// file it was supposed to be in -- because a refusal that says only 'something moved' cannot be acted on.test fn the_source_tie_reports_a_marker_that_moved_out_of_its_source() -> Bool {
+// file it was supposed to be in -- because a refusal that says only 'something moved' cannot be acted on.
+test fn the_source_tie_reports_a_marker_that_moved_out_of_its_source() -> Bool {
   let source = "src/v1/stage0/src/bin/claim_batch.rs"
   let markers = [known_red_marker_exit_failure, known_red_marker_runtime_error]
   let both_present =
