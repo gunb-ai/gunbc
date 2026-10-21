@@ -201,8 +201,14 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // THE ONE CLOSURE FOR doc_graph_registered_plan_roots_all_admitted. Its two consumers -- this file's
 // ClassifiedRow and v2.workflow.floor_expected_red's RetiredExpectedRedRow -- REFERENCE this value, so
 // the arm, the citation, the durable account and the re-measurement exist exactly once. The durable
-// account includes the rehomed controls themselves (cited_symbol_planted_controls), which the floor row
-// previously carried and this file previously omitted: both records now carry the complete account.
+// account is the three gunbc.doc_graph_roots declarations the re-homing operated on -- every one of them
+// resolves against the live index through the witness's own join. It deliberately does NOT include
+// `cited_symbol_planted_controls`: review 84276 checked `git grep` and no declaration of that name exists
+// anywhere in this tree -- the v2.lens.cited_symbol_resolution module it lived in is gone (removed after
+// the 2026-08-25 operator ruling, and not carried across the 2026-10 mega-squash), so a ref to it would
+// be a promise the witness cannot keep. The permanent evidence the ruling moved is recorded where its
+// data actually survives: dag/test/claim/doc_graph_reference_partition_witness.dag
+// `cited_symbol_partition_third_bucket_note`, named by the ruling comment above rather than re-typed here.
 data doc_graph_roots_rehoming_closure: Closure = AttributedToChange {
   change: PullRequest { number: 9181 },
   durable_account: [
@@ -243,7 +249,9 @@ data doc_reachability_rows: List<ClassifiedRow> = [
     // was real and this is the fix that follows from the facts: PR #9181 is MERGED (state verified via
     // GitHub), so the change IS attributable by its PR number -- the citation that survives a history
     // rewrite, which is why `ChangeCitation` offers `PullRequest` beside a name -- and the durable
-    // account is the four declarations the witness resolves. The closure is now a single shared value,
+    // account is the three gunbc.doc_graph_roots declarations the witness resolves (see the shared
+    // value's comment below for what is deliberately NOT in the list, and why).
+    // The closure is now a single shared value,
     // doc_graph_roots_rehoming_closure below, and the floor's retired row references THAT value rather
     // than restating it: the two records cannot disagree, because there is only one. No check was added
     // for agreement -- agreement by construction is what §5 asks for where construction is available.
