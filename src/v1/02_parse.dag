@@ -103,7 +103,7 @@ import std.syntax {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
-  OperatorSpec, SyntaxSpec
+  OperatorSpec, PrefixOperatorSpec, SyntaxSpec
 }
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
@@ -1326,6 +1326,17 @@ fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
   if matching |> count > 0 {
     let op = first(matching).value
     Present { value: BindingPower { left: op.left_bp, right: op.right_bp } }
+  } else {
+    none
+  }
+}
+
+// A prefix operator's operand binds at the power the syntax spec DECLARES for its spelling. An
+// undeclared spelling has no power to read, and the caller refuses rather than inventing one.
+fn find_prefix_operand_bp(ops: List<PrefixOperatorSpec>, symbol: String) -> Int? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    Present { value: first(matching).value.operand_bp }
   } else {
     none
   }
@@ -5548,6 +5559,15 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, receiv
   }
 }
 
+fn prefix_power_undeclared(tokens: TokenStream, ctx: ParseContext, span: SourceSpan, symbol: String) -> ExprResult {
+  ExprResult {
+    expr: parse_recovery_placeholder(),
+    tokens: tokens,
+    ctx: ctx,
+    err: parse_error(msg: "prefix operator '${symbol}' has no declared operand binding power in the parse environment's prefix_operators", span: span)
+  }
+}
+
 fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let entry = tokens
   let tok = token_stream_first(stream: tokens)
@@ -5555,12 +5575,16 @@ fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShBang } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
+      let operand_bp = find_prefix_operand_bp(ops: ctx.env.syntax_spec.prefix_operators, symbol: tok.value.text)
+      if operand_bp == none { return prefix_power_undeclared(tokens: tokens, ctx: ctx, span: span, symbol: tok.value.text) }
+      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: operand_bp.value)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
     }
     Present { value: ShMinus } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
+      let operand_bp = find_prefix_operand_bp(ops: ctx.env.syntax_spec.prefix_operators, symbol: tok.value.text)
+      if operand_bp == none { return prefix_power_undeclared(tokens: tokens, ctx: ctx, span: span, symbol: tok.value.text) }
+      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: operand_bp.value)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
     }

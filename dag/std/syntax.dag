@@ -72,9 +72,20 @@ type OperatorSpec {
   algebra_field: AlgebraFieldKind?
 }
 
+// A PREFIX OPERATOR'S REACH, DECLARED BESIDE THE INFIX TABLE IT IS MEASURED AGAINST. `operand_bp` is the
+// minimum left binding power an infix operator needs to be absorbed into the prefix operator's operand:
+// the operand loop continues while an infix row's `left_bp` is at least `operand_bp`. A value above every
+// operator the prefix must not absorb (`+ - * /`) and at or below the ones it should keep (`|>`, `.`) is
+// the whole content of the fact; a literal in a parser arm is a second, unreadable copy of it.
+type PrefixOperatorSpec {
+  symbol: String
+  operand_bp: Int
+}
+
 type SyntaxSpec {
   item_forms: List<ItemForm>
   operators: List<OperatorSpec>
+  prefix_operators: List<PrefixOperatorSpec>
   keyword_literals: Map<String, LiteralValue>
   keyword_set: Map<String, Bool>
 }

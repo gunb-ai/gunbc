@@ -1,0 +1,63 @@
+module test.claim.unary_prefix_binding_witness
+
+import std.types { String, Bool }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A PREFIX OPERATOR'S OPERAND BINDS AT THE POWER THE SYNTAX SPEC DECLARES
+// (gunbc.recurring_failure_mode unary_minus_absorbs_a_following_additive_operator). The seed parser
+// used to parse the operand of a unary `-` at a literal 12 while `+` `-` carry left_bp 13 and `*` `/`
+// 15, so `-1 - 2` was `-(1 - 2)` and evaluated to 1. Each arm below is a source program EVALUATED by
+// the interpreter; the discriminating arms (additive and multiplicative absorption) are red under the
+// old binding power and green under extdeps.languages.dag.syntax dag_prefix_operators. The statement
+// form `let r = -a + b` is the shape that reaches the operand loop mid-expression: a line that BEGINS
+// with `-` after a newline is refused as dual-role (dag_parse_continuation_operator_witness).
+
+test fn minus_one_minus_two_is_minus_three_test() -> Bool {
+  -1 - 2 == 0 - 3
+}
+
+test fn minus_a_plus_b_is_not_minus_the_sum_test() -> Bool {
+  let a = 2
+  let b = 3
+  let r = -a + b
+  r == 1
+}
+
+test fn minus_a_times_b_applies_minus_to_a_test() -> Bool {
+  let a = 2
+  let b = 3
+  let r = -a * b
+  r == 0 - 6
+}
+
+test fn minus_a_minus_b_chain_test() -> Bool {
+  let a = 2
+  let b = 3
+  let c = 4
+  let r = -a - b - c
+  r == 0 - 9
+}
+
+test fn parenthesized_operand_keeps_the_whole_difference_test() -> Bool {
+  -(1 - 2) == 1
+}
+
+test fn minus_then_comparison_is_unchanged_test() -> Bool {
+  -1 < 0
+}
+
+test fn standalone_negative_literal_is_unchanged_test() -> Bool {
+  -3 == 0 - 3
+}
+
+test fn not_then_logical_operator_is_unchanged_test() -> Bool {
+  !false && !false
+}
+
+test fn not_operand_still_absorbs_a_pipe_test() -> Bool {
+  let xs = [1, 2, 3]
+  let r = !xs |> any(x => x == 4)
+  r
+}

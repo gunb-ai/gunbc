@@ -49,7 +49,7 @@ use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
-    SyntaxSpec,
+    PrefixOperatorSpec, SyntaxSpec,
 };
 pub use crate::std_target_representation::VariantParentIdentity;
 use crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference;
@@ -2785,6 +2785,34 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
                     right: op.right_bp.clone(),
                 })
             }
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn find_prefix_operand_bp(ops: Rc<Vec<Rc<PrefixOperatorSpec>>>, symbol: String) -> Option<i64> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            Some(
+                matching
+                    .clone()
+                    .first()
+                    .cloned()
+                    .clone()
+                    .unwrap()
+                    .operand_bp
+                    .clone(),
+            )
         } else {
             std::option::Option::None
         }
@@ -15091,6 +15119,20 @@ pub fn parse_pipe_rhs(
     }
 }
 
+pub fn prefix_power_undeclared(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    span: Rc<SourceSpan>,
+    symbol: String,
+) -> Rc<ExprResult> {
+    Rc::new(ExprResult {
+    expr: parse_recovery_placeholder(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(format!("prefix operator '${}' has no declared operand binding power in the parse environment's prefix_operators", symbol.clone()), span.clone())),
+})
+}
+
 pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let entry = tokens.clone();
@@ -15102,7 +15144,23 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
         let span = token_span(tok.clone());
         match sh.clone() {
             Some(TokenShape::ShBang) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
+                let operand_bp = find_prefix_operand_bp(
+                    ctx.env.syntax_spec.prefix_operators.clone(),
+                    tok.clone().unwrap().text.clone(),
+                );
+                if (operand_bp.clone() == std::option::Option::None) {
+                    return prefix_power_undeclared(
+                        tokens.clone(),
+                        ctx.clone(),
+                        span.clone(),
+                        tok.clone().unwrap().text.clone(),
+                    );
+                }
+                let r = parse_expr_bp(
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    operand_bp.clone().unwrap(),
+                );
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),
@@ -15124,7 +15182,23 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                 })
             }
             Some(TokenShape::ShMinus) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
+                let operand_bp = find_prefix_operand_bp(
+                    ctx.env.syntax_spec.prefix_operators.clone(),
+                    tok.clone().unwrap().text.clone(),
+                );
+                if (operand_bp.clone() == std::option::Option::None) {
+                    return prefix_power_undeclared(
+                        tokens.clone(),
+                        ctx.clone(),
+                        span.clone(),
+                        tok.clone().unwrap().text.clone(),
+                    );
+                }
+                let r = parse_expr_bp(
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    operand_bp.clone().unwrap(),
+                );
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),

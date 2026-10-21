@@ -9,7 +9,7 @@ import std.syntax {
   BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ResourceBody, ServiceBody,
-  OperatorSpec, SyntaxSpec,
+  OperatorSpec, PrefixOperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitBool, LitNull
@@ -100,6 +100,15 @@ data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
 
+// Unary `!` (Not) and `-` (Neg). 17 sits above `*` `/` `%` (15) and every comparison and logical row, so
+// `-a + b` is `(-a) + b` and `-a * b` is `(-a) * b`; it equals the `|>` row (17) and sits below `.` (19), so the
+// operand still absorbs a pipe and a member chain: `!xs |> any(p)` stays `!(xs |> any(p))`, the reading every
+// authored `!x |> f` was written under.
+data dag_prefix_operators: List<PrefixOperatorSpec> = [
+  PrefixOperatorSpec { symbol: "!", operand_bp: 17 },
+  PrefixOperatorSpec { symbol: "-", operand_bp: 17 }
+]
+
 data v3_supported_dag_operators: Map<String, Bool> = {
   "||": true, "&&": true,
   "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
@@ -110,6 +119,7 @@ data v3_supported_dag_operators: Map<String, Bool> = {
 data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: dag_item_forms,
   operators: dag_operators,
+  prefix_operators: dag_prefix_operators,
   keyword_literals: dag_keyword_literals,
   keyword_set: dag_keyword_set
 }
