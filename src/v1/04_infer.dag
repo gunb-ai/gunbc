@@ -18085,8 +18085,26 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
 
+  // RAVEN PROBE (scratch branch agent/v1-param-binder-probe, never merged; manager msg_836c5f22:
+  // the per-module progress reading must be LITERAL, at a NON-error severity, and disclosed as a
+  // probe row). Minted at BOTH exits of typecheck_module, so the reading is complete either way:
+  // the abandoned exit says AbandonedBeforeItems, the analyzed exit carries the analyzed-items
+  // count. Carrier TextRepresentationUnidentifiedAtBoundary is SeverityNonError (00_core:929), so
+  // the rows cannot make a module blocking or change what is_error_diagnostic counts; the free
+  // text rides its position field.
+  let raven_module = authored_name_at(source_indices: source_indices, node: resolved.module)
+  let raven_tracked = raven_module == "std.measure" || raven_module == "std.realization_measurement" || raven_module == "std.realization_schedule"
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
+  let raven_rows = if raven_tracked { [
+    make_error_node(
+      diagnostic: TextRepresentationUnidentifiedAtBoundary {
+        position: concat(concat(concat(concat(concat(concat("RAVENPROG|N|", raven_module), "|progress=AbandonedBeforeItems|enverrors="), to_string(env_errors |> count)), "|envdiags="), to_string(env_diags |> count)), "|items=0"),
+        span: resolved.module.span
+      },
+      module_name: raven_module
+    )
+  ] } else { [] }
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
@@ -18106,7 +18124,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         item_registry: empty_map(),
         occurrence_transport: Present { value: resolved.occurrence_transport },
       },
-      diagnostics: concat(env_diags, seed_diags),
+      diagnostics: concat(env_diags, seed_diags, raven_rows),
       binding_forks: env_result.binding_forks
     }
   }
@@ -18183,6 +18201,17 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let typed_base = module_node(occurrence_identity: OccurrenceSynthetic, name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
+  // THE ANALYZED EXIT (same probe, msg_836c5f22): the literal items-analyzed reading.
+  let raven_rows_items = if raven_tracked { [
+    make_error_node(
+      diagnostic: TextRepresentationUnidentifiedAtBoundary {
+        position: concat(concat(concat("RAVENPROG|N|", raven_module), "|progress=items_analyzed|items="), to_string(grounded.items |> count)),
+        span: resolved.module.span
+      },
+      module_name: raven_module
+    )
+  ] } else { [] }
+
   TypecheckModuleResult {
     typed: TypedModule {
       progress: ItemsChecked,
@@ -18201,10 +18230,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: grounded.items, source_indices: source_indices, module_name: resolved_module_name),
       occurrence_transport: Present { value: resolved.occurrence_transport },
     },
-    diagnostics: frontier_occurrence_budget_checked(
+    diagnostics: concat(frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags))), raven_rows_items),
     binding_forks: env_result.binding_forks
   }
 }

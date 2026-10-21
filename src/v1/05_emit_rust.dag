@@ -21090,6 +21090,31 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());", "\n",
       "            run = type_census_run_add(run, contribution);", "\n",
       "        \}", "\n",
+      // RAVEN PROBE (scratch branch agent/v1-param-binder-probe, never merged; manager msg_836c5f22):
+      // the same fields, printed to STDOUT and tagged, for the three watched modules only. The
+      // harness relays the child stdout but DROPS the child stderr, which is why the pre-existing
+      // [native-census-infer] line reaches the log only when printed here. Zero minting, zero new
+      // diagnostics: this is the walk's own outcome line.
+      if entry.module == \"std.measure\" || entry.module == \"std.realization_measurement\" || entry.module == \"std.realization_schedule\" \{", "
+",
+          println!(\"RAVENPROG|W|\{\}\", serde_json::json!(\{", "
+",
+              \"module\": entry.module.clone(),", "
+",
+              \"path\": entry.path.clone(),", "
+",
+              \"nanos\": span_nanos(started),", "
+",
+              \"outcome\": outcome_label.clone(),", "
+",
+              \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "
+",
+              \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "
+",
+          \}));", "
+",
+      \}", "
+",
       "        eprintln!(\"[native-census-infer] \{\}\", serde_json::json!(\{", "\n",
       "            \"module\": entry.module.clone(),", "\n",
       "            \"path\": entry.path.clone(),", "\n",
