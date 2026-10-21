@@ -3131,7 +3131,8 @@ fn dispatch_worker_unit_stream_properties(
 //
 // TWO: the grant must be RECURSIVE over the entry, because the commit writes an existing file (its
 // index, its HEAD) and creates new subdirectories (logs/, and the reflog file inside logs/) that have
-// to inherit the group; the mode this demands, 02775/0664, is exactly what core.sharedRepository=group
+// to inherit the group; the mode this demands -- the declared arm at 02770 on directories, 0664 on the
+// files the sweep walks -- is exactly what core.sharedRepository=group
 // makes git ask for. It also says the entry must NOT be pre-created by hand: git silently renames an entry that
 // already exists (probe becomes probe1) and the grant plus the unit's ReadWritePaths= would then point
 // at a directory git is not using.
@@ -3209,7 +3210,8 @@ fn dispatch_attempt_worker_git_entry_migration(
       // principal's umask (~0755, group briansrls), and a sweep only ADDS bits -- chgrp + g+w + g+s on a
       // 0755 top lands it at a mode the readback's exact top leg refuses, never at the declared one.
       // install -d -o -g -m is the one primitive that states all three ownership fields absolutely
-      // (measured on this host: an EXISTING node:node 0755 dir became node:<group> 02775 under it, file
+      // (measured on this host: an EXISTING node:node 0755 dir was restated to node:<group> at the -m
+      // mode given it, file
       // contents and children untouched), so the spawn converges the entry to the same declared arm the
       // deploy converges the three shared tops to, and the grant is IDEMPOTENT: re-spawning an attempt
       // re-states the mode instead of refusing. The arm is the shared authority's non-sticky directory --

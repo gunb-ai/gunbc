@@ -303,6 +303,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_for_repo_root,
   dispatch_base_branch,
   dashboard_git_subtree_readback_is_granted_under, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_directory_mode_octal,
   dashboard_git_worker_entry_writes_files_in_place,
 }
 // THE GROUP ROW, IMPORTED FROM THE ACCOUNT MODEL THAT DECLARES IT. The gate below compares the group
@@ -3365,7 +3366,8 @@ fn belt_actuate_spawn_with_origin(
 // beside worktree_add, so the sequence is one attempt's by construction: `git worktree add` creates
 // .git/worktrees/<key> under the principal that runs the actuator (on the lab, the account the serve
 // runs as -- the entry's owner and a member of the attempt group), the two grant commands then put that
-// entry and everything under it in the attempt group at 02775/0664, and the walk proves it. THE UNIT IS
+// entry and everything under it in the attempt group at the declared arm (02770 on directories, 0664 on the
+// walked files), and the walk proves it. THE UNIT IS
 // NOT STARTED IF THE PROOF FAILS: a worker whose entry is not granted cannot commit, and starting it
 // anyway turns a named refusal into a permission error inside someone else's attempt. The decision is
 // the model's own dashboard_git_subtree_readback_is_granted_under over
@@ -3406,7 +3408,20 @@ fn belt_worker_git_entry_grant_readback(
       } else {
         ExecStepFailed {
           step: "worker-git-entry-readback",
-          detail: "the attempt's private git entry did not read back granted (expected 02775 on the entry, group-writable entries beneath it; an empty or unreadable walk counts as not granted), so the worker unit is not started",
+          // THE EXPECTED TOP IS NAMED BY THE ARM THE GATE DECIDES ON, not by a figure typed beside it:
+          // the same rendering the install passes to `install -d -m` and the fold compares against
+          // (dashboard_git_worker_directory_mode_octal over dashboard_git_worker_granted_directory_mode).
+          // A hand-typed mode here is a third spelling of one fact, and it is how this gate started
+          // reporting a mode its own decision no longer used.
+          detail: join(
+            [
+              "the attempt's private git entry did not read back granted (expected ",
+              dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
+              " on the entry, group-writable entries beneath it; an empty or unreadable walk counts as not",
+              " granted), so the worker unit is not started",
+            ],
+            "",
+          ) as NonEmptyStr,
         }
       }
     ExecFailed { program: _, exit_code, stderr } =>
