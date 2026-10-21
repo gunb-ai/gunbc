@@ -65,6 +65,7 @@
 // src/std_effects.rs
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
+// src/std_generated_provider.rs
 // src/std_graph.rs
 // src/std_host_text.rs
 // src/std_import_statement.rs

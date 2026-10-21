@@ -4,6 +4,7 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
+import std.generated_provider { GeneratedProviderDemand }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -1597,6 +1598,7 @@ fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) 
 type ResolvedPipelineResult {
   graph: ResolvedGraph?
   diagnostics: List<ErrorNode>
+  provider_demands: List<GeneratedProviderDemand>
   source_indices: Map<String, NewlineIndex>
   complexity: ComplexityReport
   ownership: List<OwnershipProof>
@@ -1620,6 +1622,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: none,
         diagnostics: frontend.diagnostics,
+        provider_demands: [],
         source_indices: empty_map(),
         complexity: empty_complexity_report(),
         ownership: [],
@@ -1630,7 +1633,8 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let pass = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let typed = pass.graph
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1651,6 +1655,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,
