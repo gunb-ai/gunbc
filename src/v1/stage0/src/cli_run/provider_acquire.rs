@@ -546,7 +546,7 @@ mod tests {
                     if field != "diagnostics" && field != "provider_demands" {
                         return;
                     }
-                    let Some(base) = n.children.first() else {
+                    let Some(base) = n.children.get(0) else {
                         return;
                     };
                     let base_name = crate::v1_std_core::authored_name_at(si.clone(), base.clone());

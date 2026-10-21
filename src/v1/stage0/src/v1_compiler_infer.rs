@@ -34347,13 +34347,21 @@ pub fn span_contains(outer: Rc<SourceSpan>, inner: Rc<SourceSpan>) -> bool {
         && (inner.end.clone() <= outer.end.clone()))
 }
 
+pub fn declaration_covers(item: Rc<Node>, at: Rc<SourceSpan>) -> bool {
+    (span_contains(item.span.clone(), at.clone())
+        || match item.body.clone() {
+            Some(b) => span_contains(b.span.clone(), at.clone()),
+            std::option::Option::None => false,
+        })
+}
+
 pub fn declaration_refused_in_closure(item: Rc<Node>, diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> bool {
     {
         let mut __found = false;
         for d in diagnostics.iter().cloned() {
             if (crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
-                && span_contains(
-                    item.span.clone(),
+                && declaration_covers(
+                    item.clone(),
                     crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone()),
                 ))
             {
