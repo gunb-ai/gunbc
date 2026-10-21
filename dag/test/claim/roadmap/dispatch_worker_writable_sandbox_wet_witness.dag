@@ -50,9 +50,10 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
   attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_vendor_pane_entry_name, attempt_exit_spool_prepare,
 }
 import gunbc.host.host_layout {
-  attempt_exit_inbox_dir,
+  attempt_exit_inbox_dir, attempt_exit_done_dir,
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
@@ -331,7 +332,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
       if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
         SandboxTouchUnrunnable
       } else {
-        let before = wet_record_names(instance: instance, unit_key: unit_key)
+        let before = wet_record_names(instance_root: instance.instance_root as String, unit_key: unit_key)
         match attempt_system_unit_enqueue_start_wait(
           instance_root: instance.instance_root as String,
           request: request,
@@ -340,7 +341,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
           AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueued { entry: entry } =>
             if wet_drain_started(instance_root: instance.instance_root as String, entry: entry) {
-              wet_inner_exit_status(instance: instance, unit_key: unit_key, before: before)
+              wet_inner_exit_status(instance_root: instance.instance_root as String, unit_key: unit_key, before: before)
             } else {
               SandboxTouchUnrunnable
             }
@@ -561,10 +562,10 @@ type WetRecordNames
   = WetRecordNamesListed { names: List<String> }
   | WetRecordNamesUnreadable
 
-fn wet_record_names(instance: HostDashboardInstance, unit_key: String) -> WetRecordNames {
+fn wet_record_names(instance_root: String, unit_key: String) -> WetRecordNames {
   let prefix = join([wet_probe_node as String, "+", launcher_probe_key(unit_key: unit_key), "+worker+"], "")
   fold(
-    attempt_exit_stage_listings(instance_root: instance.instance_root as String),
+    attempt_exit_stage_listings(instance_root: instance_root),
     init: WetRecordNamesListed { names: [] },
     f: (acc, listing) => match acc {
       WetRecordNamesUnreadable => WetRecordNamesUnreadable
@@ -582,15 +583,15 @@ fn wet_fresh_record_names(before: List<String>, after: List<String>) -> List<Str
   filter(after, n => !any(before, b => b == n))
 }
 
-fn wet_inner_exit_status(instance: HostDashboardInstance, unit_key: String, before: WetRecordNames) -> SandboxTouch {
+fn wet_inner_exit_status(instance_root: String, unit_key: String, before: WetRecordNames) -> SandboxTouch {
   match before {
     WetRecordNamesUnreadable => SandboxTouchUnrunnable
-    WetRecordNamesListed { names: seen } => wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, seen: seen, remaining: 240)
+    WetRecordNamesListed { names: seen } => wet_inner_exit_status_poll(instance_root: instance_root, unit_key: unit_key, seen: seen, remaining: 240)
   }
 }
 
-fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String, seen: List<String>, remaining: Int) -> SandboxTouch {
-  match wet_record_names(instance: instance, unit_key: unit_key) {
+fn wet_inner_exit_status_poll(instance_root: String, unit_key: String, seen: List<String>, remaining: Int) -> SandboxTouch {
+  match wet_record_names(instance_root: instance_root, unit_key: unit_key) {
     WetRecordNamesUnreadable => SandboxTouchUnrunnable
     WetRecordNamesListed { names: after } => {
       let fresh = wet_fresh_record_names(before: seen, after: after)
@@ -600,7 +601,7 @@ fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String,
             SandboxTouchUnrunnable
           } else {
             let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-            wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, seen: seen, remaining: remaining - 1)
+            wet_inner_exit_status_poll(instance_root: instance_root, unit_key: unit_key, seen: seen, remaining: remaining - 1)
           }
         Present { value: name } =>
           if length(fresh) != 1 {
@@ -620,12 +621,38 @@ fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String,
   }
 }
 
-// A record planted for the key before the run is in the snapshot and is never read as this run's.
+// A record planted for the key before the run is in the snapshot and is never read as this run's. This goes
+// through the poll itself (remaining: 0, so no waiting): a prior refused-scoring record in done/ must leave
+// the poll Unrunnable, and one fresh status-0 record in the inbox is then the only one read.
+fn wet_plant_record(root: String, stage_dir: String, status: Int) -> Bool {
+  shell.Exec.RunArgv(
+    program: "mkdir",
+    arguments: ["-p", "--", join([stage_dir, "/", attempt_exit_vendor_pane_entry_name(node_id: wet_probe_node as String, attempt_key: launcher_probe_key(unit_key: "bin"), status: status)], "")],
+  ).exit_code == 0
+}
+
 test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
-  let prior = "writable-probe+wetprobe-bin+worker+x"
-  let mine = "writable-probe+wetprobe-bin+worker+y"
-  wet_fresh_record_names(before: [prior], after: [prior]) == []
-    && wet_fresh_record_names(before: [prior], after: [prior, mine]) == [mine]
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    attempt_exit_spool_prepare(instance_root: root)
+      && wet_plant_record(root: root, stage_dir: attempt_exit_done_dir(instance_root: root), status: 1)
+      && match wet_record_names(instance_root: root, unit_key: "bin") {
+        WetRecordNamesUnreadable => false
+        WetRecordNamesListed { names: seen } =>
+          (match wet_inner_exit_status_poll(instance_root: root, unit_key: "bin", seen: seen, remaining: 0) {
+            SandboxTouchUnrunnable => true
+            SandboxTouchRan { exit_code: _ } => false
+          })
+            && wet_plant_record(root: root, stage_dir: attempt_exit_inbox_dir(instance_root: root), status: 0)
+            && (match wet_inner_exit_status_poll(instance_root: root, unit_key: "bin", seen: seen, remaining: 0) {
+              SandboxTouchUnrunnable => false
+              SandboxTouchRan { exit_code } => exit_code == 0
+            })
+      }
+  }
 }
 
 // RESIDUAL: a unit that fails in exec setup (EXIT_* range, e.g. 226 NAMESPACE for a missing ReadWritePaths
