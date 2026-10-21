@@ -6,7 +6,7 @@ import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plan { PlanDerivation, PlanDerived, PlanDerivationRefused }
 import gunbc.plans.md_helpers { h2, p, cell, row }
 import v2.std.decl_index { DeclFact, decl_facts, TypeItem, FnItem, DataItem, ServiceItem, OtherItem }
-import v2.std.decl_ref_resolution { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
+import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
 
 // THE SHARED TYPE-NAME CENSUS OF THE dag/std <-> src/v2/std FORK, DERIVED RATHER THAN TRANSCRIBED.
 //

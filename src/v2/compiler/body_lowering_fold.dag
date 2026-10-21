@@ -93,7 +93,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { positional_child_target_nodes, content_hash }
+import v2.std.node { positional_child_target_nodes, content_hash, symbol_lexeme }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -170,7 +170,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, absent_declaration_identity, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -203,7 +203,6 @@ import v2.std.node {
   is_positional,
   Atom,
   Branch,
-  Occupancy,
   ComputationNode,
   Match,
   Value,
@@ -483,7 +482,6 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -729,7 +727,6 @@ fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
     TypeNode { connective: Atom { identity: _ } } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -747,7 +744,8 @@ fn body_term_seal(node: Node, shape: LoweredShape) -> Node
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_outcome"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_lowering"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_identity_absent"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   if body_lower_has_grammar_projection_edge(node: node) {
@@ -771,9 +769,11 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_by_identity"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch_non_leaf"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_raw"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_function_value_body"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   match o {
@@ -785,7 +785,8 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
 fn body_term_sealed_lowering(o: Outcome<BodyLowering>, shape: LoweredShape) -> Outcome<BodyLowering>
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_forward_row_apply"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted_non_leaf")
   ]
 {
   match o {
@@ -836,7 +837,6 @@ fn body_term_is_leaf(n: Node) -> Bool
     TypeNode { connective: Conj } => length(xs: n.children) == 0
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1848,12 +1848,13 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
-      if emitted == ^dag_string_template {
-        match body_lower_string_template(shell: node) {
-          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
-          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
-        }
-      } else {
+      match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+        Present { value: leaf } =>
+          match leaf {
+            Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+            Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+          }
+        Absent =>
       match parse_production_captured_child_optional(node: node) {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
@@ -2781,7 +2782,7 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
 // before (a binding atom or a qualified-name spine); a generic application becomes the
 // Instantiation connective with the head as its first positional child and each argument
 // after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
-// `?` wraps the result in the Occupancy connective, v2's authority for an optional field
+// `?` wraps the result in the std.optional Instantiation (a marked generated declaration reference applied to it), v2's authority for an optional field
 // (v2.std.node_query DeclaredField.cardinality, decoded once at declared_field_cardinality_of_target). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
@@ -2855,8 +2856,11 @@ fn body_lower_type_wrap_occupancy(base: Node, question_capture: Node, source: No
           true =>
             optional_present(
               value: close_lowered_image(root: node_with_occurrence_id(
-                kind: TypeNode { connective: Occupancy },
-                children: [Edge { label: Positional, target: base }],
+                kind: TypeNode { connective: Instantiation },
+                children: [
+                  Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: source.occurrence_id) },
+                  Edge { label: Positional, target: base }
+                ],
                 occurrence_id: source.occurrence_id
               ))
             )
@@ -3476,6 +3480,13 @@ fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
 }
 
 fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: folded) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_reduce_emitted_non_leaf(folded: folded, emitted: emitted)
+  }
+}
+
+fn body_lower_reduce_emitted_non_leaf(folded: Node, emitted: Symbol) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
@@ -3488,11 +3499,6 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
-  } else if emitted == ^dag_string_template {
-    match body_term_sealed_outcome(o: body_lower_string_template(shell: folded), shape: LoweredOperatorExpression) {
-      Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    }
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
@@ -3678,6 +3684,27 @@ fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node>
   body_lower_callback_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
 }
 
+// `none` IS THE MARKED REFERENCE TO std.optional's ABSENT VARIANT, generated at the source occurrence
+// exactly as `T?` writes the marked reference to the Optional declaration (v2.std.qualified_name
+// declaration_reference_node): resolve answers it by declaration identity, with no import, and refuses
+// it as resolve_reason_generated_reference_declaration_absent when the closure lacks std.optional. No
+// payload type is chosen here: with no expected Optional<T> the reference is the constructor of an
+// unsolved variable, exactly as a bare Absent is (a refusal at a non-Optional position; `let x = none` gets
+// whatever verdict `let x = Absent` gets, whichever way infer settles an unsolved constructor binding).
+fn body_lower_leaf_literal_optional(emitted: Symbol, shell: Node) -> Optional<Outcome<Node>> {
+  if emitted == ^dag_surface_none_literal {
+    Present { value: body_lower_none_literal(shell: shell) }
+  } else if emitted == ^dag_string_template {
+    Present { value: body_lower_string_template(shell: shell) }
+  } else {
+    Absent
+  }
+}
+
+fn body_lower_none_literal(shell: Node) -> Outcome<Node> {
+  outcome_accepted(value: declaration_reference_node(qn: absent_declaration_identity(), occurrence_id: shell.occurrence_id))
+}
+
 fn body_lower_algebra_constructor_reference(name: Symbol, source: Node) -> Node {
   body_lower_qualified_name_spine_node(
     segments: [
@@ -3827,6 +3854,13 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
 }
 
 fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: node) {
+    Present { value: leaf } => body_term_sealed_outcome(o: leaf, shape: LoweredOperatorExpression)
+    Absent => body_lower_fold_dispatch_non_leaf(node: node, emitted: emitted)
+  }
+}
+
+fn body_lower_fold_dispatch_non_leaf(node: Node, emitted: Symbol) -> Outcome<Node> {
         if emitted == ^dag_surface_match_expr {
           body_term_sealed_outcome(o: body_lower_match_expr(shell: node), shape: LoweredMatch)
         } else if emitted == ^dag_surface_if_expr {
@@ -3837,8 +3871,6 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
           body_term_sealed_outcome(o: body_lower_let_expr(shell: node), shape: LoweredLet)
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
-        } else if emitted == ^dag_string_template {
-          body_term_sealed_outcome(o: body_lower_string_template(shell: node), shape: LoweredOperatorExpression)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -4338,7 +4370,6 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Branch } => outcome_accepted(value: body)
@@ -4985,8 +5016,6 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
         TypeNode { connective: Atom { identity: _ } } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Arrow } =>
-          optional_present(value: body_lower_admit_entry_marker(template: template))
-        TypeNode { connective: Occupancy } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Instantiation } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
@@ -5869,7 +5898,6 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
     TypeNode { connective: Atom { identity: _ } } => node
     TypeNode { connective: Conj } => node
     TypeNode { connective: Disj } => node
-    TypeNode { connective: Occupancy } => node
     TypeNode { connective: Instantiation } => node
     ComputationNode { behavior: _ } => node
   }
@@ -5961,7 +5989,6 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
         )
       TypeNode { connective: Disj } => node
       TypeNode { connective: Arrow } => node
-      TypeNode { connective: Occupancy } => node
       TypeNode { connective: Instantiation } => node
       ComputationNode { behavior: _ } => node
     }
@@ -7922,7 +7949,6 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Transform } => outcome_accepted(value: body)
@@ -7944,7 +7970,6 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Loop } => outcome_accepted(value: body)
@@ -9906,7 +9931,10 @@ fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
 // the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
 // form lowers to: the label is the name, and the target is the reference the name denotes as a value,
 // built as the pattern pun's binder is (body_lower_field_pattern_edge). Only a tagged record's list
-// parses a pun; a headless brace has no pun production to reach here.
+// parses a pun; a headless brace has no pun production to reach here. A pun named `none` is refused here,
+// located at the name: `none` is the absence literal (body_lower_none_literal), so the pun would name a
+// value no reference can name. The grammar admits it so that a speculative record probe over a match body
+// does not hard-stop (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
 fn body_lower_field_init_is_pun(item: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
     Present { value: id } => id == ^dag_surface_field_init_pun
@@ -9921,12 +9949,16 @@ fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
       match node_atom_identity_optional(node: atom) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
         Present { value: field_name } =>
-          outcome_accepted(
-            value: Edge {
-              label: Authored { name: field_name },
-              target: body_lower_param_ref_atom(source: atom, identity: field_name)
-            }
-          )
+          if symbol_lexeme(sym: field_name) == "none" {
+            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_reserved_value_name_pun, n: atom))
+          } else {
+            outcome_accepted(
+              value: Edge {
+                label: Authored { name: field_name },
+                target: body_lower_param_ref_atom(source: atom, identity: field_name)
+              }
+            )
+          }
       }
   }
 }
@@ -10638,7 +10670,6 @@ fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_p
       }
     TypeNode { connective: Atom { identity: _ } } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Arrow } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
-    TypeNode { connective: Occupancy } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Instantiation } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     ComputationNode { behavior: _ } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
   }
@@ -10935,7 +10966,6 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
             Atom { identity: _ } => TypeDeclModifierSlotUnreadable { at: element }
             Disj => TypeDeclModifierSlotUnreadable { at: element }
             Arrow => TypeDeclModifierSlotUnreadable { at: element }
-            Occupancy => TypeDeclModifierSlotUnreadable { at: element }
             Instantiation => TypeDeclModifierSlotUnreadable { at: element }
           }
         ComputationNode { behavior: _ } => TypeDeclModifierSlotUnreadable { at: element }
@@ -11678,15 +11708,52 @@ fn body_lower_status_entry_shells(block: Node) -> List<Node> {
       fold(body_lower_service_member_shells(root: captured), init: Empty, f: fn(acc, shell) {
         match parse_production_emitted_identity_optional(node: shell) {
           Present { value: id } =>
-            if (id == ^dag_surface_status_type_entry) || (id == ^dag_surface_status_expr_entry) { list_snoc_item(xs: acc, item: shell) } else { acc }
+            if (id == ^dag_surface_status_type_entry) || (id == ^dag_surface_status_expr_entry) || (id == ^dag_surface_mock_reading_entry) { list_snoc_item(xs: acc, item: shell) } else { acc }
           Absent => acc
         }
       })
   }
 }
 
-// An entry's captured is seq(status_pattern, seq(`=>`, seq(payload, opt(doc string)))).
+// An entry's captured is seq(status_pattern, seq(`=>`, seq(payload, opt(doc string)))); a mock reading
+// (the file transport's, which observes no status) is seq(`=>`, seq(payload, opt(doc string))) and lowers
+// to an arm with no <arm-pattern>.
 fn body_lower_status_arm(entry: Node, mock: Bool) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: entry) {
+    Present { value: id } =>
+      if id == ^dag_surface_mock_reading_entry { body_lower_mock_reading_arm(entry: entry) } else { body_lower_keyed_status_arm(entry: entry, mock: mock) }
+    Absent => body_lower_keyed_status_arm(entry: entry, mock: mock)
+  }
+}
+
+fn body_lower_mock_reading_arm(entry: Node) -> Outcome<Node> {
+  let refuse = outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_arm_unlowered, n: entry))
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: p1 } =>
+          match sugar_sequence_pair_optional(node: p1.right) {
+            Absent => refuse
+            Present { value: p2 } =>
+              bind_outcome(o: body_lower_arm_payload(payload: p2.left, mock: true), f: fn(payload) {
+                outcome_accepted(value: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_reading_arm_children(payload: payload, doc: body_lower_first_string_literal_optional(root: p2.right))))
+              })
+          }
+      }
+  }
+}
+
+fn body_lower_reading_arm_children(payload: Node, doc: Optional<Node>) -> List<Edge> {
+  let core = [Edge { label: Authored { name: realization_arm_payload_label() }, target: payload }]
+  match doc {
+    Present { value: d } => list_snoc_item(xs: core, item: Edge { label: Authored { name: realization_arm_doc_label() }, target: d })
+    Absent => core
+  }
+}
+
+fn body_lower_keyed_status_arm(entry: Node, mock: Bool) -> Outcome<Node> {
   let refuse = outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_arm_unlowered, n: entry))
   match parse_production_captured_child_optional(node: entry) {
     Absent => refuse
@@ -12380,6 +12447,13 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
 }
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
+  match body_lower_leaf_literal_optional(emitted: emitted, shell: shell) {
+    Present { value: leaf } => body_term_sealed_lowering(o: body_lowering_lowered(o: leaf), shape: LoweredOperatorExpression)
+    Absent => body_lower_production_emitted_non_leaf(shell: shell, emitted: emitted, fn_body_pass_through: fn_body_pass_through)
+  }
+}
+
+fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_term_sealed_lowering(o: body_lower_service_decl(shell: shell), shape: LoweredServiceDeclaration)
   } else if emitted == ^dag_surface_resource_decl {
@@ -12400,8 +12474,6 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
-  } else if emitted == ^dag_string_template {
-    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_string_template(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_surface_postfix_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_postfix_expr(shell: shell)), shape: LoweredPostfix)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {

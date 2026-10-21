@@ -273,7 +273,7 @@ service http.Client {
   // pattern, the peer pair being GetWithin / http_client_get_argv -- where the argv ROWS are spelled
   // per transport but every VALUE in them resolves to one place. A probe's connect-deadline behaviour
   // no longer depends on which route ran (review on #14194: the two copies differed; they do not now).
-  // An argv ELEMENT expression is not used here because v2.std.operation_argv refuses to evaluate
+  // An argv ELEMENT expression is not used here because std.operation_argv refuses to evaluate
   // one (ArgvExpressionUnsupported, a pinned deficit) -- binding it as an input is the form that
   // carries the same fact without growing that deficit.
   operation GetWithinWithStatus {

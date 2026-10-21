@@ -92,6 +92,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
   BeltProviderPreflight, ProviderPreflightRefused,
   belt_exit_spool_times, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
+  belt_exit_stall_read_at, BeltExitStallHeld, BeltExitStallNone, BeltExitStallUnreadable,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
 import gunbc.dispatch_selection { NoDerivedSizingExpectation }
@@ -374,6 +375,11 @@ fn tick_fact(instance: HostDashboardInstance) -> TickFact {
 // THE BACKLOG ROW'S WET HALF: the exit spool's unconsumed entries, aged against the receipt run's own
 // now. The judgment is pure (event_backlog_judge); an unreadable spool or now refuses as unobserved.
 fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBacklogFact {
+  let stalled = match belt_exit_stall_read_at(root: instance.instance_root as String) {
+    BeltExitStallHeld { entries } => entries |> map(e => e.entry)
+    BeltExitStallNone => [] as List<String>
+    BeltExitStallUnreadable { reason: _ } => [] as List<String>
+  }
   match iso8601_utc_epoch_seconds(text: now) {
     Absent => EventBacklogUnobserved { detail: join(["the receipt run's now did not parse: ", now], "") }
     Present { value: now_s } =>
@@ -382,7 +388,7 @@ fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBack
         BeltExitSpoolTimesRead { entries } =>
           match (entries |> filter(e => (e.mtime_epoch as Int) > second_count(now_s))).first() {
             Present { value: e } => EventBacklogUnobserved { detail: join(["exit spool entry ", e.entry, " is modified after the receipt run's now; the clock or the stat is unreliable"], "") }
-            Absent => event_backlog_judge(entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age: second(count: second_count(now_s) - (e.mtime_epoch as Int)) }))
+            Absent => event_backlog_judge(stalled: stalled, entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age: second(count: second_count(now_s) - (e.mtime_epoch as Int)) }))
           }
       }
   }

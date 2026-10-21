@@ -16,7 +16,7 @@ module v2.test.claim.compiler.infer_bind_match_schedule_first
 //   <type-annotation> edge (type_annotation_optional). Nothing else -- it reads no sibling beyond the value.
 //   The KEY edge is not an operand at all: infer_gather_fold_step merges it through unchanged (bind_key_edge),
 //   and v2.compiler.eval sites the binder and the value at positional slots 0 and 1 (eval_bind_key,
-//   eval_bind_value_edge) -- the same two slots these predicates take their edges from.
+//   eval_bind_value) -- the same two slots these predicates take their edges from.
 // - a Match ARM child, through infer_match_arm_child_frame: the arm's pattern binders are typed from the
 //   SCRUTINEE's settled facts (lookup_inferred_facts_in_entries(acc.entries, scrutinee), then
 //   infer_match_coproduct_of_type), or, with none present, from the arm's own declared coproduct through

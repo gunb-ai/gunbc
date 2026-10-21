@@ -19,7 +19,7 @@ import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
-import std.dissolution { DissolutionPending, DissolutionFired }
+import std.dissolution { DissolutionCondition, DissolutionPending, DissolutionFired, DissolutionUnbound, unbound_dissolution }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
@@ -165,16 +165,7 @@ import gunbc.firmware_network_boot_standing {
   route_requires,
   ProcedureRequires,
   RequiresExistingBootOption,
-  SecureBootDisabled,
-  SecureBootEnabled,
-  SecureBootObservation,
-  SecureBootRefused,
-  SecureBootUnobserved,
-  AuthenticationRequired,
-  ReplyShapeUnrecognized,
-  ResourceNotFound,
-  TransportRefusedVendorCommand,
-  VendorCommandRejected,
+  FirmwareReadRefused,
   UnansweredAxis,
   UefiShellOverSol,
   firmware_boot_observation,
@@ -183,6 +174,7 @@ import gunbc.firmware_network_boot_standing {
   firmware_network_boot_standing,
   network_boot_attempt,
 }
+import gunbc.secure_boot_observation { AuthorizationDenied, UnexpectedHttpStatus, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -433,15 +425,15 @@ fn text_contains(haystack: NonEmptyStr, needle: NonEmptyStr) -> Bool {
 // (go ask vs. stop asking that way) and the report line differs too.
 test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
   match standing_of(observation: with_boot_order(boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } })) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
+    Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
     _ => false
   }
     && match standing_of(observation: with_nics(nics: NicsRefused { refusal: ResourceNotFound { detail: "redfish nic collection denied" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
+         Refused { cause: FirmwareReadRefused { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
          _ => false
        }
     && match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthenticationRequired { detail: "secure boot property hidden" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => true
+         Refused { cause: FirmwareReadRefused { refusal: _ }, gaps: _ } => true
          _ => false
        }
 }
@@ -1573,7 +1565,7 @@ test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
+    Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
       d == "ipmi vendor command rejected"
         && any(gaps, g => names_boot_order_axis(gap: g))
         && any(gaps, g => names_secure_boot_axis(gap: g))
@@ -1598,7 +1590,7 @@ test fn the_kind_of_absence_is_typed_per_axis() -> Bool {
     observed_at: witness_epoch,
     boot_mode: UefiHttpBoot,
   ) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
+    Refused { cause: FirmwareReadRefused { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
       d == "credentials absent"
         && any(gaps, g => gap_was_not_asked(gap: g))
         && any(gaps, g => gap_was_refused(gap: g))
@@ -2079,7 +2071,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     // EVERY OTHER REFUSAL NAMED, so a wrong cause cannot satisfy this test. A `_ => false` here
     // would pass on Refused { cause: NoSuchUnit } -- which is a refusal, so the test would report
     // 'the conflict is named' while the seam named something else entirely.
-    Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => false
+    Refused { cause: FirmwareReadRefused { refusal: _ }, gaps: _ } => false
     Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => false
     Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
     Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
@@ -2199,7 +2191,7 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
 // call route (may a stranger call the mint and pass its output off as this module's verdict), and
 // merry's specific ask -- legitimate evidence reused with a swapped conclusion.
 
-data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding, admissible_readiness_for, RouteReadinessStanding }\nimport std.algebra { length }\n"
+data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport gunbc.secure_boot_observation { SecureBootUnobserved }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding, admissible_readiness_for, RouteReadinessStanding }\nimport std.algebra { length }\n"
 
 // THE OBSERVATION EVERY FORGE SHARES, spelled once so the two sources below differ in EXACTLY one
 // way: whether a Ready is wrapped around the evidence.
@@ -2240,17 +2232,44 @@ data lawful_verdict_source: String = verdict_probe_hdr + "\nfn honest_observatio
 
 fn sole_ctor_count(source: String) -> Int {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "SoleConstructorViolation") {
-    // Absent means the census could not run, and 0 rows is how a probe that never ran reports. A wall
-    // proven by a probe that never compiled is not a wall, so an unrunnable census is a FAIL, never a
-    // pass -- the reason this helper returns Int and the tests compare against >= 1 rather than != 0.
+    // Absent means the census could not run AT ALL, and 0 rows is how a probe that never ran reports, so
+    // unrunnable is a FAIL, never a pass. WHAT THIS ARM DOES NOT CATCH: a source that DOES run but carries
+    // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
+    // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. Measured
+    // on #14590: misspelling one import in verdict_probe_hdr left this witness green, lawful checks
+    // included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: an observed census can
+    // report zero rows of the wanted class while the source has unrelated errors, so zero does not
+    // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
+    // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
+    // because violations are collected per source and an import error does not suppress them. Neither
+    // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
+    // module-and-symbol pin in the argument-spine test below -- drift detection only: it catches a typo,
+    // a deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
+    // does NOT establish resolved provenance; the frontier row
+    // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
+    // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
+    // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
+    // still passes the substring' witness would only restate the substring semantics over hand-written
+    // literals. The honest form of that limit is the frontier row, not a tautological witness.
     Present { value: n } => n
     Absent => 0 - 1
   }
 }
 
-// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused and the lawful pair
-// over the SAME imports must be clean -- without that pair, "the probe refused" is indistinguishable
-// from "the probe never compiled". OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
+// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused, and the lawful pair
+// over the SAME imports must be clean. CAREFUL, measured not argued: neither side's COUNT proves
+// import resolution. The lawful pair ALONE does not separate 'refused correctly' from 'never
+// compiled' -- an observed census can report zero rows of the wanted class while the source has
+// unrelated errors; zero does not establish successful compilation, and `== 0` is
+// satisfied by exactly such a zero. And the hostile side's `>= 1` does not certify the imports either: it
+// requires a violation to be PRESENT, and a real violation coexists with an unrelated import defect
+// (violations are collected per source; an import error does not suppress them), so a hostile source
+// could carry a broken import and still legitimately count 1. What the counts DO establish is the
+// seal verdict under a compilable source; what guards the header against silent drift is the textual
+// substring pin on the shared header in the argument-spine test -- drift detection, NOT a resolution
+// check: it narrows how the header can drift silently and does not prove where the name resolves to
+// (the frontier row firmware_network_boot_probe_resolution_frontier records that residual gap).
+// OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
 // zero. It is NOT the row that owns the conclusion seal: `forge_ready_source` would still be refused for
@@ -2470,6 +2489,17 @@ test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Boo
     && string_contains(verdict_probe_hdr, "available_network_options,")
     && string_contains(verdict_probe_hdr, "network_option_existence,")
     && string_contains(verdict_probe_hdr, "admissible_readiness_for,")
+    // TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins the
+    // exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that never declares
+    // the name reddens this test -- the drift modes a census cannot see at all (row R2G2: deleting an import
+    // name changed no count). It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a
+    // substring check: a header carrying the pinned text only inside a // comment plus a real import from
+    // a look-alike module still satisfies it. That residual limit is tracked as the typed
+    // frontier firmware_network_boot_probe_resolution_frontier, not claimed closed here.
+    && string_contains(
+      verdict_probe_hdr,
+      "import gunbc.secure_boot_observation { SecureBootUnobserved }",
+    )
     && string_contains(direct_mint_source, "boot_option(reference:")
     && string_contains(direct_mint_source, "boot_order_entry(reference:")
     && string_contains(direct_mint_source, "join_head_to_options(")
@@ -3751,4 +3781,59 @@ test fn an_enumeration_grounding_on_an_attribute_slot_refuses_rather_than_binds(
     RouteExecutable { route: _, requires: _ } => false
     RouteNotExecutable { mechanism: _, refusal: _ } => false
   }
+}
+
+// A 403 keeps its own arm through to the final refusal (it is neither a login nor a route problem).
+test fn authorization_denied_survives_to_the_final_refusal() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthorizationDenied { detail: "role lacks ConfigureComponents" } })) {
+    Refused { cause: FirmwareReadRefused { refusal: AuthorizationDenied { detail: d } }, gaps: _ } => d == "role lacks ConfigureComponents"
+    _ => false
+  }
+}
+
+// A supplied 500 keeps its status through to the final refusal; the status is decision-bearing, not decoration.
+test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status() -> Bool {
+  match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: UnexpectedHttpStatus { status: 500, detail: "the service answered with a non-success HTTP status" } })) {
+    Refused { cause: FirmwareReadRefused { refusal: UnexpectedHttpStatus { status: st, detail: _ } }, gaps: _ } => st == 500
+    _ => false
+  }
+}
+
+
+// THE RESIDUAL GAP, TYPED (option B): resolved declaration identity of a use inside
+// an EMBEDDED STRING source is not exposed to a claim witness today. The machinery
+// that computes a mention's declaring module exists (v2.compiler.resolution_provenance
+// ::resolve_reference_provenance) but consumes parsed Nodes from the acquired module
+// corpus, not a source string; the census host op that DOES take a string returns only
+// diagnostic_class + subject_name. So the capability is a future op (string source ->
+// resolved QualifiedName), and its name is not known yet -- binding a BoundDissolution
+// trigger to a declaration nobody has named would report Pending forever and look like
+// honest tracking while nothing could discharge it (the lesson already recorded on the
+// seam's own consumer frontier). unbound_dissolution reports DissolutionUnbound: no
+// declaration discharges this yet, stated plainly rather than dressed as a pending trigger.
+data firmware_network_boot_probe_resolution_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, replace the textual substring guard in the_probe_and_its_control_still_exercise_every_argument_builder with an assertion that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation -- the drift modes a substring cannot distinguish, where a comment-only canonical import plus a real look-alike import still satisfy the guard. Acceptance for the replacement: canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED. Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
+)
+
+// THE GAP IS OPEN AND STAYS OPEN UNTIL A REAL READBACK LANDS -- not silently Pending,
+// not falsely Fired. WHAT THIS ROW CATCHES, stated to the rung it establishes: this
+// assertion discriminates THIS ROW'S ARM. A row secretly bound to a trigger reports
+// DissolutionPending (empty corpus) or DissolutionFired (a corpus naming the trigger)
+// -- never DissolutionUnbound -- so dressing the gap as a satisfiable-looking trigger
+// reddens it; the M2 mutation row in the PR evidence executes exactly that. WHAT IT
+// CANNOT CATCH: the semantics of unbound_dissolution itself -- the constructor returns
+// DissolutionUnbound for any non-empty description, so this test is an arm check on the
+// row, not a test of the std constructor. That is the honest denominator for a row whose
+// whole job is to say 'nothing here discharges this yet'.
+test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
+  frontier_status(
+    condition: firmware_network_boot_probe_resolution_frontier,
+    present_decls: [],
+  )
+    == DissolutionUnbound
+    && frontier_status(
+      condition: firmware_network_boot_probe_resolution_frontier,
+      present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
+    )
+    == DissolutionUnbound
 }
