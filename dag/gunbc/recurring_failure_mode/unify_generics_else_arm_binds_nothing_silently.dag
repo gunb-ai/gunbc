@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.unify_generics_else_arm_binds_nothing_silently
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unify_generics_else_arm_binds_nothing_silently: RecurringFailureMode = RecurringFailureMode {
+  identity: "unify_generics_else_arm_binds_nothing_silently" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: v1.compiler.infer unify_generics returns acc unchanged when formal and actual are neither a generic position, nor two callables, nor two applications with equal child counts (the final else arm). A generic name occurring under such a pair stays unbound, and an unbound generic is accepted at every position, which is the leniency gunbc#14594 removed for equal-arity applications. HARM: a call argument whose type has a different child count than its formal, or a formal application met by a bare or callable actual, binds nothing and the call can be accepted with the variable free.",
+    "WHAT IS ESTABLISHED (witness test.claim.generic_arity_n_descent_witness arity_n_else_*): an arity or head mismatch between a generic formal and an actual (Map<K,V> against Optional<Int>, List<T> against Map, Map<K,V> against a bare Int, ApPair<A,B> against ApMapBox) is refused by the ordinary argument type-compatibility check, because the heads differ; unify_generics is a binder and does not itself judge. WHAT IS NOT ESTABLISHED: a per-head count of else-arm entries over the corpus. unify_generics returns only Map<String, Node>, so it has no channel for a count or a diagnostic, and the only reader of its result that knows which generic names stayed unbound is infer_call_arguments_generic_pass, the region of PR-2.",
+    "RUNG FOUND AT: mitigatable (the ordinary compatibility check refuses head mismatches; a same-head residual, if any, is accepted silently). CEILING: structurally guaranteed -- the consumer refuses a call whose generic names are unbound after unification with a typed, located cause. NEXT TRIGGER: PR-2 (infer_call_arguments_generic_pass) lands a typed refusal for a generic name that is free after binding; when it lands, the else arm needs no change and this row is retired with a count of its refusals over the corpus. Receipts: gunbc#14594."
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "unify_generics", field: WholeDeclaration },
+  ],
+}

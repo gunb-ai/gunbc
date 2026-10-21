@@ -524,6 +524,24 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-serve-startup-refusal"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_refusal_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-slow"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-overrun"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
@@ -592,6 +610,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "src/v2/workflow/roster_import_sweep.dag",
                 function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
+            instrument_label("claim-coverage-census"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/claim_coverage_census_live.dag",
+                function: "claim_coverage_census_exit",
             },
         ),
         (

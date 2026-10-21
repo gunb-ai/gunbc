@@ -6,7 +6,8 @@ import gunbc.regen_affected_set {
   regen_bootstrap_product_paths,
   regen_generated_product_owner_paths,
   regen_generated_product_source_modules,
-  regen_generated_product_generation_role_labels
+  regen_generated_product_generation_role_labels,
+  regen_generated_product_seed_membership_labels
 }
 
 import v2.workflow.regen_convergence_transaction {
@@ -58,6 +59,10 @@ import v2.workflow.regen_convergence_transaction {
   FinalRegenerationStillDrifts,
   regen_execute_convergence_fixture,
   regen_admit_generation_progress,
+  regen_generation_progress_admission_label,
+  regen_candidate_generation_admission_label,
+  regen_convergence_refusal_detail,
+  CandidateFromDifferentSeed,
   RegenGenerationProgressAdmitted,
   RegenGenerationProgressRefused,
   GenerationCycleDetected,
@@ -68,6 +73,7 @@ import v2.workflow.regen_convergence_transaction {
   StagePlannedExecutedMismatch,
   regen_plan_stage,
   regen_plan_next_stage,
+  regen_stage_plan_kind_label,
   regen_admit_affected_bound,
   RegenInstallBoundaryObservation,
   RegenSurfaceLineage,
@@ -260,7 +266,7 @@ test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Boo
     build_terminal: RegenStageBuildPassed
   })
   regen_stage_execution_admission_detail(admission: admission)
-    == "planned=[std_subject.rs] executed=[std_subject.rs std_dependent.rs]"
+    == "planned=[std.subject:std_subject.rs] executed=[std.subject:std_subject.rs std.dependent:std_dependent.rs]"
 }
 
 test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
@@ -787,35 +793,66 @@ test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries()
   }
 }
 
-// Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
-// explicitly classifies publishable aggregates, while the seed crate root remains an input.
+// compiler_tests.rs is an emitted generation subject OUTSIDE the seed (`#[cfg(test)] mod` in
+// lib.rs), so it publishes with the non-seed outputs; its role is no longer bent to
+// NonSeedGeneratedOutput to dodge the membership fall-through.
 test fn compiler_tests_generation_subject_obeys_all_three_stage_boundaries() -> Bool {
   let carrier = fixture_surface(
     module: "v1.compiler.compiler_tests_rust",
     path: "compiler_tests.rs",
     role: GenerationSubject,
-    seed: SeedEmbedded
+    seed: OutsideSeed
   )
   let promote = fixture_plan(kind: PromoteGenerationInputs, rows: [carrier])
   let install = fixture_plan(kind: InstallSeedCompatibilityCut, rows: [carrier])
   let publish = fixture_plan(kind: PublishNonSeedOutputs, rows: [carrier])
   match promote {
     RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: held } } =>
-      count(held) == 1 && match install {
+      count(held) == 1 && match publish {
         RegenStagePlanned { stage: stage } =>
           count(stage.planned_surfaces) == 1
             && stage.planned_surfaces |> all(row =>
               row.identity.declaring_module == "v1.compiler.compiler_tests_rust"
                 && row.identity.projected_path == "compiler_tests.rs"
             )
-            && match publish {
-              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: publish_held } } =>
-                count(publish_held) == 1
+            && match install {
+              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: install_held } } =>
+                count(install_held) == 1
               _ => false
             }
         _ => false
       }
     _ => false
+  }
+}
+
+// DEFECT 1 control: every aggregate product declares its seed membership on its own row, so the
+// host never derives it from a basename. lib.rs is the seed root; a product with no row has no
+// answer (and so refuses upstream) rather than a guessed one.
+test fn every_aggregate_product_declares_its_seed_membership_on_its_row() -> Bool {
+  regen_generated_product_seed_membership_labels(product: "lib.rs") == ["SeedEmbedded"]
+    && regen_generated_product_seed_membership_labels(product: "gunbc_cli_dispatch_generated.rs") == ["SeedEmbedded"]
+    && regen_generated_product_seed_membership_labels(product: "compiler_tests.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "emitted_population.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "main.rs") == ["OutsideSeed"]
+    && regen_generated_product_seed_membership_labels(product: "unowned.rs") == []
+    && regen_generated_product_owner_paths()
+      |> all(path => count(regen_generated_product_seed_membership_labels(product: path)) <= 1)
+}
+
+// A changed lib.rs (the seed-module-add case) with its declared membership plans in the
+// generation-input cut instead of refusing SeedMembershipUnresolved.
+test fn a_changed_seed_root_with_declared_membership_plans_instead_of_refusing() -> Bool {
+  let root = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "lib.rs",
+    role: GenerationInput,
+    seed: SeedEmbedded
+  )
+  match fixture_plan(kind: PromoteGenerationInputs, rows: [root]) {
+    RegenStagePlanned { stage: stage } => count(stage.planned_surfaces) == 1
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
   }
 }
 
@@ -827,4 +864,100 @@ test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool {
     && regen_generated_product_generation_role_labels(product: "lib.rs")
       == ["GenerationInput"]
     && regen_generated_product_generation_role_labels(product: "unowned.rs") == []
+}
+
+// DEFECT 2 control: the host prints this label, so a planner refusal must reach it with its variant,
+// surface (module:path) and reason, not the bare word `Refused`. Discriminating: reverting the label
+// to a fixed string fails every contains below.
+test fn a_stage_planning_refusal_prints_its_variant_surface_and_reason() -> Bool {
+  let unowned = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "lib.rs",
+    role: GenerationInput,
+    seed: UnresolvedSeedMembership { reason: "lib.rs has no owner in generated_stage0_crate_partition" }
+  )
+  let label = regen_stage_plan_kind_label(outcome: fixture_plan(kind: PromoteGenerationInputs, rows: [unowned]))
+  string_contains(s: label, pattern: "SeedMembershipUnresolved")
+    && string_contains(s: label, pattern: "v1.compiler.emit_rust:lib.rs")
+    && string_contains(s: label, pattern: "lib.rs has no owner in generated_stage0_crate_partition")
+}
+
+// PRODUCER-TO-PROJECTION controls (review 5563928750): each refusal is produced by its real
+// producer and rendered by the label the host prints; every payload field must appear. Reverting a
+// specialised bare-tag arm, or dropping a nested field from the renderer, fails the matching control.
+test fn a_generation_cycle_refusal_prints_both_digests() -> Bool {
+  let label = regen_generation_progress_admission_label(admission: regen_admit_generation_progress(
+    seen_state_keys: ["seedD:treeD"], seed_digest: "seedD", candidate_tree_digest: "treeD", ordinal: 1, bound: 5))
+  string_contains(s: label, pattern: "GenerationCycleDetected")
+    && string_contains(s: label, pattern: "seed_digest=seedD")
+    && string_contains(s: label, pattern: "candidate_tree_digest=treeD")
+}
+
+test fn a_generation_bound_refusal_prints_the_bound() -> Bool {
+  let label = regen_generation_progress_admission_label(admission: regen_admit_generation_progress(
+    seen_state_keys: [], seed_digest: "s", candidate_tree_digest: "t", ordinal: 7, bound: 7))
+  string_contains(s: label, pattern: "GenerationBoundExceeded") && string_contains(s: label, pattern: "bound=7")
+}
+
+test fn a_stale_candidate_refusal_prints_planned_surfaces_and_generations() -> Bool {
+  let label = regen_candidate_generation_admission_label(admission: regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation {
+    planned_surfaces: [one_identity(), second_identity()],
+    current_seed_digest: "g1",
+    manifest_producer_seed_digest: "g0",
+    observed_candidate_digest: "candidate-g0"
+  }))
+  string_contains(s: label, pattern: "CandidateStaleAfterProducerRebuild")
+    && string_contains(s: label, pattern: "std.subject:std_subject.rs")
+    && string_contains(s: label, pattern: "std.dependent:std_dependent.rs")
+    && string_contains(s: label, pattern: "observed_generation=g0")
+    && string_contains(s: label, pattern: "current_generation=g1")
+    && string_contains(s: label, pattern: "observed_candidate_digest=candidate-g0")
+}
+
+test fn a_different_seed_refusal_prints_every_candidate_identity_field() -> Bool {
+  let detail = regen_convergence_refusal_detail(refusal: CandidateFromDifferentSeed {
+    candidate: RegenCandidateIdentity {
+      producer_generation_id: "gen-a",
+      candidate_tree_id: "tree-id-a",
+      candidate_tree_digest: "tree-digest-a",
+      surface: one_identity(),
+      candidate_digest: "cand-digest-a"
+    },
+    expected_generation_id: "gen-b"
+  })
+  string_contains(s: detail, pattern: "candidate_generation=gen-a")
+    && string_contains(s: detail, pattern: "candidate_tree_id=tree-id-a")
+    && string_contains(s: detail, pattern: "candidate_tree_digest=tree-digest-a")
+    && string_contains(s: detail, pattern: "candidate_digest=cand-digest-a")
+    && string_contains(s: detail, pattern: "std.subject:std_subject.rs")
+    && string_contains(s: detail, pattern: "expected_generation=gen-b")
+}
+
+test fn a_stage_execution_refusal_prints_variant_surfaces_and_ordinal() -> Bool {
+  let digest = regen_convergence_refusal_detail(refusal: StageExecutionRefused {
+    refusal: InstalledDigestMismatch { surfaces: [one_identity()], expected: "e1", observed: "o1" } })
+  let build = regen_convergence_refusal_detail(refusal: StageExecutionRefused {
+    refusal: StageSeedBuildRefused { ordinal: 3, reason: "cargo failed" } })
+  string_contains(s: digest, pattern: "InstalledDigestMismatch")
+    && string_contains(s: digest, pattern: "std_subject.rs")
+    && string_contains(s: digest, pattern: "expected=e1 observed=o1")
+    && string_contains(s: build, pattern: "StageSeedBuildRefused")
+    && string_contains(s: build, pattern: "ordinal=3")
+    && string_contains(s: build, pattern: "cargo failed")
+}
+
+// Equal paths, different declaring modules: admission compares module AND path, so the line must
+// carry both modules or the field that explains the refusal is lost.
+test fn a_population_refusal_with_equal_paths_names_both_declaring_modules() -> Bool {
+  let left = RegenSurfaceIdentity { declaring_module: "std.left", projected_path: "same.rs" }
+  let right = RegenSurfaceIdentity { declaring_module: "std.right", projected_path: "same.rs" }
+  let detail = regen_stage_execution_admission_detail(admission: regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [left],
+    executed: [right],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  }))
+  string_contains(s: detail, pattern: "planned=[std.left:same.rs]")
+    && string_contains(s: detail, pattern: "executed=[std.right:same.rs]")
 }

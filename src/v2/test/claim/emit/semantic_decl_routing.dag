@@ -10,6 +10,7 @@ import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
+import v2.test.claim.coproduct_fixture { cpf_standing_disj }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
 
@@ -150,3 +151,22 @@ test fn semantic_unsupported_shape_refuses() -> Bool {
   semantic_arrow_refuses()
 }
 
+
+// ORDER IS A LIVE CONTRACT ON THE RUST ROUTE: rust_enum_derives_copy derives PartialOrd and Ord
+// (nullary_coproduct_derive_traits), and a derived Ord on a fieldless enum compares by DECLARATION
+// order, so a reversed arm list silently inverts every `<` on the emitted type. The input is the
+// shared fixture the lowering claim (coproduct_pipe_chain_declaration_order) produces.
+data semantic_standing_golden: String = concat(rust_enum_derives_copy, "\nenum Standing { Active, Pending, Revoked, Zed, Beta }")
+
+test fn rust_coproduct_from_the_lowering_fixture_derives_ord_in_declaration_order_holds() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Standing,
+    params: Empty,
+    node: cpf_standing_disj(),
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
+  ) {
+    Accepted { value: medium, diagnostics: _ } => medium.carried == semantic_standing_golden
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -46,7 +46,7 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, infer_builtin_call_type, NonDeclarationBinding,
 };
-pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
+pub use crate::v1_compiler_infer_resolve::{expand_nominal_alias_rhs, fn_type_param_names};
 pub use crate::v1_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -648,14 +648,10 @@ pub fn constructor_declaration_for_admission(
 ) -> Rc<ConstructorDeclarationLookup> {
     {
         let decl_name = crate::v1_std_core::qualified_last_segment(name.clone());
-        let qualified = if v1_rt::contains(name.clone(), ".".to_string()) {
-            name.clone()
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(owner_module_path.clone(), ".".to_string()),
-                name.clone(),
-            )
-        };
+        let qualified = v1_rt::concat(
+            v1_rt::concat(owner_module_path.clone(), ".".to_string()),
+            decl_name.clone(),
+        );
         let identity = Rc::new(ExactDeclarationIdentity {
             owner_module_path: owner_module_path.clone(),
             decl_name: decl_name.clone(),
@@ -793,7 +789,7 @@ pub fn census_declaration_bound_formals(
                         declaration_bound_conformance:
                             crate::v1_std_core::preserve_outer_optional_cardinality(
                                 declared_type.clone(),
-                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(
                                     declared_type.clone(),
                                     declaration_env.clone(),
                                     owner_module_path.clone(),
