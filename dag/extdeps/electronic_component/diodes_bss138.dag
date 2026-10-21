@@ -1,0 +1,56 @@
+module extdeps.electronic_component.diodes_bss138
+
+import std.measure { volt, milliampere }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.diodes_incorporated { diodes_incorporated }
+import extdeps.electronic_component.types { ElectronicComponentRow, MosfetSpec, MosfetSpecification, NChannel, FetTerminal, NumberedPin, FetGate, FetSource, FetDrain }
+
+// The datasheet DS30144 Rev. 25 - 2, June 2024, read 2026-10-19.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.diodes.com/datasheet/download/BSS138.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.diodes_bss138",
+      decl_name: "bss138",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Every field read from the datasheet: the title "N-CHANNEL ENHANCEMENT MODE MOSFET", Product Summary
+// "BVDSS 50V ... ID 200mA" (TA = +25 °C), Ordering Information "BSS138-7-F / SOT23 (Standard)",
+// Marking Information "K38 = Product Type Marking Code" with a separate YM date code, and the SOT23
+// top-view figure: D on the lone lead, G and S on the two-lead side. The figure labels terminals, not
+// numbers; the pins below are numbered by the SOT-23 (TO-236AB) outline convention, 1 and 2 on the
+// two-lead side and 3 the lone lead, which places G on 1, S on 2 and D on 3. The datasheet also
+// gives VGS 20 V continuous and VGS(TH) 0.5 / 1.2 / 1.5 V (VDS = VGS, ID = 250 uA), which no field
+// here carries yet.
+data bss138: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: diodes_incorporated,
+  ordering_code: "BSS138-7-F",
+  package: "SOT23 (Standard)",
+  top_marking: "K38",
+  specification: MosfetSpec { mosfet: MosfetSpecification {
+    channel: NChannel,
+    drain_source_maximum: volt(count: 50),
+    continuous_drain_current: milliampere(count: 200),
+    terminals: [
+      FetTerminal { terminal: NumberedPin { number: 1 }, role: FetGate },
+      FetTerminal { terminal: NumberedPin { number: 2 }, role: FetSource },
+      FetTerminal { terminal: NumberedPin { number: 3 }, role: FetDrain },
+    ],
+  } },
+  vendor_application_statements: [
+    "Systems/load switches",
+  ],
+}
