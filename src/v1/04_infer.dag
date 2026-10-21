@@ -7219,14 +7219,6 @@ type UnresolvedMethodFrontierRow {
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
     {
-      module_name: "v1.compiler.trace",
-      method: "map",
-      occurrences: 1,
-      receiver_shape: "Product(SpanMapping)",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
-      dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
-    },
-    {
       module_name: "test.claim.sccache_local_content_verified_on_read",
       method: "contains",
       occurrences: 1,
