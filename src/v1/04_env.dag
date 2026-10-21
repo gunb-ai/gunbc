@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { ModuleItemTypeDeclaration, generic_param_name_at, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
@@ -228,6 +228,7 @@ type SymbolIndex {
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
+  alias_cycles: Map<String, List<String>>
   type_head_exposures: Map<String, TypeHeadExposure>
   file_modules: Map<String, String>
   module_named_imports: Map<String, Map<String, String>>
@@ -238,7 +239,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), alias_cycles: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -410,6 +411,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     global_bare: index.global_bare,
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
@@ -422,6 +424,7 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
@@ -434,6 +437,7 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     global_bare: index.global_bare,
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
@@ -2367,48 +2371,5 @@ fn alias_rhs_head_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Decl
   match alias_rhs_of_declaration(item_ref: item_ref, env: env) {
     Present { value: rhs } => rhs.declaration
     Absent => none
-  }
-}
-
-// THE ONE ALIAS-CYCLE RULE (DESIGN 6b: refused where an alias declaration is resolved, not fuel-guarded in each walk). A type alias
-// item, plain (`type A = B`) or parameterized (`type A<T> = B<T>`), names exactly one next declaration: the head of its right-hand
-// side, read in the alias's OWN module. The census item is the authority, so the rule reaches every compiled module, imported or not.
-fn alias_item_rhs(item: Node) -> Node? {
-  if item.module_item_kind != ModuleItemTypeDeclaration || item.connective != NoConnective || item.body != none
-    || item.transport != none || item.type_annotation != none || (item.children |> count) > 0 {
-    none
-  } else {
-    match item.inferred {
-      Present { value: Resolved { node: rhs } } => if rhs.connective != NoConnective { none } else { Present { value: rhs } }
-      _ => none
-    }
-  }
-}
-
-// THE NEXT HOP OF A TRANSPARENT ALIAS IS ITS RHS HEAD AS RECORDED, NEVER A SPELLING RE-RESOLVED. The
-// one reader of that identity is `alias_rhs_head_of_declaration`; a generic parameter or an
-// unrecorded head answers none, so the walk ends there.
-fn alias_next_declaration(current: DeclarationRef, env: TypeEnv) -> DeclarationRef? {
-  alias_rhs_head_of_declaration(item_ref: current, env: env)
-}
-
-// The members of the alias cycle `start` is on, in chain order and closed back onto `start` (`A -> B -> A`); empty when the chain
-// from `start` ends or enters a cycle `start` is not on. Terminates because the path grows over a finite declaration set.
-fn alias_cycle_members(start: DeclarationRef, env: TypeEnv) -> List<String> {
-  alias_cycle_walk(start: start, current: start, path: [alias_declaration_label(d: start)], seen: map_insert(empty_map(), alias_declaration_label(d: start), true), env: env)
-}
-
-fn alias_declaration_label(d: DeclarationRef) -> String {
-  concat(d.module_path as String, ".", d.decl_name as String)
-}
-
-fn alias_cycle_walk(start: DeclarationRef, current: DeclarationRef, path: List<String>, seen: Map<String, Bool>, env: TypeEnv) -> List<String> {
-  match alias_next_declaration(current: current, env: env) {
-    Absent => []
-    Present { value: next } =>
-      let label = alias_declaration_label(d: next)
-      if label == alias_declaration_label(d: start) { list_push(path, label) }
-      else if map_has(seen, label) { [] }
-      else { alias_cycle_walk(start: start, current: next, path: list_push(path, label), seen: map_insert(seen, label, true), env: env) }
   }
 }

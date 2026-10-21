@@ -52,7 +52,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
-  width_resolution_declaration, symbol_index_lookup, alias_cycle_members, alias_item_rhs, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
 }
 
@@ -1474,10 +1474,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
     Absent => []
   }
-  let alias_cycle_diags = match alias_item_rhs(item: item) {
-    Present { value: _ } =>
-      let members = alias_cycle_members(start: decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item)), env: env)
-      if count(members) == 0 { [] } else { [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)] }
+  let alias_cycle_diags = match map_get(env.symbol_index.alias_cycles, concat(module_name, ".", authored_name(env: env, node: item))) {
+    Present { value: members } => [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)]
     Absent => []
   }
   let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
