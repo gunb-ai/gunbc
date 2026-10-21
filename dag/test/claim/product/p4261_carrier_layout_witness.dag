@@ -133,7 +133,7 @@ import product.p4261_carrier_layout {
   k1_measured, k1_phases, k1_j68, k1_return, k1_j68_volts_at_40ma, k1_j30, k1_j30_volts_at_40ma,
   k1_transitions, k1_inductor_volts_at_40ma, k1_l_2r2, k1_l_4r7_near, k1_l_4r7_far, inductor_pad_unrecorded, inductor_pad_near_u4, inductor_pad_far_u4,
   e1_inductor_volts, e1_l_2r2, e1_l_4r7_near,
-  e1_inductor_short_incident, e1_after_short_resistances, k1_l_4r7_near_resistance, k1_resistances, e1_u21, e1_u69,
+  e1_inductor_short_incident, e1_after_short_resistances, k1_l_4r7_near_resistance, k1_resistances, e1_u21, e1_u69, e1_u53, e1_u100,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -348,6 +348,7 @@ import product.p4261_carrier_layout {
   controller_of,
 }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
+import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
 import product.electrical.carrier_phase {
   CarrierPhaseObservation, CarrierPhaseStanding, InputBiasOnly, AuxiliaryDomainActive, SequenceTransient, ControlSteady, BridgeHeld, BridgeReleaseRecovery, PhaseUnclassified,
   PhaseGap, DrawAmbiguous, SettlingUnread, PhaseNotEnergized, DrawUnread, IndicatorsUnread, IndicatorPattern, IndicatorsDescribed, AllDark, PresenceUnread, ProtectedBusInconsistent,
@@ -2533,5 +2534,7 @@ test fn the_inductor_short_is_an_incident_and_its_readings_follow_it() -> Bool {
     && count(k1_measured.bench.resistances) == count(k1_resistances) + 1
     && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-21 inductor short")
     && count(component_of(layout: p4261_e1_layout, c: e1_u21)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_u69)) == 1
-    && all(component_of(layout: p4261_e1_layout, c: e1_u21), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && all(concat(component_of(layout: p4261_e1_layout, c: e1_u21), component_of(layout: p4261_e1_layout, c: e1_u53)), c => match identified_row(c: c) { Present { value: r } => r.ordering_code == pca9617adp.ordering_code, Absent => false })
+    && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && count(component_of(layout: p4261_e1_layout, c: e1_u100)) == 1
 }
