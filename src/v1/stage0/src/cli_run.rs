@@ -147,8 +147,7 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
-    whole_tree_resolved_ctx, EntryResolveRefusal,
+    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -722,9 +721,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
+    ) {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -17785,9 +17782,7 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
+    ) {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
