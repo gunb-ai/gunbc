@@ -6,7 +6,15 @@ import std.optional { Present, Absent }
 import std.measure { finite_byte_size_count, FiniteByteSize }
 import extdeps.shell
 import extdeps.shell.exec
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence, filesystem_listing_observation,
+}
+import gunbc.cli_invoke {
+  NamedArgument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
+  admit_named_argument, gunbc_run_invocation_words_with_arguments, invocation_words_bare,
+}
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, MemoryMax, MemoryHigh, WorkingDirectoryProperty, SliceProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command }
@@ -65,6 +73,8 @@ import gunbc.instruments.fabric_control_plane_live_probe { fci1_assert_checkpoin
 // the one authority the generated .env projected; the program words come from the extdeps rows.
 
 data fci1_bounded_controls_entry: String = "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag"
+data fci1_canonical_allocation_parent: String = "/var/lib/gunbc/fabric"
+data fci1_canonical_allocation_name: String = "allocation"
 data fci1_canonical_allocation_root: String = "/var/lib/gunbc/fabric/allocation"
 data fci1_runtime_root: String = "/run"
 data fci1_runtime_name_glob: String = "fci1-*"
@@ -141,14 +151,39 @@ fn fci1_unit_command(unit: NonEmptyStr, working_directory: String, bound: Fci1Un
 
 // `gunbc run` with the relative source roots the control depends on: the WorkingDirectory the unit
 // is given decides whether the workspace root resolves, which is the axis the wrong-cwd row moves.
-fn fci1_child_words(gunbc_bin: String, function: String, arguments: List<String>) -> List<String> {
-  concat([
-    gunbc_bin, "run",
-    "--source-root", "dag",
-    "--source-root", "src/v2",
-    "--entry", fci1_bounded_controls_entry,
-    "--function", function,
-  ], arguments)
+// The argv shape is gunbc.cli_invoke's one `gunbc run` builder; only the binary word is added here.
+fn fci1_child_words(gunbc_bin: String, function: String, arguments: List<NamedArgument>) -> List<String> {
+  concat([gunbc_bin], invocation_words_bare(words: gunbc_run_invocation_words_with_arguments(
+    source_roots: ["dag", "src/v2"],
+    entry: fci1_bounded_controls_entry,
+    function: function,
+    claim_run: false,
+    arguments: arguments,
+  )))
+}
+
+// A row's named arguments stay (name, value) pairs until launch, where the sealed NamedArgument
+// admission decides them; a name the transport could not round-trip refuses rather than rebinding.
+type Fci1Arg {
+  name: String
+  value: String
+}
+
+type Fci1ArgsAdmission
+  = Fci1ArgsAdmitted { arguments: List<NamedArgument> }
+  | Fci1ArgsRefused { name: String }
+
+fn fci1_admit_args(args: List<Fci1Arg>) -> Fci1ArgsAdmission {
+  fold(args, init: Fci1ArgsAdmitted { arguments: [] }, f: (acc, a) =>
+    match acc {
+      Fci1ArgsRefused { name: n } => Fci1ArgsRefused { name: n }
+      Fci1ArgsAdmitted { arguments: done } =>
+        match admit_named_argument(name: a.name, value: a.value) {
+          NamedArgumentAdmitted { argument } => Fci1ArgsAdmitted { arguments: concat(done, [argument]) }
+          NamedArgumentNameEmpty => Fci1ArgsRefused { name: a.name }
+          NamedArgumentNameHoldsSeparator { name: n } => Fci1ArgsRefused { name: n }
+        }
+    })
 }
 
 // ── THE CHILD ENTRIES (each its own gunbc process, inside the unit) ─────────────────────────────
@@ -219,7 +254,7 @@ type Fci1ControlRow {
   working_directory: String
   bound: Fci1UnitBound
   function: String
-  arguments: List<String>
+  arguments: List<Fci1Arg>
   expectation: Fci1ControlExpectation
 }
 
@@ -241,7 +276,7 @@ fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> Lis
     Absent => max
   }
   let bounded = Fci1UnitBounded { max: max, high: high }
-  let positive_args = ["--arg", join(["max=", fci1_bytes_text(size: max)], ""), "--arg", join(["high=", fci1_bytes_text(size: high)], "")]
+  let positive_args = [Fci1Arg { name: "max", value: fci1_bytes_text(size: max) }, Fci1Arg { name: "high", value: fci1_bytes_text(size: high) }]
   [
     Fci1ControlRow { name: "driver-positive", unit: context.driver_unit, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
@@ -318,20 +353,38 @@ fn fci1_sorted_text(text: String) -> String {
   join(sort_by(filter(split(s: text, delimiter: "\n"), l => l != ""), l => l), "\n")
 }
 
-fn fci1_store_state() -> Fci1StoreState {
-  let metadata = fci1_run_command(command: find_tree_metadata_command(root: fci1_canonical_allocation_root))
-  if metadata.exit_code != 0 {
-    if string_contains(s: metadata.stderr, pattern: "No such file or directory") { Fci1StoreAbsent } else {
-      Fci1StoreUnobservable { cause: metadata.stderr }
-    }
-  } else {
-    let hashes = fci1_run_command(command: find_tree_regular_files_sha256_command(root: fci1_canonical_allocation_root))
-    if hashes.exit_code != 0 {
-      Fci1StoreUnobservable { cause: hashes.stderr }
-    } else {
+// Both walks of a present root, classified. A walk that failed for ANY reason, ENOENT of a descendant
+// that vanished mid-walk included, is unobservable: the root's absence is never read from a walk's
+// stderr, because a recursive find reports a missing descendant with the same text as a missing root.
+fn fci1_store_of_walks(metadata: Fci1Observed, hashes: Fci1Observed) -> Fci1StoreState {
+  if metadata.exit_code != 0 { Fci1StoreUnobservable { cause: metadata.stderr } } else {
+    if hashes.exit_code != 0 { Fci1StoreUnobservable { cause: hashes.stderr } } else {
       Fci1StoreObserved { metadata: fci1_sorted_text(text: metadata.stdout), hashes: fci1_sorted_text(text: hashes.stdout) }
     }
   }
+}
+
+// Root absence is established the one way the filesystem authority allows: by listing the parent and
+// finding no entry (FilesystemEstablishedAbsence). Anything the listing cannot establish is unobservable.
+fn fci1_store_state_at(parent: String, name: String, root: String) -> Fci1StoreState {
+  let listed = Filesystem.List(path: parent)
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: parent, success: listed.success, entries: listed.entries, error: listed.error),
+    name: name,
+  ) {
+    FilesystemEntryAbsent(_) => Fci1StoreAbsent
+    FilesystemEntryListed { directory: _, name: _ } =>
+      fci1_store_of_walks(
+        metadata: fci1_run_command(command: find_tree_metadata_command(root: root)),
+        hashes: fci1_run_command(command: find_tree_regular_files_sha256_command(root: root)),
+      )
+    FilesystemEntryPresenceIndeterminate { cause } => Fci1StoreUnobservable { cause: cause }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => Fci1StoreUnobservable { cause: cause }
+  }
+}
+
+fn fci1_store_state() -> Fci1StoreState {
+  fci1_store_state_at(parent: fci1_canonical_allocation_parent, name: fci1_canonical_allocation_name, root: fci1_canonical_allocation_root)
 }
 
 type Fci1RuntimeState
@@ -384,20 +437,24 @@ fn fci1_run_rows(gunbc_bin: String, rows: List<Fci1ControlRow>) -> Fci1RowsOutco
   match rows.first() {
     Absent => Fci1RowsPassed
     Present { value: row } =>
-      match fci1_unit_command(
-        unit: row.unit,
-        working_directory: row.working_directory,
-        bound: row.bound,
-        child_words: fci1_child_words(gunbc_bin: gunbc_bin, function: row.function, arguments: row.arguments),
-      ) {
-        Fci1UnitCommandRefused { detail } => Fci1RowsRefused { reason: concat("ControlRefused: unit command refused: ", detail) }
-        Fci1UnitCommandBuilt { command } =>
-          match fci1_grade(row: row, observed: fci1_run_command(command: command)) {
-            Present { value: reason } => Fci1RowsRefused { reason: reason }
-            Absent =>
-              match fci1_unit_collected(unit: row.unit) {
+      match fci1_admit_args(args: row.arguments) {
+        Fci1ArgsRefused { name } => Fci1RowsRefused { reason: concat("ControlRefused: row argument not admitted: ", name) }
+        Fci1ArgsAdmitted { arguments } =>
+          match fci1_unit_command(
+            unit: row.unit,
+            working_directory: row.working_directory,
+            bound: row.bound,
+            child_words: fci1_child_words(gunbc_bin: gunbc_bin, function: row.function, arguments: arguments),
+          ) {
+            Fci1UnitCommandRefused { detail } => Fci1RowsRefused { reason: concat("ControlRefused: unit command refused: ", detail) }
+            Fci1UnitCommandBuilt { command } =>
+              match fci1_grade(row: row, observed: fci1_run_command(command: command)) {
                 Present { value: reason } => Fci1RowsRefused { reason: reason }
-                Absent => fci1_run_rows(gunbc_bin: gunbc_bin, rows: rows.skip(n: 1))
+                Absent =>
+                  match fci1_unit_collected(unit: row.unit) {
+                    Present { value: reason } => Fci1RowsRefused { reason: reason }
+                    Absent => fci1_run_rows(gunbc_bin: gunbc_bin, rows: rows.skip(n: 1))
+                  }
               }
           }
       }
