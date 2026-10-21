@@ -899,70 +899,50 @@ fn attempt_system_unit_run_admitted_start(
   }
 }
 
-fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String) -> ProcessExit {
+// A REFUSED REQUEST IS AN ANSWERED REQUEST. The drain's job is that every request leaves requests/ with an
+// answer; a refusal (malformed body, unknown verb, a start that failed) is that job done, so it must not turn the
+// drain unit red. Only a request whose answer could not be written is the drain failing at its job.
+type AttemptUnitHandled
+  = AttemptUnitAnswered { refusal: String }
+  | AttemptUnitAnswerUnwritten { reason: String }
+
+fn attempt_system_unit_answer_request(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer, refusal: String) -> AttemptUnitHandled {
+  if attempt_system_unit_write_answer(instance_root: instance_root, entry: entry, body: body, answer: answer) {
+    AttemptUnitAnswered { refusal: refusal }
+  } else {
+    AttemptUnitAnswerUnwritten { reason: join([entry, ": the answer could not be written to answers/ (unwritable, or one already exists for this entry)"], "") }
+  }
+}
+
+fn attempt_system_unit_refuse_request(instance_root: String, entry: String, body: String, why: String) -> AttemptUnitHandled {
+  attempt_system_unit_answer_request(
+    instance_root: instance_root,
+    entry: entry,
+    body: body,
+    answer: AttemptSystemUnitRefusedAnswer { reason: why },
+    refusal: why,
+  )
+}
+
+fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String) -> AttemptUnitHandled {
+  let root = instance.instance_root as String
   match attempt_system_unit_read_claimed_body(path: attempt_system_unit_request_body_path(dir: path)) {
-    AttemptSystemUnitClaimedBodyRefused { reason: why } => {
-      let _ = attempt_system_unit_write_answer(
-        instance_root: instance.instance_root as String,
-        entry: entry,
-        body: "",
-        answer: AttemptSystemUnitRefusedAnswer { reason: why },
-      )
-      exit_failure(reason: why)
-    }
+    AttemptSystemUnitClaimedBodyRefused { reason: why } => attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: "", why: why)
     AttemptSystemUnitClaimedBodyRead { content } => {
     let lines = split(s: content, delimiter: "\n")
     match attempt_system_unit_start_request_decode(lines: lines) {
-      AttemptSystemUnitStartRequestMalformed { reason: why } => {
-        let _ = attempt_system_unit_write_answer(
-          instance_root: instance.instance_root as String,
-          entry: entry,
-          body: "",
-          answer: AttemptSystemUnitRefusedAnswer { reason: why },
-        )
-        exit_failure(reason: why)
-      }
-      AttemptSystemUnitStartVerbUnknown { tag: _ } => {
-        let why = "pending request verb is not start or start-wait"
-        let _ = attempt_system_unit_write_answer(
-          instance_root: instance.instance_root as String,
-          entry: entry,
-          body: content,
-          answer: AttemptSystemUnitRefusedAnswer { reason: why },
-        )
-        exit_failure(reason: why)
-      }
+      AttemptSystemUnitStartRequestMalformed { reason: why } => attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: "", why: why)
+      AttemptSystemUnitStartVerbUnknown { tag: _ } =>
+        attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: "pending request verb is not start or start-wait")
       AttemptSystemUnitStartRequestDecoded { verb: verb, request: request } =>
         if attempt_system_unit_request_entry_name(node_id: request.node_id, attempt_key: request.attempt_key) != entry {
-          let why = "request body identity does not match the entry name"
-          let _ = attempt_system_unit_write_answer(
-            instance_root: instance.instance_root as String,
-            entry: entry,
-            body: content,
-            answer: AttemptSystemUnitRefusedAnswer { reason: why },
-          )
-          exit_failure(reason: why)
+          attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: "request body identity does not match the entry name")
         } else {
-          let started = attempt_system_unit_cli_start(instance: instance, verb: verb, request: request)
-          match started {
-            ExitSuccess => {
-              let _ = attempt_system_unit_write_answer(
-                instance_root: instance.instance_root as String,
-                entry: entry,
-                body: content,
-                answer: AttemptSystemUnitStarted,
-              )
-              started
-            }
-            ExitFailure { code: _, reason: why } => {
-              let _ = attempt_system_unit_write_answer(
-                instance_root: instance.instance_root as String,
-                entry: entry,
-                body: content,
-                answer: AttemptSystemUnitRefusedAnswer { reason: why },
-              )
-              started
-            }
+          match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request) {
+            ExitSuccess =>
+              attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: "")
+            ExitFailure { code: _, reason: why } =>
+              attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: why)
           }
         }
     }
@@ -982,18 +962,9 @@ fn attempt_system_unit_handle_claimed(
   instance: HostDashboardInstance?,
   entry: String,
   path: String,
-) -> ProcessExit {
+) -> AttemptUnitHandled {
   match instance {
-    Absent => {
-      let why = "instance_root is not a declared dashboard instance"
-      let _ = attempt_system_unit_write_answer(
-        instance_root: instance_root,
-        entry: entry,
-        body: "",
-        answer: AttemptSystemUnitRefusedAnswer { reason: why },
-      )
-      exit_failure(reason: why)
-    }
+    Absent => attempt_system_unit_refuse_request(instance_root: instance_root, entry: entry, body: "", why: "instance_root is not a declared dashboard instance")
     Present { value: inst } => attempt_system_unit_process_claimed(instance: inst, entry: entry, path: path)
   }
 }
@@ -1011,6 +982,7 @@ fn attempt_system_unit_handle_claimed(
 type AttemptUnitDrainPass {
   exit: ProcessExit
   retired: Int
+  refused: Int
   unmovable: List<SpoolStallEntry>
 }
 
@@ -1022,21 +994,30 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
   if pass.retired == 0 && count(pass.unmovable) > 0 { AttemptUnitStalled { unmovable: pass.unmovable } } else { AttemptUnitNotStalled }
 }
 
-fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, exit: ProcessExit) -> AttemptUnitDrainPass {
-  AttemptUnitDrainPass { exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit), retired: pass.retired + 1, unmovable: pass.unmovable }
+// `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure.
+fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, handled: AttemptUnitHandled) -> AttemptUnitDrainPass {
+  match handled {
+    AttemptUnitAnswered { refusal: why } => {
+      let refusals = if why == "" { 0 } else { 1 }
+      AttemptUnitDrainPass { exit: pass.exit, retired: pass.retired + 1, refused: pass.refused + refusals, unmovable: pass.unmovable }
+    }
+    AttemptUnitAnswerUnwritten { reason: why } =>
+      AttemptUnitDrainPass { exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: why)), retired: pass.retired + 1, refused: pass.refused, unmovable: pass.unmovable }
+  }
 }
 
 fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: SpoolStallStep, cause: String) -> AttemptUnitDrainPass {
   AttemptUnitDrainPass {
     exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))),
     retired: pass.retired,
+    refused: pass.refused,
     unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
   }
 }
 
 fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
-  let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, unmovable: [] as List<SpoolStallEntry> }
+  let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: SpoolStallListRequests, cause: reason)
     AttemptSystemUnitRequestNames { names: entries } =>
@@ -1044,28 +1025,20 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
         match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
           AttemptSystemUnitAlreadyClaimed { entry: _ } => acc
           AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: SpoolStallClaim, cause: c)
-          AttemptSystemUnitClaimSymlink { entry: e } => {
-            let _ = attempt_system_unit_write_answer(
-              instance_root: instance_root,
-              entry: e,
-              body: "",
-              answer: AttemptSystemUnitRefusedAnswer { reason: "request entry is a symlink" },
+          AttemptSystemUnitClaimSymlink { entry: e } =>
+            attempt_unit_pass_retired(
+              pass: acc,
+              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink"),
             )
-            attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: "request entry is a symlink"))
-          }
-          AttemptSystemUnitClaimRefused { entry: e, reason: why } => {
-            let _ = attempt_system_unit_write_answer(
-              instance_root: instance_root,
-              entry: e,
-              body: "",
-              answer: AttemptSystemUnitRefusedAnswer { reason: why },
+          AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
+            attempt_unit_pass_retired(
+              pass: acc,
+              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: why),
             )
-            attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: why))
-          }
           AttemptSystemUnitClaimed { entry: e, path: p } =>
             attempt_unit_pass_retired(
               pass: acc,
-              exit: attempt_system_unit_handle_claimed(
+              handled: attempt_system_unit_handle_claimed(
                 instance_root: instance_root,
                 instance: instance,
                 entry: e,
