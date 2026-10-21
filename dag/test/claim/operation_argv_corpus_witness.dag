@@ -3,7 +3,8 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, List, Bool, Int }
-import std.algebra { fold_list, length, list_head }
+import std.algebra { fold_list, length, list_head, list_map }
+import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvMaterialization,
@@ -82,7 +83,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //    evaluation over the declaring module's closure in the native v2 materializer).
 //  - closed-unevaluated executable: argv[0] reads no declared input and is not evaluated (observed: ProgramIdentity catalog
 //    call, moved there by #14174), which the wall cannot judge. LOST COVERAGE, declared as
-//    gunbc.rung_drop operation_argv_closed_unevaluated_executable_unjudged with this list as its
+//    gunbc.rung_drop operation_argv_closed_unevaluated_executable_unjudged, whose population this list projects (one source) as its
 //    bounded population.
 //  - input-reading executable: argv[0] reads a declared input, so the wall correctly refuses.
 //  - unbound data reference: an argv element names a module `data` declaration; the materializer
@@ -144,54 +145,12 @@ data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOper
   ArgvClassifiedOperation { operation: "dag/test/fixture/argv_executable_position_probe.dag ArgvExecutablePositionProbe.SmuggleExecutable", reason: operation_argv_reason_fixture }
 ]
 
-data operation_argv_closed_unevaluated_executable_operations: List<ArgvClassifiedOperation> = [
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RunCommand", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ReadFile", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ResolvePath", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ParentDirectory", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SystemdIsActive", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SystemdRestart", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ZoneFailsafe", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorServices", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorValue", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorWarningLow", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorCriticalLow", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanMinimumDuty", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanZoneFailsafeDuty", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanSensorFailsafeDuty", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanPositiveHysteresis", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanNegativeHysteresis", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanReadingCount", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanOutputCount", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanReadingAt", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanOutputAt", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanControllerCount", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanControllerNameAt", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanInputCountAt", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanInputAt", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanConfigValidate", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanConfigVerify", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathIsWritable", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathExists", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathIsNonemptyFile", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.DiskUsageKib", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FileSha256", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.UtcTimestamp", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.MakeDirectoryParents", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.MakeDirectory", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RemoveDirectory", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RemoveFile", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.CopyFilePreservingMetadata", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RenameReplace", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SynchronizeFilesystems", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.WaitSeconds", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/ssh/password_session.dag ssh.PasswordSsh.CopyFile", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/ssh/password_session.dag ssh.PasswordFileSsh.ExecPortableWordsWithStdin", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedPostJson", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/tools/openssl.dag openssl.Dgst.SignSha256Hex", reason: operation_argv_reason_catalog },
-  ArgvClassifiedOperation { operation: "dag/extdeps/tools/openssl.dag openssl.Enc.Aes256CtrPassphrase", reason: operation_argv_reason_catalog }
-]
+fn operation_argv_closed_unevaluated_executable_operations() -> List<ArgvClassifiedOperation> {
+  list_map(
+    xs: operation_argv_closed_unevaluated_executable_unjudged.declaration.population,
+    f: fn(operation) { ArgvClassifiedOperation { operation: operation, reason: operation_argv_reason_catalog } }
+  )
+}
 
 data operation_argv_unbound_data_reference_operations: List<ArgvClassifiedOperation> = [
   ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ActivateHeld", reason: operation_argv_reason_data_ref },
@@ -270,7 +229,7 @@ fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRo
     ArgvRowMaterialized => true
     ArgvRowExpressionResidue => operation_argv_is_listed(list: operation_argv_expression_residue_operations, label: label)
     ArgvRowExecutablePositionRefused => operation_argv_is_listed(list: operation_argv_input_reading_executable_operations, label: label)
-    ArgvRowExecutableClosedUnevaluated => operation_argv_is_listed(list: operation_argv_closed_unevaluated_executable_operations, label: label)
+    ArgvRowExecutableClosedUnevaluated => operation_argv_is_listed(list: operation_argv_closed_unevaluated_executable_operations(), label: label)
     ArgvRowOtherRefusal => operation_argv_is_listed(list: operation_argv_unbound_data_reference_operations, label: label)
   }
   let other_unbound = other && string_contains(operation_argv_refusal_label(m: m), "=> DeclaredInputUnbound:")
@@ -319,7 +278,7 @@ test fn operation_argv_corpus_classified_set_equals_the_named_lists() -> Bool {
   t.unlisted == 0
     && t.expression_residue == length(xs: operation_argv_expression_residue_operations)
     && t.input_reading_executable == length(xs: operation_argv_input_reading_executable_operations)
-    && t.closed_unevaluated_executable == length(xs: operation_argv_closed_unevaluated_executable_operations)
+    && t.closed_unevaluated_executable == length(xs: operation_argv_closed_unevaluated_executable_operations())
     && t.unbound_data_reference == length(xs: operation_argv_unbound_data_reference_operations)
 }
 
@@ -341,7 +300,7 @@ test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_and_
 // wall cannot judge, so it is classified as such (not as the wall firing on an input).
 test fn operation_argv_corpus_closed_unevaluated_row_is_classified_and_not_an_input_reader() -> Bool {
   operation_argv_is_listed(
-    list: operation_argv_closed_unevaluated_executable_operations,
+    list: operation_argv_closed_unevaluated_executable_operations(),
     label: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet"
   ) && !operation_argv_is_listed(
     list: operation_argv_input_reading_executable_operations,
