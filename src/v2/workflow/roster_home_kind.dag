@@ -55,8 +55,8 @@ import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 //   KindUnclassified the rule COULD NOT decide: the head is unbound at a value/type position, but the census gives no
 //                    row that classifies the home (zero keyed rows, or only OtherItem rows). This is NOT a "no": the
 //                    sweep must refuse the module, located by home and name (review 83187: a home the census cannot
-//                    classify must not silently plan no import). The measured population is Wave 2's aliased type homes
-//                    (std.types List/Map/Set -> OtherItem; host item_kind, v1_compiler_infer_items.rs:274).
+//                    classify must not silently plan no import). A home the census holds no row for is the
+//                    measured shape; aliased type homes (std.types List/Map/Set) read TypeItem and are decided.
 type HomeKindVerdict
   = KindNotAsked
   | KindMatched
